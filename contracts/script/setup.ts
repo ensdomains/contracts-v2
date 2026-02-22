@@ -69,7 +69,7 @@ const contracts = {
   DefaultReverseRegistrar: artifacts.DefaultReverseRegistrar.abi,
   DefaultReverseResolver: artifacts.DefaultReverseResolver.abi,
   //
-  MigratedWrappedNameRegistryImpl: artifacts.MigratedWrappedNameRegistry.abi,
+  WrapperRegistry: artifacts.WrapperRegistry.abi,
   //
   UniversalResolverV2: artifacts.UniversalResolverV2.abi,
   RootRegistry: artifacts.PermissionedRegistry.abi,

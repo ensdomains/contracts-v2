@@ -25,8 +25,8 @@ contract LockedMigrationController is WrapperReceiver {
         IPermissionedRegistry ethRegistry,
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
-        address migratedRegistryImpl
-    ) WrapperReceiver(nameWrapper, verifiableFactory, migratedRegistryImpl) {
+        address wrapperRegistryImpl
+    ) WrapperReceiver(nameWrapper, verifiableFactory, wrapperRegistryImpl) {
         ETH_REGISTRY = ethRegistry;
     }
 

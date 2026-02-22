@@ -48,6 +48,22 @@ contract V1FixtureTest is V1Fixture {
         assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), user, "owner");
     }
 
+    function test_findResolverV1_unwrapped() external {
+        (bytes memory name, ) = registerUnwrapped("test");
+        assertEq(findResolverV1(name), address(0), "before");
+        vm.prank(user);
+        ensV1.setResolver(NameCoder.namehash(name, 0), address(1));
+        assertEq(findResolverV1(name), address(1), "after");
+    }
+
+    function test_findResolverV1_wrapped() external {
+        bytes memory name = createWrappedName("a.b.c", 0);
+        assertEq(findResolverV1(name), address(0), "before");
+        vm.prank(user);
+        nameWrapper.setResolver(NameCoder.namehash(name, 0), address(1));
+        assertEq(findResolverV1(name), address(1), "after");
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // NameWrapper Quirks
     ////////////////////////////////////////////////////////////////////////

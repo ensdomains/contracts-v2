@@ -39,13 +39,14 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
 
     INameWrapper public immutable NAME_WRAPPER;
     VerifiableFactory public immutable VERIFIABLE_FACTORY;
-    address public immutable MIGRATED_REGISTRY_IMPL;
+    address public immutable WRAPPER_REGISTRY_IMPL;
 
     ////////////////////////////////////////////////////////////////////////
     // Modifiers
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Restrict `msg.sender` to `NAME_WRAPPER`.
+    ///      Reverts wrapped errors for use inside of legacy IERC1155Receiver handler.
     modifier onlyWrapper() {
         if (msg.sender != address(NAME_WRAPPER)) {
             WrappedErrorLib.wrapAndRevert(
@@ -73,11 +74,11 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
     constructor(
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
-        address migratedRegistryImpl
+        address wrapperRegistryImpl
     ) {
         NAME_WRAPPER = nameWrapper;
         VERIFIABLE_FACTORY = verifiableFactory;
-        MIGRATED_REGISTRY_IMPL = migratedRegistryImpl;
+        WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
     }
 
     /// @inheritdoc IERC165
@@ -195,7 +196,7 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
             // create subregistry
             IRegistry subregistry = IRegistry(
                 VERIFIABLE_FACTORY.deployProxy(
-                    MIGRATED_REGISTRY_IMPL,
+                    WRAPPER_REGISTRY_IMPL,
                     md.salt,
                     abi.encodeCall(
                         IWrapperRegistry.initialize,

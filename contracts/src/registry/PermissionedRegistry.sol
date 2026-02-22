@@ -81,9 +81,7 @@ contract PermissionedRegistry is
         address ownerAddress,
         uint256 ownerRoles
     ) HCAEquivalence(hcaFactory) MetadataMixin(metadata) {
-        if (ownerAddress != address(0)) {
-            _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
-        }
+        _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
     }
 
     /// @inheritdoc IERC165

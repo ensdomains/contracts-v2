@@ -41,7 +41,7 @@ import {
 
 contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
     LockedMigrationController migrationController;
-    WrapperRegistry migratedRegistryImpl;
+    WrapperRegistry wrapperRegistryImpl;
     ENSV1Resolver ensV1Resolver;
     MockERC1155 dummy1155;
 
@@ -50,7 +50,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
         deployV2Fixture();
         dummy1155 = new MockERC1155();
         ensV1Resolver = new ENSV1Resolver(ensV1, batchGatewayProvider);
-        migratedRegistryImpl = new WrapperRegistry(
+        wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
             verifiableFactory,
             address(ensV1Resolver),
@@ -61,7 +61,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             ethRegistry,
             nameWrapper,
             verifiableFactory,
-            address(migratedRegistryImpl)
+            address(wrapperRegistryImpl)
         );
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(migrationController));
     }
@@ -84,9 +84,9 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             "VERIFIABLE_FACTORY"
         );
         assertEq(
-            migrationController.MIGRATED_REGISTRY_IMPL(),
-            address(migratedRegistryImpl),
-            "MIGRATED_REGISTRY_IMPL"
+            migrationController.WRAPPER_REGISTRY_IMPL(),
+            address(wrapperRegistryImpl),
+            "WRAPPER_REGISTRY_IMPL"
         );
     }
 
@@ -271,9 +271,9 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             "VERIFIABLE_FACTORY"
         );
         assertEq(
-            subregistry.MIGRATED_REGISTRY_IMPL(),
-            address(migratedRegistryImpl),
-            "MIGRATED_REGISTRY_IMPL"
+            subregistry.WRAPPER_REGISTRY_IMPL(),
+            address(wrapperRegistryImpl),
+            "WRAPPER_REGISTRY_IMPL"
         );
     }
 
@@ -447,15 +447,17 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
     }
 
     function test_migrate_emancipatedChildren() external {
-        bytes memory name2 = registerWrappedETH2LD("test", CANNOT_UNWRAP);
+        string memory label2 = "test";
+        bytes memory name2 = registerWrappedETH2LD(label2, CANNOT_UNWRAP);
+        string memory label3 = "sub";
         bytes memory name3 = createWrappedChild(
             name2,
-            "3ld",
+            label3,
             CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
         );
         bytes memory name3unmigrated = createWrappedChild(
             name2,
-            "unmigrated3ld",
+            "unmigrated",
             CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
         );
 
@@ -469,7 +471,6 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             1,
             abi.encode(data2)
         );
-        string memory label2 = NameCoder.firstLabel(name2);
         assertEq(
             ethRegistry.ownerOf(ethRegistry.getTokenId(LibLabel.id(label2))),
             data2.owner,
@@ -491,7 +492,6 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             1,
             abi.encode(data3)
         );
-        string memory label3 = NameCoder.firstLabel(name3);
         assertEq(registry2.getResolver(label3), data3.resolver, "resolver3");
         assertEq(findResolverV2(name3), data3.resolver, "findResolver3");
         assertEq(
