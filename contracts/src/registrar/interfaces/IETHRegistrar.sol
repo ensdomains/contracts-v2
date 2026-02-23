@@ -8,7 +8,7 @@ import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 import {IRentPriceOracle} from "./IRentPriceOracle.sol";
 
 /// @notice Interface for the ".eth" registrar which manages the ".eth" registry.
-/// @dev Interface selector: `0xce1ac79c`
+/// @dev Interface selector: `0x29071951`
 interface IETHRegistrar is IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -71,9 +71,9 @@ interface IETHRegistrar is IRentPriceOracle {
     /// @dev Error selector: `0x477707e8`
     error NameNotAvailable(string label);
 
-    /// @notice `label` is not REGISTERED.
-    /// @dev Error selector: `0xf2b502e2`
-    error NameNotRegistered(string label);
+    /// @notice `label` is AVAILABLE.
+    /// @dev Error selector: `0xf7681f14`
+    error NameIsAvailable(string label);
 
     /// @notice `duration` less than `minDuration`.
     /// @dev Error selector: `0xa096b844`
@@ -118,8 +118,7 @@ interface IETHRegistrar is IRentPriceOracle {
     /// @param duration The registration from commitment.
     /// @param paymentToken The ERC-20 to use for payment.
     /// @param referrer The referrer hash.
-    ///
-    /// @return `tokenId` for the registration.
+    /// @return tokenId The registered token ID.
     function register(
         string memory label,
         address owner,
@@ -129,7 +128,7 @@ interface IETHRegistrar is IRentPriceOracle {
         uint64 duration,
         IERC20 paymentToken,
         bytes32 referrer
-    ) external returns (uint256);
+    ) external returns (uint256 tokenId);
 
     /// @notice Renew an existing registration.
     ///

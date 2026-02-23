@@ -11,19 +11,17 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 
 import {StandardPricing} from "./StandardPricing.sol";
 
-import {
-    IEnhancedAccessControl,
-    EACBaseRolesLib
-} from "~src/access-control/EnhancedAccessControl.sol";
-import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {IEnhancedAccessControl} from "~src/access-control/EnhancedAccessControl.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
-import {LibLabel} from "~src/utils/LibLabel.sol";
-import {InvalidOwner} from "~src/CommonErrors.sol";
 import {
     ETHRegistrar,
     IETHRegistrar,
     IRegistry,
+    RegistryRolesLib,
+    EACBaseRolesLib,
+    LibLabel,
+    InvalidOwner,
     REGISTRATION_ROLE_BITMAP,
     ROLE_SET_ORACLE
 } from "~src/registrar/ETHRegistrar.sol";
@@ -140,7 +138,7 @@ contract ETHRegistrarTest is Test {
         );
     }
 
-    function test_Revert_constructor_emptyRange() external {
+    function test_constructor_emptyRange() external {
         vm.expectRevert(abi.encodeWithSelector(IETHRegistrar.MaxCommitmentAgeTooLow.selector));
         new ETHRegistrar(
             ethRegistry,
@@ -153,7 +151,7 @@ contract ETHRegistrarTest is Test {
         );
     }
 
-    function test_Revert_constructor_invalidRange() external {
+    function test_constructor_invalidRange() external {
         vm.expectRevert(abi.encodeWithSelector(IETHRegistrar.MaxCommitmentAgeTooLow.selector));
         new ETHRegistrar(
             ethRegistry,
@@ -191,7 +189,7 @@ contract ETHRegistrarTest is Test {
         assertEq(base, 1, "rent"); // 1 * 10^x / 10^x = 1
     }
 
-    function test_Revert_setRentPriceOracle() external {
+    function test_setRentPriceOracle_notAuthorized() external {
         PaymentRatio[] memory paymentRatios = new PaymentRatio[](1);
         paymentRatios[0] = PaymentRatio(tokenUSDC, 1, 1);
         StandardRentPriceOracle oracle = new StandardRentPriceOracle(
@@ -208,7 +206,7 @@ contract ETHRegistrarTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                uint256(0),
+                ethRegistry.ROOT_RESOURCE(),
                 ROLE_SET_ORACLE,
                 user
             )
@@ -298,6 +296,17 @@ contract ETHRegistrarTest is Test {
         ethRegistrar.renew(args.label, args.duration, args.paymentToken, args.referrer);
     }
 
+    function _reserve(RegisterArgs memory args) internal {
+        ethRegistry.register(
+            args.label,
+            address(0),
+            IRegistry(address(0)),
+            address(0),
+            0,
+            uint64(block.timestamp + args.duration)
+        );
+    }
+
     function test_commit() external {
         RegisterArgs memory args = _defaultRegisterArgs();
         bytes32 commitment = _makeCommitment(args);
@@ -329,7 +338,7 @@ contract ETHRegistrarTest is Test {
         assertEq(ethRegistrar.commitmentAt(commitment), block.timestamp, "after");
     }
 
-    function test_Revert_commit_unexpiredCommitment() external {
+    function test_commit_unexpiredCommitment() external {
         bytes32 commitment = bytes32(uint256(1));
         ethRegistrar.commit(commitment);
         vm.expectRevert(
@@ -347,11 +356,25 @@ contract ETHRegistrarTest is Test {
 
     function test_register() external {
         RegisterArgs memory args = _defaultRegisterArgs();
-        vm.expectEmit(false, false, false, false);
-        bytes32 topic = IETHRegistrar.NameRegistered.selector;
-        assembly {
-            log2(0, 0, topic, 0)
-        }
+        (uint256 base, uint256 premium) = ethRegistrar.rentPrice(
+            args.label,
+            args.owner,
+            args.duration,
+            args.paymentToken
+        );
+        vm.expectEmit();
+        emit IETHRegistrar.NameRegistered(
+            LibLabel.withVersion(LibLabel.id(args.label), 0),
+            args.label,
+            args.owner,
+            args.subregistry,
+            args.resolver,
+            args.duration,
+            args.paymentToken,
+            args.referrer,
+            base,
+            premium
+        );
         uint256 tokenId = this._register(args);
         assertEq(ethRegistry.ownerOf(tokenId), args.owner, "owner");
         assertEq(ethRegistry.getExpiry(tokenId), uint64(block.timestamp) + args.duration, "expiry");
@@ -389,7 +412,7 @@ contract ETHRegistrarTest is Test {
         assertEq(balance0 - base, args.paymentToken.balanceOf(args.owner), "balance");
     }
 
-    function test_Revert_register_insufficientAllowance() external {
+    function test_register_insufficientAllowance() external {
         RegisterArgs memory args = _defaultRegisterArgs();
         vm.prank(args.sender);
         tokenUSDC.approve(address(ethRegistrar), 0);
@@ -410,7 +433,7 @@ contract ETHRegistrarTest is Test {
         this._register(args);
     }
 
-    function test_Revert_register_insufficientBalance() external {
+    function test_register_insufficientBalance() external {
         RegisterArgs memory args = _defaultRegisterArgs();
         tokenUSDC.nuke(args.sender);
         (uint256 base, uint256 premium) = ethRegistrar.rentPrice(
@@ -430,7 +453,7 @@ contract ETHRegistrarTest is Test {
         this._register(args);
     }
 
-    function test_Revert_register_commitmentTooNew() external {
+    function test_register_commitmentTooNew() external {
         RegisterArgs memory args = _defaultRegisterArgs();
         uint256 dt = 1;
         args.wait = ethRegistrar.MIN_COMMITMENT_AGE() - dt;
@@ -446,7 +469,7 @@ contract ETHRegistrarTest is Test {
         this._register(args);
     }
 
-    function test_Revert_register_commitmentTooOld() external {
+    function test_register_commitmentTooOld() external {
         RegisterArgs memory args = _defaultRegisterArgs();
         uint256 dt = 1;
         args.wait = ethRegistrar.MAX_COMMITMENT_AGE() + dt;
@@ -462,7 +485,7 @@ contract ETHRegistrarTest is Test {
         this._register(args);
     }
 
-    function test_Revert_register_nameNotAvailable() external {
+    function test_register_nameNotAvailable() external {
         RegisterArgs memory args = _defaultRegisterArgs();
         this._register(args);
         vm.expectRevert(
@@ -471,7 +494,7 @@ contract ETHRegistrarTest is Test {
         this._register(args);
     }
 
-    function test_Revert_register_durationTooShort() external {
+    function test_register_durationTooShort() external {
         RegisterArgs memory args = _defaultRegisterArgs();
         args.duration = ethRegistrar.MIN_REGISTER_DURATION() - 1;
         vm.expectRevert(
@@ -484,10 +507,19 @@ contract ETHRegistrarTest is Test {
         this._register(args);
     }
 
-    function test_Revert_register_nullOwner() external {
+    function test_register_nullOwner() external {
         RegisterArgs memory args = _defaultRegisterArgs();
-        args.owner = address(0);
-        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector, args.owner));
+        args.owner = address(0); // aka reserve()
+        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
+        this._register(args);
+    }
+
+    function test_register_reserved() external {
+        RegisterArgs memory args = _defaultRegisterArgs();
+        _reserve(args);
+        vm.expectRevert(
+            abi.encodeWithSelector(IETHRegistrar.NameNotAvailable.selector, args.label)
+        );
         this._register(args);
     }
 
@@ -504,15 +536,19 @@ contract ETHRegistrarTest is Test {
         assertEq(ethRegistry.getExpiry(tokenId), expiry0 + args.duration);
     }
 
-    function test_Revert_renew_nameNotRegistered() external {
+    function test_renew_reserved() external {
         RegisterArgs memory args = _defaultRegisterArgs();
-        vm.expectRevert(
-            abi.encodeWithSelector(IETHRegistrar.NameNotRegistered.selector, args.label)
-        );
+        _reserve(args);
         this._renew(args);
     }
 
-    function test_Revert_renew_0duration() external {
+    function test_renew_nameIsAvailable() external {
+        RegisterArgs memory args = _defaultRegisterArgs();
+        vm.expectRevert(abi.encodeWithSelector(IETHRegistrar.NameIsAvailable.selector, args.label));
+        this._renew(args);
+    }
+
+    function test_renew_0duration() external {
         RegisterArgs memory args = _defaultRegisterArgs();
         this._register(args);
         args.duration = 0;
@@ -520,7 +556,7 @@ contract ETHRegistrarTest is Test {
         this._renew(args);
     }
 
-    function test_Revert_renew_insufficientAllowance() external {
+    function test_renew_insufficientAllowance() external {
         RegisterArgs memory args = _defaultRegisterArgs();
         this._register(args);
         vm.prank(args.sender);

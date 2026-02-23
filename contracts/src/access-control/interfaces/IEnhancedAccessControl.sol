@@ -93,16 +93,12 @@ interface IEnhancedAccessControl is IERC165 {
     /**
      * @dev Returns `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`.
      */
-    function hasRootRoles(uint256 rolesBitmap, address account) external view returns (bool);
+    function hasRootRoles(uint256, address account) external view returns (bool);
 
     /**
      * @dev Returns `true` if `account` has been granted all the given roles in `resource`.
      */
-    function hasRoles(
-        uint256 resource,
-        uint256 rolesBitmap,
-        address account
-    ) external view returns (bool);
+    function hasRoles(uint256 resource, uint256, address account) external view returns (bool);
 
     /**
      * @dev Get if any of the roles in the given role bitmap has assignees.
