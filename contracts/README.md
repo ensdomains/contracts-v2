@@ -1,5 +1,5 @@
 ![Build status](https://github.com/ensdomains/contracts-v2/actions/workflows/main.yml/badge.svg?branch=main)
-[![Coverage Status](https://coveralls.io/repos/github/ensdomains/contracts-v2/badge.svg?branch=main)](https://coveralls.io/github/ensdomains/contracts-v2?branch=main)
+[![codecov](https://codecov.io/github/ensdomains/contracts-v2/graph/badge.svg?branch=main)](https://codecov.io/github/ensdomains/contracts-v2)
 
 # ENSv2 Contracts
 
