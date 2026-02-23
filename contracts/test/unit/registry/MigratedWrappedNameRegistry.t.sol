@@ -1252,9 +1252,8 @@ contract MigratedWrappedNameRegistryTest is Test {
 
     function test_authorizeUpgrade_with_granted_upgrade_role() public {
         // Grant upgrade role to user using grantRootRoles (not grantRoles for ROOT_RESOURCE)
-        uint256 ROLE_UPGRADE = 1 << 20;
         vm.prank(owner);
-        registry.grantRootRoles(ROLE_UPGRADE, user);
+        registry.grantRootRoles(RegistryRolesLib.ROLE_UPGRADE, user);
 
         // Deploy a new implementation
         MigratedWrappedNameRegistry newImplementation = new MigratedWrappedNameRegistry(
@@ -1283,12 +1282,11 @@ contract MigratedWrappedNameRegistryTest is Test {
 
     function test_authorizeUpgrade_revoked_upgrade_role() public {
         // Grant then revoke upgrade role using root functions
-        uint256 ROLE_UPGRADE = 1 << 20;
         vm.prank(owner);
-        registry.grantRootRoles(ROLE_UPGRADE, user);
+        registry.grantRootRoles(RegistryRolesLib.ROLE_UPGRADE, user);
 
         vm.prank(owner);
-        registry.revokeRootRoles(ROLE_UPGRADE, user);
+        registry.revokeRootRoles(RegistryRolesLib.ROLE_UPGRADE, user);
 
         // Deploy a new implementation
         MigratedWrappedNameRegistry newImplementation = new MigratedWrappedNameRegistry(
@@ -1435,10 +1433,9 @@ contract MigratedWrappedNameRegistryTest is Test {
         MigratedWrappedNameRegistry newRegistry = MigratedWrappedNameRegistry(address(proxy));
 
         // Check that owner has custom roles plus upgrade roles
-        uint256 ROLE_UPGRADE = 1 << 20;
-        uint256 ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
-        uint256 expectedRoles = ROLE_UPGRADE | ROLE_UPGRADE_ADMIN | customRoles;
-
+        uint256 expectedRoles = RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN |
+            customRoles;
         assertTrue(
             newRegistry.hasRoles(newRegistry.ROOT_RESOURCE(), expectedRoles, user),
             "Owner should have custom roles plus upgrade roles"

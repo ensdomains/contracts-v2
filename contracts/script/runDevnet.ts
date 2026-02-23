@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { parseArgs } from "node:util";
 import { getAddress, toHex } from "viem";
 import { setupDevnet } from "./setup.js";
+import { testNames } from "./testNames.js";
 
 const t0 = Date.now();
 
@@ -11,6 +12,9 @@ const args = parseArgs({
     procLog: {
       type: "boolean",
     },
+    testNames: {
+      type: "boolean",
+    },
   },
 });
 
@@ -18,7 +22,7 @@ const env = await setupDevnet({
   port: 8545,
   saveDeployments: true,
   procLog: args.values.procLog,
-  extraTime: 60,
+  extraTime: args.values.testNames ? 86_401 : 60,
 });
 
 // handler for shell
@@ -55,6 +59,10 @@ console.table(
     "Contract Address": getAddress(address),
   })),
 );
+
+if (args.values.testNames) {
+  await testNames(env);
+}
 
 await env.sync({ warpSec: "local" });
 

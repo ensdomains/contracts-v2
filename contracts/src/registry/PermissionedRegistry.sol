@@ -134,7 +134,13 @@ contract PermissionedRegistry is
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_REGISTRAR) returns (uint256 tokenId) {
+    )
+        public
+        virtual
+        override
+        onlyRootRoles(RegistryRolesLib.ROLE_REGISTRAR)
+        returns (uint256 tokenId)
+    {
         if (owner == address(0)) {
             revert InvalidOwner();
         }

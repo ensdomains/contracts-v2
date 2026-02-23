@@ -8,6 +8,7 @@ import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 
 import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
+import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
 /**
@@ -16,13 +17,6 @@ import {PermissionedRegistry} from "./PermissionedRegistry.sol";
  * This contract is designed to be deployed via the VerifiableFactory.
  */
 contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
-    ////////////////////////////////////////////////////////////////////////
-    // Constants
-    ////////////////////////////////////////////////////////////////////////
-
-    uint256 internal constant _ROLE_UPGRADE = 1 << 20;
-    uint256 internal constant _ROLE_UPGRADE_ADMIN = _ROLE_UPGRADE << 128;
-
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -69,7 +63,7 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
      */
     function _authorizeUpgrade(
         address newImplementation
-    ) internal override onlyRootRoles(_ROLE_UPGRADE) {
+    ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {
         // Authorization is handled by the onlyRootRoles modifier
     }
 }

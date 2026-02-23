@@ -800,12 +800,11 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
         IPermissionedRegistry subRegistry = IPermissionedRegistry(address(subregistry));
 
         // The user should only have UPGRADE and UPGRADE_ADMIN roles on the subregistry
-        // ROLE_UPGRADE = 1 << 20, ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128
-        uint256 ROLE_UPGRADE = 1 << 20;
-        uint256 ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
-        uint256 upgradeRoles = ROLE_UPGRADE | ROLE_UPGRADE_ADMIN;
         assertTrue(
-            subRegistry.hasRootRoles(upgradeRoles, user),
+            subRegistry.hasRootRoles(
+                RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN,
+                user
+            ),
             "User should have UPGRADE roles on subregistry"
         );
     }
