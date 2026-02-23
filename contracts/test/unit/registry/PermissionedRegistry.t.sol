@@ -249,112 +249,220 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(expiry, newExpiry);
     }
 
-    function test_register_unlocked() public {
-        uint256 tokenId = registry.register(
-            "test2",
+    function test_reserve() external {
+        uint64 expiry = _after(86400);
+
+        assertEq(
+            uint256(registry.getNameState(testLabel)),
+            uint256(IPermissionedRegistry.NameState.AVAILABLE),
+            "state:before-reserve"
+        );
+
+        vm.expectEmit();
+        emit IRegistry.NameReserved(
+            LibLabel.labelToCanonicalId(testLabel),
+            LibLabel.labelhash(testLabel),
+            testLabel,
+            expiry,
+            address(this)
+        );
+        registry.reserve(testLabel, testResolver, expiry);
+
+        // check reservation state
+        (uint256 tokenId, ) = registry.getNameData(testLabel);
+        assertEq(registry.ownerOf(tokenId), address(0), "owner");
+        assertEq(registry.getExpiry(tokenId), expiry, "expiry");
+        assertEq(registry.getResolver(testLabel), testResolver, "resolver");
+        assertEq(
+            uint256(registry.getNameState(testLabel)),
+            uint256(IPermissionedRegistry.NameState.RESERVED),
+            "state:after-reserve"
+        );
+
+        // cant reserve again
+        vm.expectRevert(
+            abi.encodeWithSelector(IPermissionedRegistry.NameIsReserved.selector, testLabel)
+        );
+        registry.reserve(testLabel, testResolver, expiry);
+
+        // cant renew
+        vm.expectRevert(abi.encodeWithSelector(IPermissionedRegistry.NameIsReserved.selector));
+        registry.renew(tokenId, expiry + expiry);
+
+        // ROOT can change resolver
+        registry.setResolver(tokenId, testResolver);
+
+        vm.warp(expiry);
+
+        // check expired state
+        assertEq(registry.getResolver(testLabel), address(0), "afterResolver");
+        assertEq(
+            uint256(registry.getNameState(testLabel)),
+            uint256(IPermissionedRegistry.NameState.AVAILABLE),
+            "state:after-expiry"
+        );
+
+        // check can be registered
+        registry.register(
+            testLabel,
             user1,
-            registry,
-            address(0),
+            testRegistry,
+            testResolver,
             DEFAULT_ROLE_BITMAP,
             _after(86400)
         );
 
-        // Verify roles
-        assertTrue(
-            registry.hasRoles(
-                registry.getResource(tokenId),
-                RegistryRolesLib.ROLE_SET_SUBREGISTRY,
-                user1
-            )
-        );
-        assertTrue(
-            registry.hasRoles(
-                registry.getResource(tokenId),
-                RegistryRolesLib.ROLE_SET_RESOLVER,
-                user1
-            )
+        assertEq(
+            uint256(registry.getNameState(testLabel)),
+            uint256(IPermissionedRegistry.NameState.REGISTERED),
+            "state:after-register"
         );
     }
 
-    function test_register_locked() public {
-        uint256 tokenId = registry.register(
-            "test2",
+    function test_reserve_with_register() external {
+        registry.reserve(testLabel, testResolver, _after(86400));
+
+        address registrar = makeAddr("registrar");
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, registrar);
+
+        // cant register a reservation without ROLE_RESERVE
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_RESERVE,
+                registrar
+            )
+        );
+        vm.prank(registrar);
+        registry.register(
+            testLabel,
             user1,
-            registry,
-            address(0),
-            NO_ROLES_ROLE_BITMAP,
+            testRegistry,
+            testResolver,
+            DEFAULT_ROLE_BITMAP,
             _after(86400)
         );
 
-        // Verify roles
-        assertFalse(
-            registry.hasRoles(
-                registry.getResource(tokenId),
-                RegistryRolesLib.ROLE_SET_SUBREGISTRY,
-                user1
-            )
-        );
-        assertFalse(
-            registry.hasRoles(
-                registry.getResource(tokenId),
-                RegistryRolesLib.ROLE_SET_RESOLVER,
-                user1
-            )
+        registry.grantRootRoles(RegistryRolesLib.ROLE_RESERVE, registrar);
+
+        // retry with role
+        vm.prank(registrar);
+        registry.register(
+            testLabel,
+            user1,
+            testRegistry,
+            testResolver,
+            DEFAULT_ROLE_BITMAP,
+            _after(86400)
         );
     }
 
-    function test_register_locked_subregistry() public {
-        uint256 tokenId = registry.register(
-            "test2",
+    function test_reserve_alreadyRegistered() external {
+        registry.register(
+            testLabel,
             user1,
-            registry,
-            address(0),
-            LOCKED_SUBREGISTRY_ROLE_BITMAP,
+            testRegistry,
+            testResolver,
+            DEFAULT_ROLE_BITMAP,
             _after(86400)
         );
-
-        // Verify roles
-        assertFalse(
-            registry.hasRoles(
-                registry.getResource(tokenId),
-                RegistryRolesLib.ROLE_SET_SUBREGISTRY,
-                user1
-            )
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.NameAlreadyRegistered.selector, testLabel)
         );
-        assertTrue(
-            registry.hasRoles(
-                registry.getResource(tokenId),
-                RegistryRolesLib.ROLE_SET_RESOLVER,
-                user1
-            )
-        );
+        registry.reserve(testLabel, testResolver, _after(86400));
     }
 
-    function test_register_locked_resolver() public {
-        uint256 tokenId = registry.register(
-            "test2",
+    function test_reserve_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_RESERVE,
+                user1
+            )
+        );
+        vm.prank(user1);
+        registry.reserve(testLabel, testResolver, _after(86400));
+    }
+
+    function test_register() external {
+        uint64 expiry = _after(86400);
+        uint256 expectedTokenId = LibLabel.labelToCanonicalId(testLabel);
+        vm.expectEmit();
+        emit IRegistry.NameRegistered(
+            expectedTokenId,
+            LibLabel.labelhash(testLabel),
+            testLabel,
             user1,
-            registry,
-            address(0),
-            LOCKED_RESOLVER_ROLE_BITMAP,
+            expiry,
+            address(this)
+        );
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(address(this), address(0), user1, expectedTokenId, 1);
+        vm.expectEmit();
+        emit IPermissionedRegistry.TokenResource(expectedTokenId, expectedTokenId);
+        vm.expectEmit();
+        emit IRegistry.SubregistryUpdated(expectedTokenId, testRegistry, address(this));
+        vm.expectEmit();
+        emit IRegistry.ResolverUpdated(expectedTokenId, testResolver, address(this));
+        uint256 tokenId = registry.register(
+            testLabel,
+            user1,
+            testRegistry,
+            testResolver,
+            DEFAULT_ROLE_BITMAP,
+            expiry
+        );
+        assertEq(registry.getExpiry(tokenId), expiry, "expiry");
+        assertEq(registry.ownerOf(tokenId), user1, "owner");
+        assertEq(registry.getResolver(testLabel), testResolver, "resolver");
+        assertEq(address(registry.getSubregistry(testLabel)), address(testRegistry), "registry");
+        assertTrue(registry.hasRoles(tokenId, DEFAULT_ROLE_BITMAP, user1), "roles");
+    }
+
+    function test_register_with_roles(uint16 compactRoles) external {
+        uint256 rolesBitmap;
+        for (uint256 i; i < 16; i++) {
+            if ((compactRoles & (1 << i)) != 0) {
+                rolesBitmap |= (1 << (i << 2));
+            }
+        }
+        uint256 tokenId = registry.register(
+            testLabel,
+            user1,
+            testRegistry,
+            testResolver,
+            rolesBitmap,
             _after(86400)
         );
+        assertTrue(registry.hasRoles(tokenId, rolesBitmap, user1));
+    }
 
-        // Verify roles
-        assertTrue(
-            registry.hasRoles(
-                registry.getResource(tokenId),
-                RegistryRolesLib.ROLE_SET_SUBREGISTRY,
-                user1
-            )
+    function test_register_withNullResolver() external {
+        vm.recordLogs();
+        registry.register(
+            testLabel,
+            user1,
+            testRegistry,
+            address(0), // null
+            DEFAULT_ROLE_BITMAP,
+            _after(86400)
         );
-        assertFalse(
-            registry.hasRoles(
-                registry.getResource(tokenId),
-                RegistryRolesLib.ROLE_SET_RESOLVER,
-                user1
-            )
+        _expectNoEmit(vm.getRecordedLogs(), IRegistry.ResolverUpdated.selector);
+    }
+
+    function test_register_withNullRegistry() external {
+        vm.recordLogs();
+        registry.register(
+            testLabel,
+            user1,
+            IRegistry(address(0)), // null
+            testResolver,
+            DEFAULT_ROLE_BITMAP,
+            _after(86400)
         );
+        _expectNoEmit(vm.getRecordedLogs(), IRegistry.SubregistryUpdated.selector);
     }
 
     function test_Revert_register_tooShort() external {
@@ -488,7 +596,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         );
         uint64 newExpiry = _after(200);
 
-        vm.expectEmit(true, false, false, true);
+        vm.expectEmit();
         emit IRegistry.ExpiryUpdated(tokenId, newExpiry, address(this));
         registry.renew(tokenId, newExpiry);
     }
@@ -1000,8 +1108,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             _after(100)
         );
         address newRegistry = makeAddr("new");
-        vm.expectEmit(true, false, false, true);
-        emit IRegistry.SubregistryUpdated(tokenId, IRegistry(newRegistry));
+        vm.expectEmit();
+        emit IRegistry.SubregistryUpdated(tokenId, IRegistry(newRegistry), user1);
         vm.prank(user1);
         registry.setSubregistry(tokenId, IRegistry(newRegistry));
         assertEq(address(registry.getSubregistry(testLabel)), newRegistry);
@@ -1033,8 +1141,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             _after(100)
         );
         address newResolver = makeAddr("new");
-        vm.expectEmit(true, false, false, true);
-        emit IRegistry.ResolverUpdated(tokenId, newResolver);
+        vm.expectEmit();
+        emit IRegistry.ResolverUpdated(tokenId, newResolver, user1);
         vm.prank(user1);
         registry.setResolver(tokenId, newResolver);
         assertEq(registry.getResolver(testLabel), newResolver);
@@ -1069,8 +1177,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         // Record the resource ID (should remain stable)
         uint256 resource = registry.getResource(tokenId);
 
-        vm.expectEmit(true, true, false, true);
-        emit IRegistry.TokenRegenerated(tokenId, tokenId + 1, resource);
+        vm.expectEmit();
+        emit IRegistry.TokenRegenerated(tokenId, tokenId + 1);
         registry.grantRoles(resource, RegistryRolesLib.ROLE_RENEW, user2);
         uint256 tokenId2 = registry.getTokenId(tokenId);
 
@@ -1110,8 +1218,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.hasRoles(tokenId2, RegistryRolesLib.ROLE_RENEW, user2), "grant");
 
         // revoke the role and check regeneration again
-        vm.expectEmit(true, true, false, true);
-        emit IRegistry.TokenRegenerated(tokenId2, tokenId2 + 1, resource);
+        vm.expectEmit();
+        emit IRegistry.TokenRegenerated(tokenId2, tokenId2 + 1);
         registry.revokeRoles(tokenId, RegistryRolesLib.ROLE_RENEW, user2);
 
         uint256 tokenId3 = registry.getTokenId(tokenId);
@@ -1175,24 +1283,23 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_token_regeneration_latestOwnerOf() public {
-        address user = makeAddr("user");
         uint256 tokenId = registry.register(
             "regenerate4",
-            user,
+            user1,
             registry,
             address(0),
             DEFAULT_ROLE_BITMAP,
             _after(100)
         );
         uint256 resourceId = registry.getResource(tokenId);
-        registry.grantRoles(resourceId, RegistryRolesLib.ROLE_RENEW, user);
+        registry.grantRoles(resourceId, RegistryRolesLib.ROLE_RENEW, user1);
         uint256 newTokenId = registry.getTokenId(resourceId);
         assertNotEq(tokenId, newTokenId, "token");
         vm.warp(_after(101));
         assertEq(registry.ownerOf(tokenId), address(0), "owner0");
         assertEq(registry.latestOwnerOf(tokenId), address(0), "latest0");
         assertEq(registry.ownerOf(newTokenId), address(0), "owner1");
-        assertEq(registry.latestOwnerOf(newTokenId), user, "latest1");
+        assertEq(registry.latestOwnerOf(newTokenId), user1, "latest1");
     }
 
     // getRoleAssigneeCount tests
@@ -2123,5 +2230,13 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function _after(uint256 dt) internal view returns (uint64) {
         return uint64(block.timestamp + dt);
+    }
+
+    function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics[0] == topic0) {
+                revert(string.concat("found unexpected event: ", vm.toString(topic0)));
+            }
+        }
     }
 }
