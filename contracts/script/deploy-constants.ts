@@ -46,3 +46,10 @@ export const ROLES = {
   ADMIN_ROLES:
     0x1111111111111111111111111111111100000000000000000000000000000000n, // see: EnhancedAccessControl.sol
 } as const;
+
+// see: IPermissionedRegistry.sol
+export const STATUS = {
+  AVAILABLE: 0,
+  RESERVED: 1,
+  REGISTERED: 2,
+};
