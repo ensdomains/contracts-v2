@@ -231,7 +231,7 @@ contract PermissionedRegistry is
 
     /// @inheritdoc IPermissionedRegistry
     function getResource(uint256 anyId) public view returns (uint256) {
-        return _constructResource(anyId, _entry(anyId));
+        return anyId == ROOT_RESOURCE ? ROOT_RESOURCE : _constructResource(anyId, _entry(anyId));
     }
 
     /// @inheritdoc IPermissionedRegistry

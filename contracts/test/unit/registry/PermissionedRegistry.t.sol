@@ -729,6 +729,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         );
     }
 
+    function test_getResource_root() external {
+        assertEq(registry.getResource(registry.ROOT_RESOURCE()), registry.ROOT_RESOURCE());
+    }
+
     function test_grantRoles_anyId(uint32 version) external {
         uint256 tokenId = this._register();
         registry.grantRoles(LibLabel.version(tokenId, version), RegistryRolesLib.ROLE_RENEW, user2);
