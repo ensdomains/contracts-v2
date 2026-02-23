@@ -21,6 +21,31 @@ import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {MetadataMixin} from "./MetadataMixin.sol";
 
+/// @notice A tokenized registry with permissions that apply to every subdomain or a specific subdomain.
+///
+/// State diagram:
+///
+///                    register()
+///                 +ROLE_REGISTRAR
+///       +------------------------------------------+
+///       |                                          |
+///       |                renew()                   |    renew()
+///       |              +ROLE_RENEW                 |  +ROLE_RENEW
+///       |               +------+                   |   +------+
+///       |               |      |                   |   |      |
+///       ʌ               ʌ      v                   v   v      |
+///   AVAILABLE --------> RESERVED -------------> REGISTERED >--+
+///     ʌ   ʌ    reserve()   v       register()        v
+///     |   |  +ROLE_RESERVE |     +ROLE_REGISTRAR     |
+///     |   |                |     +ROLE_RESERVE       |
+///     |   +----------------+                         |
+///     |       unregister()                           |
+///     |    +ROLE_UNREGISTER                          |
+///     |                                              |
+///     +----------------------------------------------+
+///                     unregister()
+///                   +ROLE_UNREGISTER
+///
 contract PermissionedRegistry is
     IRegistry,
     ERC1155Singleton,
@@ -85,6 +110,8 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
+    /// @dev Requires `AVAILABLE` and `ROLE_REGISTRAR` on root.
+    ///      Requires `RESERVED` and `ROLE_REGISTER | ROLE_RESERVED` on root.
     function register(
         string calldata label,
         address owner,
@@ -105,24 +132,47 @@ contract PermissionedRegistry is
         return _register(label, owner, registry, resolver, roleBitmap, expiry, _msgSender());
     }
 
+    /// @inheritdoc IStandardRegistry
+    /// @dev Requires `REGISTERED | RESERVED` and `ROLE_UNREGISTER`.
+    function unregister(uint256 anyId) public virtual {
+        (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
+            anyId,
+            RegistryRolesLib.ROLE_UNREGISTER
+        );
+        emit NameUnregistered(tokenId, _msgSender());
+        address owner = super.ownerOf(tokenId);
+        if (owner != address(0)) {
+            _burn(owner, tokenId, 1);
+            ++entry.eacVersionId;
+            ++entry.tokenVersionId;
+        }
+        entry.expiry = uint64(block.timestamp);
+    }
+
     /// @inheritdoc IPermissionedRegistry
+    /// @dev Requires `AVAILABLE` and `ROLE_RESERVE` on root.
     function reserve(
         string calldata label,
         address resolver,
         uint64 expiry
-    ) public virtual override onlyRootRoles(RegistryRolesLib.ROLE_RESERVE) {
-        _register(label, address(0), IRegistry(address(0)), resolver, 0, expiry, _msgSender());
+    )
+        public
+        virtual
+        override
+        onlyRootRoles(RegistryRolesLib.ROLE_RESERVE)
+        returns (uint256 tokenId)
+    {
+        return
+            _register(label, address(0), IRegistry(address(0)), resolver, 0, expiry, _msgSender());
     }
 
     /// @inheritdoc IStandardRegistry
+    /// @dev Requires an `REGISTERED | RESERVED` and `ROLE_RENEW`.
     function renew(uint256 anyId, uint64 newExpiry) public override {
         (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
             anyId,
             RegistryRolesLib.ROLE_RENEW
         );
-        if (super.ownerOf(tokenId) == address(0)) {
-            revert NameIsReserved();
-        }
         if (newExpiry < entry.expiry) {
             revert CannotReduceExpiration(entry.expiry, newExpiry);
         }
@@ -298,11 +348,13 @@ contract PermissionedRegistry is
         address prevOwner = super.ownerOf(tokenId);
         if (!_isExpired(entry.expiry)) {
             if (prevOwner != address(0)) {
-                revert NameAlreadyRegistered(label); // cannot overwrite a registration
+                revert NameAlreadyRegistered(label); // cannot overwrite REGISTERED
             } else if (owner == address(0)) {
-                revert NameIsReserved(); // cannot reserve a reservation
+                revert NameAlreadyReserved(label); // cannot reserve RESERVED
             }
-            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_RESERVE, sender); // role required to convert reservation to registration
+            // therefore, label is RESERVED
+            // role required to convert to REGISTERED
+            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_RESERVE, sender);
         }
         if (prevOwner != address(0)) {
             _burn(prevOwner, tokenId, 1);

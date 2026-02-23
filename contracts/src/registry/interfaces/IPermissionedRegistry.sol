@@ -35,7 +35,7 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    error NameIsReserved();
+    error NameAlreadyReserved(string label);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
@@ -45,7 +45,11 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     /// @param label The subdomain to reserve.
     /// @param expiry The time when the subdomain can be registered again.
     /// @param resolver The resolver while in reserve.
-    function reserve(string calldata label, address resolver, uint64 expiry) external;
+    function reserve(
+        string calldata label,
+        address resolver,
+        uint64 expiry
+    ) external returns (uint256 tokenId);
 
     /// @notice Get the latest owner of a token.
     ///         If the token was burned, returns null.

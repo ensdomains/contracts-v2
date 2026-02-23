@@ -64,6 +64,10 @@ interface IStandardRegistry is IRegistry {
     /// @param newExpiry The new expiration.
     function renew(uint256 anyId, uint64 newExpiry) external;
 
+    /// @notice Delete a subdomain.
+    /// @param anyId The labelhash, token ID, or resource.
+    function unregister(uint256 anyId) external;
+
     /// @notice Change registry of name.
     /// @param anyId The labelhash, token ID, or resource.
     /// @param registry The new registry.
