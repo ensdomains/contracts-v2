@@ -134,7 +134,13 @@ contract PermissionedRegistry is
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_REGISTRAR) returns (uint256 tokenId) {
+    )
+        public
+        virtual
+        override
+        onlyRootRoles(RegistryRolesLib.ROLE_REGISTRAR)
+        returns (uint256 tokenId)
+    {
         if (owner == address(0)) {
             revert InvalidOwner();
         }
@@ -475,7 +481,7 @@ contract PermissionedRegistry is
     }
 
     function _entry(uint256 anyId) internal view returns (Entry storage) {
-        return _entries[LibLabel.version(anyId, 0)];
+        return _entries[LibLabel.withVersion(anyId, 0)];
     }
 
     /// @dev Assert token is not expired and caller has necessary roles.
@@ -504,7 +510,7 @@ contract PermissionedRegistry is
         Entry storage entry
     ) internal view returns (uint256) {
         return
-            LibLabel.version(
+            LibLabel.withVersion(
                 anyId,
                 _isExpired(entry.expiry) ? entry.eacVersionId + 1 : entry.eacVersionId
             );
@@ -512,7 +518,7 @@ contract PermissionedRegistry is
 
     /// @dev Create `tokenId` from parts.
     function _constructTokenId(uint256 anyId, Entry storage entry) internal view returns (uint256) {
-        return LibLabel.version(anyId, entry.tokenVersionId);
+        return LibLabel.withVersion(anyId, entry.tokenVersionId);
     }
 
     /// @dev Create `Status` from parts.

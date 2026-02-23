@@ -63,7 +63,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_register() external {
         uint256 labelId = LibLabel.id(testLabel);
-        uint256 expectedTokenId = LibLabel.version(labelId, 0);
+        uint256 expectedTokenId = LibLabel.withVersion(labelId, 0);
         vm.expectEmit();
         emit IRegistry.NameRegistered(
             expectedTokenId,
@@ -174,7 +174,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function test_reserve() external {
         vm.expectEmit();
         emit IRegistry.NameReserved(
-            LibLabel.version(LibLabel.id(testLabel), 0),
+            LibLabel.withVersion(LibLabel.id(testLabel), 0),
             bytes32(LibLabel.id(testLabel)),
             testLabel,
             testExpiry,
@@ -680,51 +680,51 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_renew_anyId(uint32 version) external {
         uint256 tokenId = this._register();
-        registry.renew(LibLabel.version(tokenId, version), testExpiry + 1);
+        registry.renew(LibLabel.withVersion(tokenId, version), testExpiry + 1);
     }
 
     function test_unregister_anyId(uint32 version) external {
         uint256 tokenId = this._register();
-        registry.unregister(LibLabel.version(tokenId, version));
+        registry.unregister(LibLabel.withVersion(tokenId, version));
     }
 
     function test_setSubregistry_anyId(uint32 version) external {
         uint256 tokenId = this._register();
-        registry.setSubregistry(LibLabel.version(tokenId, version), testRegistry);
+        registry.setSubregistry(LibLabel.withVersion(tokenId, version), testRegistry);
     }
 
     function test_setResolver_anyId(uint32 version) external {
         uint256 tokenId = this._register();
-        registry.setResolver(LibLabel.version(tokenId, version), testResolver);
+        registry.setResolver(LibLabel.withVersion(tokenId, version), testResolver);
     }
 
     function test_getExpiry_anyId(uint32 version) external {
         uint256 tokenId = this._register();
-        assertEq(registry.getExpiry(LibLabel.version(tokenId, version)), testExpiry);
+        assertEq(registry.getExpiry(LibLabel.withVersion(tokenId, version)), testExpiry);
     }
 
     function test_getStatus_anyId(uint32 version) external {
         uint256 tokenId = this._register();
         assertEq(
-            uint8(registry.getStatus(LibLabel.version(tokenId, version))),
+            uint8(registry.getStatus(LibLabel.withVersion(tokenId, version))),
             uint8(IPermissionedRegistry.Status.REGISTERED)
         );
     }
 
     function test_getState_anyId(uint32 version) external {
         uint256 tokenId = this._register();
-        assertEq(registry.getState(LibLabel.version(tokenId, version)).tokenId, tokenId);
+        assertEq(registry.getState(LibLabel.withVersion(tokenId, version)).tokenId, tokenId);
     }
 
     function test_getTokenId_anyId(uint32 version) external {
         uint256 tokenId = this._register();
-        assertEq(registry.getTokenId(LibLabel.version(tokenId, version)), tokenId);
+        assertEq(registry.getTokenId(LibLabel.withVersion(tokenId, version)), tokenId);
     }
 
     function test_getResource_anyId(uint32 version) external {
         uint256 tokenId = this._register();
         assertEq(
-            registry.getResource(LibLabel.version(tokenId, version)),
+            registry.getResource(LibLabel.withVersion(tokenId, version)),
             registry.getResource(tokenId)
         );
     }
@@ -735,13 +735,17 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_grantRoles_anyId(uint32 version) external {
         uint256 tokenId = this._register();
-        registry.grantRoles(LibLabel.version(tokenId, version), RegistryRolesLib.ROLE_RENEW, user2);
+        registry.grantRoles(
+            LibLabel.withVersion(tokenId, version),
+            RegistryRolesLib.ROLE_RENEW,
+            user2
+        );
     }
 
     function test_revokeRoles_anyId(uint32 version) external {
         uint256 tokenId = this._register();
         registry.revokeRoles(
-            LibLabel.version(tokenId, version),
+            LibLabel.withVersion(tokenId, version),
             RegistryRolesLib.ROLE_RENEW,
             user2
         );
@@ -750,32 +754,32 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function test_roles_anyId(uint32 version) external {
         testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 tokenId = this._register();
-        assertEq(registry.roles(LibLabel.version(tokenId, version), testOwner), testRoles);
+        assertEq(registry.roles(LibLabel.withVersion(tokenId, version), testOwner), testRoles);
     }
 
     function test_roleCount_anyId(uint32 version) external {
         testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 tokenId = this._register();
-        assertEq(registry.roleCount(LibLabel.version(tokenId, version)), testRoles);
+        assertEq(registry.roleCount(LibLabel.withVersion(tokenId, version)), testRoles);
     }
 
     function test_hasRoles_anyId(uint32 version) external {
         testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 tokenId = this._register();
-        assertTrue(registry.hasRoles(LibLabel.version(tokenId, version), testRoles, testOwner));
+        assertTrue(registry.hasRoles(LibLabel.withVersion(tokenId, version), testRoles, testOwner));
     }
 
     function test_hasAssignees_anyId(uint32 version) external {
         testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 tokenId = this._register();
-        assertTrue(registry.hasAssignees(LibLabel.version(tokenId, version), testRoles));
+        assertTrue(registry.hasAssignees(LibLabel.withVersion(tokenId, version), testRoles));
     }
 
     function test_getAssigneeCount_anyId(uint32 version) external {
         testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 tokenId = this._register();
         (uint256 counts, ) = registry.getAssigneeCount(
-            LibLabel.version(tokenId, version),
+            LibLabel.withVersion(tokenId, version),
             testRoles
         );
         assertEq(counts, testRoles);

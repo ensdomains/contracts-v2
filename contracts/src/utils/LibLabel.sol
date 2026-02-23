@@ -10,8 +10,8 @@ library LibLabel {
     /// @notice Replace the lower 32-bits of `anyId` with `versionId`.
     /// @param anyId The labelhash, token ID, or resource.
     /// @param versionId The version ID.
-    /// @return The constructed ID.
-    function version(uint256 anyId, uint32 versionId) internal pure returns (uint256) {
+    /// @return The versioned ID.
+    function withVersion(uint256 anyId, uint32 versionId) internal pure returns (uint256) {
         return anyId ^ uint32(anyId) ^ versionId;
     }
 }

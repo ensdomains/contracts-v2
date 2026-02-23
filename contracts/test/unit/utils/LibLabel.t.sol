@@ -12,11 +12,11 @@ contract LibLabelTest is Test {
         uint256 id = LibLabel.id("abc");
         assertEq(id, 0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45);
         assertEq(
-            LibLabel.version(id, 0), //                               ________
+            LibLabel.withVersion(id, 0), //                           ________
             0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58f00000000
         );
         assertEq(
-            LibLabel.version(id, 0xaaaaaaaa), //                      ________
+            LibLabel.withVersion(id, 0xaaaaaaaa), //                  ________
             0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58faaaaaaaa
         );
     }
@@ -25,15 +25,15 @@ contract LibLabelTest is Test {
         assertEq(LibLabel.id(label), uint256(keccak256(bytes(label)))); // labelhash()
     }
 
-    function test_version(uint256 id, uint32 version) external pure {
-        assertEq(LibLabel.version(id, version) >> 32, id >> 32, "id");
-        assertEq(uint32(LibLabel.version(id, version)), version, "version");
+    function test_withVersion(uint256 id, uint32 version) external pure {
+        assertEq(LibLabel.withVersion(id, version) >> 32, id >> 32, "id");
+        assertEq(uint32(LibLabel.withVersion(id, version)), version, "version");
     }
 
     function test_collisions(string memory a, string memory b) external pure {
         uint256 x = LibLabel.id(a);
         uint256 y = LibLabel.id(b);
-        if (x != y && LibLabel.version(x, 0) == LibLabel.version(y, 0)) {
+        if (x != y && LibLabel.withVersion(x, 0) == LibLabel.withVersion(y, 0)) {
             assertEq(a, b);
         }
     }

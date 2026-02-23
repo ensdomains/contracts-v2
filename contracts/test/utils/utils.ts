@@ -9,7 +9,7 @@ export function idFromLabel(label: string): bigint {
   return BigInt(labelhash(label));
 }
 
-// LibLabel.version()
+// LibLabel.withVersion()
 export function idWithVersion(id: bigint, version = 0) {
   return id ^ BigInt.asUintN(32, id ^ BigInt(version));
 }
