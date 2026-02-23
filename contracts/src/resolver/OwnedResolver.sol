@@ -85,7 +85,12 @@ contract OwnedResolver is
     // Events
     ////////////////////////////////////////////////////////////////////////
 
-    event AliasChanged(bytes indexed indexedFromName, bytes indexed indexedToName, bytes fromName, bytes toName);
+    event AliasChanged(
+        bytes indexed indexedFromName,
+        bytes indexed indexedToName,
+        bytes fromName,
+        bytes toName
+    );
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
