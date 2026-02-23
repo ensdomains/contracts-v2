@@ -41,10 +41,6 @@ contract MigratedWrappedNameRegistry is
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    // TODO: these clobbers ROLE_CAN_TRANSFER_ADMIN and should be in RegistryRolesLib
-    uint256 internal constant _ROLE_UPGRADE = 1 << 20;
-    uint256 internal constant _ROLE_UPGRADE_ADMIN = _ROLE_UPGRADE << 128;
-
     INameWrapper public immutable NAME_WRAPPER;
 
     VerifiableFactory public immutable FACTORY;
@@ -107,7 +103,7 @@ contract MigratedWrappedNameRegistry is
         // Configure owner with upgrade permissions and specified roles
         _grantRoles(
             ROOT_RESOURCE,
-            _ROLE_UPGRADE | _ROLE_UPGRADE_ADMIN | ownerRoles_,
+            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | ownerRoles_,
             ownerAddress_,
             false
         );
@@ -194,7 +190,9 @@ contract MigratedWrappedNameRegistry is
     /**
      * @dev Required override for UUPSUpgradeable - restricts upgrade permissions
      */
-    function _authorizeUpgrade(address) internal override onlyRootRoles(_ROLE_UPGRADE) {}
+    function _authorizeUpgrade(
+        address
+    ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {}
 
     function _migrateSubdomains(
         uint256[] memory tokenIds,
@@ -233,7 +231,8 @@ contract MigratedWrappedNameRegistry is
                 IRegistry(subregistry),
                 migrationDataArray[i].transferData.resolver,
                 tokenRoles,
-                migrationDataArray[i].transferData.expires
+                migrationDataArray[i].transferData.expires,
+                _msgSender()
             );
 
             // Finalize migration by freezing the name
@@ -247,7 +246,8 @@ contract MigratedWrappedNameRegistry is
         IRegistry registry,
         address resolver,
         uint256 roleBitmap,
-        uint64 expires
+        uint64 expires,
+        address sender
     ) internal virtual override returns (uint256 tokenId) {
         // Check if the label has an emancipated NFT in the old system
         // For .eth 2LDs, NameWrapper uses keccak256(label) as the token ID
@@ -263,7 +263,7 @@ contract MigratedWrappedNameRegistry is
         }
 
         // Proceed with registration
-        return super._register(label, owner, registry, resolver, roleBitmap, expires);
+        return super._register(label, owner, registry, resolver, roleBitmap, expires, sender);
     }
 
     function _validateHierarchy(

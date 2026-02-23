@@ -25,8 +25,6 @@ lcov.info
 
 generated/
 
-deployments/l1-local/
-deployments/l2-local/
 deployments/devnet-local/
 
 csv-data/
