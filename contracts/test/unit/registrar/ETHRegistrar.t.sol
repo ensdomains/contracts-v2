@@ -466,7 +466,7 @@ contract ETHRegistrarTest is Test {
         RegisterArgs memory args = _defaultRegisterArgs();
         this._register(args);
         vm.expectRevert(
-            abi.encodeWithSelector(IETHRegistrar.NameAlreadyRegistered.selector, args.label)
+            abi.encodeWithSelector(IETHRegistrar.NameNotAvailable.selector, args.label)
         );
         this._register(args);
     }
@@ -586,13 +586,7 @@ contract ETHRegistrarTest is Test {
     function test_registry_bitmap() external {
         RegisterArgs memory args = _defaultRegisterArgs();
         uint256 tokenId = this._register(args);
-        assertTrue(
-            ethRegistry.hasRoles(
-                LibLabel.getCanonicalId(tokenId),
-                REGISTRATION_ROLE_BITMAP,
-                args.owner
-            )
-        );
+        assertTrue(ethRegistry.hasRoles(tokenId, REGISTRATION_ROLE_BITMAP, args.owner));
     }
 
     function test_blacklist_user() external {
@@ -625,11 +619,7 @@ contract ETHRegistrarTest is Test {
         uint256 tokenId = this._register(args);
 
         assertTrue(
-            ethRegistry.hasRoles(
-                LibLabel.getCanonicalId(tokenId),
-                RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
-                args.owner
-            ),
+            ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, args.owner),
             "Registered name owner should have ROLE_CAN_TRANSFER"
         );
     }

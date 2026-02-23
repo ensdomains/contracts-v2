@@ -3,7 +3,12 @@ import { type Address, getAddress, zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
 
 import { expectVar } from "../../utils/expectVar.js";
-import { dnsEncodeName, labelToCanonicalId } from "../../utils/utils.js";
+import {
+  dnsEncodeName,
+  getLabelAt,
+  idFromLabel,
+  idWithVersion,
+} from "../../utils/utils.js";
 import { deployV2Fixture } from "./deployV2Fixture.js";
 import { ROLES } from "../../../script/deploy-constants.js";
 
@@ -35,7 +40,7 @@ describe("deployV2Fixture", () => {
         name: "test.eth",
       });
     expectVar({ labels }).toStrictEqual(["test", "eth"]);
-    expectVar({ tokenId }).toEqual(labelToCanonicalId("test"));
+    expectVar({ tokenId }).toEqual(idWithVersion(idFromLabel("test")));
     expectVar({ parentRegistry }).toEqual(registries[1]);
     expectVar({ exactRegistry }).toBeUndefined();
     expectRegistries(registries, [undefined, F.ethRegistry, F.rootRegistry]);
@@ -49,7 +54,7 @@ describe("deployV2Fixture", () => {
         exact: true,
       });
     expectVar({ labels }).toStrictEqual(["test", "eth"]);
-    expectVar({ tokenId }).toEqual(labelToCanonicalId("test"));
+    expectVar({ tokenId }).toEqual(idWithVersion(idFromLabel("test")));
     expectVar({ parentRegistry }).toEqual(registries[1]);
     expectVar({ exactRegistry }).toBeDefined();
     expectRegistries(registries, [
@@ -61,17 +66,17 @@ describe("deployV2Fixture", () => {
 
   it("deployOwnedResolver", async () => {
     const F = await loadFixture();
-    const ownedResolver = await F.deployOwnedResolver();
+    await F.deployOwnedResolver();
   });
 
   it("setupName() w/resolver", async () => {
     const F = await loadFixture();
     const ownedResolver = await F.deployOwnedResolver();
-    const { parentRegistry, tokenId } = await F.setupName({
+    const { parentRegistry, name } = await F.setupName({
       name: "test.eth",
       resolverAddress: ownedResolver.address,
     });
-    const { resolver } = await parentRegistry.read.getEntry([tokenId]);
+    const resolver = await parentRegistry.read.getResolver([getLabelAt(name)]);
     expectVar({ resolver }).toEqualAddress(ownedResolver.address);
   });
 
