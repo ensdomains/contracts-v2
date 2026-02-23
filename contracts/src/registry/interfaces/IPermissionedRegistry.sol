@@ -10,6 +10,12 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     // Types
     ////////////////////////////////////////////////////////////////////////
 
+    enum NameState {
+        AVAILABLE,
+        RESERVED,
+        REGISTERED
+    }
+
     struct Entry {
         uint32 eacVersionId;
         uint32 tokenVersionId;
@@ -19,14 +25,38 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // Events
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Associate a token with an EAC resource.
+    event TokenResource(uint256 indexed tokenId, uint256 indexed resource);
+
+    ////////////////////////////////////////////////////////////////////////
+    // Errors
+    ////////////////////////////////////////////////////////////////////////
+
+    error NameIsReserved();
+
+    ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Prevent subdomain registration until expiry unless caller has `ROLE_RESERVE`.
+    /// @param label The subdomain to reserve.
+    /// @param expiry The time when the subdomain can be registered again.
+    /// @param resolver The resolver while in reserve.
+    function reserve(string calldata label, address resolver, uint64 expiry) external;
 
     /// @notice Get the latest owner of a token.
     ///         If the token was burned, returns null.
     /// @param tokenId The token ID to query.
     /// @return The latest owner address.
     function latestOwnerOf(uint256 tokenId) external view returns (address);
+
+    /// @notice Determine subdomain registration state.
+    /// @param label The subdomain to check.
+    /// @return The registration state.
+    function getNameState(string calldata label) external view returns (NameState);
 
     /**
      * @dev Fetches the name data for a label.
