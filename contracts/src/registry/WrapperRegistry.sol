@@ -2,11 +2,7 @@
 pragma solidity >=0.8.13;
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {
-    INameWrapper,
-    CANNOT_UNWRAP,
-    PARENT_CANNOT_CONTROL
-} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -22,8 +18,6 @@ import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
-
-uint32 constant EMANCIPATED = CANNOT_UNWRAP | PARENT_CANNOT_CONTROL;
 
 contract WrapperRegistry is
     IWrapperRegistry,
@@ -133,9 +127,7 @@ contract WrapperRegistry is
         address sender
     ) internal override returns (uint256 tokenId) {
         if (_isMigratableChild(label)) {
-            revert MigrationErrors.NameNotMigrated(
-                NameCoder.addLabel(NAME_WRAPPER.names(parentNode), label)
-            );
+            revert MigrationErrors.NameRequiresMigration();
         }
         return super._register(label, owner, registry, resolver, roleBitmap, expiry, sender);
     }
@@ -149,12 +141,5 @@ contract WrapperRegistry is
 
     function _parentNode() internal view override returns (bytes32) {
         return parentNode;
-    }
-
-    /// @dev Determine if `label` is emancipated but unmigrated.
-    function _isMigratableChild(string memory label) internal view returns (bool) {
-        bytes32 node = NameCoder.namehash(parentNode, keccak256(bytes(label)));
-        (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
-        return ownerV1 != address(this) && (fuses & EMANCIPATED) == EMANCIPATED;
     }
 }

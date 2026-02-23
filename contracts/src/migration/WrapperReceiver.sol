@@ -11,7 +11,8 @@ import {
     CANNOT_TRANSFER,
     CANNOT_SET_RESOLVER,
     CANNOT_SET_TTL,
-    CANNOT_CREATE_SUBDOMAIN
+    CANNOT_CREATE_SUBDOMAIN,
+    PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -31,6 +32,8 @@ uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
     CANNOT_SET_RESOLVER |
     CANNOT_SET_TTL |
     CANNOT_CREATE_SUBDOMAIN;
+
+uint32 constant EMANCIPATED = CANNOT_UNWRAP | PARENT_CANNOT_CONTROL;
 
 abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
     ////////////////////////////////////////////////////////////////////////
@@ -189,7 +192,11 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
                 NAME_WRAPPER.setResolver(node, address(0)); // clear V1 resolver / TODO: use ENSV2Resolver?
             }
 
-            (uint256 tokenRoles, uint256 registryRoles) = _generateRoleBitmapsFromFuses(fuses);
+            (
+                bool fusesFrozen,
+                uint256 tokenRoles,
+                uint256 registryRoles
+            ) = _generateRoleBitmapsFromFuses(fuses);
             // PermissionedRegistry._register() => _grantRoles() => _checkRoleBitmap()
             // wont happen as roles are correct by construction
 
@@ -217,7 +224,9 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
             // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver
 
             // Burn all migration fuses
-            NAME_WRAPPER.setFuses(node, uint16(FUSES_TO_BURN));
+            if (!fusesFrozen) {
+                NAME_WRAPPER.setFuses(node, uint16(FUSES_TO_BURN));
+            }
         }
     }
 
@@ -232,15 +241,23 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
 
     function _parentNode() internal view virtual returns (bytes32);
 
+    /// @dev Determine if `label` is emancipated but not-yet migrated.
+    function _isMigratableChild(string memory label) internal view returns (bool) {
+        bytes32 node = NameCoder.namehash(_parentNode(), keccak256(bytes(label)));
+        (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
+        return ownerV1 != address(this) && (fuses & EMANCIPATED) == EMANCIPATED;
+    }
+
     /// @notice Generates role bitmaps based on fuses.
     /// @param fuses The current fuses on the name
+    /// @return fusesFrozen True if fuses are frozen.
     /// @return tokenRoles The token roles in parent registry.
     /// @return registryRoles The root roles in token subregistry.
     function _generateRoleBitmapsFromFuses(
         uint32 fuses
-    ) internal pure returns (uint256 tokenRoles, uint256 registryRoles) {
+    ) internal pure returns (bool fusesFrozen, uint256 tokenRoles, uint256 registryRoles) {
         // Check if fuses are permanently frozen
-        bool fusesFrozen = (fuses & CANNOT_BURN_FUSES) != 0;
+        fusesFrozen = (fuses & CANNOT_BURN_FUSES) != 0;
 
         // Include renewal permissions if expiry can be extended
         if ((fuses & CAN_EXTEND_EXPIRY) != 0) {

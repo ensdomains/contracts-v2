@@ -7,7 +7,7 @@ library MigrationErrors {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    error NameNotMigrated(bytes name);
+    error NameRequiresMigration();
     error NameNotLocked(uint256 tokenId);
     error NameDataMismatch(uint256 tokenId);
 }
