@@ -5,6 +5,7 @@ export const LOCAL_BATCH_GATEWAY_URL = "x-batch-gateway:true";
 interface Flags {
   [key: string]: bigint | Flags;
 }
+
 const FLAGS = {
   // see: EnhancedAccessControl.sol
   ALL: 0x1111111111111111111111111111111111111111111111111111111111111111n,
@@ -24,19 +25,19 @@ const FLAGS = {
     SET_ORACLE: 1n << 0n,
   },
 } as const satisfies Flags;
-function mapFlags(flags: Flags, fn: (x: bigint) => bigint): Flags {
+
+function adminify(flags: Flags): Flags {
   return Object.fromEntries(
     Object.entries(flags).map(([k, x]) => [
       k,
-      typeof x === "bigint" ? fn(x) : mapFlags(x, fn),
+      typeof x === "bigint" ? x << 128n : adminify(x),
     ]),
   );
 }
+
 export const ROLES = {
   ...FLAGS,
-  ADMIN: Object.fromEntries(
-    Object.entries(FLAGS).map(([k, v]) => [k, mapFlags(v, (x) => x << 128n)]),
-  ),
+  ADMIN: adminify(FLAGS),
 } as const satisfies Flags;
 
 // see: IPermissionedRegistry.sol
