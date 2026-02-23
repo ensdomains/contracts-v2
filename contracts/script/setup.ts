@@ -56,6 +56,10 @@ const contracts = {
     artifacts["src/resolver/OwnedResolver.sol/OwnedResolver"].abi,
   UserRegistry: artifacts.UserRegistry.abi,
   ETHRegistry: artifacts.PermissionedRegistry.abi,
+  ETHRegistrar: artifacts.ETHRegistrar.abi,
+  StandardRentPriceOracle: artifacts.StandardRentPriceOracle.abi,
+  MockUSDC: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
+  MockDAI: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
   // v1
   BatchGatewayProvider: artifacts.GatewayProvider.abi,
   RootV1: artifacts.Root.abi,
