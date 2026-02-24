@@ -7,7 +7,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-import {LibString} from "~src/common/utils/LibString.sol";
+import {LibString} from "~src/utils/LibString.sol";
 
 contract LibStringTest is Test {
     ////////////////////////////////////////////////////////////////////////
