@@ -65,6 +65,7 @@
       {
         "importOrder": ["^forge-std/", "^@?\\w", "^\\.\\./", "^\\./"]
       }
-    ]
+    ],
+    "contracts-v2/selector-tags": "error"
   }
 }
