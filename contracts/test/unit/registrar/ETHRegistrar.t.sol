@@ -11,12 +11,7 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 
 import {StandardPricing} from "./StandardPricing.sol";
 
-import {
-    PermissionedRegistry,
-    IPermissionedRegistry,
-    IStandardRegistry,
-    IEnhancedAccessControl
-} from "~src/registry/PermissionedRegistry.sol";
+import {PermissionedRegistry, IEnhancedAccessControl} from "~src/registry/PermissionedRegistry.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {
     ETHRegistrar,
@@ -474,14 +469,6 @@ contract ETHRegistrarTest is Test {
         this._register();
     }
 
-    function test_register_registered() external {
-        this._register();
-        vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.NameAlreadyRegistered.selector, testLabel)
-        );
-        this._register();
-    }
-
     function test_register_durationTooShort() external {
         testDuration = ethRegistrar.MIN_REGISTER_DURATION() - 1;
         vm.expectRevert(
@@ -500,11 +487,15 @@ contract ETHRegistrarTest is Test {
         this._register();
     }
 
+    function test_register_registered() external {
+        this._register();
+        vm.expectRevert(abi.encodeWithSelector(IETHRegistrar.NameNotAvailable.selector, testLabel));
+        this._register();
+    }
+
     function test_register_reserved() external {
         _reserve();
-        vm.expectRevert(
-            abi.encodeWithSelector(IPermissionedRegistry.NameAlreadyReserved.selector, testLabel)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IETHRegistrar.NameNotAvailable.selector, testLabel));
         this._register();
     }
 

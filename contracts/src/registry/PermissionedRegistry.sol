@@ -143,17 +143,16 @@ contract PermissionedRegistry is
         address sender = _msgSender();
         if (_isExpired(entry.expiry)) {
             _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, sender);
+            if (owner == address(0) && roleBitmap != 0) {
+                revert EACCannotGrantRoles(ROOT_RESOURCE, roleBitmap, sender); // strict
+            }
         } else {
             if (prevOwner != address(0)) {
                 revert NameAlreadyRegistered(label); // cannot overwrite REGISTERED
-            } else if (
-                owner == address(0) ||
-                !hasRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_RESERVE_REGISTRAR, sender)
-            ) {
+            } else if (owner == address(0)) {
                 revert NameAlreadyReserved(label); // cannot reserve/register RESERVED
-            } else if (roleBitmap != 0) {
-                revert EACCannotGrantRoles(ROOT_RESOURCE, roleBitmap, sender);
             }
+            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_RESERVE_REGISTRAR, sender);
         }
         if (prevOwner != address(0)) {
             _burn(prevOwner, tokenId, 1);

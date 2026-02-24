@@ -221,6 +221,19 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         this._reserve();
     }
 
+    function test_reserve_withRoles() external {
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                registry.ROOT_RESOURCE(),
+                testRoles,
+                address(this)
+            )
+        );
+        this._reserve();
+    }
+
     function test_reserve_then_register() external {
         this._reserve();
         this._register();
@@ -228,9 +241,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_reserve_then_register_notAuthorized() external {
         this._reserve();
-        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, actor);
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, actor); // insufficient
         vm.expectRevert(
-            abi.encodeWithSelector(IPermissionedRegistry.NameAlreadyReserved.selector, testLabel)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_RESERVE_REGISTRAR,
+                actor
+            )
         );
         vm.prank(actor);
         this._register();
@@ -393,22 +411,25 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Transitions that require unregister() [2 actions]
+    // Transitions that require multiple actions
     ////////////////////////////////////////////////////////////////////////
 
-    function test_register_then_reserve() external {
-        uint256 tokenId = this._register();
-        registry.unregister(tokenId); // #1
-        this._reserve(); // #2
-    }
-
+    // REGISTERED => REGISTERED
     function test_register_then_register() external {
         uint256 tokenId = this._register();
         registry.unregister(tokenId); // #1
         this._register(); // #2
     }
 
-    function test_reserve_withReducedExpiry() external {
+    // REGISTERED => RESERVED
+    function test_register_then_reserve() external {
+        uint256 tokenId = this._register();
+        registry.unregister(tokenId); // #1
+        this._reserve(); // #2
+    }
+
+    // RESERVED => RESERVED
+    function test_reserve_then_reserve() external {
         uint256 tokenId = this._reserve();
         registry.unregister(tokenId); // #1
         --testExpiry;
@@ -721,7 +742,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         );
     }
 
-    function test_getResource_root() external {
+    function test_getResource_rootNeverExpires() external view {
         assertEq(registry.getResource(registry.ROOT_RESOURCE()), registry.ROOT_RESOURCE());
     }
 
@@ -948,7 +969,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
                 address(0),
                 IRegistry(address(0)),
                 testResolver,
-                0,
+                testRoles,
                 testExpiry
             );
     }
