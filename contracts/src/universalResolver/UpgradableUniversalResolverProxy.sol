@@ -37,10 +37,13 @@ contract UpgradableUniversalResolverProxy {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Error selector: `0x06d919f2`
     error CallerNotAdmin();
 
+    /// @dev Error selector: `0x68155f9a`
     error InvalidImplementation();
 
+    /// @dev Error selector: `0x4c3b76bf`
     error SameImplementation();
 
     ////////////////////////////////////////////////////////////////////////

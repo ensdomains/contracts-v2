@@ -3,14 +3,13 @@ pragma solidity ^0.8.20;
 
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-/**
- * @dev Interface for Enhanced Access Control system that allows for:
- * - Resource-based roles
- * - Obtaining assignee count for each role in each resource
- * - Root resource override
- * - Up to 32 roles and 32 corresponding admin roles
- * - Up to 15 assignees per role
- */
+/// @notice Interface for Enhanced Access Control system that allows for:
+/// * Resource-based roles
+/// * Obtaining assignee count for each role in each resource
+/// * Root resource override
+/// * Up to 32 roles and 32 corresponding admin roles
+/// * Up to 15 assignees per role
+/// @dev Interface selector: `0x8f452d62`
 interface IEnhancedAccessControl is IERC165 {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -27,20 +26,28 @@ interface IEnhancedAccessControl is IERC165 {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Error selector: `0x4b27a133`
     error EACUnauthorizedAccountRoles(uint256 resource, uint256 roleBitmap, address account);
 
+    /// @dev Error selector: `0xd1a3b355`
     error EACCannotGrantRoles(uint256 resource, uint256 roleBitmap, address account);
 
+    /// @dev Error selector: `0xa604e318`
     error EACCannotRevokeRoles(uint256 resource, uint256 roleBitmap, address account);
 
+    /// @dev Error selector: `0xc2842458`
     error EACRootResourceNotAllowed();
 
+    /// @dev Error selector: `0xf9165348`
     error EACMaxAssignees(uint256 resource, uint256 role);
 
+    /// @dev Error selector: `0x1f80c19b`
     error EACMinAssignees(uint256 resource, uint256 role);
 
+    /// @dev Error selector: `0x2a7b2d20`
     error EACInvalidRoleBitmap(uint256 roleBitmap);
 
+    /// @dev Error selector: `0xec3fc592`
     error EACInvalidAccount();
 
     ////////////////////////////////////////////////////////////////////////

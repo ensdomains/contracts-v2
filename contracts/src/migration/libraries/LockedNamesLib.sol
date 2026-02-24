@@ -46,10 +46,13 @@ library LockedNamesLib {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Error selector: `0x1bfe8f0a`
     error NameNotLocked(uint256 tokenId);
 
+    /// @dev Error selector: `0xf7d2a5a8`
     error NameNotEmancipated(uint256 tokenId);
 
+    /// @dev Error selector: `0xaa289832`
     error NotDotEthName(uint256 tokenId);
 
     ////////////////////////////////////////////////////////////////////////

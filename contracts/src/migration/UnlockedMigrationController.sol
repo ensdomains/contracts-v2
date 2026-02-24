@@ -30,8 +30,10 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Error selector: `0x4fa09b3f`
     error TokenIdMismatch(uint256 tokenId, uint256 expectedTokenId);
 
+    /// @dev Error selector: `0x80da7148`
     error MigrationNotSupported();
 
     ////////////////////////////////////////////////////////////////////////
