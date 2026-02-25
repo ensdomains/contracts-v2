@@ -509,7 +509,7 @@ async function setupEnsDotEth(deployment: Deployment, account: Account) {
     "dnsname",
     await deployArtifact(deployment.client, {
       file: new URL(
-        "../test/integration/l1/dns/ExtendedDNSResolver_53f64de872aad627467a34836be1e2b63713a438.json",
+        "../test/integration/dns/ExtendedDNSResolver_53f64de872aad627467a34836be1e2b63713a438.json",
         import.meta.url,
       ),
     }),
