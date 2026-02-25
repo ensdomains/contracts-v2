@@ -58,7 +58,7 @@ async function fixture() {
     "GatewayProvider",
     [mainnetV2.walletClient.account.address, [dnsOracleGateway]],
   );
-  const ownedResolver = await mainnetV2.deployPermissionedResolver();
+  const myResolver = await mainnetV2.deployPermissionedResolver();
   const dnsTLDResolver = await network.viem.deployContract("DNSTLDResolver", [
     mainnetV1.ensRegistry.address,
     dnsTLDResolverV1.address,
@@ -98,7 +98,7 @@ async function fixture() {
     mockDNSSEC,
     dnsTLDResolverV1,
     oracleGatewayProvider,
-    ownedResolver,
+    myResolver,
     dnsTLDResolver,
     dnsTXTResolver,
     dnsAliasResolver,
@@ -141,13 +141,9 @@ async function fixture() {
   async function setupNamedResolver(name: string, resolver: Address) {
     await mainnetV2.setupName({
       name,
-      resolverAddress: ownedResolver.address,
+      resolverAddress: myResolver.address,
     });
-    await ownedResolver.write.setAddr([
-      namehash(name),
-      COIN_TYPE_ETH,
-      resolver,
-    ]);
+    await myResolver.write.setAddr([namehash(name), COIN_TYPE_ETH, resolver]);
   }
 }
 
@@ -289,15 +285,17 @@ describe("DNSTLDResolver", () => {
     const bundle = bundleCalls(makeResolutions(basicProfile));
     await F.mainnetV2.setupName({
       name: basicProfile.name,
-      resolverAddress: F.ownedResolver.address,
+      resolverAddress: F.myResolver.address,
     });
-    await F.ownedResolver.write.multicall([
+    await F.myResolver.write.multicall([
       bundle.resolutions.map((x) => x.write),
     ]);
-    const [answer, resolver] = await F.mainnetV2.universalResolver.read.resolve(
-      [dnsEncodeName(basicProfile.name), bundle.call],
-    );
-    expectVar({ resolver }).toEqualAddress(F.ownedResolver.address);
+    const [answer, resolverAddress] =
+      await F.mainnetV2.universalResolver.read.resolve([
+        dnsEncodeName(basicProfile.name),
+        bundle.call,
+      ]);
+    expectVar({ resolverAddress }).toEqualAddress(F.myResolver.address);
     bundle.expect(answer);
   });
 
@@ -351,12 +349,12 @@ describe("DNSTLDResolver", () => {
       testProfiles("onchain immediate", (kp) => async () => {
         const F = await network.networkHelpers.loadFixture(fixture);
         await F.mockDNSSEC.write.setResponse([
-          encodeRRs([makeTXT(kp.name, `ENS1 ${F.ownedResolver.address}`)]),
+          encodeRRs([makeTXT(kp.name, `ENS1 ${F.myResolver.address}`)]),
         ]);
-        await F.ownedResolver.write.multicall([
+        await F.myResolver.write.multicall([
           makeResolutions(kp).map((x) => x.write),
         ]);
-        await F.expectGasless(kp, F.ownedResolver.address);
+        await F.expectGasless(kp, F.myResolver.address);
       });
     });
 
