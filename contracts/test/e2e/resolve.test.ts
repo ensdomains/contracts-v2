@@ -82,7 +82,7 @@ describe("Resolve", () => {
         const { deployer, owner: account } = env.namedAccounts;
 
         // setup addr(default)
-        const resolver = await env.deployment.deployOwnedResolver({
+        const resolver = await env.deployment.deployPermissionedResolver({
           account,
         });
         await resolver.write.setAddr([
@@ -130,7 +130,7 @@ describe("Resolve", () => {
         const { deployer, owner: account } = env.namedAccounts;
 
         // setup addr(default)
-        const resolver = await env.deployment.deployOwnedResolver({
+        const resolver = await env.deployment.deployPermissionedResolver({
           account,
         });
         await resolver.write.setAddr([

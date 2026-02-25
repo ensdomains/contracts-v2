@@ -729,7 +729,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         );
     }
 
-    function test_getResource_root() external {
+    function test_getResource_root() external view {
         assertEq(registry.getResource(registry.ROOT_RESOURCE()), registry.ROOT_RESOURCE());
     }
 

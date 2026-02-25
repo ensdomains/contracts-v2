@@ -17,8 +17,7 @@ import type { DevnetEnvironment } from "./setup.js";
 
 const ONE_DAY_SECONDS = 86400;
 
-const OwnedResolverAbi =
-  artifacts["src/resolver/OwnedResolver.sol/OwnedResolver"].abi;
+const PermissionedResolverAbi = artifacts.PermissionedResolver.abi;
 
 // ========== Gas Tracking ==========
 
@@ -163,7 +162,7 @@ async function deployResolverWithRecords(
   },
   shouldTrackGas: boolean = false,
 ) {
-  const resolver = await env.deployment.deployOwnedResolver({ account });
+  const resolver = await env.deployment.deployPermissionedResolver({ account });
   const node = namehash(name);
 
   if (shouldTrackGas) {
@@ -302,19 +301,19 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
     // Batch addr and text resolution using resolver multicall
     const resolverCalls = [
       encodeFunctionData({
-        abi: OwnedResolverAbi,
+        abi: PermissionedResolverAbi,
         functionName: "addr",
         args: [nameHash],
       }),
       encodeFunctionData({
-        abi: OwnedResolverAbi,
+        abi: PermissionedResolverAbi,
         functionName: "text",
         args: [nameHash, "description"],
       }),
     ];
 
     const multicallData = encodeFunctionData({
-      abi: OwnedResolverAbi,
+      abi: PermissionedResolverAbi,
       functionName: "multicall",
       args: [resolverCalls],
     });
@@ -330,7 +329,7 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
     const results =
       result && result !== "0x"
         ? (decodeFunctionResult({
-            abi: OwnedResolverAbi,
+            abi: PermissionedResolverAbi,
             functionName: "multicall",
             data: result,
           }) as readonly `0x${string}`[])
@@ -340,7 +339,7 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
     const ethAddress =
       results[0] && results[0] !== "0x"
         ? (decodeFunctionResult({
-            abi: OwnedResolverAbi,
+            abi: PermissionedResolverAbi,
             functionName: "addr",
             data: results[0],
           }) as string)
@@ -349,7 +348,7 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
     const description =
       results[1] && results[1] !== "0x"
         ? (decodeFunctionResult({
-            abi: OwnedResolverAbi,
+            abi: PermissionedResolverAbi,
             functionName: "text",
             data: results[1],
           }) as string)
@@ -794,7 +793,9 @@ export async function registerTestNames(
     .then((b) => b.timestamp);
 
   for (const label of labels) {
-    const resolver = await env.deployment.deployOwnedResolver({ account });
+    const resolver = await env.deployment.deployPermissionedResolver({
+      account,
+    });
 
     if (shouldTrackGas)
       await trackGas("deployOwnedResolver", resolver.deploymentReceipt);
@@ -982,7 +983,7 @@ export async function testNames(env: DevnetEnvironment) {
 
   const testResolver = getContract({
     address: testNameData.resolver,
-    abi: OwnedResolverAbi,
+    abi: PermissionedResolverAbi,
     client: env.deployment.client,
   });
   const aliasTx = await env.waitFor(
@@ -1033,7 +1034,7 @@ export async function testNames(env: DevnetEnvironment) {
   if (walletData?.resolver && walletData.resolver !== zeroAddress) {
     const walletResolver = getContract({
       address: walletData.resolver,
-      abi: OwnedResolverAbi,
+      abi: PermissionedResolverAbi,
       client: env.deployment.client,
     });
     await walletResolver.write.setAlias(
@@ -1100,7 +1101,7 @@ async function verifyNames(env: DevnetEnvironment, names: string[]) {
       // Verify alias resolution via UniversalResolver
       try {
         const addrCall = encodeFunctionData({
-          abi: OwnedResolverAbi,
+          abi: PermissionedResolverAbi,
           functionName: "addr",
           args: [namehash(name)],
         });
