@@ -105,7 +105,7 @@ contract OwnedResolver is
     error InvalidEVMAddress(bytes addressBytes);
 
     /// @notice The coin type is not a power of 2.
-    /// @dev Error selector: `0xe7cf0ac4`
+    /// @dev Error selector: `0x5742bb26`
     error InvalidContentType(uint256 contentType);
 
     ////////////////////////////////////////////////////////////////////////

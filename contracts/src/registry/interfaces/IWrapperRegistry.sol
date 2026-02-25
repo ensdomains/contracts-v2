@@ -6,7 +6,8 @@ import {IPermissionedRegistry} from "./IPermissionedRegistry.sol";
 /// @dev Minimum Size of `abi.encode(Data({...}))`.
 uint256 constant MIN_DATA_SIZE = 4 * 32;
 
-/// @dev Interface for a registry that manages a locked NameWrapper name.
+/// @notice Interface for a registry that manages a locked NameWrapper name.
+/// @dev Interface selector: `0x6a82caf2`
 interface IWrapperRegistry is IPermissionedRegistry {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -31,6 +32,8 @@ interface IWrapperRegistry is IPermissionedRegistry {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice The encoded `Data` struct(s) are invalid.
+    /// @dev Error selector: `0x5cb045db`
     error InvalidData();
 
     ////////////////////////////////////////////////////////////////////////

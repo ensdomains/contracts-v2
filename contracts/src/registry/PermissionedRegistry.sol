@@ -326,16 +326,14 @@ contract PermissionedRegistry is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Internal register method that takes string memory and performs the actual registration logic.
-     * @param label The label to register.
-     * @param owner The owner of the registered name or null if reserved.
-     * @param registry The registry to use for the name.
-     * @param resolver The resolver to set for the name.
-     * @param roleBitmap The roles to grant to the owner.
-     * @param expiry The expiration time of the name.
-     * @return tokenId The token ID of the registered name.
-     */
+    /// @dev Internal register method that takes string memory and performs the actual registration logic.
+    /// @param label The label to register.
+    /// @param owner The owner of the registered name or null if reserved.
+    /// @param registry The registry to use for the name.
+    /// @param resolver The resolver to set for the name.
+    /// @param roleBitmap The roles to grant to the owner.
+    /// @param expiry The expiration time of the name.
+    /// @return tokenId The token ID of the registered name.
     function _register(
         string memory label,
         address owner,
@@ -390,9 +388,7 @@ contract PermissionedRegistry is
         }
     }
 
-    /**
-     * @dev Override the base registry _update function to transfer the roles to the new owner when the token is transferred.
-     */
+    /// @dev Override the base registry _update function to transfer the roles to the new owner when the token is transferred.
     function _update(
         address from,
         address to,
@@ -417,9 +413,7 @@ contract PermissionedRegistry is
         }
     }
 
-    /**
-     * @dev Override the base registry _onRolesGranted function to regenerate the token when the roles are granted.
-     */
+    /// @dev Override the base registry _onRolesGranted function to regenerate the token when the roles are granted.
     function _onRolesGranted(
         uint256 resource,
         address /*account*/,
@@ -430,9 +424,7 @@ contract PermissionedRegistry is
         _regenerateToken(resource);
     }
 
-    /**
-     * @dev Override the base registry _onRolesRevoked function to regenerate the token when the roles are revoked.
-     */
+    /// @dev Override the base registry _onRolesRevoked function to regenerate the token when the roles are revoked.
     function _onRolesRevoked(
         uint256 resource,
         address /*account*/,
@@ -459,18 +451,16 @@ contract PermissionedRegistry is
         }
     }
 
-    /**
-     * @dev Override to prevent admin roles from being granted in the registry.
-     *
-     * In the registry context, admin roles are only assigned during name registration
-     * to maintain controlled permission management. This ensures that role delegation
-     * follows the intended security model where admin privileges are granted at
-     * registration time and cannot be arbitrarily granted afterward.
-     *
-     * @param resource The resource to get settable roles for.
-     * @param account The account to get settable roles for.
-     * @return The settable roles (regular roles only, not admin roles).
-     */
+    /// @dev Override to prevent admin roles from being granted in the registry.
+    ///
+    /// In the registry context, admin roles are only assigned during name registration
+    /// to maintain controlled permission management. This ensures that role delegation
+    /// follows the intended security model where admin privileges are granted at
+    /// registration time and cannot be arbitrarily granted afterward.
+    ///
+    /// @param resource The resource to get settable roles for.
+    /// @param account The account to get settable roles for.
+    /// @return The settable roles (regular roles only, not admin roles).
     function _getSettableRoles(
         uint256 resource,
         address account
