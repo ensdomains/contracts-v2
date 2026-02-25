@@ -13,10 +13,8 @@ import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 
 import {MigrationData} from "./types/MigrationTypes.sol";
 
-/**
- * @title UnlockedMigrationController
- * @dev Contract for the v1-to-v2 migration controller that only handles unlocked .eth 2LD names.
- */
+/// @title UnlockedMigrationController
+/// @dev Contract for the v1-to-v2 migration controller that only handles unlocked .eth 2LD names.
 contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC165 {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -30,8 +28,10 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Error selector: `0x4fa09b3f`
     error TokenIdMismatch(uint256 tokenId, uint256 expectedTokenId);
 
+    /// @dev Error selector: `0x80da7148`
     error MigrationNotSupported();
 
     ////////////////////////////////////////////////////////////////////////
@@ -43,9 +43,7 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
         ETH_REGISTRY = ethRegistry;
     }
 
-    /**
-     * Implements ERC165.supportsInterface
-     */
+    /// Implements ERC165.supportsInterface
     function supportsInterface(
         bytes4 interfaceId
     ) public view virtual override(ERC165, IERC165) returns (bool) {
@@ -59,9 +57,7 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * Implements ERC1155Receiver.onERC1155Received
-     */
+    /// Implements ERC1155Receiver.onERC1155Received
     function onERC1155Received(
         address /*operator*/,
         address /*from*/,
@@ -85,9 +81,7 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
         return this.onERC1155Received.selector;
     }
 
-    /**
-     * Implements ERC1155Receiver.onERC1155BatchReceived
-     */
+    /// Implements ERC1155Receiver.onERC1155BatchReceived
     function onERC1155BatchReceived(
         address /*operator*/,
         address /*from*/,
@@ -106,11 +100,9 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
         return this.onERC1155BatchReceived.selector;
     }
 
-    /**
-     * @dev Implements ERC721Receiver.onERC721Received
-     *
-     * If this is called then it means an unwrapped .eth name is being migrated to v2.
-     */
+    /// @dev Implements ERC721Receiver.onERC721Received
+    ///
+    /// If this is called then it means an unwrapped .eth name is being migrated to v2.
     function onERC721Received(
         address /*operator*/,
         address /*from*/,
@@ -132,13 +124,11 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Called when wrapped .eth 2LD names are being migrated to v2.
-     * Only supports unlocked names - reverts for locked names.
-     *
-     * @param tokenIds The token IDs of the .eth names.
-     * @param migrationDataArray The migration data for each .eth name.
-     */
+    /// @dev Called when wrapped .eth 2LD names are being migrated to v2.
+    /// Only supports unlocked names - reverts for locked names.
+    ///
+    /// @param tokenIds The token IDs of the .eth names.
+    /// @param migrationDataArray The migration data for each .eth name.
     function _migrateWrappedEthNames(
         uint256[] memory tokenIds,
         MigrationData[] memory migrationDataArray
@@ -159,12 +149,10 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
         }
     }
 
-    /**
-     * @dev Migrate a name to the registry.
-     *
-     * @param tokenId The token ID of the .eth name.
-     * @param migrationData The migration data.
-     */
+    /// @dev Migrate a name to the registry.
+    ///
+    /// @param tokenId The token ID of the .eth name.
+    /// @param migrationData The migration data.
     function _migrateNameToRegistry(uint256 tokenId, MigrationData memory migrationData) internal {
         // Validate that tokenId matches the label hash
         (bytes32 labelHash, ) = NameCoder.readLabel(migrationData.transferData.dnsEncodedName, 0);

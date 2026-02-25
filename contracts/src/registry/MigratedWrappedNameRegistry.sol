@@ -24,12 +24,10 @@ import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
-/**
- * @title MigratedWrappedNameRegistry
- * @dev A registry for migrated wrapped names that inherits from PermissionedRegistry and is upgradeable using the UUPS pattern.
- * This contract provides resolver fallback to the universal resolver for names that haven't been migrated yet.
- * It also handles subdomain migration by receiving NFT transfers from the NameWrapper.
- */
+/// @title MigratedWrappedNameRegistry
+/// @dev A registry for migrated wrapped names that inherits from PermissionedRegistry and is upgradeable using the UUPS pattern.
+/// This contract provides resolver fallback to the universal resolver for names that haven't been migrated yet.
+/// It also handles subdomain migration by receiving NFT transfers from the NameWrapper.
 contract MigratedWrappedNameRegistry is
     Initializable,
     PermissionedRegistry,
@@ -59,6 +57,7 @@ contract MigratedWrappedNameRegistry is
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Error selector: `0xd1697407`
     error NoParentDomain();
 
     ////////////////////////////////////////////////////////////////////////
@@ -81,13 +80,11 @@ contract MigratedWrappedNameRegistry is
         _disableInitializers();
     }
 
-    /**
-     * @dev Initializes the MigratedWrappedNameRegistry contract.
-     * @param parentDnsEncodedName_ The DNS-encoded name of the parent domain.
-     * @param ownerAddress_ The address that will own this registry.
-     * @param ownerRoles_ The roles to grant to the owner.
-     * @param registrarAddress_ Optional address to grant ROLE_REGISTRAR permissions (typically for testing).
-     */
+    /// @dev Initializes the MigratedWrappedNameRegistry contract.
+    /// @param parentDnsEncodedName_ The DNS-encoded name of the parent domain.
+    /// @param ownerAddress_ The address that will own this registry.
+    /// @param ownerRoles_ The roles to grant to the owner.
+    /// @param registrarAddress_ Optional address to grant ROLE_REGISTRAR permissions (typically for testing).
     function initialize(
         bytes calldata parentDnsEncodedName_,
         address ownerAddress_,
@@ -187,9 +184,7 @@ contract MigratedWrappedNameRegistry is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Required override for UUPSUpgradeable - restricts upgrade permissions
-     */
+    /// @dev Required override for UUPSUpgradeable - restricts upgrade permissions
     function _authorizeUpgrade(
         address
     ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {}
