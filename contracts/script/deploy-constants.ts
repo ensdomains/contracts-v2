@@ -12,7 +12,7 @@ const FLAGS = {
   // see: LibRegistryRoles.sol
   REGISTRY: {
     REGISTRAR: 1n << 0n,
-    RESERVE_REGISTRAR: 1n << 4n,
+    REGISTER_RESERVED: 1n << 4n,
     RENEW: 1n << 8n,
     UNREGISTER: 1n << 12n,
     SET_SUBREGISTRY: 1n << 16n,

@@ -35,7 +35,7 @@ import {MetadataMixin} from "./MetadataMixin.sol";
 ///       ʌ               ʌ      v                   v   v      |
 ///   AVAILABLE --------> RESERVED -------------> REGISTERED >--+
 ///       ʌ    register()    v       register()        v
-///       |    w/owner=0     | +ROLE_RESERVE_REGISTRAR |
+///       |    w/owner=0     | +ROLE_REGISTER_RESERVED |
 ///       | +ROLE_REGISTRAR  |                         |
 ///       |                  |                         |
 ///       +--------<---------+------------<------------+
@@ -122,7 +122,7 @@ contract PermissionedRegistry is
 
     /// @inheritdoc IStandardRegistry
     /// @dev If `AVAILABLE` requires `ROLE_REGISTRAR` on root.
-    ///      If `RESERVED` requires `ROLE_RESERVE_REGISTRAR` on root.
+    ///      If `RESERVED` requires `ROLE_REGISTER_RESERVED` on root.
     ///      If `owner` is null (roleBitmap must be 0), reserves instead of registers.
     function register(
         string memory label,
@@ -152,7 +152,7 @@ contract PermissionedRegistry is
             } else if (owner == address(0)) {
                 revert NameAlreadyReserved(label); // cannot reserve/register RESERVED
             }
-            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_RESERVE_REGISTRAR, sender);
+            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
         }
         if (prevOwner != address(0)) {
             _burn(prevOwner, tokenId, 1);

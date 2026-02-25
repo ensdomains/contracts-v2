@@ -5,8 +5,8 @@ library RegistryRolesLib {
     uint256 internal constant ROLE_REGISTRAR = 1 << 0;
     uint256 internal constant ROLE_REGISTRAR_ADMIN = ROLE_REGISTRAR << 128;
 
-    uint256 internal constant ROLE_RESERVE_REGISTRAR = 1 << 4;
-    uint256 internal constant ROLE_RESERVE_REGISTRAR_ADMIN = ROLE_RESERVE_REGISTRAR << 128;
+    uint256 internal constant ROLE_REGISTER_RESERVED = 1 << 4;
+    uint256 internal constant ROLE_REGISTER_RESERVED_ADMIN = ROLE_REGISTER_RESERVED << 128;
 
     uint256 internal constant ROLE_RENEW = 1 << 8;
     uint256 internal constant ROLE_RENEW_ADMIN = ROLE_RENEW << 128;

@@ -194,7 +194,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function test_reserve_alreadyRegistered() external {
         this._register();
         registry.grantRootRoles(
-            RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RESERVE_REGISTRAR,
+            RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_REGISTER_RESERVED,
             actor
         );
         vm.expectRevert(
@@ -246,14 +246,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
                 registry.ROOT_RESOURCE(),
-                RegistryRolesLib.ROLE_RESERVE_REGISTRAR,
+                RegistryRolesLib.ROLE_REGISTER_RESERVED,
                 actor
             )
         );
         vm.prank(actor);
         this._register();
         // retry with permissions
-        registry.grantRootRoles(RegistryRolesLib.ROLE_RESERVE_REGISTRAR, actor);
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTER_RESERVED, actor);
         vm.prank(actor);
         this._register();
     }
