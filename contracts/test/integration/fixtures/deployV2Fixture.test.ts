@@ -79,7 +79,7 @@ describe("deployV2Fixture", () => {
     const resolverAddress = await parentRegistry.read.getResolver([
       getLabelAt(name),
     ]);
-    expectVar({ resolver: resolverAddress }).toEqualAddress(resolver.address);
+    expectVar({ resolverAddress }).toEqualAddress(resolver.address);
   });
 
   it("setupName() matches findRegistries()", async () => {

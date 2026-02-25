@@ -162,7 +162,8 @@ export async function deployV2Fixture(
       }
       if (leaf) {
         // invariants:
-        //            tokenId == labelToCanonicalId(labels[0])
+        //             labels == splitName(name) // note: opposite order of registries[]
+        //            tokenId == parentRegistry.getTokenId(idFromLabel(labels[-1]))
         //  registries.length == labels.length
         //     exactRegistry? == registries[0]
         //     parentRegistry == registries[1]
