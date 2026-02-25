@@ -66,6 +66,7 @@
         "importOrder": ["^forge-std/", "^@?\\w", "^\\.\\./", "^\\./"]
       }
     ],
-    "contracts-v2/selector-tags": "error"
+    "contracts-v2/selector-tags": "error",
+    "contracts-v2/natspec-triple-slash": "error"
   }
 }
