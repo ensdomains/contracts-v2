@@ -1,5 +1,5 @@
 import { artifacts, execute } from "@rocketh";
-import { ROLES } from "../script/deploy-constants.js";
+import { ROLES } from "../../script/deploy-constants.js";
 
 export default execute(
   async ({

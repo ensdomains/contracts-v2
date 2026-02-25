@@ -1,7 +1,7 @@
 import { artifacts, execute } from "@rocketh";
 import { zeroAddress } from "viem";
-import { dnsEncodeName } from "../test/utils/utils.js";
-import { MAX_EXPIRY } from "../script/deploy-constants.js";
+import { dnsEncodeName } from "../../test/utils/utils.js";
+import { MAX_EXPIRY } from "../../script/deploy-constants.js";
 
 async function fetchPublicSuffixes() {
   const res = await fetch(

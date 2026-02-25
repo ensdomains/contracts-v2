@@ -12,6 +12,7 @@ import { artifacts } from "@rocketh";
 import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
 import { dnsEncodeName, idFromLabel } from "../test/utils/utils.js";
 import type { DevnetEnvironment } from "./setup.js";
+import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.ts";
 
 // ========== Constants ==========
 
@@ -172,20 +173,18 @@ async function deployResolverWithRecords(
 
   // Set ETH address (coin type 60)
   if (records.address) {
-    const { receipt } = await env.waitFor(
-      resolver.write.setAddr([node, 60n, records.address], { account }),
-    );
-    if (shouldTrackGas) await trackGas(`setAddr(${name})`, receipt);
+    const setAddrHash = await resolver.write.setAddr([node, 60n, records.address], { account });
+    const setAddrReceipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: setAddrHash });
+    if (shouldTrackGas) await trackGas(`setAddr(${name})`, setAddrReceipt);
   }
 
   // Set description text record
   if (records.description) {
-    const { receipt } = await env.waitFor(
-      resolver.write.setText([node, "description", records.description], {
-        account,
-      }),
-    );
-    if (shouldTrackGas) await trackGas(`setText(${name})`, receipt);
+    const setTextHash = await resolver.write.setText([node, "description", records.description], {
+      account,
+    });
+    const setTextReceipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: setTextHash });
+    if (shouldTrackGas) await trackGas(`setText(${name})`, setTextReceipt);
   }
 
   return resolver;
@@ -677,12 +676,11 @@ export async function renewName(
     { account },
   );
 
-  const { receipt } = await env.waitFor(
-    env.deployment.contracts.ETHRegistrar.write.renew(
-      [label, duration, paymentToken, referrer],
-      { account },
-    ),
+  const renewHash = await env.deployment.contracts.ETHRegistrar.write.renew(
+    [label, duration, paymentToken, referrer],
+    { account },
   );
+  const receipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: renewHash });
 
   const newExpiry = Number(
     await env.deployment.contracts.ETHRegistry.read.getExpiry([
@@ -713,12 +711,11 @@ export async function transferName(
   console.log(`From: ${account.address}`);
   console.log(`To: ${newOwner}`);
 
-  const { receipt } = await env.waitFor(
-    env.deployment.contracts.ETHRegistry.write.safeTransferFrom(
-      [account.address, newOwner, tokenId, 1n, "0x"],
-      { account },
-    ),
+  const transferHash = await env.deployment.contracts.ETHRegistry.write.safeTransferFrom(
+    [account.address, newOwner, tokenId, 1n, "0x"],
+    { account },
   );
+  const receipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: transferHash });
 
   console.log(`✓ Transfer completed`);
 
@@ -747,23 +744,21 @@ export async function changeRole(
   const receipts: TransactionReceipt[] = [];
 
   if (rolesToGrant > 0n) {
-    const { receipt } = await env.waitFor(
-      env.deployment.contracts.ETHRegistry.write.grantRoles(
-        [tokenId, rolesToGrant, targetAccount],
-        { account },
-      ),
+    const grantHash = await env.deployment.contracts.ETHRegistry.write.grantRoles(
+      [tokenId, rolesToGrant, targetAccount],
+      { account },
     );
-    receipts.push(receipt);
+    const grantReceipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: grantHash });
+    receipts.push(grantReceipt);
   }
 
   if (rolesToRevoke > 0n) {
-    const { receipt } = await env.waitFor(
-      env.deployment.contracts.ETHRegistry.write.revokeRoles(
-        [tokenId, rolesToRevoke, targetAccount],
-        { account },
-      ),
+    const revokeHash = await env.deployment.contracts.ETHRegistry.write.revokeRoles(
+      [tokenId, rolesToRevoke, targetAccount],
+      { account },
     );
-    receipts.push(receipt);
+    const revokeReceipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: revokeHash });
+    receipts.push(revokeReceipt);
   }
 
   const newTokenId = await env.deployment.contracts.ETHRegistry.read.getTokenId(
@@ -806,48 +801,46 @@ export async function registerTestNames(
       expiry = currentTimestamp + BigInt(ONE_DAY_SECONDS);
     }
 
-    const registerTx = await env.waitFor(
-      env.deployment.contracts.ETHRegistry.write.register(
-        [
-          label,
-          account.address,
-          zeroAddress,
-          resolver.address,
-          ROLES.ALL,
-          expiry,
-        ],
-        { account: registrarAccount },
-      ),
+    const registerHash = await env.deployment.contracts.ETHRegistry.write.register(
+      [
+        label,
+        account.address,
+        zeroAddress,
+        resolver.address,
+        ROLES.ALL,
+        expiry,
+      ],
+      { account: registrarAccount },
     );
+    const registerReceipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: registerHash });
 
     if (shouldTrackGas) {
-      await trackGas(`register(${label})`, registerTx.receipt);
+      await trackGas(`register(${label})`, registerReceipt);
     }
 
     const node = namehash(`${label}.eth`);
-    const setAddrTx = await env.waitFor(
-      resolver.write.setAddr(
-        [
-          node,
-          60n, // ETH coin type
-          account.address,
-        ],
-        { account },
-      ),
+    const regSetAddrHash = await resolver.write.setAddr(
+      [
+        node,
+        60n, // ETH coin type
+        account.address,
+      ],
+      { account },
     );
+    const regSetAddrReceipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: regSetAddrHash });
 
     if (shouldTrackGas) {
-      await trackGas(`setAddr(${label})`, setAddrTx.receipt);
+      await trackGas(`setAddr(${label})`, regSetAddrReceipt);
     }
 
-    const setTextTx = await env.waitFor(
-      resolver.write.setText([node, "description", `${label}.eth`], {
-        account,
-      }),
+    const regSetTextHash = await resolver.write.setText(
+      [node, "description", `${label}.eth`],
+      { account },
     );
+    const regSetTextReceipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: regSetTextHash });
 
     if (shouldTrackGas) {
-      await trackGas(`setText(${label})`, setTextTx.receipt);
+      await trackGas(`setText(${label})`, regSetTextReceipt);
     }
   }
 }
@@ -965,33 +958,31 @@ export async function testNames(env: DevnetEnvironment) {
     .getBlock()
     .then((b) => b.timestamp);
   const aliasExpiry = currentTimestamp + BigInt(ONE_DAY_SECONDS);
-  const aliasRegisterTx = await env.waitFor(
-    env.deployment.contracts.ETHRegistry.write.register(
-      [
-        "alias",
-        env.namedAccounts.owner.address,
-        zeroAddress,
-        testNameData.resolver,
-        ROLES.ALL,
-        aliasExpiry,
-      ],
-      { account: env.namedAccounts.deployer },
-    ),
+  const aliasRegisterHash = await env.deployment.contracts.ETHRegistry.write.register(
+    [
+      "alias",
+      env.namedAccounts.owner.address,
+      zeroAddress,
+      testNameData.resolver,
+      ROLES.ALL,
+      aliasExpiry,
+    ],
+    { account: env.namedAccounts.deployer },
   );
-  await trackGas("register(alias)", aliasRegisterTx.receipt);
+  const aliasRegisterReceipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: aliasRegisterHash });
+  await trackGas("register(alias)", aliasRegisterReceipt);
 
   const testResolver = getContract({
     address: testNameData.resolver,
     abi: OwnedResolverAbi,
     client: env.deployment.client,
   });
-  const aliasTx = await env.waitFor(
-    testResolver.write.setAlias(
-      [dnsEncodeName("alias.eth"), dnsEncodeName("test.eth")],
-      { account: env.namedAccounts.owner },
-    ),
+  const aliasSetHash = await testResolver.write.setAlias(
+    [dnsEncodeName("alias.eth"), dnsEncodeName("test.eth")],
+    { account: env.namedAccounts.owner },
   );
-  await trackGas("setAlias(alias→test)", aliasTx.receipt);
+  const aliasSetReceipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: aliasSetHash });
+  await trackGas("setAlias(alias→test)", aliasSetReceipt);
   console.log("✓ alias.eth → test.eth alias created");
 
   // Set records for sub.test.eth on test.eth's resolver so sub.alias.eth resolves via alias
@@ -999,23 +990,19 @@ export async function testNames(env: DevnetEnvironment) {
     "\nSetting records for sub.test.eth (for sub.alias.eth alias resolution)",
   );
   const subTestNode = namehash("sub.test.eth");
-  const setSubAddrTx = await env.waitFor(
-    testResolver.write.setAddr(
-      [subTestNode, 60n, env.namedAccounts.owner.address],
-      { account: env.namedAccounts.owner },
-    ),
+  const subAddrHash = await testResolver.write.setAddr(
+    [subTestNode, 60n, env.namedAccounts.owner.address],
+    { account: env.namedAccounts.owner },
   );
-  await trackGas("setAddr(sub.test.eth)", setSubAddrTx.receipt);
-  const setSubTextTx = await env.waitFor(
-    testResolver.write.setText(
-      [subTestNode, "description", "sub.test.eth (via alias)"],
-      { account: env.namedAccounts.owner },
-    ),
+  const subAddrReceipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: subAddrHash });
+  await trackGas("setAddr(sub.test.eth)", subAddrReceipt);
+  const subTextHash = await testResolver.write.setText(
+    [subTestNode, "description", "sub.test.eth (via alias)"],
+    { account: env.namedAccounts.owner },
   );
-  await trackGas("setText(sub.test.eth)", setSubTextTx.receipt);
-  console.log(
-    "✓ sub.test.eth records set — sub.alias.eth should resolve via alias",
-  );
+  const subTextReceipt = await waitForSuccessfulTransactionReceipt(env.deployment.client, { hash: subTextHash });
+  await trackGas("setText(sub.test.eth)", subTextReceipt);
+  console.log("✓ sub.test.eth records set — sub.alias.eth should resolve via alias");
 
   // Create subnames
   const createdSubnames = await createSubname(

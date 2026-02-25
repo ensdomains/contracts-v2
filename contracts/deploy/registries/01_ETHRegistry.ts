@@ -1,6 +1,6 @@
 import { artifacts, execute } from "@rocketh";
 import { zeroAddress } from "viem";
-import { MAX_EXPIRY, ROLES } from "../script/deploy-constants.js";
+import { MAX_EXPIRY, ROLES } from "../../script/deploy-constants.js";
 
 // TODO: ownership
 export default execute(

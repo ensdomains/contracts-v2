@@ -1,5 +1,5 @@
 import { artifacts, execute } from "@rocketh";
-import { MAX_EXPIRY } from "../script/deploy-constants.js";
+import { MAX_EXPIRY } from "../../script/deploy-constants.js";
 import { zeroAddress } from "viem";
 
 // TODO: ownership

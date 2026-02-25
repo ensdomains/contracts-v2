@@ -11,7 +11,6 @@ import {
   getContract,
   type GetContractReturnType,
   type Hash,
-  type Hex,
   namehash,
   publicActions,
   testActions,
@@ -38,10 +37,6 @@ import { patchArtifactsV1 } from "./patchArtifactsV1.js";
  * Default chain ID for devnet environment
  */
 export const DEFAULT_CHAIN_ID = 0xeeeeed;
-
-type DeployedArtifacts = Record<string, Abi>;
-
-type Future<T> = T | Promise<T>;
 
 // typescript key (see below) mapped to rocketh deploy name
 const renames: Record<string, string> = {
@@ -82,13 +77,13 @@ const contracts = {
   DNSTLDResolver: artifacts.DNSTLDResolver.abi,
   DNSTXTResolver: artifacts.DNSTXTResolver.abi,
   DNSAliasResolver: artifacts.DNSAliasResolver.abi,
-} as const satisfies DeployedArtifacts;
+} as const satisfies Record<string, Abi>;
 
 export type StateSnapshot = () => Promise<void>;
 export type DevnetClient = ReturnType<typeof createClient>;
 export type DevnetEnvironment = Awaited<ReturnType<typeof setupDevnet>>;
 
-export type Deployment = DeploymentInstance<typeof contracts>;
+export type Deployment = ReturnType<typeof createDeployment>;
 
 function ansi(c: any, s: any) {
   return `\x1b[${c}m${s}\x1b[0m`;
@@ -106,141 +101,138 @@ function createClient(transport: Transport, chain: Chain, account: Account) {
     .extend(testActions({ mode: "anvil" }));
 }
 
-type ContractsOf<A> = {
-  [K in keyof A]: A[K] extends Abi | readonly unknown[]
-    ? GetContractReturnType<A[K], DevnetClient>
-    : never;
+type ContractsMap = {
+  [K in keyof typeof contracts]: GetContractReturnType<
+    (typeof contracts)[K],
+    DevnetClient
+  >;
 };
 
-export class DeploymentInstance<
-  const A extends DeployedArtifacts = typeof contracts,
-> {
-  readonly contracts: ContractsOf<A>;
-  constructor(
-    readonly anvil: ReturnType<typeof createAnvil>,
-    readonly client: DevnetClient,
-    readonly transport: Transport,
-    readonly hostPort: string,
-    readonly env: Environment,
-    namedArtifacts: A,
-  ) {
-    this.contracts = Object.fromEntries(
-      Object.entries(namedArtifacts).map(([name, abi]) => {
-        const deployment = env.get(renames[name] ?? name.replace(/V1$/, ""));
-        const contract = getContract({
-          abi,
-          address: deployment.address,
-          client,
-        }) as {
-          write?: Record<string, (...parameters: unknown[]) => Promise<Hash>>;
-        } & Record<string, unknown>;
-        if ("write" in contract) {
-          const write = contract.write!;
-          // override to ensure successful transaction
-          // otherwise, success is being assumed based on an eth_estimateGas call
-          // but state could change, or eth_estimateGas could be wrong
-          contract.write = new Proxy(
-            {},
-            {
-              get(_, functionName: string) {
-                return async (...parameters: unknown[]) => {
-                  const hash = await write[functionName](...parameters);
-                  await waitForSuccessfulTransactionReceipt(client, { hash });
-                  return hash;
-                };
-              },
+function createDeployment(
+  client: DevnetClient,
+  transport: Transport,
+  hostPort: string,
+  env: Environment,
+) {
+  const contractsMap = Object.fromEntries(
+    Object.entries(contracts).map(([name, abi]) => {
+      const deployment = env.get(renames[name] ?? name.replace(/V1$/, ""));
+      const contract = getContract({
+        abi,
+        address: deployment.address,
+        client,
+      }) as any as {
+        write?: Record<string, (...parameters: unknown[]) => Promise<Hash>>;
+      } & Record<string, unknown>;
+      if ("write" in contract) {
+        const write = contract.write!;
+        // override to ensure successful transaction
+        // otherwise, success is being assumed based on an eth_estimateGas call
+        // but state could change, or eth_estimateGas could be wrong
+        contract.write = new Proxy(
+          {},
+          {
+            get(_, functionName: string) {
+              return async (...parameters: unknown[]) => {
+                const hash = await write[functionName](...parameters);
+                await waitForSuccessfulTransactionReceipt(client, { hash });
+                return hash;
+              };
             },
-          );
-        }
-        return [name, contract];
-      }),
-    ) as ContractsOf<A>;
-  }
-  async computeVerifiableProxyAddress(args: {
-    deployer: Address;
-    salt: bigint;
-  }) {
-    return computeVerifiableProxyAddress({
-      factoryAddress: this.contracts.VerifiableFactory.address,
-      bytecode: artifacts["UUPSProxy"].bytecode,
-      ...args,
-    });
-  }
-  async deployPermissionedRegistry({
-    account,
-    roles = ROLES.ALL,
-  }: {
-    account: Account;
-    roles?: bigint;
-  }) {
-    const walletClient = createClient(
-      this.transport,
-      this.client.chain,
+          },
+        );
+      }
+      return [name, contract];
+    }),
+  ) as unknown as ContractsMap;
+
+  return {
+    contracts: contractsMap,
+    client,
+    hostPort,
+    env,
+    async computeVerifiableProxyAddress(args: {
+      deployer: Address;
+      salt: bigint;
+    }) {
+      return computeVerifiableProxyAddress({
+        factoryAddress: contractsMap.VerifiableFactory.address,
+        bytecode: artifacts["UUPSProxy"].bytecode,
+        ...args,
+      });
+    },
+    async deployPermissionedRegistry({
       account,
-    );
-    const { abi, bytecode } = artifacts.PermissionedRegistry;
-    const hash = await walletClient.deployContract({
-      abi,
-      bytecode,
-      args: [
-        this.contracts.HCAFactory.address,
-        this.contracts.SimpleRegistryMetadata.address,
-        account.address,
-        roles,
-      ],
-    });
-    const receipt = await waitForSuccessfulTransactionReceipt(walletClient, {
-      hash,
-      ensureDeployment: true,
-    });
-    return getContract({
-      abi,
-      address: receipt.contractAddress,
-      client: walletClient,
-    });
-  }
-  async deployOwnedResolver({
-    account,
-    admin = account.address,
-    roles = ROLES.ALL,
-    salt,
-  }: {
-    account: Account;
-    admin?: Address;
-    roles?: bigint;
-    salt?: bigint;
-  }) {
-    return deployVerifiableProxy({
-      walletClient: createClient(this.transport, this.client.chain, account),
-      factoryAddress: this.contracts.VerifiableFactory.address,
-      implAddress: this.contracts.OwnedResolverV2.address,
-      abi: this.contracts.OwnedResolverV2.abi,
-      functionName: "initialize",
-      args: [admin, roles],
+      roles = ROLES.ALL,
+    }: {
+      account: Account;
+      roles?: bigint;
+    }) {
+      const walletClient = createClient(transport, client.chain, account);
+      const { abi, bytecode } = artifacts.PermissionedRegistry;
+      const hash = await walletClient.deployContract({
+        abi,
+        bytecode,
+        args: [
+          contractsMap.HCAFactory.address,
+          contractsMap.SimpleRegistryMetadata.address,
+          account.address,
+          roles,
+        ],
+      });
+      const receipt = await waitForSuccessfulTransactionReceipt(walletClient, {
+        hash,
+        ensureDeployment: true,
+      });
+      return getContract({
+        abi,
+        address: receipt.contractAddress,
+        client: walletClient,
+      });
+    },
+    async deployOwnedResolver({
+      account,
+      admin = account.address,
+      roles = ROLES.ALL,
       salt,
-    });
-  }
-  deployUserRegistry({
-    account,
-    admin = account.address,
-    roles = ROLES.ALL,
-    salt,
-  }: {
-    account: Account;
-    admin?: Address;
-    roles?: bigint;
-    salt?: bigint;
-  }) {
-    return deployVerifiableProxy({
-      walletClient: createClient(this.transport, this.client.chain, account),
-      factoryAddress: this.contracts.VerifiableFactory.address,
-      implAddress: this.contracts.UserRegistry.address,
-      abi: this.contracts.UserRegistry.abi,
-      functionName: "initialize",
-      args: [admin, roles],
+    }: {
+      account: Account;
+      admin?: Address;
+      roles?: bigint;
+      salt?: bigint;
+    }) {
+      return deployVerifiableProxy({
+        walletClient: createClient(transport, client.chain, account),
+        factoryAddress: contractsMap.VerifiableFactory.address,
+        implAddress: contractsMap.OwnedResolverV2.address,
+        abi: contractsMap.OwnedResolverV2.abi,
+        functionName: "initialize",
+        args: [admin, roles],
+        salt,
+      });
+    },
+    deployUserRegistry({
+      account,
+      admin = account.address,
+      roles = ROLES.ALL,
       salt,
-    });
-  }
+    }: {
+      account: Account;
+      admin?: Address;
+      roles?: bigint;
+      salt?: bigint;
+    }) {
+      return deployVerifiableProxy({
+        walletClient: createClient(transport, client.chain, account),
+        factoryAddress: contractsMap.VerifiableFactory.address,
+        implAddress: contractsMap.UserRegistry.address,
+        abi: contractsMap.UserRegistry.abi,
+        functionName: "initialize",
+        args: [admin, roles],
+        salt,
+      });
+    },
+  };
 }
 
 export async function setupDevnet({
@@ -409,13 +401,11 @@ export async function setupDevnet({
       }),
     );
 
-    const deployment = new DeploymentInstance(
-      anvilInstance,
+    const deployment = createDeployment(
       client,
       transport,
       hostPort,
       deployResult,
-      contracts,
     );
 
     await setupEnsDotEth(deployment, deployer);
@@ -427,19 +417,11 @@ export async function setupDevnet({
       namedAccounts,
       deployment,
       sync,
-      waitFor,
       getBlock,
       saveState,
       shutdown,
     };
 
-    async function waitFor(hash: Future<Hex>) {
-      hash = await hash;
-      const receipt = await waitForSuccessfulTransactionReceipt(client, {
-        hash,
-      });
-      return { receipt, deployment };
-    }
     function getBlock() {
       return client.getBlock();
     }
