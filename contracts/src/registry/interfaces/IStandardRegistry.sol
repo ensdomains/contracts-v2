@@ -35,15 +35,13 @@ interface IStandardRegistry is IRegistry {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Registers a new name.
-     * @param label The label to register.
-     * @param owner The address of the owner of the name.
-     * @param registry The registry to set as the name.
-     * @param resolver The resolver to set for the name.
-     * @param roleBitmap The role bitmap to set for the name.
-     * @param expires The expiration date of the name.
-     */
+    /// @dev Registers a new name.
+    /// @param label The label to register.
+    /// @param owner The address of the owner of the name.
+    /// @param registry The registry to set as the name.
+    /// @param resolver The resolver to set for the name.
+    /// @param roleBitmap The role bitmap to set for the name.
+    /// @param expires The expiration date of the name.
     function register(
         string calldata label,
         address owner,

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-/**
- * @title MigrationErrors
- * @dev Error definitions specific to migration operations
- */
+/// @title MigrationErrors
+/// @dev Error definitions specific to migration operations
 
 /// @notice Thrown when attempting to migrate a subdomain whose parent has not been migrated
 /// @dev Error selector: `0x26d8c94f`

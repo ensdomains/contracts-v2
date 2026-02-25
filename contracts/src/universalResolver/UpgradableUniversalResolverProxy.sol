@@ -5,11 +5,9 @@ import {EIP3668, OffchainLookup} from "@ens/contracts/ccipRead/EIP3668.sol";
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 
-/**
- * @title UpgradableUniversalResolverProxy
- * @dev A specialized proxy for UniversalResolver that forwards method calls
- * and properly handles CCIP-Read reverts. Admin can upgrade the implementation.
- */
+/// @title UpgradableUniversalResolverProxy
+/// @dev A specialized proxy for UniversalResolver that forwards method calls
+/// and properly handles CCIP-Read reverts. Admin can upgrade the implementation.
 contract UpgradableUniversalResolverProxy {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -50,9 +48,7 @@ contract UpgradableUniversalResolverProxy {
     // Modifiers
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Modifier restricting a function to the admin.
-     */
+    /// @dev Modifier restricting a function to the admin.
     modifier onlyAdmin() {
         if (msg.sender != _getAdmin()) revert CallerNotAdmin();
         _;
@@ -62,9 +58,7 @@ contract UpgradableUniversalResolverProxy {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Initializes the proxy with an implementation and admin.
-     */
+    /// @dev Initializes the proxy with an implementation and admin.
     constructor(address admin_, address implementation_) {
         _validateImplementation(implementation_);
         _setImplementation(implementation_);
@@ -75,10 +69,8 @@ contract UpgradableUniversalResolverProxy {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Fallback function that handles forwarding calls to the implementation
-     * and properly manages CCIP-Read reverts.
-     */
+    /// @dev Fallback function that handles forwarding calls to the implementation
+    /// and properly manages CCIP-Read reverts.
     fallback() external {
         (bool ok, bytes memory v) = _getImplementation().staticcall(msg.data);
         if (!ok && bytes4(v) == OffchainLookup.selector) {
@@ -105,35 +97,27 @@ contract UpgradableUniversalResolverProxy {
         }
     }
 
-    /**
-     * @dev Upgrades to a new implementation.
-     * @param newImplementation Address of the new implementation
-     */
+    /// @dev Upgrades to a new implementation.
+    /// @param newImplementation Address of the new implementation
     function upgradeTo(address newImplementation) external onlyAdmin {
         _validateImplementation(newImplementation);
         _setImplementation(newImplementation);
         emit Upgraded(newImplementation);
     }
 
-    /**
-     * @dev Allows admin to revoke their admin rights by setting admin to address(0).
-     */
+    /// @dev Allows admin to revoke their admin rights by setting admin to address(0).
     function renounceAdmin() external onlyAdmin {
         address admin_ = _getAdmin();
         _setAdmin(address(0));
         emit AdminRemoved(admin_);
     }
 
-    /**
-     * @dev Returns the current implementation address.
-     */
+    /// @dev Returns the current implementation address.
     function implementation() external view returns (address) {
         return _getImplementation();
     }
 
-    /**
-     * @dev Returns the current admin address.
-     */
+    /// @dev Returns the current admin address.
     function admin() external view returns (address) {
         return _getAdmin();
     }
@@ -142,9 +126,7 @@ contract UpgradableUniversalResolverProxy {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Validates if the implementation is valid.
-     */
+    /// @dev Validates if the implementation is valid.
     function _validateImplementation(address newImplementation) internal view {
         if (newImplementation == address(0) || newImplementation.code.length == 0) {
             revert InvalidImplementation();
@@ -154,16 +136,12 @@ contract UpgradableUniversalResolverProxy {
         }
     }
 
-    /**
-     * @dev Gets the current implementation address from storage.
-     */
+    /// @dev Gets the current implementation address from storage.
     function _getImplementation() internal view returns (address) {
         return StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value;
     }
 
-    /**
-     * @dev Gets the current admin address from storage.
-     */
+    /// @dev Gets the current admin address from storage.
     function _getAdmin() internal view returns (address) {
         return StorageSlot.getAddressSlot(_ADMIN_SLOT).value;
     }
@@ -172,16 +150,12 @@ contract UpgradableUniversalResolverProxy {
     // Private Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Sets the implementation address in storage.
-     */
+    /// @dev Sets the implementation address in storage.
     function _setImplementation(address newImplementation) private {
         StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value = newImplementation;
     }
 
-    /**
-     * @dev Sets the admin address in storage.
-     */
+    /// @dev Sets the admin address in storage.
     function _setAdmin(address newAdmin) private {
         address previousAdmin = _getAdmin();
         StorageSlot.getAddressSlot(_ADMIN_SLOT).value = newAdmin;
