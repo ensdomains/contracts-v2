@@ -58,7 +58,7 @@ async function fixture() {
     "GatewayProvider",
     [mainnetV2.walletClient.account.address, [dnsOracleGateway]],
   );
-  const ownedResolver = await mainnetV2.deployOwnedResolver();
+  const ownedResolver = await mainnetV2.deployPermissionedResolver();
   const dnsTLDResolver = await network.viem.deployContract("DNSTLDResolver", [
     mainnetV1.ensRegistry.address,
     dnsTLDResolverV1.address,
