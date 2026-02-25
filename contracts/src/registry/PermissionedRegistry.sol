@@ -69,6 +69,7 @@ contract PermissionedRegistry is
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    bytes internal _canonicalName;
     mapping(uint256 storageId => Entry entry) internal _entries;
 
     ////////////////////////////////////////////////////////////////////////
@@ -96,6 +97,7 @@ contract PermissionedRegistry is
     {
         return
             interfaceId == type(IPermissionedRegistry).interfaceId ||
+            interfaceId == type(IStandardRegistry).interfaceId ||
             interfaceId == type(IRegistry).interfaceId ||
             super.supportsInterface(interfaceId);
     }
@@ -105,7 +107,7 @@ contract PermissionedRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IStandardRegistry
-    function setSubregistry(uint256 anyId, IRegistry registry) public override {
+    function setSubregistry(uint256 anyId, IRegistry registry) public virtual {
         (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
             anyId,
             RegistryRolesLib.ROLE_SET_SUBREGISTRY
@@ -115,7 +117,7 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
-    function setResolver(uint256 anyId, address resolver) public override {
+    function setResolver(uint256 anyId, address resolver) public virtual {
         (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
             anyId,
             RegistryRolesLib.ROLE_SET_RESOLVER
@@ -125,8 +127,14 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
-    /// @dev Requires `AVAILABLE` and `ROLE_REGISTRAR` on root.
-    ///      Requires `RESERVED` and `ROLE_REGISTER | ROLE_RESERVED` on root.
+    function setCanonicalName(
+        bytes memory name
+    ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_SET_CANONICAL_NAME) {
+        _canonicalName = name;
+        emit CanonicalNameUpdated(name, _msgSender());
+    }
+
+    /// @inheritdoc IStandardRegistry
     function register(
         string calldata label,
         address owner,
@@ -223,6 +231,11 @@ contract PermissionedRegistry is
     function getResolver(string calldata label) public view virtual returns (address) {
         Entry storage entry = _entry(LibLabel.id(label));
         return _isExpired(entry.expiry) ? address(0) : entry.resolver;
+    }
+
+    /// @inheritdoc IRegistry
+    function getCanonicalName() public view virtual returns (bytes memory) {
+        return _canonicalName;
     }
 
     /// @inheritdoc ERC1155Singleton
@@ -470,6 +483,7 @@ contract PermissionedRegistry is
         return adminRoleBitmap >> 128;
     }
 
+    /// @dev Access token storage pointer.
     function _entry(uint256 anyId) internal view returns (Entry storage) {
         return _entries[LibLabel.withVersion(anyId, 0)];
     }

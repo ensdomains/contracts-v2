@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 import {IERC1155Singleton} from "../../erc1155/interfaces/IERC1155Singleton.sol";
 
-/// @dev Interface selector: `0xd1011f61`
+/// @dev Interface selector: `0xe6aa8bcd`
 interface IRegistry is IERC1155Singleton {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -48,6 +48,9 @@ interface IRegistry is IERC1155Singleton {
     ///         This occurs when roles are granted or revoked to maintain ERC1155 compliance.
     event TokenRegenerated(uint256 indexed oldTokenId, uint256 indexed newTokenId);
 
+    /// @notice Canonical name was changed.
+    event CanonicalNameUpdated(bytes name, address sender);
+
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
@@ -61,4 +64,9 @@ interface IRegistry is IERC1155Singleton {
     /// @param label The label to fetch a resolver for.
     /// @return resolver The address of a resolver responsible for this name, or `address(0)` if none exists.
     function getResolver(string calldata label) external view returns (address);
+
+    /// @notice Get canonical name of this registry.
+    ///
+    /// @return name The DNS-encoded name.
+    function getCanonicalName() external view returns (bytes memory name);
 }

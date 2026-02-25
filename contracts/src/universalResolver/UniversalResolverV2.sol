@@ -18,6 +18,15 @@ contract UniversalResolverV2 is AbstractUniversalResolver {
         ROOT_REGISTRY = root;
     }
 
+    /// @notice Check if `name` is canonical.
+    ///
+    /// @param name The DNS-encoded name.
+    ///
+    /// @return True if `name` is canonical.
+    function isCanonical(bytes memory name) external view returns (bool) {
+        return address(LibRegistry.findCanonicalRegistry(ROOT_REGISTRY, name, 0)) != address(0);
+    }
+
     /// @notice Find all registries in the ancestry of `name`.
     /// * `findRegistries("") = [<root>]`
     /// * `findRegistries("eth") = [<eth>, <root>]`

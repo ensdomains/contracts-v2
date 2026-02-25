@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.24;
 
+import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
@@ -84,6 +85,50 @@ library LibRegistry {
                     resolver = res;
                 }
                 registry = registry.getSubregistry(label);
+            }
+        }
+    }
+
+    /// @notice Find the canonical registry for `name`.
+    ///
+    /// @dev `name` is canonical if it's ancestors are canonical and share parential suffixes:
+    /// eg.        Canonical    not-Canonical     not-Canonical
+    ///            =========    =============     =============
+    ///     abc.sub.test.eth          abc.eth      a.b.test.eth
+    ///         sub.test.eth            > xyz <      b.test.eth
+    ///             test.eth            <root>       > nick.eth <
+    ///                  eth                                eth
+    ///                <root>                             <root>
+    ///
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name to verify.
+    /// @param offset The offset into `name` to start verification.
+    ///
+    /// @return registry The canonical registry or null if not canonical.
+    function findCanonicalRegistry(
+        IRegistry rootRegistry,
+        bytes memory name,
+        uint256 offset
+    ) internal view returns (IRegistry registry) {
+        if (offset > name.length) {
+            return IRegistry(address(0));
+        }
+        (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
+        if (bytes(label).length == 0) {
+            return rootRegistry;
+        }
+        IRegistry parent = findCanonicalRegistry(rootRegistry, name, next);
+        if (address(parent) != address(0)) {
+            IRegistry child = parent.getSubregistry(label);
+            if (address(child) != address(0)) {
+                bytes memory childName = child.getCanonicalName();
+                if (
+                    name.length >= childName.length &&
+                    //NameCoder.namehash(childName, 0) == NameCoder.namehash(name, offset)
+                    keccak256(childName) == BytesUtils.keccak(name, offset, name.length - offset) // must have same suffix
+                ) {
+                    return child;
+                }
             }
         }
     }

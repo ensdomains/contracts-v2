@@ -55,6 +55,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_constructor() external view {
         assertTrue(registry.hasRootRoles(EACBaseRolesLib.ALL_ROLES, address(this)));
+        assertEq(address(registry.HCA_FACTORY()), address(hcaFactory), "HCA_FACTORY");
+        assertEq(address(registry.METADATA_PROVIDER()), address(metadata), "METADATA_PROVIDER");
+    }
+
+    function test_supportsInterface() external view {
+        assertTrue(registry.supportsInterface(type(IRegistry).interfaceId), "IRegistry");
+        assertTrue(
+            registry.supportsInterface(type(IStandardRegistry).interfaceId),
+            "IStandardRegistry"
+        );
+        assertTrue(
+            registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
+            "IPermissionedRegistry"
+        );
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -421,6 +435,31 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
         registry.unregister(tokenId); // #1
         registry.reserve(testLabel, testResolver, testExpiry >> 1); // #2
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // setCanonicalName() and getCanonicalName()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_setCanonicalName() external {
+        bytes memory name = NameCoder.encode("test.eth");
+        vm.expectEmit();
+        emit IRegistry.CanonicalNameUpdated(name, address(this));
+        registry.setCanonicalName(name);
+        assertEq(registry.getCanonicalName(), name);
+    }
+
+    function test_setCanonicalName_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_SET_CANONICAL_NAME,
+                actor
+            )
+        );
+        vm.prank(actor);
+        registry.setCanonicalName("");
     }
 
     ////////////////////////////////////////////////////////////////////////

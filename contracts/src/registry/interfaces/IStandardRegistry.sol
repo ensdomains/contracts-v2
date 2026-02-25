@@ -5,7 +5,7 @@ import {IRegistry} from "./IRegistry.sol";
 
 /// @title IStandardRegistry
 /// @notice A tokenized registry.
-/// @dev Interface selector: `0xeb138d53`
+/// @dev Interface selector: `0xb177bd70`
 interface IStandardRegistry is IRegistry {
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -69,6 +69,11 @@ interface IStandardRegistry is IRegistry {
     /// @param anyId The labelhash, token ID, or resource.
     /// @param resolver The new resolver.
     function setResolver(uint256 anyId, address resolver) external;
+
+    /// @notice Change canonical name for this registry.
+    /// @dev Should emit `CanonicalNameUpdated`.
+    /// @param name The DNS-encoded canonical name.
+    function setCanonicalName(bytes memory name) external;
 
     /// @notice Get expiry of name.
     /// @param anyId The labelhash, token ID, or resource.

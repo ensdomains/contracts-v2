@@ -22,6 +22,9 @@ library RegistryRolesLib {
     uint256 internal constant ROLE_UNREGISTER = 1 << 24;
     uint256 internal constant ROLE_UNREGISTER_ADMIN = ROLE_UNREGISTER << 128;
 
-    uint256 internal constant ROLE_UPGRADE = 1 << 28;
+    uint256 internal constant ROLE_SET_CANONICAL_NAME = 1 << 28;
+    uint256 internal constant ROLE_SET_CANONICAL_NAME_ADMIN = ROLE_SET_CANONICAL_NAME << 128;
+
+    uint256 internal constant ROLE_UPGRADE = 1 << 32;
     uint256 internal constant ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
 }
