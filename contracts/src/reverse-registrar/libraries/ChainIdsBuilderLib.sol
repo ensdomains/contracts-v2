@@ -10,9 +10,11 @@ pragma solidity ^0.8.25;
 ///      decimal representation directly into it, keeping memory O(n).
 library ChainIdsBuilderLib {
     /// @notice Thrown when the chain ID array is not in strictly ascending order.
+    /// @dev Error selector: `0xea0b14e2`
     error ChainIdsNotAscending();
 
     /// @notice Thrown when the current chain ID is not included in the array.
+    /// @dev Error selector: `0x756925c8`
     error CurrentChainNotFound(uint256 chainId);
 
     /// @notice Validates chain IDs are strictly ascending, contain `currentChainId`,

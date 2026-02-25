@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
+/// @dev Interface selector: `0xa05ed1e0`
 interface IL2ReverseRegistrar {
     struct NameClaim {
         string name;

@@ -6,6 +6,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {L2ReverseRegistrar} from "./L2ReverseRegistrar.sol";
 
+/// @dev Interface selector: `0x4ec3bd23`
 interface IL2ReverseRegistrarV1 {
     function nameForAddr(address addr) external view returns (string memory);
 }

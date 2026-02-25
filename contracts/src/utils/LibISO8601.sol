@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 library LibISO8601 {
     /// @dev The timestamp is out of range.
-    ///      Error selector: `0x09064f83`
+    /// @dev Error selector: `0x09064f83`
     error TimestampOutOfRange(uint256 timestamp);
 
     function toISO8601(uint256 ts) internal pure returns (string memory result) {
