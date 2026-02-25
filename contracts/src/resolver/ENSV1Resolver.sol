@@ -13,7 +13,7 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 /// @notice Resolver that performs resolutions using ENSv1.
 ///
-/// An UniversalResolverV1 (ResolverCaller + RegistryUtils) that implements ICompositeResolver.
+/// A UniversalResolverV1 (ResolverCaller + RegistryUtils) that implements ICompositeResolver.
 ///
 contract ENSV1Resolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
     ////////////////////////////////////////////////////////////////////////
