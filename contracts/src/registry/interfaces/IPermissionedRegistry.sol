@@ -5,6 +5,7 @@ import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedA
 
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
+/// @dev Interface selector: `0xafff3a63`
 interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -37,6 +38,7 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Error selector: `0xee7f75f7`
     error NameAlreadyReserved(string label);
 
     ////////////////////////////////////////////////////////////////////////
