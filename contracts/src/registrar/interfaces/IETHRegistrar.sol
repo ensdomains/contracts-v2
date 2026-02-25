@@ -8,7 +8,7 @@ import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 import {IRentPriceOracle} from "./IRentPriceOracle.sol";
 
 /// @notice Interface for the ".eth" registrar which manages the ".eth" registry.
-/// @dev Interface selector: `0xce1ac79c`
+/// @dev Interface selector: `0x29071951`
 interface IETHRegistrar is IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
     // Events

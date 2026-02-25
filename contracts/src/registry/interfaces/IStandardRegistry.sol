@@ -3,53 +3,45 @@ pragma solidity >=0.8.13;
 
 import {IRegistry} from "./IRegistry.sol";
 
-/**
- * @title IStandardRegistry
- * @dev Interface for the a standard registry.
- */
+/// @title IStandardRegistry
+/// @notice A tokenized registry.
+/// @dev Interface selector: `0xeb138d53`
 interface IStandardRegistry is IRegistry {
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Error emitted when a name is already registered.
-     */
+    /// @notice Name is already registered.
+    /// @dev Error selector: `0x6dbb87d0`
     error NameAlreadyRegistered(string label);
 
-    /**
-     * @dev Error emitted when a name has expired.
-     */
+    /// @notice Name is expired/unregistered.
+    /// @dev Error selector: `0x0c23d840`
     error NameExpired(uint256 tokenId);
 
-    /**
-     * @dev Error emitted when a name cannot be reduced in expiration.
-     */
+    /// @notice Name expiry cannot be reduced.
+    /// @dev Error selector: `0x9967595a`
     error CannotReduceExpiration(uint64 oldExpiration, uint64 newExpiration);
 
-    /**
-     * @dev Error emitted when a name cannot be set to a past expiration.
-     */
+    /// @notice Name expory cannot be before now.
+    /// @dev Error selector: `0x6a0147dc`
     error CannotSetPastExpiration(uint64 expiry);
 
-    /**
-     * @dev Error emitted when a transfer is not allowed due to missing transfer admin role.
-     */
+    /// @notice Transfer is not allowed due to missing transfer admin role.
+    /// @dev Error selector: `0xe58f6d5a`
     error TransferDisallowed(uint256 tokenId, address from);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Registers a new name.
-     * @param label The label to register.
-     * @param owner The address of the owner of the name.
-     * @param registry The registry to set as the name.
-     * @param resolver The resolver to set for the name.
-     * @param roleBitmap The role bitmap to set for the name.
-     * @param expires The expiration date of the name.
-     */
+    /// @dev Registers a new name.
+    /// @param label The label to register.
+    /// @param owner The address of the owner of the name.
+    /// @param registry The registry to set as the name.
+    /// @param resolver The resolver to set for the name.
+    /// @param roleBitmap The role bitmap to set for the name.
+    /// @param expires The expiration date of the name.
     function register(
         string calldata label,
         address owner,
