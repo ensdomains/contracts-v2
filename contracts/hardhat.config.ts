@@ -5,8 +5,8 @@ import HardhatNetworkHelpersPlugin from "@nomicfoundation/hardhat-network-helper
 import HardhatViem from "@nomicfoundation/hardhat-viem";
 import HardhatDeploy from "hardhat-deploy";
 
-import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 import HardhatIgnoreWarningsPlugin from "./plugins/ignore-warnings/index.ts";
+import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
 const config = {
   solidity: {
@@ -27,6 +27,23 @@ const config = {
         },
       },
     ],
+    overrides: {
+      'src/L2/reverse-registrar/L2ReverseRegistrar.sol': {
+        version: "0.8.25",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1_000_000,
+          },
+          evmVersion: "paris",
+          outputSelection: {
+            "*": {
+              "*": ["storageLayout"],
+            },
+          },
+        },
+      }
+    }
   },
   paths: {
     sources: {
