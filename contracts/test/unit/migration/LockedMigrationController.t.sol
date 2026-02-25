@@ -21,13 +21,16 @@ import {
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
-import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {UnauthorizedCaller} from "~src/CommonErrors.sol";
-import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
-import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
-import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
-import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {
+    PermissionedRegistry,
+    IPermissionedRegistry,
+    IRegistryMetadata,
+    IRegistry,
+    RegistryRolesLib,
+    EACBaseRolesLib,
+    LibLabel
+} from "~src/registry/PermissionedRegistry.sol";
 import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
 import {TransferData, MigrationData} from "~src/migration/types/MigrationTypes.sol";
 import {LockedNamesLib} from "~src/migration/libraries/LockedNamesLib.sol";
@@ -192,9 +195,7 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
         controller.onERC1155Received(owner, owner, testTokenId, 1, data);
 
         // Get the registered name and check roles
-        (uint256 registeredTokenId, ) = registry.getNameData(testLabel);
-        uint256 resource = registry.getResource(registeredTokenId);
-        uint256 userRoles = registry.roles(resource, user);
+        uint256 userRoles = registry.roles(uint256(keccak256(bytes(testLabel))), user);
 
         // Confirm roles derived from name configuration
         // Since CANNOT_SET_RESOLVER is not burnt, user should have resolver roles
@@ -347,7 +348,7 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
         MigrationData[] memory migrationDataArray = new MigrationData[](3);
 
         for (uint256 i = 0; i < 3; i++) {
-            tokenIds[i] = uint256(keccak256(bytes(labels[i])));
+            tokenIds[i] = LibLabel.id(labels[i]);
 
             // Setup locked name (CANNOT_BURN_FUSES not set)
             uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
@@ -476,9 +477,7 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
         controller.onERC1155Received(owner, owner, testTokenId, 1, data);
 
         // Get the registered name and check roles
-        (uint256 registeredTokenId, ) = registry.getNameData(testLabel);
-        uint256 resource = registry.getResource(registeredTokenId);
-        uint256 userRoles = registry.roles(resource, user);
+        uint256 userRoles = registry.roles(uint256(keccak256(bytes(testLabel))), user);
 
         // 2LDs should NOT have renewal roles even when no additional fuses are burnt (CAN_EXTEND_EXPIRY is masked out to prevent automatic renewal for 2LDs)
         assertTrue(
@@ -540,9 +539,7 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
         controller.onERC1155Received(owner, owner, testTokenId, 1, data);
 
         // Get the registered name and check roles
-        (uint256 registeredTokenId, ) = registry.getNameData(testLabel);
-        uint256 resource = registry.getResource(registeredTokenId);
-        uint256 userRoles = registry.roles(resource, user);
+        uint256 userRoles = registry.roles(uint256(keccak256(bytes(testLabel))), user);
 
         // Should NOT have renewal roles since CAN_EXTEND_EXPIRY is not set
         assertTrue(
@@ -590,9 +587,7 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
         controller.onERC1155Received(owner, owner, testTokenId, 1, data);
 
         // Get the registered name and check roles
-        (uint256 registeredTokenId, ) = registry.getNameData(testLabel);
-        uint256 resource = registry.getResource(registeredTokenId);
-        uint256 userRoles = registry.roles(resource, user);
+        uint256 userRoles = registry.roles(uint256(keccak256(bytes(testLabel))), user);
 
         // 2LDs should NOT have renewal roles even when CANNOT_CREATE_SUBDOMAIN is not burnt (CAN_EXTEND_EXPIRY is masked out to prevent automatic renewal for 2LDs)
         assertTrue(
@@ -653,9 +648,7 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
         controller.onERC1155Received(owner, owner, testTokenId, 1, data);
 
         // Get the registered name and check roles
-        (uint256 registeredTokenId, ) = registry.getNameData(testLabel);
-        uint256 resource = registry.getResource(registeredTokenId);
-        uint256 userRoles = registry.roles(resource, user);
+        uint256 userRoles = registry.roles(uint256(keccak256(bytes(testLabel))), user);
 
         // 2LDs should NOT have renewal roles (CAN_EXTEND_EXPIRY is masked out to prevent automatic renewal for 2LDs) but should have resolver roles
         assertTrue(
@@ -743,8 +736,11 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
         );
 
         // Verify name was successfully migrated despite all fuses being burnt after
-        (uint256 registeredTokenId, ) = registry.getNameData(testLabel);
-        assertTrue(registeredTokenId != 0, "Name should be successfully registered");
+        assertEq(
+            uint256(registry.getState(uint256(keccak256(bytes(testLabel)))).status),
+            uint256(IPermissionedRegistry.Status.REGISTERED),
+            "Name should be successfully registered"
+        );
     }
 
     function test_Revert_invalid_non_eth_name() public {
@@ -804,12 +800,11 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
         IPermissionedRegistry subRegistry = IPermissionedRegistry(address(subregistry));
 
         // The user should only have UPGRADE and UPGRADE_ADMIN roles on the subregistry
-        // ROLE_UPGRADE = 1 << 20, ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128
-        uint256 ROLE_UPGRADE = 1 << 20;
-        uint256 ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
-        uint256 upgradeRoles = ROLE_UPGRADE | ROLE_UPGRADE_ADMIN;
         assertTrue(
-            subRegistry.hasRootRoles(upgradeRoles, user),
+            subRegistry.hasRootRoles(
+                RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN,
+                user
+            ),
             "User should have UPGRADE roles on subregistry"
         );
     }

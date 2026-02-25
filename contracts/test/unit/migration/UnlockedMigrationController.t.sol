@@ -14,12 +14,14 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {UnauthorizedCaller} from "~src/CommonErrors.sol";
-import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
-import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
-import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {
+    PermissionedRegistry,
+    IPermissionedRegistry,
+    RegistryRolesLib,
+    IRegistryMetadata,
+    EACBaseRolesLib
+} from "~src/registry/PermissionedRegistry.sol";
 import {UnlockedMigrationController} from "~src/migration/UnlockedMigrationController.sol";
 import {TransferData, MigrationData} from "~src/migration/types/MigrationTypes.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";

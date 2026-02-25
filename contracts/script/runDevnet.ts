@@ -16,6 +16,7 @@ const args = parseArgs({
       type: "boolean",
     },
   },
+  strict: true,
 });
 
 const env = await setupDevnet({

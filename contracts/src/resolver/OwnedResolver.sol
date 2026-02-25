@@ -85,7 +85,12 @@ contract OwnedResolver is
     // Events
     ////////////////////////////////////////////////////////////////////////
 
-    event AliasChanged(bytes indexed fromName, bytes indexed toName);
+    event AliasChanged(
+        bytes indexed indexedFromName,
+        bytes indexed indexedToName,
+        bytes fromName,
+        bytes toName
+    );
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -100,7 +105,7 @@ contract OwnedResolver is
     error InvalidEVMAddress(bytes addressBytes);
 
     /// @notice The coin type is not a power of 2.
-    /// @dev Error selector: `0xe7cf0ac4`
+    /// @dev Error selector: `0x5742bb26`
     error InvalidContentType(uint256 contentType);
 
     ////////////////////////////////////////////////////////////////////////
@@ -188,7 +193,7 @@ contract OwnedResolver is
         bytes calldata toName
     ) external onlyRootRoles(OwnedResolverLib.ROLE_SET_ALIAS) {
         _storage().aliases[NameCoder.namehash(fromName, 0)] = toName;
-        emit AliasChanged(fromName, toName);
+        emit AliasChanged(fromName, toName, fromName, toName);
     }
 
     /// @notice Set ABI data of the associated ENS node.

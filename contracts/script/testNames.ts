@@ -9,8 +9,8 @@ import {
 } from "viem";
 
 import { artifacts } from "@rocketh";
-import { MAX_EXPIRY, ROLES } from "./deploy-constants.js";
-import { dnsEncodeName } from "../test/utils/utils.js";
+import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
+import { dnsEncodeName, idFromLabel } from "../test/utils/utils.js";
 import type { DevnetEnvironment } from "./setup.js";
 
 // ========== Constants ==========
@@ -33,7 +33,7 @@ const gasTracker: GasRecord[] = [];
 
 async function trackGas(
   operation: string,
-  receipt: TransactionReceipt
+  receipt: TransactionReceipt,
 ): Promise<void> {
   const gasUsed = BigInt(receipt.gasUsed);
   const effectiveGasPrice = receipt.effectiveGasPrice
@@ -238,25 +238,29 @@ async function traverseRegistry(
   for (let i = nameParts.length - 2; i >= 0; i--) {
     const label = nameParts[i];
 
-    const [tokenId, entry] = await currentRegistry.read.getNameData([label]);
+    const [state, resolver, subregistry] = await Promise.all([
+      currentRegistry.read.getState([idFromLabel(label)]),
+      currentRegistry.read.getResolver([label]),
+      currentRegistry.read.getSubregistry([label]),
+    ]);
 
     if (i === 0) {
       // This is the final name/subname
-      const owner = await currentRegistry.read.ownerOf([tokenId]);
+      const owner = await currentRegistry.read.ownerOf([state.tokenId]);
       return {
         owner,
-        expiry: entry.expiry,
-        resolver: entry.resolver,
-        subregistry: entry.subregistry,
+        expiry: state.expiry,
+        resolver,
+        subregistry,
         registry: currentRegistry.address,
       };
     }
 
     // Move to the subregistry
-    if (!entry.subregistry || entry.subregistry === zeroAddress) {
+    if (subregistry === zeroAddress) {
       return null;
     }
-    currentRegistry = getRegistryContract(env, entry.subregistry) as any;
+    currentRegistry = getRegistryContract(env, subregistry) as any;
   }
 
   return null;
@@ -316,10 +320,11 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
     });
 
     // Single UniversalResolver call with multicall
-    const [result] = await env.deployment.contracts.UniversalResolverV2.read.resolve([
-      dnsEncodeName(name),
-      multicallData,
-    ]);
+    const [result] =
+      await env.deployment.contracts.UniversalResolverV2.read.resolve([
+        dnsEncodeName(name),
+        multicallData,
+      ]);
 
     // Decode the multicall result - returns array of bytes directly
     const results =
@@ -389,9 +394,10 @@ export async function createSubname(
   console.log(`Parent name: ${parentName}`);
 
   // Get parent tokenId (assumes parent.eth already exists)
-  const [parentTokenId] = await env.deployment.contracts.ETHRegistry.read.getNameData([
-    parentLabel,
-  ]);
+  const parentTokenId =
+    await env.deployment.contracts.ETHRegistry.read.getTokenId([
+      idFromLabel(parentLabel),
+    ]);
 
   // For each level of subnames, create UserRegistry and register
   let currentParentTokenId = parentTokenId;
@@ -410,17 +416,20 @@ export async function createSubname(
     // Check if current parent has a subregistry
     let subregistryAddress: `0x${string}`;
 
-    if (currentRegistryAddress === env.deployment.contracts.ETHRegistry.address) {
+    if (
+      currentRegistryAddress === env.deployment.contracts.ETHRegistry.address
+    ) {
       // Parent is in ETHRegistry
-      const [, entry] = await env.deployment.contracts.ETHRegistry.read.getNameData([
-        parts[i + 1],
-      ]);
-      subregistryAddress = entry.subregistry;
+      subregistryAddress =
+        await env.deployment.contracts.ETHRegistry.read.getSubregistry([
+          parts[i + 1],
+        ]);
     } else {
       // Parent is in a UserRegistry
       const parentRegistry = getRegistryContract(env, currentRegistryAddress);
-      const [, entry] = await parentRegistry.read.getNameData([parts[i + 1]]);
-      subregistryAddress = entry.subregistry;
+      subregistryAddress = await parentRegistry.read.getSubregistry([
+        parts[i + 1],
+      ]);
     }
 
     // Deploy UserRegistry if it doesn't exist
@@ -433,7 +442,9 @@ export async function createSubname(
       subregistryAddress = userRegistry.address;
 
       // Set as subregistry on parent
-      if (currentRegistryAddress === env.deployment.contracts.ETHRegistry.address) {
+      if (
+        currentRegistryAddress === env.deployment.contracts.ETHRegistry.address
+      ) {
         await env.deployment.contracts.ETHRegistry.write.setSubregistry(
           [currentParentTokenId, subregistryAddress],
           { account },
@@ -453,18 +464,12 @@ export async function createSubname(
     const userRegistry = getRegistryContract(env, subregistryAddress);
 
     // Check if already registered and if it's expired
-    const [tokenId, entry] = await userRegistry.read.getNameData([label]);
-    const owner = await userRegistry.read.ownerOf([tokenId]);
-    const alreadyExists = owner !== zeroAddress;
+    const state = await userRegistry.read.getState([idFromLabel(label)]);
 
-    // Check if expired
-    const currentTime = await env.deployment.client.getBlock().then((b) => b.timestamp);
-    const isExpired = alreadyExists && entry.expiry < currentTime;
-
-    if (alreadyExists && !isExpired) {
+    if (state.status === STATUS.REGISTERED) {
       console.log(`✓ ${currentName} already exists and is not expired`);
     } else {
-      if (isExpired) {
+      if (state.latestOwner !== zeroAddress) {
         console.log(
           `${currentName} exists but is expired, re-registering with MAX_EXPIRY...`,
         );
@@ -473,10 +478,15 @@ export async function createSubname(
       }
 
       // Deploy resolver for this subname
-      const resolver = await deployResolverWithRecords(env, account, currentName, {
-        description: currentName,
-        address: account.address,
-      });
+      const resolver = await deployResolverWithRecords(
+        env,
+        account,
+        currentName,
+        {
+          description: currentName,
+          address: account.address,
+        },
+      );
       console.log(`✓ Resolver deployed at ${resolver.address}`);
 
       await userRegistry.write.register(
@@ -496,7 +506,7 @@ export async function createSubname(
     }
 
     // Update for next iteration
-    currentParentTokenId = tokenId;
+    currentParentTokenId = state.tokenId;
     currentRegistryAddress = subregistryAddress;
   }
   return createdNames;
@@ -547,13 +557,13 @@ export async function linkName(
     env,
     sourceParentName,
   );
-  const [, sourceEntry] = await sourceRegistry.read.getNameData([sourceLabel]);
+  const subregistry = await sourceRegistry.read.getSubregistry([sourceLabel]);
 
-  if (sourceEntry.subregistry === zeroAddress) {
+  if (subregistry === zeroAddress) {
     throw new Error(`Source name ${sourceName} has no subregistry to link`);
   }
 
-  console.log(`Source subregistry: ${sourceEntry.subregistry}`);
+  console.log(`Source subregistry: ${subregistry}`);
 
   // Get target parent registry and validate
   const { registry: targetRegistry } = await getParentWithSubregistry(
@@ -565,17 +575,18 @@ export async function linkName(
   console.log(`Creating linked name: ${linkedName}`);
 
   // Check if the label already exists in the target registry
-  const [existingTokenId] = await targetRegistry.read.getNameData([linkLabel]);
+  const existingTokenId = await targetRegistry.read.getTokenId([
+    idFromLabel(linkLabel),
+  ]);
   const existingOwner = await targetRegistry.read.ownerOf([existingTokenId]);
 
   if (existingOwner !== zeroAddress) {
     console.log(
       `Warning: ${linkedName} already exists. Updating its subregistry...`,
     );
-    await targetRegistry.write.setSubregistry(
-      [existingTokenId, sourceEntry.subregistry],
-      { account },
-    );
+    await targetRegistry.write.setSubregistry([existingTokenId, subregistry], {
+      account,
+    });
     console.log(`✓ Updated ${linkedName} to point to shared subregistry`);
   } else {
     console.log(`Deploying resolver for ${linkedName}...`);
@@ -589,7 +600,7 @@ export async function linkName(
       [
         linkLabel,
         account.address,
-        sourceEntry.subregistry,
+        subregistry,
         resolver.address,
         ROLES.ALL,
         MAX_EXPIRY,
@@ -618,15 +629,15 @@ export async function renewName(
 ) {
   const { label } = parseName(name);
 
-  const [, entry] = await env.deployment.contracts.ETHRegistry.read.getNameData([
-    label,
+  const expiry = await env.deployment.contracts.ETHRegistry.read.getExpiry([
+    idFromLabel(label),
   ]);
 
   console.log(`\nRenewing ${name}...`);
-  if (entry.expiry === MAX_EXPIRY) {
+  if (expiry === MAX_EXPIRY) {
     console.log(`Current expiry: Never (MAX_EXPIRY)`);
   } else {
-    const currentExpiry = Number(entry.expiry);
+    const currentExpiry = Number(expiry);
     console.log(
       `Current expiry: ${new Date(currentExpiry * 1000).toISOString()}`,
     );
@@ -673,10 +684,11 @@ export async function renewName(
     ),
   );
 
-  const [, newEntry] = await env.deployment.contracts.ETHRegistry.read.getNameData([
-    label,
-  ]);
-  const newExpiry = Number(newEntry.expiry);
+  const newExpiry = Number(
+    await env.deployment.contracts.ETHRegistry.read.getExpiry([
+      idFromLabel(label),
+    ]),
+  );
   console.log(`New expiry: ${new Date(newExpiry * 1000).toISOString()}`);
   console.log(`✓ Renewal completed`);
 
@@ -692,8 +704,8 @@ export async function transferName(
 ) {
   const { label } = parseName(name);
 
-  const [tokenId] = await env.deployment.contracts.ETHRegistry.read.getNameData([
-    label,
+  const tokenId = await env.deployment.contracts.ETHRegistry.read.getTokenId([
+    idFromLabel(label),
   ]);
 
   console.log(`\nTransferring ${name}...`);
@@ -724,8 +736,8 @@ export async function changeRole(
 ) {
   const { label } = parseName(name);
 
-  const [tokenId] = await env.deployment.contracts.ETHRegistry.read.getNameData([
-    label,
+  const tokenId = await env.deployment.contracts.ETHRegistry.read.getTokenId([
+    idFromLabel(label),
   ]);
 
   console.log(
@@ -754,10 +766,9 @@ export async function changeRole(
     receipts.push(receipt);
   }
 
-  const [newTokenId] = await env.deployment.contracts.ETHRegistry.read.getNameData([
-    label,
-  ]);
-
+  const newTokenId = await env.deployment.contracts.ETHRegistry.read.getTokenId(
+    [idFromLabel(label)],
+  );
   console.log(`TokenId changed from ${tokenId} to ${newTokenId}`);
 
   return receipts;
@@ -778,12 +789,15 @@ export async function registerTestNames(
   const registrarAccount =
     options.registrarAccount ?? env.namedAccounts.deployer;
   const shouldTrackGas = options.trackGas ?? false;
-  const currentTimestamp = await env.deployment.client.getBlock().then((b) => b.timestamp);
+  const currentTimestamp = await env.deployment.client
+    .getBlock()
+    .then((b) => b.timestamp);
 
   for (const label of labels) {
     const resolver = await env.deployment.deployOwnedResolver({ account });
 
-    if (shouldTrackGas) await trackGas("deployOwnedResolver", resolver.deploymentReceipt);
+    if (shouldTrackGas)
+      await trackGas("deployOwnedResolver", resolver.deploymentReceipt);
 
     let expiry: bigint;
     if (options.expiry !== undefined) {
@@ -792,40 +806,45 @@ export async function registerTestNames(
       expiry = currentTimestamp + BigInt(ONE_DAY_SECONDS);
     }
 
-    const registerTx = await env.waitFor(env.deployment.contracts.ETHRegistry.write.register(
-      [
-        label,
-        account.address,
-        zeroAddress,
-        resolver.address,
-        ROLES.ALL,
-        expiry,
-      ],
-      { account: registrarAccount },
-    ));
+    const registerTx = await env.waitFor(
+      env.deployment.contracts.ETHRegistry.write.register(
+        [
+          label,
+          account.address,
+          zeroAddress,
+          resolver.address,
+          ROLES.ALL,
+          expiry,
+        ],
+        { account: registrarAccount },
+      ),
+    );
 
     if (shouldTrackGas) {
       await trackGas(`register(${label})`, registerTx.receipt);
     }
 
     const node = namehash(`${label}.eth`);
-    const setAddrTx = await env.waitFor(resolver.write.setAddr(
-      [
-        node,
-        60n, // ETH coin type
-        account.address,
-      ],
-      { account },
-    ));
+    const setAddrTx = await env.waitFor(
+      resolver.write.setAddr(
+        [
+          node,
+          60n, // ETH coin type
+          account.address,
+        ],
+        { account },
+      ),
+    );
 
     if (shouldTrackGas) {
       await trackGas(`setAddr(${label})`, setAddrTx.receipt);
     }
 
-    const setTextTx = await env.waitFor(resolver.write.setText(
-      [node, "description", `${label}.eth`],
-      { account },
-    ));
+    const setTextTx = await env.waitFor(
+      resolver.write.setText([node, "description", `${label}.eth`], {
+        account,
+      }),
+    );
 
     if (shouldTrackGas) {
       await trackGas(`setText(${label})`, setTextTx.receipt);
@@ -843,9 +862,10 @@ export async function reregisterName(
     `\n=== Testing Re-registration of Expired Name: ${label}.eth ===`,
   );
 
-  const [tokenId, initialEntry] =
-    await env.deployment.contracts.ETHRegistry.read.getNameData([label]);
-  const initialExpiry = initialEntry.expiry;
+  const initialExpiry =
+    await env.deployment.contracts.ETHRegistry.read.getExpiry([
+      idFromLabel(label),
+    ]);
   console.log(
     `Initial expiry: ${new Date(Number(initialExpiry) * 1000).toISOString()}`,
   );
@@ -855,13 +875,16 @@ export async function reregisterName(
   console.log(`\nTime warping ${warpSeconds} seconds...`);
   await env.sync({ warpSec: warpSeconds });
 
-  console.log(`\nCurrent onchain timestamp: ${new Date(Number(await env.deployment.client.getBlock().then((b) => b.timestamp)) * 1000).toISOString()}`);
-  console.log(`\nCurrent onchain expiry: ${new Date(Number(initialExpiry) * 1000).toISOString()}`);
+  console.log(
+    `\nCurrent onchain timestamp: ${new Date(Number(await env.deployment.client.getBlock().then((b) => b.timestamp)) * 1000).toISOString()}`,
+  );
+  console.log(
+    `\nCurrent onchain expiry: ${new Date(Number(initialExpiry) * 1000).toISOString()}`,
+  );
 
   // Verify name is available for re-registration
-  const isAvailable = await env.deployment.contracts.ETHRegistrar.read.isAvailable([
-    label,
-  ]);
+  const isAvailable =
+    await env.deployment.contracts.ETHRegistrar.read.isAvailable([label]);
   console.log(`Name available for re-registration: ${isAvailable}`);
 
   if (!isAvailable) {
@@ -880,20 +903,23 @@ export async function reregisterName(
   });
 
   // Verify re-registration succeeded
-  const [, reregisteredEntry] =
-    await env.deployment.contracts.ETHRegistry.read.getNameData([label]);
+  const reregisteredExpiry = Number(
+    await env.deployment.contracts.ETHRegistry.read.getExpiry([
+      idFromLabel(label),
+    ]),
+  );
   console.log(
-    `New expiry: ${new Date(Number(reregisteredEntry.expiry) * 1000).toISOString()}`,
+    `New expiry: ${new Date(reregisteredExpiry * 1000).toISOString()}`,
   );
 
-  if (reregisteredEntry.expiry <= initialExpiry) {
+  if (reregisteredExpiry <= initialExpiry) {
     throw new Error(
-      `Re-registration failed: new expiry (${reregisteredEntry.expiry}) should be greater than initial expiry (${initialExpiry})`,
+      `Re-registration failed: new expiry (${reregisteredExpiry}) should be greater than initial expiry (${initialExpiry})`,
     );
   }
 
   console.log(
-    `✓ Re-registration successful! Expiry extended from ${initialExpiry} to ${reregisteredEntry.expiry}`,
+    `✓ Re-registration successful! Expiry extended from ${initialExpiry} to ${reregisteredExpiry}`,
   );
 }
 
@@ -913,15 +939,7 @@ export async function testNames(env: DevnetEnvironment) {
   // Register all other test names with default 1 day expiry
   await registerTestNames(
     env,
-    [
-      "test",
-      "example",
-      "demo",
-      "newowner",
-      "renew",
-      "parent",
-      "changerole",
-    ],
+    ["test", "example", "demo", "newowner", "renew", "parent", "changerole"],
     { trackGas: true },
   );
 
@@ -943,7 +961,9 @@ export async function testNames(env: DevnetEnvironment) {
   if (!testNameData?.resolver || testNameData.resolver === zeroAddress) {
     throw new Error("test.eth has no resolver set");
   }
-  const currentTimestamp = await env.deployment.client.getBlock().then((b) => b.timestamp);
+  const currentTimestamp = await env.deployment.client
+    .getBlock()
+    .then((b) => b.timestamp);
   const aliasExpiry = currentTimestamp + BigInt(ONE_DAY_SECONDS);
   const aliasRegisterTx = await env.waitFor(
     env.deployment.contracts.ETHRegistry.write.register(
@@ -975,7 +995,9 @@ export async function testNames(env: DevnetEnvironment) {
   console.log("✓ alias.eth → test.eth alias created");
 
   // Set records for sub.test.eth on test.eth's resolver so sub.alias.eth resolves via alias
-  console.log("\nSetting records for sub.test.eth (for sub.alias.eth alias resolution)");
+  console.log(
+    "\nSetting records for sub.test.eth (for sub.alias.eth alias resolution)",
+  );
   const subTestNode = namehash("sub.test.eth");
   const setSubAddrTx = await env.waitFor(
     testResolver.write.setAddr(
@@ -991,7 +1013,9 @@ export async function testNames(env: DevnetEnvironment) {
     ),
   );
   await trackGas("setText(sub.test.eth)", setSubTextTx.receipt);
-  console.log("✓ sub.test.eth records set — sub.alias.eth should resolve via alias");
+  console.log(
+    "✓ sub.test.eth records set — sub.alias.eth should resolve via alias",
+  );
 
   // Create subnames
   const createdSubnames = await createSubname(
@@ -1013,10 +1037,15 @@ export async function testNames(env: DevnetEnvironment) {
       client: env.deployment.client,
     });
     await walletResolver.write.setAlias(
-      [dnsEncodeName("linked.parent.eth"), dnsEncodeName("sub1.sub2.parent.eth")],
+      [
+        dnsEncodeName("linked.parent.eth"),
+        dnsEncodeName("sub1.sub2.parent.eth"),
+      ],
       { account: env.namedAccounts.owner },
     );
-    console.log("✓ Set alias on wallet resolver: linked.parent.eth → sub1.sub2.parent.eth");
+    console.log(
+      "✓ Set alias on wallet resolver: linked.parent.eth → sub1.sub2.parent.eth",
+    );
   }
 
   // Change roles on changerole.eth
@@ -1129,9 +1158,7 @@ async function verifyNames(env: DevnetEnvironment, names: string[]) {
     for (const err of errors) {
       console.error(`  ✗ ${err}`);
     }
-    throw new Error(
-      `Name verification failed with ${errors.length} error(s)`,
-    );
+    throw new Error(`Name verification failed with ${errors.length} error(s)`);
   }
 
   console.log(`✓ All ${names.length} names verified successfully`);
