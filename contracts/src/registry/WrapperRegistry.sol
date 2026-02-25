@@ -48,7 +48,7 @@ contract WrapperRegistry is
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider
     )
-        PermissionedRegistry(hcaFactory, metadataProvider, address(1), 0)
+        PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0)
         WrapperReceiver(nameWrapper, verifiableFactory, address(this))
     {
         V1_RESOLVER = ensV1Resolver;

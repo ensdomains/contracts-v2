@@ -22,7 +22,7 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
     constructor(
         IHCAFactoryBasic hcaFactory_,
         IRegistryMetadata metadataProvider_
-    ) PermissionedRegistry(hcaFactory_, metadataProvider_, _msgSender(), 0) {
+    ) PermissionedRegistry(hcaFactory_, metadataProvider_, address(0), 0) {
         // This disables initialization for the implementation contract
         _disableInitializers();
     }
