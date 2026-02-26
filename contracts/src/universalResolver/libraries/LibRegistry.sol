@@ -118,22 +118,26 @@ library LibRegistry {
         }
     }
 
-    /// @notice Determine if `name` is the canonical name.
+    /// @notice Find the canonical registry for `name`.
     ///
     /// @param rootRegistry The root ENS registry.
-    /// @param name The DNS-encoded name to check.
+    /// @param name The DNS-encoded name.
     ///
-    /// @return True if the canonical name is `name`.
-    function isCanonicalName(
+    /// @return The canonical registry or null if not canonical.
+    function findCanonicalRegistry(
         IRegistry rootRegistry,
         bytes memory name
-    ) internal view returns (bool) {
+    ) internal view returns (IRegistry) {
+        IRegistry registry = LibRegistry.findExactRegistry(rootRegistry, name, 0);
         return
-            keccak256(findCanonicalName(rootRegistry, findExactRegistry(rootRegistry, name, 0))) ==
-            keccak256(name);
+            address(registry) != address(0) &&
+                keccak256(bytes(LibRegistry.findCanonicalName(rootRegistry, registry))) ==
+                keccak256(name)
+                ? registry
+                : IRegistry(address(0));
     }
 
-    /// @dev Find the exact registry for `name[offset:]`.
+    /// @notice Find the exact registry for `name[offset:]`.
     ///
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
@@ -155,7 +159,7 @@ library LibRegistry {
         }
     }
 
-    /// @dev Find the parent registry for `name[offset:]`.
+    /// @notice Find the parent registry for `name[offset:]`.
     ///
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
