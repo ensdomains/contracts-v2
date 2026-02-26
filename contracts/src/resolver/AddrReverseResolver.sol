@@ -8,7 +8,7 @@ import {
     IStandaloneReverseRegistrar
 } from "@ens/contracts/reverseRegistrar/IStandaloneReverseRegistrar.sol";
 import {INameReverser} from "@ens/contracts/reverseResolver/INameReverser.sol";
-import {ENSIP19, COIN_TYPE_ETH} from "@ens/contracts/utils/ENSIP19.sol";
+import {ENSIP19, COIN_TYPE_ETH, CHAIN_ID_ETH} from "@ens/contracts/utils/ENSIP19.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 import {LibABI} from "@ens/contracts/utils/LibABI.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
@@ -71,9 +71,7 @@ contract AddrReverseResolver is ERC165, IExtendedResolver, INameReverser {
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IExtendedResolver
-    /// @notice Resolves the following profiles according to ENSIP-10:
-    ///         - `name()` if `name` is an ENSIP-19 reverse name of an EVM address for `coinType`.
-    ///         Caller should enable EIP-3668.
+    /// @notice Resolves `name()` if `name` is an ENSIP-19 reverse name of a mainnet EVM address.
     /// @param name The reverse name to resolve, in normalised and DNS-encoded form.
     /// @param data The resolution data, as specified in ENSIP-10.
     /// @return result The encoded response for the requested profile.
@@ -113,7 +111,7 @@ contract AddrReverseResolver is ERC165, IExtendedResolver, INameReverser {
 
     /// @inheritdoc INameReverser
     function chainId() external pure returns (uint32) {
-        return 1;
+        return CHAIN_ID_ETH;
     }
 
     ////////////////////////////////////////////////////////////////////////
