@@ -9,6 +9,7 @@ import {IUniversalSignatureValidator} from "../utils/interfaces/IUniversalSignat
 import {LibISO8601} from "../utils/LibISO8601.sol";
 import {LibString} from "../utils/LibString.sol";
 
+import {IContractName} from "./interfaces/IContractName.sol";
 import {IL2ReverseRegistrar} from "./interfaces/IL2ReverseRegistrar.sol";
 import {ChainIdsBuilderLib} from "./libraries/ChainIdsBuilderLib.sol";
 import {StandaloneReverseRegistrar} from "./StandaloneReverseRegistrar.sol";
@@ -156,6 +157,11 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
         _validateAndUpdateInception(claim.addr, claim.signedAt);
 
         _setName(claim.addr, claim.name);
+    }
+
+    /// @inheritdoc IL2ReverseRegistrar
+    function syncName(address addr) external {
+        _setName(addr, IContractName(addr).ensContractName()); // reverts if not implemented
     }
 
     ////////////////////////////////////////////////////////////////////////

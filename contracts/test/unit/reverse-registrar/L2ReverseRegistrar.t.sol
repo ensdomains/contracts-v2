@@ -15,12 +15,13 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-import {LibString} from "~src/utils/LibString.sol";
 import {
     L2ReverseRegistrar,
-    IL2ReverseRegistrar
+    IL2ReverseRegistrar,
+    IContractName,
+    LibISO8601,
+    LibString
 } from "~src/reverse-registrar/L2ReverseRegistrar.sol";
-import {LibISO8601} from "~src/utils/LibISO8601.sol";
 
 contract L2ReverseRegistrarTest is Test {
     using MessageHashUtils for bytes;
@@ -1494,6 +1495,39 @@ contract L2ReverseRegistrarTest is Test {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // syncName() Tests
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_syncName() external {
+        string memory name = "mycontract.eth";
+        address addr = address(new MockContractName(name));
+        assertEq(registrar.nameForAddr(addr), "", "before");
+        vm.prank(makeAddr("anyone"));
+        registrar.syncName(addr);
+        assertEq(registrar.nameForAddr(addr), name, "after");
+    }
+
+    function test_syncName_empty() external {
+        string memory name = "mycontract.eth";
+        address addr = address(new MockContractName(""));
+        vm.prank(addr);
+        registrar.setName(name);
+        assertEq(registrar.nameForAddr(addr), name, "before");
+        registrar.syncName(addr);
+        assertEq(registrar.nameForAddr(addr), "", "after");
+    }
+
+    function test_syncName_notContract() external {
+        vm.expectRevert();
+        registrar.syncName(makeAddr("dne"));
+    }
+
+    function test_syncName_notImplemented() external {
+        vm.expectRevert();
+        registrar.syncName(address(this));
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // name() Tests (reading reverse records)
     ////////////////////////////////////////////////////////////////////////
 
@@ -1591,5 +1625,12 @@ contract L2ReverseRegistrarTest is Test {
 
         assertEq(registrar.name(node1), name1, "User1 name should match");
         assertEq(registrar.name(node2), name2, "User2 name should match");
+    }
+}
+
+contract MockContractName is IContractName {
+    string public ensContractName;
+    constructor(string memory name) {
+        ensContractName = name;
     }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-/// @dev Interface selector: `0xa05ed1e0`
+/// @dev Interface selector: `0xe9fe30a0`
 interface IL2ReverseRegistrar {
     struct NameClaim {
         string name;
@@ -40,6 +40,14 @@ interface IL2ReverseRegistrar {
         address owner,
         bytes calldata signature
     ) external;
+
+    /// @notice Set the `nameForAddr()` record for the contract provided using `IContractName`.
+    ///         Callable by anyone.
+    ///         Reverts if not implemented.
+    ///         Does not require `ERC165` support.
+    ///
+    /// @param addr The address to set the name for.
+    function syncName(address addr) external;
 
     /// @notice Returns the inception timestamp for a given address.
     /// @dev Only signatures with a signedAt timestamp greater than the inception can be used.
