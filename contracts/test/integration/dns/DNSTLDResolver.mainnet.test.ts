@@ -1,10 +1,10 @@
 import hre from "hardhat";
 import { namehash } from "viem";
 import { describe, it } from "vitest";
-import { expectVar } from "../../../utils/expectVar.js";
-import { bundleCalls, makeResolutions } from "../../../utils/resolutions.js";
-import { dnsEncodeName, getLabelAt } from "../../../utils/utils.js";
-import { deployV2Fixture } from "../../fixtures/deployV2Fixture.js";
+import { expectVar } from "../../utils/expectVar.js";
+import { bundleCalls, makeResolutions } from "../../utils/resolutions.js";
+import { dnsEncodeName, getLabelAt } from "../../utils/utils.js";
+import { deployV2Fixture } from "../fixtures/deployV2Fixture.js";
 import { KNOWN_DNS } from "./mainnet.js";
 
 const url = await (async (config) => {

@@ -93,7 +93,7 @@ library LibRegistry {
     /// @param rootRegistry The root ENS registry.
     /// @param registry The registry to name.
     ///
-    /// @return name The canonical name or empty if not canonical.
+    /// @return name The DNS-encoded name or empty if not canonical.
     function findCanonicalName(
         IRegistry rootRegistry,
         IRegistry registry

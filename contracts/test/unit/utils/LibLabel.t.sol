@@ -8,18 +8,33 @@ import {Test} from "forge-std/Test.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
 
 contract LibLabelTest is Test {
-    function testFuzz_getCanonicalId(uint256 id) external pure {
-        uint256 canonicalId = LibLabel.getCanonicalId(id);
-        assertEq(canonicalId, id ^ uint32(id), "xor");
-        assertEq(canonicalId, id - uint32(id), "sub");
-        assertEq(canonicalId, id & ~uint256(0xffffffff), "and");
-        assertEq(canonicalId, (id >> 32) << 32, "shift");
+    function test_known() external pure {
+        uint256 id = LibLabel.id("abc");
+        assertEq(id, 0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45);
+        assertEq(
+            LibLabel.withVersion(id, 0), //                           ________
+            0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58f00000000
+        );
+        assertEq(
+            LibLabel.withVersion(id, 0xaaaaaaaa), //                  ________
+            0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58faaaaaaaa
+        );
     }
 
-    function testFuzz_labelToCanonicalId(string memory label) external pure {
-        assertEq(
-            LibLabel.labelToCanonicalId(label),
-            LibLabel.getCanonicalId(uint256(keccak256(bytes(label))))
-        );
+    function test_id(string memory label) external pure {
+        assertEq(LibLabel.id(label), uint256(keccak256(bytes(label)))); // labelhash()
+    }
+
+    function test_withVersion(uint256 id, uint32 version) external pure {
+        assertEq(LibLabel.withVersion(id, version) >> 32, id >> 32, "id");
+        assertEq(uint32(LibLabel.withVersion(id, version)), version, "version");
+    }
+
+    function test_collisions(string memory a, string memory b) external pure {
+        uint256 x = LibLabel.id(a);
+        uint256 y = LibLabel.id(b);
+        if (x != y && LibLabel.withVersion(x, 0) == LibLabel.withVersion(y, 0)) {
+            assertEq(a, b);
+        }
     }
 }
