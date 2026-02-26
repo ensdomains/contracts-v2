@@ -436,7 +436,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // setCanonicalName() and getCanonicalName()
+    // setParent() and getParent()
     ////////////////////////////////////////////////////////////////////////
 
     function test_setParent() external {

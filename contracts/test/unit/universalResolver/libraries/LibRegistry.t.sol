@@ -255,9 +255,15 @@ contract LibRegistryTest is Test, ERC1155Holder {
         );
     }
 
-    function test_findCanonicalRegistry_invalidName() external {
+    function test_findCanonicalRegistry_emptyName() external {
         vm.expectRevert(abi.encodeWithSelector(NameCoder.DNSDecodingFailed.selector, ""));
         this._findCanonicalRegistry("");
+    }
+
+    function test_findCanonicalRegistry_invalidName() external {
+        bytes memory name = new bytes(2);
+        vm.expectRevert(abi.encodeWithSelector(NameCoder.DNSDecodingFailed.selector, name));
+        this._findCanonicalRegistry(name);
     }
 
     function _findCanonicalRegistry(bytes calldata name) external view {
