@@ -14,6 +14,7 @@ import {WrapperReceiver} from "../migration/WrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 
 import {IRegistry} from "./interfaces/IRegistry.sol";
+import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
@@ -48,7 +49,7 @@ contract WrapperRegistry is
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider
     )
-        PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0)
+        PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) // no roles are granted
         WrapperReceiver(nameWrapper, verifiableFactory, address(this))
     {
         V1_RESOLVER = ensV1Resolver;
@@ -110,25 +111,23 @@ contract WrapperRegistry is
         uint256 roleBitmap,
         uint64 expiry
     ) internal override returns (uint256 tokenId) {
-        return
-            super._register(label, owner, subregistry, resolver, roleBitmap, expiry, _msgSender()); // TODO: is this correct sender? address(this)?
+        return super.register(label, owner, subregistry, resolver, roleBitmap, expiry);
     }
 
     /// @inheritdoc PermissionedRegistry
     /// @dev Prevent registration of emancipated children.
-    function _register(
+    function register(
         string memory label,
         address owner,
         IRegistry registry,
         address resolver,
         uint256 roleBitmap,
-        uint64 expiry,
-        address sender
-    ) internal override returns (uint256 tokenId) {
+        uint64 expiry
+    ) public override(IStandardRegistry, PermissionedRegistry) returns (uint256 tokenId) {
         if (_isMigratableChild(label)) {
             revert MigrationErrors.NameRequiresMigration();
         }
-        return super._register(label, owner, registry, resolver, roleBitmap, expiry, sender);
+        return super.register(label, owner, registry, resolver, roleBitmap, expiry);
     }
 
     /// @dev Allow `ROLE_UPGRADE` to upgrade.

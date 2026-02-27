@@ -38,7 +38,7 @@ export default execute(
     await write(ethRegistry, {
       functionName: "grantRootRoles",
       args: [
-        ROLES.OWNER.EAC.REGISTRAR | ROLES.OWNER.EAC.RENEW,
+        ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
         ethRegistrar.address,
       ],
       account: deployer,

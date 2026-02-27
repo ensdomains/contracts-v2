@@ -50,6 +50,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
     MockERC1155 dummy1155;
 
     string testLabel = "test";
+    address premigrationController = makeAddr("premigrationController");
 
     function setUp() external {
         deployV1Fixture();
@@ -69,7 +70,11 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             verifiableFactory,
             address(wrapperRegistryImpl)
         );
-        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(migrationController));
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
+        ethRegistry.grantRootRoles(
+            RegistryRolesLib.ROLE_REGISTER_RESERVED,
+            address(migrationController)
+        );
     }
 
     function _makeData(bytes memory name) internal view returns (IWrapperRegistry.Data memory) {
@@ -97,10 +102,26 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
     }
 
     function test_supportsInterface() external view {
-        assertTrue(migrationController.supportsInterface(type(IERC165).interfaceId), "IERC165");
         assertTrue(
-            migrationController.supportsInterface(type(IERC1155Receiver).interfaceId),
+            ERC165Checker.supportsInterface(
+                address(migrationController),
+                type(IERC165).interfaceId
+            ),
+            "IERC165"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(migrationController),
+                type(IERC1155Receiver).interfaceId
+            ),
             "IERC1155Receiver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(migrationController),
+                type(WrapperReceiver).interfaceId
+            ),
+            "WrapperReceiver"
         );
     }
 
@@ -266,6 +287,13 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
                 type(IWrapperRegistry).interfaceId
             ),
             "IWrapperRegistry"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(subregistry),
+                type(WrapperReceiver).interfaceId
+            ),
+            "WrapperReceiver"
         );
         assertTrue(
             subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, md.owner),
@@ -578,6 +606,23 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             _soon()
         );
         assertEq(findResolverV2(name3unmigrated), address(ensV1Resolver), "unmigratedResolver");
+    }
+
+    /// @dev Ensure premigration has occurred.
+    function registerWrappedETH2LD(
+        string memory label,
+        uint32 flags
+    ) public override returns (bytes memory name) {
+        name = super.registerWrappedETH2LD(label, flags);
+        vm.prank(premigrationController);
+        ethRegistry.register(
+            label,
+            address(0), // reserve
+            IRegistry(address(0)),
+            address(ensV1Resolver),
+            0,
+            uint64(ethRegistrarV1.nameExpires(LibLabel.id(label)))
+        );
     }
 
     function _label(uint256 i) internal view returns (string memory) {

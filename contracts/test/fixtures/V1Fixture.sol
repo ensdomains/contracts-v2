@@ -65,7 +65,7 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     function registerWrappedETH2LD(
         string memory label,
         uint32 ownerFuses
-    ) public returns (bytes memory name) {
+    ) public virtual returns (bytes memory name) {
         uint256 tokenId;
         (name, tokenId) = registerUnwrapped(label);
         address owner = ethRegistrarV1.ownerOf(tokenId);

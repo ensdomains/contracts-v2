@@ -169,27 +169,26 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @dev Returns `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`.
     ///
-    /// @param rolesBitmap The roles bitmap to check.
+    /// @param roleBitmap The roles bitmap to check.
     /// @param account The account to check.
     /// @return `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`, `false` otherwise.
-    function hasRootRoles(uint256 rolesBitmap, address account) public view virtual returns (bool) {
-        return _roles[ROOT_RESOURCE][account] & rolesBitmap == rolesBitmap;
+    function hasRootRoles(uint256 roleBitmap, address account) public view virtual returns (bool) {
+        return _roles[ROOT_RESOURCE][account] & roleBitmap == roleBitmap;
     }
 
     /// @dev Returns `true` if `account` has been granted all the given roles in `resource`.
     ///
     /// @param resource The resource to check.
-    /// @param rolesBitmap The roles bitmap to check.
+    /// @param roleBitmap The roles bitmap to check.
     /// @param account The account to check.
     /// @return `true` if `account` has been granted all the given roles in either `resource` or the `ROOT_RESOURCE`, `false` otherwise.
     function hasRoles(
         uint256 resource,
-        uint256 rolesBitmap,
+        uint256 roleBitmap,
         address account
     ) public view virtual returns (bool) {
         return
-            (_roles[ROOT_RESOURCE][account] | _roles[resource][account]) & rolesBitmap ==
-            rolesBitmap;
+            (_roles[ROOT_RESOURCE][account] | _roles[resource][account]) & roleBitmap == roleBitmap;
     }
 
     /// @dev Get if any of the roles in the given role bitmap has assignees.

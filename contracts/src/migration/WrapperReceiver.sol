@@ -11,8 +11,7 @@ import {
     CANNOT_TRANSFER,
     CANNOT_SET_RESOLVER,
     CANNOT_SET_TTL,
-    CANNOT_CREATE_SUBDOMAIN,
-    PARENT_CANNOT_CONTROL
+    CANNOT_CREATE_SUBDOMAIN
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -27,14 +26,34 @@ import {WrappedErrorLib} from "../utils/WrappedErrorLib.sol";
 
 import {MigrationErrors} from "./MigrationErrors.sol";
 
+/// @dev Fuses which translate directly to PermissionedRegistry logic.
 uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
     CANNOT_TRANSFER |
     CANNOT_SET_RESOLVER |
     CANNOT_SET_TTL |
     CANNOT_CREATE_SUBDOMAIN;
 
-uint32 constant EMANCIPATED = CANNOT_UNWRAP | PARENT_CANNOT_CONTROL;
-
+/// @title WrappedReceiver
+/// @notice Abstract IERC1155Receiver which handles NameWrapper token migration via transfer.
+///         Contains of all of the NameWrapper logic.
+///
+/// There are (2) WrapperReceivers:
+/// 1. LockedMigrationController only accepts .eth 2LD tokens.
+/// 2. WrapperRegistry only accepts emancipated (N+1)-LD children with a matching N-LD parent node.
+///
+/// eg. transfer("nick.eth") => LockedMigrationController
+///     ETHRegistry.subregistry("nick") = WrapperRegistry("nick.eth") aka 3LDRegistry
+///     transfer("sub.nick.eth") => 3LDRegistry
+///     3LDRegistry.subregistry("sub") = WrapperRegistry("sub.nick.eth") aka 4LDRegistry
+///     transfer("abc.sub.nick.eth") => ...
+///
+/// Upon successful migration:
+/// * the token subregistry is bound to a WrapperRegistry.
+/// * the token does not have `SET_SUBREGISTRY` role.
+/// * the subregistry knows the parent node (namehash).
+/// * the subregistry only accepts children of the same parent.
+///
+/// @dev Interface selector: ``
 abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -90,6 +109,7 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
     ) public view virtual override(ERC165, IERC165) returns (bool) {
         return
             interfaceId == type(IERC1155Receiver).interfaceId ||
+            interfaceId == type(WrapperReceiver).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -97,6 +117,10 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
+    /// @inheritdoc IERC1155Receiver
+    /// @notice Migrate one NameWrapper token via `safeTransferFrom()`.
+    ///         Requires `abi.encode(IWrapperRegistry.Data)` as payload.
+    ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
     function onERC1155Received(
         address /*operator*/,
         address /*from*/,
@@ -115,6 +139,10 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
         }
     }
 
+    /// @inheritdoc IERC1155Receiver
+    /// @notice Migrate multiple NameWrapper tokens via `safeBatchTransferFrom()`.
+    ///         Requires `abi.encode(IWrapperRegistry.Data[])` as payload.
+    ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
     function onERC1155BatchReceived(
         address /*operator*/,
         address /*from*/,
@@ -134,8 +162,11 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
         }
     }
 
-    // TODO: gas analysis and optimization
-    // NOTE: converting this to an internal call requires catching many reverts
+    /// @dev Convert NameWrapper tokens their equivalent ENSv2 form.
+    ///      Only callable by ourself and invoked in our `IERC1155Receiver` handlers.
+    ///
+    /// TODO: gas analysis and optimization
+    /// NOTE: converting this to an internal call requires catching many reverts
     function finishERC1155Migration(
         uint256[] calldata ids,
         IWrapperRegistry.Data[] calldata mds
@@ -161,24 +192,28 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
             if (node != NameCoder.namehash(parentNode, labelHash)) {
                 revert MigrationErrors.NameDataMismatch(uint256(node));
             }
-            // 1 <= length(label) <= 255
+            // by construction: 1 <= length(label) <= 255
+            // same as NameCoder.assertLabelSize()
+            // see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort()` and `test_nameWrapper_labelTooLong()`.
 
             (, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
-            // ignore owner, only we can call this function => we own it
+            // only we can call this function => which is only called by receiver => we own the token
 
-            // cannot be set without PARENT_CANNOT_CONTROL
+            // PARENT_CANNOT_CONTROL is required to set CANNOT_UNWRAP, so CANNOT_UNWRAP is sufficient
+            // see: V1Fixture.t.sol: `test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL()`
             if ((fuses & CANNOT_UNWRAP) == 0) {
                 revert MigrationErrors.NameNotLocked(uint256(node));
             }
 
             // sync expiry
             if ((fuses & IS_DOT_ETH) != 0) {
-                require((fuses & CAN_EXTEND_EXPIRY) == 0, "2LD is always renewable by anyone");
-                //fuses &= ~CAN_EXTEND_EXPIRY; // 2LD is always renewable by anyone
+                // NameWrapper adds GRACE_PERIOD to .eth 2LD expiry and expiry may be out of sync
+                // query the underlying expiry instead of directly subtracting GRACE_PERIOD
+                // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/NameWrapper.sol#L270
+                // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/NameWrapper.sol#L822
+                // see: V1Fixture.t.sol: `test_nameWrapper_expiryForETH2LDIncludesGrace()`
                 expiry = uint64(NAME_WRAPPER.registrar().nameExpires(uint256(labelHash))); // does not revert
             }
-            // NameWrapper subtracts GRACE_PERIOD from expiry during _beforeTransfer()
-            // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/NameWrapper.sol#L822
             // expired names cannot be transferred:
             assert(expiry >= block.timestamp);
             // PermissionedRegistry._register() => CannotSetPastExpiration
@@ -189,7 +224,7 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
                 resolver = NAME_WRAPPER.ens().resolver(node); // copy V1 resolver
             } else {
                 resolver = md.resolver; // accepts any value
-                NAME_WRAPPER.setResolver(node, address(0)); // clear V1 resolver / TODO: use ENSV2Resolver?
+                NAME_WRAPPER.setResolver(node, address(0)); // clear V1 resolver
             }
 
             (
@@ -230,6 +265,7 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
         }
     }
 
+    /// @dev Abstract function for registering a locked name.
     function _inject(
         string memory label,
         address owner,
@@ -239,13 +275,15 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
         uint64 expiry
     ) internal virtual returns (uint256 tokenId);
 
+    /// @dev Abstract function for the node (namehash) corresponding to this registry.
+    ///      Equivalent to token ID of the parent NameWrapper token.
     function _parentNode() internal view virtual returns (bytes32);
 
     /// @dev Determine if `label` is emancipated but not-yet migrated.
     function _isMigratableChild(string memory label) internal view returns (bool) {
         bytes32 node = NameCoder.namehash(_parentNode(), keccak256(bytes(label)));
         (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
-        return ownerV1 != address(this) && (fuses & EMANCIPATED) == EMANCIPATED;
+        return ownerV1 != address(this) && (fuses & CANNOT_UNWRAP) != 0;
     }
 
     /// @notice Generates role bitmaps based on fuses.

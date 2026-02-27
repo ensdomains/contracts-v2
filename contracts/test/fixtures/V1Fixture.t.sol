@@ -86,7 +86,7 @@ contract V1FixtureTest is V1Fixture {
         );
     }
 
-    function test_nameWraper_wrap_labelTooLong() external {
+    function test_nameWraper_labelTooLong() external {
         bytes memory name = registerWrappedETH2LD("test", 0);
         string memory label = new string(256);
         vm.expectRevert(abi.encodeWithSelector(LabelTooLong.selector, label));
