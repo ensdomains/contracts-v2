@@ -86,7 +86,7 @@ interface IEnhancedAccessControl is IERC165 {
     /// @dev Returns `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`.
     function hasRootRoles(uint256 rolesBitmap, address account) external view returns (bool);
 
-    /// @dev Returns `true` if `account` has been granted all the given roles in `resource`.
+    /// @dev Returns `true` if `account` has been granted all the given roles in `resource` or the `ROOT_RESOURCE`.
     function hasRoles(
         uint256 resource,
         uint256 rolesBitmap,
