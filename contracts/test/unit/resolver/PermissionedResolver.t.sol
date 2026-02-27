@@ -108,7 +108,7 @@ contract PermissionedResolverTest is Test {
         assertEq(resolver.addr(testNode), upgrade.addr(testNode));
     }
 
-    function test_upgrade_noRole() external {
+    function test_upgrade_notAuthorized() external {
         MockUpgrade upgrade = new MockUpgrade();
         vm.expectRevert(
             abi.encodeWithSelector(
