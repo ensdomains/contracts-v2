@@ -300,7 +300,56 @@ contract PermissionedResolverTest is Test {
         resolver.grantAddrRoles(testName, 0, owner);
     }
 
-    function test_revokeRoles() external {}
+    ////////////////////////////////////////////////////////////////////////
+    // revokeRoles() [corresponding to granters above]
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_revokeRoles_name() external {
+        uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
+        vm.prank(owner);
+        resolver.grantNameRoles(testName, roleBitmap, friend);
+        vm.prank(owner);
+        assertTrue(
+            resolver.revokeRoles(
+                PermissionedResolverLib.resource(NameCoder.namehash(testName, 0), 0),
+                roleBitmap,
+                friend
+            )
+        );
+    }
+
+    function test_revokeRoles_text() external {
+        vm.prank(owner);
+        resolver.grantTextRoles(testName, testString, friend);
+        vm.prank(owner);
+        assertTrue(
+            resolver.revokeRoles(
+                PermissionedResolverLib.resource(
+                    NameCoder.namehash(testName, 0),
+                    PermissionedResolverLib.textPart(testString)
+                ),
+                PermissionedResolverLib.ROLE_SET_TEXT,
+                friend
+            )
+        );
+    }
+
+    function test_revokeRoles_addr() external {
+        uint256 coinType = 0;
+        vm.prank(owner);
+        resolver.grantAddrRoles(testName, coinType, friend);
+        vm.prank(owner);
+        assertTrue(
+            resolver.revokeRoles(
+                PermissionedResolverLib.resource(
+                    NameCoder.namehash(testName, 0),
+                    PermissionedResolverLib.addrPart(coinType)
+                ),
+                PermissionedResolverLib.ROLE_SET_ADDR,
+                friend
+            )
+        );
+    }
 
     ////////////////////////////////////////////////////////////////////////
     // Standard Resolver Profiles
