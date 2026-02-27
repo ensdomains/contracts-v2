@@ -21,7 +21,7 @@ import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {MetadataMixin} from "./MetadataMixin.sol";
 
-/// @notice A tokenized registry with permissions that apply to every subdomain or a specific subdomain.
+/// @notice A tokenized registry with permissions that apply to every label or a specific label.
 ///
 /// State diagram:
 ///
@@ -154,7 +154,7 @@ contract PermissionedRegistry is
             anyId,
             RegistryRolesLib.ROLE_UNREGISTER
         );
-        emit NameUnregistered(tokenId, _msgSender());
+        emit LabelUnregistered(tokenId, _msgSender());
         address owner = super.ownerOf(tokenId);
         if (owner != address(0)) {
             _burn(owner, tokenId, 1);
@@ -189,7 +189,7 @@ contract PermissionedRegistry is
             RegistryRolesLib.ROLE_RENEW
         );
         if (newExpiry < entry.expiry) {
-            revert CannotReduceExpiration(entry.expiry, newExpiry);
+            revert CannotReduceExpiry(entry.expiry, newExpiry);
         }
         entry.expiry = newExpiry;
         emit ExpiryUpdated(tokenId, newExpiry, _msgSender());
@@ -328,11 +328,11 @@ contract PermissionedRegistry is
 
     /// @dev Internal register method that takes string memory and performs the actual registration logic.
     /// @param label The label to register.
-    /// @param owner The owner of the registered name or null if reserved.
-    /// @param registry The registry to use for the name.
-    /// @param resolver The resolver to set for the name.
+    /// @param owner The owner of the registered label or null if reserved.
+    /// @param registry The registry to use for the label.
+    /// @param resolver The resolver to set for the label.
     /// @param roleBitmap The roles to grant to the owner.
-    /// @param expiry The expiration time of the name.
+    /// @param expiry The expiry of the label.
     /// @return tokenId The token ID of the registered name.
     function _register(
         string memory label,
@@ -345,7 +345,7 @@ contract PermissionedRegistry is
     ) internal virtual returns (uint256 tokenId) {
         NameCoder.assertLabelSize(label);
         if (_isExpired(expiry)) {
-            revert CannotSetPastExpiration(expiry);
+            revert CannotSetPastExpiry(expiry);
         }
         uint256 labelId = LibLabel.id(label);
         Entry storage entry = _entry(labelId);
@@ -353,9 +353,9 @@ contract PermissionedRegistry is
         address prevOwner = super.ownerOf(tokenId);
         if (!_isExpired(entry.expiry)) {
             if (prevOwner != address(0)) {
-                revert NameAlreadyRegistered(label); // cannot overwrite REGISTERED
+                revert LabelAlreadyRegistered(label); // cannot overwrite REGISTERED
             } else if (owner == address(0)) {
-                revert NameAlreadyReserved(label); // cannot reserve RESERVED
+                revert LabelAlreadyReserved(label); // cannot reserve RESERVED
             }
             // therefore, label is RESERVED
             // role required to convert to REGISTERED
@@ -370,11 +370,11 @@ contract PermissionedRegistry is
         entry.expiry = expiry;
         entry.subregistry = registry;
         entry.resolver = resolver;
-        // emit NameRegistered before mint so we can determine this is a registry (in an indexer)
+        // emit LabelRegistered before mint so we can determine this is a registry (in an indexer)
         if (owner == address(0)) {
-            emit NameReserved(tokenId, bytes32(labelId), label, expiry, sender);
+            emit LabelReserved(tokenId, bytes32(labelId), label, expiry, sender);
         } else {
-            emit NameRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
+            emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
             _mint(owner, tokenId, 1, "");
             uint256 resource = _constructResource(tokenId, entry);
             emit TokenResource(tokenId, resource);
@@ -482,7 +482,7 @@ contract PermissionedRegistry is
         entry = _entry(anyId);
         tokenId = _constructTokenId(anyId, entry);
         if (_isExpired(entry.expiry)) {
-            revert NameExpired(tokenId);
+            revert LabelExpired(tokenId);
         }
         _checkRoles(_constructResource(anyId, entry), roleBitmap, _msgSender());
     }

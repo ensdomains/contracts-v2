@@ -11,14 +11,14 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     // Types
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The registration status of a subdomain.
+    /// @notice The registration status of a label.
     enum Status {
         AVAILABLE,
         RESERVED,
         REGISTERED
     }
 
-    /// @notice The registration state of a subdomain.
+    /// @notice The registration state of a label.
     struct State {
         Status status; // getStatus()
         uint64 expiry; // getExpiry()
@@ -38,16 +38,16 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Error selector: `0xee7f75f7`
-    error NameAlreadyReserved(string label);
+    /// @dev Error selector: `0xf60759e0`
+    error LabelAlreadyReserved(string label);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Prevent subdomain registration until expiry unless caller has `ROLE_RESERVE`.
-    /// @param label The subdomain to reserve.
-    /// @param expiry The time when the subdomain can be registered again.
+    /// @notice Prevent label registration until expiry unless caller has `ROLE_RESERVE`.
+    /// @param label The label to reserve.
+    /// @param expiry When the label can be registered again.
     /// @param resolver The resolver while in reserve.
     function reserve(
         string calldata label,
@@ -58,26 +58,26 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     /// @notice Get the latest owner of a token.
     ///         If the token was burned, returns null.
     /// @param tokenId The token ID to query.
-    /// @return The latest owner address.
-    function latestOwnerOf(uint256 tokenId) external view returns (address);
+    /// @return owner The latest owner address.
+    function latestOwnerOf(uint256 tokenId) external view returns (address owner);
 
-    /// @notice Get the state of a subdomain.
+    /// @notice Get the state of a label.
     /// @param anyId The labelhash, token ID, or resource.
-    /// @return The state of the subdomain.
-    function getState(uint256 anyId) external view returns (State memory);
+    /// @return state The state of the label.
+    function getState(uint256 anyId) external view returns (State memory state);
 
     /// @notice Get `Status` from `anyId`.
     /// @param anyId The labelhash, token ID, or resource.
-    /// @return The status of the subdomain.
-    function getStatus(uint256 anyId) external view returns (Status);
+    /// @return status The status of the label.
+    function getStatus(uint256 anyId) external view returns (Status status);
 
     /// @notice Get `resource` from `anyId`.
     /// @param anyId The labelhash, token ID, or resource.
-    /// @return The resource.
-    function getResource(uint256 anyId) external view returns (uint256);
+    /// @return resource The resource.
+    function getResource(uint256 anyId) external view returns (uint256 resource);
 
     /// @notice Get `tokenId` from `anyId`.
     /// @param anyId The labelhash, token ID, or resource.
-    /// @return The token ID.
-    function getTokenId(uint256 anyId) external view returns (uint256);
+    /// @return tokenId The token ID.
+    function getTokenId(uint256 anyId) external view returns (uint256 tokenId);
 }

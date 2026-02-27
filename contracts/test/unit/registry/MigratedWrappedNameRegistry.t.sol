@@ -712,9 +712,9 @@ contract MigratedWrappedNameRegistryTest is Test {
         nameWrapper.setFuseData(subTokenId, PARENT_CANNOT_CONTROL, uint64(block.timestamp + 86400));
         nameWrapper.setOwner(subTokenId, user);
 
-        // Should revert with NameAlreadyRegistered error
+        // Should revert with LabelAlreadyRegistered error
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.NameAlreadyRegistered.selector, "sub")
+            abi.encodeWithSelector(IStandardRegistry.LabelAlreadyRegistered.selector, "sub")
         );
 
         vm.prank(address(nameWrapper));
@@ -1517,7 +1517,7 @@ contract MigratedWrappedNameRegistryTest is Test {
         nameWrapper.setOwner(existingTokenId, address(newRegistry));
 
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.NameAlreadyRegistered.selector, "existing")
+            abi.encodeWithSelector(IStandardRegistry.LabelAlreadyRegistered.selector, "existing")
         );
         vm.prank(address(nameWrapper));
         newRegistry.onERC1155Received(

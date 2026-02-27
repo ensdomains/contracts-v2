@@ -288,7 +288,7 @@ contract MigratedWrappedNameRegistry is
             // For 2LD: Check that label is NOT registered in ethRegistry
             IRegistry subregistry = ETH_REGISTRY.getSubregistry(label);
             if (address(subregistry) != address(0)) {
-                revert IStandardRegistry.NameAlreadyRegistered(label);
+                revert IStandardRegistry.LabelAlreadyRegistered(label);
             }
         } else {
             // For 3LD+: Check that parent is wrapped and owned by this contract
@@ -303,7 +303,7 @@ contract MigratedWrappedNameRegistry is
             // Also check that the current label is NOT already registered in this registry
             IRegistry subregistry = this.getSubregistry(label);
             if (address(subregistry) != address(0)) {
-                revert IStandardRegistry.NameAlreadyRegistered(label);
+                revert IStandardRegistry.LabelAlreadyRegistered(label);
             }
         }
 

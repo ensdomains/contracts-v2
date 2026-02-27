@@ -136,7 +136,7 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
     }
 
     /**
-     * Helper method to create migration data with valid expiration
+     * Helper method to create migration data with valid expiry
      */
     function _createMigrationDataWithExpiry(
         string memory label
