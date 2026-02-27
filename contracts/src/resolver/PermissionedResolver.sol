@@ -92,6 +92,17 @@ contract PermissionedResolver is
         bytes toName
     );
 
+    event NamedResource(uint256 indexed resource, bytes name);
+
+    // TODO: do these need `uint256 indexed parentResource`?
+    event NamedTextResource(
+        uint256 indexed resource,
+        bytes name,
+        bytes32 indexed keyHash,
+        string key
+    );
+    event NamedAddrResource(uint256 indexed resource, bytes name, uint256 coinType);
+
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
@@ -194,6 +205,62 @@ contract PermissionedResolver is
     ) external onlyRootRoles(PermissionedResolverLib.ROLE_SET_ALIAS) {
         _storage().aliases[NameCoder.namehash(fromName, 0)] = toName;
         emit AliasChanged(fromName, toName, fromName, toName);
+    }
+
+    /// @notice Grant `roleBitmap` permissions to `account` for `toName`.
+    ///         Use `NameCoder.encode("")` for any name, which is equivalent to `grantRootRoles()`.
+    function grantNameRoles(
+        bytes calldata toName,
+        uint256 roleBitmap,
+        address account
+    ) external returns (bool) {
+        bytes32 node = NameCoder.namehash(toName, 0);
+        uint256 resource = PermissionedResolverLib.resource(node, 0);
+        _checkCanGrantRoles(resource, roleBitmap, _msgSender());
+        emit NamedResource(resource, toName);
+        return _grantRoles(resource, roleBitmap, account, true);
+    }
+
+    /// @notice Grant `setText(key)` permission to `account` for `toName`.
+    ///         Use `NameCoder.encode("")` for any name.
+    function grantTextRoles(
+        bytes calldata toName,
+        string calldata key,
+        address account
+    ) external returns (bool) {
+        bytes32 node = NameCoder.namehash(toName, 0);
+        _checkCanGrantRoles(
+            PermissionedResolverLib.resource(node, 0),
+            PermissionedResolverLib.ROLE_SET_TEXT,
+            _msgSender()
+        );
+        uint256 resource = PermissionedResolverLib.resource(
+            node,
+            PermissionedResolverLib.textPart(key)
+        );
+        emit NamedTextResource(resource, toName, keccak256(bytes(key)), key);
+        return _grantRoles(resource, PermissionedResolverLib.ROLE_SET_TEXT, account, true);
+    }
+
+    /// @notice Grant `setAddr(coinType)` permission to `account` for `toName`.
+    ///         Use `NameCoder.encode("")` for any name.
+    function grantAddrRoles(
+        bytes calldata toName,
+        uint256 coinType,
+        address account
+    ) external returns (bool) {
+        bytes32 node = NameCoder.namehash(toName, 0);
+        _checkCanGrantRoles(
+            PermissionedResolverLib.resource(node, 0),
+            PermissionedResolverLib.ROLE_SET_ADDR,
+            _msgSender()
+        );
+        uint256 resource = PermissionedResolverLib.resource(
+            node,
+            PermissionedResolverLib.addrPart(coinType)
+        );
+        emit NamedAddrResource(resource, toName, coinType);
+        return _grantRoles(resource, PermissionedResolverLib.ROLE_SET_ADDR, account, true);
     }
 
     /// @notice Set ABI data of the associated ENS node.
@@ -483,6 +550,15 @@ contract PermissionedResolver is
             toName = fromName;
             prev = next;
         }
+    }
+
+    /// @notice Function is disabled.  Use `grant(Name|Text|Addr)Roles()` instead.
+    function grantRoles(
+        uint256 resource,
+        uint256 roleBitmap,
+        address account
+    ) public pure override returns (bool) {
+        revert EACCannotGrantRoles(resource, roleBitmap, account);
     }
 
     ////////////////////////////////////////////////////////////////////////
