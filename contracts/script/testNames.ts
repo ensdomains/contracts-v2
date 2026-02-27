@@ -1054,8 +1054,8 @@ export async function testNames(env: DevnetEnvironment) {
     env,
     "changerole.eth",
     env.namedAccounts.user.address,
-    ROLES.OWNER.EAC.SET_RESOLVER,
-    ROLES.OWNER.EAC.SET_TOKEN_OBSERVER,
+    ROLES.REGISTRY.SET_RESOLVER,
+    ROLES.REGISTRY.SET_SUBREGISTRY,
   );
   for (const receipt of roleReceipts) {
     await trackGas("changeRole(changerole)", receipt);
