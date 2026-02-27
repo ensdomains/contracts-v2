@@ -85,6 +85,7 @@ contract PermissionedResolver is
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Alias was changed.
     event AliasChanged(
         bytes indexed indexedFromName,
         bytes indexed indexedToName,
@@ -92,16 +93,19 @@ contract PermissionedResolver is
         bytes toName
     );
 
+    /// @notice Associate an EAC resource with a name.
     event NamedResource(uint256 indexed resource, bytes name);
 
-    // TODO: do these need `uint256 indexed parentResource`?
+    /// @notice Associate an EAC resource with a name and specific `text(key)` record.
     event NamedTextResource(
         uint256 indexed resource,
         bytes name,
         bytes32 indexed keyHash,
         string key
     );
-    event NamedAddrResource(uint256 indexed resource, bytes name, uint256 coinType);
+
+    /// @notice Associate an EAC resource with a name and specific `addr(coinType` record.
+    event NamedAddrResource(uint256 indexed resource, bytes name, uint256 indexed coinType);
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -129,7 +133,7 @@ contract PermissionedResolver is
             !hasRoles(PermissionedResolverLib.resource(node, part), roleBitmap, sender) &&
             !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, sender)
         ) {
-            _checkRoles(PermissionedResolverLib.resource(node, 0), roleBitmap, sender);
+            _checkRoles(PermissionedResolverLib.resource(node, 0), roleBitmap, sender); // reverts using "widest" resource
         }
         _;
     }
