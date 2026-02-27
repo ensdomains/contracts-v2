@@ -151,7 +151,6 @@ contract PermissionedResolverTest is Test {
     }
 
     function test_alias_root() external {
-        vm.prank(owner);
         vm.expectEmit();
         emit PermissionedResolver.AliasChanged(
             NameCoder.encode(""),
@@ -159,6 +158,7 @@ contract PermissionedResolverTest is Test {
             NameCoder.encode(""),
             NameCoder.encode("test.eth")
         );
+        vm.prank(owner);
         resolver.setAlias(NameCoder.encode(""), NameCoder.encode("test.eth"));
 
         assertEq(resolver.getAlias(NameCoder.encode("")), NameCoder.encode("test.eth"), "root");
@@ -360,18 +360,18 @@ contract PermissionedResolverTest is Test {
         assertEq(version, 0, "before");
 
         ++version;
-        vm.prank(owner);
-        vm.expectEmit(true, false, false, true);
+        vm.expectEmit();
         emit IVersionableResolver.VersionChanged(testNode, version);
+        vm.prank(owner);
         resolver.clearRecords(testNode);
 
         assertEq(resolver.recordVersions(testNode), version, "after");
     }
 
     function test_setAddr(address a) external {
-        vm.prank(owner);
-        vm.expectEmit(true, false, false, true);
+        vm.expectEmit();
         emit IAddrResolver.AddrChanged(testNode, a);
+        vm.prank(owner);
         resolver.setAddr(testNode, a);
 
         assertEq(resolver.addr(testNode), a, "immediate");
@@ -387,9 +387,9 @@ contract PermissionedResolverTest is Test {
         if (ENSIP19.isEVMCoinType(coinType)) {
             a = vm.randomBool() ? vm.randomBytes(20) : new bytes(0);
         }
-        vm.prank(owner);
-        vm.expectEmit(true, false, false, true);
+        vm.expectEmit();
         emit IAddressResolver.AddressChanged(testNode, coinType, a);
+        vm.prank(owner);
         resolver.setAddr(testNode, coinType, a);
 
         assertEq(resolver.addr(testNode, coinType), a, "immediate");
@@ -477,9 +477,9 @@ contract PermissionedResolverTest is Test {
     }
 
     function test_setText(string calldata key, string calldata value) external {
-        vm.prank(owner);
-        vm.expectEmit(true, true, false, true);
+        vm.expectEmit();
         emit ITextResolver.TextChanged(testNode, key, key, value);
+        vm.prank(owner);
         resolver.setText(testNode, key, value);
 
         assertEq(resolver.text(testNode, key), value, "immediate");
@@ -504,9 +504,9 @@ contract PermissionedResolverTest is Test {
     }
 
     function test_setName(string calldata name) external {
-        vm.prank(owner);
-        vm.expectEmit(true, false, false, true);
+        vm.expectEmit();
         emit INameResolver.NameChanged(testNode, name);
+        vm.prank(owner);
         resolver.setName(testNode, name);
 
         assertEq(resolver.name(testNode), name, "immediate");
@@ -531,8 +531,8 @@ contract PermissionedResolverTest is Test {
     }
 
     function test_setContenthash(bytes calldata v) external {
+        vm.expectEmit();
         vm.prank(owner);
-        vm.expectEmit(true, false, false, true);
         emit IContentHashResolver.ContenthashChanged(testNode, v);
         resolver.setContenthash(testNode, v);
 
@@ -558,9 +558,9 @@ contract PermissionedResolverTest is Test {
     }
 
     function test_setPubkey(bytes32 x, bytes32 y) external {
-        vm.prank(owner);
-        vm.expectEmit(true, false, false, true);
+        vm.expectEmit();
         emit IPubkeyResolver.PubkeyChanged(testNode, x, y);
+        vm.prank(owner);
         resolver.setPubkey(testNode, x, y);
 
         (bytes32 x_, bytes32 y_) = resolver.pubkey(testNode);
@@ -588,9 +588,9 @@ contract PermissionedResolverTest is Test {
     function test_setABI(uint8 bit, bytes calldata data) external {
         uint256 contentType = 1 << bit;
 
-        vm.prank(owner);
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit();
         emit IABIResolver.ABIChanged(testNode, contentType);
+        vm.prank(owner);
         resolver.setABI(testNode, contentType, data);
 
         uint256 contentTypes = ~uint256(0);
@@ -636,9 +636,9 @@ contract PermissionedResolverTest is Test {
     function test_setInterface(bytes4 interfaceId, address impl) external {
         vm.assume(!resolver.supportsInterface(interfaceId));
 
-        vm.prank(owner);
-        vm.expectEmit(true, true, false, true);
+        vm.expectEmit();
         emit IInterfaceResolver.InterfaceChanged(testNode, interfaceId, impl);
+        vm.prank(owner);
         resolver.setInterface(testNode, interfaceId, impl);
 
         assertEq(resolver.interfaceImplementer(testNode, interfaceId), impl, "immediate");
