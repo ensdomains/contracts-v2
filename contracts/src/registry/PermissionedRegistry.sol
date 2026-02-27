@@ -21,7 +21,20 @@ import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {MetadataMixin} from "./MetadataMixin.sol";
 
-/// @notice A tokenized registry with permissions that apply to every subdomain or a specific subdomain.
+/// @notice A tokenized (ERC1155) registry with resource-scoped access control for subdomain management.
+///
+/// Many functions accept an `anyId` parameter that can be a labelhash, tokenId, or resource
+/// interchangeably. Internally, `_entry()` strips version bits (via `LibLabel.withVersion(anyId, 0)`)
+/// to resolve any of these to the canonical storage slot for the name.
+///
+/// The registry maintains two independent version counters per name:
+///   - `eacVersionId`: incremented on unregister/re-register. Combined with the labelhash to form
+///     the EAC resource ID. This means a re-registered name gets a fresh permission scope.
+///   - `tokenVersionId`: incremented on unregister and whenever the token is regenerated (burn + mint)
+///     due to role changes. Combined with the labelhash to form the ERC1155 token ID, keeping
+///     ERC1155 balances consistent with the current role state.
+///
+/// Names are treated as `AVAILABLE` once `block.timestamp >= expiry`.
 ///
 /// State diagram:
 ///
@@ -58,10 +71,15 @@ contract PermissionedRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     struct Entry {
+        /// @dev Incremented on unregister; combined with labelhash to form the EAC resource ID.
         uint32 eacVersionId;
+        /// @dev Incremented on unregister and on token regeneration; combined with labelhash to form the ERC1155 token ID.
         uint32 tokenVersionId;
+        /// @dev Child registry for this name.
         IRegistry subregistry;
+        /// @dev Timestamp at or after which the name is considered expired/available.
         uint64 expiry;
+        /// @dev Resolver address for this name.
         address resolver;
     }
 
@@ -126,7 +144,7 @@ contract PermissionedRegistry is
 
     /// @inheritdoc IStandardRegistry
     /// @dev Requires `AVAILABLE` and `ROLE_REGISTRAR` on root.
-    ///      Requires `RESERVED` and `ROLE_REGISTER | ROLE_RESERVED` on root.
+    ///      Requires `RESERVED` and `ROLE_REGISTRAR | ROLE_RESERVE` on root.
     function register(
         string calldata label,
         address owner,
@@ -280,8 +298,10 @@ contract PermissionedRegistry is
                 : super.ownerOf(tokenId);
     }
 
-    // Enhanced access control methods adapted for token-based resources
+    /// @dev EAC view overrides — each translates `anyId` to the canonical EAC resource
+    ///      (via `getResource`) before delegating to the base `EnhancedAccessControl` implementation.
 
+    /// @inheritdoc IEnhancedAccessControl
     function roles(
         uint256 anyId,
         address account
@@ -289,12 +309,14 @@ contract PermissionedRegistry is
         return super.roles(getResource(anyId), account);
     }
 
+    /// @inheritdoc IEnhancedAccessControl
     function roleCount(
         uint256 anyId
     ) public view override(EnhancedAccessControl, IEnhancedAccessControl) returns (uint256) {
         return super.roleCount(getResource(anyId));
     }
 
+    /// @inheritdoc IEnhancedAccessControl
     function hasRoles(
         uint256 anyId,
         uint256 rolesBitmap,
@@ -303,6 +325,7 @@ contract PermissionedRegistry is
         return super.hasRoles(getResource(anyId), rolesBitmap, account);
     }
 
+    /// @inheritdoc IEnhancedAccessControl
     function hasAssignees(
         uint256 anyId,
         uint256 roleBitmap
@@ -310,6 +333,7 @@ contract PermissionedRegistry is
         return super.hasAssignees(getResource(anyId), roleBitmap);
     }
 
+    /// @inheritdoc IEnhancedAccessControl
     function getAssigneeCount(
         uint256 anyId,
         uint256 roleBitmap
@@ -470,6 +494,7 @@ contract PermissionedRegistry is
         return adminRoleBitmap >> 128;
     }
 
+    /// @dev Strips version bits from `anyId` to return the canonical storage entry for the name.
     function _entry(uint256 anyId) internal view returns (Entry storage) {
         return _entries[LibLabel.withVersion(anyId, 0)];
     }
