@@ -54,9 +54,12 @@ library PermissionedResolverLib {
 
     function resource(bytes32 node, bytes32 part) internal pure returns (uint256 ret) {
         assembly {
-            mstore(0, node)
-            mstore(32, part)
-            ret := keccak256(0, 64)
+            ret := node
+            if part {
+                mstore(0, ret)
+                mstore(32, part)
+                ret := keccak256(0, 64)
+            }
         }
         //return uint256(keccak256(abi.encode(node, part)));
     }
