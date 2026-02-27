@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-/// @notice Storage layout and roles for OwnedResolver.
-library OwnedResolverLib {
+/// @notice Storage layout and roles for PermissionedResolver.
+library PermissionedResolverLib {
     struct Storage {
         mapping(bytes32 node => bytes) aliases;
         mapping(bytes32 node => uint64) versions;
@@ -19,7 +19,8 @@ library OwnedResolverLib {
         mapping(bytes4 interfaceId => address implementer) interfaces;
     }
 
-    uint256 internal constant NAMED_SLOT = uint256(keccak256("eth.ens.storage.OwnedResolver"));
+    uint256 internal constant NAMED_SLOT =
+        uint256(keccak256("eth.ens.storage.PermissionedResolver"));
 
     uint256 internal constant ROLE_SET_ADDR = 1 << 0;
     uint256 internal constant ROLE_SET_ADDR_ADMIN = ROLE_SET_ADDR << 128;
