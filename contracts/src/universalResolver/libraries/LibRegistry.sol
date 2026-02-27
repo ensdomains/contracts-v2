@@ -118,7 +118,7 @@ library LibRegistry {
         }
     }
 
-    /// @notice Find the canonical registry for `name`.
+    /// @notice Find the registry for `name` and return it iff it is canonical for that name.
     ///
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name.
