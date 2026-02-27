@@ -1,31 +1,33 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {IERC1155Singleton} from "../../erc1155/interfaces/IERC1155Singleton.sol";
+
 import {IRegistry} from "./IRegistry.sol";
 
 /// @title IStandardRegistry
 /// @notice A tokenized registry.
 /// @dev Interface selector: `0xeb138d53`
-interface IStandardRegistry is IRegistry {
+interface IStandardRegistry is IRegistry, IERC1155Singleton {
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Name is already registered.
-    /// @dev Error selector: `0x6dbb87d0`
-    error NameAlreadyRegistered(string label);
+    /// @notice Label is already registered.
+    /// @dev Error selector: `0xdef545a4`
+    error LabelAlreadyRegistered(string label);
 
-    /// @notice Name is expired/unregistered.
-    /// @dev Error selector: `0x0c23d840`
-    error NameExpired(uint256 tokenId);
+    /// @notice Label is expired/unregistered.
+    /// @dev Error selector: `0xc44e2374`
+    error LabelExpired(uint256 tokenId);
 
-    /// @notice Name expiry cannot be reduced.
-    /// @dev Error selector: `0x9967595a`
-    error CannotReduceExpiration(uint64 oldExpiration, uint64 newExpiration);
+    /// @notice Label expiry cannot be reduced.
+    /// @dev Error selector: `0x68c1425a`
+    error CannotReduceExpiry(uint64 oldExpiry, uint64 newExpiry);
 
-    /// @notice Name expory cannot be before now.
-    /// @dev Error selector: `0x6a0147dc`
-    error CannotSetPastExpiration(uint64 expiry);
+    /// @notice Label expiry cannot be before now.
+    /// @dev Error selector: `0xf1d446c3`
+    error CannotSetPastExpiry(uint64 expiry);
 
     /// @notice Transfer is not allowed due to missing transfer admin role.
     /// @dev Error selector: `0xe58f6d5a`
@@ -35,43 +37,43 @@ interface IStandardRegistry is IRegistry {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Registers a new name.
+    /// @dev Registers a new label.
     /// @param label The label to register.
-    /// @param owner The address of the owner of the name.
-    /// @param registry The registry to set as the name.
-    /// @param resolver The resolver to set for the name.
-    /// @param roleBitmap The role bitmap to set for the name.
-    /// @param expires The expiration date of the name.
+    /// @param owner The address of the owner of the label.
+    /// @param registry The registry to set as the label.
+    /// @param resolver The resolver to set for the label.
+    /// @param roleBitmap The role bitmap to set for the label.
+    /// @param expiry The expiry of the label, in seconds.
     function register(
         string calldata label,
         address owner,
         IRegistry registry,
         address resolver,
         uint256 roleBitmap,
-        uint64 expires
+        uint64 expiry
     ) external returns (uint256 tokenId);
 
-    /// @notice Renew a subdomain.
+    /// @notice Renew a label.
     /// @param anyId The labelhash, token ID, or resource.
-    /// @param newExpiry The new expiration.
+    /// @param newExpiry The new expiry, in seconds.
     function renew(uint256 anyId, uint64 newExpiry) external;
 
-    /// @notice Delete a subdomain.
+    /// @notice Delete a label.
     /// @param anyId The labelhash, token ID, or resource.
     function unregister(uint256 anyId) external;
 
-    /// @notice Change registry of name.
+    /// @notice Change registry of label.
     /// @param anyId The labelhash, token ID, or resource.
     /// @param registry The new registry.
     function setSubregistry(uint256 anyId, IRegistry registry) external;
 
-    /// @notice Change resolver of name.
+    /// @notice Change resolver of label.
     /// @param anyId The labelhash, token ID, or resource.
     /// @param resolver The new resolver.
     function setResolver(uint256 anyId, address resolver) external;
 
-    /// @notice Get expiry of name.
+    /// @notice Get expiry of label.
     /// @param anyId The labelhash, token ID, or resource.
-    /// @return The expiry for name.
-    function getExpiry(uint256 anyId) external view returns (uint64);
+    /// @return expiry The expiry of the label, in seconds.
+    function getExpiry(uint256 anyId) external view returns (uint64 expiry);
 }

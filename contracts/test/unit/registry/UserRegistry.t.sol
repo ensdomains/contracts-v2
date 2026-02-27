@@ -282,7 +282,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
         proxy.upgradeToAndCall(address(newImplementation), "");
     }
 
-    function test_domain_expiration() public {
+    function test_domain_expiry() public {
         // Register a domain with short expiry
         vm.prank(admin);
         uint256 tokenId = proxy.register(
@@ -297,7 +297,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
         // Verify it exists
         assertEq(proxy.ownerOf(tokenId), user1, "Domain should be owned by user1");
 
-        // Advance time past expiration
+        // Advance time past expiry
         vm.warp(block.timestamp + 2 days);
 
         // Verify domain is expired
