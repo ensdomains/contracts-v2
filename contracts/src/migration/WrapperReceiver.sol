@@ -53,7 +53,7 @@ uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
 /// * the subregistry knows the parent node (namehash).
 /// * the subregistry only accepts children of the same parent.
 ///
-/// @dev Interface selector: ``
+/// @dev Interface selector: `0xfc1c2d70`
 abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
