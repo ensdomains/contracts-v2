@@ -56,6 +56,18 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.hasRootRoles(EACBaseRolesLib.ALL_ROLES, address(this)));
     }
 
+    function test_supportsInterface() external view {
+        assertTrue(registry.supportsInterface(type(IRegistry).interfaceId), "IRegistry");
+        assertTrue(
+            registry.supportsInterface(type(IStandardRegistry).interfaceId),
+            "IStandardRegistry"
+        );
+        assertTrue(
+            registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
+            "IPermissionedRegistry"
+        );
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // register()
     ////////////////////////////////////////////////////////////////////////
@@ -434,6 +446,32 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.unregister(tokenId); // #1
         --testExpiry;
         this._reserve(); // #2
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // setParent() and getParent()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_setParent() external {
+        vm.expectEmit();
+        emit IRegistry.ParentUpdated(testRegistry, testLabel, address(this));
+        registry.setParent(testRegistry, testLabel);
+        (IRegistry parent, string memory label) = registry.getParent();
+        assertEq(address(parent), address(testRegistry), "parent");
+        assertEq(label, testLabel, "label");
+    }
+
+    function test_setParent_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_SET_PARENT,
+                user1
+            )
+        );
+        vm.prank(user1);
+        registry.setParent(IRegistry(address(1)), "abc");
     }
 
     ////////////////////////////////////////////////////////////////////////

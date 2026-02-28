@@ -88,7 +88,56 @@ library LibRegistry {
         }
     }
 
-    /// @dev Find the exact registry for `name[offset:]`.
+    /// @notice Construct the canonical name for `registry`.
+    ///
+    /// @param rootRegistry The root ENS registry.
+    /// @param registry The registry to name.
+    ///
+    /// @return name The DNS-encoded name or empty if not canonical.
+    function findCanonicalName(
+        IRegistry rootRegistry,
+        IRegistry registry
+    ) internal view returns (bytes memory name) {
+        if (address(registry) == address(0)) {
+            return "";
+        }
+        for (;;) {
+            if (address(registry) == address(rootRegistry)) {
+                return abi.encodePacked(name, uint8(0)); // add terminator
+            }
+            (IRegistry parent, string memory label) = registry.getParent();
+            if (address(parent) == address(0)) {
+                return ""; // no canonical parent
+            }
+            IRegistry child = parent.getSubregistry(label);
+            if (address(child) != address(registry)) {
+                return ""; // wrong canonical child
+            }
+            name = abi.encodePacked(name, NameCoder.assertLabelSize(label), label); // reverts if invalid label
+            registry = parent;
+        }
+    }
+
+    /// @notice Find the registry for `name` and return it iff it is canonical for that name.
+    ///
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name.
+    ///
+    /// @return The canonical registry or null if not canonical.
+    function findCanonicalRegistry(
+        IRegistry rootRegistry,
+        bytes memory name
+    ) internal view returns (IRegistry) {
+        IRegistry registry = LibRegistry.findExactRegistry(rootRegistry, name, 0);
+        return
+            address(registry) != address(0) &&
+                keccak256(bytes(LibRegistry.findCanonicalName(rootRegistry, registry))) ==
+                keccak256(name)
+                ? registry
+                : IRegistry(address(0));
+    }
+
+    /// @notice Find the exact registry for `name[offset:]`.
     ///
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
@@ -110,7 +159,7 @@ library LibRegistry {
         }
     }
 
-    /// @dev Find the parent registry for `name[offset:]`.
+    /// @notice Find the parent registry for `name[offset:]`.
     ///
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.

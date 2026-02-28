@@ -24,4 +24,7 @@ library RegistryRolesLib {
 
     uint256 internal constant ROLE_UPGRADE = 1 << 124;
     uint256 internal constant ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
+
+    uint256 internal constant ROLE_SET_PARENT = 1 << 32;
+    uint256 internal constant ROLE_SET_PARENT_ADMIN = ROLE_SET_PARENT << 128;
 }
