@@ -165,6 +165,33 @@ contract MigratedWrappedNameRegistry is
     }
 
     /// @inheritdoc PermissionedRegistry
+    /// @dev Blocks registration of unmigrated children.
+    function register(
+        string memory label,
+        address owner,
+        IRegistry registry,
+        address resolver,
+        uint256 roleBitmap,
+        uint64 expires
+    ) public virtual override returns (uint256 tokenId) {
+        // Check if the label has an emancipated NFT in the old system
+        // For .eth 2LDs, NameWrapper uses keccak256(label) as the token ID
+        uint256 legacyTokenId = uint256(keccak256(bytes(label)));
+        (, uint32 fuses, ) = NAME_WRAPPER.getData(legacyTokenId);
+
+        // If the name is emancipated (PARENT_CANNOT_CONTROL burned),
+        // it must be migrated (owned by this registry)
+        if ((fuses & PARENT_CANNOT_CONTROL) != 0) {
+            if (NAME_WRAPPER.ownerOf(legacyTokenId) != address(this)) {
+                revert LabelNotMigrated(label);
+            }
+        }
+
+        // Proceed with registration
+        return super.register(label, owner, registry, resolver, roleBitmap, expires);
+    }
+
+    /// @inheritdoc PermissionedRegistry
     /// @dev Restore the latest resolver to `FALLBACK_RESOLVER` upon visiting migratable children.
     function getResolver(
         string calldata label
@@ -220,45 +247,18 @@ contract MigratedWrappedNameRegistry is
             );
 
             // Complete name registration in new registry
-            _register(
+            super.register(
                 label,
                 migrationDataArray[i].transferData.owner,
                 IRegistry(subregistry),
                 migrationDataArray[i].transferData.resolver,
                 tokenRoles,
-                migrationDataArray[i].transferData.expires,
-                _msgSender()
+                migrationDataArray[i].transferData.expires
             );
 
             // Finalize migration by freezing the name
             LockedNamesLib.freezeName(NAME_WRAPPER, tokenIds[i], fuses);
         }
-    }
-
-    function _register(
-        string memory label,
-        address owner,
-        IRegistry registry,
-        address resolver,
-        uint256 roleBitmap,
-        uint64 expires,
-        address sender
-    ) internal virtual override returns (uint256 tokenId) {
-        // Check if the label has an emancipated NFT in the old system
-        // For .eth 2LDs, NameWrapper uses keccak256(label) as the token ID
-        uint256 legacyTokenId = uint256(keccak256(bytes(label)));
-        (, uint32 fuses, ) = NAME_WRAPPER.getData(legacyTokenId);
-
-        // If the name is emancipated (PARENT_CANNOT_CONTROL burned),
-        // it must be migrated (owned by this registry)
-        if ((fuses & PARENT_CANNOT_CONTROL) != 0) {
-            if (NAME_WRAPPER.ownerOf(legacyTokenId) != address(this)) {
-                revert LabelNotMigrated(label);
-            }
-        }
-
-        // Proceed with registration
-        return super._register(label, owner, registry, resolver, roleBitmap, expires, sender);
     }
 
     function _validateHierarchy(

@@ -20,8 +20,7 @@ import {
     EACBaseRolesLib,
     RegistryRolesLib,
     NameCoder,
-    LibLabel,
-    InvalidOwner
+    LibLabel
 } from "~src/registry/PermissionedRegistry.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
@@ -145,12 +144,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         this._register();
     }
 
-    function test_register_invalidOwner() external {
-        testOwner = address(0);
-        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
-        this._register();
-    }
-
     function test_register_cannotSetPastExpiration() external {
         testExpiry = 0;
         vm.expectRevert(
@@ -180,7 +173,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // reserve()
+    // reserve() == register() with null owner
     ////////////////////////////////////////////////////////////////////////
 
     function test_reserve() external {
@@ -192,7 +185,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             testExpiry,
             address(this)
         );
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         IPermissionedRegistry.State memory state = registry.getState(tokenId);
         assertEq(uint8(state.status), uint8(IPermissionedRegistry.Status.RESERVED), "reserved");
         assertEq(state.latestOwner, address(0), "owner");
@@ -202,21 +195,25 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_reserve_alreadyReserved() external {
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, actor);
         vm.expectRevert(
             abi.encodeWithSelector(IPermissionedRegistry.NameAlreadyReserved.selector, testLabel)
         );
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
     }
 
     function test_reserve_alreadyRegistered() external {
         this._register();
-        registry.grantRootRoles(RegistryRolesLib.ROLE_RESERVE, actor);
+        registry.grantRootRoles(
+            RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_REGISTER_RESERVED,
+            actor
+        );
         vm.expectRevert(
             abi.encodeWithSelector(IStandardRegistry.NameAlreadyRegistered.selector, testLabel)
         );
         vm.prank(actor);
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
     }
 
     function test_reserve_notAuthorized() external {
@@ -224,39 +221,51 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
                 registry.ROOT_RESOURCE(),
-                RegistryRolesLib.ROLE_RESERVE,
+                RegistryRolesLib.ROLE_REGISTRAR,
                 actor
             )
         );
         vm.prank(actor);
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
         // retry with permissions
-        registry.grantRootRoles(RegistryRolesLib.ROLE_RESERVE, actor);
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, actor);
         vm.prank(actor);
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
+    }
+
+    function test_reserve_withRoles() external {
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                registry.ROOT_RESOURCE(),
+                testRoles,
+                address(this)
+            )
+        );
+        this._reserve();
     }
 
     function test_reserve_then_register() external {
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
         this._register();
     }
 
     function test_reserve_then_register_notAuthorized() external {
-        registry.reserve(testLabel, testResolver, testExpiry);
-        // both ROLE_REGISTAR and ROLE_RESERVE are required
-        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, actor);
+        this._reserve();
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, actor); // insufficient
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
                 registry.ROOT_RESOURCE(),
-                RegistryRolesLib.ROLE_RESERVE,
+                RegistryRolesLib.ROLE_REGISTER_RESERVED,
                 actor
             )
         );
         vm.prank(actor);
         this._register();
         // retry with permissions
-        registry.grantRootRoles(RegistryRolesLib.ROLE_RESERVE, actor);
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTER_RESERVED, actor);
         vm.prank(actor);
         this._register();
     }
@@ -275,7 +284,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_renew_reserved() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         ++testExpiry;
         registry.renew(tokenId, testExpiry);
         assertEq(registry.getExpiry(tokenId), testExpiry);
@@ -380,7 +389,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_unregister_reserved() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         vm.recordLogs();
         vm.expectEmit();
         emit IRegistry.NameUnregistered(tokenId, address(this));
@@ -414,25 +423,29 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Transitions that require unregister()
+    // Transitions that require multiple actions
     ////////////////////////////////////////////////////////////////////////
 
-    function test_register_then_reserve() external {
-        uint256 tokenId = this._register();
-        registry.unregister(tokenId); // #1
-        registry.reserve(testLabel, testResolver, testExpiry); // #2
-    }
-
+    // REGISTERED => REGISTERED
     function test_register_then_register() external {
         uint256 tokenId = this._register();
         registry.unregister(tokenId); // #1
         this._register(); // #2
     }
 
-    function test_reserve_withReducedExpiry() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+    // REGISTERED => RESERVED
+    function test_register_then_reserve() external {
+        uint256 tokenId = this._register();
         registry.unregister(tokenId); // #1
-        registry.reserve(testLabel, testResolver, testExpiry >> 1); // #2
+        this._reserve(); // #2
+    }
+
+    // RESERVED => RESERVED
+    function test_reserve_then_reserve() external {
+        uint256 tokenId = this._reserve();
+        registry.unregister(tokenId); // #1
+        --testExpiry;
+        this._reserve(); // #2
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -440,10 +453,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
 
     function test_setParent() external {
-        registry.setParent(IRegistry(address(1)), "abc");
+        vm.expectEmit();
+        emit IRegistry.ParentUpdated(testRegistry, testLabel, address(this));
+        registry.setParent(testRegistry, testLabel);
         (IRegistry parent, string memory label) = registry.getParent();
-        assertEq(address(parent), address(1), "parent");
-        assertEq(label, "abc", "label");
+        assertEq(address(parent), address(testRegistry), "parent");
+        assertEq(label, testLabel, "label");
     }
 
     function test_setParent_notAuthorized() external {
@@ -485,7 +500,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_setSubregistry_whileReserved() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         registry.setSubregistry(tokenId, testRegistry);
     }
 
@@ -533,7 +548,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_setResolver_whileReserved() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         registry.setResolver(tokenId, testResolver);
     }
 
@@ -654,7 +669,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_getState_reserved() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         IPermissionedRegistry.State memory state = registry.getState(tokenId);
         assertEq(uint8(state.status), uint8(IPermissionedRegistry.Status.RESERVED), "status");
         assertEq(state.expiry, testExpiry, "expiry");
@@ -765,7 +780,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         );
     }
 
-    function test_getResource_root() external {
+    function test_getResource_rootNeverExpires() external view {
         assertEq(registry.getResource(registry.ROOT_RESOURCE()), registry.ROOT_RESOURCE());
     }
 
@@ -978,6 +993,19 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
                 testLabel,
                 testOwner,
                 testRegistry,
+                testResolver,
+                testRoles,
+                testExpiry
+            );
+    }
+
+    function _reserve() external returns (uint256) {
+        vm.prank(msg.sender); // propagate
+        return
+            registry.register(
+                testLabel,
+                address(0),
+                IRegistry(address(0)),
                 testResolver,
                 testRoles,
                 testExpiry

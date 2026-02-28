@@ -49,7 +49,7 @@ interface IRegistry is IERC1155Singleton {
     event TokenRegenerated(uint256 indexed oldTokenId, uint256 indexed newTokenId);
 
     /// @notice Parent was changed.
-    event ParentUpdated(IRegistry indexed parent, string label);
+    event ParentUpdated(IRegistry indexed parent, string label, address indexed sender);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
