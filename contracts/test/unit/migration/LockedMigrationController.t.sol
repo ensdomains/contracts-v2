@@ -3,6 +3,7 @@ pragma solidity >=0.8.13;
 
 import {Vm, console} from "forge-std/Test.sol";
 import {
+    INameWrapper,
     OperationProhibited,
     CANNOT_UNWRAP,
     CAN_DO_EVERYTHING,
@@ -17,18 +18,20 @@ import {
 } from "@ens/contracts/wrapper/NameWrapper.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
-import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import {ERC1155, IERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
-import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
-import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
+import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
+import {V2Fixture, VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
-import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
-import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
+import {
+    LockedMigrationController,
+    IPermissionedRegistry
+} from "~src/migration/LockedMigrationController.sol";
 import {
     IEnhancedAccessControl,
     EACBaseRolesLib
@@ -37,6 +40,8 @@ import {LibLabel} from "~src/utils/LibLabel.sol";
 import {
     WrapperRegistry,
     IWrapperRegistry,
+    IStandardRegistry,
+    UUPSUpgradeable,
     WrapperReceiver,
     RegistryRolesLib,
     MigrationErrors,
@@ -247,10 +252,20 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
         );
     }
 
-    function test_migrate() external {
+    function test_migrate_notReserved() external {
+        premigrationController = address(0); // disable premigration
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         IWrapperRegistry.Data memory md = _makeData(name);
-        // vm.recordLogs();
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(
+                    IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                    ethRegistry.ROOT_RESOURCE(),
+                    RegistryRolesLib.ROLE_REGISTRAR,
+                    address(migrationController)
+                )
+            )
+        );
         vm.prank(user);
         nameWrapper.safeTransferFrom(
             user,
@@ -259,18 +274,93 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             1,
             abi.encode(md)
         );
-        // Vm.Log[] memory logs = vm.getRecordedLogs();
-        // console.log("Logs = %s", logs.length);
-        // for (uint256 i; i < logs.length; ++i) {
-        //     console.log("i = %s", i);
-        //     console.logBytes32(logs[i].topics[0]);
-        //     console.logBytes(logs[i].data);
-        //     console.log();
-        // }
-        // NameRegistered
-        // SubregistryUpdated
-        // ResolverUpdated
-        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(testLabel));
+    }
+
+    function test_migrate() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        IWrapperRegistry.Data memory md = _makeData(name);
+
+        bytes32 node = NameCoder.namehash(name, 0);
+        address expectedRegistry = _computeVerifiableFactoryAddress(
+            address(migrationController),
+            md.salt
+        );
+        uint256 tokenId = LibLabel.withVersion(LibLabel.id(testLabel), 0);
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(user, user, address(migrationController), uint256(node), 1);
+        vm.expectEmit();
+        emit ENS.NewResolver(node, address(0));
+        // emit IERC1967.Upgraded()
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(
+            0 /*ROOT_RESOURCE*/,
+            md.owner,
+            0 /*old roles*/,
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN |
+                RegistryRolesLib.ROLE_UPGRADE |
+                RegistryRolesLib.ROLE_REGISTRAR |
+                RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
+                RegistryRolesLib.ROLE_RENEW |
+                RegistryRolesLib.ROLE_RENEW_ADMIN
+        );
+        // emit Initializable.Initialized()
+        vm.expectEmit();
+        emit VerifiableFactory.ProxyDeployed(
+            address(migrationController),
+            expectedRegistry,
+            md.salt,
+            address(wrapperRegistryImpl)
+        );
+        // emit IRegistry.NameRegistered()
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(
+            address(migrationController),
+            address(0),
+            md.owner,
+            tokenId,
+            1
+        );
+        vm.expectEmit();
+        emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(
+            tokenId,
+            md.owner,
+            0 /*old roles*/,
+            RegistryRolesLib.ROLE_SET_RESOLVER |
+                RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
+                RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN
+        );
+        vm.expectEmit();
+        emit IRegistry.SubregistryUpdated(
+            tokenId,
+            IRegistry(expectedRegistry),
+            address(migrationController)
+        );
+        vm.expectEmit();
+        emit IRegistry.ResolverUpdated(tokenId, md.resolver, address(migrationController));
+        vm.expectEmit();
+        emit INameWrapper.FusesSet(
+            node,
+            CANNOT_UNWRAP |
+                CANNOT_BURN_FUSES |
+                CANNOT_TRANSFER |
+                CANNOT_SET_RESOLVER |
+                CANNOT_CREATE_SUBDOMAIN |
+                CANNOT_SET_TTL |
+                IS_DOT_ETH |
+                PARENT_CANNOT_CONTROL
+        );
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
+        );
+
+        assertEq(ethRegistry.getTokenId(LibLabel.id(testLabel)), tokenId, "tokenId");
         assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
         assertEq(ethRegistry.getResolver(testLabel), md.resolver, "resolver");
         assertEq(
@@ -614,15 +704,17 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
         uint32 flags
     ) public override returns (bytes memory name) {
         name = super.registerWrappedETH2LD(label, flags);
-        vm.prank(premigrationController);
-        ethRegistry.register(
-            label,
-            address(0), // reserve
-            IRegistry(address(0)),
-            address(ensV1Resolver),
-            0,
-            uint64(ethRegistrarV1.nameExpires(LibLabel.id(label)))
-        );
+        if (address(premigrationController) != address(0)) {
+            vm.prank(premigrationController);
+            ethRegistry.register(
+                label,
+                address(0), // reserve
+                IRegistry(address(0)),
+                address(ensV1Resolver),
+                0,
+                uint64(ethRegistrarV1.nameExpires(LibLabel.id(label)))
+            );
+        }
     }
 
     function _label(uint256 i) internal view returns (string memory) {

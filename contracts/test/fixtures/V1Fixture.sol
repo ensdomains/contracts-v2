@@ -6,7 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
-import {ENSRegistry} from "@ens/contracts/registry/ENSRegistry.sol";
+import {ENSRegistry, ENS} from "@ens/contracts/registry/ENSRegistry.sol";
 import {
     BaseRegistrarImplementation
 } from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
@@ -16,7 +16,7 @@ import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol"
 
 /// @dev Reusable testing fixture for ENSv1.
 contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
-    ENSRegistry ensV1;
+    ENS ensV1;
     BaseRegistrarImplementation ethRegistrarV1;
     NameWrapper nameWrapper;
 
