@@ -196,7 +196,8 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
             // same as NameCoder.assertLabelSize()
             // see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort()` and `test_nameWrapper_labelTooLong()`.
 
-            (, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
+            (address owner, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
+            assert(owner == address(this));
             // only we can call this function => which is only called by receiver => we own the token
 
             // PARENT_CANNOT_CONTROL is required to set CANNOT_UNWRAP, so CANNOT_UNWRAP is sufficient
@@ -205,25 +206,14 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
                 revert MigrationErrors.NameNotLocked(uint256(node));
             }
 
-            // sync expiry
-            if ((fuses & IS_DOT_ETH) != 0) {
-                // NameWrapper adds GRACE_PERIOD to .eth 2LD expiry and expiry may be out of sync
-                // query the underlying expiry instead of directly subtracting GRACE_PERIOD
-                // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/NameWrapper.sol#L270
-                // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/NameWrapper.sol#L822
-                // see: V1Fixture.t.sol: `test_nameWrapper_expiryForETH2LDIncludesGrace()`
-                expiry = uint64(NAME_WRAPPER.registrar().nameExpires(uint256(labelHash))); // does not revert
-            }
-            // expired names cannot be transferred:
+            // expired names cannot be transferred
             assert(expiry >= block.timestamp);
             // PermissionedRegistry._register() => CannotSetPastExpiration
             // wont happen as this operation is synchronous
 
-            address resolver;
             if ((fuses & CANNOT_SET_RESOLVER) != 0) {
-                resolver = NAME_WRAPPER.ens().resolver(node); // copy V1 resolver
+                md.resolver = NAME_WRAPPER.ens().resolver(node); // replace with V1 resolver
             } else {
-                resolver = md.resolver; // accepts any value
                 NAME_WRAPPER.setResolver(node, address(0)); // clear V1 resolver
             }
 
@@ -254,7 +244,7 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
             );
 
             // add name to V2
-            _inject(md.label, md.owner, subregistry, resolver, tokenRoles, expiry);
+            _inject(md.label, md.owner, subregistry, md.resolver, tokenRoles, expiry);
             // PermissionedRegistry._register() => NameAlreadyRegistered
             // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver
 

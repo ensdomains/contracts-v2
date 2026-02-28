@@ -123,9 +123,10 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
-    /// @dev If `AVAILABLE` requires `ROLE_REGISTRAR` on root.
-    ///      If `RESERVED` requires `ROLE_REGISTER_RESERVED` on root.
-    ///      If `owner` is null (roleBitmap must be 0), reserves instead of registers.
+    /// @dev If `AVAILABLE`, requires `ROLE_REGISTRAR` on root.
+    ///         * If `owner` is null (`roleBitmap` must be 0), status becomes `RESERVED` instead of `REGISTERED`.
+    ///      If `RESERVED`, requires `ROLE_REGISTER_RESERVED` on root.
+    ///         * If `expiry` is 0, uses current expiry.
     function register(
         string memory label,
         address owner,
@@ -135,9 +136,6 @@ contract PermissionedRegistry is
         uint64 expiry
     ) public virtual override returns (uint256 tokenId) {
         NameCoder.assertLabelSize(label);
-        if (_isExpired(expiry)) {
-            revert CannotSetPastExpiration(expiry);
-        }
         uint256 labelId = LibLabel.id(label);
         Entry storage entry = _entry(labelId);
         tokenId = _constructTokenId(labelId, entry);
@@ -159,6 +157,12 @@ contract PermissionedRegistry is
             if (sender != address(this)) {
                 _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
             }
+            if (expiry == 0) {
+                expiry = entry.expiry; // use current expiry
+            }
+        }
+        if (_isExpired(expiry)) {
+            revert CannotSetPastExpiration(expiry);
         }
         if (prevOwner != address(0)) {
             _burn(prevOwner, tokenId, 1);

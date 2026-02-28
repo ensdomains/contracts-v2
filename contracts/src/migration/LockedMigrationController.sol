@@ -7,9 +7,15 @@ import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactor
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {LibLabel} from "../utils/LibLabel.sol";
 
 import {WrapperReceiver} from "./WrapperReceiver.sol";
 
+/// @notice Migration controller for handling locked .eth 2LD NameWrapper names.
+///
+/// Assumes premigration has `RESERVED` existing V1 names.
+/// Requires `ROLE_REGISTER_RESERVED` on "eth" registry to perform migration.
+///
 contract LockedMigrationController is WrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -40,9 +46,9 @@ contract LockedMigrationController is WrapperReceiver {
         IRegistry subregistry,
         address resolver,
         uint256 roleBitmap,
-        uint64 expiry
+        uint64 /*expiry*/
     ) internal override returns (uint256 tokenId) {
-        return ETH_REGISTRY.register(label, owner, subregistry, resolver, roleBitmap, expiry);
+        return ETH_REGISTRY.register(label, owner, subregistry, resolver, roleBitmap, 0); // reverts if not RESERVED
     }
 
     function _parentNode() internal pure override returns (bytes32) {
