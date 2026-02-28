@@ -41,16 +41,16 @@ uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
 /// 2. WrapperRegistry only accepts emancipated (N+1)-LD children with a matching N-LD parent node.
 ///
 /// eg. transfer("nick.eth") => LockedMigrationController
-///     ETHRegistry.subregistry("nick") = WrapperRegistry("nick.eth") aka 3LDRegistry
-///     transfer("sub.nick.eth") => 3LDRegistry
-///     3LDRegistry.subregistry("sub") = WrapperRegistry("sub.nick.eth") aka 4LDRegistry
-///     transfer("abc.sub.nick.eth") => ...
+///     ↪ ETHRegistry.subregistry("nick") = WrapperRegistry("nick.eth")
+///     transfer("sub.nick.eth") => WrapperRegistry("nick.eth")
+///     ↪ WrapperRegistry("nick.eth").subregistry("sub") = WrapperRegistry("sub.nick.eth")
+///     transfer("abc.sub.nick.eth") => WrapperRegistry("sub.nick.eth")
+///     ↪ WrapperRegistry("sub.nick.eth").subregistry("abc") = WrapperRegistry("abc.sub.nick.eth")
 ///
 /// Upon successful migration:
-/// * the token subregistry is bound to a WrapperRegistry.
-/// * the token does not have `SET_SUBREGISTRY` role.
-/// * the subregistry knows the parent node (namehash).
-/// * the subregistry only accepts children of the same parent.
+/// * subregistry is bound to a WrapperRegistry (token does not have `SET_SUBREGISTRY` role)
+/// * subregistry knows the parent node (namehash)
+/// * subregistry migrates children of the same parent
 ///
 /// @dev Interface selector: `0xfc1c2d70`
 abstract contract WrapperReceiver is ERC165, IERC1155Receiver {

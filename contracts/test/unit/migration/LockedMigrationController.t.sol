@@ -32,6 +32,7 @@ import {
     LockedMigrationController,
     IPermissionedRegistry
 } from "~src/migration/LockedMigrationController.sol";
+import {WrapperReceiver, FUSES_TO_BURN} from "~src/migration/WrapperReceiver.sol";
 import {
     IEnhancedAccessControl,
     EACBaseRolesLib
@@ -42,7 +43,6 @@ import {
     IWrapperRegistry,
     IStandardRegistry,
     UUPSUpgradeable,
-    WrapperReceiver,
     RegistryRolesLib,
     MigrationErrors,
     IRegistry
@@ -342,14 +342,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
         vm.expectEmit();
         emit INameWrapper.FusesSet(
             node,
-            CANNOT_UNWRAP |
-                CANNOT_BURN_FUSES |
-                CANNOT_TRANSFER |
-                CANNOT_SET_RESOLVER |
-                CANNOT_CREATE_SUBDOMAIN |
-                CANNOT_SET_TTL |
-                IS_DOT_ETH |
-                PARENT_CANNOT_CONTROL
+            FUSES_TO_BURN | CANNOT_UNWRAP | PARENT_CANNOT_CONTROL | IS_DOT_ETH
         );
         vm.prank(user);
         nameWrapper.safeTransferFrom(
@@ -656,6 +649,11 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
 
         // migrate 3LD
         IWrapperRegistry.Data memory data3 = _makeData(name3);
+        vm.expectEmit();
+        emit INameWrapper.FusesSet(
+            NameCoder.namehash(name3, 0),
+            FUSES_TO_BURN | CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
+        );
         vm.prank(user);
         nameWrapper.safeTransferFrom(
             user,
