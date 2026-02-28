@@ -7,7 +7,6 @@ import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactor
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
-import {LibLabel} from "../utils/LibLabel.sol";
 
 import {WrapperReceiver} from "./WrapperReceiver.sol";
 

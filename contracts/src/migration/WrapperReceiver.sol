@@ -4,7 +4,6 @@ pragma solidity >=0.8.13;
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {
     INameWrapper,
-    IS_DOT_ETH,
     CAN_EXTEND_EXPIRY,
     CANNOT_UNWRAP,
     CANNOT_BURN_FUSES,
