@@ -5,9 +5,6 @@ export default execute(
     const nameWrapperV1 =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
-    const ethRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
-
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
@@ -21,12 +18,11 @@ export default execute(
     const ensV1Resolver =
       get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
 
-    await deploy("MigratedWrappedNameRegistryImpl", {
+    await deploy("WrapperRegistry", {
       account: deployer,
-      artifact: artifacts.MigratedWrappedNameRegistry,
+      artifact: artifacts.WrapperRegistry,
       args: [
         nameWrapperV1.address,
-        ethRegistry.address,
         verifiableFactory.address,
         hcaFactory.address,
         registryMetadata.address,
@@ -35,7 +31,7 @@ export default execute(
     });
   },
   {
-    tags: ["MigratedWrappedNameRegistry", "l1"],
+    tags: ["WrapperRegistry", "l1"],
     dependencies: [
       "NameWrapper",
       "HCAFactory",

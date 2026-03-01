@@ -77,7 +77,9 @@ contract PermissionedRegistry is
         address ownerAddress,
         uint256 ownerRoles
     ) HCAEquivalence(hcaFactory) MetadataMixin(metadata) {
-        _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
+        if (ownerRoles != 0) {
+            _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
+        }
     }
 
     /// @inheritdoc IERC165
@@ -121,9 +123,10 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
-    /// @dev If `AVAILABLE` requires `ROLE_REGISTRAR` on root.
-    ///      If `RESERVED` requires `ROLE_REGISTER_RESERVED` on root.
-    ///      If `owner` is null (roleBitmap must be 0), reserves instead of registers.
+    /// @dev If `AVAILABLE`, requires `ROLE_REGISTRAR` on root.
+    ///         * If `owner` is null (`roleBitmap` must be 0), status becomes `RESERVED` instead of `REGISTERED`.
+    ///      If `RESERVED`, requires `ROLE_REGISTER_RESERVED` on root.
+    ///         * If `expiry` is 0, uses current expiry.
     function register(
         string memory label,
         address owner,
@@ -133,16 +136,15 @@ contract PermissionedRegistry is
         uint64 expiry
     ) public virtual override returns (uint256 tokenId) {
         NameCoder.assertLabelSize(label);
-        if (_isExpired(expiry)) {
-            revert CannotSetPastExpiration(expiry);
-        }
         uint256 labelId = LibLabel.id(label);
         Entry storage entry = _entry(labelId);
         tokenId = _constructTokenId(labelId, entry);
         address prevOwner = super.ownerOf(tokenId);
-        address sender = _msgSender();
+        address sender = _msgSender(); // the registrar, not the registrant
         if (_isExpired(entry.expiry)) {
-            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, sender);
+            if (sender != address(this)) {
+                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, sender);
+            }
             if (owner == address(0) && roleBitmap != 0) {
                 revert EACCannotGrantRoles(ROOT_RESOURCE, roleBitmap, sender); // strict
             }
@@ -152,7 +154,15 @@ contract PermissionedRegistry is
             } else if (owner == address(0)) {
                 revert NameAlreadyReserved(label); // cannot reserve/register RESERVED
             }
-            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
+            if (sender != address(this)) {
+                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
+            }
+            if (expiry == 0) {
+                expiry = entry.expiry; // use current expiry
+            }
+        }
+        if (_isExpired(expiry)) {
+            revert CannotSetPastExpiration(expiry);
         }
         if (prevOwner != address(0)) {
             _burn(prevOwner, tokenId, 1);
