@@ -88,11 +88,6 @@ contract WrapperRegistry is
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc IWrapperRegistry
-    function parentName() external view returns (bytes memory) {
-        return NAME_WRAPPER.names(parentNode);
-    }
-
     /// @inheritdoc PermissionedRegistry
     /// @dev Prevent registration of emancipated children.
     function register(

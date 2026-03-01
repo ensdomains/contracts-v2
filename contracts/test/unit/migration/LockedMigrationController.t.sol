@@ -55,6 +55,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
     MockERC1155 dummy1155;
 
     string testLabel = "test";
+    address testResolver = makeAddr("resolver");
     address premigrationController = makeAddr("premigrationController");
 
     function setUp() external {
@@ -87,7 +88,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             IWrapperRegistry.Data({
                 label: NameCoder.firstLabel(name),
                 owner: user,
-                resolver: address(1),
+                resolver: testResolver,
                 salt: uint256(keccak256(abi.encode(name, block.timestamp)))
             });
     }
@@ -104,6 +105,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             address(wrapperRegistryImpl),
             "WRAPPER_REGISTRY_IMPL"
         );
+        assertEq(migrationController.parentName(), NameCoder.encode("eth"), "parentName");
     }
 
     function test_supportsInterface() external view {
@@ -128,6 +130,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             ),
             "WrapperReceiver"
         );
+        console.logBytes4(type(WrapperReceiver).interfaceId);
     }
 
     function test_migrate_unauthorizedCaller_finish() external {
@@ -378,6 +381,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             ),
             "WrapperReceiver"
         );
+        assertEq(subregistry.parentName(), name, "parentName");
         assertTrue(
             subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, md.owner),
             "ROLE_REGISTRAR"
@@ -466,7 +470,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
         bytes32 node = NameCoder.namehash(name, 0);
         IWrapperRegistry.Data memory md = _makeData(name);
 
-        address frozenResolver = address(2);
+        address frozenResolver = makeAddr("frozenResolver");
         vm.startPrank(user);
         nameWrapper.setResolver(node, frozenResolver);
         nameWrapper.setFuses(node, uint16(CANNOT_UNWRAP | CANNOT_SET_RESOLVER));
@@ -496,7 +500,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             )
         );
         vm.prank(user);
-        ethRegistry.setResolver(tokenId, address(1));
+        ethRegistry.setResolver(tokenId, testResolver);
     }
 
     function test_migrate_lockedTransfer() external {

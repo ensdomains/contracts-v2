@@ -52,7 +52,7 @@ uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
 /// * subregistry knows the parent node (namehash)
 /// * subregistry migrates children of the same parent
 ///
-/// @dev Interface selector: `0xfc1c2d70`
+/// @dev Interface selector: `0x1a4ec815`
 abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -196,19 +196,14 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
             // see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort()` and `test_nameWrapper_labelTooLong()`.
 
             (address owner, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
-            assert(owner == address(this));
-            // only we can call this function => which is only called by receiver => we own the token
+            assert(owner == address(this)); // claim: only we can call this function => we own the token
+            assert(expiry >= block.timestamp); // claim: expired names cannot be transferred
 
             // PARENT_CANNOT_CONTROL is required to set CANNOT_UNWRAP, so CANNOT_UNWRAP is sufficient
             // see: V1Fixture.t.sol: `test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL()`
             if ((fuses & CANNOT_UNWRAP) == 0) {
                 revert MigrationErrors.NameNotLocked(uint256(node));
             }
-
-            // expired names cannot be transferred
-            assert(expiry >= block.timestamp);
-            // PermissionedRegistry._register() => CannotSetPastExpiration
-            // wont happen as this operation is synchronous
 
             if ((fuses & CANNOT_SET_RESOLVER) != 0) {
                 md.resolver = NAME_WRAPPER.ens().resolver(node); // replace with V1 resolver
@@ -221,8 +216,7 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
                 uint256 tokenRoles,
                 uint256 registryRoles
             ) = _generateRoleBitmapsFromFuses(fuses);
-            // PermissionedRegistry._register() => _grantRoles() => _checkRoleBitmap()
-            // wont happen as roles are correct by construction
+            // PermissionedRegistry._register() => _grantRoles() => _checkRoleBitmap() :: roles are correct by construction
 
             // create subregistry
             IRegistry subregistry = IRegistry(
@@ -244,14 +238,20 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
 
             // add name to V2
             _inject(md.label, md.owner, subregistry, md.resolver, tokenRoles, expiry);
-            // PermissionedRegistry._register() => NameAlreadyRegistered
-            // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver
+            // PermissionedRegistry._register() => CannotSetPastExpiration :: see expiry check
+            // PermissionedRegistry._register() => NameAlreadyRegistered :: only have ROLE_REGISTER_RESERVED
+            // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver :: see owner check
 
             // Burn all migration fuses
             if (!fusesFrozen) {
                 NAME_WRAPPER.setFuses(node, uint16(FUSES_TO_BURN));
             }
         }
+    }
+
+    /// @notice The DNS-encoded name of the parent registry.
+    function parentName() external view returns (bytes memory) {
+        return NAME_WRAPPER.names(_parentNode());
     }
 
     /// @dev Abstract function for registering a locked name.
@@ -264,7 +264,7 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
         uint64 expiry
     ) internal virtual returns (uint256 tokenId);
 
-    /// @dev Abstract function for the node (namehash) corresponding to this registry.
+    /// @dev Abstract function for the node (namehash) of the parent registry.
     ///      Equivalent to token ID of the parent NameWrapper token.
     function _parentNode() internal view virtual returns (bytes32);
 

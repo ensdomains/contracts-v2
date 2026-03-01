@@ -7,7 +7,7 @@ import {IPermissionedRegistry} from "./IPermissionedRegistry.sol";
 uint256 constant MIN_DATA_SIZE = 4 * 32;
 
 /// @notice Interface for a registry that manages a locked NameWrapper name.
-/// @dev Interface selector: `0x6a82caf2`
+/// @dev Interface selector: `0x8cd02f97`
 interface IWrapperRegistry is IPermissionedRegistry {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -41,6 +41,4 @@ interface IWrapperRegistry is IPermissionedRegistry {
     ////////////////////////////////////////////////////////////////////////
 
     function initialize(ConstructorArgs calldata args) external;
-
-    function parentName() external view returns (bytes memory);
 }
