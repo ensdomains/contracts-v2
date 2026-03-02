@@ -25,8 +25,6 @@ import {
 } from "~src/registry/PermissionedRegistry.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
 import {UnlockedMigrationController} from "~src/migration/UnlockedMigrationController.sol";
-import {PreMigrationController} from "~src/migration/PreMigrationController.sol";
-import {IPreMigrationController} from "~src/migration/interfaces/IPreMigrationController.sol";
 import {TransferData, MigrationData} from "~src/migration/types/MigrationTypes.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 import {MockBaseRegistrar} from "~test/mocks/v1/MockBaseRegistrar.sol";
@@ -107,9 +105,7 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
     MockBaseRegistrar ethRegistrarV1;
     MockNameWrapper nameWrapper;
     UnlockedMigrationController migrationController;
-    PreMigrationController preMigrationController;
 
-    // Real components for testing
     PermissionedRegistry registry;
     MockRegistryMetadata registryMetadata;
     MockHCAFactoryBasic hcaFactory;
@@ -173,56 +169,37 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
             EACBaseRolesLib.ALL_ROLES
         );
 
-        // Deploy mock base registrar and name wrapper (keep these as mocks)
         ethRegistrarV1 = new MockBaseRegistrar();
         ethRegistrarV1.addController(controller);
         nameWrapper = new MockNameWrapper(ethRegistrarV1);
 
-        // Deploy PreMigrationController
-        preMigrationController = new PreMigrationController(
-            registry,
-            hcaFactory,
-            address(this),
-            EACBaseRolesLib.ALL_ROLES
-        );
-
-        // Deploy migration controller
         migrationController = new UnlockedMigrationController(
             INameWrapper(address(nameWrapper)),
-            IPermissionedRegistry(address(registry)),
-            IPreMigrationController(address(preMigrationController))
+            IPermissionedRegistry(address(registry))
         );
 
-        // Grant REGISTRAR role to this test contract so we can pre-migrate names
+        // Grant REGISTRAR role to this test contract so we can reserve names
         registry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTRAR,
             address(this)
         );
 
-        // Grant preMigrationController the roles it needs
+        // Grant REGISTER_RESERVED role to migration controller
         registry.grantRootRoles(
-            RegistryRolesLib.ROLE_SET_SUBREGISTRY |
-            RegistryRolesLib.ROLE_SET_RESOLVER,
-            address(preMigrationController)
-        );
-
-        // Grant MIGRATION_CONTROLLER role to the controller
-        preMigrationController.grantRootRoles(
-            preMigrationController.ROLE_MIGRATION_CONTROLLER(),
+            RegistryRolesLib.ROLE_REGISTER_RESERVED,
             address(migrationController)
         );
 
         testTokenId = uint256(keccak256(bytes(testLabel)));
     }
 
-    /// @dev Helper to pre-migrate a name with ALL roles (required before migration controllers can claim)
-    function _preMigrateName(string memory label, uint64 expires) internal returns (uint256 tokenId) {
+    function _reserveName(string memory label, uint64 expires) internal returns (uint256 tokenId) {
         tokenId = registry.register(
             label,
-            address(preMigrationController),
+            address(0),
             IRegistry(address(0)),
             address(0),
-            EACBaseRolesLib.ALL_ROLES,
+            0,
             expires
         );
     }
@@ -239,7 +216,7 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
         uint64 expires = uint64(block.timestamp + 86400);
 
         // Pre-migrate the name first
-        _preMigrateName(testLabel, expires);
+        _reserveName(testLabel, expires);
 
         // Register a name in the v1 registrar
         vm.prank(controller);
@@ -303,7 +280,7 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
         uint64 expires = uint64(block.timestamp + 86400);
 
         // Pre-migrate the name first
-        _preMigrateName(testLabel, expires);
+        _reserveName(testLabel, expires);
 
         // Wrap a name (simulate) - this should mint the token to the user
         nameWrapper.wrapETH2LD(testLabel, user, 0, address(0));
@@ -339,8 +316,8 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
         uint256 tokenId2 = uint256(keccak256(bytes(label2)));
 
         // Pre-migrate both names first
-        _preMigrateName(label1, expires);
-        _preMigrateName(label2, expires);
+        _reserveName(label1, expires);
+        _reserveName(label2, expires);
 
         nameWrapper.wrapETH2LD(label1, user, 0, address(0));
         nameWrapper.setFuses(tokenId1, 0); // Unlocked
@@ -530,7 +507,7 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
         uint64 expires = uint64(block.timestamp + 86400);
 
         // Pre-migrate a different name than what we're transferring
-        _preMigrateName("wronglabel", expires);
+        _reserveName("wronglabel", expires);
 
         // Register a name in the v1 registrar
         vm.prank(controller);
@@ -559,7 +536,7 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
         uint64 expires = uint64(block.timestamp + 86400);
 
         // Pre-migrate a different name than what we're transferring
-        _preMigrateName("wronglabel", expires);
+        _reserveName("wronglabel", expires);
 
         // Wrap a name (simulate) - this should mint the token to the user
         nameWrapper.wrapETH2LD(testLabel, user, 0, address(0));
@@ -595,8 +572,8 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
         uint256 tokenId2 = uint256(keccak256(bytes("correct2"))); // This is the correct tokenId
 
         // Pre-migrate names - one correct, one intentionally wrong
-        _preMigrateName(label1, expires);
-        _preMigrateName(wrongLabel2, expires);
+        _reserveName(label1, expires);
+        _reserveName(wrongLabel2, expires);
 
         nameWrapper.wrapETH2LD(label1, user, 0, address(0));
         nameWrapper.wrapETH2LD("correct2", user, 0, address(0));

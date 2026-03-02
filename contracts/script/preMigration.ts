@@ -17,7 +17,6 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { mainnet } from "viem/chains";
-import { ROLES } from "./deploy-constants.js";
 import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
 import {
   blue,
@@ -110,7 +109,7 @@ export interface ENSRegistration {
   lineNumber: number;
 }
 
-export interface BatchRegistrarName {
+export interface BatchReserveName {
   label: string;
   owner: Address;
   registry: Address;
@@ -125,14 +124,12 @@ export interface PreMigrationConfig {
   chainId: number;
   registryAddress: Address;
   batchRegistrarAddress: Address;
-  preMigrationControllerAddress: Address;
   privateKey: `0x${string}`;
   csvFilePath: string;
   batchSize: number;
   startIndex: number;
   limit: number | null;
   dryRun: boolean;
-  roleBitmap: bigint;
   continue?: boolean;
   disableCheckpoint?: boolean;
   minExpiryDays: number;
@@ -194,34 +191,33 @@ class PreMigrationLogger extends Logger {
     );
   }
 
-  finishedName(name: string, result: 'registered' | 'renewed' | 'skipped' | 'failed'): void {
-    const icon = result === 'registered' ? '✓' : result === 'renewed' ? '↻' : result === 'skipped' ? '⊘' : '✗';
-    const color = result === 'registered' ? green : result === 'renewed' ? cyan : result === 'skipped' ? yellow : red;
+  finishedName(name: string, result: 'reserved' | 'renewed' | 'skipped' | 'failed'): void {
+    const icon = result === 'reserved' ? '✓' : result === 'renewed' ? '↻' : result === 'skipped' ? '⊘' : '✗';
+    const color = result === 'reserved' ? green : result === 'renewed' ? cyan : result === 'skipped' ? yellow : red;
     this.raw(
       color(`${icon} Done: ${bold(name)}.eth`) + dim(` (${result})`),
       `${icon} Done: ${name}.eth (${result})`
     );
   }
 
-  registering(name: string, expiry: string): void {
+  reserving(name: string, expiry: string): void {
     this.raw(
-      blue(`  → Registering on v2`) + dim(` (expires: ${expiry})`),
-      `  → Registering on v2 (expires: ${expiry})`
+      blue(`  → Reserving on v2`) + dim(` (expires: ${expiry})`),
+      `  → Reserving on v2 (expires: ${expiry})`
     );
   }
 
-  registered(tx: string): void {
+  reserved(tx: string): void {
     this.raw(
-      green(`  → ✓ Registered successfully`) + dim(` (tx: ${tx})`),
-      `  → ✓ Registered successfully (tx: ${tx})`
+      green(`  → ✓ Reserved successfully`) + dim(` (tx: ${tx})`),
+      `  → ✓ Reserved successfully (tx: ${tx})`
     );
   }
 
-  alreadyRegistered(owner: string): void {
+  alreadyReserved(): void {
     this.raw(
-      yellow(`  → ⊘ Already registered by this migration`) +
-      dim(` (owner: ${owner}...)`),
-      `  → ⊘ Already registered by this migration (owner: ${owner}...)`
+      yellow(`  → ⊘ Already reserved by this migration`),
+      `  → ⊘ Already reserved by this migration`
     );
   }
 
@@ -265,18 +261,18 @@ class PreMigrationLogger extends Logger {
   progress(
     current: number,
     total: number,
-    stats: { registered: number; renewed: number; skipped: number; failed: number }
+    stats: { reserved: number; renewed: number; skipped: number; failed: number }
   ): void {
     const percent = Math.round((current / total) * 100);
     this.raw(
       magenta(
         `Progress: ${bold(`${current}/${total}`)} (${percent}%) - ` +
-        `${green("Registered: " + stats.registered)}, ` +
+        `${green("Reserved: " + stats.reserved)}, ` +
         `${cyan("Renewed: " + stats.renewed)}, ` +
         `${yellow("Skipped: " + stats.skipped)}, ` +
         `${red("Failed: " + stats.failed)}`
       ),
-      `Progress: ${current}/${total} (${percent}%) - Registered: ${stats.registered}, Renewed: ${stats.renewed}, Skipped: ${stats.skipped}, Failed: ${stats.failed}`
+      `Progress: ${current}/${total} (${percent}%) - Reserved: ${stats.reserved}, Renewed: ${stats.renewed}, Skipped: ${stats.skipped}, Failed: ${stats.failed}`
     );
   }
 
@@ -462,7 +458,7 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-async function fetchAndRegisterInBatches(
+async function fetchAndReserveInBatches(
   config: PreMigrationConfig,
 ): Promise<void> {
   let checkpoint: Checkpoint | null = null;
@@ -518,7 +514,7 @@ async function fetchAndRegisterInBatches(
     client,
   });
 
-  logger.info(`\nReading CSV file and registering in batches of ${config.batchSize}...`);
+  logger.info(`\nReading CSV file and reserving in batches of ${config.batchSize}...`);
   logger.info(`CSV file: ${config.csvFilePath}`);
 
   const batchGenerator = readCSVInBatches(
@@ -554,8 +550,8 @@ async function fetchAndRegisterInBatches(
       }
 
       logger.info(
-        `\nRead ${batch.length} registrations from CSV (${invalidLabelsInBatch} invalid labels filtered). ` +
-        `Starting registration of ${validBatch.length} valid names...`
+        `\nRead ${batch.length} names from CSV (${invalidLabelsInBatch} invalid labels filtered). ` +
+        `Starting reservation of ${validBatch.length} valid names...`
       );
 
       if (validBatch.length > 0) {
@@ -572,7 +568,7 @@ async function fetchAndRegisterInBatches(
 
       logger.info(
         `Batch complete. Total: ${checkpoint.totalProcessed} processed ` +
-        `(${checkpoint.successCount} registered, ${checkpoint.renewedCount} renewed, ` +
+        `(${checkpoint.successCount} reserved, ${checkpoint.renewedCount} renewed, ` +
         `${checkpoint.skippedCount} skipped, ${checkpoint.invalidLabelCount} invalid, ` +
         `${checkpoint.failureCount} failed)`
       );
@@ -599,8 +595,8 @@ async function processBatch(
   batchRegistrar: any,
   checkpoint: Checkpoint
 ): Promise<Checkpoint> {
-  const batchNames: BatchRegistrarName[] = [];
-  const alreadyRegisteredNames = new Set<string>();
+  const batchNames: BatchReserveName[] = [];
+  const alreadyReservedNames = new Set<string>();
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
 
   const minExpiryThreshold = BigInt(Math.floor(Date.now() / 1000) + config.minExpiryDays * 86400);
@@ -613,21 +609,19 @@ async function processBatch(
     logger.processingName(registration.labelName, globalIndex, checkpoint.totalExpected);
 
     try {
-      let isAlreadyRegistered = false;
+      let isAlreadyReserved = false;
       try {
         const [tokenId, entry] = await registry.read.getNameData([registration.labelName]);
         if (entry.expiry > 0n && entry.expiry > BigInt(Math.floor(Date.now() / 1000))) {
           const owner = await registry.read.ownerOf([tokenId]);
           if (owner !== zeroAddress) {
-            if (owner.toLowerCase() !== config.preMigrationControllerAddress.toLowerCase()) {
-              logger.error(`Name ${registration.labelName}.eth is already registered but owned by unexpected address: ${owner}`);
-              checkpoint.failureCount++;
-              logger.finishedName(registration.labelName, 'failed');
-              continue;
-            }
-            isAlreadyRegistered = true;
-            alreadyRegisteredNames.add(registration.labelName);
+            logger.error(`Name ${registration.labelName}.eth is already registered with owner: ${owner}`);
+            checkpoint.failureCount++;
+            logger.finishedName(registration.labelName, 'failed');
+            continue;
           }
+          isAlreadyReserved = true;
+          alreadyReservedNames.add(registration.labelName);
         }
       } catch {
         // Name not found - proceed with v1 verification
@@ -662,10 +656,10 @@ async function processBatch(
 
       batchNames.push({
         label: registration.labelName,
-        owner: config.preMigrationControllerAddress,
+        owner: zeroAddress,
         registry: zeroAddress,
         resolver: PRE_MIGRATION_RESOLVER,
-        roleBitmap: config.roleBitmap,
+        roleBitmap: 0n,
         expires: v1Result.expiry,
       });
     } catch (error) {
@@ -687,28 +681,28 @@ async function processBatch(
   checkpoint.lastProcessedLineNumber = lastLineNumber;
 
   if (batchNames.length > 0 && !config.dryRun) {
-    logger.info(`\nBatch registering ${batchNames.length} names...`);
+    logger.info(`\nBatch reserving ${batchNames.length} names...`);
 
     try {
       const hash = await batchRegistrar.write.batchRegister([batchNames]);
       await waitForSuccessfulTransactionReceipt(client, { hash });
 
-      logger.success(`Batch registration successful (tx: ${hash})`);
+      logger.success(`Batch reservation successful (tx: ${hash})`);
 
       for (const name of batchNames) {
-        if (alreadyRegisteredNames.has(name.label)) {
+        if (alreadyReservedNames.has(name.label)) {
           checkpoint.renewedCount++;
           logger.renewed(hash);
           logger.finishedName(name.label, 'renewed');
         } else {
           checkpoint.successCount++;
-          logger.registered(hash);
-          logger.finishedName(name.label, 'registered');
+          logger.reserved(hash);
+          logger.finishedName(name.label, 'reserved');
         }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`Batch registration failed: ${errorMessage}`);
+      logger.error(`Batch reservation failed: ${errorMessage}`);
       checkpoint.failureCount += batchNames.length;
 
       for (const name of batchNames) {
@@ -717,16 +711,16 @@ async function processBatch(
       }
     }
   } else if (batchNames.length > 0 && config.dryRun) {
-    logger.info(`\nDry run: Would batch register ${batchNames.length} names`);
+    logger.info(`\nDry run: Would batch reserve ${batchNames.length} names`);
 
     for (const name of batchNames) {
       logger.dryRun();
-      if (alreadyRegisteredNames.has(name.label)) {
+      if (alreadyReservedNames.has(name.label)) {
         checkpoint.renewedCount++;
         logger.finishedName(name.label, 'renewed');
       } else {
         checkpoint.successCount++;
-        logger.finishedName(name.label, 'registered');
+        logger.finishedName(name.label, 'reserved');
       }
     }
   }
@@ -753,12 +747,12 @@ function printFinalSummary(checkpoint: Checkpoint): void {
   logger.divider();
 
   logger.config('Total names processed', checkpoint.totalProcessed);
-  logger.config('Successfully registered', green(checkpoint.successCount.toString()));
+  logger.config('Successfully reserved', green(checkpoint.successCount.toString()));
   logger.config('Successfully renewed', cyan(checkpoint.renewedCount.toString()));
   logger.config('Skipped (expiring soon/already up-to-date/expired)', yellow(checkpoint.skippedCount.toString()));
   logger.config('Invalid labels', yellow(checkpoint.invalidLabelCount.toString()));
   logger.config('Failed (other errors)', checkpoint.failureCount > 0 ? red(checkpoint.failureCount.toString()) : checkpoint.failureCount);
-  logger.config('Actual registrations/renewals attempted', actualRegistrations);
+  logger.config('Actual reservations/renewals attempted', actualRegistrations);
 
   const rate = calculateSuccessRate(checkpoint.successCount + checkpoint.renewedCount, actualRegistrations);
   if (actualRegistrations > 0) {
@@ -772,7 +766,7 @@ function printFinalSummary(checkpoint: Checkpoint): void {
   }
 }
 
-export async function batchRegisterNames(
+export async function batchReserveNames(
   config: PreMigrationConfig,
   registrations: ENSRegistration[],
   providedClient?: any,
@@ -866,7 +860,6 @@ export async function main(argv = process.argv): Promise<void> {
     .requiredOption("--rpc-url <url>", "Ethereum mainnet RPC endpoint")
     .requiredOption("--registry <address>", "v2 ETH Registry contract address")
     .requiredOption("--batch-registrar <address>", "Pre-deployed BatchRegistrar contract address")
-    .requiredOption("--pre-migration-controller <address>", "PreMigrationController address")
     .requiredOption("--private-key <key>", "Deployer private key")
     .requiredOption("--csv-file <path>", "Path to CSV file containing ENS registrations")
     .option("--mainnet-rpc-url <url>", "Mainnet RPC endpoint for v1 verification (default: public endpoint)", "https://eth.drpc.org")
@@ -876,8 +869,7 @@ export async function main(argv = process.argv): Promise<void> {
     .option("--limit <number>", "Maximum total number of names to process and register")
     .option("--dry-run", "Simulate without executing transactions", false)
     .option("--continue", "Continue from previous checkpoint if it exists", false)
-    .option("--min-expiry-days <days>", "Skip names expiring within this many days", "7")
-    .option("--role-bitmap <hex>", "Custom role bitmap (hex string) for when registering names");
+    .option("--min-expiry-days <days>", "Skip names expiring within this many days", "7");
 
   program.parse(argv);
   const opts = program.opts();
@@ -888,7 +880,6 @@ export async function main(argv = process.argv): Promise<void> {
     chainId: parseInt(opts.chainId) || 1,
     registryAddress: opts.registry as Address,
     batchRegistrarAddress: opts.batchRegistrar as Address,
-    preMigrationControllerAddress: opts.preMigrationController as Address,
     privateKey: opts.privateKey as `0x${string}`,
     csvFilePath: opts.csvFile,
     batchSize: parseInt(opts.batchSize) || 100,
@@ -897,7 +888,6 @@ export async function main(argv = process.argv): Promise<void> {
     dryRun: opts.dryRun,
     continue: opts.continue,
     minExpiryDays: parseInt(opts.minExpiryDays) || 7,
-    roleBitmap: opts.roleBitmap ? BigInt(opts.roleBitmap) : ROLES.ALL,
   };
 
   try {
@@ -909,7 +899,6 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config('Chain ID', config.chainId);
     logger.config('Registry', config.registryAddress);
     logger.config('BatchRegistrar', config.batchRegistrarAddress);
-    logger.config('PreMigrationController', config.preMigrationControllerAddress);
     logger.config('Mainnet RPC (v1)', config.mainnetRpcUrl);
     logger.config('CSV File', config.csvFilePath);
     logger.config('Batch Size', config.batchSize);
@@ -922,14 +911,13 @@ export async function main(argv = process.argv): Promise<void> {
       const renewedCount = cp.renewedCount ?? 0;
       const invalidCount = cp.invalidLabelCount ?? 0;
       const lastLine = cp.lastProcessedLineNumber ?? -1;
-      logger.config('Checkpoint Found', `${cp.totalProcessed} processed (${cp.successCount} registered, ${renewedCount} renewed, ${cp.skippedCount} skipped, ${invalidCount} invalid, ${cp.failureCount} failed) (last line: ${lastLine})`);
+      logger.config('Checkpoint Found', `${cp.totalProcessed} processed (${cp.successCount} reserved, ${renewedCount} renewed, ${cp.skippedCount} skipped, ${invalidCount} invalid, ${cp.failureCount} failed) (last line: ${lastLine})`);
       config.startIndex = lastLine;
       logger.info(`Resuming from CSV line ${config.startIndex}`);
     }
-    logger.config('Role Bitmap', `0x${config.roleBitmap.toString(16)}`);
     logger.info("");
 
-    await fetchAndRegisterInBatches(config);
+    await fetchAndReserveInBatches(config);
 
     logger.success("\nPre-migration script completed successfully!");
   } catch (error) {

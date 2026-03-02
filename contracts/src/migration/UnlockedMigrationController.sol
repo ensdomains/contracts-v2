@@ -7,11 +7,11 @@ import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Re
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {ERC165, IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
+import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {UnauthorizedCaller} from "../CommonErrors.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 
-import {IPreMigrationController} from "./interfaces/IPreMigrationController.sol";
 import {MigrationData} from "./types/MigrationTypes.sol";
 
 /// @title UnlockedMigrationController
@@ -24,8 +24,6 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
     INameWrapper public immutable NAME_WRAPPER;
 
     IPermissionedRegistry public immutable ETH_REGISTRY;
-
-    IPreMigrationController public immutable PRE_MIGRATION_CONTROLLER;
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -41,14 +39,9 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor(
-        INameWrapper nameWrapper,
-        IPermissionedRegistry ethRegistry,
-        IPreMigrationController preMigrationController
-    ) {
+    constructor(INameWrapper nameWrapper, IPermissionedRegistry ethRegistry) {
         NAME_WRAPPER = nameWrapper;
         ETH_REGISTRY = ethRegistry;
-        PRE_MIGRATION_CONTROLLER = preMigrationController;
     }
 
     /// Implements ERC165.supportsInterface
@@ -162,19 +155,19 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
     /// @param tokenId The token ID of the .eth name.
     /// @param migrationData The migration data.
     function _migrateNameToRegistry(uint256 tokenId, MigrationData memory migrationData) internal {
-        // Validate that tokenId matches the label hash
         (bytes32 labelHash, ) = NameCoder.readLabel(migrationData.transferData.dnsEncodedName, 0);
         if (tokenId != uint256(labelHash)) {
             revert TokenIdMismatch(tokenId, uint256(labelHash));
         }
 
-        // Claim the pre-migrated name from the PreMigrationController
         string memory label = NameCoder.firstLabel(migrationData.transferData.dnsEncodedName);
-        PRE_MIGRATION_CONTROLLER.claim(
+        ETH_REGISTRY.register(
             label,
             migrationData.transferData.owner,
             IRegistry(migrationData.transferData.subregistry),
-            migrationData.transferData.resolver
+            migrationData.transferData.resolver,
+            EACBaseRolesLib.ALL_ROLES,
+            migrationData.transferData.expires
         );
     }
 }

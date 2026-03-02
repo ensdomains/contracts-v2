@@ -123,14 +123,29 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
             address(implementation)
         );
 
-        // Grant controller permission to register names
-        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(controller));
+        // Grant controller permission to register reserved names
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTER_RESERVED, address(controller));
+
+        // Grant REGISTRAR role to this test contract so we can reserve names
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(this));
 
         testTokenId = uint256(keccak256(bytes(testLabel)));
     }
 
+    function _reserveName(string memory label, uint64 expires) internal {
+        registry.register(
+            label,
+            address(0),
+            IRegistry(address(0)),
+            address(0),
+            0,
+            expires
+        );
+    }
+
     function test_onERC1155Received_locked_name() public {
-        // Configure name for locked migration
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
         nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
 
@@ -171,7 +186,8 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     }
 
     function test_onERC1155Received_roles_based_on_fuses_not_input() public {
-        // Configure name with resolver permissions retained
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH | CAN_EXTEND_EXPIRY;
         nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
 
@@ -261,7 +277,8 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     }
 
     function test_name_with_cannot_burn_fuses_can_migrate() public {
-        // Configure name with fuses that are permanently frozen - this should now be allowed to migrate
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 fuses = CANNOT_UNWRAP | CANNOT_BURN_FUSES | IS_DOT_ETH | CAN_EXTEND_EXPIRY;
         nameWrapper.setFuseData(testTokenId, fuses, uint64(block.timestamp + 86400));
 
@@ -338,7 +355,10 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     }
 
     function test_onERC1155BatchReceived() public {
-        // Setup multiple locked names
+        _reserveName("test1", uint64(block.timestamp + 86400));
+        _reserveName("test2", uint64(block.timestamp + 86400 * 2));
+        _reserveName("test3", uint64(block.timestamp + 86400 * 3));
+
         string[] memory labels = new string[](3);
         labels[0] = "test1";
         labels[1] = "test2";
@@ -410,7 +430,8 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     }
 
     function test_subregistry_creation() public {
-        // Setup locked name (CANNOT_BURN_FUSES not set)
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
         nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
 
@@ -453,7 +474,8 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     // Comprehensive fuse→role mapping tests
 
     function test_fuse_role_mapping_no_fuses_burnt() public {
-        // Setup locked name with only CANNOT_UNWRAP (no other fuses burnt)
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH | CAN_EXTEND_EXPIRY;
         nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
 
@@ -515,7 +537,8 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     }
 
     function test_fuse_role_mapping_no_extend_expiry_fuse() public {
-        // Setup locked name WITHOUT CAN_EXTEND_EXPIRY fuse
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
         nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
 
@@ -562,7 +585,8 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     }
 
     function test_fuse_role_mapping_resolver_fuse_burnt() public {
-        // Setup locked name with CANNOT_SET_RESOLVER already burnt
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 lockedFuses = CANNOT_UNWRAP | CANNOT_SET_RESOLVER | IS_DOT_ETH | CAN_EXTEND_EXPIRY;
         nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
 
@@ -621,7 +645,8 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     }
 
     function test_fuse_role_mapping_cannot_create_subdomain_burnt() public {
-        // Setup locked name with CANNOT_CREATE_SUBDOMAIN burnt
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 lockedFuses = CANNOT_UNWRAP |
             CANNOT_CREATE_SUBDOMAIN |
             IS_DOT_ETH |
@@ -686,7 +711,8 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     }
 
     function test_fuses_burnt_after_migration_completes() public {
-        // Setup locked name (CANNOT_BURN_FUSES not set so migration can proceed)
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 initialFuses = CANNOT_UNWRAP | IS_DOT_ETH;
         nameWrapper.setFuseData(testTokenId, initialFuses, uint64(block.timestamp + 86400));
 
@@ -770,7 +796,8 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     }
 
     function test_subregistry_owner_roles() public {
-        // Setup locked name
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
         nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
 
@@ -810,7 +837,8 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     }
 
     function test_freezeName_clears_resolver_when_fuse_not_set() public {
-        // Setup locked name with CANNOT_SET_RESOLVER fuse NOT set
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
         nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
 
@@ -860,7 +888,8 @@ contract LockedMigrationControllerTest is Test, ERC1155Holder {
     }
 
     function test_freezeName_preserves_resolver_when_fuse_already_set() public {
-        // Setup locked name with CANNOT_SET_RESOLVER fuse already set
+        _reserveName(testLabel, uint64(block.timestamp + 86400));
+
         uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH | CANNOT_SET_RESOLVER;
         nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
 

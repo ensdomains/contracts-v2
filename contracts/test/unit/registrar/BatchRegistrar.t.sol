@@ -30,7 +30,6 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
     MockHCAFactoryBasic hcaFactory;
 
     address owner = address(this);
-    address preMigrationController = address(0x1234);
     address resolver = address(0xABCD);
 
     function setUp() public {
@@ -58,37 +57,37 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
 
         names[0] = BatchRegistrarName({
             label: "test1",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: uint64(block.timestamp + 86400)
         });
 
         names[1] = BatchRegistrarName({
             label: "test2",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: uint64(block.timestamp + 86400 * 2)
         });
 
         names[2] = BatchRegistrarName({
             label: "test3",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: uint64(block.timestamp + 86400 * 3)
         });
 
         batchRegistrar.batchRegister(names);
 
-        // Verify all names were registered
+        // Verify all names were reserved
         for (uint256 i = 0; i < names.length; i++) {
             IPermissionedRegistry.State memory state = registry.getState(LibLabel.id(names[i].label));
-            assertEq(registry.ownerOf(state.tokenId), preMigrationController, "Owner should be preMigrationController");
+            assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Status should be RESERVED");
             assertEq(state.expiry, names[i].expires, "Expiry should match");
             assertEq(registry.getResolver(names[i].label), resolver, "Resolver should match");
         }
@@ -100,10 +99,10 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         BatchRegistrarName[] memory initialNames = new BatchRegistrarName[](1);
         initialNames[0] = BatchRegistrarName({
             label: "test",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: originalExpiry
         });
         batchRegistrar.batchRegister(initialNames);
@@ -117,10 +116,10 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         BatchRegistrarName[] memory renewNames = new BatchRegistrarName[](1);
         renewNames[0] = BatchRegistrarName({
             label: "test",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: newExpiry
         });
         batchRegistrar.batchRegister(renewNames);
@@ -136,10 +135,10 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         BatchRegistrarName[] memory initialNames = new BatchRegistrarName[](1);
         initialNames[0] = BatchRegistrarName({
             label: "test",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: originalExpiry
         });
         batchRegistrar.batchRegister(initialNames);
@@ -153,10 +152,10 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         BatchRegistrarName[] memory renewNames = new BatchRegistrarName[](1);
         renewNames[0] = BatchRegistrarName({
             label: "test",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: earlierExpiry
         });
         batchRegistrar.batchRegister(renewNames);
@@ -172,10 +171,10 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         BatchRegistrarName[] memory initialNames = new BatchRegistrarName[](1);
         initialNames[0] = BatchRegistrarName({
             label: "existing",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: originalExpiry
         });
         batchRegistrar.batchRegister(initialNames);
@@ -186,40 +185,40 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
 
         mixedNames[0] = BatchRegistrarName({
             label: "new1",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: newExpiry
         });
 
         mixedNames[1] = BatchRegistrarName({
             label: "existing",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: newExpiry
         });
 
         mixedNames[2] = BatchRegistrarName({
             label: "new2",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: newExpiry
         });
 
         batchRegistrar.batchRegister(mixedNames);
 
-        // Verify new names were registered
+        // Verify new names were reserved
         IPermissionedRegistry.State memory state1 = registry.getState(LibLabel.id("new1"));
-        assertEq(registry.ownerOf(state1.tokenId), preMigrationController, "new1 owner should be preMigrationController");
+        assertEq(uint256(state1.status), uint256(IPermissionedRegistry.Status.RESERVED), "new1 should be RESERVED");
         assertEq(state1.expiry, newExpiry, "new1 expiry should match");
 
         IPermissionedRegistry.State memory state2 = registry.getState(LibLabel.id("new2"));
-        assertEq(registry.ownerOf(state2.tokenId), preMigrationController, "new2 owner should be preMigrationController");
+        assertEq(uint256(state2.status), uint256(IPermissionedRegistry.Status.RESERVED), "new2 should be RESERVED");
         assertEq(state2.expiry, newExpiry, "new2 expiry should match");
 
         // Verify existing name was renewed
@@ -233,10 +232,10 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         BatchRegistrarName[] memory initialNames = new BatchRegistrarName[](1);
         initialNames[0] = BatchRegistrarName({
             label: "expiring",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: originalExpiry
         });
         batchRegistrar.batchRegister(initialNames);
@@ -275,17 +274,17 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         BatchRegistrarName[] memory singleName = new BatchRegistrarName[](1);
         singleName[0] = BatchRegistrarName({
             label: "single",
-            owner: preMigrationController,
+            owner: address(0),
             registry: IRegistry(address(0)),
             resolver: resolver,
-            roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
+            roleBitmap: 0,
             expires: uint64(block.timestamp + 86400)
         });
 
         batchRegistrar.batchRegister(singleName);
 
         IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("single"));
-        assertEq(registry.ownerOf(state.tokenId), preMigrationController, "Owner should be preMigrationController");
+        assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Status should be RESERVED");
         assertEq(state.expiry, singleName[0].expires, "Expiry should match");
     }
 }
