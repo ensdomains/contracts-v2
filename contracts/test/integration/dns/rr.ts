@@ -1,5 +1,5 @@
 import { type ByteArray, concat, hexToBytes, stringToBytes, toHex } from "viem";
-import { dnsEncodeName } from "../../../utils/utils.js";
+import { dnsEncodeName } from "../../utils/utils.js";
 
 export type RR = {
   name: ByteArray;

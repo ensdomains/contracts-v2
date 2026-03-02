@@ -1,7 +1,4 @@
-import {
-  COIN_TYPE_ETH,
-  type KnownProfile,
-} from "../../../utils/resolutions.js";
+import { COIN_TYPE_ETH, type KnownProfile } from "../../utils/resolutions.js";
 
 export const KNOWN_DNS: KnownProfile[] = [
   {

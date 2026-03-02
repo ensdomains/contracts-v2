@@ -31,6 +31,7 @@ contract LockedMigrationController is IERC1155Receiver, ERC165 {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Error selector: `0x4fa09b3f`
     error TokenIdMismatch(uint256 tokenId, uint256 expectedTokenId);
 
     ////////////////////////////////////////////////////////////////////////

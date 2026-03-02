@@ -14,13 +14,16 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {UnauthorizedCaller} from "~src/CommonErrors.sol";
-import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
-import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
-import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
-import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {
+    PermissionedRegistry,
+    IPermissionedRegistry,
+    IRegistry,
+    RegistryRolesLib,
+    IRegistryMetadata,
+    EACBaseRolesLib
+} from "~src/registry/PermissionedRegistry.sol";
+import {LibLabel} from "~src/utils/LibLabel.sol";
 import {UnlockedMigrationController} from "~src/migration/UnlockedMigrationController.sol";
 import {PreMigrationController} from "~src/migration/PreMigrationController.sol";
 import {IPreMigrationController} from "~src/migration/interfaces/IPreMigrationController.sol";
@@ -259,7 +262,7 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
         assertEq(ethRegistrarV1.ownerOf(testTokenId), address(migrationController));
 
         // Verify the user owns the v2 name
-        (uint256 v2TokenId, ) = registry.getNameData(testLabel);
+        uint256 v2TokenId = registry.getState(LibLabel.id(testLabel)).tokenId;
         assertEq(registry.ownerOf(v2TokenId), user, "User should own the v2 name");
 
         // Verify user has ALL roles
@@ -320,7 +323,7 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
         nameWrapper.safeTransferFrom(user, address(migrationController), testTokenId, 1, data);
 
         // Verify the user owns the v2 name
-        (uint256 v2TokenId, ) = registry.getNameData(testLabel);
+        uint256 v2TokenId = registry.getState(LibLabel.id(testLabel)).tokenId;
         assertEq(registry.ownerOf(v2TokenId), user, "User should own the v2 name");
 
         // Verify user has ALL roles
@@ -374,8 +377,8 @@ contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
         );
 
         // Verify both names are owned by user
-        (uint256 v2TokenId1, ) = registry.getNameData(label1);
-        (uint256 v2TokenId2, ) = registry.getNameData(label2);
+        uint256 v2TokenId1 = registry.getState(LibLabel.id(label1)).tokenId;
+        uint256 v2TokenId2 = registry.getState(LibLabel.id(label2)).tokenId;
         assertEq(registry.ownerOf(v2TokenId1), user, "User should own name1");
         assertEq(registry.ownerOf(v2TokenId2), user, "User should own name2");
 

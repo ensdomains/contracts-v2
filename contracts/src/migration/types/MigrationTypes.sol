@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-/**
- * @dev The data for v1 to v2 transfers of a name.
- */
+/// @dev The data for v1 to v2 transfers of a name.
 struct TransferData {
     bytes dnsEncodedName;
     address owner;
@@ -13,9 +11,7 @@ struct TransferData {
     uint64 expires;
 }
 
-/**
- * @dev The data for v1 to v2 migrations of names.
- */
+/// @dev The data for v1 to v2 migrations of names.
 struct MigrationData {
     TransferData transferData;
     /**

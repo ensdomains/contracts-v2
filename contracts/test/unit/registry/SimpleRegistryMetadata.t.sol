@@ -8,11 +8,14 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
-import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
-import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
-import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {
+    PermissionedRegistry,
+    RegistryRolesLib,
+    IRegistryMetadata,
+    EACBaseRolesLib,
+    IEnhancedAccessControl,
+    LibLabel
+} from "~src/registry/PermissionedRegistry.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
@@ -27,7 +30,6 @@ contract SimpleRegistryMetadataTest is Test, ERC1155Holder {
 
     uint256 constant DEFAULT_ROLE_BITMAP =
         RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER;
-    uint256 constant ROOT_RESOURCE = 0;
 
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
@@ -56,13 +58,12 @@ contract SimpleRegistryMetadataTest is Test, ERC1155Holder {
     }
 
     function test_registry_metadata_unauthorized() public {
-        (uint256 tokenId, ) = registry.getNameData("test");
+        uint256 tokenId = registry.getTokenId(LibLabel.id("dne"));
         string memory expectedUri = "ipfs://test";
-
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                ROOT_RESOURCE,
+                metadata.ROOT_RESOURCE(),
                 ROLE_UPDATE_METADATA,
                 address(1)
             )

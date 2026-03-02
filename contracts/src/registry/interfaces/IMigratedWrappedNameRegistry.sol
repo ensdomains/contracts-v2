@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-/**
- * @dev Interface for MigratedWrappedNameRegistry initialization and core functions
- */
+/// @notice Interface for MigratedWrappedNameRegistry initialization and core functions
+/// @dev Interface selector: `0xb08a2c9c`
 interface IMigratedWrappedNameRegistry {
     function initialize(
         bytes calldata parentDnsEncodedName_,

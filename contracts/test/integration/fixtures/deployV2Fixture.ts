@@ -1,10 +1,10 @@
 import type { NetworkConnection } from "hardhat/types/network";
-import { type Address, getAddress, labelhash, zeroAddress } from "viem";
+import { type Address, zeroAddress } from "viem";
 import {
   LOCAL_BATCH_GATEWAY_URL,
   ROLES,
 } from "../../../script/deploy-constants.js";
-import { splitName } from "../../utils/utils.js";
+import { splitName, idFromLabel } from "../../utils/utils.js";
 import { deployVerifiableProxy } from "./deployVerifiableProxy.js";
 
 export const MAX_EXPIRY = (1n << 64n) - 1n;
@@ -64,7 +64,7 @@ export async function deployV2Fixture(
   async function deployOwnedResolver({
     owner = walletClient.account.address,
     roles = ROLES.ALL,
-    salt = BigInt(labelhash(new Date().toISOString())),
+    salt = idFromLabel(new Date().toISOString()),
   }: {
     owner?: Address;
     roles?: bigint;
@@ -106,9 +106,8 @@ export async function deployV2Fixture(
     while (true) {
       const parentRegistry = registries[0];
       const label = labels[labels.length - registries.length];
-      const [tokenId] = await parentRegistry.read.getNameData([label]);
-      const registryOwner = await parentRegistry.read.ownerOf([tokenId]);
-      const exists = registryOwner !== zeroAddress;
+      const state = await parentRegistry.read.getState([idFromLabel(label)]);
+      const exists = state.latestOwner !== zeroAddress;
       const leaf = registries.length == labels.length;
       let registryAddress = await parentRegistry.read.getSubregistry([label]);
       if (!leaf || exact) {
@@ -127,7 +126,7 @@ export async function deployV2Fixture(
           if (exists) {
             // label exists but registry does not exist, set it
             await parentRegistry.write.setSubregistry([
-              tokenId,
+              state.tokenId,
               registryAddress,
             ]);
           }
@@ -155,7 +154,10 @@ export async function deployV2Fixture(
         const currentResolver = await parentRegistry.read.getResolver([label]);
         if (resolverAddress && currentResolver !== resolverAddress) {
           // leaf node exists but resolver is different, set it
-          await parentRegistry.write.setResolver([tokenId, resolverAddress]);
+          await parentRegistry.write.setResolver([
+            state.tokenId,
+            resolverAddress,
+          ]);
         }
       }
       if (leaf) {
@@ -167,7 +169,7 @@ export async function deployV2Fixture(
         return {
           name,
           labels,
-          tokenId,
+          tokenId: state.tokenId,
           parentRegistry,
           exactRegistry: (exact
             ? registries[0]

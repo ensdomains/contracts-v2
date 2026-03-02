@@ -6,21 +6,23 @@ import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeResolver.sol";
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
-import {RegistryUtils, ENS} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-/// @notice Resolver that performs resolutions using ENSv1.
+import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+
+/// @notice Resolver that performs resolutions using ENSv2.
 ///
-/// A UniversalResolverV1 (ResolverCaller + RegistryUtils) that implements ICompositeResolver.
+/// A UniversalResolverV2 (ResolverCaller + LibRegistry) that implements ICompositeResolver.
 ///
-contract ENSV1Resolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
+contract ENSV2Resolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    ENS public immutable REGISTRY_V1;
+    IRegistry public immutable ROOT_REGISTRY;
 
     /// @dev Shared batch gateway provider.
     IGatewayProvider public immutable BATCH_GATEWAY_PROVIDER;
@@ -30,10 +32,10 @@ contract ENSV1Resolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
     ////////////////////////////////////////////////////////////////////////
 
     constructor(
-        ENS registryV1,
+        IRegistry rootRegistry,
         IGatewayProvider batchGatewayProvider
     ) CCIPReader(DEFAULT_UNSAFE_CALL_GAS) {
-        REGISTRY_V1 = registryV1;
+        ROOT_REGISTRY = rootRegistry;
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
     }
 
@@ -62,13 +64,13 @@ contract ENSV1Resolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
         bytes calldata name,
         bytes calldata data
     ) external view returns (bytes memory) {
-        (address resolver, , ) = RegistryUtils.findResolver(REGISTRY_V1, name, 0);
+        (, address resolver, , ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
         callResolver(resolver, name, data, false, "", BATCH_GATEWAY_PROVIDER.gateways());
     }
 
     /// @inheritdoc ICompositeResolver
     function getResolver(bytes calldata name) external view returns (address, bool) {
-        (address resolver, , ) = RegistryUtils.findResolver(REGISTRY_V1, name, 0);
+        (, address resolver, , ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
         return (resolver, false);
     }
 

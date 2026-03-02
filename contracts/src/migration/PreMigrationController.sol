@@ -9,6 +9,7 @@ import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IPreMigrationController} from "./interfaces/IPreMigrationController.sol";
 
@@ -44,7 +45,9 @@ contract PreMigrationController is
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Error selector: `0x34767f82`
     error NameNotOwned(string label, address actualOwner);
+    /// @dev Error selector: `0x407c156a`
     error NameExpired(string label);
 
     ////////////////////////////////////////////////////////////////////////
@@ -83,28 +86,26 @@ contract PreMigrationController is
         IRegistry subregistry,
         address resolver
     ) external onlyRootRoles(ROLE_MIGRATION_CONTROLLER) {
-        (uint256 tokenId, IPermissionedRegistry.Entry memory entry) = ETH_REGISTRY.getNameData(
-            label
-        );
+        IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(label));
 
-        if (entry.expiry == 0 || entry.expiry <= block.timestamp) {
+        if (state.expiry == 0 || state.expiry <= block.timestamp) {
             revert NameExpired(label);
         }
 
-        address currentOwner = ETH_REGISTRY.ownerOf(tokenId);
+        address currentOwner = ETH_REGISTRY.ownerOf(state.tokenId);
         if (currentOwner != address(this)) {
             revert NameNotOwned(label, currentOwner);
         }
 
         // Set subregistry if provided
         if (address(subregistry) != address(0)) {
-            ETH_REGISTRY.setSubregistry(tokenId, subregistry);
+            ETH_REGISTRY.setSubregistry(state.tokenId, subregistry);
         }
 
-        ETH_REGISTRY.setResolver(tokenId, resolver);
+        ETH_REGISTRY.setResolver(state.tokenId, resolver);
 
         // Transfer ownership to the new owner - all roles transfer with the token
-        ETH_REGISTRY.safeTransferFrom(address(this), owner, tokenId, 1, "");
+        ETH_REGISTRY.safeTransferFrom(address(this), owner, state.tokenId, 1, "");
 
         emit NameClaimed(label, owner, address(subregistry), resolver);
     }

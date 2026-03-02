@@ -24,12 +24,10 @@ import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
-/**
- * @title MigratedWrappedNameRegistry
- * @dev A registry for migrated wrapped names that inherits from PermissionedRegistry and is upgradeable using the UUPS pattern.
- * This contract provides resolver fallback to the universal resolver for names that haven't been migrated yet.
- * It also handles subdomain migration by receiving NFT transfers from the NameWrapper.
- */
+/// @title MigratedWrappedNameRegistry
+/// @dev A registry for migrated wrapped names that inherits from PermissionedRegistry and is upgradeable using the UUPS pattern.
+/// This contract provides resolver fallback to the universal resolver for names that haven't been migrated yet.
+/// It also handles subdomain migration by receiving NFT transfers from the NameWrapper.
 contract MigratedWrappedNameRegistry is
     Initializable,
     PermissionedRegistry,
@@ -40,10 +38,6 @@ contract MigratedWrappedNameRegistry is
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
-
-    // TODO: these clobbers ROLE_CAN_TRANSFER_ADMIN and should be in RegistryRolesLib
-    uint256 internal constant _ROLE_UPGRADE = 1 << 20;
-    uint256 internal constant _ROLE_UPGRADE_ADMIN = _ROLE_UPGRADE << 128;
 
     INameWrapper public immutable NAME_WRAPPER;
 
@@ -63,6 +57,7 @@ contract MigratedWrappedNameRegistry is
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Error selector: `0xd1697407`
     error NoParentDomain();
 
     ////////////////////////////////////////////////////////////////////////
@@ -85,13 +80,11 @@ contract MigratedWrappedNameRegistry is
         _disableInitializers();
     }
 
-    /**
-     * @dev Initializes the MigratedWrappedNameRegistry contract.
-     * @param parentDnsEncodedName_ The DNS-encoded name of the parent domain.
-     * @param ownerAddress_ The address that will own this registry.
-     * @param ownerRoles_ The roles to grant to the owner.
-     * @param registrarAddress_ Optional address to grant ROLE_REGISTRAR permissions (typically for testing).
-     */
+    /// @dev Initializes the MigratedWrappedNameRegistry contract.
+    /// @param parentDnsEncodedName_ The DNS-encoded name of the parent domain.
+    /// @param ownerAddress_ The address that will own this registry.
+    /// @param ownerRoles_ The roles to grant to the owner.
+    /// @param registrarAddress_ Optional address to grant ROLE_REGISTRAR permissions (typically for testing).
     function initialize(
         bytes calldata parentDnsEncodedName_,
         address ownerAddress_,
@@ -107,7 +100,7 @@ contract MigratedWrappedNameRegistry is
         // Configure owner with upgrade permissions and specified roles
         _grantRoles(
             ROOT_RESOURCE,
-            _ROLE_UPGRADE | _ROLE_UPGRADE_ADMIN | ownerRoles_,
+            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | ownerRoles_,
             ownerAddress_,
             false
         );
@@ -172,6 +165,33 @@ contract MigratedWrappedNameRegistry is
     }
 
     /// @inheritdoc PermissionedRegistry
+    /// @dev Blocks registration of unmigrated children.
+    function register(
+        string memory label,
+        address owner,
+        IRegistry registry,
+        address resolver,
+        uint256 roleBitmap,
+        uint64 expires
+    ) public virtual override returns (uint256 tokenId) {
+        // Check if the label has an emancipated NFT in the old system
+        // For .eth 2LDs, NameWrapper uses keccak256(label) as the token ID
+        uint256 legacyTokenId = uint256(keccak256(bytes(label)));
+        (, uint32 fuses, ) = NAME_WRAPPER.getData(legacyTokenId);
+
+        // If the name is emancipated (PARENT_CANNOT_CONTROL burned),
+        // it must be migrated (owned by this registry)
+        if ((fuses & PARENT_CANNOT_CONTROL) != 0) {
+            if (NAME_WRAPPER.ownerOf(legacyTokenId) != address(this)) {
+                revert LabelNotMigrated(label);
+            }
+        }
+
+        // Proceed with registration
+        return super.register(label, owner, registry, resolver, roleBitmap, expires);
+    }
+
+    /// @inheritdoc PermissionedRegistry
     /// @dev Restore the latest resolver to `FALLBACK_RESOLVER` upon visiting migratable children.
     function getResolver(
         string calldata label
@@ -191,10 +211,10 @@ contract MigratedWrappedNameRegistry is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @dev Required override for UUPSUpgradeable - restricts upgrade permissions
-     */
-    function _authorizeUpgrade(address) internal override onlyRootRoles(_ROLE_UPGRADE) {}
+    /// @dev Required override for UUPSUpgradeable - restricts upgrade permissions
+    function _authorizeUpgrade(
+        address
+    ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {}
 
     function _migrateSubdomains(
         uint256[] memory tokenIds,
@@ -227,7 +247,7 @@ contract MigratedWrappedNameRegistry is
             );
 
             // Complete name registration in new registry
-            _register(
+            super.register(
                 label,
                 migrationDataArray[i].transferData.owner,
                 IRegistry(subregistry),
@@ -239,31 +259,6 @@ contract MigratedWrappedNameRegistry is
             // Finalize migration by freezing the name
             LockedNamesLib.freezeName(NAME_WRAPPER, tokenIds[i], fuses);
         }
-    }
-
-    function _register(
-        string memory label,
-        address owner,
-        IRegistry registry,
-        address resolver,
-        uint256 roleBitmap,
-        uint64 expires
-    ) internal virtual override returns (uint256 tokenId) {
-        // Check if the label has an emancipated NFT in the old system
-        // For .eth 2LDs, NameWrapper uses keccak256(label) as the token ID
-        uint256 legacyTokenId = uint256(keccak256(bytes(label)));
-        (, uint32 fuses, ) = NAME_WRAPPER.getData(legacyTokenId);
-
-        // If the name is emancipated (PARENT_CANNOT_CONTROL burned),
-        // it must be migrated (owned by this registry)
-        if ((fuses & PARENT_CANNOT_CONTROL) != 0) {
-            if (NAME_WRAPPER.ownerOf(legacyTokenId) != address(this)) {
-                revert LabelNotMigrated(label);
-            }
-        }
-
-        // Proceed with registration
-        return super._register(label, owner, registry, resolver, roleBitmap, expires);
     }
 
     function _validateHierarchy(

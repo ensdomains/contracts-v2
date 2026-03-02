@@ -37,6 +37,7 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The `name` did not end with `suffix`.
+    /// @dev Error selector: `0x017817ea`
     ///
     /// @param name The DNS-encoded name.
     /// @param suffix THe DNS-encoded suffix.

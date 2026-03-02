@@ -56,6 +56,10 @@ const contracts = {
     artifacts["src/resolver/OwnedResolver.sol/OwnedResolver"].abi,
   UserRegistry: artifacts.UserRegistry.abi,
   ETHRegistry: artifacts.PermissionedRegistry.abi,
+  ETHRegistrar: artifacts.ETHRegistrar.abi,
+  StandardRentPriceOracle: artifacts.StandardRentPriceOracle.abi,
+  MockUSDC: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
+  MockDAI: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
   // v1
   BatchGatewayProvider: artifacts.GatewayProvider.abi,
   RootV1: artifacts.Root.abi,
@@ -505,7 +509,7 @@ async function setupEnsDotEth(deployment: Deployment, account: Account) {
     "dnsname",
     await deployArtifact(deployment.client, {
       file: new URL(
-        "../test/integration/l1/dns/ExtendedDNSResolver_53f64de872aad627467a34836be1e2b63713a438.json",
+        "../test/integration/dns/ExtendedDNSResolver_53f64de872aad627467a34836be1e2b63713a438.json",
         import.meta.url,
       ),
     }),

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-/// @dev Basic interface for the HCA factory.
+/// @notice Basic interface for the HCA factory.
+/// @dev Interface selector: `0x442b172c`
 interface IHCAFactoryBasic {
     /// @notice Returns the account owner of the given HCA
     /// @param hca The HCA to get the account owner of

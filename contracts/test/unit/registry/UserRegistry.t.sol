@@ -21,10 +21,6 @@ import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 contract UserRegistryTest is Test, ERC1155Holder {
     // Test constants
     uint256 constant SALT = 12345;
-    uint256 constant ROOT_RESOURCE = 0;
-
-    uint256 constant ROLE_UPGRADE = 1 << 20;
-    uint256 constant ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
 
     // Contracts
     VerifiableFactory factory;
@@ -70,9 +66,12 @@ contract UserRegistryTest is Test, ERC1155Holder {
         assertTrue(factory.verifyContract(address(proxy)), "Proxy should be verified");
 
         // Verify admin has the expected roles
-        assertTrue(proxy.hasRootRoles(ROLE_UPGRADE, admin), "Admin should have upgrade role");
         assertTrue(
-            proxy.hasRootRoles(ROLE_UPGRADE_ADMIN, admin),
+            proxy.hasRootRoles(RegistryRolesLib.ROLE_UPGRADE, admin),
+            "Admin should have upgrade role"
+        );
+        assertTrue(
+            proxy.hasRootRoles(RegistryRolesLib.ROLE_UPGRADE_ADMIN, admin),
             "Admin should have upgrade admin role"
         );
         assertTrue(
@@ -81,7 +80,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
         );
 
         // Verify other users don't have roles
-        assertFalse(proxy.hasRootRoles(ROLE_UPGRADE, user1), "User1 should not have upgrade role");
+        assertFalse(
+            proxy.hasRootRoles(RegistryRolesLib.ROLE_UPGRADE, user1),
+            "User1 should not have upgrade role"
+        );
         assertFalse(
             proxy.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, user1),
             "User1 should not have registrar role"
@@ -196,7 +198,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                ROOT_RESOURCE,
+                implementation.ROOT_RESOURCE(),
                 RegistryRolesLib.ROLE_REGISTRAR,
                 user1
             )
@@ -217,7 +219,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
-                ROOT_RESOURCE,
+                implementation.ROOT_RESOURCE(),
                 RegistryRolesLib.ROLE_REGISTRAR,
                 user1
             )
@@ -271,8 +273,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                ROOT_RESOURCE,
-                ROLE_UPGRADE,
+                implementation.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_UPGRADE,
                 user1
             )
         );

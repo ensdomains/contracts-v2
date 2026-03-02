@@ -14,6 +14,7 @@ import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {LibLabel} from "~src/utils/LibLabel.sol";
 import {PreMigrationController} from "~src/migration/PreMigrationController.sol";
 import {IPreMigrationController} from "~src/migration/interfaces/IPreMigrationController.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
@@ -105,8 +106,8 @@ contract PreMigrationControllerTest is Test, ERC1155Holder {
         );
 
         // Verify owner changed
-        (uint256 newTokenId, ) = registry.getNameData(testLabel);
-        assertEq(registry.ownerOf(newTokenId), user, "Owner should be the user");
+        IPermissionedRegistry.State memory state = registry.getState(LibLabel.id(testLabel));
+        assertEq(registry.ownerOf(state.tokenId), user, "Owner should be the user");
 
         // Verify subregistry was set
         assertEq(address(registry.getSubregistry(testLabel)), newSubregistry, "Subregistry should be set");
@@ -115,7 +116,7 @@ contract PreMigrationControllerTest is Test, ERC1155Holder {
         assertEq(registry.getResolver(testLabel), resolver, "Resolver should be set");
 
         // Verify ALL roles were transferred from pre-migration
-        assertTrue(registry.hasRoles(newTokenId, EACBaseRolesLib.ALL_ROLES, user), "User should have ALL_ROLES");
+        assertTrue(registry.hasRoles(state.tokenId, EACBaseRolesLib.ALL_ROLES, user), "User should have ALL_ROLES");
     }
 
     function test_claim_transfers_ownership() public {

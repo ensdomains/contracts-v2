@@ -134,8 +134,8 @@ contract OwnedResolverTest is Test {
 
     function test_alias_root() external {
         vm.prank(owner);
-        vm.expectEmit(true, false, false, true);
-        emit OwnedResolver.AliasChanged(NameCoder.encode(""), NameCoder.encode("test.eth"));
+        vm.expectEmit();
+        emit OwnedResolver.AliasChanged(NameCoder.encode(""), NameCoder.encode("test.eth"), NameCoder.encode(""), NameCoder.encode("test.eth"));
         resolver.setAlias(NameCoder.encode(""), NameCoder.encode("test.eth"));
 
         assertEq(resolver.getAlias(NameCoder.encode("")), NameCoder.encode("test.eth"), "root");

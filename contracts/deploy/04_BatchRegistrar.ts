@@ -16,7 +16,7 @@ export default execute(
       account: deployer,
       functionName: "grantRootRoles",
       args: [
-        ROLES.OWNER.EAC.REGISTRAR | ROLES.OWNER.EAC.RENEW,
+        ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
         batchRegistrar.address,
       ],
     });

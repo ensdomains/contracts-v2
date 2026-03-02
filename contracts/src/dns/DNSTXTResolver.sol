@@ -50,7 +50,7 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
 
     /// @notice The data was not a hex string.
     /// @dev Matches: `/^0x[0-9a-fA-F]*$/`.
-    ///      Error selector: `0x626777b1`
+    /// @dev Error selector: `0x626777b1`
     error InvalidHexData(bytes data);
 
     /// @notice The data was an unexpected length.

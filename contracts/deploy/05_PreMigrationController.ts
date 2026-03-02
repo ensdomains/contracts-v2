@@ -19,7 +19,7 @@ export default execute(
       account: deployer,
       functionName: "grantRootRoles",
       args: [
-        ROLES.OWNER.EAC.SET_SUBREGISTRY | ROLES.OWNER.EAC.SET_RESOLVER,
+        ROLES.REGISTRY.SET_SUBREGISTRY | ROLES.REGISTRY.SET_RESOLVER,
         preMigrationController.address,
       ],
     });

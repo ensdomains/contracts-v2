@@ -3,6 +3,7 @@ pragma solidity >=0.8.13;
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {LibLabel} from "../utils/LibLabel.sol";
 
 struct BatchRegistrarName {
     string label;
@@ -32,9 +33,11 @@ contract BatchRegistrar {
         for (uint256 i = 0; i < names.length; i++) {
             BatchRegistrarName calldata name = names[i];
 
-            (, IPermissionedRegistry.Entry memory entry) = ETH_REGISTRY.getNameData(name.label);
+            IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(
+                LibLabel.id(name.label)
+            );
 
-            if (entry.expiry == 0 || entry.expiry <= block.timestamp) {
+            if (state.expiry == 0 || state.expiry <= block.timestamp) {
                 ETH_REGISTRY.register(
                     name.label,
                     name.owner,
@@ -44,9 +47,8 @@ contract BatchRegistrar {
                     name.expires
                 );
             } else {
-                if (name.expires > entry.expiry) {
-                    (uint256 tokenId, ) = ETH_REGISTRY.getNameData(name.label);
-                    ETH_REGISTRY.renew(tokenId, name.expires);
+                if (name.expires > state.expiry) {
+                    ETH_REGISTRY.renew(state.tokenId, name.expires);
                 }
             }
         }
