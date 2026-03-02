@@ -9,14 +9,14 @@ export default execute(
       (typeof artifacts.SimpleRegistryMetadata)["abi"]
     >("SimpleRegistryMetadata");
 
-    await deploy("UserRegistry", {
+    await deploy("UserRegistryImpl", {
       account: deployer,
       artifact: artifacts.UserRegistry,
       args: [hcaFactory.address, registryMetadata.address],
     });
   },
   {
-    tags: ["UserRegistry", "l1"],
+    tags: ["UserRegistryImpl", "l1"],
     dependencies: ["HCAFactory", "RegistryMetadata"],
   },
 );

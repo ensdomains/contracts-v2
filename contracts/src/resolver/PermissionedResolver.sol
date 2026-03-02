@@ -29,7 +29,7 @@ import {HCAContextUpgradeable} from "../hca/HCAContextUpgradeable.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 
-import {OwnedResolverLib} from "./libraries/OwnedResolverLib.sol";
+import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib.sol";
 
 /// @notice An owned resolver that supports multiple names, internal aliasing, and fine-grained permissions.
@@ -63,7 +63,7 @@ import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib
 ///        | Specific (1) |   resource(<namehash>, 0)   | resource(<namehash>, <part>) |
 ///        +--------------+-----------------------------+------------------------------+
 ///
-contract OwnedResolver is
+contract PermissionedResolver is
     HCAContextUpgradeable,
     UUPSUpgradeable,
     EnhancedAccessControl,
@@ -115,10 +115,10 @@ contract OwnedResolver is
     modifier onlyPartRoles(bytes32 node, bytes32 part, uint256 roleBitmap) {
         address sender = _msgSender();
         if (
-            !hasRoles(OwnedResolverLib.resource(node, part), roleBitmap, sender) &&
-            !hasRoles(OwnedResolverLib.resource(0, part), roleBitmap, sender)
+            !hasRoles(PermissionedResolverLib.resource(node, part), roleBitmap, sender) &&
+            !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, sender)
         ) {
-            _checkRoles(OwnedResolverLib.resource(node, 0), roleBitmap, sender);
+            _checkRoles(PermissionedResolverLib.resource(node, 0), roleBitmap, sender);
         }
         _;
     }
@@ -179,7 +179,7 @@ contract OwnedResolver is
     /// @param node The node to update.
     function clearRecords(
         bytes32 node
-    ) external onlyPartRoles(node, 0, OwnedResolverLib.ROLE_CLEAR) {
+    ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_CLEAR) {
         uint64 version = ++_storage().versions[node];
         emit VersionChanged(node, version);
     }
@@ -191,7 +191,7 @@ contract OwnedResolver is
     function setAlias(
         bytes calldata fromName,
         bytes calldata toName
-    ) external onlyRootRoles(OwnedResolverLib.ROLE_SET_ALIAS) {
+    ) external onlyRootRoles(PermissionedResolverLib.ROLE_SET_ALIAS) {
         _storage().aliases[NameCoder.namehash(fromName, 0)] = toName;
         emit AliasChanged(fromName, toName, fromName, toName);
     }
@@ -205,7 +205,7 @@ contract OwnedResolver is
         bytes32 node,
         uint256 contentType,
         bytes calldata data
-    ) external onlyPartRoles(node, 0, OwnedResolverLib.ROLE_SET_ABI) {
+    ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_ABI) {
         if (!_isPowerOf2(contentType)) {
             revert InvalidContentType(contentType);
         }
@@ -229,7 +229,7 @@ contract OwnedResolver is
     function setContenthash(
         bytes32 node,
         bytes calldata hash
-    ) external onlyPartRoles(node, 0, OwnedResolverLib.ROLE_SET_CONTENTHASH) {
+    ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_CONTENTHASH) {
         _record(node).contenthash = hash;
         emit ContenthashChanged(node, hash);
     }
@@ -243,7 +243,7 @@ contract OwnedResolver is
         bytes32 node,
         bytes4 interfaceId,
         address implementer
-    ) external onlyPartRoles(node, 0, OwnedResolverLib.ROLE_SET_INTERFACE) {
+    ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_INTERFACE) {
         _record(node).interfaces[interfaceId] = implementer;
         emit InterfaceChanged(node, interfaceId, implementer);
     }
@@ -257,7 +257,7 @@ contract OwnedResolver is
         bytes32 node,
         bytes32 x,
         bytes32 y
-    ) external onlyPartRoles(node, 0, OwnedResolverLib.ROLE_SET_PUBKEY) {
+    ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_PUBKEY) {
         _record(node).pubkey = [x, y];
         emit PubkeyChanged(node, x, y);
     }
@@ -269,7 +269,7 @@ contract OwnedResolver is
     function setName(
         bytes32 node,
         string calldata primary
-    ) external onlyPartRoles(node, 0, OwnedResolverLib.ROLE_SET_NAME) {
+    ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_NAME) {
         _record(node).name = primary;
         emit NameChanged(node, primary);
     }
@@ -283,7 +283,14 @@ contract OwnedResolver is
         bytes32 node,
         string calldata key,
         string calldata value
-    ) external onlyPartRoles(node, OwnedResolverLib.textPart(key), OwnedResolverLib.ROLE_SET_TEXT) {
+    )
+        external
+        onlyPartRoles(
+            node,
+            PermissionedResolverLib.textPart(key),
+            PermissionedResolverLib.ROLE_SET_TEXT
+        )
+    {
         _record(node).texts[key] = value;
         emit TextChanged(node, key, key, value);
     }
@@ -350,7 +357,7 @@ contract OwnedResolver is
         bytes32 node,
         uint256 contentTypes
     ) external view returns (uint256 contentType, bytes memory data) {
-        OwnedResolverLib.Record storage R = _record(node);
+        PermissionedResolverLib.Record storage R = _record(node);
         for (contentType = 1; contentType > 0 && contentType <= contentTypes; contentType <<= 1) {
             if ((contentType & contentTypes) != 0) {
                 data = R.abis[contentType];
@@ -390,7 +397,7 @@ contract OwnedResolver is
 
     /// @inheritdoc IPubkeyResolver
     function pubkey(bytes32 node) external view returns (bytes32 x, bytes32 y) {
-        OwnedResolverLib.Record storage R = _record(node);
+        PermissionedResolverLib.Record storage R = _record(node);
         x = R.pubkey[0];
         y = R.pubkey[1];
     }
@@ -428,7 +435,11 @@ contract OwnedResolver is
         bytes memory addressBytes
     )
         public
-        onlyPartRoles(node, OwnedResolverLib.addrPart(coinType), OwnedResolverLib.ROLE_SET_ADDR)
+        onlyPartRoles(
+            node,
+            PermissionedResolverLib.addrPart(coinType),
+            PermissionedResolverLib.ROLE_SET_ADDR
+        )
     {
         if (
             addressBytes.length != 0 && addressBytes.length != 20 && ENSIP19.isEVMCoinType(coinType)
@@ -444,7 +455,7 @@ contract OwnedResolver is
 
     /// @inheritdoc IAddressResolver
     function addr(bytes32 node, uint256 coinType) public view returns (bytes memory addressBytes) {
-        OwnedResolverLib.Record storage R = _record(node);
+        PermissionedResolverLib.Record storage R = _record(node);
         addressBytes = R.addresses[coinType];
         if (addressBytes.length == 0 && ENSIP19.chainFromCoinType(coinType) > 0) {
             addressBytes = R.addresses[COIN_TYPE_DEFAULT];
@@ -481,7 +492,7 @@ contract OwnedResolver is
     /// @dev Allow `ROLE_UPGRADE` to upgrade.
     function _authorizeUpgrade(
         address newImplementation
-    ) internal override onlyRootRoles(OwnedResolverLib.ROLE_UPGRADE) {
+    ) internal override onlyRootRoles(PermissionedResolverLib.ROLE_UPGRADE) {
         //
     }
 
@@ -546,14 +557,16 @@ contract OwnedResolver is
     }
 
     /// @dev Access record storage pointer.
-    function _record(bytes32 node) internal view returns (OwnedResolverLib.Record storage R) {
-        OwnedResolverLib.Storage storage S = _storage();
+    function _record(
+        bytes32 node
+    ) internal view returns (PermissionedResolverLib.Record storage R) {
+        PermissionedResolverLib.Storage storage S = _storage();
         return S.records[node][S.versions[node]];
     }
 
     /// @dev Access global storage pointer.
-    function _storage() internal pure returns (OwnedResolverLib.Storage storage S) {
-        uint256 slot = OwnedResolverLib.NAMED_SLOT;
+    function _storage() internal pure returns (PermissionedResolverLib.Storage storage S) {
+        uint256 slot = PermissionedResolverLib.NAMED_SLOT;
         assembly {
             S.slot := slot
         }
