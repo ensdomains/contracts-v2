@@ -13,11 +13,12 @@ const FLAGS = {
   REGISTRY: {
     REGISTRAR: 1n << 0n,
     REGISTER_RESERVED: 1n << 4n,
-    RENEW: 1n << 8n,
+    SET_PARENT: 1n << 8n,
     UNREGISTER: 1n << 12n,
-    SET_SUBREGISTRY: 1n << 16n,
-    SET_RESOLVER: 1n << 20n,
-    CAN_TRANSFER: 1n << 24n,
+    RENEW: 1n << 16n,
+    SET_SUBREGISTRY: 1n << 20n,
+    SET_RESOLVER: 1n << 24n,
+    CAN_TRANSFER: 1n << 28n,
     UPGRADE: 1n << 124n,
   },
   // see: ETHRegistrar.sol
