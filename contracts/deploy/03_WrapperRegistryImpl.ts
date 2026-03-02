@@ -18,7 +18,7 @@ export default execute(
     const ensV1Resolver =
       get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
 
-    await deploy("WrapperRegistry", {
+    await deploy("WrapperRegistryImpl", {
       account: deployer,
       artifact: artifacts.WrapperRegistry,
       args: [
@@ -31,11 +31,11 @@ export default execute(
     });
   },
   {
-    tags: ["WrapperRegistry", "l1"],
+    tags: ["WrapperRegistryImpl", "l1"],
     dependencies: [
       "NameWrapper",
       "HCAFactory",
-      "ETHRegistry",
+      "SimpleRegistryMetadata",
       "VerifiableFactory",
       "ENSV1Resolver",
     ],
