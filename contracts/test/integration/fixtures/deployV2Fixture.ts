@@ -45,8 +45,8 @@ export async function deployV2Fixture(
   ]);
   const verifiableFactory =
     await network.viem.deployContract("VerifiableFactory");
-  const ownedResolver = await network.viem.deployContract(
-    "src/resolver/OwnedResolver.sol:OwnedResolver",
+  const PermissionedResolverImpl = await network.viem.deployContract(
+    "PermissionedResolver",
     [hcaFactory.address],
   );
   return {
@@ -58,10 +58,10 @@ export async function deployV2Fixture(
     ethRegistry,
     batchGatewayProvider,
     universalResolver,
-    deployOwnedResolver,
+    deployPermissionedResolver,
     setupName,
   };
-  async function deployOwnedResolver({
+  async function deployPermissionedResolver({
     owner = walletClient.account.address,
     roles = ROLES.ALL,
     salt = idFromLabel(new Date().toISOString()),
@@ -73,8 +73,8 @@ export async function deployV2Fixture(
     return deployVerifiableProxy({
       walletClient: await network.viem.getWalletClient(owner),
       factoryAddress: verifiableFactory.address,
-      implAddress: ownedResolver.address,
-      abi: ownedResolver.abi,
+      implAddress: PermissionedResolverImpl.address,
+      abi: PermissionedResolverImpl.abi,
       functionName: "initialize",
       args: [walletClient.account.address, roles],
       salt,
@@ -162,7 +162,8 @@ export async function deployV2Fixture(
       }
       if (leaf) {
         // invariants:
-        //            tokenId == labelToCanonicalId(labels[0])
+        //             labels == splitName(name) // note: opposite order of registries[]
+        //            tokenId == parentRegistry.getTokenId(idFromLabel(labels[-1]))
         //  registries.length == labels.length
         //     exactRegistry? == registries[0]
         //     parentRegistry == registries[1]

@@ -35,7 +35,7 @@ export default execute(
     });
   },
   {
-    tags: ["MigratedWrappedNameRegistry", "l1"],
+    tags: ["MigratedWrappedNameRegistryImpl", "l1"],
     dependencies: [
       "NameWrapper",
       "HCAFactory",
