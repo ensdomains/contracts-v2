@@ -161,7 +161,7 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
 
     /// @inheritdoc IL2ReverseRegistrar
     function syncName(address addr) external {
-        _setName(addr, IContractName(addr).ensContractName()); // reverts if not implemented
+        _setName(addr, IContractName(addr).contractName()); // reverts if not implemented
     }
 
     ////////////////////////////////////////////////////////////////////////
