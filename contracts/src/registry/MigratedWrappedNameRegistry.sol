@@ -38,7 +38,7 @@ import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 ///         migrated), returns the fallback resolver so resolution can proceed without requiring
 ///         migration first.
 ///
-///         Overrides `_register`: for Emancipated subdomains (those with `PARENT_CANNOT_CONTROL`
+///         Overrides `register`: for Emancipated subdomains (those with `PARENT_CANNOT_CONTROL`
 ///         burned), requires the subdomain NFT to have been transferred to this registry before
 ///         registration, preventing registration of names that haven't completed migration.
 contract MigratedWrappedNameRegistry is
@@ -198,6 +198,35 @@ contract MigratedWrappedNameRegistry is
     }
 
     /// @inheritdoc PermissionedRegistry
+    /// @dev Blocks registration of unmigrated Emancipated children. If the label has
+    ///      `PARENT_CANNOT_CONTROL` burned in the NameWrapper, the NFT must have been transferred
+    ///      to this registry (i.e., migrated) before registration is allowed.
+    function register(
+        string memory label,
+        address owner,
+        IRegistry registry,
+        address resolver,
+        uint256 roleBitmap,
+        uint64 expires
+    ) public virtual override returns (uint256 tokenId) {
+        // Check if the label has an emancipated NFT in the old system
+        // For .eth 2LDs, NameWrapper uses keccak256(label) as the token ID
+        uint256 legacyTokenId = uint256(keccak256(bytes(label)));
+        (, uint32 fuses, ) = NAME_WRAPPER.getData(legacyTokenId);
+
+        // If the name is emancipated (PARENT_CANNOT_CONTROL burned),
+        // it must be migrated (owned by this registry)
+        if ((fuses & PARENT_CANNOT_CONTROL) != 0) {
+            if (NAME_WRAPPER.ownerOf(legacyTokenId) != address(this)) {
+                revert LabelNotMigrated(label);
+            }
+        }
+
+        // Proceed with registration
+        return super.register(label, owner, registry, resolver, roleBitmap, expires);
+    }
+
+    /// @inheritdoc PermissionedRegistry
     /// @dev Returns the fallback resolver for Emancipated subdomains (those with `PARENT_CANNOT_CONTROL`
     ///      burned) that are still held by the NameWrapper and not yet migrated. This allows name
     ///      resolution to continue without requiring migration first.
@@ -262,45 +291,18 @@ contract MigratedWrappedNameRegistry is
             );
 
             // Complete name registration in new registry
-            _register(
+            super.register(
                 label,
                 migrationDataArray[i].transferData.owner,
                 IRegistry(subregistry),
                 migrationDataArray[i].transferData.resolver,
                 tokenRoles,
-                migrationDataArray[i].transferData.expires,
-                _msgSender()
+                migrationDataArray[i].transferData.expires
             );
 
             // Finalize migration by freezing the name
             LockedNamesLib.freezeName(NAME_WRAPPER, tokenIds[i], fuses);
         }
-    }
-
-    function _register(
-        string memory label,
-        address owner,
-        IRegistry registry,
-        address resolver,
-        uint256 roleBitmap,
-        uint64 expires,
-        address sender
-    ) internal virtual override returns (uint256 tokenId) {
-        // Check if the subdomain is Emancipated in the NameWrapper
-        // (i.e., the parent-controlled fuse PARENT_CANNOT_CONTROL has been burned)
-        uint256 legacyTokenId = uint256(keccak256(bytes(label)));
-        (, uint32 fuses, ) = NAME_WRAPPER.getData(legacyTokenId);
-
-        // If the name is Emancipated, it must have been migrated (owned by this registry)
-        // before it can be registered, ensuring proper migration ordering
-        if ((fuses & PARENT_CANNOT_CONTROL) != 0) {
-            if (NAME_WRAPPER.ownerOf(legacyTokenId) != address(this)) {
-                revert LabelNotMigrated(label);
-            }
-        }
-
-        // Proceed with registration
-        return super._register(label, owner, registry, resolver, roleBitmap, expires, sender);
     }
 
     /// @dev Validates that the DNS-encoded name belongs under the expected parent before migration.
