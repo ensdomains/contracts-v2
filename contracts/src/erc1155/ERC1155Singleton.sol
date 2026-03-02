@@ -1,8 +1,4 @@
 // SPDX-License-Identifier: MIT
-
-// ERC1155 implementation that supports only a single token per ID. Stores owner information to allow
-// fetching ownership information for a tokenId via `ownerOf`.
-// Portions from OpenZeppelin Contracts (token/ERC1155/ERC1155.sol)
 pragma solidity >=0.8.13;
 
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -19,6 +15,10 @@ import {HCAContext} from "../hca/HCAContext.sol";
 
 import {IERC1155Singleton} from "./interfaces/IERC1155Singleton.sol";
 
+/// @notice ERC1155 implementation that supports only a single token per ID. Stores owner information to allow
+///         fetching ownership information for a tokenId via `ownerOf`.
+/// @author OpenZeppelin (https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/token/ERC1155/ERC1155.sol)
+/// @dev This contract has been modified from the implementation at the above link.
 abstract contract ERC1155Singleton is
     HCAContext,
     ERC165,
@@ -41,6 +41,10 @@ abstract contract ERC1155Singleton is
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice An approval for all operator was set.
+    /// @param owner The owner of the token.
+    /// @param approved The approved address.
+    /// @param tokenId The token ID.
     event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
 
     ////////////////////////////////////////////////////////////////////////
@@ -62,12 +66,24 @@ abstract contract ERC1155Singleton is
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev See {IERC1155-setApprovalForAll}.
+    /// @notice Sets the approval for all operator.
+    /// @param operator The operator to set the approval for.
+    /// @param approved The approval status.
     function setApprovalForAll(address operator, bool approved) public virtual {
         _setApprovalForAll(_msgSender(), operator, approved);
     }
 
-    /// @dev See {IERC1155-safeTransferFrom}.
+    /// @notice Transfers a single token from one address to another.
+    /// @param from The address to transfer the token from.
+    /// @param to The address to transfer the token to.
+    /// @param id The token ID.
+    /// @param value The amount of tokens to transfer.
+    /// @param data Additional data to pass to the receiver.
+    /// @dev `to` cannot be the zero address.
+    /// @dev If the caller is not `from`, it must have been approved to spend `from`'s tokens via `setApprovalForAll`.
+    /// @dev `from` must have a balance of tokens of type `id` of at least `value` amount.
+    /// @dev If `to` refers to a smart contract, it must implement IERC1155Receiver.onERC1155Received and return the
+    ///      acceptance magic value.
     function safeTransferFrom(
         address from,
         address to,
@@ -82,7 +98,15 @@ abstract contract ERC1155Singleton is
         _safeTransferFrom(from, to, id, value, data);
     }
 
-    /// @dev See {IERC1155-safeBatchTransferFrom}.
+    /// @notice Transfers multiple tokens from one address to another.
+    /// @param from The address to transfer the tokens from.
+    /// @param to The address to transfer the tokens to.
+    /// @param ids The token IDs.
+    /// @param values The amounts of tokens to transfer.
+    /// @param data Additional data to pass to the receiver.
+    /// @dev `ids` and `values` must have the same length.
+    /// @dev If `to` refers to a smart contract, it must implement IERC1155Receiver.onERC1155BatchReceived and return the
+    ///      acceptance magic value.
     function safeBatchTransferFrom(
         address from,
         address to,
@@ -97,22 +121,29 @@ abstract contract ERC1155Singleton is
         _safeBatchTransferFrom(from, to, ids, values, data);
     }
 
+    /// @inheritdoc IERC1155Singleton
     function ownerOf(uint256 id) public view virtual returns (address owner) {
         return _owners[id];
     }
 
-    function uri(uint256 /* id */) public view virtual returns (string memory);
+    /// @notice Returns the URI for a token.
+    /// @param id The token ID.
+    /// @return uri The URI for the token.
+    function uri(uint256 id) public view virtual returns (string memory uri);
 
-    /// @dev See {IERC1155-balanceOf}.
+    /// @notice Returns the balance of a token for an account.
+    /// @param account The account to get the balance for.
+    /// @param id The token ID.
+    /// @return balance The balance of the token for the account. This will only ever be 1 or 0.
     function balanceOf(address account, uint256 id) public view virtual returns (uint256) {
         return ownerOf(id) == account ? 1 : 0;
     }
 
-    /// @dev See {IERC1155-balanceOfBatch}.
-    ///
-    /// Requirements:
-    ///
-    /// - `accounts` and `ids` must have the same length.
+    /// @notice Returns the balances of a batch of tokens for an account.
+    /// @param accounts The accounts to get the balances for.
+    /// @param ids The token IDs.
+    /// @return batchBalances The balances of the tokens for the accounts. These will only ever be 1 or 0.
+    /// @dev `accounts` and `ids` must have the same length.
     function balanceOfBatch(
         address[] memory accounts,
         uint256[] memory ids
@@ -130,7 +161,10 @@ abstract contract ERC1155Singleton is
         return batchBalances;
     }
 
-    /// @dev See {IERC1155-isApprovedForAll}.
+    /// @notice Returns the approval for all operator.
+    /// @param account The account to get the approval for.
+    /// @param operator The operator to get the approval for.
+    /// @return approved The approval status.
     function isApprovedForAll(
         address account,
         address operator
@@ -139,7 +173,7 @@ abstract contract ERC1155Singleton is
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Internal Functions
+    // Internal & Private Functions
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Transfers a `value` amount of tokens of type `id` from `from` to `to`. Will mint (or burn) if `from`
@@ -354,10 +388,6 @@ abstract contract ERC1155Singleton is
         _operatorApprovals[owner][operator] = approved;
         emit ApprovalForAll(owner, operator, approved);
     }
-
-    ////////////////////////////////////////////////////////////////////////
-    // Private Functions
-    ////////////////////////////////////////////////////////////////////////
 
     /// @dev Creates an array in memory with only one value for each of the elements provided.
     function _asSingletonArrays(
