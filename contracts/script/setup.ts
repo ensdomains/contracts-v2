@@ -21,17 +21,17 @@ import {
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 
-import {
-  LOCAL_BATCH_GATEWAY_URL,
-  MAX_EXPIRY,
-  ROLES,
-} from "./deploy-constants.js";
 import { deployArtifact } from "../test/integration/fixtures/deployArtifact.js";
 import {
   computeVerifiableProxyAddress,
   deployVerifiableProxy,
 } from "../test/integration/fixtures/deployVerifiableProxy.js";
 import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.ts";
+import {
+  LOCAL_BATCH_GATEWAY_URL,
+  MAX_EXPIRY,
+  ROLES,
+} from "./deploy-constants.js";
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
 
 /**
@@ -77,7 +77,8 @@ const contracts = {
   //
   UniversalResolverV2: artifacts.UniversalResolverV2.abi,
   RootRegistry: artifacts.PermissionedRegistry.abi,
-  ETHReverseRegistrar: artifacts.L2ReverseRegistrar.abi,
+  // TODO: update to actual reverse registrar when we have it
+  ETHReverseRegistrar: artifacts['lib/ens-contracts/contracts/reverseRegistrar/L2ReverseRegistrar.sol/L2ReverseRegistrar'].abi,
   ETHReverseResolver: artifacts.ETHReverseResolver.abi,
   DNSTLDResolver: artifacts.DNSTLDResolver.abi,
   DNSTXTResolver: artifacts.DNSTXTResolver.abi,
