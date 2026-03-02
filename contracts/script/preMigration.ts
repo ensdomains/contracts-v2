@@ -1,0 +1,935 @@
+#!/usr/bin/env bun
+
+import { Command } from "commander";
+import { createReadStream, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  createWalletClient,
+  defineChain,
+  getContract,
+  http,
+  keccak256,
+  publicActions,
+  toHex,
+  zeroAddress,
+  type Address,
+  type Chain
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { mainnet } from "viem/chains";
+import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
+import {
+  blue,
+  bold,
+  cyan,
+  dim,
+  green,
+  Logger,
+  magenta,
+  red,
+  yellow,
+} from "./logger.js";
+
+// Load ABI from forge compilation artifacts
+function loadArtifact(contractName: string): { abi: any[] } {
+  const artifactPath = join(
+    import.meta.dirname,
+    `../out/${contractName}.sol/${contractName}.json`
+  );
+  const artifact = JSON.parse(readFileSync(artifactPath, "utf-8"));
+  return { abi: artifact.abi };
+}
+
+// ABI fragments for v1 BaseRegistrar
+const BASE_REGISTRAR_ABI = [
+  {
+    inputs: [{ internalType: "uint256", name: "id", type: "uint256" }],
+    name: "nameExpires",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+] as const;
+
+// Minimal ABI for PermissionedRegistry read operations
+const PERMISSIONED_REGISTRY_ABI = [
+  {
+    inputs: [{ name: "label", type: "string" }],
+    name: "getNameData",
+    outputs: [
+      { name: "tokenId", type: "uint256" },
+      {
+        name: "entry",
+        type: "tuple",
+        components: [
+          { name: "expiry", type: "uint64" },
+          { name: "subregistry", type: "address" },
+          { name: "resolver", type: "address" },
+          { name: "eacVersionId", type: "uint8" },
+          { name: "tokenVersionId", type: "uint8" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    name: "ownerOf",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+] as const;
+
+// Custom Errors
+export class UnexpectedOwnerError extends Error {
+  constructor(
+    public readonly labelName: string,
+    public readonly actualOwner: Address,
+    public readonly expectedOwner: Address
+  ) {
+    super(
+      `Name ${labelName}.eth is already registered but owned by unexpected address: ${actualOwner} (expected: ${expectedOwner})`
+    );
+    this.name = "UnexpectedOwnerError";
+  }
+}
+
+export class InvalidLabelNameError extends Error {
+  constructor(public readonly labelName: any) {
+    super(`Invalid label name: ${labelName}`);
+    this.name = "InvalidLabelNameError";
+  }
+}
+
+// Types
+export interface ENSRegistration {
+  labelName: string;
+  lineNumber: number;
+}
+
+export interface BatchReserveName {
+  label: string;
+  owner: Address;
+  registry: Address;
+  resolver: Address;
+  roleBitmap: bigint;
+  expires: bigint;
+}
+
+export interface PreMigrationConfig {
+  rpcUrl: string;
+  mainnetRpcUrl: string;
+  chainId: number;
+  registryAddress: Address;
+  batchRegistrarAddress: Address;
+  privateKey: `0x${string}`;
+  csvFilePath: string;
+  batchSize: number;
+  startIndex: number;
+  limit: number | null;
+  dryRun: boolean;
+  continue?: boolean;
+  disableCheckpoint?: boolean;
+  minExpiryDays: number;
+}
+
+export interface Checkpoint {
+  lastProcessedLineNumber: number;
+  totalProcessed: number;
+  totalExpected: number;
+  successCount: number;
+  renewedCount: number;
+  failureCount: number;
+  skippedCount: number;
+  invalidLabelCount: number;
+  timestamp: string;
+}
+
+// Constants
+const CHECKPOINT_FILE = "preMigration-checkpoint.json";
+const ERROR_LOG_FILE = "preMigration-errors.log";
+const INFO_LOG_FILE = "preMigration.log";
+const MAX_RETRIES = 3;
+
+// Configuration constants
+const RPC_TIMEOUT_MS = 30000;
+
+// ENS v1 BaseRegistrar on Ethereum mainnet
+const BASE_REGISTRAR_ADDRESS = "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85" as Address;
+const PRE_MIGRATION_RESOLVER = "0x0000000000000000000000000000000000000001" as Address;
+
+export function createFreshCheckpoint(): Checkpoint {
+  return {
+    lastProcessedLineNumber: -1,
+    totalProcessed: 0,
+    totalExpected: 0,
+    successCount: 0,
+    renewedCount: 0,
+    failureCount: 0,
+    skippedCount: 0,
+    invalidLabelCount: 0,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+// Pre-migration specific logger
+class PreMigrationLogger extends Logger {
+  constructor() {
+    super({
+      infoLogFile: INFO_LOG_FILE,
+      errorLogFile: ERROR_LOG_FILE,
+      enableFileLogging: true,
+    });
+  }
+
+  processingName(name: string, index: number, total: number): void {
+    this.raw(
+      cyan(`[${index}/${total}] Processing: ${bold(name)}.eth`),
+      `[${index}/${total}] Processing: ${name}.eth`
+    );
+  }
+
+  finishedName(name: string, result: 'reserved' | 'renewed' | 'skipped' | 'failed'): void {
+    const icon = result === 'reserved' ? '✓' : result === 'renewed' ? '↻' : result === 'skipped' ? '⊘' : '✗';
+    const color = result === 'reserved' ? green : result === 'renewed' ? cyan : result === 'skipped' ? yellow : red;
+    this.raw(
+      color(`${icon} Done: ${bold(name)}.eth`) + dim(` (${result})`),
+      `${icon} Done: ${name}.eth (${result})`
+    );
+  }
+
+  reserving(name: string, expiry: string): void {
+    this.raw(
+      blue(`  → Reserving on v2`) + dim(` (expires: ${expiry})`),
+      `  → Reserving on v2 (expires: ${expiry})`
+    );
+  }
+
+  reserved(tx: string): void {
+    this.raw(
+      green(`  → ✓ Reserved successfully`) + dim(` (tx: ${tx})`),
+      `  → ✓ Reserved successfully (tx: ${tx})`
+    );
+  }
+
+  alreadyReserved(): void {
+    this.raw(
+      yellow(`  → ⊘ Already reserved by this migration`),
+      `  → ⊘ Already reserved by this migration`
+    );
+  }
+
+  renewing(name: string, currentExpiry: string, newExpiry: string): void {
+    this.raw(
+      blue(`  → Renewing on v2`) +
+      dim(` (current: ${currentExpiry}, new: ${newExpiry})`),
+      `  → Renewing on v2 (current: ${currentExpiry}, new: ${newExpiry})`
+    );
+  }
+
+  renewed(tx: string): void {
+    this.raw(
+      green(`  → ✓ Renewed successfully`) + dim(` (tx: ${tx})`),
+      `  → ✓ Renewed successfully (tx: ${tx})`
+    );
+  }
+
+  failed(
+    name: string,
+    error: string,
+    attempt?: number,
+    maxRetries?: number
+  ): void {
+    const attemptInfo = attempt
+      ? ` (attempt ${attempt}/${maxRetries})`
+      : ` after ${maxRetries} attempts`;
+    this.rawError(
+      red(`  → ✗ Failed${attemptInfo}:`) + dim(` ${error}`),
+      `  → ✗ Failed${attemptInfo}: ${error}`
+    );
+  }
+
+  dryRun(): void {
+    this.raw(
+      dim(`  → [DRY RUN] Simulated registration (no transaction sent)`),
+      `  → [DRY RUN] Simulated registration (no transaction sent)`
+    );
+  }
+
+  progress(
+    current: number,
+    total: number,
+    stats: { reserved: number; renewed: number; skipped: number; failed: number }
+  ): void {
+    const percent = Math.round((current / total) * 100);
+    this.raw(
+      magenta(
+        `Progress: ${bold(`${current}/${total}`)} (${percent}%) - ` +
+        `${green("Reserved: " + stats.reserved)}, ` +
+        `${cyan("Renewed: " + stats.renewed)}, ` +
+        `${yellow("Skipped: " + stats.skipped)}, ` +
+        `${red("Failed: " + stats.failed)}`
+      ),
+      `Progress: ${current}/${total} (${percent}%) - Reserved: ${stats.reserved}, Renewed: ${stats.renewed}, Skipped: ${stats.skipped}, Failed: ${stats.failed}`
+    );
+  }
+
+  verifyingV1(name: string): void {
+    this.raw(
+      dim(`  → Checking v1 status for ${name}.eth...`),
+      `  → Checking v1 status for ${name}.eth...`
+    );
+  }
+
+  v1Verified(name: string, expiry: string): void {
+    this.raw(
+      green(`  → ✓ Verified on v1`) + dim(` (expires: ${expiry})`),
+      `  → ✓ Verified on v1 (expires: ${expiry})`
+    );
+  }
+
+  v1NotRegistered(name: string, reason: string): void {
+    this.raw(
+      yellow(`  → ⊘ Not registered on v1: ${reason}`),
+      `  → ⊘ Not registered on v1: ${reason}`
+    );
+  }
+
+  skippingInvalidName(domainName: string): void {
+    this.raw(
+      yellow(`  → ⊘ Skipping: ${bold(domainName)}`) + dim(` (invalid label name)`),
+      `  → ⊘ Skipping: ${domainName} (invalid label name)`
+    );
+  }
+
+  skippingExpiringSoon(name: string, daysUntilExpiry: number): void {
+    this.raw(
+      yellow(`  → ⊘ Skipping: ${bold(name)}.eth`) + dim(` (expires in ${daysUntilExpiry} days)`),
+      `  → ⊘ Skipping: ${name}.eth (expires in ${daysUntilExpiry} days)`
+    );
+  }
+}
+
+const logger = new PreMigrationLogger();
+
+// Checkpoint management
+export function loadCheckpoint(): Checkpoint | null {
+  if (!existsSync(CHECKPOINT_FILE)) {
+    return null;
+  }
+
+  try {
+    const data = readFileSync(CHECKPOINT_FILE, "utf-8");
+    return JSON.parse(data);
+  } catch (error) {
+    logger.error(`Failed to load checkpoint: ${error}`);
+    return null;
+  }
+}
+
+export function saveCheckpoint(checkpoint: Checkpoint): void {
+  try {
+    writeFileSync(CHECKPOINT_FILE, JSON.stringify(checkpoint, null, 2));
+  } catch (error) {
+    logger.error(`Failed to save checkpoint: ${error}`);
+  }
+}
+
+// v1 verification
+interface V1VerificationResult {
+  isRegistered: boolean;
+  expiry: bigint;
+}
+
+export async function verifyNameOnV1(
+  labelName: string,
+  client: any,
+  baseRegistrarAddress: Address = BASE_REGISTRAR_ADDRESS
+): Promise<V1VerificationResult> {
+  if (!labelName || typeof labelName !== 'string' || labelName.trim() === '') {
+    throw new InvalidLabelNameError(labelName);
+  }
+
+  const tokenId = keccak256(toHex(labelName));
+
+  const expiry = await client.readContract({
+    address: baseRegistrarAddress,
+    abi: BASE_REGISTRAR_ABI,
+    functionName: "nameExpires",
+    args: [tokenId],
+  });
+
+  const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
+  const isRegistered = expiry > 0n && expiry > currentTimestamp;
+
+  return { isRegistered, expiry };
+}
+
+async function validateBatchRegistrar(client: any, address: Address): Promise<void> {
+  const code = await client.getCode({ address });
+  if (!code || code === "0x") {
+    throw new Error(`No contract deployed at BatchRegistrar address: ${address}`);
+  }
+  logger.success(`Using BatchRegistrar at ${address}`);
+}
+
+async function* readCSVInBatches(
+  csvFilePath: string,
+  batchSize: number,
+  startLineNumber: number = 0,
+  limit: number | null = null
+): AsyncGenerator<ENSRegistration[]> {
+  const readline = await import("node:readline");
+
+  const fileStream = createReadStream(csvFilePath);
+  const rl = readline.createInterface({
+    input: fileStream,
+    crlfDelay: Infinity,
+  });
+
+  let lineNumber = 0;
+  let processedCount = 0;
+  let batch: ENSRegistration[] = [];
+  let headerSkipped = false;
+
+  for await (const line of rl) {
+    if (!headerSkipped) {
+      headerSkipped = true;
+      continue;
+    }
+
+    if (lineNumber <= startLineNumber) {
+      lineNumber++;
+      continue;
+    }
+
+    if (limit && processedCount >= limit) {
+      break;
+    }
+
+    const parts = parseCSVLine(line);
+    if (parts.length >= 7) {
+      const labelName = parts[6].trim();
+      if (labelName && labelName !== '') {
+        batch.push({ labelName, lineNumber });
+        processedCount++;
+
+        if (batch.length >= batchSize) {
+          yield batch;
+          batch = [];
+        }
+      }
+    }
+
+    lineNumber++;
+  }
+
+  if (batch.length > 0) {
+    yield batch;
+  }
+}
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  result.push(current);
+  return result;
+}
+
+async function fetchAndReserveInBatches(
+  config: PreMigrationConfig,
+): Promise<void> {
+  let checkpoint: Checkpoint | null = null;
+
+  if (config.continue) {
+    checkpoint = loadCheckpoint();
+    if (checkpoint) {
+      logger.info(`Resuming from checkpoint: ${checkpoint.totalProcessed} names already processed from line ${checkpoint.lastProcessedLineNumber}`);
+      config.startIndex = checkpoint.lastProcessedLineNumber;
+    }
+  }
+
+  if (!checkpoint) {
+    checkpoint = createFreshCheckpoint();
+  }
+
+  // Get chain for v2 operations (mainnet or custom chain)
+  const v2Chain: Chain = config.chainId === 1 ? mainnet : defineChain({
+    id: config.chainId,
+    name: "Custom",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: { default: { http: [config.rpcUrl] } },
+  });
+
+  // Client for v2 operations (can be devnet or mainnet)
+  const client = createWalletClient({
+    account: privateKeyToAccount(config.privateKey),
+    chain: v2Chain,
+    transport: http(config.rpcUrl, { retryCount: 0, timeout: RPC_TIMEOUT_MS }),
+  }).extend(publicActions);
+
+  // Separate client for mainnet v1 verification
+  const mainnetClient = createWalletClient({
+    account: privateKeyToAccount(config.privateKey),
+    chain: mainnet,
+    transport: http(config.mainnetRpcUrl, { retryCount: 0, timeout: RPC_TIMEOUT_MS }),
+  }).extend(publicActions);
+
+  const registry = getContract({
+    address: config.registryAddress,
+    abi: PERMISSIONED_REGISTRY_ABI,
+    client,
+  });
+
+  // Validate BatchRegistrar is deployed
+  await validateBatchRegistrar(client, config.batchRegistrarAddress);
+
+  // Load BatchRegistrar ABI from artifacts
+  const batchRegistrarArtifact = loadArtifact("BatchRegistrar");
+  const batchRegistrar = getContract({
+    address: config.batchRegistrarAddress,
+    abi: batchRegistrarArtifact.abi,
+    client,
+  });
+
+  logger.info(`\nReading CSV file and reserving in batches of ${config.batchSize}...`);
+  logger.info(`CSV file: ${config.csvFilePath}`);
+
+  const batchGenerator = readCSVInBatches(
+    config.csvFilePath,
+    config.batchSize,
+    config.startIndex,
+    config.limit
+  );
+
+  for await (const batch of batchGenerator) {
+    try {
+      checkpoint.totalExpected += batch.length;
+
+      let invalidLabelsInBatch = 0;
+      let lastInvalidLineNumber = checkpoint.lastProcessedLineNumber;
+      const validBatch = batch.filter((reg) => {
+        if (!reg.labelName || typeof reg.labelName !== 'string' || reg.labelName.trim() === '') {
+          logger.skippingInvalidName(reg.labelName || 'unknown');
+          invalidLabelsInBatch++;
+          checkpoint!.invalidLabelCount++;
+          checkpoint!.totalProcessed++;
+          lastInvalidLineNumber = reg.lineNumber;
+          return false;
+        }
+        return true;
+      });
+
+      if (invalidLabelsInBatch > 0) {
+        checkpoint.lastProcessedLineNumber = lastInvalidLineNumber;
+        if (!config.disableCheckpoint) {
+          saveCheckpoint(checkpoint);
+        }
+      }
+
+      logger.info(
+        `\nRead ${batch.length} names from CSV (${invalidLabelsInBatch} invalid labels filtered). ` +
+        `Starting reservation of ${validBatch.length} valid names...`
+      );
+
+      if (validBatch.length > 0) {
+        checkpoint = await processBatch(
+          config,
+          validBatch,
+          client,
+          mainnetClient,
+          registry,
+          batchRegistrar,
+          checkpoint
+        );
+      }
+
+      logger.info(
+        `Batch complete. Total: ${checkpoint.totalProcessed} processed ` +
+        `(${checkpoint.successCount} reserved, ${checkpoint.renewedCount} renewed, ` +
+        `${checkpoint.skippedCount} skipped, ${checkpoint.invalidLabelCount} invalid, ` +
+        `${checkpoint.failureCount} failed)`
+      );
+
+      if (config.limit && checkpoint.totalProcessed >= config.limit) {
+        logger.info(`\nReached limit of ${config.limit} names. Stopping.`);
+        break;
+      }
+    } catch (error) {
+      logger.error(`Failed to process batch: ${error}`);
+      throw error;
+    }
+  }
+
+  printFinalSummary(checkpoint);
+}
+
+async function processBatch(
+  config: PreMigrationConfig,
+  registrations: ENSRegistration[],
+  client: any,
+  mainnetClient: any,
+  registry: any,
+  batchRegistrar: any,
+  checkpoint: Checkpoint
+): Promise<Checkpoint> {
+  const batchNames: BatchReserveName[] = [];
+  const alreadyReservedNames = new Set<string>();
+  let lastLineNumber = checkpoint.lastProcessedLineNumber;
+
+  const minExpiryThreshold = BigInt(Math.floor(Date.now() / 1000) + config.minExpiryDays * 86400);
+
+  for (let i = 0; i < registrations.length; i++) {
+    const registration = registrations[i];
+    const globalIndex = checkpoint.totalProcessed + i + 1;
+    lastLineNumber = registration.lineNumber;
+
+    logger.processingName(registration.labelName, globalIndex, checkpoint.totalExpected);
+
+    try {
+      let isAlreadyReserved = false;
+      try {
+        const [tokenId, entry] = await registry.read.getNameData([registration.labelName]);
+        if (entry.expiry > 0n && entry.expiry > BigInt(Math.floor(Date.now() / 1000))) {
+          const owner = await registry.read.ownerOf([tokenId]);
+          if (owner !== zeroAddress) {
+            logger.error(`Name ${registration.labelName}.eth is already registered with owner: ${owner}`);
+            checkpoint.failureCount++;
+            logger.finishedName(registration.labelName, 'failed');
+            continue;
+          }
+          isAlreadyReserved = true;
+          alreadyReservedNames.add(registration.labelName);
+        }
+      } catch {
+        // Name not found - proceed with v1 verification
+      }
+
+      logger.verifyingV1(registration.labelName);
+      const v1Result = await verifyNameOnV1(
+        registration.labelName,
+        mainnetClient
+      );
+
+      if (!v1Result.isRegistered) {
+        const reason = v1Result.expiry === 0n
+          ? "never registered or fully expired"
+          : "expired";
+        logger.v1NotRegistered(registration.labelName, reason);
+        checkpoint.skippedCount++;
+        logger.finishedName(registration.labelName, 'skipped');
+        continue;
+      }
+
+      if (v1Result.expiry <= minExpiryThreshold) {
+        const daysUntilExpiry = Number((v1Result.expiry - BigInt(Math.floor(Date.now() / 1000))) / 86400n);
+        logger.skippingExpiringSoon(registration.labelName, daysUntilExpiry);
+        checkpoint.skippedCount++;
+        logger.finishedName(registration.labelName, 'skipped');
+        continue;
+      }
+
+      const expiryDateFormatted = new Date(Number(v1Result.expiry) * 1000).toISOString().split('T')[0];
+      logger.v1Verified(registration.labelName, expiryDateFormatted);
+
+      batchNames.push({
+        label: registration.labelName,
+        owner: zeroAddress,
+        registry: zeroAddress,
+        resolver: PRE_MIGRATION_RESOLVER,
+        roleBitmap: 0n,
+        expires: v1Result.expiry,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.failed(registration.labelName, errorMessage, undefined, MAX_RETRIES);
+      checkpoint.failureCount++;
+      logger.finishedName(registration.labelName, 'failed');
+    }
+
+    checkpoint.totalProcessed++;
+    checkpoint.lastProcessedLineNumber = lastLineNumber;
+    checkpoint.timestamp = new Date().toISOString();
+
+    if (!config.disableCheckpoint) {
+      saveCheckpoint(checkpoint);
+    }
+  }
+
+  checkpoint.lastProcessedLineNumber = lastLineNumber;
+
+  if (batchNames.length > 0 && !config.dryRun) {
+    logger.info(`\nBatch reserving ${batchNames.length} names...`);
+
+    try {
+      const hash = await batchRegistrar.write.batchRegister([batchNames]);
+      await waitForSuccessfulTransactionReceipt(client, { hash });
+
+      logger.success(`Batch reservation successful (tx: ${hash})`);
+
+      for (const name of batchNames) {
+        if (alreadyReservedNames.has(name.label)) {
+          checkpoint.renewedCount++;
+          logger.renewed(hash);
+          logger.finishedName(name.label, 'renewed');
+        } else {
+          checkpoint.successCount++;
+          logger.reserved(hash);
+          logger.finishedName(name.label, 'reserved');
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`Batch reservation failed: ${errorMessage}`);
+      checkpoint.failureCount += batchNames.length;
+
+      for (const name of batchNames) {
+        logger.failed(name.label, errorMessage, undefined, MAX_RETRIES);
+        logger.finishedName(name.label, 'failed');
+      }
+    }
+  } else if (batchNames.length > 0 && config.dryRun) {
+    logger.info(`\nDry run: Would batch reserve ${batchNames.length} names`);
+
+    for (const name of batchNames) {
+      logger.dryRun();
+      if (alreadyReservedNames.has(name.label)) {
+        checkpoint.renewedCount++;
+        logger.finishedName(name.label, 'renewed');
+      } else {
+        checkpoint.successCount++;
+        logger.finishedName(name.label, 'reserved');
+      }
+    }
+  }
+
+  checkpoint.timestamp = new Date().toISOString();
+
+  if (!config.disableCheckpoint) {
+    saveCheckpoint(checkpoint);
+  }
+
+  return checkpoint;
+}
+
+function calculateSuccessRate(successCount: number, totalAttempts: number): number {
+  return totalAttempts > 0 ? Math.round((successCount / totalAttempts) * 100) : 0;
+}
+
+function printFinalSummary(checkpoint: Checkpoint): void {
+  const actualRegistrations = checkpoint.successCount + checkpoint.renewedCount + checkpoint.failureCount;
+
+  logger.info('');
+  logger.divider();
+  logger.header('Pre-Migration Complete');
+  logger.divider();
+
+  logger.config('Total names processed', checkpoint.totalProcessed);
+  logger.config('Successfully reserved', green(checkpoint.successCount.toString()));
+  logger.config('Successfully renewed', cyan(checkpoint.renewedCount.toString()));
+  logger.config('Skipped (expiring soon/already up-to-date/expired)', yellow(checkpoint.skippedCount.toString()));
+  logger.config('Invalid labels', yellow(checkpoint.invalidLabelCount.toString()));
+  logger.config('Failed (other errors)', checkpoint.failureCount > 0 ? red(checkpoint.failureCount.toString()) : checkpoint.failureCount);
+  logger.config('Actual reservations/renewals attempted', actualRegistrations);
+
+  const rate = calculateSuccessRate(checkpoint.successCount + checkpoint.renewedCount, actualRegistrations);
+  if (actualRegistrations > 0) {
+    logger.config('Success rate', `${rate}%`);
+  }
+
+  logger.divider();
+
+  if (checkpoint.failureCount > 0) {
+    logger.warning(`\nSome registrations failed. Check ${ERROR_LOG_FILE} for details.`);
+  }
+}
+
+export async function batchReserveNames(
+  config: PreMigrationConfig,
+  registrations: ENSRegistration[],
+  providedClient?: any,
+  providedRegistry?: any,
+  providedMainnetClient?: any
+): Promise<void> {
+  // Get chain for v2 operations (mainnet or custom chain)
+  const v2Chain: Chain = config.chainId === 1 ? mainnet : defineChain({
+    id: config.chainId,
+    name: "Custom",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: { default: { http: [config.rpcUrl] } },
+  });
+
+  const client = providedClient || createWalletClient({
+    account: privateKeyToAccount(config.privateKey),
+    chain: v2Chain,
+    transport: http(config.rpcUrl, {
+      retryCount: 0,
+      timeout: RPC_TIMEOUT_MS,
+    }),
+  }).extend(publicActions);
+
+  // Mainnet client for v1 verification
+  const mainnetClient = providedMainnetClient || createWalletClient({
+    account: privateKeyToAccount(config.privateKey),
+    chain: mainnet,
+    transport: http(config.mainnetRpcUrl, {
+      retryCount: 0,
+      timeout: RPC_TIMEOUT_MS,
+    }),
+  }).extend(publicActions);
+
+  const registry = providedRegistry || getContract({
+    address: config.registryAddress,
+    abi: PERMISSIONED_REGISTRY_ABI,
+    client,
+  });
+
+  // Validate BatchRegistrar is deployed
+  await validateBatchRegistrar(client, config.batchRegistrarAddress);
+
+  // Load BatchRegistrar ABI from artifacts
+  const batchRegistrarArtifact = loadArtifact("BatchRegistrar");
+  const batchRegistrar = getContract({
+    address: config.batchRegistrarAddress,
+    abi: batchRegistrarArtifact.abi,
+    client,
+  });
+
+  let checkpoint: Checkpoint;
+  if (config.disableCheckpoint) {
+    checkpoint = createFreshCheckpoint();
+    checkpoint.totalExpected = registrations.length;
+  } else if (config.continue) {
+    const loaded = loadCheckpoint();
+    if (loaded) {
+      checkpoint = {
+        ...loaded,
+        renewedCount: loaded.renewedCount ?? 0,
+        skippedCount: loaded.skippedCount ?? 0,
+        invalidLabelCount: loaded.invalidLabelCount ?? 0,
+        totalExpected: (loaded.totalExpected ?? loaded.totalProcessed) + registrations.length,
+      };
+    } else {
+      checkpoint = createFreshCheckpoint();
+      checkpoint.totalExpected = registrations.length;
+    }
+  } else {
+    checkpoint = createFreshCheckpoint();
+    checkpoint.totalExpected = registrations.length;
+  }
+
+  await processBatch(
+    config,
+    registrations,
+    client,
+    mainnetClient,
+    registry,
+    batchRegistrar,
+    checkpoint
+  );
+
+  printFinalSummary(checkpoint);
+}
+
+export async function main(argv = process.argv): Promise<void> {
+  const program = new Command()
+    .name("premigrate")
+    .description("Pre-migrate ENS .eth 2LDs from v1 to v2 on Ethereum mainnet. By default starts fresh. Use --continue to resume from checkpoint.")
+    .requiredOption("--rpc-url <url>", "Ethereum mainnet RPC endpoint")
+    .requiredOption("--registry <address>", "v2 ETH Registry contract address")
+    .requiredOption("--batch-registrar <address>", "Pre-deployed BatchRegistrar contract address")
+    .requiredOption("--private-key <key>", "Deployer private key")
+    .requiredOption("--csv-file <path>", "Path to CSV file containing ENS registrations")
+    .option("--mainnet-rpc-url <url>", "Mainnet RPC endpoint for v1 verification (default: public endpoint)", "https://eth.drpc.org")
+    .option("--chain-id <number>", "Chain ID for v2 RPC (default: 1 for mainnet)", "1")
+    .option("--batch-size <number>", "Number of names to process per batch", "50")
+    .option("--start-index <number>", "Starting index for resuming partial migrations", "0")
+    .option("--limit <number>", "Maximum total number of names to process and register")
+    .option("--dry-run", "Simulate without executing transactions", false)
+    .option("--continue", "Continue from previous checkpoint if it exists", false)
+    .option("--min-expiry-days <days>", "Skip names expiring within this many days", "7");
+
+  program.parse(argv);
+  const opts = program.opts();
+
+  const config: PreMigrationConfig = {
+    rpcUrl: opts.rpcUrl,
+    mainnetRpcUrl: opts.mainnetRpcUrl,
+    chainId: parseInt(opts.chainId) || 1,
+    registryAddress: opts.registry as Address,
+    batchRegistrarAddress: opts.batchRegistrar as Address,
+    privateKey: opts.privateKey as `0x${string}`,
+    csvFilePath: opts.csvFile,
+    batchSize: parseInt(opts.batchSize) || 100,
+    startIndex: parseInt(opts.startIndex) || 0,
+    limit: opts.limit ? parseInt(opts.limit) : null,
+    dryRun: opts.dryRun,
+    continue: opts.continue,
+    minExpiryDays: parseInt(opts.minExpiryDays) || 7,
+  };
+
+  try {
+    logger.header("ENS Pre-Migration Script");
+    logger.divider();
+
+    logger.info(`Configuration:`);
+    logger.config('RPC URL', config.rpcUrl);
+    logger.config('Chain ID', config.chainId);
+    logger.config('Registry', config.registryAddress);
+    logger.config('BatchRegistrar', config.batchRegistrarAddress);
+    logger.config('Mainnet RPC (v1)', config.mainnetRpcUrl);
+    logger.config('CSV File', config.csvFilePath);
+    logger.config('Batch Size', config.batchSize);
+    logger.config('Min Expiry Days', config.minExpiryDays);
+    logger.config('Limit', config.limit ?? "none");
+    logger.config('Dry Run', config.dryRun);
+    logger.config('Continue Mode', config.continue ?? false);
+    if (config.continue && loadCheckpoint()) {
+      const cp = loadCheckpoint()!;
+      const renewedCount = cp.renewedCount ?? 0;
+      const invalidCount = cp.invalidLabelCount ?? 0;
+      const lastLine = cp.lastProcessedLineNumber ?? -1;
+      logger.config('Checkpoint Found', `${cp.totalProcessed} processed (${cp.successCount} reserved, ${renewedCount} renewed, ${cp.skippedCount} skipped, ${invalidCount} invalid, ${cp.failureCount} failed) (last line: ${lastLine})`);
+      config.startIndex = lastLine;
+      logger.info(`Resuming from CSV line ${config.startIndex}`);
+    }
+    logger.info("");
+
+    await fetchAndReserveInBatches(config);
+
+    logger.success("\nPre-migration script completed successfully!");
+  } catch (error) {
+    logger.error(`Fatal error: ${error}`);
+    console.error(error);
+    process.exit(1);
+  }
+}
+
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
