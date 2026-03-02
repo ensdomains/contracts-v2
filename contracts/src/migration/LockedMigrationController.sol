@@ -14,23 +14,43 @@ import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {LockedNamesLib} from "./libraries/LockedNamesLib.sol";
 import {MigrationData} from "./types/MigrationTypes.sol";
 
+/// @notice Handles migration of Locked .eth 2LD names from the ENS v1 NameWrapper to the v2
+///         registry system. A name is Locked when the owner-controlled fuse `CANNOT_UNWRAP` has
+///         been burned. Additionally validates that the `IS_DOT_ETH` fuse is present, confirming
+///         the name is a .eth 2LD. Receives NFTs via ERC1155
+///         transfer from the NameWrapper.
+///
+///         Migration flow per name: validate the name is Locked and is a .eth 2LD → translate
+///         the NameWrapper fuse configuration into v2 role bitmaps → deploy a
+///         `MigratedWrappedNameRegistry` subregistry via `VerifiableFactory` (CREATE2) → register
+///         the name in the .eth registry with the translated roles → freeze the name in the
+///         NameWrapper by burning all remaining owner-controlled fuses.
+///
+///         The parent-controlled fuse `CAN_EXTEND_EXPIRY` is masked out for 2LDs to prevent
+///         automatic renewal in the new system.
 contract LockedMigrationController is IERC1155Receiver, ERC165 {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev The ENS v1 `NameWrapper` contract that holds wrapped names as ERC1155 tokens.
     INameWrapper public immutable NAME_WRAPPER;
 
+    /// @dev The v2 .eth `PermissionedRegistry` where migrated names are registered.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
+    /// @dev The `VerifiableFactory` used for deterministic (CREATE2) deployment of subregistries.
     VerifiableFactory public immutable FACTORY;
 
+    /// @dev The implementation contract used as the template for `MigratedWrappedNameRegistry` proxies.
     address public immutable MIGRATED_REGISTRY_IMPLEMENTATION;
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Thrown when the ERC1155 `tokenId` does not match the label hash derived from the
+    ///      DNS-encoded name in the migration data.
     /// @dev Error selector: `0x4fa09b3f`
     error TokenIdMismatch(uint256 tokenId, uint256 expectedTokenId);
 
@@ -62,6 +82,11 @@ contract LockedMigrationController is IERC1155Receiver, ERC165 {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Receives a single wrapped name via ERC1155 `safeTransferFrom`. Only callable by the
+    ///      `NameWrapper`. Decodes a single `MigrationData` from `data` and delegates to
+    ///      `_migrateLockedEthNames`.
+    /// @param tokenId The NameWrapper token ID (label hash) of the name being migrated.
+    /// @param data ABI-encoded `MigrationData` struct containing migration parameters.
     function onERC1155Received(
         address /*operator*/,
         address /*from*/,
@@ -85,6 +110,11 @@ contract LockedMigrationController is IERC1155Receiver, ERC165 {
         return this.onERC1155Received.selector;
     }
 
+    /// @dev Receives a batch of wrapped names via ERC1155 `safeBatchTransferFrom`. Only callable
+    ///      by the `NameWrapper`. Decodes a `MigrationData[]` array from `data` and delegates to
+    ///      `_migrateLockedEthNames`.
+    /// @param tokenIds The NameWrapper token IDs (label hashes) of the names being migrated.
+    /// @param data ABI-encoded `MigrationData[]` array containing migration parameters for each name.
     function onERC1155BatchReceived(
         address /*operator*/,
         address /*from*/,
@@ -103,6 +133,12 @@ contract LockedMigrationController is IERC1155Receiver, ERC165 {
         return this.onERC1155BatchReceived.selector;
     }
 
+    /// @dev Iterates over the provided token IDs, validates each name is locked and a .eth 2LD,
+    ///      translates NameWrapper fuses into v2 role bitmaps, deploys a `MigratedWrappedNameRegistry`
+    ///      subregistry via CREATE2, registers the name in the .eth registry, and freezes the name
+    ///      in the NameWrapper.
+    /// @param tokenIds The NameWrapper token IDs (label hashes) of the names to migrate.
+    /// @param migrationDataArray The migration parameters for each name, indexed in parallel with `tokenIds`.
     function _migrateLockedEthNames(
         uint256[] memory tokenIds,
         MigrationData[] memory migrationDataArray
@@ -114,7 +150,7 @@ contract LockedMigrationController is IERC1155Receiver, ERC165 {
             LockedNamesLib.validateLockedName(fuses, tokenIds[i]);
             LockedNamesLib.validateIsDotEth2LD(fuses, tokenIds[i]);
 
-            // Determine permissions from name configuration (mask out CAN_EXTEND_EXPIRY to prevent automatic renewal for 2LDs)
+            // Mask out the parent-controlled fuse CAN_EXTEND_EXPIRY to prevent automatic renewal for 2LDs
             uint32 adjustedFuses = fuses & ~CAN_EXTEND_EXPIRY;
             (uint256 tokenRoles, uint256 subRegistryRoles) = LockedNamesLib
                 .generateRoleBitmapsFromFuses(adjustedFuses);

@@ -13,18 +13,20 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 
-/// @notice Resolver that performs resolutions using ENSv2.
+/// @notice Adapter that exposes ENSv2 (namechain registry-based) name resolution through the
+///         `ICompositeResolver` interface. Uses `LibRegistry.findResolver()` to traverse the v2
+///         registry hierarchy and locate the resolver, then delegates resolution via `ResolverCaller`.
 ///
-/// A UniversalResolverV2 (ResolverCaller + LibRegistry) that implements ICompositeResolver.
-///
+///         Composed into the `UniversalResolverV2` alongside the v1 resolver.
 contract ENSV2Resolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev The ENS v2 root registry used to traverse the registry hierarchy and locate resolvers.
     IRegistry public immutable ROOT_REGISTRY;
 
-    /// @dev Shared batch gateway provider.
+    /// @dev Shared batch gateway provider used to obtain CCIP-Read gateway URLs for offchain resolution.
     IGatewayProvider public immutable BATCH_GATEWAY_PROVIDER;
 
     ////////////////////////////////////////////////////////////////////////

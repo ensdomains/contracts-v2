@@ -25,9 +25,22 @@ import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
 /// @title MigratedWrappedNameRegistry
-/// @dev A registry for migrated wrapped names that inherits from PermissionedRegistry and is upgradeable using the UUPS pattern.
-/// This contract provides resolver fallback to the universal resolver for names that haven't been migrated yet.
-/// It also handles subdomain migration by receiving NFT transfers from the NameWrapper.
+/// @notice UUPS-upgradeable `PermissionedRegistry` for names migrated from the ENS v1 `NameWrapper`.
+///         Deployed as a per-name subregistry during locked name migration.
+///
+///         Implements `IERC1155Receiver` to accept subdomain NFTs transferred from the NameWrapper
+///         for migration. On receipt, it validates the subdomain is Emancipated (i.e., the
+///         parent-controlled fuse `PARENT_CANNOT_CONTROL` has been burned), verifies the domain
+///         hierarchy, deploys a child `MigratedWrappedNameRegistry` via `VerifiableFactory`,
+///         registers the subdomain, and freezes the name in the NameWrapper.
+///
+///         Overrides `getResolver`: for Emancipated subdomains still in the NameWrapper (not yet
+///         migrated), returns the fallback resolver so resolution can proceed without requiring
+///         migration first.
+///
+///         Overrides `_register`: for Emancipated subdomains (those with `PARENT_CANNOT_CONTROL`
+///         burned), requires the subdomain NFT to have been transferred to this registry before
+///         registration, preventing registration of names that haven't completed migration.
 contract MigratedWrappedNameRegistry is
     Initializable,
     PermissionedRegistry,
@@ -39,18 +52,24 @@ contract MigratedWrappedNameRegistry is
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Reference to the ENS v1 `NameWrapper` contract from which subdomain NFTs are transferred.
     INameWrapper public immutable NAME_WRAPPER;
 
+    /// @dev `VerifiableFactory` used to deploy child `MigratedWrappedNameRegistry` proxies for subdomains.
     VerifiableFactory public immutable FACTORY;
 
+    /// @dev The `.eth` registry used to verify second-level domain registration status during migration.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
+    /// @dev Resolver returned for emancipated subdomains that have not yet been migrated, allowing
+    ///      name resolution to continue without requiring migration first.
     address public immutable FALLBACK_RESOLVER;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev DNS wire-format encoded name of the parent domain, set during initialization.
     bytes public parentDnsEncodedName;
 
     ////////////////////////////////////////////////////////////////////////
@@ -80,11 +99,13 @@ contract MigratedWrappedNameRegistry is
         _disableInitializers();
     }
 
-    /// @dev Initializes the MigratedWrappedNameRegistry contract.
-    /// @param parentDnsEncodedName_ The DNS-encoded name of the parent domain.
-    /// @param ownerAddress_ The address that will own this registry.
-    /// @param ownerRoles_ The roles to grant to the owner.
-    /// @param registrarAddress_ Optional address to grant ROLE_REGISTRAR permissions (typically for testing).
+    /// @notice Initializes a proxy instance of `MigratedWrappedNameRegistry`.
+    /// @dev Stores the parent DNS name, grants upgrade and owner roles to `ownerAddress_`, and
+    ///      optionally grants the registrar role to `registrarAddress_`.
+    /// @param parentDnsEncodedName_ DNS wire-format encoded name of the parent domain.
+    /// @param ownerAddress_ Address that will own this subregistry.
+    /// @param ownerRoles_ Role bitmap to grant to the owner (combined with upgrade roles).
+    /// @param registrarAddress_ Address to grant the registrar role to; pass the zero address to skip.
     function initialize(
         bytes calldata parentDnsEncodedName_,
         address ownerAddress_,
@@ -123,6 +144,12 @@ contract MigratedWrappedNameRegistry is
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Handles a single ERC-1155 token transfer from the `NameWrapper`.
+    /// @dev Decodes the migration data from `data`, delegates to `_migrateSubdomains`, and returns
+    ///      the ERC-1155 receiver selector. Reverts if the caller is not the `NameWrapper`.
+    /// @param tokenId The `NameWrapper` node ID of the transferred subdomain NFT.
+    /// @param data ABI-encoded `MigrationData` struct for the subdomain.
+    /// @return The `onERC1155Received` function selector.
     function onERC1155Received(
         address /*operator*/,
         address /*from*/,
@@ -146,6 +173,12 @@ contract MigratedWrappedNameRegistry is
         return this.onERC1155Received.selector;
     }
 
+    /// @notice Handles a batch ERC-1155 token transfer from the `NameWrapper`.
+    /// @dev Decodes an array of `MigrationData` from `data`, delegates to `_migrateSubdomains`,
+    ///      and returns the ERC-1155 batch receiver selector. Reverts if the caller is not the `NameWrapper`.
+    /// @param tokenIds The `NameWrapper` node IDs of the transferred subdomain NFTs.
+    /// @param data ABI-encoded `MigrationData[]` array, one entry per token.
+    /// @return The `onERC1155BatchReceived` function selector.
     function onERC1155BatchReceived(
         address /*operator*/,
         address /*from*/,
@@ -165,7 +198,9 @@ contract MigratedWrappedNameRegistry is
     }
 
     /// @inheritdoc PermissionedRegistry
-    /// @dev Restore the latest resolver to `FALLBACK_RESOLVER` upon visiting migratable children.
+    /// @dev Returns the fallback resolver for Emancipated subdomains (those with `PARENT_CANNOT_CONTROL`
+    ///      burned) that are still held by the NameWrapper and not yet migrated. This allows name
+    ///      resolution to continue without requiring migration first.
     function getResolver(
         string calldata label
     ) public view override(PermissionedRegistry) returns (address) {
@@ -184,11 +219,18 @@ contract MigratedWrappedNameRegistry is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Required override for UUPSUpgradeable - restricts upgrade permissions
+    /// @dev Restricts UUPS upgrades to accounts holding the upgrade role on the root resource.
     function _authorizeUpgrade(
         address
     ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {}
 
+    /// @dev Migrates one or more subdomains from the `NameWrapper` into this registry.
+    ///      For each token: validates the name is Emancipated (`PARENT_CANNOT_CONTROL` burned),
+    ///      verifies the domain hierarchy, deploys a child `MigratedWrappedNameRegistry` proxy,
+    ///      registers the subdomain, and freezes the legacy name.
+    /// @param tokenIds Array of `NameWrapper` node IDs for the subdomains being migrated.
+    /// @param migrationDataArray Corresponding array of `MigrationData` structs carrying owner,
+    ///        resolver, expiry, DNS-encoded name, and factory salt for each subdomain.
     function _migrateSubdomains(
         uint256[] memory tokenIds,
         MigrationData[] memory migrationDataArray
@@ -244,13 +286,13 @@ contract MigratedWrappedNameRegistry is
         uint64 expires,
         address sender
     ) internal virtual override returns (uint256 tokenId) {
-        // Check if the label has an emancipated NFT in the old system
-        // For .eth 2LDs, NameWrapper uses keccak256(label) as the token ID
+        // Check if the subdomain is Emancipated in the NameWrapper
+        // (i.e., the parent-controlled fuse PARENT_CANNOT_CONTROL has been burned)
         uint256 legacyTokenId = uint256(keccak256(bytes(label)));
         (, uint32 fuses, ) = NAME_WRAPPER.getData(legacyTokenId);
 
-        // If the name is emancipated (PARENT_CANNOT_CONTROL burned),
-        // it must be migrated (owned by this registry)
+        // If the name is Emancipated, it must have been migrated (owned by this registry)
+        // before it can be registered, ensuring proper migration ordering
         if ((fuses & PARENT_CANNOT_CONTROL) != 0) {
             if (NAME_WRAPPER.ownerOf(legacyTokenId) != address(this)) {
                 revert LabelNotMigrated(label);
@@ -261,6 +303,13 @@ contract MigratedWrappedNameRegistry is
         return super._register(label, owner, registry, resolver, roleBitmap, expires, sender);
     }
 
+    /// @dev Validates that the DNS-encoded name belongs under the expected parent before migration.
+    ///      For second-level domains, checks the `.eth` registry to ensure the label is not already
+    ///      registered. For deeper subdomains, verifies that the parent is still wrapped and owned
+    ///      by this contract, and that the label has not already been registered here.
+    /// @param dnsEncodedName Full DNS wire-format encoded name of the subdomain being migrated.
+    /// @param offset Byte offset into `dnsEncodedName` at which to begin label extraction.
+    /// @return label The extracted leftmost label from `dnsEncodedName`.
     function _validateHierarchy(
         bytes memory dnsEncodedName,
         uint256 offset

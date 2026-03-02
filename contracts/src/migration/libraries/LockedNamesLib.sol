@@ -21,15 +21,18 @@ import {
 import {RegistryRolesLib} from "../../registry/libraries/RegistryRolesLib.sol";
 
 /// @title LockedNamesLib
-/// @notice Library for common locked name migration operations
-/// @dev Contains shared logic for migrating locked names from ENS NameWrapper to v2 registries
+/// @notice Library for migrating wrapped names from the ENS v1 NameWrapper to v2 registries.
+/// @dev Provides validation, fuse-to-role translation, subregistry deployment, and name freezing
+///      for the locked and emancipated name migration paths. See
+///      https://docs.ens.domains/wrapper/fuses for NameWrapper fuse semantics.
 library LockedNamesLib {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The fuses to burn during migration to prevent further changes
-    /// @dev Includes all transferable and modifiable fuses including the lock fuse
+    /// @notice Composite bitmask of owner-controlled fuses burned during migration to freeze the
+    ///         name in the NameWrapper. After burning, the name cannot be unwrapped, transferred,
+    ///         have its resolver or TTL changed, create new subdomains, or have additional fuses burned.
     uint32 public constant FUSES_TO_BURN =
         CANNOT_UNWRAP |
             CANNOT_BURN_FUSES |
@@ -42,12 +45,15 @@ library LockedNamesLib {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Thrown when a name required to be locked (i.e., `CANNOT_UNWRAP` burned) is not.
     /// @dev Error selector: `0x1bfe8f0a`
     error NameNotLocked(uint256 tokenId);
 
+    /// @dev Thrown when a name required to be emancipated (i.e., `PARENT_CANNOT_CONTROL` burned) is not.
     /// @dev Error selector: `0xf7d2a5a8`
     error NameNotEmancipated(uint256 tokenId);
 
+    /// @dev Thrown when a name is expected to be a .eth 2LD but the `IS_DOT_ETH` fuse is not present.
     /// @dev Error selector: `0xaa289832`
     error NotDotEthName(uint256 tokenId);
 
@@ -85,7 +91,7 @@ library LockedNamesLib {
     /// @param tokenId The token ID to freeze
     /// @param fuses The current fuses on the name
     function freezeName(INameWrapper nameWrapper, uint256 tokenId, uint32 fuses) internal {
-        // Clear resolver if CANNOT_SET_RESOLVER fuse is not set
+        // Clear resolver if CANNOT_SET_RESOLVER fuse has not been burned
         if ((fuses & CANNOT_SET_RESOLVER) == 0) {
             nameWrapper.setResolver(bytes32(tokenId), address(0));
         }
@@ -94,8 +100,9 @@ library LockedNamesLib {
         nameWrapper.setFuses(bytes32(tokenId), uint16(FUSES_TO_BURN));
     }
 
-    /// @notice Validates that a name is properly locked for migration
-    /// @dev Checks that CANNOT_UNWRAP is set
+    /// @notice Validates that a name is in the Locked state for migration.
+    /// @dev A name is Locked when the owner-controlled fuse `CANNOT_UNWRAP` has been burned,
+    ///      preventing it from being unwrapped from the NameWrapper.
     /// @param fuses The current fuses on the name
     /// @param tokenId The token ID for error reporting
     function validateLockedName(uint32 fuses, uint256 tokenId) internal pure {
@@ -104,8 +111,10 @@ library LockedNamesLib {
         }
     }
 
-    /// @notice Validates that a name is properly emancipated for migration
-    /// @dev Checks that PARENT_CANNOT_CONTROL is set (emancipated). Name may or may not be locked.
+    /// @notice Validates that a name is in the Emancipated state for migration.
+    /// @dev A name is Emancipated when the parent-controlled fuse `PARENT_CANNOT_CONTROL` has been
+    ///      burned, meaning the parent owner can no longer replace, delete, or burn additional fuses
+    ///      on this name. The name may or may not also be Locked.
     /// @param fuses The current fuses on the name
     /// @param tokenId The token ID for error reporting
     function validateEmancipatedName(uint32 fuses, uint256 tokenId) internal pure {
@@ -114,8 +123,10 @@ library LockedNamesLib {
         }
     }
 
-    /// @notice Validates that a name is a .eth second-level domain
-    /// @dev Checks the IS_DOT_ETH fuse, which is only valid for .eth 2LDs
+    /// @notice Validates that a name is a .eth second-level domain.
+    /// @dev The `IS_DOT_ETH` fuse is a parent-controlled fuse automatically set by the NameWrapper
+    ///      when .eth 2LDs are wrapped. It cannot be manually burned and serves as a flag identifying
+    ///      the name as a second-level .eth domain.
     /// @param fuses The current fuses on the name
     /// @param tokenId The token ID for error reporting
     function validateIsDotEth2LD(uint32 fuses, uint256 tokenId) internal pure {
@@ -124,18 +135,22 @@ library LockedNamesLib {
         }
     }
 
-    /// @notice Generates role bitmaps based on fuses
-    /// @dev Returns two bitmaps: tokenRoles for the name registration and subRegistryRoles for the registry owner
+    /// @notice Translates NameWrapper fuses into v2 role bitmaps for the migrated name.
+    /// @dev Examines which owner-controlled and parent-controlled fuses have been burned to determine
+    ///      what permissions the owner should retain in the v2 system. Fuses that revoke capabilities
+    ///      (e.g., `CANNOT_SET_RESOLVER`) result in the corresponding v2 role being omitted. Admin
+    ///      variants of roles are only granted when `CANNOT_BURN_FUSES` has not been burned, preserving
+    ///      the ability to delegate permissions when fuse state is not yet frozen.
     /// @param fuses The current fuses on the name
     /// @return tokenRoles The role bitmap for the owner on their name in their parent registry.
     /// @return subRegistryRoles The role bitmap for the owner on their name's subregistry.
     function generateRoleBitmapsFromFuses(
         uint32 fuses
     ) internal pure returns (uint256 tokenRoles, uint256 subRegistryRoles) {
-        // Check if fuses are permanently frozen
+        // Check if `CANNOT_BURN_FUSES` (owner-controlled) has been burned, freezing the fuse configuration
         bool fusesFrozen = (fuses & CANNOT_BURN_FUSES) != 0;
 
-        // Include renewal permissions if expiry can be extended
+        // Grant renewal role if the parent-controlled fuse `CAN_EXTEND_EXPIRY` has been burned
         if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
             tokenRoles |= RegistryRolesLib.ROLE_RENEW;
             if (!fusesFrozen) {
@@ -143,7 +158,7 @@ library LockedNamesLib {
             }
         }
 
-        // Conditionally add resolver roles
+        // Grant resolver role if the owner-controlled fuse `CANNOT_SET_RESOLVER` has NOT been burned
         if ((fuses & CANNOT_SET_RESOLVER) == 0) {
             tokenRoles |= RegistryRolesLib.ROLE_SET_RESOLVER;
             if (!fusesFrozen) {
@@ -151,12 +166,12 @@ library LockedNamesLib {
             }
         }
 
-        // Add transfer admin role if transfers are allowed
+        // Grant transfer role if the owner-controlled fuse `CANNOT_TRANSFER` has NOT been burned
         if ((fuses & CANNOT_TRANSFER) == 0) {
             tokenRoles |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         }
 
-        // Owner gets registrar permissions on subregistry only if subdomain creation is allowed
+        // Grant registrar role on subregistry if `CANNOT_CREATE_SUBDOMAIN` has NOT been burned
         if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
             subRegistryRoles |= RegistryRolesLib.ROLE_REGISTRAR;
             if (!fusesFrozen) {

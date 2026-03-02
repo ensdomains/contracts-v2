@@ -11,18 +11,22 @@ import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.so
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-/// @notice Resolver that performs resolutions using ENSv1.
+/// @notice Adapter that exposes ENSv1 name resolution through the `ICompositeResolver` interface.
+///         Uses `RegistryUtils.findResolver()` from the ENS v1 contracts to locate the resolver for
+///         a name, then delegates resolution via `ResolverCaller` (which handles CCIP-Read/EIP-3668
+///         offchain lookups).
 ///
-/// A UniversalResolverV1 (ResolverCaller + RegistryUtils) that implements ICompositeResolver.
-///
+///         Composed into the `UniversalResolverV2` alongside the v2 resolver to provide
+///         backward-compatible resolution.
 contract ENSV1Resolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev The ENS v1 registry used to look up resolvers for names.
     ENS public immutable REGISTRY_V1;
 
-    /// @dev Shared batch gateway provider.
+    /// @dev Shared batch gateway provider used to obtain CCIP-Read gateway URLs for offchain resolution.
     IGatewayProvider public immutable BATCH_GATEWAY_PROVIDER;
 
     ////////////////////////////////////////////////////////////////////////

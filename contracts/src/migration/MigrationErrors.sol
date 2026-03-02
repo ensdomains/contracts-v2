@@ -10,7 +10,9 @@ pragma solidity >=0.8.13;
 /// @param offset The byte offset where the parent domain starts in the name
 error ParentNotMigrated(bytes name, uint256 offset);
 
-/// @notice Thrown when attempting to register a label that has an emancipated NFT in the old system but hasn't been migrated
+/// @notice Thrown when attempting to register a label whose subdomain is Emancipated
+///         (`PARENT_CANNOT_CONTROL` burned) in the NameWrapper but has not yet been migrated
+///         to this registry.
 /// @dev Error selector: `0x3a7216b7`
 /// @param label The label that needs to be migrated first
 error LabelNotMigrated(string label);

@@ -12,8 +12,10 @@ import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
 /// @title UserRegistry
-/// @dev A user registry that inherits from PermissionedRegistry and is upgradeable using the UUPS pattern.
-/// This contract is designed to be deployed via the VerifiableFactory.
+/// @notice UUPS-upgradeable `PermissionedRegistry` designed to be deployed as a proxy via
+///         `VerifiableFactory` for user-owned subdomain registries. The constructor disables
+///         initializers on the implementation contract; proxies call `initialize()` to set up the
+///         admin and initial roles. Upgrade authorization requires the upgrade role in the root resource.
 contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -23,19 +25,18 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
         IHCAFactoryBasic hcaFactory_,
         IRegistryMetadata metadataProvider_
     ) PermissionedRegistry(hcaFactory_, metadataProvider_, _msgSender(), 0) {
-        // This disables initialization for the implementation contract
         _disableInitializers();
     }
 
-    /// @dev Initializes the UserRegistry contract.
-    /// @param admin The address that will be set as the admin with upgrade privileges.
-    /// @param roleBitmap The roles to grant to `admin`.
+    /// @notice Initializes a proxy instance of `UserRegistry`.
+    /// @dev Grants the supplied role bitmap to `admin` on the root resource. Reverts if `admin`
+    ///      is the zero address.
+    /// @param admin The address that will receive the specified roles.
+    /// @param roleBitmap The role bitmap to grant to `admin`.
     function initialize(address admin, uint256 roleBitmap) public initializer {
         if (admin == address(0)) {
             revert InvalidOwner();
         }
-        // metadata provider is set immutably in constructor
-        // Grant roles to the admin
         _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
     }
 
@@ -50,12 +51,9 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Function that authorizes an upgrade to a new implementation.
-    ///      Only accounts with the _ROLE_UPGRADE_ADMIN role can upgrade the contract.
-    /// @param newImplementation The address of the new implementation.
+    /// @dev Restricts UUPS upgrades to accounts holding the upgrade role on the root resource.
+    /// @param newImplementation The address of the new implementation contract.
     function _authorizeUpgrade(
         address newImplementation
-    ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {
-        // Authorization is handled by the onlyRootRoles modifier
-    }
+    ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {}
 }

@@ -15,6 +15,7 @@ import {LibLabel} from "../utils/LibLabel.sol";
 import {IETHRegistrar} from "./interfaces/IETHRegistrar.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
+/// @dev Composite role bitmap granted to name owners at registration — includes set-subregistry, set-resolver, and can-transfer (with admin variants).
 uint256 constant REGISTRATION_ROLE_BITMAP = 0 |
     RegistryRolesLib.ROLE_SET_SUBREGISTRY |
     RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN |
@@ -22,27 +23,47 @@ uint256 constant REGISTRATION_ROLE_BITMAP = 0 |
     RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
     RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
 
+/// @dev Root-level role authorizing oracle updates.
 uint256 constant ROLE_SET_ORACLE = 1 << 0;
 
+/// @notice Commit-reveal registrar for .eth names. Registration requires two transactions: first
+///         `commit(hash)` to record a commitment, then `register(...)` after the minimum commitment
+///         age but before the maximum commitment age has elapsed. The commitment hash binds all
+///         registration parameters (label, owner, secret, subregistry, resolver, duration, referrer)
+///         to prevent front-running.
+///
+///         Delegates actual name storage to an `IPermissionedRegistry`, granting the owner a fixed
+///         set of roles (set subregistry, set resolver, and transfer — each with their admin
+///         counterpart).
+///
+///         Payment is collected via ERC20 `safeTransferFrom` to an immutable beneficiary address.
+///         Pricing is delegated to a swappable `IRentPriceOracle`. Renewals pay only the base rate;
+///         registrations pay base + premium (for recently expired names).
 contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev The permissioned registry where .eth names are stored and managed.
     IPermissionedRegistry public immutable REGISTRY;
 
+    /// @dev Address that receives all registration and renewal payments.
     address public immutable BENEFICIARY;
 
+    /// @dev Minimum seconds a commitment must age before registration can proceed.
     uint64 public immutable MIN_COMMITMENT_AGE;
 
+    /// @dev Maximum seconds a commitment remains valid; expired commitments are rejected.
     uint64 public immutable MAX_COMMITMENT_AGE;
 
+    /// @dev Shortest allowed registration duration, in seconds.
     uint64 public immutable MIN_REGISTER_DURATION;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Current pricing oracle used for computing registration and renewal costs.
     IRentPriceOracle public rentPriceOracle;
 
     /// @inheritdoc IETHRegistrar
@@ -52,6 +73,8 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Emitted when the rent price oracle is replaced.
+    /// @param oracle The new `IRentPriceOracle` instance.
     event RentPriceOracleChanged(IRentPriceOracle oracle);
 
     ////////////////////////////////////////////////////////////////////////
@@ -217,7 +240,9 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Assert `commitment` is timely, then delete it.
+    /// @dev Validates that the given `commitment` was recorded within the allowed time window
+    ///      (between minimum and maximum commitment age), then deletes it so it cannot be reused.
+    /// @param commitment The commitment hash to validate and consume.
     function _consumeCommitment(bytes32 commitment) internal {
         uint64 t = uint64(block.timestamp);
         uint64 t0 = commitmentAt[commitment];
