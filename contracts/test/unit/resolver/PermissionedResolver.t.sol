@@ -236,7 +236,7 @@ contract PermissionedResolverTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
-                uint256(NameCoder.namehash(testName, 0)),
+                PermissionedResolverLib.resource(NameCoder.namehash(testName, 0), 0),
                 roleBitmap,
                 friend
             )
@@ -266,7 +266,7 @@ contract PermissionedResolverTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
-                uint256(NameCoder.namehash(testName, 0)),
+                PermissionedResolverLib.resource(NameCoder.namehash(testName, 0), 0),
                 PermissionedResolverLib.ROLE_SET_TEXT,
                 friend
             )
@@ -291,7 +291,7 @@ contract PermissionedResolverTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
-                uint256(NameCoder.namehash(testName, 0)),
+                PermissionedResolverLib.resource(NameCoder.namehash(testName, 0), 0),
                 PermissionedResolverLib.ROLE_SET_ADDR,
                 friend
             )
