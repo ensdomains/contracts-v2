@@ -5,14 +5,17 @@ pragma solidity ^0.8.13;
 
 import {Test, Vm} from "forge-std/Test.sol";
 
-import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
-import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {IENSIP16} from "~src/utils/interfaces/IENSIP16.sol";
-import {LibString} from "~src/utils/LibString.sol";
-import {StandaloneReverseRegistrar} from "~src/reverse-registrar/StandaloneReverseRegistrar.sol";
+import {
+    StandaloneReverseRegistrar,
+    IENSIP16,
+    IExtendedResolver,
+    INameResolver,
+    IStandaloneReverseRegistrar,
+    LibString
+} from "~src/reverse-registrar/StandaloneReverseRegistrar.sol";
 
 import {
     MockStandaloneReverseRegistrarImplementer
@@ -119,6 +122,13 @@ contract StandaloneReverseRegistrarTest is Test {
         );
     }
 
+    function test_supportsInterface_istandloneReverseRegistrar() public view {
+        assertTrue(
+            registrar.supportsInterface(type(IStandaloneReverseRegistrar).interfaceId),
+            "Should support IStandaloneReverseRegistrar"
+        );
+    }
+
     function test_supportsInterface_ierc165() public view {
         assertTrue(
             registrar.supportsInterface(type(IERC165).interfaceId),
@@ -137,9 +147,8 @@ contract StandaloneReverseRegistrarTest is Test {
     // name() Tests
     ////////////////////////////////////////////////////////////////////////
 
-    function test_name_returnsEmptyForUnsetNode() public view {
-        bytes32 randomNode = keccak256("random");
-        assertEq(registrar.name(randomNode), "", "Should return empty for unset node");
+    function test_name_returnsEmptyForUnsetNode(bytes32 node) public view {
+        assertEq(registrar.name(node), "", "Should return empty for unset node");
     }
 
     function test_name_returnsSetName() public {
@@ -166,6 +175,17 @@ contract StandaloneReverseRegistrarTest is Test {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // nameForAddr() Tests
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_nameForAddr(address addr, string memory name) public {
+        assertEq(registrar.nameForAddr(addr), "", "before");
+        vm.prank(addr);
+        registrar.setName(addr, name);
+        assertEq(registrar.nameForAddr(addr), name, "after");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // resolve() Tests
     ////////////////////////////////////////////////////////////////////////
 
@@ -183,7 +203,7 @@ contract StandaloneReverseRegistrarTest is Test {
         assertEq(decodedName, expectedName, "Should return encoded name");
     }
 
-    function test_resolve_returnsEmptyForUnsetAddress() public {
+    function test_resolve_returnsEmptyForUnsetAddress() public view {
         bytes memory dnsEncodedName = _buildDnsEncodedName(user1);
         bytes memory data = abi.encodeCall(INameResolver.name, (bytes32(0)));
         bytes memory result = registrar.resolve(dnsEncodedName, data);
@@ -469,7 +489,7 @@ contract StandaloneReverseRegistrarTest is Test {
     // Helper Functions
     ////////////////////////////////////////////////////////////////////////
 
-    function _buildDnsEncodedName(address addr) internal view returns (bytes memory) {
+    function _buildDnsEncodedName(address addr) internal pure returns (bytes memory) {
         string memory addrString = LibString.toAddressString(addr);
 
         bytes memory parent = abi.encodePacked(

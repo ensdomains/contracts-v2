@@ -3,6 +3,10 @@ pragma solidity >=0.8.13;
 
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
+import {
+    IStandaloneReverseRegistrar
+} from "@ens/contracts/reverseRegistrar/IStandaloneReverseRegistrar.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
@@ -13,6 +17,7 @@ import {LibString} from "../utils/LibString.sol";
 /// @notice A standalone reverse registrar, detached from the ENS registry.
 abstract contract StandaloneReverseRegistrar is
     ERC165,
+    IStandaloneReverseRegistrar,
     IExtendedResolver,
     IENSIP16,
     INameResolver,
@@ -72,13 +77,11 @@ abstract contract StandaloneReverseRegistrar is
     /// @param label The string label for the namespace (e.g., "8000000a" for OP Mainnet).
     constructor(string memory label) {
         // Compute the namehash of "{label}.reverse"
-        PARENT_NODE = keccak256(
-            abi.encodePacked(_REVERSE_NODE, keccak256(abi.encodePacked(label)))
-        );
+        PARENT_NODE = NameCoder.namehash(_REVERSE_NODE, keccak256(bytes(label)));
 
         // Build the DNS-encoded parent name: {labelLength}{label}{7}reverse{0}
         bytes memory parent = abi.encodePacked(
-            uint8(bytes(label).length),
+            NameCoder.assertLabelSize(label),
             label,
             uint8(7),
             "reverse",
@@ -95,6 +98,7 @@ abstract contract StandaloneReverseRegistrar is
         return
             interfaceID == type(IExtendedResolver).interfaceId ||
             interfaceID == type(INameResolver).interfaceId ||
+            interfaceID == type(IStandaloneReverseRegistrar).interfaceId ||
             super.supportsInterface(interfaceID);
     }
 
@@ -110,6 +114,14 @@ abstract contract StandaloneReverseRegistrar is
         return _names[node];
     }
 
+    /// @inheritdoc IStandaloneReverseRegistrar
+    function nameForAddr(address addr) external view returns (string memory) {
+        return
+            _names[
+                NameCoder.namehash(PARENT_NODE, keccak256(bytes(LibString.toAddressString(addr))))
+            ];
+    }
+
     /// @notice Resolves a DNS-encoded reverse name to its primary ENS name.
     /// @dev Implements ENSIP-10 wildcard resolution for reverse lookups.
     ///      Only supports the `name(bytes32)` resolver profile.
@@ -118,11 +130,11 @@ abstract contract StandaloneReverseRegistrar is
     ///      DNS-encoded: {0x28}{40-hex-chars}{labelLen}{label}{0x07}reverse{0x00}
     ///
     /// @inheritdoc IExtendedResolver
-    /// @param name The DNS-encoded reverse name to resolve.
+    /// @param name_ The DNS-encoded reverse name to resolve.
     /// @param data The ABI-encoded function call (must be `name(bytes32)`).
     /// @return The ABI-encoded primary ENS name.
     function resolve(
-        bytes calldata name,
+        bytes calldata name_,
         bytes calldata data
     ) external view override returns (bytes memory) {
         bytes4 selector = bytes4(data);
@@ -132,13 +144,13 @@ abstract contract StandaloneReverseRegistrar is
 
         // Validate name length: 41 bytes for address component + parent suffix
         // 41 = 1 byte (length prefix) + 40 bytes (hex address without 0x)
-        if (name.length != _PARENT_LENGTH + 41) revert UnreachableName(name);
+        if (name_.length != _PARENT_LENGTH + 41) revert UnreachableName(name_);
 
         // Validate the parent suffix matches this registrar's namespace
-        if (keccak256(name[41:]) != _SIMPLE_HASHED_PARENT) revert UnreachableName(name);
+        if (keccak256(name_[41:]) != _SIMPLE_HASHED_PARENT) revert UnreachableName(name_);
 
         // Compute the reverse node and return the stored name
-        bytes32 node = keccak256(abi.encodePacked(PARENT_NODE, keccak256(name[1:41])));
+        bytes32 node = keccak256(abi.encodePacked(PARENT_NODE, keccak256(name_[1:41])));
         return abi.encode(_names[node]);
     }
 
