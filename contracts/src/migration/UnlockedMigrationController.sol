@@ -26,6 +26,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
 
     IPermissionedRegistry public immutable ETH_REGISTRY;
     IBaseRegistrar internal immutable _REGISTRAR_V1;
+    bool internal _unwrapping;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -114,20 +115,22 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         if (msg.sender != address(_REGISTRAR_V1)) {
             revert UnauthorizedCaller(msg.sender);
         }
-        if (data.length < LibMigration.MIN_UNLOCKED_DATA_SIZE) {
-            revert LibMigration.InvalidData();
+        if (!_unwrapping) {
+            if (data.length < LibMigration.MIN_UNLOCKED_DATA_SIZE) {
+                revert LibMigration.InvalidData();
+            }
+            LibMigration.UnlockedData memory md = abi.decode(data, (LibMigration.UnlockedData)); // reverts if invalid
+            if (tokenId != uint256(keccak256(bytes(md.label)))) {
+                revert LibMigration.NameDataMismatch(tokenId);
+            }
+            // clear V1 resolver
+            _REGISTRAR_V1.reclaim(tokenId, address(this));
+            _REGISTRY_V1.setResolver(
+                NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenId)),
+                address(0)
+            );
+            _inject(md);
         }
-        LibMigration.UnlockedData memory md = abi.decode(data, (LibMigration.UnlockedData)); // reverts if invalid
-        if (tokenId != uint256(keccak256(bytes(md.label)))) {
-            revert LibMigration.NameDataMismatch(tokenId);
-        }
-        // clear V1 resolver
-        _REGISTRAR_V1.reclaim(tokenId, address(this));
-        _REGISTRY_V1.setResolver(
-            NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenId)),
-            address(0)
-        );
-        _inject(md);
         return this.onERC721Received.selector;
     }
 
@@ -157,24 +160,24 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         if (ids.length != mds.length) {
             revert IERC1155Errors.ERC1155InvalidArrayLength(ids.length, mds.length);
         }
+        _unwrapping = true;
         for (uint256 i; i < ids.length; ++i) {
             uint256 id = ids[i];
             (, uint32 fuses, ) = NAME_WRAPPER.getData(id);
             if (_isLocked(fuses)) {
                 revert LibMigration.NameIsLocked(id);
             }
-            if (
-                bytes32(id) !=
-                NameCoder.namehash(NameCoder.ETH_NODE, keccak256(bytes(mds[i].label)))
-            ) {
+            bytes32 labelHash = keccak256(bytes(mds[i].label));
+            if (bytes32(id) != NameCoder.namehash(NameCoder.ETH_NODE, labelHash)) {
                 revert LibMigration.NameDataMismatch(id);
             }
             // clear V1 resolver
-            NAME_WRAPPER.setResolver(bytes32(id), address(0));
-            // NAME_WRAPPER.unwrapETH2LD(bytes32(id), address(this), address(this));
-            // _REGISTRY_V1.setResolver(bytes32(id), address(0));
+            //NAME_WRAPPER.setResolver(bytes32(id), address(0));
+            NAME_WRAPPER.unwrapETH2LD(labelHash, address(this), address(this)); // => onERC721Received()
+            _REGISTRY_V1.setResolver(bytes32(id), address(0));
             _inject(mds[i]);
         }
+        _unwrapping = false;
     }
 
     /// @dev Migrate a name to the registry.
