@@ -18,33 +18,17 @@ export default execute(
     const ethRegistry = await deploy("ETHRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
-      args: [
-        hcaFactory.address,
-        registryMetadata.address,
-        deployer,
-        ROLES.ALL,
-      ],
+      args: [hcaFactory.address, registryMetadata.address, deployer, ROLES.ALL],
     });
 
     await write(rootRegistry, {
       account: deployer,
       functionName: "register",
-      args: [
-        "eth",
-        deployer,
-        ethRegistry.address,
-        zeroAddress,
-        0n,
-        MAX_EXPIRY,
-      ],
+      args: ["eth", deployer, ethRegistry.address, zeroAddress, 0n, MAX_EXPIRY],
     });
   },
   {
     tags: ["ETHRegistry", "l1"],
-    dependencies: [
-      "RootRegistry",
-      "HCAFactory",
-      "RegistryMetadata",
-    ],
+    dependencies: ["RootRegistry", "HCAFactory", "RegistryMetadata"],
   },
 );

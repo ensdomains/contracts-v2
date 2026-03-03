@@ -5,6 +5,7 @@ import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeE
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
+import {InvalidOwner} from "../CommonErrors.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
@@ -125,8 +126,11 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         if (duration < MIN_REGISTER_DURATION) {
             revert DurationTooShort(duration, MIN_REGISTER_DURATION);
         }
+        if (owner == address(0)) {
+            revert InvalidOwner();
+        }
         if (!isAvailable(label)) {
-            revert NameNotAvailable(label);
+            revert NameNotAvailable(label); // otherwise register() reverts EACUnauthorizedAccountRoles
         }
         _consumeCommitment(
             makeCommitment(label, owner, secret, subregistry, resolver, duration, referrer)
@@ -140,7 +144,7 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
             resolver,
             REGISTRATION_ROLE_BITMAP,
             uint64(block.timestamp) + duration
-        ); // reverts if owner is null
+        ); // reverts if not available
         emit NameRegistered(
             tokenId,
             label,
@@ -163,8 +167,8 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         bytes32 referrer
     ) external {
         IPermissionedRegistry.State memory state = REGISTRY.getState(LibLabel.id(label));
-        if (state.status != IPermissionedRegistry.Status.REGISTERED) {
-            revert NameNotRegistered(label);
+        if (state.status == IPermissionedRegistry.Status.AVAILABLE) {
+            revert NameIsAvailable(label);
         }
         uint64 expiry = state.expiry + duration;
         (uint256 base, ) = rentPrice(label, state.latestOwner, duration, paymentToken); // reverts if !isValid or !isPaymentToken or duration is 0

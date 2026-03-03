@@ -1,29 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {CCIPReader} from "@ens/contracts/ccipRead/CCIPReader.sol";
 import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
-import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeResolver.sol";
-import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
-import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {RegistryUtils, ENS} from "@ens/contracts/universalResolver/RegistryUtils.sol";
-import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.sol";
-import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+
+import {AbstractMirrorResolver} from "./AbstractMirrorResolver.sol";
 
 /// @notice Resolver that performs resolutions using ENSv1.
-///
-/// A UniversalResolverV1 (ResolverCaller + RegistryUtils) that implements ICompositeResolver.
-///
-contract ENSV1Resolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
+contract ENSV1Resolver is AbstractMirrorResolver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
     ENS public immutable REGISTRY_V1;
-
-    /// @dev Shared batch gateway provider.
-    IGatewayProvider public immutable BATCH_GATEWAY_PROVIDER;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -32,48 +21,16 @@ contract ENSV1Resolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
     constructor(
         ENS registryV1,
         IGatewayProvider batchGatewayProvider
-    ) CCIPReader(DEFAULT_UNSAFE_CALL_GAS) {
+    ) AbstractMirrorResolver(batchGatewayProvider) {
         REGISTRY_V1 = registryV1;
-        BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
-    }
-
-    /// @inheritdoc ERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(ERC165) returns (bool) {
-        return
-            type(IExtendedResolver).interfaceId == interfaceId ||
-            type(ICompositeResolver).interfaceId == interfaceId ||
-            type(IERC7996).interfaceId == interfaceId ||
-            super.supportsInterface(interfaceId);
-    }
-
-    /// @inheritdoc IERC7996
-    function supportsFeature(bytes4 feature) external pure returns (bool) {
-        return ResolverFeatures.RESOLVE_MULTICALL == feature;
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Implementation
+    // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc IExtendedResolver
-    function resolve(
-        bytes calldata name,
-        bytes calldata data
-    ) external view returns (bytes memory) {
-        (address resolver, , ) = RegistryUtils.findResolver(REGISTRY_V1, name, 0);
-        callResolver(resolver, name, data, false, "", BATCH_GATEWAY_PROVIDER.gateways());
-    }
-
-    /// @inheritdoc ICompositeResolver
-    function getResolver(bytes calldata name) external view returns (address, bool) {
-        (address resolver, , ) = RegistryUtils.findResolver(REGISTRY_V1, name, 0);
-        return (resolver, false);
-    }
-
-    /// @inheritdoc ICompositeResolver
-    function requiresOffchain(bytes calldata) external pure returns (bool) {
-        return false;
+    /// @inheritdoc AbstractMirrorResolver
+    function _findResolver(bytes calldata name) internal view override returns (address resolver) {
+        (resolver, , ) = RegistryUtils.findResolver(REGISTRY_V1, name, 0);
     }
 }

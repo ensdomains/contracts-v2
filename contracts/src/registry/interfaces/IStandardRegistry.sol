@@ -5,7 +5,7 @@ import {IRegistry} from "./IRegistry.sol";
 
 /// @title IStandardRegistry
 /// @notice A tokenized registry.
-/// @dev Interface selector: `0xeb138d53`
+/// @dev Interface selector: `0xb844ab6c`
 interface IStandardRegistry is IRegistry {
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -35,13 +35,14 @@ interface IStandardRegistry is IRegistry {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Registers a new name.
+    /// @notice Registers a new name.
     /// @param label The label to register.
     /// @param owner The address of the owner of the name.
     /// @param registry The registry to set as the name.
     /// @param resolver The resolver to set for the name.
     /// @param roleBitmap The role bitmap to set for the name.
     /// @param expires The expiration date of the name.
+    /// @return tokenId The token ID.
     function register(
         string calldata label,
         address owner,
@@ -69,6 +70,12 @@ interface IStandardRegistry is IRegistry {
     /// @param anyId The labelhash, token ID, or resource.
     /// @param resolver The new resolver.
     function setResolver(uint256 anyId, address resolver) external;
+
+    /// @notice Change canonical "location".
+    /// @dev Should emit `ParentUpdated`.
+    /// @param parent The canonical parent of this registry.
+    /// @param label The canonical subdomain of this registry.
+    function setParent(IRegistry parent, string calldata label) external;
 
     /// @notice Get expiry of name.
     /// @param anyId The labelhash, token ID, or resource.
