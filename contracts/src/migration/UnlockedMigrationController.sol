@@ -2,53 +2,43 @@
 pragma solidity >=0.8.13;
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {INameWrapper, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import {ERC165, IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {UnauthorizedCaller} from "../CommonErrors.sol";
+import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
-import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {WrappedErrorLib} from "../utils/WrappedErrorLib.sol";
 
-import {MigrationData} from "./types/MigrationTypes.sol";
+import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
+import {LibMigration} from "./libraries/LibMigration.sol";
 
 /// @title UnlockedMigrationController
 /// @dev Contract for the v1-to-v2 migration controller that only handles unlocked .eth 2LD names.
-contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC165 {
+contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    INameWrapper public immutable NAME_WRAPPER;
-
     IPermissionedRegistry public immutable ETH_REGISTRY;
-
-    ////////////////////////////////////////////////////////////////////////
-    // Errors
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Error selector: `0x4fa09b3f`
-    error TokenIdMismatch(uint256 tokenId, uint256 expectedTokenId);
-
-    /// @dev Error selector: `0x80da7148`
-    error MigrationNotSupported();
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor(INameWrapper nameWrapper, IPermissionedRegistry ethRegistry) {
-        NAME_WRAPPER = nameWrapper;
+    constructor(
+        IPermissionedRegistry ethRegistry,
+        INameWrapper nameWrapper
+    ) AbstractWrapperReceiver(nameWrapper) {
         ETH_REGISTRY = ethRegistry;
     }
 
-    /// Implements ERC165.supportsInterface
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(ERC165, IERC165) returns (bool) {
+    /// @inheritdoc IERC165
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
-            interfaceId == type(IERC1155Receiver).interfaceId ||
             interfaceId == type(IERC721Receiver).interfaceId ||
             super.supportsInterface(interfaceId);
     }
@@ -57,66 +47,78 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// Implements ERC1155Receiver.onERC1155Received
+    /// @inheritdoc IERC1155Receiver
+    /// @notice Migrate one unlocked NameWrapper token via `safeTransferFrom()`.
+    ///         Requires `abi.encode(LibMigration.UnlockedData)` as payload.
+    ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
     function onERC1155Received(
         address /*operator*/,
         address /*from*/,
-        uint256 tokenId,
+        uint256 id,
         uint256 /*amount*/,
         bytes calldata data
-    ) external virtual returns (bytes4) {
-        if (msg.sender != address(NAME_WRAPPER)) {
-            revert UnauthorizedCaller(msg.sender);
+    ) external onlyWrapper withData(data, LibMigration.MIN_UNLOCKED_DATA_SIZE) returns (bytes4) {
+        // if (amount != 1) { ... } => never happens :: caught by ERC1155Fuse
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L293
+        uint256[] memory ids = new uint256[](1);
+        LibMigration.UnlockedData[] memory mds = new LibMigration.UnlockedData[](1);
+        ids[0] = id;
+        mds[0] = abi.decode(data, (LibMigration.UnlockedData)); // reverts if invalid
+        try this.finishERC1155Migration(ids, mds) {
+            return this.onERC1155Received.selector;
+        } catch (bytes memory reason) {
+            WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
         }
-
-        (MigrationData memory migrationData) = abi.decode(data, (MigrationData));
-        MigrationData[] memory migrationDataArray = new MigrationData[](1);
-        migrationDataArray[0] = migrationData;
-
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = tokenId;
-
-        _migrateWrappedEthNames(tokenIds, migrationDataArray);
-
-        return this.onERC1155Received.selector;
     }
 
-    /// Implements ERC1155Receiver.onERC1155BatchReceived
+    /// @inheritdoc IERC1155Receiver
+    /// @notice Migrate multiple NameWrapper tokens via `safeBatchTransferFrom()`.
+    ///         Requires `abi.encode(LibMigration.UnlockedData[])` as payload.
+    ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
     function onERC1155BatchReceived(
         address /*operator*/,
         address /*from*/,
-        uint256[] calldata tokenIds,
+        uint256[] calldata ids,
         uint256[] calldata /*amounts*/,
         bytes calldata data
-    ) external virtual returns (bytes4) {
-        if (msg.sender != address(NAME_WRAPPER)) {
-            revert UnauthorizedCaller(msg.sender);
+    )
+        external
+        onlyWrapper
+        withData(data, 64 + ids.length * LibMigration.MIN_LOCKED_DATA_SIZE)
+        returns (bytes4)
+    {
+        // if (ids.length != amounts.length) { ... } => never happens :: caught by ERC1155Fuse
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L162
+        // if (amounts[i] != 1) { ... } => never happens :: caught by ERC1155Fuse
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L182
+        LibMigration.UnlockedData[] memory mds = abi.decode(data, (LibMigration.UnlockedData[])); // reverts if invalid
+        try this.finishERC1155Migration(ids, mds) {
+            return this.onERC1155BatchReceived.selector;
+        } catch (bytes memory reason) {
+            WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
         }
-
-        (MigrationData[] memory migrationDataArray) = abi.decode(data, (MigrationData[]));
-
-        _migrateWrappedEthNames(tokenIds, migrationDataArray);
-
-        return this.onERC1155BatchReceived.selector;
     }
 
-    /// @dev Implements ERC721Receiver.onERC721Received
-    ///
-    /// If this is called then it means an unwrapped .eth name is being migrated to v2.
+    /// @inheritdoc IERC721Receiver
+    /// @notice Migrate ".eth" tokens via `safeTransferFrom()`.
+    ///         Requires `abi.encode(LibMigration.UnlockedData[])` as payload.
     function onERC721Received(
         address /*operator*/,
         address /*from*/,
         uint256 tokenId,
         bytes calldata data
-    ) external virtual returns (bytes4) {
+    ) external returns (bytes4) {
         if (msg.sender != address(NAME_WRAPPER.registrar())) {
             revert UnauthorizedCaller(msg.sender);
         }
-
-        (MigrationData memory migrationData) = abi.decode(data, (MigrationData));
-
-        _migrateNameToRegistry(tokenId, migrationData);
-
+        if (data.length < LibMigration.MIN_UNLOCKED_DATA_SIZE) {
+            revert LibMigration.InvalidData();
+        }
+        LibMigration.UnlockedData memory md = abi.decode(data, (LibMigration.UnlockedData)); // reverts if invalid
+        if (tokenId != uint256(keccak256(bytes(md.label)))) {
+            revert LibMigration.NameDataMismatch(tokenId);
+        }
+        _inject(md);
         return this.onERC721Received.selector;
     }
 
@@ -124,51 +126,50 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Called when wrapped .eth 2LD names are being migrated to v2.
-    /// Only supports unlocked names - reverts for locked names.
+    /// @dev Convert NameWrapper tokens their equivalent ENSv2 form.
+    ///      Only callable by ourself and invoked in our `IERC1155Receiver` handlers.
     ///
-    /// @param tokenIds The token IDs of the .eth names.
-    /// @param migrationDataArray The migration data for each .eth name.
-    function _migrateWrappedEthNames(
-        uint256[] memory tokenIds,
-        MigrationData[] memory migrationDataArray
-    ) internal {
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            (, uint32 fuses, ) = NAME_WRAPPER.getData(tokenIds[i]);
-
-            if (fuses & CANNOT_UNWRAP != 0) {
-                // Name is locked
-                revert MigrationNotSupported();
-            } else {
-                // Unwrap the unlocked name before migration
-                bytes32 labelHash = bytes32(tokenIds[i]);
-                NAME_WRAPPER.unwrapETH2LD(labelHash, address(this), address(this));
-                // Process migration
-                _migrateNameToRegistry(tokenIds[i], migrationDataArray[i]);
+    /// TODO: gas analysis and optimization
+    /// NOTE: converting this to an internal call requires catching many reverts
+    function finishERC1155Migration(
+        uint256[] calldata ids,
+        LibMigration.UnlockedData[] calldata mds
+    ) external {
+        if (msg.sender != address(this)) {
+            revert UnauthorizedCaller(msg.sender);
+        }
+        if (ids.length != mds.length) {
+            revert IERC1155Errors.ERC1155InvalidArrayLength(ids.length, mds.length);
+        }
+        for (uint256 i; i < ids.length; ++i) {
+            uint256 id = ids[i];
+            (, uint32 fuses, ) = NAME_WRAPPER.getData(id);
+            if (_isLocked(fuses)) {
+                revert LibMigration.NameIsLocked(id);
             }
+            if (
+                bytes32(id) !=
+                NameCoder.namehash(NameCoder.ETH_NODE, keccak256(bytes(mds[i].label)))
+            ) {
+                revert LibMigration.NameDataMismatch(id);
+            }
+            _inject(mds[i]);
         }
     }
 
     /// @dev Migrate a name to the registry.
-    ///
-    /// @param tokenId The token ID of the .eth name.
-    /// @param migrationData The migration data.
-    function _migrateNameToRegistry(uint256 tokenId, MigrationData memory migrationData) internal {
-        // Validate that tokenId matches the label hash
-        (bytes32 labelHash, ) = NameCoder.readLabel(migrationData.transferData.dnsEncodedName, 0);
-        if (tokenId != uint256(labelHash)) {
-            revert TokenIdMismatch(tokenId, uint256(labelHash));
+    function _inject(LibMigration.UnlockedData memory md) internal {
+        if (md.owner == address(0)) {
+            revert IERC1155Errors.ERC1155InvalidReceiver(md.owner);
         }
-
         // Register the name in the ETH registry
-        string memory label = NameCoder.firstLabel(migrationData.transferData.dnsEncodedName);
         ETH_REGISTRY.register(
-            label,
-            migrationData.transferData.owner,
-            IRegistry(migrationData.transferData.subregistry),
-            migrationData.transferData.resolver,
-            migrationData.transferData.roleBitmap,
-            migrationData.transferData.expires
-        );
+            md.label,
+            md.owner,
+            md.subregistry,
+            md.resolver,
+            REGISTRATION_ROLE_BITMAP,
+            0 // use reserved expiry
+        ); // reverts if not RESERVED
     }
 }

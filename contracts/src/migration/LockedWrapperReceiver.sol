@@ -15,15 +15,16 @@ import {
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
-import {ERC165, IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {UnauthorizedCaller} from "../CommonErrors.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
-import {IWrapperRegistry, MIN_DATA_SIZE} from "../registry/interfaces/IWrapperRegistry.sol";
+import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {WrappedErrorLib} from "../utils/WrappedErrorLib.sol";
 
-import {MigrationErrors} from "./MigrationErrors.sol";
+import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
+import {LibMigration} from "./libraries/LibMigration.sol";
 
 /// @dev Fuses which translate directly to PermissionedRegistry logic.
 uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
@@ -32,11 +33,10 @@ uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
     CANNOT_SET_TTL |
     CANNOT_CREATE_SUBDOMAIN;
 
-/// @title WrappedReceiver
-/// @notice Abstract IERC1155Receiver which handles NameWrapper token migration via transfer.
-///         Contains of all of the NameWrapper logic.
+/// @title LockedWrappedReceiver
+/// @notice Abstract IERC1155Receiver which handles locked NameWrapper token migration via transfer.
 ///
-/// There are (2) WrapperReceivers:
+/// There are (2) LockedWrapperReceivers:
 /// 1. LockedMigrationController only accepts .eth 2LD tokens.
 /// 2. WrapperRegistry only accepts emancipated (N+1)-LD children with a matching N-LD parent node.
 ///
@@ -53,40 +53,13 @@ uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
 /// * subregistry migrates children of the same parent
 ///
 /// @dev Interface selector: `0x1a4ec815`
-abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
+abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    INameWrapper public immutable NAME_WRAPPER;
     VerifiableFactory public immutable VERIFIABLE_FACTORY;
     address public immutable WRAPPER_REGISTRY_IMPL;
-
-    ////////////////////////////////////////////////////////////////////////
-    // Modifiers
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Restrict `msg.sender` to `NAME_WRAPPER`.
-    ///      Reverts wrapped errors for use inside of legacy IERC1155Receiver handler.
-    modifier onlyWrapper() {
-        if (msg.sender != address(NAME_WRAPPER)) {
-            WrappedErrorLib.wrapAndRevert(
-                abi.encodeWithSelector(UnauthorizedCaller.selector, msg.sender)
-            );
-        }
-        _;
-    }
-
-    /// @dev Avoid `abi.decode()` failure for obviously invalid data.
-    ///      Reverts wrapped errors for use inside of legacy IERC1155Receiver handler.
-    modifier withData(bytes calldata data, uint256 minimumSize) {
-        if (data.length < minimumSize) {
-            WrappedErrorLib.wrapAndRevert(
-                abi.encodeWithSelector(IWrapperRegistry.InvalidData.selector)
-            );
-        }
-        _;
-    }
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -96,19 +69,15 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
         address wrapperRegistryImpl
-    ) {
-        NAME_WRAPPER = nameWrapper;
+    ) AbstractWrapperReceiver(nameWrapper) {
         VERIFIABLE_FACTORY = verifiableFactory;
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(ERC165, IERC165) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
-            interfaceId == type(IERC1155Receiver).interfaceId ||
-            interfaceId == type(WrapperReceiver).interfaceId ||
+            interfaceId == type(LockedWrapperReceiver).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -118,7 +87,7 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
 
     /// @inheritdoc IERC1155Receiver
     /// @notice Migrate one NameWrapper token via `safeTransferFrom()`.
-    ///         Requires `abi.encode(IWrapperRegistry.Data)` as payload.
+    ///         Requires `abi.encode(LibMigration.LockedData)` as payload.
     ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
     function onERC1155Received(
         address /*operator*/,
@@ -126,11 +95,13 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
         uint256 id,
         uint256 /*amount*/,
         bytes calldata data
-    ) external onlyWrapper withData(data, MIN_DATA_SIZE) returns (bytes4) {
+    ) external onlyWrapper withData(data, LibMigration.MIN_LOCKED_DATA_SIZE) returns (bytes4) {
+        // if (amount != 1) { ... } => never happens :: caught by ERC1155Fuse
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L293
         uint256[] memory ids = new uint256[](1);
-        IWrapperRegistry.Data[] memory mds = new IWrapperRegistry.Data[](1);
+        LibMigration.LockedData[] memory mds = new LibMigration.LockedData[](1);
         ids[0] = id;
-        mds[0] = abi.decode(data, (IWrapperRegistry.Data)); // reverts if invalid
+        mds[0] = abi.decode(data, (LibMigration.LockedData)); // reverts if invalid
         try this.finishERC1155Migration(ids, mds) {
             return this.onERC1155Received.selector;
         } catch (bytes memory reason) {
@@ -140,7 +111,7 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
 
     /// @inheritdoc IERC1155Receiver
     /// @notice Migrate multiple NameWrapper tokens via `safeBatchTransferFrom()`.
-    ///         Requires `abi.encode(IWrapperRegistry.Data[])` as payload.
+    ///         Requires `abi.encode(LibMigration.LockedData[])` as payload.
     ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
     function onERC1155BatchReceived(
         address /*operator*/,
@@ -148,12 +119,17 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
         uint256[] calldata ids,
         uint256[] calldata /*amounts*/,
         bytes calldata data
-    ) external onlyWrapper withData(data, 64 + ids.length * MIN_DATA_SIZE) returns (bytes4) {
-        // never happens: caught by ERC1155Fuse
-        // if (ids.length != amounts.length) {
-        //     revert IERC1155Errors.ERC1155InvalidArrayLength(ids.length, amounts.length);
-        // }
-        IWrapperRegistry.Data[] memory mds = abi.decode(data, (IWrapperRegistry.Data[])); // reverts if invalid
+    )
+        external
+        onlyWrapper
+        withData(data, 64 + ids.length * LibMigration.MIN_LOCKED_DATA_SIZE)
+        returns (bytes4)
+    {
+        // if (ids.length != amounts.length) { ... } => never happens :: caught by ERC1155Fuse
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L162
+        // if (amounts[i] != 1) { ... } => never happens :: caught by ERC1155Fuse
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L182
+        LibMigration.LockedData[] memory mds = abi.decode(data, (LibMigration.LockedData[])); // reverts if invalid
         try this.finishERC1155Migration(ids, mds) {
             return this.onERC1155BatchReceived.selector;
         } catch (bytes memory reason) {
@@ -168,7 +144,7 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
     /// NOTE: converting this to an internal call requires catching many reverts
     function finishERC1155Migration(
         uint256[] calldata ids,
-        IWrapperRegistry.Data[] calldata mds
+        LibMigration.LockedData[] calldata mds
     ) external {
         if (msg.sender != address(this)) {
             revert UnauthorizedCaller(msg.sender);
@@ -178,32 +154,25 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
         }
         bytes32 parentNode = _parentNode();
         for (uint256 i; i < ids.length; ++i) {
-            // never happens: caught by ERC1155Fuse
-            // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L182
-            // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L293
-            // if (amounts[i] != 1) { ... }
-            IWrapperRegistry.Data memory md = mds[i];
+            LibMigration.LockedData memory md = mds[i];
             if (md.owner == address(0)) {
                 revert IERC1155Errors.ERC1155InvalidReceiver(md.owner);
             }
             bytes32 node = bytes32(ids[i]);
             bytes32 labelHash = keccak256(bytes(md.label));
             if (node != NameCoder.namehash(parentNode, labelHash)) {
-                revert MigrationErrors.NameDataMismatch(uint256(node));
+                revert LibMigration.NameDataMismatch(uint256(node));
             }
             // by construction: 1 <= length(label) <= 255
             // same as NameCoder.assertLabelSize()
             // see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort()` and `test_nameWrapper_labelTooLong()`.
 
             (address owner, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
+            if (!_isLocked(fuses)) {
+                revert LibMigration.NameNotLocked(uint256(node));
+            }
             assert(owner == address(this)); // claim: only we can call this function => we own the token
             assert(expiry >= block.timestamp); // claim: expired names cannot be transferred
-
-            // PARENT_CANNOT_CONTROL is required to set CANNOT_UNWRAP, so CANNOT_UNWRAP is sufficient
-            // see: V1Fixture.t.sol: `test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL()`
-            if ((fuses & CANNOT_UNWRAP) == 0) {
-                revert MigrationErrors.NameNotLocked(uint256(node));
-            }
 
             if ((fuses & CANNOT_SET_RESOLVER) != 0) {
                 md.resolver = NAME_WRAPPER.ens().resolver(node); // replace with V1 resolver
@@ -228,8 +197,8 @@ abstract contract WrapperReceiver is ERC165, IERC1155Receiver {
                         (
                             IWrapperRegistry.ConstructorArgs({
                                 node: node,
-                                owner: md.owner,
-                                ownerRoles: registryRoles
+                                admin: md.owner,
+                                roleBitmap: registryRoles
                             })
                         )
                     )

@@ -9,8 +9,8 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
-import {MigrationErrors} from "../migration/MigrationErrors.sol";
-import {WrapperReceiver} from "../migration/WrapperReceiver.sol";
+import {LibMigration} from "../migration/libraries/LibMigration.sol";
+import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 
 import {IRegistry} from "./interfaces/IRegistry.sol";
@@ -22,7 +22,7 @@ import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 contract WrapperRegistry is
     IWrapperRegistry,
     PermissionedRegistry,
-    WrapperReceiver,
+    LockedWrapperReceiver,
     Initializable,
     UUPSUpgradeable
 {
@@ -50,7 +50,7 @@ contract WrapperRegistry is
         IRegistryMetadata metadataProvider
     )
         PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) // no roles are granted
-        WrapperReceiver(nameWrapper, verifiableFactory, address(this))
+        LockedWrapperReceiver(nameWrapper, verifiableFactory, address(this))
     {
         V1_RESOLVER = ensV1Resolver;
         _disableInitializers();
@@ -59,7 +59,13 @@ contract WrapperRegistry is
     /// @inheritdoc IERC165
     function supportsInterface(
         bytes4 interfaceId
-    ) public view virtual override(IERC165, WrapperReceiver, PermissionedRegistry) returns (bool) {
+    )
+        public
+        view
+        virtual
+        override(IERC165, LockedWrapperReceiver, PermissionedRegistry)
+        returns (bool)
+    {
         return
             type(IWrapperRegistry).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
@@ -68,7 +74,7 @@ contract WrapperRegistry is
 
     /// @inheritdoc IWrapperRegistry
     function initialize(IWrapperRegistry.ConstructorArgs calldata args) public initializer {
-        if (args.owner == address(0)) {
+        if (args.admin == address(0)) {
             revert InvalidOwner();
         }
 
@@ -78,8 +84,8 @@ contract WrapperRegistry is
         // Configure owner with upgrade permissions and specified roles
         _grantRoles(
             ROOT_RESOURCE,
-            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | args.ownerRoles,
-            args.owner,
+            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | args.roleBitmap,
+            args.admin,
             false
         );
     }
@@ -99,7 +105,7 @@ contract WrapperRegistry is
         uint64 expiry
     ) public override(IStandardRegistry, PermissionedRegistry) returns (uint256 tokenId) {
         if (_isMigratableChild(label)) {
-            revert MigrationErrors.NameRequiresMigration();
+            revert LibMigration.NameRequiresMigration();
         }
         return super.register(label, owner, registry, resolver, roleBitmap, expiry);
     }
@@ -112,7 +118,7 @@ contract WrapperRegistry is
         return _isMigratableChild(label) ? V1_RESOLVER : super.getResolver(label);
     }
 
-    /// @inheritdoc WrapperReceiver
+    /// @inheritdoc LockedWrapperReceiver
     /// @dev Allow registration of emancipated children.
     function _inject(
         string memory label,
