@@ -10,6 +10,12 @@ evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
 
+ignored_warnings_from = [
+    "lib/ens-contracts/contracts/registry/ENSRegistry.sol",
+    "lib/ens-contracts/contracts/ethregistrar/BaseRegistrarImplementation.sol",
+    "lib/ens-contracts/contracts/wrapper/NameWrapper.sol",
+]
+
 [fuzz]
 runs = 4096
 

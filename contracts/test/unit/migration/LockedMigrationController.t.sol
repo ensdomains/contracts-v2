@@ -1,911 +1,738 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-// solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
-
-import {Test} from "forge-std/Test.sol";
-
-import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {ENS} from "@ens/contracts/registry/ENS.sol";
+import {Vm, console} from "forge-std/Test.sol";
 import {
     INameWrapper,
+    OperationProhibited,
     CANNOT_UNWRAP,
+    CAN_DO_EVERYTHING,
     CANNOT_BURN_FUSES,
     CANNOT_TRANSFER,
     CANNOT_SET_RESOLVER,
     CANNOT_SET_TTL,
     CANNOT_CREATE_SUBDOMAIN,
+    PARENT_CANNOT_CONTROL,
     IS_DOT_ETH,
     CAN_EXTEND_EXPIRY
-} from "@ens/contracts/wrapper/INameWrapper.sol";
-import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
-import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+} from "@ens/contracts/wrapper/NameWrapper.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {ERC1155, IERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {UnauthorizedCaller} from "~src/CommonErrors.sol";
+import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
+import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
+import {V2Fixture, VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
+import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {
-    PermissionedRegistry,
-    IPermissionedRegistry,
-    IRegistryMetadata,
-    IRegistry,
+    LockedMigrationController,
+    IPermissionedRegistry
+} from "~src/migration/LockedMigrationController.sol";
+import {WrapperReceiver, FUSES_TO_BURN} from "~src/migration/WrapperReceiver.sol";
+import {
+    IEnhancedAccessControl,
+    EACBaseRolesLib
+} from "~src/access-control/EnhancedAccessControl.sol";
+import {LibLabel} from "~src/utils/LibLabel.sol";
+import {
+    WrapperRegistry,
+    IWrapperRegistry,
+    IStandardRegistry,
+    UUPSUpgradeable,
     RegistryRolesLib,
-    EACBaseRolesLib,
-    LibLabel
-} from "~src/registry/PermissionedRegistry.sol";
-import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
-import {TransferData, MigrationData} from "~src/migration/types/MigrationTypes.sol";
-import {LockedNamesLib} from "~src/migration/libraries/LockedNamesLib.sol";
-import {MigratedWrappedNameRegistry} from "~src/registry/MigratedWrappedNameRegistry.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
+    MigrationErrors,
+    IRegistry
+} from "~src/registry/WrapperRegistry.sol";
 
-contract MockNameWrapper {
-    mapping(uint256 tokenId => uint32 fuses) public fuses;
-    mapping(uint256 tokenId => uint64 expiry) public expiries;
-    mapping(uint256 tokenId => address owner) public owners;
-    mapping(uint256 tokenId => address resolver) public resolvers;
-
-    ENS public ens;
-
-    function setFuseData(uint256 tokenId, uint32 _fuses, uint64 _expiry) external {
-        fuses[tokenId] = _fuses;
-        expiries[tokenId] = _expiry;
-    }
-
-    function setInitialResolver(uint256 tokenId, address resolver) external {
-        resolvers[tokenId] = resolver;
-    }
-
-    function getData(uint256 id) external view returns (address, uint32, uint64) {
-        return (owners[id], fuses[id], expiries[id]);
-    }
-
-    function setFuses(bytes32 node, uint16 fusesToBurn) external returns (uint32) {
-        uint256 tokenId = uint256(node);
-        fuses[tokenId] = fuses[tokenId] | fusesToBurn;
-        return fuses[tokenId];
-    }
-
-    function setResolver(bytes32 node, address resolver) external {
-        uint256 tokenId = uint256(node);
-        resolvers[tokenId] = resolver;
-    }
-
-    function getResolver(uint256 tokenId) external view returns (address) {
-        return resolvers[tokenId];
-    }
-}
-
-contract MockRegistryMetadata is IRegistryMetadata {
-    function tokenUri(uint256) external pure override returns (string memory) {
-        return "";
-    }
-}
-
-contract LockedMigrationControllerTest is Test, ERC1155Holder {
-    LockedMigrationController controller;
-    MockNameWrapper nameWrapper;
-    MockRegistryMetadata metadata;
-    PermissionedRegistry registry;
-    VerifiableFactory factory;
-    MigratedWrappedNameRegistry implementation;
-    MockHCAFactoryBasic hcaFactory;
-
-    address owner = address(this);
-    address user = address(0x1234);
-    address fallbackResolver = address(0);
+contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
+    LockedMigrationController migrationController;
+    WrapperRegistry wrapperRegistryImpl;
+    ENSV1Resolver ensV1Resolver;
+    MockERC1155 dummy1155;
 
     string testLabel = "test";
-    uint256 testTokenId;
+    address testResolver = makeAddr("resolver");
+    address premigrationController = makeAddr("premigrationController");
 
-    function setUp() public {
-        nameWrapper = new MockNameWrapper();
-        metadata = new MockRegistryMetadata();
-        hcaFactory = new MockHCAFactoryBasic();
-
-        // Deploy factory and implementation
-        factory = new VerifiableFactory();
-
-        // Setup eth registry
-        registry = new PermissionedRegistry(hcaFactory, metadata, owner, EACBaseRolesLib.ALL_ROLES);
-
-        implementation = new MigratedWrappedNameRegistry(
-            INameWrapper(address(nameWrapper)),
-            IPermissionedRegistry(address(registry)),
-            factory,
+    function setUp() external {
+        deployV1Fixture();
+        deployV2Fixture();
+        dummy1155 = new MockERC1155();
+        ensV1Resolver = new ENSV1Resolver(ensV1, batchGatewayProvider);
+        wrapperRegistryImpl = new WrapperRegistry(
+            nameWrapper,
+            verifiableFactory,
+            address(ensV1Resolver),
             hcaFactory,
-            metadata,
-            fallbackResolver
+            metadata
         );
-
-        controller = new LockedMigrationController(
-            INameWrapper(address(nameWrapper)),
-            registry,
-            factory,
-            address(implementation)
+        migrationController = new LockedMigrationController(
+            ethRegistry,
+            nameWrapper,
+            verifiableFactory,
+            address(wrapperRegistryImpl)
         );
-
-        // Grant controller permission to register names
-        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(controller));
-
-        testTokenId = uint256(keccak256(bytes(testLabel)));
-    }
-
-    function test_onERC1155Received_locked_name() public {
-        // Configure name for locked migration
-        uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
-
-        // Prepare migration data
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER |
-                    RegistryRolesLib.ROLE_SET_SUBREGISTRY,
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Call onERC1155Received
-        vm.prank(address(nameWrapper));
-        bytes4 selector = controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-
-        // Verify selector returned
-        assertEq(selector, controller.onERC1155Received.selector, "Should return correct selector");
-
-        // Confirm migration finalized the name
-        (, uint32 newFuses, ) = nameWrapper.getData(testTokenId);
-        assertTrue((newFuses & CANNOT_BURN_FUSES) != 0, "CANNOT_BURN_FUSES should be burnt");
-        assertTrue((newFuses & CANNOT_TRANSFER) != 0, "CANNOT_TRANSFER should be burnt");
-        assertTrue((newFuses & CANNOT_UNWRAP) != 0, "CANNOT_UNWRAP should be burnt");
-        assertTrue((newFuses & CANNOT_SET_RESOLVER) != 0, "CANNOT_SET_RESOLVER should be burnt");
-        assertTrue((newFuses & CANNOT_SET_TTL) != 0, "CANNOT_SET_TTL should be burnt");
-        assertTrue(
-            (newFuses & CANNOT_CREATE_SUBDOMAIN) != 0,
-            "CANNOT_CREATE_SUBDOMAIN should be burnt"
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
+        ethRegistry.grantRootRoles(
+            RegistryRolesLib.ROLE_REGISTER_RESERVED,
+            address(migrationController)
         );
     }
 
-    function test_onERC1155Received_roles_based_on_fuses_not_input() public {
-        // Configure name with resolver permissions retained
-        uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH | CAN_EXTEND_EXPIRY;
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
-
-        // Prepare migration data - the roleBitmap should be ignored completely
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
+    function _makeData(bytes memory name) internal view returns (IWrapperRegistry.Data memory) {
+        return
+            IWrapperRegistry.Data({
+                label: NameCoder.firstLabel(name),
                 owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_SUBREGISTRY, // This should be completely ignored
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
+                resolver: testResolver,
+                salt: uint256(keccak256(abi.encode(name, block.timestamp)))
+            });
+    }
 
-        bytes memory data = abi.encode(migrationData);
+    function test_constructor() external view {
+        assertEq(address(migrationController.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
+        assertEq(
+            address(migrationController.VERIFIABLE_FACTORY()),
+            address(verifiableFactory),
+            "VERIFIABLE_FACTORY"
+        );
+        assertEq(
+            migrationController.WRAPPER_REGISTRY_IMPL(),
+            address(wrapperRegistryImpl),
+            "WRAPPER_REGISTRY_IMPL"
+        );
+        assertEq(migrationController.parentName(), NameCoder.encode("eth"), "parentName");
+    }
 
-        // Call onERC1155Received
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-
-        // Get the registered name and check roles
-        uint256 userRoles = registry.roles(uint256(keccak256(bytes(testLabel))), user);
-
-        // Confirm roles derived from name configuration
-        // Since CANNOT_SET_RESOLVER is not burnt, user should have resolver roles
+    function test_supportsInterface() external view {
         assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_RESOLVER) != 0,
-            "Should have ROLE_SET_RESOLVER based on fuses"
+            ERC165Checker.supportsInterface(
+                address(migrationController),
+                type(IERC165).interfaceId
+            ),
+            "IERC165"
         );
         assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN) != 0,
-            "Should have ROLE_SET_RESOLVER_ADMIN based on fuses"
+            ERC165Checker.supportsInterface(
+                address(migrationController),
+                type(IERC1155Receiver).interfaceId
+            ),
+            "IERC1155Receiver"
         );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(migrationController),
+                type(WrapperReceiver).interfaceId
+            ),
+            "WrapperReceiver"
+        );
+        console.logBytes4(type(WrapperReceiver).interfaceId);
+    }
 
-        // 2LDs should NOT have renewal roles (CAN_EXTEND_EXPIRY is masked out to prevent automatic renewal for 2LDs)
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_RENEW) == 0,
-            "Should NOT have ROLE_RENEW for 2LDs"
-        );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_RENEW_ADMIN) == 0,
-            "Should NOT have ROLE_RENEW_ADMIN for 2LDs"
-        );
-
-        // Token should NEVER have registrar roles
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_REGISTRAR) == 0,
-            "Token should NEVER have ROLE_REGISTRAR"
-        );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_REGISTRAR_ADMIN) == 0,
-            "Token should NEVER have ROLE_REGISTRAR_ADMIN"
-        );
-
-        // Should NOT have the role from input data
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_SUBREGISTRY) == 0,
-            "Should NOT have ROLE_SET_SUBREGISTRY from input"
+    function test_migrate_unauthorizedCaller_finish() external {
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, user));
+        vm.prank(user);
+        migrationController.finishERC1155Migration(
+            new uint256[](0),
+            new IWrapperRegistry.Data[](0)
         );
     }
 
-    function test_Revert_onERC1155Received_not_locked() public {
-        // Configure name that doesn't qualify for locked migration
-        uint32 unlockedFuses = IS_DOT_ETH;
-        nameWrapper.setFuseData(testTokenId, unlockedFuses, uint64(block.timestamp + 86400));
-
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Migration should fail for unlocked names
-        vm.expectRevert(abi.encodeWithSelector(LockedNamesLib.NameNotLocked.selector, testTokenId));
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-    }
-
-    function test_name_with_cannot_burn_fuses_can_migrate() public {
-        // Configure name with fuses that are permanently frozen - this should now be allowed to migrate
-        uint32 fuses = CANNOT_UNWRAP | CANNOT_BURN_FUSES | IS_DOT_ETH | CAN_EXTEND_EXPIRY;
-        nameWrapper.setFuseData(testTokenId, fuses, uint64(block.timestamp + 86400));
-
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER, // Note: only regular roles, no admin roles expected
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Migration should now succeed for names with CANNOT_BURN_FUSES (should not revert)
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-    }
-
-    function test_Revert_token_id_mismatch() public {
-        // Setup locked name
-        uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
-
-        // Use wrong label that doesn't match tokenId
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName("wronglabel"), // This won't match testTokenId
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Should revert due to token ID mismatch
-        uint256 expectedTokenId = uint256(keccak256(bytes("wronglabel")));
+    function test_migrate_unauthorizedCaller_transfer() external {
+        uint256 tokenId = dummy1155.mint(user);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                LockedMigrationController.TokenIdMismatch.selector,
-                testTokenId,
-                expectedTokenId
+            WrappedErrorLib.wrap(abi.encodeWithSelector(UnauthorizedCaller.selector, dummy1155))
+        );
+        vm.prank(user);
+        dummy1155.safeTransferFrom(user, address(migrationController), tokenId, 1, ""); // wrong
+    }
+
+    function test_migrate_invalidData() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        vm.expectRevert(
+            WrappedErrorLib.wrap(abi.encodeWithSelector(IWrapperRegistry.InvalidData.selector))
+        );
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            "" // wrong
+        );
+    }
+
+    function test_migrate_invalidArrayLength() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        uint256[] memory ids = new uint256[](1);
+        uint256[] memory amounts = new uint256[](1);
+        IWrapperRegistry.Data[] memory mds = new IWrapperRegistry.Data[](1);
+        ids[0] = uint256(NameCoder.namehash(name, 0));
+        amounts[0] = 1;
+        bytes memory payload = abi.encode(mds);
+        uint256 fakeLength = 0;
+        assembly {
+            mstore(add(payload, 64), fakeLength) // wrong
+        }
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(
+                    IERC1155Errors.ERC1155InvalidArrayLength.selector,
+                    ids.length,
+                    fakeLength
+                )
             )
         );
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-    }
-
-    function test_Revert_unauthorized_caller() public {
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Call from wrong address (not nameWrapper)
-        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, address(this)));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-    }
-
-    function test_onERC1155BatchReceived() public {
-        // Setup multiple locked names
-        string[] memory labels = new string[](3);
-        labels[0] = "test1";
-        labels[1] = "test2";
-        labels[2] = "test3";
-
-        uint256[] memory tokenIds = new uint256[](3);
-        MigrationData[] memory migrationDataArray = new MigrationData[](3);
-
-        for (uint256 i = 0; i < 3; i++) {
-            tokenIds[i] = LibLabel.id(labels[i]);
-
-            // Setup locked name (CANNOT_BURN_FUSES not set)
-            uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
-            nameWrapper.setFuseData(tokenIds[i], lockedFuses, uint64(block.timestamp + 86400));
-
-            // DNS encode each label as .eth domain
-            bytes memory dnsEncodedName;
-            if (i == 0) {
-                dnsEncodedName = NameCoder.ethName("test1");
-            } else if (i == 1) {
-                dnsEncodedName = NameCoder.ethName("test2");
-            } else {
-                dnsEncodedName = NameCoder.ethName("test3");
-            }
-
-            migrationDataArray[i] = MigrationData({
-                transferData: TransferData({
-                    dnsEncodedName: dnsEncodedName,
-                    owner: user,
-                    subregistry: address(0), // Will be created by factory
-                    resolver: address(uint160(0xABCD + i)),
-                    roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
-                    expires: uint64(block.timestamp + 86400 * (i + 1))
-                }),
-                salt: uint256(keccak256(abi.encodePacked(labels[i], block.timestamp, i)))
-            });
-        }
-
-        bytes memory data = abi.encode(migrationDataArray);
-        uint256[] memory amounts = new uint256[](3);
-        amounts[0] = amounts[1] = amounts[2] = 1;
-
-        // Call batch receive
-        vm.prank(address(nameWrapper));
-        bytes4 selector = controller.onERC1155BatchReceived(owner, owner, tokenIds, amounts, data);
-
-        assertEq(
-            selector,
-            controller.onERC1155BatchReceived.selector,
-            "Should return correct selector"
-        );
-
-        // Verify all names were processed with all fuses burnt
-        for (uint256 i = 0; i < 3; i++) {
-            (, uint32 newFuses, ) = nameWrapper.getData(tokenIds[i]);
-            assertTrue((newFuses & CANNOT_BURN_FUSES) != 0, "CANNOT_BURN_FUSES should be burnt");
-            assertTrue((newFuses & CANNOT_TRANSFER) != 0, "CANNOT_TRANSFER should be burnt");
-            assertTrue((newFuses & CANNOT_UNWRAP) != 0, "CANNOT_UNWRAP should be burnt");
-            assertTrue(
-                (newFuses & CANNOT_SET_RESOLVER) != 0,
-                "CANNOT_SET_RESOLVER should be burnt"
-            );
-            assertTrue((newFuses & CANNOT_SET_TTL) != 0, "CANNOT_SET_TTL should be burnt");
-            assertTrue(
-                (newFuses & CANNOT_CREATE_SUBDOMAIN) != 0,
-                "CANNOT_CREATE_SUBDOMAIN should be burnt"
-            );
-        }
-    }
-
-    function test_subregistry_creation() public {
-        // Setup locked name (CANNOT_BURN_FUSES not set)
-        uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
-
-        // Prepare migration data with unique salt
-        uint256 saltData = uint256(keccak256(abi.encodePacked(testLabel, uint256(999))));
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: saltData
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Call onERC1155Received
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-
-        // Verify a subregistry was created
-        address actualSubregistry = address(registry.getSubregistry(testLabel));
-        assertTrue(actualSubregistry != address(0), "Subregistry should be created");
-
-        // Verify it's a proxy pointing to our implementation
-        // The factory creates a proxy, so we can verify it's pointing to the right implementation
-        MigratedWrappedNameRegistry migratedRegistry = MigratedWrappedNameRegistry(
-            actualSubregistry
-        );
-        assertEq(
-            migratedRegistry.parentDnsEncodedName(),
-            "\x04test\x03eth\x00",
-            "Should have correct parent DNS name"
+        vm.prank(user);
+        nameWrapper.safeBatchTransferFrom(
+            user,
+            address(migrationController),
+            ids,
+            amounts,
+            payload
         );
     }
 
-    // Comprehensive fuse→role mapping tests
-
-    function test_fuse_role_mapping_no_fuses_burnt() public {
-        // Setup locked name with only CANNOT_UNWRAP (no other fuses burnt)
-        uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH | CAN_EXTEND_EXPIRY;
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
-
-        // Prepare migration data - incoming roleBitmap should be ignored
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_SUBREGISTRY, // This should be ignored
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Call onERC1155Received
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-
-        // Get the registered name and check roles
-        uint256 userRoles = registry.roles(uint256(keccak256(bytes(testLabel))), user);
-
-        // 2LDs should NOT have renewal roles even when no additional fuses are burnt (CAN_EXTEND_EXPIRY is masked out to prevent automatic renewal for 2LDs)
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_RENEW) == 0,
-            "Should NOT have ROLE_RENEW for 2LDs"
+    function test_migrate_invalidReceiver() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        IWrapperRegistry.Data memory md = _makeData(name);
+        md.owner = address(0);
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
+            )
         );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_RENEW_ADMIN) == 0,
-            "Should NOT have ROLE_RENEW_ADMIN for 2LDs"
-        );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_RESOLVER) != 0,
-            "Should have ROLE_SET_RESOLVER"
-        );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN) != 0,
-            "Should have ROLE_SET_RESOLVER_ADMIN"
-        );
-
-        // Token should NEVER have registrar roles
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_REGISTRAR) == 0,
-            "Token should NEVER have ROLE_REGISTRAR"
-        );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_REGISTRAR_ADMIN) == 0,
-            "Token should NEVER have ROLE_REGISTRAR_ADMIN"
-        );
-
-        // Verify incoming roleBitmap was ignored
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_SUBREGISTRY) == 0,
-            "Should NOT have ROLE_SET_SUBREGISTRY from incoming data"
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
         );
     }
 
-    function test_fuse_role_mapping_no_extend_expiry_fuse() public {
-        // Setup locked name WITHOUT CAN_EXTEND_EXPIRY fuse
-        uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
-
-        // Prepare migration data
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: 0,
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Call onERC1155Received
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-
-        // Get the registered name and check roles
-        uint256 userRoles = registry.roles(uint256(keccak256(bytes(testLabel))), user);
-
-        // Should NOT have renewal roles since CAN_EXTEND_EXPIRY is not set
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_RENEW) == 0,
-            "Should NOT have ROLE_RENEW without CAN_EXTEND_EXPIRY"
+    function test_migrate_nameDataMismatch() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes32 node = NameCoder.namehash(name, 0);
+        IWrapperRegistry.Data memory md = _makeData(name);
+        md.label = "wrong";
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(MigrationErrors.NameDataMismatch.selector, node)
+            )
         );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_RENEW_ADMIN) == 0,
-            "Should NOT have ROLE_RENEW_ADMIN without CAN_EXTEND_EXPIRY"
-        );
-        // Should have resolver roles since CANNOT_SET_RESOLVER is not set
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_RESOLVER) != 0,
-            "Should have ROLE_SET_RESOLVER"
-        );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN) != 0,
-            "Should have ROLE_SET_RESOLVER_ADMIN"
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
         );
     }
 
-    function test_fuse_role_mapping_resolver_fuse_burnt() public {
-        // Setup locked name with CANNOT_SET_RESOLVER already burnt
-        uint32 lockedFuses = CANNOT_UNWRAP | CANNOT_SET_RESOLVER | IS_DOT_ETH | CAN_EXTEND_EXPIRY;
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
-
-        // Prepare migration data
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER |
-                    RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN, // Should be ignored
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Call onERC1155Received
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-
-        // Get the registered name and check roles
-        uint256 userRoles = registry.roles(uint256(keccak256(bytes(testLabel))), user);
-
-        // 2LDs should NOT have renewal roles even when CANNOT_CREATE_SUBDOMAIN is not burnt (CAN_EXTEND_EXPIRY is masked out to prevent automatic renewal for 2LDs)
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_RENEW) == 0,
-            "Should NOT have ROLE_RENEW for 2LDs"
+    function test_migrate_nameNotLocked() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        bytes32 node = NameCoder.namehash(name, 0);
+        IWrapperRegistry.Data memory md = _makeData(name);
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(MigrationErrors.NameNotLocked.selector, node)
+            )
         );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_RENEW_ADMIN) == 0,
-            "Should NOT have ROLE_RENEW_ADMIN for 2LDs"
-        );
-
-        // Token should NEVER have registrar roles
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_REGISTRAR) == 0,
-            "Token should NEVER have ROLE_REGISTRAR"
-        );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_REGISTRAR_ADMIN) == 0,
-            "Token should NEVER have ROLE_REGISTRAR_ADMIN"
-        );
-
-        // Should NOT have resolver roles since CANNOT_SET_RESOLVER is burnt
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_RESOLVER) == 0,
-            "Should NOT have ROLE_SET_RESOLVER"
-        );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN) == 0,
-            "Should NOT have ROLE_SET_RESOLVER_ADMIN"
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
         );
     }
 
-    function test_fuse_role_mapping_cannot_create_subdomain_burnt() public {
-        // Setup locked name with CANNOT_CREATE_SUBDOMAIN burnt
-        uint32 lockedFuses = CANNOT_UNWRAP |
-            CANNOT_CREATE_SUBDOMAIN |
-            IS_DOT_ETH |
-            CAN_EXTEND_EXPIRY;
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
-
-        // Prepare migration data
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_REGISTRAR_ADMIN, // Should be ignored
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Call onERC1155Received
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-
-        // Get the registered name and check roles
-        uint256 userRoles = registry.roles(uint256(keccak256(bytes(testLabel))), user);
-
-        // 2LDs should NOT have renewal roles (CAN_EXTEND_EXPIRY is masked out to prevent automatic renewal for 2LDs) but should have resolver roles
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_RENEW) == 0,
-            "Should NOT have ROLE_RENEW for 2LDs"
+    function test_migrate_notReserved() external {
+        premigrationController = address(0); // disable premigration
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        IWrapperRegistry.Data memory md = _makeData(name);
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(
+                    IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                    ethRegistry.ROOT_RESOURCE(),
+                    RegistryRolesLib.ROLE_REGISTRAR,
+                    address(migrationController)
+                )
+            )
         );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_RENEW_ADMIN) == 0,
-            "Should NOT have ROLE_RENEW_ADMIN for 2LDs"
-        );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_RESOLVER) != 0,
-            "Should have ROLE_SET_RESOLVER"
-        );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN) != 0,
-            "Should have ROLE_SET_RESOLVER_ADMIN"
-        );
-
-        // Should NOT have registrar roles since CANNOT_CREATE_SUBDOMAIN is burnt
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_REGISTRAR) == 0,
-            "Should NOT have ROLE_REGISTRAR when subdomain creation disabled"
-        );
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_REGISTRAR_ADMIN) == 0,
-            "Should NOT have ROLE_REGISTRAR_ADMIN when subdomain creation disabled"
-        );
-
-        // Verify incoming roleBitmap was ignored
-        assertTrue(
-            (userRoles & RegistryRolesLib.ROLE_SET_SUBREGISTRY) == 0,
-            "Should NOT have ROLE_SET_SUBREGISTRY from incoming data"
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
         );
     }
 
-    function test_fuses_burnt_after_migration_completes() public {
-        // Setup locked name (CANNOT_BURN_FUSES not set so migration can proceed)
-        uint32 initialFuses = CANNOT_UNWRAP | IS_DOT_ETH;
-        nameWrapper.setFuseData(testTokenId, initialFuses, uint64(block.timestamp + 86400));
+    function test_migrate() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        IWrapperRegistry.Data memory md = _makeData(name);
 
-        // Prepare migration data
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_SUBREGISTRY, // Should be ignored
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Call onERC1155Received
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-
-        // Verify that ALL required fuses are burnt (migration completed, then fuses burnt)
-        (, uint32 finalFuses, ) = nameWrapper.getData(testTokenId);
-
-        // Check that all required fuses are burnt
-        assertTrue((finalFuses & CANNOT_UNWRAP) != 0, "CANNOT_UNWRAP should remain burnt");
-        assertTrue(
-            (finalFuses & CANNOT_BURN_FUSES) != 0,
-            "CANNOT_BURN_FUSES should be burnt after migration"
+        bytes32 node = NameCoder.namehash(name, 0);
+        address expectedRegistry = _computeVerifiableFactoryAddress(
+            address(migrationController),
+            md.salt
         );
-        assertTrue(
-            (finalFuses & CANNOT_TRANSFER) != 0,
-            "CANNOT_TRANSFER should be burnt after migration"
+        uint256 tokenId = LibLabel.withVersion(LibLabel.id(testLabel), 0);
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(user, user, address(migrationController), uint256(node), 1);
+        vm.expectEmit();
+        emit ENS.NewResolver(node, address(0));
+        // emit IERC1967.Upgraded()
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(
+            0 /*ROOT_RESOURCE*/,
+            md.owner,
+            0 /*old roles*/,
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN |
+                RegistryRolesLib.ROLE_UPGRADE |
+                RegistryRolesLib.ROLE_REGISTRAR |
+                RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
+                RegistryRolesLib.ROLE_RENEW |
+                RegistryRolesLib.ROLE_RENEW_ADMIN
         );
-        assertTrue(
-            (finalFuses & CANNOT_SET_RESOLVER) != 0,
-            "CANNOT_SET_RESOLVER should be burnt after migration"
+        // emit Initializable.Initialized()
+        vm.expectEmit();
+        emit VerifiableFactory.ProxyDeployed(
+            address(migrationController),
+            expectedRegistry,
+            md.salt,
+            address(wrapperRegistryImpl)
         );
-        assertTrue(
-            (finalFuses & CANNOT_SET_TTL) != 0,
-            "CANNOT_SET_TTL should be burnt after migration"
-        );
-        assertTrue(
-            (finalFuses & CANNOT_CREATE_SUBDOMAIN) != 0,
-            "CANNOT_CREATE_SUBDOMAIN should be burnt after migration"
-        );
-
-        // Verify name was successfully migrated despite all fuses being burnt after
-        assertEq(
-            uint256(registry.getState(uint256(keccak256(bytes(testLabel)))).status),
-            uint256(IPermissionedRegistry.Status.REGISTERED),
-            "Name should be successfully registered"
-        );
-    }
-
-    function test_Revert_invalid_non_eth_name() public {
-        // Setup locked name without IS_DOT_ETH fuse (not a .eth domain)
-        uint32 lockedFuses = CANNOT_UNWRAP; // Missing IS_DOT_ETH
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
-
-        // Prepare migration data
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_SUBREGISTRY,
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Should revert because IS_DOT_ETH fuse is not set
-        vm.expectRevert(abi.encodeWithSelector(LockedNamesLib.NotDotEthName.selector, testTokenId));
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-    }
-
-    function test_subregistry_owner_roles() public {
-        // Setup locked name
-        uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
-
-        // Prepare migration data with user as owner
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, "owner_test")))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Call onERC1155Received
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-
-        // Get the registered name and check subregistry owner
-        IRegistry subregistry = registry.getSubregistry(testLabel);
-
-        // Verify the user is the owner of the subregistry with only UPGRADE roles
-        IPermissionedRegistry subRegistry = IPermissionedRegistry(address(subregistry));
-
-        // The user should only have UPGRADE and UPGRADE_ADMIN roles on the subregistry
-        assertTrue(
-            subRegistry.hasRootRoles(
-                RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN,
-                user
-            ),
-            "User should have UPGRADE roles on subregistry"
-        );
-    }
-
-    function test_freezeName_clears_resolver_when_fuse_not_set() public {
-        // Setup locked name with CANNOT_SET_RESOLVER fuse NOT set
-        uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH;
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
-
-        // Set an initial resolver on the name
-        address initialResolver = address(0x9999);
-        nameWrapper.setInitialResolver(testTokenId, initialResolver);
-
-        // Verify resolver is initially set
-        assertEq(
-            nameWrapper.getResolver(testTokenId),
-            initialResolver,
-            "Initial resolver should be set"
-        );
-
-        // Prepare migration data
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
-
-        bytes memory data = abi.encode(migrationData);
-
-        // Call onERC1155Received
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
-
-        // Verify resolver was cleared to address(0)
-        assertEq(
-            nameWrapper.getResolver(testTokenId),
+        // emit IRegistry.NameRegistered()
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(
+            address(migrationController),
             address(0),
-            "Resolver should be cleared to address(0)"
+            md.owner,
+            tokenId,
+            1
+        );
+        vm.expectEmit();
+        emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(
+            tokenId,
+            md.owner,
+            0 /*old roles*/,
+            RegistryRolesLib.ROLE_SET_RESOLVER |
+                RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
+                RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN
+        );
+        vm.expectEmit();
+        emit IRegistry.SubregistryUpdated(
+            tokenId,
+            IRegistry(expectedRegistry),
+            address(migrationController)
+        );
+        vm.expectEmit();
+        emit IRegistry.ResolverUpdated(tokenId, md.resolver, address(migrationController));
+        vm.expectEmit();
+        emit INameWrapper.FusesSet(
+            node,
+            FUSES_TO_BURN | CANNOT_UNWRAP | PARENT_CANNOT_CONTROL | IS_DOT_ETH
+        );
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
         );
 
-        // Verify CANNOT_SET_RESOLVER fuse was burned
-        (, uint32 newFuses, ) = nameWrapper.getData(testTokenId);
+        assertEq(ethRegistry.getTokenId(LibLabel.id(testLabel)), tokenId, "tokenId");
+        assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
+        assertEq(ethRegistry.getResolver(testLabel), md.resolver, "resolver");
+        assertEq(
+            ethRegistry.getExpiry(tokenId),
+            ethRegistrarV1.nameExpires(LibLabel.id(testLabel)),
+            "expiry"
+        );
+        WrapperRegistry subregistry = WrapperRegistry(
+            address(ethRegistry.getSubregistry(testLabel))
+        );
         assertTrue(
-            (newFuses & CANNOT_SET_RESOLVER) != 0,
-            "CANNOT_SET_RESOLVER should be burnt after migration"
+            ERC165Checker.supportsInterface(
+                address(subregistry),
+                type(IWrapperRegistry).interfaceId
+            ),
+            "IWrapperRegistry"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(subregistry),
+                type(WrapperReceiver).interfaceId
+            ),
+            "WrapperReceiver"
+        );
+        assertEq(subregistry.parentName(), name, "parentName");
+        assertTrue(
+            subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, md.owner),
+            "ROLE_REGISTRAR"
+        );
+        assertEq(address(subregistry.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
+        assertEq(
+            address(subregistry.VERIFIABLE_FACTORY()),
+            address(verifiableFactory),
+            "VERIFIABLE_FACTORY"
+        );
+        assertEq(
+            subregistry.WRAPPER_REGISTRY_IMPL(),
+            address(wrapperRegistryImpl),
+            "WRAPPER_REGISTRY_IMPL"
         );
     }
 
-    function test_freezeName_preserves_resolver_when_fuse_already_set() public {
-        // Setup locked name with CANNOT_SET_RESOLVER fuse already set
-        uint32 lockedFuses = CANNOT_UNWRAP | IS_DOT_ETH | CANNOT_SET_RESOLVER;
-        nameWrapper.setFuseData(testTokenId, lockedFuses, uint64(block.timestamp + 86400));
+    function test_migrateBatch(uint8 count) external {
+        vm.assume(count < 5);
+        uint256[] memory ids = new uint256[](count);
+        uint256[] memory amounts = new uint256[](count);
+        IWrapperRegistry.Data[] memory mds = new IWrapperRegistry.Data[](count);
+        for (uint256 i; i < count; ++i) {
+            bytes memory name = registerWrappedETH2LD(_label(i), CANNOT_UNWRAP);
+            IWrapperRegistry.Data memory md = _makeData(name);
+            md.resolver = address(uint160(i));
+            mds[i] = md;
+            ids[i] = uint256(NameCoder.namehash(name, 0));
+            amounts[i] = 1;
+        }
+        vm.prank(user);
+        nameWrapper.safeBatchTransferFrom(
+            user,
+            address(migrationController),
+            ids,
+            amounts,
+            abi.encode(mds)
+        );
+        for (uint256 i; i < count; ++i) {
+            string memory label = _label(i);
+            uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(label));
+            assertEq(ethRegistry.ownerOf(tokenId), user, "owner");
+            assertEq(ethRegistry.getResolver(label), address(uint160(i)), "resolver");
+            assertTrue(
+                ERC165Checker.supportsInterface(
+                    address(ethRegistry.getSubregistry(label)),
+                    type(IWrapperRegistry).interfaceId
+                ),
+                "IWrapperRegistry"
+            );
+        }
+    }
 
-        // Set an initial resolver on the name
-        address initialResolver = address(0x8888);
-        nameWrapper.setInitialResolver(testTokenId, initialResolver);
+    function test_migrateBatch_lastOneWrong(uint8 count) external {
+        vm.assume(count > 1 && count < 5);
+        uint256[] memory ids = new uint256[](count);
+        uint256[] memory amounts = new uint256[](count);
+        IWrapperRegistry.Data[] memory mds = new IWrapperRegistry.Data[](count);
+        for (uint256 i; i < count; ++i) {
+            bytes memory name = registerWrappedETH2LD(
+                _label(i),
+                i == count - 1 ? CAN_DO_EVERYTHING : CANNOT_UNWRAP
+            );
+            IWrapperRegistry.Data memory md = _makeData(name);
+            mds[i] = md;
+            ids[i] = uint256(NameCoder.namehash(name, 0));
+            amounts[i] = 1;
+        }
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(MigrationErrors.NameNotLocked.selector, ids[count - 1])
+            )
+        );
+        vm.prank(user);
+        nameWrapper.safeBatchTransferFrom(
+            user,
+            address(migrationController),
+            ids,
+            amounts,
+            abi.encode(mds)
+        );
+    }
 
-        // Verify resolver is initially set
-        assertEq(
-            nameWrapper.getResolver(testTokenId),
-            initialResolver,
-            "Initial resolver should be set"
+    function test_migrate_lockedResolver() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        bytes32 node = NameCoder.namehash(name, 0);
+        IWrapperRegistry.Data memory md = _makeData(name);
+
+        address frozenResolver = makeAddr("frozenResolver");
+        vm.startPrank(user);
+        nameWrapper.setResolver(node, frozenResolver);
+        nameWrapper.setFuses(node, uint16(CANNOT_UNWRAP | CANNOT_SET_RESOLVER));
+        vm.stopPrank();
+        assertNotEq(md.resolver, frozenResolver, "diff");
+
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
         );
 
-        // Prepare migration data
-        MigrationData memory migrationData = MigrationData({
-            transferData: TransferData({
-                dnsEncodedName: NameCoder.ethName(testLabel),
-                owner: user,
-                subregistry: address(0), // Will be created by factory
-                resolver: address(0xABCD),
-                roleBitmap: RegistryRolesLib.ROLE_SET_RESOLVER,
-                expires: uint64(block.timestamp + 86400)
-            }),
-            salt: uint256(keccak256(abi.encodePacked(testLabel, block.timestamp)))
-        });
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(testLabel));
+        assertEq(ethRegistry.getResolver(testLabel), frozenResolver, "frozen");
+        assertEq(findResolverV2(name), frozenResolver, "findResolverV2");
+        assertFalse(ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user));
 
-        bytes memory data = abi.encode(migrationData);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                tokenId,
+                RegistryRolesLib.ROLE_SET_RESOLVER,
+                user
+            )
+        );
+        vm.prank(user);
+        ethRegistry.setResolver(tokenId, testResolver);
+    }
 
-        // Call onERC1155Received
-        vm.prank(address(nameWrapper));
-        controller.onERC1155Received(owner, owner, testTokenId, 1, data);
+    function test_migrate_lockedTransfer() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP | CANNOT_TRANSFER);
+        bytes32 node = NameCoder.namehash(name, 0);
+        IWrapperRegistry.Data memory md = _makeData(name);
 
-        // Verify resolver remains unchanged (since fuse was already set)
-        assertEq(
-            nameWrapper.getResolver(testTokenId),
-            initialResolver,
-            "Resolver should be preserved when fuse already set"
+        vm.expectRevert(abi.encodeWithSelector(OperationProhibited.selector, node));
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
+        );
+    }
+
+    function test_migrate_lockedExpiry() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP | CAN_EXTEND_EXPIRY);
+        IWrapperRegistry.Data memory md = _makeData(name);
+
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
         );
 
-        // Verify CANNOT_SET_RESOLVER fuse remains set
-        (, uint32 newFuses, ) = nameWrapper.getData(testTokenId);
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(testLabel));
+        assertFalse(ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_RENEW, user));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                tokenId,
+                RegistryRolesLib.ROLE_RENEW,
+                user
+            )
+        );
+        vm.prank(user);
+        ethRegistry.renew(tokenId, _soon());
+    }
+
+    function test_migrate_lockedChildren() external {
+        bytes memory name = registerWrappedETH2LD(
+            testLabel,
+            CANNOT_UNWRAP | CANNOT_CREATE_SUBDOMAIN
+        );
+        IWrapperRegistry.Data memory md = _makeData(name);
+
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
+        );
+
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(testLabel));
+        assertFalse(ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_REGISTRAR, user));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                ethRegistry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_REGISTRAR,
+                user
+            )
+        );
+        vm.prank(user);
+        ethRegistry.register(
+            string.concat(testLabel, testLabel),
+            user,
+            IRegistry(address(0)),
+            address(0),
+            0,
+            _soon()
+        );
+    }
+
+    function test_migrate_lockedFuses() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP | CANNOT_BURN_FUSES);
+        IWrapperRegistry.Data memory md = _makeData(name);
+
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
+        );
+
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(testLabel));
+        assertEq(
+            ethRegistry.roles(tokenId, user) & EACBaseRolesLib.ADMIN_ROLES,
+            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
+            "token"
+        );
+        IWrapperRegistry registry = IWrapperRegistry(
+            address(ethRegistry.getSubregistry(testLabel))
+        );
+        assertEq(
+            registry.roles(registry.ROOT_RESOURCE(), user) & EACBaseRolesLib.ADMIN_ROLES,
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN | RegistryRolesLib.ROLE_RENEW_ADMIN,
+            "registry"
+        );
+    }
+
+    function test_migrate_emancipatedChildren() external {
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        string memory label3 = "sub";
+        bytes memory name3 = createWrappedChild(
+            name2,
+            label3,
+            CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
+        );
+        bytes memory name3unmigrated = createWrappedChild(
+            name2,
+            "unmigrated",
+            CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
+        );
+
+        // migrate 2LD
+        IWrapperRegistry.Data memory data2 = _makeData(name2);
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name2, 0)),
+            1,
+            abi.encode(data2)
+        );
+        assertEq(
+            ethRegistry.ownerOf(ethRegistry.getTokenId(LibLabel.id(testLabel))),
+            data2.owner,
+            "owner2"
+        );
+        IWrapperRegistry registry2 = IWrapperRegistry(
+            address(ethRegistry.getSubregistry(testLabel))
+        );
         assertTrue(
-            (newFuses & CANNOT_SET_RESOLVER) != 0,
-            "CANNOT_SET_RESOLVER should remain burnt"
+            ERC165Checker.supportsInterface(address(registry2), type(IWrapperRegistry).interfaceId),
+            "registry2"
         );
+
+        // migrate 3LD
+        IWrapperRegistry.Data memory data3 = _makeData(name3);
+        vm.expectEmit();
+        emit INameWrapper.FusesSet(
+            NameCoder.namehash(name3, 0),
+            FUSES_TO_BURN | CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
+        );
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(registry2),
+            uint256(NameCoder.namehash(name3, 0)),
+            1,
+            abi.encode(data3)
+        );
+        assertEq(registry2.getResolver(label3), data3.resolver, "resolver3");
+        assertEq(findResolverV2(name3), data3.resolver, "findResolver3");
+        assertEq(
+            registry2.ownerOf(registry2.getTokenId(LibLabel.id(label3))),
+            data3.owner,
+            "owner3"
+        );
+        IRegistry registry3 = registry2.getSubregistry(label3);
+        assertTrue(
+            ERC165Checker.supportsInterface(address(registry3), type(IWrapperRegistry).interfaceId),
+            "registry3"
+        );
+
+        // check migrated 3LD child
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.NameAlreadyRegistered.selector, label3)
+        );
+        vm.prank(user);
+        registry2.register(label3, user, IRegistry(address(0)), address(0), 0, _soon());
+
+        // check unmigrated 3LD child
+        vm.expectRevert(abi.encodeWithSelector(MigrationErrors.NameRequiresMigration.selector));
+        vm.prank(user);
+        registry2.register(
+            NameCoder.firstLabel(name3unmigrated),
+            user,
+            IRegistry(address(0)),
+            address(0),
+            0,
+            _soon()
+        );
+        assertEq(findResolverV2(name3unmigrated), address(ensV1Resolver), "unmigratedResolver");
+    }
+
+    /// @dev Ensure premigration has occurred.
+    function registerWrappedETH2LD(
+        string memory label,
+        uint32 flags
+    ) public override returns (bytes memory name) {
+        name = super.registerWrappedETH2LD(label, flags);
+        if (address(premigrationController) != address(0)) {
+            vm.prank(premigrationController);
+            ethRegistry.register(
+                label,
+                address(0), // reserve
+                IRegistry(address(0)),
+                address(ensV1Resolver),
+                0,
+                uint64(ethRegistrarV1.nameExpires(LibLabel.id(label)))
+            );
+        }
+    }
+
+    function _label(uint256 i) internal view returns (string memory) {
+        return string.concat(testLabel, vm.toString(i));
+    }
+
+    function _soon() internal view returns (uint64) {
+        return uint64(block.timestamp + 1000);
+    }
+}
+
+contract MockERC1155 is ERC1155 {
+    uint256 _id;
+    constructor() ERC1155("") {}
+    function mint(address to) external returns (uint256) {
+        _mint(to, _id, 1, "");
+        return _id++;
     }
 }
