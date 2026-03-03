@@ -158,10 +158,6 @@ contract OwnedResolver is
         return ResolverFeatures.RESOLVE_MULTICALL == feature;
     }
 
-    ////////////////////////////////////////////////////////////////////////
-    // Implementation
-    ////////////////////////////////////////////////////////////////////////
-
     /// @notice Initialize the contract.
     ///
     /// @param admin The resolver owner.
@@ -173,6 +169,9 @@ contract OwnedResolver is
         __UUPSUpgradeable_init();
         _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
     }
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
 
     /// @notice Clear all records for `node`.
     ///

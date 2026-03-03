@@ -12,12 +12,20 @@ abstract contract MetadataMixin {
     /// @notice The metadata provider contract
     IRegistryMetadata public immutable METADATA_PROVIDER;
 
+    ////////////////////////////////////////////////////////////////////////
+    // Initialization
+    ////////////////////////////////////////////////////////////////////////
+
     /// @notice Initializes the mixin with a metadata provider
     ///
     /// @param metadataProvider_ Address of the metadata provider contract
     constructor(IRegistryMetadata metadataProvider_) {
         METADATA_PROVIDER = metadataProvider_;
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
 
     /// @notice Returns the token URI for a given token ID
     ///

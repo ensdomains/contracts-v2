@@ -51,6 +51,10 @@ library OwnedResolverLib {
     uint256 internal constant ROLE_UPGRADE = 1 << 124;
     uint256 internal constant ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
 
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
     function resource(bytes32 node, bytes32 part) internal pure returns (uint256 ret) {
         assembly {
             mstore(0, node)

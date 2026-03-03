@@ -103,6 +103,10 @@ contract LockedMigrationController is IERC1155Receiver, ERC165 {
         return this.onERC1155BatchReceived.selector;
     }
 
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
+
     function _migrateLockedEthNames(
         uint256[] memory tokenIds,
         MigrationData[] memory migrationDataArray

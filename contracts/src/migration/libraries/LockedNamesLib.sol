@@ -52,7 +52,7 @@ library LockedNamesLib {
     error NotDotEthName(uint256 tokenId);
 
     ////////////////////////////////////////////////////////////////////////
-    // Library Functions
+    // Implementation
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Deploys a new MigratedWrappedNameRegistry via VerifiableFactory

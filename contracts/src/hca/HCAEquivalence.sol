@@ -8,9 +8,17 @@ abstract contract HCAEquivalence {
     /// @notice The HCA factory contract
     IHCAFactoryBasic public immutable HCA_FACTORY;
 
+    ////////////////////////////////////////////////////////////////////////
+    // Initialization
+    ////////////////////////////////////////////////////////////////////////
+
     constructor(IHCAFactoryBasic hcaFactory) {
         HCA_FACTORY = hcaFactory;
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
 
     /// @notice Returns either the account owner of an HCA or the original sender
     function _msgSenderWithHcaEquivalence() internal view returns (address) {

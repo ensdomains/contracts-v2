@@ -11,12 +11,20 @@ import {LibRegistry, IRegistry} from "./libraries/LibRegistry.sol";
 contract UniversalResolverV2 is AbstractUniversalResolver {
     IRegistry public immutable ROOT_REGISTRY;
 
+    ////////////////////////////////////////////////////////////////////////
+    // Initialization
+    ////////////////////////////////////////////////////////////////////////
+
     constructor(
         IRegistry root,
         IGatewayProvider batchGatewayProvider
     ) AbstractUniversalResolver(batchGatewayProvider) {
         ROOT_REGISTRY = root;
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
 
     /// @notice Find all registries in the ancestry of `name`.
     /// * `findRegistries("") = [<root>]`

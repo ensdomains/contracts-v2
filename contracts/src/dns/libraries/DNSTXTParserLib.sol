@@ -44,6 +44,10 @@ library DNSTXTParserLib {
     bytes1 private constant CH_ARG_OPEN = "[";
     bytes1 private constant CH_ARG_CLOSE = "]";
 
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
     /// @dev Implements a DFA to parse the text record, looking for an entry matching `key`.
     ///
     /// @param data The text record to parse.

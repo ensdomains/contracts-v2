@@ -96,10 +96,6 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
         );
     }
 
-    ////////////////////////////////////////////////////////////////////////
-    // Internal Functions
-    ////////////////////////////////////////////////////////////////////////
-
     /// @dev Modify `name` using rewrite rule in `context`.
     ///
     /// @param name The DNS-encoded name.
