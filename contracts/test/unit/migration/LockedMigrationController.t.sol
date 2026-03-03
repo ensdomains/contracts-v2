@@ -64,7 +64,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
         deployV1Fixture();
         deployV2Fixture();
         dummy1155 = new MockERC1155();
-        ensV1Resolver = new ENSV1Resolver(ensV1, batchGatewayProvider);
+        ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
             verifiableFactory,
@@ -83,6 +83,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
             address(migrationController)
         );
+        ethRegistrarV1.setResolver(address(ensV1Resolver));
     }
 
     function _makeData(bytes memory name) internal view returns (LibMigration.LockedData memory) {

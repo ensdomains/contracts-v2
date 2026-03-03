@@ -175,7 +175,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             assert(expiry >= block.timestamp); // claim: expired names cannot be transferred
 
             if ((fuses & CANNOT_SET_RESOLVER) != 0) {
-                md.resolver = NAME_WRAPPER.ens().resolver(node); // replace with V1 resolver
+                md.resolver = _REGISTRY_V1.resolver(node); // replace with V1 resolver
             } else {
                 NAME_WRAPPER.setResolver(node, address(0)); // clear V1 resolver
             }

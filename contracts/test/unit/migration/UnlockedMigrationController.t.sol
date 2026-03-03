@@ -56,13 +56,14 @@ contract UnlockedMigrationControllerTest is V1Fixture, V2Fixture {
         deployV1Fixture();
         deployV2Fixture();
         dummy1155 = new MockERC1155();
-        ensV1Resolver = new ENSV1Resolver(ensV1, batchGatewayProvider);
+        ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         migrationController = new UnlockedMigrationController(ethRegistry, nameWrapper);
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
             address(migrationController)
         );
+        ethRegistrarV1.setResolver(address(ensV1Resolver));
     }
 
     function _makeData(bytes memory name) internal view returns (LibMigration.UnlockedData memory) {
@@ -325,6 +326,39 @@ contract UnlockedMigrationControllerTest is V1Fixture, V2Fixture {
             address(md.subregistry),
             "subregistry"
         );
+        assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), "resolverV1");
+        assertEq(findResolverV1(name), address(ensV1Resolver), "findResolverV1");
+        assertEq(findResolverV2(name), address(md.resolver), "findResolverV2");
+    }
+
+    function test_clearRegistryV1() external {
+        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        bytes32 node = NameCoder.namehash(name, 0);
+        bytes32 childLabelHash = keccak256("abc");
+        bytes32 childNode = NameCoder.namehash(node, childLabelHash);
+        vm.prank(user);
+        registryV1.setSubnodeRecord(node, childLabelHash, user, testResolver, 1);
+
+        vm.prank(user);
+        ethRegistrarV1.safeTransferFrom(
+            user,
+            address(migrationController),
+            tokenIdV1,
+            abi.encode(_makeData(name))
+        );
+
+        assertEq(registryV1.resolver(childNode), testResolver, "before");
+
+        vm.expectRevert();
+        registryV1.setSubnodeRecord(node, childLabelHash, address(0), address(0), 0);
+
+        bytes32[] memory parents = new bytes32[](1);
+        bytes32[] memory labels = new bytes32[](parents.length);
+        parents[0] = node;
+        labels[0] = childLabelHash;
+        migrationController.clearRegistryV1(parents, labels);
+
+        assertEq(registryV1.resolver(childNode), address(0), "after");
     }
 
     /// @dev Ensure premigration has occurred.

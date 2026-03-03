@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {INameWrapper, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {INameWrapper, ENS, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {ERC165, IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
@@ -16,6 +16,7 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     ////////////////////////////////////////////////////////////////////////
 
     INameWrapper public immutable NAME_WRAPPER;
+    ENS internal immutable _REGISTRY_V1;
 
     ////////////////////////////////////////////////////////////////////////
     // Modifiers
@@ -49,6 +50,7 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
 
     constructor(INameWrapper nameWrapper) {
         NAME_WRAPPER = nameWrapper;
+        _REGISTRY_V1 = nameWrapper.ens();
     }
 
     /// @inheritdoc IERC165

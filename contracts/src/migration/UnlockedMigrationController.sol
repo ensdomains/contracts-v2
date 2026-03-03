@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -24,6 +25,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     ////////////////////////////////////////////////////////////////////////
 
     IPermissionedRegistry public immutable ETH_REGISTRY;
+    IBaseRegistrar internal immutable _REGISTRAR_V1;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -34,6 +36,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         INameWrapper nameWrapper
     ) AbstractWrapperReceiver(nameWrapper) {
         ETH_REGISTRY = ethRegistry;
+        _REGISTRAR_V1 = nameWrapper.registrar();
     }
 
     /// @inheritdoc IERC165
@@ -108,7 +111,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         uint256 tokenId,
         bytes calldata data
     ) external returns (bytes4) {
-        if (msg.sender != address(NAME_WRAPPER.registrar())) {
+        if (msg.sender != address(_REGISTRAR_V1)) {
             revert UnauthorizedCaller(msg.sender);
         }
         if (data.length < LibMigration.MIN_UNLOCKED_DATA_SIZE) {
@@ -118,8 +121,21 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         if (tokenId != uint256(keccak256(bytes(md.label)))) {
             revert LibMigration.NameDataMismatch(tokenId);
         }
+        // clear V1 resolver
+        _REGISTRAR_V1.reclaim(tokenId, address(this));
+        _REGISTRY_V1.setResolver(
+            NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenId)),
+            address(0)
+        );
         _inject(md);
         return this.onERC721Received.selector;
+    }
+
+    /// @notice Zero registry to any depth for migrated tokens.
+    function clearRegistryV1(bytes32[] calldata parents, bytes32[] calldata labels) external {
+        for (uint256 i; i < parents.length; ++i) {
+            _REGISTRY_V1.setSubnodeRecord(parents[i], labels[i], address(this), address(0), 0);
+        }
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -153,6 +169,10 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
             ) {
                 revert LibMigration.NameDataMismatch(id);
             }
+            // clear V1 resolver
+            NAME_WRAPPER.setResolver(bytes32(id), address(0));
+            // NAME_WRAPPER.unwrapETH2LD(bytes32(id), address(this), address(this));
+            // _REGISTRY_V1.setResolver(bytes32(id), address(0));
             _inject(mds[i]);
         }
     }
