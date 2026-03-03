@@ -28,13 +28,13 @@ import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAc
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {
     PermissionedResolver,
+    IPermissionedResolver,
     PermissionedResolverLib
 } from "~src/resolver/PermissionedResolver.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 contract PermissionedResolverTest is Test {
     uint256 constant DEFAULT_ROLES = EACBaseRolesLib.ALL_ROLES;
-    uint256 constant ROOT_RESOURCE = 0;
 
     struct I {
         bytes4 interfaceId;
@@ -42,7 +42,8 @@ contract PermissionedResolverTest is Test {
     }
     function _supportedInterfaces() internal pure returns (I[] memory v) {
         uint256 i;
-        v = new I[](15);
+        v = new I[](16);
+        v[i++] = I(type(IPermissionedResolver).interfaceId, "IPermissionedResolver");
         v[i++] = I(type(IExtendedResolver).interfaceId, "IExtendedResolver");
         v[i++] = I(type(IERC7996).interfaceId, "IERC7996");
         v[i++] = I(type(IMulticallable).interfaceId, "IMulticallable");
@@ -105,7 +106,7 @@ contract PermissionedResolverTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                ROOT_RESOURCE,
+                resolver.ROOT_RESOURCE(),
                 PermissionedResolverLib.ROLE_UPGRADE,
                 friend
             )
@@ -141,7 +142,7 @@ contract PermissionedResolverTest is Test {
     function test_alias_root() external {
         vm.prank(owner);
         vm.expectEmit();
-        emit PermissionedResolver.AliasChanged(
+        emit IPermissionedResolver.AliasChanged(
             NameCoder.encode(""),
             NameCoder.encode("test.eth"),
             NameCoder.encode(""),
@@ -197,7 +198,7 @@ contract PermissionedResolverTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                ROOT_RESOURCE,
+                resolver.ROOT_RESOURCE(),
                 PermissionedResolverLib.ROLE_SET_ALIAS,
                 address(this)
             )
@@ -302,14 +303,18 @@ contract PermissionedResolverTest is Test {
 
     function test_setAddr_invalidEVM_tooShort() external {
         bytes memory v = new bytes(19);
-        vm.expectRevert(abi.encodeWithSelector(PermissionedResolver.InvalidEVMAddress.selector, v));
+        vm.expectRevert(
+            abi.encodeWithSelector(IPermissionedResolver.InvalidEVMAddress.selector, v)
+        );
         vm.prank(owner);
         resolver.setAddr(testNode, COIN_TYPE_ETH, v);
     }
 
     function test_setAddr_invalidEVM_tooLong() external {
         bytes memory v = new bytes(21);
-        vm.expectRevert(abi.encodeWithSelector(PermissionedResolver.InvalidEVMAddress.selector, v));
+        vm.expectRevert(
+            abi.encodeWithSelector(IPermissionedResolver.InvalidEVMAddress.selector, v)
+        );
         vm.prank(owner);
         resolver.setAddr(testNode, COIN_TYPE_ETH, v);
     }
@@ -457,7 +462,7 @@ contract PermissionedResolverTest is Test {
 
     function test_setABI_invalidContentType_noBits() external {
         vm.expectRevert(
-            abi.encodeWithSelector(PermissionedResolver.InvalidContentType.selector, 0)
+            abi.encodeWithSelector(IPermissionedResolver.InvalidContentType.selector, 0)
         );
         vm.prank(owner);
         resolver.setABI(testNode, 0, "");
@@ -465,7 +470,7 @@ contract PermissionedResolverTest is Test {
 
     function test_setABI_invalidContentType_manyBits() external {
         vm.expectRevert(
-            abi.encodeWithSelector(PermissionedResolver.InvalidContentType.selector, 3)
+            abi.encodeWithSelector(IPermissionedResolver.InvalidContentType.selector, 3)
         );
         vm.prank(owner);
         resolver.setABI(testNode, 3, "");
@@ -598,7 +603,7 @@ contract PermissionedResolverTest is Test {
         bytes[] memory answers = new bytes[](calls.length);
         answers[0] = abi.encode(testString);
         answers[1] = abi.encodeWithSelector(
-            PermissionedResolver.UnsupportedResolverProfile.selector,
+            IPermissionedResolver.UnsupportedResolverProfile.selector,
             selector
         );
 

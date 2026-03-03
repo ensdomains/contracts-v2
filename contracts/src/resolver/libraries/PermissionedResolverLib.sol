@@ -1,27 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-/// @notice Storage layout and roles for PermissionedResolver.
+/// @notice Roles for PermissionedResolver.
 library PermissionedResolverLib {
-    struct Storage {
-        mapping(bytes32 node => bytes) aliases;
-        mapping(bytes32 node => uint64) versions;
-        mapping(bytes32 node => mapping(uint64 version => Record)) records;
-    }
-
-    struct Record {
-        bytes contenthash;
-        bytes32[2] pubkey;
-        string name;
-        mapping(uint256 coinType => bytes addressBytes) addresses;
-        mapping(string key => string value) texts;
-        mapping(uint256 contentType => bytes data) abis;
-        mapping(bytes4 interfaceId => address implementer) interfaces;
-    }
-
-    uint256 internal constant NAMED_SLOT =
-        uint256(keccak256("eth.ens.storage.PermissionedResolver"));
-
     uint256 internal constant ROLE_SET_ADDR = 1 << 0;
     uint256 internal constant ROLE_SET_ADDR_ADMIN = ROLE_SET_ADDR << 128;
 
@@ -52,6 +33,7 @@ library PermissionedResolverLib {
     uint256 internal constant ROLE_UPGRADE = 1 << 124;
     uint256 internal constant ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
 
+    /// @dev Construct `resource` from parts.
     function resource(bytes32 node, bytes32 part) internal pure returns (uint256 ret) {
         assembly {
             mstore(0, node)
@@ -61,6 +43,7 @@ library PermissionedResolverLib {
         //return uint256(keccak256(abi.encode(node, part)));
     }
 
+    /// @dev Generate part for `addr(coinType)`.
     function addrPart(uint256 coinType) internal pure returns (bytes32 part) {
         assembly {
             mstore8(0, 1)
@@ -70,6 +53,7 @@ library PermissionedResolverLib {
         //return keccak256(abi.encodePacked(uint8(1), coinType));
     }
 
+    /// @dev Generate part for `text(key)`.
     function textPart(string memory key) internal pure returns (bytes32 part) {
         assembly {
             mstore8(0, 2)
