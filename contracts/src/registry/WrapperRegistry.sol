@@ -19,6 +19,8 @@ import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
+/// @notice UUPS-upgradeable registry that wraps an ENS V1 NameWrapper, supporting migration of
+///         wrapped names into the namechain registry system.
 contract WrapperRegistry is
     IWrapperRegistry,
     PermissionedRegistry,

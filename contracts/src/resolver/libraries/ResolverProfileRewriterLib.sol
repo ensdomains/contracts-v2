@@ -6,7 +6,7 @@ pragma solidity >=0.8.13;
 ///      replaces that node in a memory copy of the calldata, recursively handling `multicall(bytes[])`
 ///      (selector `0xac9650d8`) to rewrite the node in every nested call at arbitrary depth.
 ///
-///      Used by `OwnedResolver` when resolving aliased names: after determining the alias target,
+///      Used by `PermissionedResolver` when resolving aliased names: after determining the alias target,
 ///      the original calldata must be updated with the new node before forwarding to the actual
 ///      resolver logic.
 library ResolverProfileRewriterLib {

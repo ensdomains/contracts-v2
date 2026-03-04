@@ -3,7 +3,7 @@ pragma solidity ^0.8.25;
 
 import {IHCAFactoryBasic} from "./interfaces/IHCAFactoryBasic.sol";
 
-/// @dev Provides sender-identity resolution for Hosted Crypto Accounts (HCAs). An HCA is a
+/// @dev Provides sender-identity resolution for Hidden Contract Accounts (HCAs). An HCA is a
 ///      contract-based account whose actions should be attributed to its registered owner rather
 ///      than to the contract address itself.
 ///

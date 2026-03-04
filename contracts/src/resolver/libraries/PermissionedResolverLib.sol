@@ -28,58 +28,48 @@ library PermissionedResolverLib {
         mapping(bytes4 interfaceId => address implementer) interfaces;
     }
 
-    /// @dev EIP-7201 storage slot for `PermissionedResolver`.
+    /// @dev Named storage slot for `PermissionedResolver`.
     uint256 internal constant NAMED_SLOT =
         uint256(keccak256("eth.ens.storage.PermissionedResolver"));
 
-    /// @dev Role granting permission to set multi-chain address records.
+    /// @dev Nybble 0 — authorizes setting multi-chain address records. Root or name.
     uint256 internal constant ROLE_SET_ADDR = 1 << 0;
-    /// @dev Admin variant of the address-setting role; allows delegating that permission.
     uint256 internal constant ROLE_SET_ADDR_ADMIN = ROLE_SET_ADDR << 128;
 
-    /// @dev Role granting permission to set text records.
+    /// @dev Nybble 1 — authorizes setting text records. Root or name.
     uint256 internal constant ROLE_SET_TEXT = 1 << 4;
-    /// @dev Admin variant of the text-setting role; allows delegating that permission.
     uint256 internal constant ROLE_SET_TEXT_ADMIN = ROLE_SET_TEXT << 128;
 
-    /// @dev Role granting permission to set the contenthash record.
+    /// @dev Nybble 2 — authorizes setting the contenthash record. Root or name.
     uint256 internal constant ROLE_SET_CONTENTHASH = 1 << 8;
-    /// @dev Admin variant of the contenthash-setting role; allows delegating that permission.
     uint256 internal constant ROLE_SET_CONTENTHASH_ADMIN = ROLE_SET_CONTENTHASH << 128;
 
-    /// @dev Role granting permission to set the public key record.
+    /// @dev Nybble 3 — authorizes setting the public key record. Root or name.
     uint256 internal constant ROLE_SET_PUBKEY = 1 << 12;
-    /// @dev Admin variant of the pubkey-setting role; allows delegating that permission.
     uint256 internal constant ROLE_SET_PUBKEY_ADMIN = ROLE_SET_PUBKEY << 128;
 
-    /// @dev Role granting permission to set ABI records.
+    /// @dev Nybble 4 — authorizes setting ABI records. Root or name.
     uint256 internal constant ROLE_SET_ABI = 1 << 16;
-    /// @dev Admin variant of the ABI-setting role; allows delegating that permission.
     uint256 internal constant ROLE_SET_ABI_ADMIN = ROLE_SET_ABI << 128;
 
-    /// @dev Role granting permission to set interface implementer records.
+    /// @dev Nybble 5 — authorizes setting interface implementer records. Root or name.
     uint256 internal constant ROLE_SET_INTERFACE = 1 << 20;
-    /// @dev Admin variant of the interface-setting role; allows delegating that permission.
     uint256 internal constant ROLE_SET_INTERFACE_ADMIN = ROLE_SET_INTERFACE << 128;
 
-    /// @dev Role granting permission to set the reverse name record.
+    /// @dev Nybble 6 — authorizes setting the reverse name record. Root or name.
     uint256 internal constant ROLE_SET_NAME = 1 << 24;
-    /// @dev Admin variant of the name-setting role; allows delegating that permission.
     uint256 internal constant ROLE_SET_NAME_ADMIN = ROLE_SET_NAME << 128;
 
-    /// @dev Role granting permission to set alias targets for name rewriting.
+    /// @dev Nybble 7 — authorizes setting alias targets for name rewriting. Root-only.
     uint256 internal constant ROLE_SET_ALIAS = 1 << 28;
-    /// @dev Admin variant of the alias-setting role; allows delegating that permission.
     uint256 internal constant ROLE_SET_ALIAS_ADMIN = ROLE_SET_ALIAS << 128;
 
-    /// @dev Role granting permission to clear (version-bump) all records for a node.
+    /// @dev Nybble 8 — authorizes clearing (version-bumping) all records for a node. Root or name.
     uint256 internal constant ROLE_CLEAR = 1 << 32;
-    /// @dev Admin variant of the clear role; allows delegating that permission.
     uint256 internal constant ROLE_CLEAR_ADMIN = ROLE_CLEAR << 128;
 
-    /// @dev Role granting permission to upgrade the resolver contract.
+    /// @dev Nybble 31 — authorizes UUPS proxy upgrades. Root-only.
     uint256 internal constant ROLE_UPGRADE = 1 << 124;
-    /// @dev Admin variant of the upgrade role; allows delegating that permission.
     uint256 internal constant ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
 
     /// @dev Computes `keccak256(node, part)` to create a unique EAC resource ID scoped to both
@@ -93,7 +83,7 @@ library PermissionedResolverLib {
             mstore(32, part)
             ret := keccak256(0, 64)
         }
-        //return uint256(keccak256(abi.encode(node, part)));
+        // Equivalent: return uint256(keccak256(abi.encode(node, part)));
     }
 
     /// @dev Computes a record-type identifier for address records, namespaced by coin type.
@@ -105,7 +95,7 @@ library PermissionedResolverLib {
             mstore(1, coinType)
             part := keccak256(0, 33)
         }
-        //return keccak256(abi.encodePacked(uint8(1), coinType));
+        // Equivalent: return keccak256(abi.encodePacked(uint8(1), coinType));
     }
 
     /// @dev Computes a record-type identifier for text records, namespaced by key.
@@ -117,6 +107,6 @@ library PermissionedResolverLib {
             mstore(1, keccak256(add(key, 32), mload(key)))
             part := keccak256(0, 33)
         }
-        //return keccak256(abi.encodePacked(uint8(2), key));
+        // Equivalent: return keccak256(abi.encodePacked(uint8(2), key));
     }
 }

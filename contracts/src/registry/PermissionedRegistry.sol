@@ -23,15 +23,15 @@ import {MetadataMixin} from "./MetadataMixin.sol";
 /// @notice A tokenized (ERC1155) registry with resource-scoped access control for subdomain management.
 ///
 /// Many functions accept an `anyId` parameter that can be a labelhash, tokenId, or resource
-/// interchangeably. Internally, `_entry()` strips version bits (via `LibLabel.withVersion(anyId, 0)`)
+/// interchangeably. Internally, `_entry()` zeroes version bits (via `LibLabel.withVersion(anyId, 0)`)
 /// to resolve any of these to the canonical storage slot for the name.
 ///
 /// The registry maintains two independent version counters per name:
 ///   - `eacVersionId`: incremented on unregister/re-register. Combined with the labelhash to form
 ///     the EAC resource ID. This means a re-registered name gets a fresh permission scope.
 ///   - `tokenVersionId`: incremented on unregister and whenever the token is regenerated (burn + mint)
-///     due to role changes. Combined with the labelhash to form the ERC1155 token ID, keeping
-///     ERC1155 balances consistent with the current role state.
+///     due to role changes. Combined with the labelhash to form the ERC1155 token ID, ensuring
+///     changes to roles create new tokens and prevent frontrunning a transfer with a role revocation.
 ///
 /// Names are treated as `AVAILABLE` once `block.timestamp >= expiry`.
 ///
@@ -477,7 +477,7 @@ contract PermissionedRegistry is
         return adminRoleBitmap >> 128;
     }
 
-    /// @dev Strips version bits from `anyId` to return the canonical storage entry for the name.
+    /// @dev Zeroes version bits in `anyId` to return the canonical storage entry for the name.
     function _entry(uint256 anyId) internal view returns (Entry storage) {
         return _entries[LibLabel.withVersion(anyId, 0)];
     }

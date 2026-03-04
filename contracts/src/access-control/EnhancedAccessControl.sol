@@ -32,8 +32,11 @@ import {EACBaseRolesLib} from "./libraries/EACBaseRolesLib.sol";
 ///
 ///      Bitmap layout (uint256, 64 nybbles):
 ///
-///        Bits 0-127   (nybbles 0-31):  Regular roles
-///        Bits 128-255 (nybbles 32-63): Admin roles (mirroring regular roles)
+///        255         128 127            0
+///        ┌──────────────┬───────────────┐
+///        │ Admin Roles  │ Regular Roles │
+///        └──────────────┴───────────────┘
+///        63           32 31             0
 ///
 ///      Each role occupies one nybble (4 bits). A regular role at nybble index N occupies bits
 ///      N*4 to N*4+3, and its admin counterpart occupies the same relative position in the upper

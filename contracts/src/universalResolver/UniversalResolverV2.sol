@@ -8,6 +8,8 @@ import {
 
 import {LibRegistry, IRegistry} from "./libraries/LibRegistry.sol";
 
+/// @notice ENS Universal Resolver that traverses the namechain registry hierarchy to locate
+///         resolvers and registries for any DNS-encoded name.
 contract UniversalResolverV2 is AbstractUniversalResolver {
     IRegistry public immutable ROOT_REGISTRY;
 
