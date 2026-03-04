@@ -8,31 +8,21 @@ library LibMigration {
     // Types
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Typed arguments for ERC-721 ".eth" token migration.
-    struct UnlockedData {
-        string label;
-        address owner;
-        IRegistry subregistry;
-        address resolver;
-    }
-
-    /// @dev Typed arguments for NameWrapper token migration.
-    struct LockedData {
+    /// @dev Typed arguments for migration.
+    struct Data {
         string label;
         address owner;
         address resolver;
-        uint256 salt;
+        IRegistry subregistry; // ignored if locked
+        uint256 salt; // ignored if unlocked
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Minimum Size of `abi.encode(UnlockedData({...}))`.
-    uint256 constant MIN_UNLOCKED_DATA_SIZE = 7 * 32;
-
-    /// @dev Minimum Size of `abi.encode(LockedData({...}))`.
-    uint256 constant MIN_LOCKED_DATA_SIZE = 7 * 32;
+    /// @dev Minimum Size of `abi.encode(Data({...}))`.
+    uint256 constant MIN_DATA_SIZE = 8 * 32;
 
     ////////////////////////////////////////////////////////////////////////
     // Errors

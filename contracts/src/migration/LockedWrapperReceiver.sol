@@ -14,14 +14,11 @@ import {
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
-import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {UnauthorizedCaller} from "../CommonErrors.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
-import {WrappedErrorLib} from "../utils/WrappedErrorLib.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
@@ -85,76 +82,20 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc IERC1155Receiver
-    /// @notice Migrate one NameWrapper token via `safeTransferFrom()`.
-    ///         Requires `abi.encode(LibMigration.LockedData)` as payload.
-    ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
-    function onERC1155Received(
-        address /*operator*/,
-        address /*from*/,
-        uint256 id,
-        uint256 /*amount*/,
-        bytes calldata data
-    ) external onlyWrapper withData(data, LibMigration.MIN_LOCKED_DATA_SIZE) returns (bytes4) {
-        // if (amount != 1) { ... } => never happens :: caught by ERC1155Fuse
-        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L293
-        uint256[] memory ids = new uint256[](1);
-        LibMigration.LockedData[] memory mds = new LibMigration.LockedData[](1);
-        ids[0] = id;
-        mds[0] = abi.decode(data, (LibMigration.LockedData)); // reverts if invalid
-        try this.finishERC1155Migration(ids, mds) {
-            return this.onERC1155Received.selector;
-        } catch (bytes memory reason) {
-            WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
-        }
+    /// @notice The DNS-encoded name of the parent registry.
+    function parentName() external view returns (bytes memory) {
+        return NAME_WRAPPER.names(_parentNode());
     }
 
-    /// @inheritdoc IERC1155Receiver
-    /// @notice Migrate multiple NameWrapper tokens via `safeBatchTransferFrom()`.
-    ///         Requires `abi.encode(LibMigration.LockedData[])` as payload.
-    ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
-    function onERC1155BatchReceived(
-        address /*operator*/,
-        address /*from*/,
-        uint256[] calldata ids,
-        uint256[] calldata /*amounts*/,
-        bytes calldata data
-    )
-        external
-        onlyWrapper
-        withData(data, 64 + ids.length * LibMigration.MIN_LOCKED_DATA_SIZE)
-        returns (bytes4)
-    {
-        // if (ids.length != amounts.length) { ... } => never happens :: caught by ERC1155Fuse
-        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L162
-        // if (amounts[i] != 1) { ... } => never happens :: caught by ERC1155Fuse
-        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L182
-        LibMigration.LockedData[] memory mds = abi.decode(data, (LibMigration.LockedData[])); // reverts if invalid
-        try this.finishERC1155Migration(ids, mds) {
-            return this.onERC1155BatchReceived.selector;
-        } catch (bytes memory reason) {
-            WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
-        }
-    }
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Convert NameWrapper tokens their equivalent ENSv2 form.
-    ///      Only callable by ourself and invoked in our `IERC1155Receiver` handlers.
-    ///
-    /// TODO: gas analysis and optimization
-    /// NOTE: converting this to an internal call requires catching many reverts
-    function finishERC1155Migration(
-        uint256[] calldata ids,
-        LibMigration.LockedData[] calldata mds
-    ) external {
-        if (msg.sender != address(this)) {
-            revert UnauthorizedCaller(msg.sender);
-        }
-        if (ids.length != mds.length) {
-            revert IERC1155Errors.ERC1155InvalidArrayLength(ids.length, mds.length);
-        }
+    /// @inheritdoc AbstractWrapperReceiver
+    function _migrate(uint256[] calldata ids, LibMigration.Data[] calldata mds) internal override {
         bytes32 parentNode = _parentNode();
         for (uint256 i; i < ids.length; ++i) {
-            LibMigration.LockedData memory md = mds[i];
+            LibMigration.Data memory md = mds[i];
             if (md.owner == address(0)) {
                 revert IERC1155Errors.ERC1155InvalidReceiver(md.owner);
             }
@@ -216,11 +157,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 NAME_WRAPPER.setFuses(node, uint16(FUSES_TO_BURN));
             }
         }
-    }
-
-    /// @notice The DNS-encoded name of the parent registry.
-    function parentName() external view returns (bytes memory) {
-        return NAME_WRAPPER.names(_parentNode());
     }
 
     /// @dev Abstract function for registering a locked name.

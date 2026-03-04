@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {INameWrapper, ENS, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {ENS} from "@ens/contracts/registry/ENS.sol";
+import {INameWrapper, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {ERC165, IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
@@ -63,8 +65,85 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @inheritdoc IERC1155Receiver
+    /// @notice Migrate one NameWrapper token via `safeTransferFrom()`.
+    ///         Requires `abi.encode(LibMigration.Data)` as payload.
+    ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
+    function onERC1155Received(
+        address /*operator*/,
+        address /*from*/,
+        uint256 id,
+        uint256 /*amount*/,
+        bytes calldata data
+    ) external onlyWrapper withData(data, LibMigration.MIN_DATA_SIZE) returns (bytes4) {
+        // if (amount != 1) { ... } => never happens :: caught by ERC1155Fuse
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L293
+        uint256[] memory ids = new uint256[](1);
+        LibMigration.Data[] memory mds = new LibMigration.Data[](1);
+        ids[0] = id;
+        mds[0] = abi.decode(data, (LibMigration.Data)); // reverts if invalid
+        try this.finishERC1155Migration(ids, mds) {
+            return this.onERC1155Received.selector;
+        } catch (bytes memory reason) {
+            WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
+        }
+    }
+
+    /// @inheritdoc IERC1155Receiver
+    /// @notice Migrate multiple NameWrapper tokens via `safeBatchTransferFrom()`.
+    ///         Requires `abi.encode(LibMigration.Data[])` as payload.
+    ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
+    function onERC1155BatchReceived(
+        address /*operator*/,
+        address /*from*/,
+        uint256[] calldata ids,
+        uint256[] calldata /*amounts*/,
+        bytes calldata data
+    )
+        external
+        onlyWrapper
+        withData(data, 64 + ids.length * LibMigration.MIN_DATA_SIZE)
+        returns (bytes4)
+    {
+        // if (ids.length != amounts.length) { ... } => never happens :: caught by ERC1155Fuse
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L162
+        // if (amounts[i] != 1) { ... } => never happens :: caught by ERC1155Fuse
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L182
+        LibMigration.Data[] memory mds = abi.decode(data, (LibMigration.Data[])); // reverts if invalid
+        try this.finishERC1155Migration(ids, mds) {
+            return this.onERC1155BatchReceived.selector;
+        } catch (bytes memory reason) {
+            WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
+        }
+    }
+
+    /// @dev Convert NameWrapper tokens their equivalent ENSv2 form.
+    ///      Only callable by ourself and invoked by our `IERC1155Receiver` handlers.
+    ///
+    /// TODO: gas analysis and optimization
+    /// NOTE: converting this to an internal call requires catching many reverts
+    function finishERC1155Migration(
+        uint256[] calldata ids,
+        LibMigration.Data[] calldata mds
+    ) external {
+        if (msg.sender != address(this)) {
+            revert UnauthorizedCaller(msg.sender);
+        }
+        if (ids.length != mds.length) {
+            revert IERC1155Errors.ERC1155InvalidArrayLength(ids.length, mds.length);
+        }
+        _migrate(ids, mds);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Abstract function to migrate the owned tokens.
+    function _migrate(uint256[] calldata ids, LibMigration.Data[] calldata mds) internal virtual;
 
     /// @dev Returns `true` if the NameWrapper token is locked.
     function _isLocked(uint32 fuses) internal pure returns (bool) {
