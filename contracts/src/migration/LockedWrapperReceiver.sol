@@ -49,7 +49,7 @@ uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
 /// * subregistry knows the parent node (namehash)
 /// * subregistry migrates children of the same parent
 ///
-/// @dev Interface selector: `0x1a4ec815`
+/// @dev Interface selector: `0xf8ff8404`
 abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -83,7 +83,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The DNS-encoded name of the parent registry.
-    function parentName() external view returns (bytes memory) {
+    function getParentName() external view returns (bytes memory) {
         return NAME_WRAPPER.names(_parentNode());
     }
 

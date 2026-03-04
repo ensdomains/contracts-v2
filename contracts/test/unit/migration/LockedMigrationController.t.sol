@@ -88,7 +88,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             "WRAPPER_REGISTRY_IMPL"
         );
-        assertEq(migrationController.parentName(), NameCoder.encode("eth"), "parentName");
+        assertEq(migrationController.getParentName(), NameCoder.encode("eth"), "getParentName");
     }
 
     function test_supportsInterface() external view {
@@ -359,7 +359,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ),
             "LockedWrapperReceiver"
         );
-        assertEq(subregistry.parentName(), name, "parentName");
+        assertEq(subregistry.getParentName(), name, "getParentName");
         assertTrue(
             subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, md.owner),
             "ROLE_REGISTRAR"
@@ -449,10 +449,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         LibMigration.Data memory md = _makeData(name);
 
         address frozenResolver = makeAddr("frozenResolver");
-        vm.startPrank(user);
+        vm.prank(user);
         nameWrapper.setResolver(node, frozenResolver);
+        vm.prank(user);
         nameWrapper.setFuses(node, uint16(CANNOT_UNWRAP | CANNOT_SET_RESOLVER));
-        vm.stopPrank();
         assertNotEq(md.resolver, frozenResolver, "diff");
 
         vm.prank(user);
@@ -464,8 +464,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(md)
         );
 
-        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(testLabel));
-        assertEq(ethRegistry.getResolver(testLabel), frozenResolver, "frozen");
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+        assertEq(ethRegistry.getResolver(md.label), frozenResolver, "frozen");
         checkResolution(name, frozenResolver, frozenResolver);
         assertFalse(ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user));
         vm.expectRevert(
@@ -509,7 +509,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(md)
         );
 
-        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(testLabel));
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
         assertFalse(ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_RENEW, user));
 
         vm.expectRevert(
@@ -540,7 +540,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(md)
         );
 
-        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(testLabel));
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
         assertFalse(ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_REGISTRAR, user));
 
         vm.expectRevert(
@@ -575,15 +575,13 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(md)
         );
 
-        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(testLabel));
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
         assertEq(
             ethRegistry.roles(tokenId, user) & EACBaseRolesLib.ADMIN_ROLES,
             RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
             "token"
         );
-        IWrapperRegistry registry = IWrapperRegistry(
-            address(ethRegistry.getSubregistry(testLabel))
-        );
+        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
         assertEq(
             registry.roles(registry.ROOT_RESOURCE(), user) & EACBaseRolesLib.ADMIN_ROLES,
             RegistryRolesLib.ROLE_UPGRADE_ADMIN | RegistryRolesLib.ROLE_RENEW_ADMIN,
@@ -593,10 +591,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_migrate_emancipatedChildren() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        string memory label3 = "sub";
         bytes memory name3 = createWrappedChild(
             name2,
-            label3,
+            "sub",
             CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
         );
         bytes memory name3unmigrated = createWrappedChild(
@@ -616,12 +613,12 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(data2)
         );
         assertEq(
-            ethRegistry.ownerOf(ethRegistry.getTokenId(LibLabel.id(testLabel))),
+            ethRegistry.ownerOf(ethRegistry.getTokenId(LibLabel.id(data2.label))),
             data2.owner,
             "owner2"
         );
         IWrapperRegistry registry2 = IWrapperRegistry(
-            address(ethRegistry.getSubregistry(testLabel))
+            address(ethRegistry.getSubregistry(data2.label))
         );
         assertTrue(
             ERC165Checker.supportsInterface(address(registry2), type(IWrapperRegistry).interfaceId),
@@ -643,14 +640,14 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             1,
             abi.encode(data3)
         );
-        assertEq(registry2.getResolver(label3), data3.resolver, "resolver3");
+        assertEq(registry2.getResolver(data3.label), data3.resolver, "resolver3");
         checkResolution(name3, address(ensV2Resolver), data3.resolver);
         assertEq(
-            registry2.ownerOf(registry2.getTokenId(LibLabel.id(label3))),
+            registry2.ownerOf(registry2.getTokenId(LibLabel.id(data3.label))),
             data3.owner,
             "owner3"
         );
-        IRegistry registry3 = registry2.getSubregistry(label3);
+        IRegistry registry3 = registry2.getSubregistry(data3.label);
         assertTrue(
             ERC165Checker.supportsInterface(address(registry3), type(IWrapperRegistry).interfaceId),
             "registry3"
@@ -658,10 +655,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         // check migrated 3LD child
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.NameAlreadyRegistered.selector, label3)
+            abi.encodeWithSelector(IStandardRegistry.NameAlreadyRegistered.selector, data3.label)
         );
         vm.prank(user);
-        registry2.register(label3, user, IRegistry(address(0)), address(0), 0, _soon());
+        registry2.register(data3.label, user, IRegistry(address(0)), address(0), 0, _soon());
 
         // check unmigrated 3LD child
         vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));

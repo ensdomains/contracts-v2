@@ -22,9 +22,10 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    address constant _UNWRAP_ADDRESS = address(0xdead);
+
     IPermissionedRegistry public immutable ETH_REGISTRY;
     IBaseRegistrar internal immutable _REGISTRAR_V1;
-    bool internal _unwrapping;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -61,22 +62,20 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         if (msg.sender != address(_REGISTRAR_V1)) {
             revert UnauthorizedCaller(msg.sender);
         }
-        if (!_unwrapping) {
-            if (data.length < LibMigration.MIN_DATA_SIZE) {
-                revert LibMigration.InvalidData();
-            }
-            LibMigration.Data memory md = abi.decode(data, (LibMigration.Data)); // reverts if invalid
-            if (tokenId != uint256(keccak256(bytes(md.label)))) {
-                revert LibMigration.NameDataMismatch(tokenId);
-            }
-            // clear V1 resolver
-            _REGISTRAR_V1.reclaim(tokenId, address(this));
-            _REGISTRY_V1.setResolver(
-                NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenId)),
-                address(0)
-            );
-            _inject(md);
+        if (data.length < LibMigration.MIN_DATA_SIZE) {
+            revert LibMigration.InvalidData();
         }
+        LibMigration.Data memory md = abi.decode(data, (LibMigration.Data)); // reverts if invalid
+        if (tokenId != uint256(keccak256(bytes(md.label)))) {
+            revert LibMigration.NameDataMismatch(tokenId);
+        }
+        // clear V1 resolver
+        _REGISTRAR_V1.reclaim(tokenId, address(this));
+        _REGISTRY_V1.setResolver(
+            NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenId)),
+            address(0)
+        );
+        _inject(md);
         return this.onERC721Received.selector;
     }
 
@@ -96,7 +95,6 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         uint256[] calldata ids,
         LibMigration.Data[] calldata mds
     ) internal override {
-        _unwrapping = true;
         for (uint256 i; i < ids.length; ++i) {
             uint256 id = ids[i];
             (, uint32 fuses, ) = NAME_WRAPPER.getData(id);
@@ -108,12 +106,10 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
                 revert LibMigration.NameDataMismatch(id);
             }
             // clear V1 resolver
-            //NAME_WRAPPER.setResolver(bytes32(id), address(0));
-            NAME_WRAPPER.unwrapETH2LD(labelHash, address(this), address(this)); // => onERC721Received()
+            NAME_WRAPPER.unwrapETH2LD(labelHash, _UNWRAP_ADDRESS, address(this));
             _REGISTRY_V1.setResolver(bytes32(id), address(0));
             _inject(mds[i]);
         }
-        _unwrapping = false;
     }
 
     /// @dev Claim premigrated reservation.
