@@ -64,7 +64,7 @@ const contracts = {
   // VerifiableFactory implementations
   PermissionedResolverImpl: artifacts.PermissionedResolver.abi,
   UserRegistryImpl: artifacts.UserRegistry.abi,
-  MigratedWrappedNameRegistryImpl: artifacts.MigratedWrappedNameRegistry.abi,
+  WrapperRegistryImpl: artifacts.WrapperRegistry.abi,
   // resolvers
   UniversalResolverV2: artifacts.UniversalResolverV2.abi,
   DNSTLDResolver: artifacts.DNSTLDResolver.abi,
