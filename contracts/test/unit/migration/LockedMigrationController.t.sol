@@ -17,13 +17,14 @@ import {
     CAN_EXTEND_EXPIRY
 } from "@ens/contracts/wrapper/NameWrapper.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
-import {ERC1155, IERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 
+import {MigrationControllerFixture, ERC165Checker} from "./MigrationControllerFixture.sol";
 import {UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
+import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture, VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
@@ -47,21 +48,12 @@ import {
     IRegistry
 } from "~src/registry/WrapperRegistry.sol";
 
-contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
+contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
     WrapperRegistry wrapperRegistryImpl;
-    ENSV1Resolver ensV1Resolver;
-    MockERC1155 dummy1155;
 
-    string testLabel = "test";
-    address testResolver = makeAddr("resolver");
-    address premigrationController = makeAddr("premigrationController");
-
-    function setUp() external {
-        deployV1Fixture();
-        deployV2Fixture();
-        dummy1155 = new MockERC1155();
-        ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
+    function setUp() public override {
+        super.setUp();
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
             verifiableFactory,
@@ -80,18 +72,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
             address(migrationController)
         );
-        ethRegistrarV1.setResolver(address(ensV1Resolver));
-    }
-
-    function _makeData(bytes memory name) internal view returns (LibMigration.Data memory) {
-        return
-            LibMigration.Data({
-                label: NameCoder.firstLabel(name),
-                owner: user,
-                subregistry: IRegistry(address(0)), // ignored
-                resolver: testResolver,
-                salt: uint256(keccak256(abi.encode(name, block.timestamp)))
-            });
+        ethRegistrarV1.setResolver(address(ensV2Resolver));
     }
 
     function test_constructor() external view {
@@ -272,6 +253,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
 
     function test_migrate() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        checkResolution(name, address(ensV2Resolver), address(ensV1Resolver));
         LibMigration.Data memory md = _makeData(name);
         bytes32 node = NameCoder.namehash(name, 0);
         address expectedRegistry = _computeVerifiableFactoryAddress(
@@ -359,6 +341,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
         assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
         assertEq(ethRegistry.getExpiry(tokenId), ethRegistrarV1.nameExpires(tokenIdV1), "expiry");
         assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
+        checkResolution(name, address(ensV2Resolver), md.resolver);
         WrapperRegistry subregistry = WrapperRegistry(
             address(ethRegistry.getSubregistry(md.label))
         );
@@ -483,9 +466,8 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
 
         uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(testLabel));
         assertEq(ethRegistry.getResolver(testLabel), frozenResolver, "frozen");
-        assertEq(findResolverV2(name), frozenResolver, "findResolverV2");
+        checkResolution(name, frozenResolver, frozenResolver);
         assertFalse(ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user));
-
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -662,7 +644,7 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             abi.encode(data3)
         );
         assertEq(registry2.getResolver(label3), data3.resolver, "resolver3");
-        assertEq(findResolverV2(name3), data3.resolver, "findResolver3");
+        checkResolution(name3, address(ensV2Resolver), data3.resolver);
         assertEq(
             registry2.ownerOf(registry2.getTokenId(LibLabel.id(label3))),
             data3.owner,
@@ -692,41 +674,20 @@ contract LockedMigrationControllerTest is V1Fixture, V2Fixture {
             0,
             _soon()
         );
-        assertEq(findResolverV2(name3unmigrated), address(ensV1Resolver), "unmigratedResolver");
+
+        vm.prank(user);
+        nameWrapper.setResolver(NameCoder.namehash(name3unmigrated, 0), testResolver);
+        checkResolution(name3unmigrated, testResolver, address(ensV1Resolver));
     }
 
-    /// @dev Ensure premigration has occurred.
-    function registerUnwrapped(
-        string memory label
-    ) public override returns (bytes memory name, uint256 tokenId) {
-        (name, tokenId) = super.registerUnwrapped(label);
-        if (address(premigrationController) != address(0)) {
-            vm.prank(premigrationController);
-            ethRegistry.register(
-                label,
-                address(0), // reserve
-                IRegistry(address(0)),
-                address(ensV1Resolver),
-                0,
-                uint64(ethRegistrarV1.nameExpires(LibLabel.id(label)))
-            );
-        }
-    }
-
-    function _label(uint256 i) internal view returns (string memory) {
-        return string.concat(testLabel, vm.toString(i));
-    }
-
-    function _soon() internal view returns (uint64) {
-        return uint64(block.timestamp + 1000);
-    }
-}
-
-contract MockERC1155 is ERC1155 {
-    uint256 _id;
-    constructor() ERC1155("") {}
-    function mint(address to) external returns (uint256) {
-        _mint(to, _id, 1, "");
-        return _id++;
+    function _makeData(bytes memory name) internal view returns (LibMigration.Data memory) {
+        return
+            LibMigration.Data({
+                label: NameCoder.firstLabel(name),
+                owner: user,
+                subregistry: IRegistry(address(0)), // ignored
+                resolver: testResolver,
+                salt: uint256(keccak256(abi.encode(name, block.timestamp)))
+            });
     }
 }

@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
+import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeResolver.sol";
 import {VerifiableFactory, UUPSProxy} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";

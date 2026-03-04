@@ -12,6 +12,7 @@ import {
 } from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
 import {NameWrapper, IMetadataService} from "@ens/contracts/wrapper/NameWrapper.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeResolver.sol";
 import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 
 /// @dev Reusable testing fixture for ENSv1.
@@ -69,10 +70,10 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         uint256 tokenId;
         (name, tokenId) = registerUnwrapped(label);
         address owner = ethRegistrarV1.ownerOf(tokenId);
-        vm.startPrank(owner);
+        vm.prank(owner);
         ethRegistrarV1.setApprovalForAll(address(nameWrapper), true);
+        vm.prank(owner);
         nameWrapper.wrapETH2LD(label, owner, uint16(ownerFuses), address(0));
-        vm.stopPrank();
     }
 
     function createWrappedChild(
@@ -95,15 +96,14 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         _claimNodes(name, 0, user);
         (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
         bytes32 parentNode = NameCoder.namehash(name, offset);
-        vm.startPrank(user);
+        vm.prank(user);
         registryV1.setApprovalForAll(address(nameWrapper), true);
+        vm.prank(user);
         nameWrapper.wrap(name, user, address(0));
         if (fuses != 0) {
-            // this might need to be setChildFuses()
-            bytes32 node = NameCoder.namehash(parentNode, labelHash);
-            nameWrapper.setFuses(node, uint16(fuses));
+            vm.prank(user);
+            nameWrapper.setFuses(NameCoder.namehash(parentNode, labelHash), uint16(fuses));
         }
-        vm.stopPrank();
     }
 
     function findResolverV1(bytes memory name) public view returns (address resolver) {

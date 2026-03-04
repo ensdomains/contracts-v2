@@ -166,9 +166,10 @@ contract V1FixtureTest is V1Fixture {
         );
     }
 
-    function test_nameWrapper_CANNOT_SET_RESOLVER_requiresLocked() external {
+    function test_nameWrapper_CANNOT_SET_RESOLVER_requires_CANNOT_UNWRAP() external {
         vm.expectRevert();
         this.registerWrappedETH2LD("test", CANNOT_SET_RESOLVER);
+        this.registerWrappedETH2LD("test", CANNOT_SET_RESOLVER | CANNOT_UNWRAP);
     }
 
     function test_ethRegistrarV1_ownerOf_unregisteredReverts() external {
