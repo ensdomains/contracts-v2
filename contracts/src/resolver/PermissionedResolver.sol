@@ -115,6 +115,14 @@ contract PermissionedResolver is
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // Storage
+    ////////////////////////////////////////////////////////////////////////
+
+    mapping(bytes32 node => bytes name) internal _aliases;
+    mapping(bytes32 node => uint64 version) internal _versions;
+    mapping(bytes32 node => mapping(uint64 version => Record)) internal _records;
+
+    ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
 
@@ -131,14 +139,6 @@ contract PermissionedResolver is
 
     /// @notice Associate an EAC resource with a name and specific `addr(coinType` record.
     event NamedAddrResource(uint256 indexed resource, bytes name, uint256 indexed coinType);
-
-    ////////////////////////////////////////////////////////////////////////
-    // Storage
-    ////////////////////////////////////////////////////////////////////////
-
-    mapping(bytes32 node => bytes name) internal _aliases;
-    mapping(bytes32 node => uint64 version) internal _versions;
-    mapping(bytes32 node => mapping(uint64 version => Record)) internal _records;
 
     ////////////////////////////////////////////////////////////////////////
     // Modifiers
