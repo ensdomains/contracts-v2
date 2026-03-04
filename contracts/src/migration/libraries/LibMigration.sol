@@ -8,13 +8,13 @@ library LibMigration {
     // Types
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Typed arguments for migration.
+    /// @dev Typed arguments for migration via transfer payload.
     struct Data {
         string label;
         address owner;
         address resolver;
-        IRegistry subregistry; // ignored if locked
-        uint256 salt; // ignored if unlocked
+        IRegistry subregistry; // ignored if LockedMigrationController
+        uint256 salt; // ignored if UnlockedMigrationController
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -22,7 +22,7 @@ library LibMigration {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Minimum Size of `abi.encode(Data({...}))`.
-    uint256 constant MIN_DATA_SIZE = 8 * 32;
+    uint256 internal constant MIN_DATA_SIZE = 8 * 32;
 
     ////////////////////////////////////////////////////////////////////////
     // Errors

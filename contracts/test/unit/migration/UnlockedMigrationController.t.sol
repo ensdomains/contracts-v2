@@ -22,6 +22,7 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
+import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {
     IEnhancedAccessControl,
     EACBaseRolesLib

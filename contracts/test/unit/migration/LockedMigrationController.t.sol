@@ -26,15 +26,12 @@ import {UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture, VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
+import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {
     LockedMigrationController,
     IPermissionedRegistry
 } from "~src/migration/LockedMigrationController.sol";
-import {
-    LockedWrapperReceiver,
-    WrappedErrorLib,
-    FUSES_TO_BURN
-} from "~src/migration/LockedWrapperReceiver.sol";
+import {LockedWrapperReceiver, FUSES_TO_BURN} from "~src/migration/LockedWrapperReceiver.sol";
 import {
     IEnhancedAccessControl,
     EACBaseRolesLib
