@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-/// @dev Defines the EIP-7201 namespaced storage layout and role constants for `OwnedResolver`.
-///      The storage follows a versioned-records pattern: each ENS node has a version counter,
-///      and records are stored per `(node, version)` pair, allowing bulk invalidation by
-///      incrementing the version.
-library OwnedResolverLib {
-    /// @dev Top-level storage layout for `OwnedResolver`.
+/// @notice Storage layout and roles for PermissionedResolver.
+library PermissionedResolverLib {
+    /// @dev Top-level storage layout for `PermissionedResolver`.
     /// @param aliases DNS-encoded alias target for internal name rewriting, keyed by node.
     /// @param versions Monotonically increasing version counter per node; incrementing
     ///        invalidates all existing records for the node.
@@ -31,9 +28,9 @@ library OwnedResolverLib {
         mapping(bytes4 interfaceId => address implementer) interfaces;
     }
 
-    /// @dev EIP-7201 storage slot derived from `keccak256("eth.ens.storage.OwnedResolver")`.
-    ///      Used to locate the `Storage` struct in a proxy-safe way.
-    uint256 internal constant NAMED_SLOT = uint256(keccak256("eth.ens.storage.OwnedResolver"));
+    /// @dev EIP-7201 storage slot for `PermissionedResolver`.
+    uint256 internal constant NAMED_SLOT =
+        uint256(keccak256("eth.ens.storage.PermissionedResolver"));
 
     /// @dev Role granting permission to set multi-chain address records.
     uint256 internal constant ROLE_SET_ADDR = 1 << 0;

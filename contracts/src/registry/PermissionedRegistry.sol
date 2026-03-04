@@ -83,6 +83,8 @@ contract PermissionedRegistry is
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    IRegistry internal _parent;
+    string internal _childLabel;
     mapping(uint256 storageId => Entry entry) internal _entries;
 
     ////////////////////////////////////////////////////////////////////////
@@ -95,7 +97,9 @@ contract PermissionedRegistry is
         address ownerAddress,
         uint256 ownerRoles
     ) HCAEquivalence(hcaFactory) MetadataMixin(metadata) {
-        _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
+        if (ownerRoles != 0) {
+            _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
+        }
     }
 
     /// @inheritdoc IERC165
@@ -110,6 +114,7 @@ contract PermissionedRegistry is
     {
         return
             interfaceId == type(IPermissionedRegistry).interfaceId ||
+            interfaceId == type(IStandardRegistry).interfaceId ||
             interfaceId == type(IRegistry).interfaceId ||
             super.supportsInterface(interfaceId);
     }
@@ -119,7 +124,7 @@ contract PermissionedRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IStandardRegistry
-    function setSubregistry(uint256 anyId, IRegistry registry) public override {
+    function setSubregistry(uint256 anyId, IRegistry registry) public virtual {
         (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
             anyId,
             RegistryRolesLib.ROLE_SET_SUBREGISTRY
@@ -129,7 +134,7 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
-    function setResolver(uint256 anyId, address resolver) public override {
+    function setResolver(uint256 anyId, address resolver) public virtual {
         (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
             anyId,
             RegistryRolesLib.ROLE_SET_RESOLVER
@@ -139,9 +144,20 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
-    /// @dev If `AVAILABLE` requires `ROLE_REGISTRAR` on root.
-    ///      If `RESERVED` requires `ROLE_REGISTER_RESERVED` on root.
-    ///      If `owner` is null (roleBitmap must be 0), reserves instead of registers.
+    function setParent(
+        IRegistry parent,
+        string memory label
+    ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_SET_PARENT) {
+        _parent = parent;
+        _childLabel = label;
+        emit ParentUpdated(parent, label, _msgSender());
+    }
+
+    /// @inheritdoc IStandardRegistry
+    /// @dev If `AVAILABLE`, requires `ROLE_REGISTRAR` on root.
+    ///         * If `owner` is null (`roleBitmap` must be 0), status becomes `RESERVED` instead of `REGISTERED`.
+    ///      If `RESERVED`, requires `ROLE_REGISTER_RESERVED` on root.
+    ///         * If `expiry` is 0, uses current expiry.
     function register(
         string memory label,
         address owner,
@@ -151,16 +167,15 @@ contract PermissionedRegistry is
         uint64 expiry
     ) public virtual override returns (uint256 tokenId) {
         NameCoder.assertLabelSize(label);
-        if (_isExpired(expiry)) {
-            revert CannotSetPastExpiration(expiry);
-        }
         uint256 labelId = LibLabel.id(label);
         Entry storage entry = _entry(labelId);
         tokenId = _constructTokenId(labelId, entry);
         address prevOwner = super.ownerOf(tokenId);
-        address sender = _msgSender();
+        address sender = _msgSender(); // the registrar, not the registrant
         if (_isExpired(entry.expiry)) {
-            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, sender);
+            if (sender != address(this)) {
+                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, sender);
+            }
             if (owner == address(0) && roleBitmap != 0) {
                 revert EACCannotGrantRoles(ROOT_RESOURCE, roleBitmap, sender); // strict
             }
@@ -170,7 +185,15 @@ contract PermissionedRegistry is
             } else if (owner == address(0)) {
                 revert NameAlreadyReserved(label); // cannot reserve/register RESERVED
             }
-            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
+            if (sender != address(this)) {
+                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
+            }
+            if (expiry == 0) {
+                expiry = entry.expiry; // use current expiry
+            }
+        }
+        if (_isExpired(expiry)) {
+            revert CannotSetPastExpiration(expiry);
         }
         if (prevOwner != address(0)) {
             _burn(prevOwner, tokenId, 1);
@@ -258,6 +281,11 @@ contract PermissionedRegistry is
     function getResolver(string calldata label) public view virtual returns (address) {
         Entry storage entry = _entry(LibLabel.id(label));
         return _isExpired(entry.expiry) ? address(0) : entry.resolver;
+    }
+
+    /// @inheritdoc IRegistry
+    function getParent() public view virtual returns (IRegistry parent, string memory label) {
+        return (_parent, _childLabel);
     }
 
     /// @inheritdoc ERC1155Singleton
