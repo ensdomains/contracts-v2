@@ -92,7 +92,10 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractWrapperReceiver
-    function _migrate(uint256[] calldata ids, LibMigration.Data[] calldata mds) internal override {
+    function _migrateWrapped(
+        uint256[] calldata ids,
+        LibMigration.Data[] calldata mds
+    ) internal override {
         _unwrapping = true;
         for (uint256 i; i < ids.length; ++i) {
             uint256 id = ids[i];
@@ -113,7 +116,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         _unwrapping = false;
     }
 
-    /// @dev Migrate a name to the registry.
+    /// @dev Claim premigrated reservation.
     function _inject(LibMigration.Data memory md) internal {
         if (md.owner == address(0)) {
             revert IERC1155Errors.ERC1155InvalidReceiver(md.owner);

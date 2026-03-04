@@ -92,7 +92,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractWrapperReceiver
-    function _migrate(uint256[] calldata ids, LibMigration.Data[] calldata mds) internal override {
+    function _migrateWrapped(
+        uint256[] calldata ids,
+        LibMigration.Data[] calldata mds
+    ) internal override {
         bytes32 parentNode = _parentNode();
         for (uint256 i; i < ids.length; ++i) {
             LibMigration.Data memory md = mds[i];

@@ -135,15 +135,18 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
         if (ids.length != mds.length) {
             revert IERC1155Errors.ERC1155InvalidArrayLength(ids.length, mds.length);
         }
-        _migrate(ids, mds);
+        _migrateWrapped(ids, mds);
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Abstract function to migrate the owned tokens.
-    function _migrate(uint256[] calldata ids, LibMigration.Data[] calldata mds) internal virtual;
+    /// @dev Abstract function to migrate the owned NameWrapper tokens.
+    function _migrateWrapped(
+        uint256[] calldata ids,
+        LibMigration.Data[] calldata mds
+    ) internal virtual;
 
     /// @dev Returns `true` if the NameWrapper token is locked.
     function _isLocked(uint32 fuses) internal pure returns (bool) {
