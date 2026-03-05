@@ -13,6 +13,7 @@ import {LibLabel} from "../utils/LibLabel.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 import {LibHalving} from "./libraries/LibHalving.sol";
 
+/// @dev Defines one segment of the piecewise-linear discount function.
 /// @param t Incremental time interval for discount, in seconds.
 /// @param value Discount percentage, relative to `type(uint128).max`.
 struct DiscountPoint {
@@ -20,19 +21,33 @@ struct DiscountPoint {
     uint128 value;
 }
 
-/// @dev Structure to configure initial payment token and exchange rate.
+/// @dev Initialization-time structure pairing a payment token with its exchange rate (numerator/denominator).
 struct PaymentRatio {
     IERC20 token;
     uint128 numer;
     uint128 denom;
 }
 
+/// @notice Configurable rent pricing oracle with three components:
+///
+///         1. Base rate: per-second cost indexed by label codepoint count. Shorter names cost more.
+///            Rates are stored in an array where index `i` corresponds to `i+1` codepoints; labels
+///            longer than the array use the last entry.
+///         2. Duration discount: piecewise-linear function defined by discount points. Each point
+///            specifies an interval duration and its discount rate. The integral over the registration
+///            period determines the effective discount. Rewards longer registrations.
+///         3. Expiry premium: exponential decay from an initial premium with a configurable halving
+///            period, reaching zero at the end of the premium period. Only charged to new owners of
+///            recently expired names; prior owners and renewals are exempt.
+///
+///         Payment tokens have configurable exchange rates (numerator/denominator ratios). Final
+///         prices are converted via `Math.mulDiv` with ceiling rounding to prevent underpayment.
 contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Internal structure to store payment token exchange rate.
+    /// @dev Internal numerator/denominator pair representing a payment token's exchange rate relative to base pricing units.
     struct Ratio {
         uint128 numer;
         uint128 denom;
@@ -42,22 +57,29 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev The permissioned registry used to look up name state (expiry, latest owner) for premium and discount calculations.
     IPermissionedRegistry public immutable REGISTRY;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Starting value of the exponential decay premium for recently expired names, in base pricing units.
     uint256 public premiumPriceInitial;
 
+    /// @dev Number of seconds for the premium to halve in value.
     uint64 public premiumHalvingPeriod;
 
+    /// @dev Total duration of the premium window; the premium reaches zero at this offset from expiry.
     uint64 public premiumPeriod;
 
+    /// @dev Per-second base rates indexed by codepoint count; `_baseRatePerCp[i]` prices labels with `i+1` codepoints.
     uint256[] private _baseRatePerCp;
 
+    /// @dev Ordered segments of the piecewise-linear duration discount function.
     DiscountPoint[] private _discountPoints;
 
+    /// @dev Exchange rates for each accepted payment token, mapping token address to its numerator/denominator ratio.
     mapping(IERC20 tokenAddress => Ratio ratio) private _paymentRatios;
 
     ////////////////////////////////////////////////////////////////////////

@@ -137,7 +137,7 @@ contract PermissionedResolver is
         string key
     );
 
-    /// @notice Associate an EAC resource with a name and specific `addr(coinType` record.
+    /// @notice Associate an EAC resource with a name and specific `addr(coinType)` record.
     event NamedAddrResource(uint256 indexed resource, bytes name, uint256 indexed coinType);
 
     ////////////////////////////////////////////////////////////////////////
@@ -379,8 +379,8 @@ contract PermissionedResolver is
     }
 
     /// @notice Same as `multicall()`.
-    /// @dev The purpose of node check is to prevent a trusted operator from modifying multiple names.
-    //       Since there is no trusted operator, the node check logic can be elided.
+    /// @dev The node parameter is accepted for interface compatibility but is not used.
+    ///      Permission checking is handled by individual function calls within the multicall.
     function multicallWithNodeCheck(
         bytes32,
         bytes[] calldata calls

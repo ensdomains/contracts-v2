@@ -20,6 +20,7 @@ contract LockedMigrationController is WrapperReceiver {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev The v2 .eth `PermissionedRegistry` where migrated names are registered.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
     ////////////////////////////////////////////////////////////////////////

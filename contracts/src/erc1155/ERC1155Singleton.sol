@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-// ERC1155 implementation that supports only a single token per ID. Stores owner information to allow
-// fetching ownership information for a tokenId via `ownerOf`.
-// Portions from OpenZeppelin Contracts (token/ERC1155/ERC1155.sol)
+/// @notice ERC1155 variant enforcing exactly one owner per token ID.
+///
+///         Instead of the standard nested balance mapping (`id → address → balance`), uses a flat
+///         `id → address` ownership mapping. `balanceOf` returns 1 if the account is the owner,
+///         0 otherwise. Transferring value > 1 reverts.
+///
+///         Used by `PermissionedRegistry` to represent domain name ownership as non-divisible tokens.
+///         The registry overrides `ownerOf` to add expiry and version validation on top of raw ownership.
+///
+///         Inherits `HCAContext` so that `_msgSender()` resolves HCA proxy accounts to their real
+///         owners for approval checks and operator tracking.
+///
+/// @dev Portions from OpenZeppelin Contracts (token/ERC1155/ERC1155.sol)
 pragma solidity >=0.8.13;
 
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -33,14 +43,17 @@ abstract contract ERC1155Singleton is
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Maps each token ID to its single owner address.
     mapping(uint256 id => address account) private _owners;
 
+    /// @dev Standard ERC1155 operator approval mapping.
     mapping(address account => mapping(address operator => bool)) private _operatorApprovals;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Declared for ERC721-like per-token approval signaling but not emitted by this contract.
     event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
 
     ////////////////////////////////////////////////////////////////////////
@@ -359,7 +372,9 @@ abstract contract ERC1155Singleton is
     // Private Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Creates an array in memory with only one value for each of the elements provided.
+    /// @dev Gas-optimized assembly helper that creates two length-1 memory arrays without Solidity's
+    ///      default zero-initialization overhead. Used to adapt single-token operations (`_mint`,
+    ///      `_burn`, `_safeTransferFrom`) to the array-based `_update` function.
     function _asSingletonArrays(
         uint256 element1,
         uint256 element2
