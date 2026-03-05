@@ -15,14 +15,6 @@ import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 
-import {
-    MigrationControllerFixture,
-    ERC165Checker,
-    NameCoder,
-    LibLabel
-} from "./MigrationControllerFixture.sol";
-import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
-import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {
     IEnhancedAccessControl,
@@ -33,7 +25,8 @@ import {
     IPermissionedRegistry,
     RegistryRolesLib,
     IRegistry,
-    IRegistryMetadata
+    IRegistryMetadata,
+    LibLabel
 } from "~src/registry/PermissionedRegistry.sol";
 import {
     UnlockedMigrationController,
@@ -41,6 +34,13 @@ import {
     InvalidOwner,
     UnauthorizedCaller
 } from "~src/migration/UnlockedMigrationController.sol";
+import {
+    MigrationControllerFixture,
+    ERC165Checker,
+    NameCoder
+} from "./MigrationControllerFixture.sol";
+import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
+import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
 contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     UnlockedMigrationController migrationController;

@@ -10,7 +10,7 @@ library LibMigration {
 
     /// @dev Typed arguments for migration via transfer payload.
     struct Data {
-        /// @dev The subdomain being migrated.
+        /// @dev Subdomain being migrated.
         string label;
         /// @dev Address that will own the name in the v2 registry.
         address owner;

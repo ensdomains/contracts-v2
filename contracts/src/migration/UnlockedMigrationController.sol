@@ -32,7 +32,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev A separate burn address for ` tokens to avoid extra logic in `onERC721Received()`.
-    address constant _UNWRAP_ADDRESS = address(0xdead);
+    address internal constant _UNWRAP_ADDRESS = address(0xdead);
 
     /// @dev The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     IPermissionedRegistry public immutable ETH_REGISTRY;

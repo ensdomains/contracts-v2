@@ -20,27 +20,16 @@ import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 
-import {
-    MigrationControllerFixture,
-    ERC165Checker,
-    NameCoder,
-    LibLabel
-} from "./MigrationControllerFixture.sol";
 import {UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
-import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
-import {V2Fixture, VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
+import {LibLabel} from "~src/utils/LibLabel.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {
     LockedMigrationController,
     IPermissionedRegistry
 } from "~src/migration/LockedMigrationController.sol";
-import {
-    LockedWrapperReceiver,
-    InvalidOwner,
-    FUSES_TO_BURN
-} from "~src/migration/LockedWrapperReceiver.sol";
+import {InvalidOwner, FUSES_TO_BURN} from "~src/migration/LockedWrapperReceiver.sol";
 import {
     IEnhancedAccessControl,
     EACBaseRolesLib
@@ -49,11 +38,18 @@ import {
     WrapperRegistry,
     IWrapperRegistry,
     IStandardRegistry,
+    IRegistry,
     UUPSUpgradeable,
     RegistryRolesLib,
-    LibMigration,
-    IRegistry
+    LibMigration
 } from "~src/registry/WrapperRegistry.sol";
+import {
+    MigrationControllerFixture,
+    ERC165Checker,
+    NameCoder
+} from "./MigrationControllerFixture.sol";
+import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
+import {V2Fixture, VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
@@ -95,7 +91,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             "WRAPPER_REGISTRY_IMPL"
         );
-        assertEq(migrationController.getParentName(), NameCoder.encode("eth"), "getParentName");
+        assertEq(
+            migrationController.getCanonicalName(),
+            NameCoder.encode("eth"),
+            "getCanonicalName"
+        );
     }
 
     function test_supportsInterface() external view {
@@ -106,14 +106,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ),
             "IERC1155Receiver"
         );
-        assertTrue(
-            ERC165Checker.supportsInterface(
-                address(migrationController),
-                type(LockedWrapperReceiver).interfaceId
-            ),
-            "LockedWrapperReceiver"
-        );
-        console.logBytes4(type(LockedWrapperReceiver).interfaceId); // not tracked by linter
     }
 
     function test_finishERC1155Migration_unauthorizedCaller() external {
@@ -332,6 +324,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             FUSES_TO_BURN | CANNOT_UNWRAP | PARENT_CANNOT_CONTROL | IS_DOT_ETH
         );
         vm.prank(user);
+        uint256 g = gasleft();
         nameWrapper.safeTransferFrom(
             user,
             address(migrationController),
@@ -339,6 +332,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             1,
             abi.encode(md)
         );
+        console.log("Gas: %s", g - gasleft());
 
         assertEq(ethRegistry.getTokenId(tokenIdV1), tokenId, "tokenId");
         assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
@@ -356,14 +350,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "IWrapperRegistry"
         );
         assertTrue(
-            ERC165Checker.supportsInterface(
-                address(subregistry),
-                type(LockedWrapperReceiver).interfaceId
-            ),
-            "LockedWrapperReceiver"
-        );
-        assertEq(subregistry.getParentName(), name, "getParentName");
-        assertTrue(
             subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, md.owner),
             "ROLE_REGISTRAR"
         );
@@ -378,6 +364,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             "WRAPPER_REGISTRY_IMPL"
         );
+        assertEq(subregistry.roleCount(RegistryRolesLib.ROLE_SET_PARENT), 0, "ROLE_SET_PARENT");
+        assertEq(subregistry.getCanonicalName(), name, "getCanonicalName");
+        assertEq(universalResolver.findCanonicalName(subregistry), name, "findCanonicalName");
     }
 
     function test_migrateBatch(uint8 count) external {

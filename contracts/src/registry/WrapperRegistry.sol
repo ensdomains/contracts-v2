@@ -9,6 +9,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
@@ -40,7 +41,7 @@ contract WrapperRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev The namehash of this registry.
-    bytes32 internal _parentNode;
+    bytes32 internal _node;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -67,7 +68,7 @@ contract WrapperRegistry is
         public
         view
         virtual
-        override(IERC165, LockedWrapperReceiver, PermissionedRegistry)
+        override(IERC165, AbstractWrapperReceiver, PermissionedRegistry)
         returns (bool)
     {
         return
@@ -82,8 +83,12 @@ contract WrapperRegistry is
             revert InvalidOwner();
         }
 
-        // Set the parent domain for name resolution fallback
-        _parentNode = args.node;
+        // remember namehash of the canonical name
+        _node = args.node;
+
+        // setup canonical parent (ROLE_SET_PARENT is not granted)
+        _parentRegistry = args.parentRegistry;
+        _childLabel = args.childLabel;
 
         // Configure owner with upgrade permissions and specified roles
         _grantRoles(
@@ -122,6 +127,10 @@ contract WrapperRegistry is
         return _isMigratableChild(label) ? V1_RESOLVER : super.getResolver(label);
     }
 
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
+
     /// @inheritdoc LockedWrapperReceiver
     /// @dev Allows registration of emancipated children.
     function _inject(
@@ -143,7 +152,12 @@ contract WrapperRegistry is
     }
 
     /// @inheritdoc LockedWrapperReceiver
-    function _getParentNode() internal view override returns (bytes32) {
-        return _parentNode;
+    function _getRegistry() internal view override returns (IRegistry) {
+        return this;
+    }
+
+    /// @inheritdoc LockedWrapperReceiver
+    function _getNode() internal view override returns (bytes32) {
+        return _node;
     }
 }

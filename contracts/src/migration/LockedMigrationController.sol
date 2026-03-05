@@ -12,7 +12,7 @@ import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 
 /// @notice Migration controller for handling locked .eth 2LD NameWrapper names.
 ///
-/// Assumes premigration has `RESERVED` existing V1 names.
+/// Assumes premigration has `RESERVED` existing ENSv1 names.
 /// Requires `ROLE_REGISTER_RESERVED` on "eth" registry to perform migration.
 ///
 contract LockedMigrationController is LockedWrapperReceiver {
@@ -61,7 +61,12 @@ contract LockedMigrationController is LockedWrapperReceiver {
     }
 
     /// @inheritdoc LockedWrapperReceiver
-    function _getParentNode() internal pure override returns (bytes32) {
+    function _getRegistry() internal view override returns (IRegistry) {
+        return ETH_REGISTRY;
+    }
+
+    /// @inheritdoc LockedWrapperReceiver
+    function _getNode() internal pure override returns (bytes32) {
         return NameCoder.ETH_NODE;
     }
 }

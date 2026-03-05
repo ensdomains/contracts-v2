@@ -10,7 +10,11 @@ import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
-import {LibLabel} from "~src/utils/LibLabel.sol";
+
+// initial gas analysis
+// * Unwrapped: 160300
+// * Unlocked: 179367
+// * Locked: 659168 (~500k for WrapperRegistry)
 
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;
@@ -42,9 +46,9 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
                 label,
                 address(0), // reserve
                 IRegistry(address(0)),
-                address(ensV1Resolver),
+                address(ensV1Resolver), // fallback
                 0,
-                uint64(ethRegistrarV1.nameExpires(LibLabel.id(label)))
+                uint64(ethRegistrarV1.nameExpires(tokenId))
             );
         }
     }

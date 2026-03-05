@@ -12,7 +12,6 @@ import {
     CANNOT_CREATE_SUBDOMAIN
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
@@ -48,7 +47,6 @@ uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
 /// * subregistry knows the parent node (namehash)
 /// * subregistry migrates children of the same parent
 ///
-/// @dev Interface selector: `0xf8ff8404`
 abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -70,20 +68,13 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
     }
 
-    /// @inheritdoc IERC165
-    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return
-            interfaceId == type(LockedWrapperReceiver).interfaceId ||
-            super.supportsInterface(interfaceId);
-    }
-
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The DNS-encoded name of the parent registry.
-    function getParentName() external view returns (bytes memory) {
-        return NAME_WRAPPER.names(_getParentNode());
+    /// @notice The DNS-encoded name for this registry.
+    function getCanonicalName() external view returns (bytes memory) {
+        return NAME_WRAPPER.names(_getNode());
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -95,7 +86,9 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         uint256[] calldata ids,
         LibMigration.Data[] calldata mds
     ) internal override {
-        bytes32 parentNode = _getParentNode();
+        IWrapperRegistry.ConstructorArgs memory args;
+        args.parentRegistry = _getRegistry();
+        bytes32 parentNode = _getNode();
         for (uint256 i; i < ids.length; ++i) {
             LibMigration.Data memory md = mds[i];
             if (md.owner == address(0)) {
@@ -110,7 +103,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             // same as NameCoder.assertLabelSize()
             // see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort()` and `test_nameWrapper_labelTooLong()`.
 
-            (address owner, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
+            (, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
             if (!_isLocked(fuses)) {
                 revert LibMigration.NameNotLocked(uint256(node));
             }
@@ -121,28 +114,20 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
             }
 
-            (
-                bool fusesFrozen,
-                uint256 tokenRoles,
-                uint256 registryRoles
-            ) = _generateRoleBitmapsFromFuses(fuses);
+            bool fusesFrozen;
+            uint256 tokenRoles;
+            (fusesFrozen, tokenRoles, args.roleBitmap) = _generateRoleBitmapsFromFuses(fuses);
             // PermissionedRegistry._register() => _grantRoles() => _checkRoleBitmap() :: roles are correct by construction
 
             // create subregistry
+            args.node = node;
+            args.childLabel = md.label;
+            args.admin = md.owner;
             IRegistry subregistry = IRegistry(
                 VERIFIABLE_FACTORY.deployProxy(
                     WRAPPER_REGISTRY_IMPL,
                     md.salt,
-                    abi.encodeCall(
-                        IWrapperRegistry.initialize,
-                        (
-                            IWrapperRegistry.ConstructorArgs({
-                                node: node,
-                                admin: md.owner,
-                                roleBitmap: registryRoles
-                            })
-                        )
-                    )
+                    abi.encodeCall(IWrapperRegistry.initialize, (args))
                 )
             );
 
@@ -169,13 +154,15 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         uint64 expiry
     ) internal virtual returns (uint256 tokenId);
 
-    /// @dev Abstract function for the node (namehash) of the parent registry.
-    ///      Equivalent to token ID of the parent NameWrapper token.
-    function _getParentNode() internal view virtual returns (bytes32);
+    /// @dev Abstract function for the registry being wrapped.
+    function _getRegistry() internal view virtual returns (IRegistry);
+
+    /// @dev Abstract function for the node (namehash) being wrapped.
+    function _getNode() internal view virtual returns (bytes32);
 
     /// @dev Determine if `label` is emancipated but not-yet migrated.
     function _isMigratableChild(string memory label) internal view returns (bool) {
-        bytes32 node = NameCoder.namehash(_getParentNode(), keccak256(bytes(label)));
+        bytes32 node = NameCoder.namehash(_getNode(), keccak256(bytes(label)));
         (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
         return ownerV1 != address(this) && _isLocked(fuses);
     }
