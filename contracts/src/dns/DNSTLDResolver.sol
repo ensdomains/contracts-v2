@@ -63,7 +63,7 @@ contract DNSTLDResolver is
     ///      this contract), the name is considered unresolved in v1 and DNSSEC fallback is used.
     address public immutable DNS_TLD_RESOLVER_V1;
 
-    /// @dev The v2 root registry, used to resolve names parsed from `ENS1` TXT records.
+    /// @dev The ENSv2 root registry, used to resolve names parsed from `ENS1` TXT records.
     IRegistry public immutable ROOT_REGISTRY;
 
     /// @dev The DNSSEC oracle contract that verifies signed DNS resource-record sets.
@@ -220,7 +220,7 @@ contract DNSTLDResolver is
         return (resolver, true);
     }
 
-    /// @notice Resolve `name` using V1 or DNSSEC.
+    /// @notice Resolve `name` using ENSv1 or DNSSEC.
     ///         Caller should enable EIP-3668.
     ///
     /// @dev This function executes over multiple steps.
@@ -353,7 +353,7 @@ contract DNSTLDResolver is
         bytes memory name = NameCoder.encode(string(v));
         (, address r, , ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
         if (r != address(0)) {
-            // according to V1, this must be immediate onchain
+            // according to ENSv1, this must be immediate onchain
             try IAddrResolver(r).addr(NameCoder.namehash(name, 0)) returns (address payable a) {
                 resolver = a;
             } catch {}

@@ -20,7 +20,7 @@ contract LockedMigrationController is LockedWrapperReceiver {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The v2 .eth `PermissionedRegistry` where migrated names are registered.
+    /// @dev The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
     ////////////////////////////////////////////////////////////////////////
@@ -61,7 +61,7 @@ contract LockedMigrationController is LockedWrapperReceiver {
     }
 
     /// @inheritdoc LockedWrapperReceiver
-    function _parentNode() internal pure override returns (bytes32) {
+    function _getParentNode() internal pure override returns (bytes32) {
         return NameCoder.ETH_NODE;
     }
 }

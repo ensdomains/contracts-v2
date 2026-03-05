@@ -30,17 +30,17 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The ENS v1 `NameWrapper` contract that holds wrapped names as ERC1155 tokens.
+    /// @dev The ENSv1 `NameWrapper` contract that holds wrapped names as ERC1155 tokens.
     INameWrapper public immutable NAME_WRAPPER;
 
-    /// @dev The ENS v1 `ENSRegistry` contract.
+    /// @dev The ENSv1 `ENSRegistry` contract.
     ENS internal immutable _REGISTRY_V1;
 
     ////////////////////////////////////////////////////////////////////////
     // Modifiers
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Restrict `msg.sender` to `NAME_WRAPPER`.
+    /// @dev Restrict `msg.sender` to NameWrapper.
     ///      Reverts wrapped errors for use inside of legacy IERC1155Receiver handler.
     modifier onlyWrapper() {
         if (msg.sender != address(NAME_WRAPPER)) {
@@ -86,7 +86,7 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
 
     /// @inheritdoc IERC1155Receiver
     /// @notice Migrate one NameWrapper token via `safeTransferFrom()`.
-    /// @dev Only callable by the `NameWrapper`.
+    /// @dev Only callable by NameWrapper.
     ///      Reverts require `WrappedErrorLib.unwrap()` before processing.
     ///
     /// @param id The NameWrapper token ID (namehash) of the name being migrated.
@@ -113,7 +113,7 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
 
     /// @inheritdoc IERC1155Receiver
     /// @notice Migrate multiple NameWrapper tokens via `safeBatchTransferFrom()`.
-    /// @dev Only callable by the `NameWrapper`.
+    /// @dev Only callable by NameWrapper.
     ///      Reverts require `WrappedErrorLib.unwrap()` before processing.
     ///
     /// @param ids The NameWrapper token IDs (namehashes) of the names being migrated.
@@ -142,7 +142,7 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
         }
     }
 
-    /// @dev Convert NameWrapper tokens their equivalent ENSv2 form.
+    /// @dev Convert NameWrapper tokens to their equivalent ENSv2 form.
     ///      Only callable by ourself and invoked by our `IERC1155Receiver` handlers.
     ///
     /// TODO: gas analysis and optimization

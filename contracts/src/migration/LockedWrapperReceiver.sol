@@ -83,7 +83,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
 
     /// @notice The DNS-encoded name of the parent registry.
     function getParentName() external view returns (bytes memory) {
-        return NAME_WRAPPER.names(_parentNode());
+        return NAME_WRAPPER.names(_getParentNode());
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -95,7 +95,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         uint256[] calldata ids,
         LibMigration.Data[] calldata mds
     ) internal override {
-        bytes32 parentNode = _parentNode();
+        bytes32 parentNode = _getParentNode();
         for (uint256 i; i < ids.length; ++i) {
             LibMigration.Data memory md = mds[i];
             if (md.owner == address(0)) {
@@ -116,9 +116,9 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             }
 
             if ((fuses & CANNOT_SET_RESOLVER) != 0) {
-                md.resolver = _REGISTRY_V1.resolver(node); // replace with V1 resolver
+                md.resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
             } else {
-                NAME_WRAPPER.setResolver(node, address(0)); // clear V1 resolver
+                NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
             }
 
             (
@@ -146,7 +146,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 )
             );
 
-            // add name to V2
+            // add name to ENSv2
             _inject(md.label, md.owner, subregistry, md.resolver, tokenRoles, expiry);
             // PermissionedRegistry._register() => CannotSetPastExpiration :: see expiry check
             // PermissionedRegistry._register() => NameAlreadyRegistered :: only have ROLE_REGISTER_RESERVED
@@ -171,11 +171,11 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
 
     /// @dev Abstract function for the node (namehash) of the parent registry.
     ///      Equivalent to token ID of the parent NameWrapper token.
-    function _parentNode() internal view virtual returns (bytes32);
+    function _getParentNode() internal view virtual returns (bytes32);
 
     /// @dev Determine if `label` is emancipated but not-yet migrated.
     function _isMigratableChild(string memory label) internal view returns (bool) {
-        bytes32 node = NameCoder.namehash(_parentNode(), keccak256(bytes(label)));
+        bytes32 node = NameCoder.namehash(_getParentNode(), keccak256(bytes(label)));
         (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
         return ownerV1 != address(this) && _isLocked(fuses);
     }

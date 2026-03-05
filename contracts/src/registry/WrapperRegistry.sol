@@ -19,7 +19,7 @@ import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
-/// @notice UUPS-upgradeable registry that wraps an ENS V1 NameWrapper, supporting migration of
+/// @notice UUPS-upgradeable registry that wraps an ENSv1 NameWrapper, supporting migration of
 ///         wrapped names into the namechain registry system.
 contract WrapperRegistry is
     IWrapperRegistry,
@@ -32,13 +32,15 @@ contract WrapperRegistry is
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Fallback resolver for ENSv1 resolution.
     address public immutable V1_RESOLVER;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    bytes32 public parentNode;
+    /// @dev The namehash of this registry.
+    bytes32 internal _parentNode;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -81,7 +83,7 @@ contract WrapperRegistry is
         }
 
         // Set the parent domain for name resolution fallback
-        parentNode = args.node;
+        _parentNode = args.node;
 
         // Configure owner with upgrade permissions and specified roles
         _grantRoles(
@@ -97,7 +99,7 @@ contract WrapperRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc PermissionedRegistry
-    /// @dev Prevent registration of emancipated children.
+    /// @dev Blocks registration of emancipated children.
     function register(
         string memory label,
         address owner,
@@ -121,7 +123,7 @@ contract WrapperRegistry is
     }
 
     /// @inheritdoc LockedWrapperReceiver
-    /// @dev Allow registration of emancipated children.
+    /// @dev Allows registration of emancipated children.
     function _inject(
         string memory label,
         address owner,
@@ -133,14 +135,15 @@ contract WrapperRegistry is
         return super.register(label, owner, subregistry, resolver, roleBitmap, expiry);
     }
 
-    /// @dev Allow `ROLE_UPGRADE` to upgrade.
+    /// @dev Requires `ROLE_UPGRADE` to upgrade.
     function _authorizeUpgrade(
         address
     ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {
         //
     }
 
-    function _parentNode() internal view override returns (bytes32) {
-        return parentNode;
+    /// @inheritdoc LockedWrapperReceiver
+    function _getParentNode() internal view override returns (bytes32) {
+        return _parentNode;
     }
 }
