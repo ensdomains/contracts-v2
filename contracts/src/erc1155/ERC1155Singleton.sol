@@ -44,7 +44,7 @@ abstract contract ERC1155Singleton is
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Maps each token ID to its single owner address.
-    mapping(uint256 id => address account) private _owners;
+    mapping(uint256 id => address account) internal _owners;
 
     /// @dev Standard ERC1155 operator approval mapping.
     mapping(address account => mapping(address operator => bool)) private _operatorApprovals;

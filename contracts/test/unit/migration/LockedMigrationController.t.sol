@@ -256,7 +256,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             md.salt
         );
         uint256 tokenIdV1 = LibLabel.id(md.label);
-        uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
+        uint256 tokenId = LibLabel.withVersion(tokenIdV1, 1);
         vm.expectEmit();
         emit IERC1155.TransferSingle(user, user, address(migrationController), uint256(node), 1);
         vm.expectEmit();

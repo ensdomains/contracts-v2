@@ -155,7 +155,7 @@ contract PermissionedRegistry is
 
     /// @inheritdoc IStandardRegistry
     /// @dev If `AVAILABLE`, requires `ROLE_REGISTRAR` on root.
-    ///         * If `owner` is null (`roleBitmap` must be 0), status becomes `RESERVED` instead of `REGISTERED`.
+    ///         * If `roleBitmap = 0`, status becomes `RESERVED` instead of `REGISTERED`.
     ///      If `RESERVED`, requires `ROLE_REGISTER_RESERVED` on root.
     ///         * If `expiry` is 0, uses current expiry.
     function register(
@@ -176,13 +176,10 @@ contract PermissionedRegistry is
             if (sender != address(this)) {
                 _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, sender);
             }
-            if (owner == address(0) && roleBitmap != 0) {
-                revert EACCannotGrantRoles(ROOT_RESOURCE, roleBitmap, sender); // strict
-            }
         } else {
             if (prevOwner != address(0)) {
                 revert NameAlreadyRegistered(label); // cannot overwrite REGISTERED
-            } else if (owner == address(0)) {
+            } else if (roleBitmap == 0) {
                 revert NameAlreadyReserved(label); // cannot reserve/register RESERVED
             }
             if (sender != address(this)) {
@@ -197,15 +194,17 @@ contract PermissionedRegistry is
         }
         if (prevOwner != address(0)) {
             _burn(prevOwner, tokenId, 1);
-            ++entry.eacVersionId;
-            ++entry.tokenVersionId;
+            entry.eacVersionId = ++entry.tokenVersionId;
             tokenId = _constructTokenId(tokenId, entry);
         }
         entry.expiry = expiry;
         entry.subregistry = registry;
         entry.resolver = resolver;
         // emit NameRegistered before mint so we can determine this is a registry (in an indexer)
-        if (owner == address(0)) {
+        if (roleBitmap == 0) {
+            entry.eacVersionId = ++entry.tokenVersionId;
+            _owners[tokenId] = owner; // set latestOwnerOf
+            tokenId = _constructTokenId(tokenId, entry);
             emit NameReserved(tokenId, bytes32(labelId), label, expiry, sender);
         } else {
             emit NameRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
@@ -233,8 +232,7 @@ contract PermissionedRegistry is
         address owner = super.ownerOf(tokenId);
         if (owner != address(0)) {
             _burn(owner, tokenId, 1);
-            ++entry.eacVersionId;
-            ++entry.tokenVersionId;
+            entry.eacVersionId = (entry.tokenVersionId += 2);
         }
         entry.expiry = uint64(block.timestamp);
     }
@@ -322,14 +320,19 @@ contract PermissionedRegistry is
         uint256 tokenId = _constructTokenId(anyId, entry);
         state.tokenId = tokenId;
         state.resource = _constructResource(anyId, entry);
-        address owner = super.ownerOf(tokenId);
+        address owner = latestOwnerOf(tokenId);
         state.latestOwner = owner;
         state.status = _constructStatus(expiry, owner);
     }
 
     /// @inheritdoc IPermissionedRegistry
-    function latestOwnerOf(uint256 tokenId) public view virtual returns (address) {
-        return super.ownerOf(tokenId);
+    function latestOwnerOf(uint256 tokenId) public view virtual returns (address owner) {
+        owner = super.ownerOf(tokenId);
+        if (uint32(tokenId) > 0 && owner == address(0)) {
+            unchecked {
+                owner = super.ownerOf(tokenId - 1);
+            }
+        }
     }
 
     /// @inheritdoc IERC1155Singleton
