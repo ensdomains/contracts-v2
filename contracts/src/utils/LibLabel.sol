@@ -15,4 +15,11 @@ library LibLabel {
     function withVersion(uint256 anyId, uint32 versionId) internal pure returns (uint256) {
         return anyId ^ uint32(anyId) ^ versionId;
     }
+
+    /// @notice Return the lower 32-bits of `anyId`.
+    /// @param anyId The labelhash, token ID, or resource.
+    /// @return The version ID.
+    function versionOf(uint256 anyId) internal pure returns (uint32) {
+        return uint32(anyId);
+    }
 }

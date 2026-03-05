@@ -35,6 +35,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     address actor = makeAddr("actor");
 
     address testOwner = user1;
+    address testReservedOwner;
     string testLabel = "test";
     uint256 testRoles = 1 << 120; // unused role bit
     address testResolver = makeAddr("resolver");
@@ -176,7 +177,26 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     // reserve() == register() with roleBitmap = 0
     ////////////////////////////////////////////////////////////////////////
 
-    function test_reserve() external {
+    function test_reserve_withoutOwner() external {
+        vm.expectEmit();
+        emit IRegistry.NameReserved(
+            LibLabel.withVersion(LibLabel.id(testLabel), 0),
+            bytes32(LibLabel.id(testLabel)),
+            testLabel,
+            testExpiry,
+            address(this)
+        );
+        uint256 tokenId = this._reserve();
+        IPermissionedRegistry.State memory state = registry.getState(tokenId);
+        assertEq(uint8(state.status), uint8(IPermissionedRegistry.Status.RESERVED), "reserved");
+        assertEq(state.latestOwner, address(0), "owner");
+        assertEq(state.expiry, testExpiry, "expiry");
+        assertEq(registry.getResolver(testLabel), testResolver, "resolver");
+        assertEq(address(registry.getSubregistry(testLabel)), address(0), "registry");
+    }
+
+    function test_reserve_withOwner() external {
+        testReservedOwner = user1;
         vm.expectEmit();
         emit IRegistry.NameReserved(
             LibLabel.withVersion(LibLabel.id(testLabel), 1),
@@ -188,7 +208,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256 tokenId = this._reserve();
         IPermissionedRegistry.State memory state = registry.getState(tokenId);
         assertEq(uint8(state.status), uint8(IPermissionedRegistry.Status.RESERVED), "reserved");
-        assertEq(state.latestOwner, address(0), "owner");
+        assertEq(state.latestOwner, testReservedOwner, "owner");
         assertEq(state.expiry, testExpiry, "expiry");
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
         assertEq(address(registry.getSubregistry(testLabel)), address(0), "registry");
@@ -696,8 +716,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(uint8(state.status), uint8(IPermissionedRegistry.Status.AVAILABLE), "status");
         assertEq(state.expiry, block.timestamp, "expiry");
         assertEq(state.latestOwner, address(0), "owner");
-        assertEq(state.tokenId, tokenId + 2, "tokenId"); // burned
-        assertEq(state.resource, tokenId + 3, "resource"); // burned + next
+        assertEq(state.tokenId, tokenId + 1, "tokenId"); // burned
+        assertEq(state.resource, tokenId + 1, "resource"); // next
         _checkStateGetters(state);
     }
 
@@ -834,10 +854,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.unregister(s1.tokenId);
         IPermissionedRegistry.State memory s2 = registry.getState(this._register());
         registry.unregister(s2.tokenId);
-        assertEq(s0.tokenId + 2, s1.tokenId, "token:01");
-        assertEq(s0.resource + 2, s1.resource, "resource:01");
-        assertEq(s1.tokenId + 2, s2.tokenId, "token:12");
-        assertEq(s1.resource + 2, s2.resource, "resource:12");
+        assertEq(s0.tokenId + 1, s1.tokenId, "token:01");
+        assertEq(s0.resource + 1, s1.resource, "resource:01");
+        assertEq(s1.tokenId + 1, s2.tokenId, "token:12");
+        assertEq(s1.resource + 1, s2.resource, "resource:12");
     }
 
     function test_regenerate_safeTransferFrom(uint16 compactRoles) external {
@@ -931,7 +951,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     // Internals
     ////////////////////////////////////////////////////////////////////////
 
-    // only changes +1 on grant/revoke, +2 on burn
+    // only changes after burn, grant, and revoke
     function test_tokenVersionId() external {
         uint256 tokenId = LibLabel.id(testLabel);
         assertEq(registry.getEntry(tokenId).tokenVersionId, 0, "dne");
@@ -947,12 +967,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.revokeRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user2); // here
         assertEq(registry.getEntry(tokenId).tokenVersionId, 3, "revoke");
         registry.unregister(tokenId); // here
-        assertEq(registry.getEntry(tokenId).tokenVersionId, 5, "unregistered");
+        assertEq(registry.getEntry(tokenId).tokenVersionId, 4, "unregistered");
         tokenId = this._reserve(); // here
-        assertEq(registry.getEntry(tokenId).tokenVersionId, 6, "reserved");
+        assertEq(registry.getEntry(tokenId).tokenVersionId, 4, "reserved");
     }
 
-    // only changes after burn (syncs to tokenVersionId)
+    // only changes after mint
     function test_eacVersionId() external {
         uint256 tokenId = LibLabel.id(testLabel);
         assertEq(registry.getEntry(tokenId).eacVersionId, 0, "dne");
@@ -968,7 +988,9 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.revokeRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user2);
         assertEq(registry.getEntry(tokenId).eacVersionId, 1, "revoke");
         registry.unregister(tokenId); // here
-        assertEq(registry.getEntry(tokenId).eacVersionId, 5, "unregistered");
+        assertEq(registry.getEntry(tokenId).eacVersionId, 1, "unregistered");
+        tokenId = this._reserve();
+        assertEq(registry.getEntry(tokenId).eacVersionId, 1, "reserved");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -993,7 +1015,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         return
             registry.register(
                 testLabel,
-                address(0),
+                testReservedOwner,
                 IRegistry(address(0)),
                 testResolver,
                 0 /* roleBitmap */,

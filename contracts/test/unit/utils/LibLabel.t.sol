@@ -19,15 +19,15 @@ contract LibLabelTest is Test {
             LibLabel.withVersion(id, 0xaaaaaaaa), //                  ________
             0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58faaaaaaaa
         );
+        assertEq(LibLabel.versionOf(0x122222222), 0x22222222);
     }
 
     function test_id(string memory label) external pure {
         assertEq(LibLabel.id(label), uint256(keccak256(bytes(label)))); // labelhash()
     }
 
-    function test_withVersion(uint256 id, uint32 version) external pure {
-        assertEq(LibLabel.withVersion(id, version) >> 32, id >> 32, "id");
-        assertEq(uint32(LibLabel.withVersion(id, version)), version, "version");
+    function test_version(uint256 id, uint32 versionId) external pure {
+        assertEq(LibLabel.versionOf(LibLabel.withVersion(id, versionId)), versionId, "id");
     }
 
     function test_collisions(string memory a, string memory b) external pure {

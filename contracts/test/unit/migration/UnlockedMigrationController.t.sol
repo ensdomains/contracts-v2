@@ -265,7 +265,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     function test_unwrapped_migrate() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         LibMigration.Data memory md = _makeData(name);
-        uint256 tokenId = LibLabel.withVersion(tokenIdV1, 1);
+        uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
         vm.expectEmit();
         emit IERC721.Transfer(user, address(migrationController), tokenIdV1);
         vm.expectEmit();
@@ -322,7 +322,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
         LibMigration.Data memory md = _makeData(name);
         uint256 tokenIdV1 = uint256(keccak256(bytes(md.label)));
-        uint256 tokenId = LibLabel.withVersion(tokenIdV1, 1);
+        uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
         vm.expectEmit();
         emit IERC1155.TransferSingle(
             user,

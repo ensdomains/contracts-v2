@@ -194,7 +194,7 @@ contract PermissionedRegistry is
         }
         if (prevOwner != address(0)) {
             _burn(prevOwner, tokenId, 1);
-            entry.eacVersionId = ++entry.tokenVersionId;
+            ++entry.tokenVersionId;
             tokenId = _constructTokenId(tokenId, entry);
         }
         entry.expiry = expiry;
@@ -202,13 +202,18 @@ contract PermissionedRegistry is
         entry.resolver = resolver;
         // emit NameRegistered before mint so we can determine this is a registry (in an indexer)
         if (roleBitmap == 0) {
-            entry.eacVersionId = ++entry.tokenVersionId;
-            _owners[tokenId] = owner; // set latestOwnerOf
-            tokenId = _constructTokenId(tokenId, entry);
+            if (address(owner) != address(0)) {
+                if (LibLabel.versionOf(tokenId) == 0) {
+                    ++entry.tokenVersionId;
+                    tokenId = _constructTokenId(tokenId, entry);
+                }
+                _owners[tokenId - 1] = owner; // set latestOwnerOf
+            }
             emit NameReserved(tokenId, bytes32(labelId), label, expiry, sender);
         } else {
             emit NameRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
             _mint(owner, tokenId, 1, "");
+            entry.eacVersionId = LibLabel.versionOf(tokenId); // sync
             uint256 resource = _constructResource(tokenId, entry);
             emit TokenResource(tokenId, resource);
             _grantRoles(resource, roleBitmap, owner, false);
@@ -232,7 +237,10 @@ contract PermissionedRegistry is
         address owner = super.ownerOf(tokenId);
         if (owner != address(0)) {
             _burn(owner, tokenId, 1);
-            entry.eacVersionId = (entry.tokenVersionId += 2);
+            ++entry.tokenVersionId;
+            if (LibLabel.versionOf(tokenId) > 0) {
+                delete _owners[tokenId - 1]; // ensure: latestOwnerOf() is null
+            }
         }
         entry.expiry = uint64(block.timestamp);
     }
@@ -320,18 +328,15 @@ contract PermissionedRegistry is
         uint256 tokenId = _constructTokenId(anyId, entry);
         state.tokenId = tokenId;
         state.resource = _constructResource(anyId, entry);
-        address owner = latestOwnerOf(tokenId);
-        state.latestOwner = owner;
-        state.status = _constructStatus(expiry, owner);
+        state.latestOwner = latestOwnerOf(tokenId);
+        state.status = _constructStatus(expiry, super.ownerOf(tokenId));
     }
 
     /// @inheritdoc IPermissionedRegistry
     function latestOwnerOf(uint256 tokenId) public view virtual returns (address owner) {
         owner = super.ownerOf(tokenId);
-        if (uint32(tokenId) > 0 && owner == address(0)) {
-            unchecked {
-                owner = super.ownerOf(tokenId - 1);
-            }
+        if (LibLabel.versionOf(tokenId) > 0 && owner == address(0)) {
+            owner = super.ownerOf(tokenId - 1);
         }
     }
 
