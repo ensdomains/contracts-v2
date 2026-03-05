@@ -30,7 +30,10 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev The ENS v1 `NameWrapper` contract that holds wrapped names as ERC1155 tokens.
     INameWrapper public immutable NAME_WRAPPER;
+
+    /// @dev The ENS v1 `ENSRegistry` contract.
     ENS internal immutable _REGISTRY_V1;
 
     ////////////////////////////////////////////////////////////////////////
@@ -83,8 +86,11 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
 
     /// @inheritdoc IERC1155Receiver
     /// @notice Migrate one NameWrapper token via `safeTransferFrom()`.
-    ///         Requires `abi.encode(LibMigration.Data)` as payload.
-    ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
+    /// @dev Only callable by the `NameWrapper`.
+    ///      Reverts require `WrappedErrorLib.unwrap()` before processing.
+    ///
+    /// @param id The NameWrapper token ID (namehash) of the name being migrated.
+    /// @param data ABI-encoded `LibMigration.Data` struct containing migration parameters.
     function onERC1155Received(
         address /*operator*/,
         address /*from*/,
@@ -107,8 +113,11 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
 
     /// @inheritdoc IERC1155Receiver
     /// @notice Migrate multiple NameWrapper tokens via `safeBatchTransferFrom()`.
-    ///         Requires `abi.encode(LibMigration.Data[])` as payload.
-    ///         Reverts require `WrappedErrorLib.unwrap()` before processing.
+    /// @dev Only callable by the `NameWrapper`.
+    ///      Reverts require `WrappedErrorLib.unwrap()` before processing.
+    ///
+    /// @param ids The NameWrapper token IDs (namehashes) of the names being migrated.
+    /// @param data ABI-encoded `LibMigration.Data[]` array containing migration parameters for each name.
     function onERC1155BatchReceived(
         address /*operator*/,
         address /*from*/,

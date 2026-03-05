@@ -28,6 +28,10 @@ When writing comments in code:
 - Don't refer to specific variables or constants by name unless necessary
 - Write comments as descriptors of functionality, not as a changelog
 
+# Inline Documentation
+
+All Solidity contracts, libraries, and interfaces must have NatSpec inline documentation. When making any code changes, inline docs MUST be kept updated alongside the code — adding, modifying, or removing documentation as needed to accurately reflect the current behavior.
+
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.

@@ -3,6 +3,7 @@ pragma solidity >=0.8.25;
 
 // solhint-disable no-inline-assembly
 
+/// @dev Low-level memory helpers for copying, pointer conversion, and word loading.
 library LibMem {
     bool public constant REMAPPED = true;
 

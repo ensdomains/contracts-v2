@@ -5,6 +5,8 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
+/// @dev Recursive traversal helpers for the namechain registry tree — resolver lookup, registry
+///      discovery, canonical name construction, and ancestry enumeration.
 library LibRegistry {
     /// @dev Find the resolver address for `name[offset:]`.
     ///
@@ -47,7 +49,7 @@ library LibRegistry {
     }
 
     /// @notice Find (registry, resolver) for `name[offset:]` starting from
-    ///         (parentRegistry, parentRegistry) for `name[:parentOffset]`.
+    ///         (parentRegistry, parentResolver) for `name[:parentOffset]`.
     ///
     /// @param name The DNS-encoded name to search.
     /// @param offset The offset into `name` to begin the search.
@@ -193,7 +195,7 @@ library LibRegistry {
         _findRegistries(name, offset, registries, 0);
     }
 
-    /// @dev Recursive function for building ancestory.
+    /// @dev Recursive function for building ancestry.
     function _findRegistries(
         bytes memory name,
         uint256 offset,

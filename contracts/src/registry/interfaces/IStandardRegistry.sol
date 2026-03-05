@@ -23,7 +23,7 @@ interface IStandardRegistry is IRegistry {
     /// @dev Error selector: `0x9967595a`
     error CannotReduceExpiration(uint64 oldExpiration, uint64 newExpiration);
 
-    /// @notice Name expory cannot be before now.
+    /// @notice Name expiry cannot be before now.
     /// @dev Error selector: `0x6a0147dc`
     error CannotSetPastExpiration(uint64 expiry);
 

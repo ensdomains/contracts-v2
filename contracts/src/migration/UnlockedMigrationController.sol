@@ -15,7 +15,17 @@ import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
 
 /// @title UnlockedMigrationController
-/// @dev Contract for the v1-to-v2 migration controller that only handles unlocked .eth 2LD names.
+/// @notice Handles migration of unlocked .eth 2LD names from ENS v1 to v2. Supports two entry points:
+///
+///  - Wrapped but unlocked names (ERC1155 from NameWrapper): unwraps via `unwrapETH2LD`
+///    then registers. Reverts with `MigrationNotSupported` if the owner-controlled fuse
+///    `CANNOT_UNWRAP` has been burned (i.e., the name is Locked and should be migrated via
+///    `LockedMigrationController` instead).
+///  - Unwrapped names (ERC721 from BaseRegistrar): registers directly.
+///
+///  Unlike locked migration, no subregistry is deployed and no fuse-to-role translation is
+///  performed — the name is registered in the .eth registry with the roles and subregistry
+///  specified in the caller-provided `MigrationData`.
 contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -23,7 +33,10 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
 
     address constant _UNWRAP_ADDRESS = address(0xdead);
 
+    /// @dev The v2 .eth `PermissionedRegistry` where migrated names are registered.
     IPermissionedRegistry public immutable ETH_REGISTRY;
+
+    /// @dev A separate burn address for ` tokens to avoid an additional
     IBaseRegistrar internal immutable _REGISTRAR_V1;
 
     ////////////////////////////////////////////////////////////////////////
@@ -49,9 +62,11 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc IERC721Receiver
-    /// @notice Migrate ".eth" tokens via `safeTransferFrom()`.
-    ///         Requires `abi.encode(LibMigration.Data[])` as payload.
+    /// @dev Receives an unwrapped .eth name via ERC721 `safeTransferFrom` from the `BaseRegistrar`.
+    ///      Decodes a single `LibMigration.Data` from `data` and registers the equivalent name in V2.
+    ///
+    /// @param tokenId The BaseRegistrar token ID (labelhash) of the name being migrated.
+    /// @param data ABI-encoded `LibMigration.Data` struct containing migration parameters.
     function onERC721Received(
         address /*operator*/,
         address /*from*/,
@@ -90,6 +105,12 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractWrapperReceiver
+    /// @dev Iterates over the provided tokens and registers the equivalent name in V2.
+    ///      Reverts `NameIsLocked` if any token is locked.
+    ///      Reverts `NameDataMismatch` if any token is mislabeled.
+    ///
+    /// @param ids The NameWrapper token IDs (namehash) of the names to migrate.
+    /// @param mds The migration parameters for each name, indexed in parallel with `ids`.
     function _migrateWrapped(
         uint256[] calldata ids,
         LibMigration.Data[] calldata mds

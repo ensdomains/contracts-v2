@@ -10,18 +10,26 @@ library LibMigration {
 
     /// @dev Typed arguments for migration via transfer payload.
     struct Data {
+        /// @dev The subdomain being migrated.
         string label;
+        /// @dev Address that will own the name in the v2 registry.
         address owner;
+        /// @dev Address of the child registry.
+        ///      Ignored by locked migration.
+        IRegistry subregistry;
+        /// @dev Resolver address to set for the migrated name.
+        ///      Ignored if locked and `CANNOT_SET_RESOLVER`.
         address resolver;
-        IRegistry subregistry; // ignored if LockedMigrationController
-        uint256 salt; // ignored if UnlockedMigrationController
+        /// @dev CREATE2 salt for deterministic WrapperRegistry deployment.
+        ///      Ignored by unlocked migration..
+        uint256 salt;
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Minimum Size of `abi.encode(Data({...}))`.
+    /// @dev Minimum size of `abi.encode(Data({...}))`.
     uint256 internal constant MIN_DATA_SIZE = 8 * 32;
 
     ////////////////////////////////////////////////////////////////////////
@@ -40,7 +48,7 @@ library LibMigration {
     /// @dev Error selector: `0xe7c290e2`
     error NameIsLocked(uint256 tokenId);
 
-    /// @notice NameWrapper token does not match supplied data.
+    /// @notice NameWrapper or BaseRegistrar token does not match supplied data.
     /// @dev Error selector: `0xedec3569`
     error NameDataMismatch(uint256 tokenId);
 

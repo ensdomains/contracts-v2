@@ -14,6 +14,7 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev The ENS v2 root registry used to traverse the registry hierarchy and locate resolvers.
     IRegistry public immutable ROOT_REGISTRY;
 
     ////////////////////////////////////////////////////////////////////////
