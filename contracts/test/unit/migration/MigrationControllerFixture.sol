@@ -3,6 +3,7 @@ pragma solidity >=0.8.13;
 
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
@@ -58,10 +59,11 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
         assertEq(findResolverV2(name), resolverV2, "findResolverV2");
         if (resolverV2 == address(ensV1Resolver)) {
             (address r, ) = ensV1Resolver.getResolver(name);
-            assertEq(r, resolverV1, "composite");
+            assertEq(r, resolverV1, "compositeV1");
         } else if (resolverV1 == address(ensV2Resolver)) {
             (address r, ) = ensV2Resolver.getResolver(name);
-            assertEq(r, resolverV2, "composite");
+            assertEq(r, resolverV2, "compositeV2");
+            assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), "resolverV1");
         }
     }
 

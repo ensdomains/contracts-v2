@@ -5,7 +5,6 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {
     INameWrapper,
     CAN_EXTEND_EXPIRY,
-    CANNOT_UNWRAP,
     CANNOT_BURN_FUSES,
     CANNOT_TRANSFER,
     CANNOT_SET_RESOLVER,
@@ -13,9 +12,9 @@ import {
     CANNOT_CREATE_SUBDOMAIN
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
-import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {InvalidOwner} from "../CommonErrors.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
@@ -31,9 +30,9 @@ uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
     CANNOT_CREATE_SUBDOMAIN;
 
 /// @title LockedWrappedReceiver
-/// @notice Abstract IERC1155Receiver which handles locked NameWrapper token migration via transfer.
+/// @notice AbstractWrapperReceiver for locked NameWrapper tokens.
 ///
-/// There are (2) LockedWrapperReceivers:
+/// There are (2) LockedWrapperReceiver implementations:
 /// 1. LockedMigrationController only accepts .eth 2LD tokens.
 /// 2. WrapperRegistry only accepts emancipated (N+1)-LD children with a matching N-LD parent node.
 ///
@@ -100,7 +99,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         for (uint256 i; i < ids.length; ++i) {
             LibMigration.Data memory md = mds[i];
             if (md.owner == address(0)) {
-                revert IERC1155Errors.ERC1155InvalidReceiver(md.owner);
+                revert InvalidOwner();
             }
             bytes32 node = bytes32(ids[i]);
             bytes32 labelHash = keccak256(bytes(md.label));
@@ -115,8 +114,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             if (!_isLocked(fuses)) {
                 revert LibMigration.NameNotLocked(uint256(node));
             }
-            assert(owner == address(this)); // claim: only we can call this function => we own the token
-            assert(expiry >= block.timestamp); // claim: expired names cannot be transferred
 
             if ((fuses & CANNOT_SET_RESOLVER) != 0) {
                 md.resolver = _REGISTRY_V1.resolver(node); // replace with V1 resolver
@@ -180,7 +177,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     function _isMigratableChild(string memory label) internal view returns (bool) {
         bytes32 node = NameCoder.namehash(_parentNode(), keccak256(bytes(label)));
         (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
-        return ownerV1 != address(this) && (fuses & CANNOT_UNWRAP) != 0;
+        return ownerV1 != address(this) && _isLocked(fuses);
     }
 
     /// @notice Generates role bitmaps based on fuses.
@@ -224,7 +221,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         }
 
         // Add renewal roles to subregistry
-        registryRoles |= RegistryRolesLib.ROLE_RENEW;
-        registryRoles |= RegistryRolesLib.ROLE_RENEW_ADMIN;
+        registryRoles |= RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN;
     }
 }

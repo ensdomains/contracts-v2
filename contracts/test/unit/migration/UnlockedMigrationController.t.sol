@@ -3,19 +3,24 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Vm} from "forge-std/Test.sol";
+import {console} from "forge-std/console.sol";
 import {
     INameWrapper,
     CAN_DO_EVERYTHING,
     CANNOT_UNWRAP
 } from "@ens/contracts/wrapper/INameWrapper.sol";
-import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 
-import {MigrationControllerFixture, ERC165Checker} from "./MigrationControllerFixture.sol";
+import {
+    MigrationControllerFixture,
+    ERC165Checker,
+    NameCoder,
+    LibLabel
+} from "./MigrationControllerFixture.sol";
 import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
@@ -28,13 +33,12 @@ import {
     IPermissionedRegistry,
     RegistryRolesLib,
     IRegistry,
-    IRegistryMetadata,
-    LibLabel
+    IRegistryMetadata
 } from "~src/registry/PermissionedRegistry.sol";
 import {
     UnlockedMigrationController,
     LibMigration,
-    IERC1155Errors,
+    InvalidOwner,
     UnauthorizedCaller
 } from "~src/migration/UnlockedMigrationController.sol";
 
@@ -151,9 +155,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         LibMigration.Data memory md = _makeData(name);
         md.owner = address(0); // wrong
-        vm.expectRevert(
-            abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
-        );
+        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
         vm.prank(user);
         ethRegistrarV1.safeTransferFrom(
             user,
@@ -167,11 +169,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
         LibMigration.Data memory md = _makeData(name);
         md.owner = address(0); // wrong
-        vm.expectRevert(
-            WrappedErrorLib.wrap(
-                abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
-            )
-        );
+        vm.expectRevert(WrappedErrorLib.wrap(abi.encodeWithSelector(InvalidOwner.selector)));
         vm.prank(user);
         nameWrapper.safeTransferFrom(
             user,
@@ -273,7 +271,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IRegistry.NameRegistered(
             tokenId,
-            bytes32(tokenIdV1),
+            keccak256(bytes(md.label)),
             md.label,
             md.owner,
             uint64(ethRegistrarV1.nameExpires(tokenIdV1)),
@@ -298,12 +296,14 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IRegistry.ResolverUpdated(tokenId, md.resolver, address(migrationController));
         vm.prank(user);
+        uint256 g = gasleft();
         ethRegistrarV1.safeTransferFrom(
             user,
             address(migrationController),
             tokenIdV1,
             abi.encode(md)
         );
+        console.log("Gas: %s", g - gasleft());
 
         assertEq(ethRegistry.getTokenId(tokenIdV1), tokenId, "tokenId");
         assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
@@ -316,6 +316,113 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             "subregistry"
         );
         assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), "resolverV1");
+    }
+
+    function test_wrapped_migrate() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        LibMigration.Data memory md = _makeData(name);
+        uint256 tokenIdV1 = uint256(keccak256(bytes(md.label)));
+        uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(
+            user,
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1
+        );
+        vm.expectEmit();
+        emit IRegistry.NameRegistered(
+            tokenId,
+            keccak256(bytes(md.label)),
+            md.label,
+            md.owner,
+            uint64(ethRegistrarV1.nameExpires(tokenIdV1)),
+            address(migrationController)
+        );
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(
+            address(migrationController),
+            address(0),
+            md.owner,
+            tokenId,
+            1
+        );
+        vm.expectEmit();
+        emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
+        vm.expectEmit();
+        emit IRegistry.SubregistryUpdated(
+            tokenId,
+            IRegistry(md.subregistry),
+            address(migrationController)
+        );
+        vm.expectEmit();
+        emit IRegistry.ResolverUpdated(tokenId, md.resolver, address(migrationController));
+        vm.prank(user);
+        uint256 g = gasleft();
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
+        );
+        console.log("Gas: %s", g - gasleft());
+
+        assertEq(ethRegistry.getTokenId(tokenIdV1), tokenId, "tokenId");
+        assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
+        assertEq(ethRegistry.getExpiry(tokenId), ethRegistrarV1.nameExpires(tokenIdV1), "expiry");
+        assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
+        checkResolution(name, address(ensV2Resolver), md.resolver);
+        assertEq(
+            address(ethRegistry.getSubregistry(md.label)),
+            address(md.subregistry),
+            "subregistry"
+        );
+    }
+
+    function test_wrapped_migrateBatch(uint8 count) external {
+        vm.assume(count < 5);
+        uint256[] memory ids = new uint256[](count);
+        uint256[] memory amounts = new uint256[](count);
+        LibMigration.Data[] memory mds = new LibMigration.Data[](count);
+        for (uint256 i; i < count; ++i) {
+            bytes memory name = registerWrappedETH2LD(_label(i), CAN_DO_EVERYTHING);
+            LibMigration.Data memory md = _makeData(name);
+            md.resolver = address(uint160(i));
+            mds[i] = md;
+            ids[i] = uint256(NameCoder.namehash(name, 0));
+            amounts[i] = 1;
+        }
+        vm.prank(user);
+        nameWrapper.safeBatchTransferFrom(
+            user,
+            address(migrationController),
+            ids,
+            amounts,
+            abi.encode(mds)
+        );
+        for (uint256 i; i < count; ++i) {
+            LibMigration.Data memory md = mds[i];
+            uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+            assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
+            assertEq(
+                ethRegistry.getExpiry(tokenId),
+                ethRegistrarV1.nameExpires(uint256(keccak256(bytes(md.label)))),
+                "expiry"
+            );
+            assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
+            checkResolution(
+                NameCoder.ethName(md.label),
+                address(ensV2Resolver),
+                address(uint160(i))
+            );
+            assertEq(
+                address(ethRegistry.getSubregistry(md.label)),
+                address(md.subregistry),
+                "subregistry"
+            );
+        }
     }
 
     function test_clearRegistryV1() external {

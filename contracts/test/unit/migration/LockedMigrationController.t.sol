@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {Vm, console} from "forge-std/Test.sol";
+import {console} from "forge-std/console.sol";
 import {
     INameWrapper,
     OperationProhibited,
@@ -16,12 +16,16 @@ import {
     IS_DOT_ETH,
     CAN_EXTEND_EXPIRY
 } from "@ens/contracts/wrapper/NameWrapper.sol";
-import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 
-import {MigrationControllerFixture, ERC165Checker} from "./MigrationControllerFixture.sol";
+import {
+    MigrationControllerFixture,
+    ERC165Checker,
+    NameCoder,
+    LibLabel
+} from "./MigrationControllerFixture.sol";
 import {UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
@@ -32,12 +36,15 @@ import {
     LockedMigrationController,
     IPermissionedRegistry
 } from "~src/migration/LockedMigrationController.sol";
-import {LockedWrapperReceiver, FUSES_TO_BURN} from "~src/migration/LockedWrapperReceiver.sol";
+import {
+    LockedWrapperReceiver,
+    InvalidOwner,
+    FUSES_TO_BURN
+} from "~src/migration/LockedWrapperReceiver.sol";
 import {
     IEnhancedAccessControl,
     EACBaseRolesLib
 } from "~src/access-control/EnhancedAccessControl.sol";
-import {LibLabel} from "~src/utils/LibLabel.sol";
 import {
     WrapperRegistry,
     IWrapperRegistry,
@@ -106,7 +113,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ),
             "LockedWrapperReceiver"
         );
-        console.logBytes4(type(LockedWrapperReceiver).interfaceId);
+        console.logBytes4(type(LockedWrapperReceiver).interfaceId); // not tracked by linter
     }
 
     function test_finishERC1155Migration_unauthorizedCaller() external {
@@ -175,11 +182,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         LibMigration.Data memory md = _makeData(name);
         md.owner = address(0); // wrong
-        vm.expectRevert(
-            WrappedErrorLib.wrap(
-                abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
-            )
-        );
+        vm.expectRevert(WrappedErrorLib.wrap(abi.encodeWithSelector(InvalidOwner.selector)));
         vm.prank(user);
         nameWrapper.safeTransferFrom(
             user,

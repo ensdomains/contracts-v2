@@ -4,11 +4,10 @@ pragma solidity >=0.8.13;
 import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
-import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {UnauthorizedCaller} from "../CommonErrors.sol";
+import {InvalidOwner, UnauthorizedCaller} from "../CommonErrors.sol";
 import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 
@@ -79,7 +78,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         return this.onERC721Received.selector;
     }
 
-    /// @notice Zero registry to any depth for migrated tokens.
+    /// @notice Zero registry descendents of migrated tokens.
     function clearRegistryV1(bytes32[] calldata parents, bytes32[] calldata labels) external {
         for (uint256 i; i < parents.length; ++i) {
             _REGISTRY_V1.setSubnodeRecord(parents[i], labels[i], address(this), address(0), 0);
@@ -115,7 +114,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     /// @dev Claim premigrated reservation.
     function _inject(LibMigration.Data memory md) internal {
         if (md.owner == address(0)) {
-            revert IERC1155Errors.ERC1155InvalidReceiver(md.owner);
+            revert InvalidOwner();
         }
         // Register the name in the ETH registry
         ETH_REGISTRY.register(

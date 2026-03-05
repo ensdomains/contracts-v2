@@ -12,6 +12,19 @@ import {WrappedErrorLib} from "../utils/WrappedErrorLib.sol";
 
 import {LibMigration} from "./libraries/LibMigration.sol";
 
+/// @title AbstractWrapperReceiver
+/// @notice Abstract IERC1155Receiver which handles NameWrapper token migration via transfer.
+///
+/// NameWrapper only allows `Error(string)` exceptions during transfer and squelches typed errors.
+/// https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L317-L335
+/// This contract, with the aid of WrappedErrorLib, embeds errors that occur during migration into `Error(string)`.
+///
+/// There are (2) AbstractWrapperReceiver implementations:
+/// 1. UnlockedMigrationController accepts unlocked tokens.
+/// 2. LockedWrapperReceiver accepts locked tokens.
+///
+/// `_isLocked()` determines lock status.
+///
 abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -142,7 +155,9 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Abstract function to migrate the owned NameWrapper tokens.
+    /// @dev Abstract function to migrate received NameWrapper tokens.
+    ///      Token owner is this contract.
+    ///      Token is not expired.
     function _migrateWrapped(
         uint256[] calldata ids,
         LibMigration.Data[] calldata mds

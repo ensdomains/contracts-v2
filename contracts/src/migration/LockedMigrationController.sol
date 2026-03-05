@@ -36,9 +36,10 @@ contract LockedMigrationController is LockedWrapperReceiver {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Implementation
+    // Internal Functons
     ////////////////////////////////////////////////////////////////////////
 
+    /// @inheritdoc LockedWrapperReceiver
     function _inject(
         string memory label,
         address owner,
@@ -58,6 +59,7 @@ contract LockedMigrationController is LockedWrapperReceiver {
             ); // reverts if not RESERVED
     }
 
+    /// @inheritdoc LockedWrapperReceiver
     function _parentNode() internal pure override returns (bytes32) {
         return NameCoder.ETH_NODE;
     }
