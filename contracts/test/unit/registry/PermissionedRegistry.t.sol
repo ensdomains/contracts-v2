@@ -199,7 +199,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         testReservedOwner = user1;
         vm.expectEmit();
         emit IRegistry.NameReserved(
-            LibLabel.withVersion(LibLabel.id(testLabel), 1),
+            LibLabel.withVersion(LibLabel.id(testLabel), 0),
             bytes32(LibLabel.id(testLabel)),
             testLabel,
             testExpiry,

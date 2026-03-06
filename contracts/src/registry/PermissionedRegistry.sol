@@ -77,6 +77,8 @@ contract PermissionedRegistry is
         uint64 expiry;
         /// @dev Resolver address for this name.
         address resolver;
+        /// @dev Reserved owner for `latestOwnerOf()`.
+        address reservedOwner;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -202,13 +204,7 @@ contract PermissionedRegistry is
         entry.resolver = resolver;
         // emit NameRegistered before mint so we can determine this is a registry (in an indexer)
         if (roleBitmap == 0) {
-            if (address(owner) != address(0)) {
-                if (LibLabel.versionOf(tokenId) == 0) {
-                    ++entry.tokenVersionId;
-                    tokenId = _constructTokenId(tokenId, entry);
-                }
-                _owners[tokenId - 1] = owner; // set latestOwnerOf
-            }
+            entry.reservedOwner = owner;
             emit NameReserved(tokenId, bytes32(labelId), label, expiry, sender);
         } else {
             emit NameRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
@@ -238,9 +234,7 @@ contract PermissionedRegistry is
         if (owner != address(0)) {
             _burn(owner, tokenId, 1);
             ++entry.tokenVersionId;
-            if (LibLabel.versionOf(tokenId) > 0) {
-                delete _owners[tokenId - 1]; // ensure: latestOwnerOf() is null
-            }
+            delete entry.reservedOwner;
         }
         entry.expiry = uint64(block.timestamp);
     }
@@ -335,8 +329,8 @@ contract PermissionedRegistry is
     /// @inheritdoc IPermissionedRegistry
     function latestOwnerOf(uint256 tokenId) public view virtual returns (address owner) {
         owner = super.ownerOf(tokenId);
-        if (LibLabel.versionOf(tokenId) > 0 && owner == address(0)) {
-            owner = super.ownerOf(tokenId - 1);
+        if (owner == address(0)) {
+            owner = _entry(tokenId).reservedOwner;
         }
     }
 
