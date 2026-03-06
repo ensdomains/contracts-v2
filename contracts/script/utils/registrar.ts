@@ -8,84 +8,128 @@ import { trackGas } from "./gas.js";
 const ONE_DAY_SECONDS = 86400;
 
 /**
- * Register names in the ETHRegistry with default resolver records
+ * Register names via the ETHRegistrar commit-reveal flow with batched commits.
+ * Commits all names, does one time warp, then registers all.
  */
 export async function registerTestNames(
   env: DevnetEnvironment,
   labels: string[],
   options: {
     account?: any;
-    expiry?: bigint;
-    registrarAccount?: any;
+    durationInDays?: number;
     trackGas?: boolean;
   } = {},
 ) {
   const account = options.account ?? env.namedAccounts.owner;
-  const registrarAccount =
-    options.registrarAccount ?? env.namedAccounts.deployer;
   const shouldTrackGas = options.trackGas ?? false;
-  const currentTimestamp = await env.deployment.client
-    .getBlock()
-    .then((b) => b.timestamp);
+  const durationInDays = options.durationInDays ?? 28;
+  const duration = BigInt(durationInDays * ONE_DAY_SECONDS);
+  const paymentToken = env.deployment.contracts.MockUSDC.address;
+  const referrer =
+    "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
 
+  // Deploy resolvers for all names
+  const resolvers = [];
   for (const label of labels) {
     const resolver = await env.deployment.deployPermissionedResolver({
       account,
     });
-
     if (shouldTrackGas)
       await trackGas("deployPermissionedResolver", resolver.deploymentReceipt);
+    resolvers.push(resolver);
+  }
 
-    let expiry: bigint;
-    if (options.expiry !== undefined) {
-      expiry = options.expiry;
-    } else {
-      expiry = currentTimestamp + BigInt(ONE_DAY_SECONDS);
-    }
+  // Step 1: Commit all names
+  const secrets = labels.map(
+    (_, i) =>
+      `0x${(i + 1).toString(16).padStart(64, "0")}` as `0x${string}`,
+  );
 
-    const registerTx = await env.waitFor(
-      env.deployment.contracts.ETHRegistry.write.register(
-        [
-          label,
-          account.address,
-          zeroAddress,
-          resolver.address,
-          ROLES.ALL,
-          expiry,
-        ],
-        { account: registrarAccount },
-      ),
+  for (let i = 0; i < labels.length; i++) {
+    const commitment =
+      await env.deployment.contracts.ETHRegistrar.read.makeCommitment([
+        labels[i],
+        account.address,
+        secrets[i],
+        zeroAddress,
+        resolvers[i].address,
+        duration,
+        referrer,
+      ]);
+
+    const { receipt } = await env.waitFor(
+      env.deployment.contracts.ETHRegistrar.write.commit([commitment], {
+        account,
+      }),
     );
+    if (shouldTrackGas) await trackGas(`commit(${labels[i]})`, receipt);
+  }
 
-    if (shouldTrackGas) {
-      await trackGas(`register(${label})`, registerTx.receipt);
-    }
+  // Step 2: Single time warp past minCommitmentAge
+  const minAge =
+    await env.deployment.contracts.ETHRegistrar.read.MIN_COMMITMENT_AGE();
+  await env.sync({ warpSec: Number(minAge) + 1 });
 
-    const node = namehash(`${label}.eth`);
-    const setAddrTx = await env.waitFor(
-      resolver.write.setAddr(
+  // Step 3: Approve total payment
+  let totalPrice = 0n;
+  for (const label of labels) {
+    const [base, premium] =
+      await env.deployment.contracts.ETHRegistrar.read.rentPrice([
+        label,
+        account.address,
+        duration,
+        paymentToken,
+      ]);
+    totalPrice += base + premium;
+  }
+
+  const balance = await env.deployment.contracts.MockUSDC.read.balanceOf([
+    account.address,
+  ]);
+  if (balance < totalPrice) {
+    await env.deployment.contracts.MockUSDC.write.mint(
+      [account.address, totalPrice - balance + 1000000n],
+      { account },
+    );
+  }
+  await env.deployment.contracts.MockUSDC.write.approve(
+    [env.deployment.contracts.ETHRegistrar.address, totalPrice],
+    { account },
+  );
+
+  // Step 4: Register all names
+  for (let i = 0; i < labels.length; i++) {
+    const { receipt } = await env.waitFor(
+      env.deployment.contracts.ETHRegistrar.write.register(
         [
-          node,
-          60n, // ETH coin type
+          labels[i],
           account.address,
+          secrets[i],
+          zeroAddress,
+          resolvers[i].address,
+          duration,
+          paymentToken,
+          referrer,
         ],
         { account },
       ),
     );
+    if (shouldTrackGas) await trackGas(`register(${labels[i]})`, receipt);
 
-    if (shouldTrackGas) {
-      await trackGas(`setAddr(${label})`, setAddrTx.receipt);
-    }
+    // Set resolver records
+    const node = namehash(`${labels[i]}.eth`);
+    const setAddrTx = await env.waitFor(
+      resolvers[i].write.setAddr([node, 60n, account.address], { account }),
+    );
+    if (shouldTrackGas) await trackGas(`setAddr(${labels[i]})`, setAddrTx.receipt);
 
     const setTextTx = await env.waitFor(
-      resolver.write.setText([node, "description", `${label}.eth`], {
-        account,
-      }),
+      resolvers[i].write.setText(
+        [node, "description", `${labels[i]}.eth`],
+        { account },
+      ),
     );
-
-    if (shouldTrackGas) {
-      await trackGas(`setText(${label})`, setTextTx.receipt);
-    }
+    if (shouldTrackGas) await trackGas(`setText(${labels[i]})`, setTextTx.receipt);
   }
 }
 
@@ -109,8 +153,8 @@ export async function reregisterName(
     `Initial expiry: ${new Date(Number(initialExpiry) * 1000).toISOString()}`,
   );
 
-  // Time warp past expiry
-  const warpSeconds = ONE_DAY_SECONDS + 1;
+  // Time warp past expiry (must exceed the registration duration, default 28 days)
+  const warpSeconds = 28 * ONE_DAY_SECONDS + 1;
   console.log(`\nTime warping ${warpSeconds} seconds...`);
   await env.sync({ warpSec: warpSeconds });
 
@@ -130,15 +174,12 @@ export async function reregisterName(
     throw new Error(`${label}.eth should be available after expiry`);
   }
 
-  // Re-register with proper expiry based on blockchain time
+  // Re-register via commit-reveal
   console.log(`\nRe-registering ${label}.eth...`);
-
-  const currentBlock = await env.deployment.client.getBlock();
-  const newExpiry = currentBlock.timestamp + BigInt(ONE_DAY_SECONDS);
 
   await registerTestNames(env, [label], {
     account,
-    expiry: newExpiry,
+    durationInDays: 28,
   });
 
   // Verify re-registration succeeded
@@ -239,3 +280,4 @@ export async function renewName(
 
   return receipt;
 }
+

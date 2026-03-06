@@ -491,7 +491,7 @@ export async function reserveName(
 export async function unregisterName(
   env: DevnetEnvironment,
   name: string,
-  account = env.namedAccounts.owner,
+  account = env.namedAccounts.deployer,
 ) {
   const label = getLabelAt(name);
 

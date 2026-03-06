@@ -57,7 +57,7 @@ export async function testNames(env: DevnetEnvironment) {
   // Re-register reregister (with time warp, do first to avoid expiring other names)
   await reregisterName(env, "reregister");
 
-  // Register all other test names with default 1 day expiry
+  // Register all other test names with default 28 day expiry
   await registerTestNames(
     env,
     ["test", "example", "demo", "newowner", "renew", "parent", "changerole"],
@@ -82,24 +82,72 @@ export async function testNames(env: DevnetEnvironment) {
   if (!testNameData?.resolver || testNameData.resolver === zeroAddress) {
     throw new Error("test.eth has no resolver set");
   }
-  const currentTimestamp = await env.deployment.client
-    .getBlock()
-    .then((b) => b.timestamp);
-  const aliasExpiry = currentTimestamp + BigInt(ONE_DAY_SECONDS);
-  const aliasRegisterTx = await env.waitFor(
-    env.deployment.contracts.ETHRegistry.write.register(
+
+  // Commit-reveal for alias.eth, using test.eth's resolver
+  const aliasSecret = "0x00000000000000000000000000000000000000000000000000000000000000ff" as `0x${string}`;
+  const aliasDuration = BigInt(28 * ONE_DAY_SECONDS);
+  const aliasPaymentToken = env.deployment.contracts.MockUSDC.address;
+  const aliasReferrer = "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
+
+  const aliasCommitment =
+    await env.deployment.contracts.ETHRegistrar.read.makeCommitment([
+      "alias",
+      env.namedAccounts.owner.address,
+      aliasSecret,
+      zeroAddress,
+      testNameData.resolver,
+      aliasDuration,
+      aliasReferrer,
+    ]);
+  const { receipt: aliasCommitReceipt } = await env.waitFor(
+    env.deployment.contracts.ETHRegistrar.write.commit([aliasCommitment], {
+      account: env.namedAccounts.owner,
+    }),
+  );
+  await trackGas("commit(alias)", aliasCommitReceipt);
+
+  const minAge =
+    await env.deployment.contracts.ETHRegistrar.read.MIN_COMMITMENT_AGE();
+  await env.sync({ warpSec: Number(minAge) + 1 });
+
+  const [aliasBase, aliasPremium] =
+    await env.deployment.contracts.ETHRegistrar.read.rentPrice([
+      "alias",
+      env.namedAccounts.owner.address,
+      aliasDuration,
+      aliasPaymentToken,
+    ]);
+  const aliasPrice = aliasBase + aliasPremium;
+  const aliasBalance = await env.deployment.contracts.MockUSDC.read.balanceOf([
+    env.namedAccounts.owner.address,
+  ]);
+  if (aliasBalance < aliasPrice) {
+    await env.deployment.contracts.MockUSDC.write.mint(
+      [env.namedAccounts.owner.address, aliasPrice - aliasBalance + 1000000n],
+      { account: env.namedAccounts.owner },
+    );
+  }
+  await env.deployment.contracts.MockUSDC.write.approve(
+    [env.deployment.contracts.ETHRegistrar.address, aliasPrice],
+    { account: env.namedAccounts.owner },
+  );
+
+  const { receipt: aliasRegisterReceipt } = await env.waitFor(
+    env.deployment.contracts.ETHRegistrar.write.register(
       [
         "alias",
         env.namedAccounts.owner.address,
+        aliasSecret,
         zeroAddress,
         testNameData.resolver,
-        ROLES.ALL,
-        aliasExpiry,
+        aliasDuration,
+        aliasPaymentToken,
+        aliasReferrer,
       ],
-      { account: env.namedAccounts.deployer },
+      { account: env.namedAccounts.owner },
     ),
   );
-  await trackGas("register(alias)", aliasRegisterTx.receipt);
+  await trackGas("register(alias)", aliasRegisterReceipt);
 
   const testResolver = getContract({
     address: testNameData.resolver,
