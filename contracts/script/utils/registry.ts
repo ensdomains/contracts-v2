@@ -4,6 +4,7 @@ import { artifacts } from "@rocketh";
 import { MAX_EXPIRY, ROLES, STATUS } from "../deploy-constants.js";
 import {
   splitName,
+  dnsEncodeName,
   idFromLabel,
   getLabelAt,
   getParentName,
@@ -26,7 +27,9 @@ export function getRegistryContract(
 }
 
 /**
- * Traverse the registry hierarchy to find data for a name
+ * Traverse the registry hierarchy to find data for a name.
+ * Uses UniversalResolverV2.findRegistries() to locate the parent registry,
+ * then reads state directly from it.
  */
 export async function traverseRegistry(
   env: DevnetEnvironment,
@@ -38,48 +41,44 @@ export async function traverseRegistry(
   subregistry?: `0x${string}`;
   registry?: `0x${string}`;
 } | null> {
-  const nameParts = splitName(name);
+  const label = getLabelAt(name);
+  if (!label) return null;
 
-  if (nameParts[nameParts.length - 1] !== "eth") {
+  // findRegistries returns [exactRegistry, parentRegistry, ..., rootRegistry]
+  // Index 1 is the registry where this name is registered
+  const registries =
+    await env.deployment.contracts.UniversalResolverV2.read.findRegistries([
+      dnsEncodeName(name),
+    ]);
+
+  // Index 1 is the parent registry (where this name's token lives)
+  const parentRegistryAddress = registries[1];
+  if (!parentRegistryAddress || parentRegistryAddress === zeroAddress) {
     return null;
   }
 
-  let currentRegistry = env.deployment.contracts.ETHRegistry;
+  const parentRegistry = getRegistryContract(env, parentRegistryAddress);
 
-  // Traverse from right to left: e.g., ["sub1", "sub2", "parent", "eth"]
-  for (let i = nameParts.length - 2; i >= 0; i--) {
-    const label = nameParts[i];
+  const [state, resolver, subregistry] = await Promise.all([
+    parentRegistry.read.getState([idFromLabel(label)]),
+    parentRegistry.read.getResolver([label]),
+    parentRegistry.read.getSubregistry([label]),
+  ]);
 
-    const [state, resolver, subregistry] = await Promise.all([
-      currentRegistry.read.getState([idFromLabel(label)]),
-      currentRegistry.read.getResolver([label]),
-      currentRegistry.read.getSubregistry([label]),
-    ]);
+  const owner = await parentRegistry.read.ownerOf([state.tokenId]);
 
-    if (i === 0) {
-      // This is the final name/subname
-      const owner = await currentRegistry.read.ownerOf([state.tokenId]);
-      return {
-        owner,
-        expiry: state.expiry,
-        resolver,
-        subregistry,
-        registry: currentRegistry.address,
-      };
-    }
-
-    // Move to the subregistry
-    if (subregistry === zeroAddress) {
-      return null;
-    }
-    currentRegistry = getRegistryContract(env, subregistry) as any;
-  }
-
-  return null;
+  return {
+    owner,
+    expiry: state.expiry,
+    resolver,
+    subregistry,
+    registry: parentRegistryAddress,
+  };
 }
 
 /**
- * Get parent name data and validate it has a subregistry
+ * Get parent name data and validate it has a subregistry.
+ * Uses UniversalResolverV2.findRegistries() — index 0 is the exact registry (child registry).
  */
 export async function getParentWithSubregistry(
   env: DevnetEnvironment,
@@ -93,13 +92,21 @@ export async function getParentWithSubregistry(
     throw new Error(`${parentName} does not exist or has no owner`);
   }
 
-  if (!data.subregistry || data.subregistry === zeroAddress) {
+  // findRegistries returns [exactRegistry, parentRegistry, ..., rootRegistry]
+  // Index 0 is the exact registry — the subregistry for children of this name
+  const registries =
+    await env.deployment.contracts.UniversalResolverV2.read.findRegistries([
+      dnsEncodeName(parentName),
+    ]);
+
+  const childRegistry = registries[0];
+  if (!childRegistry || childRegistry === zeroAddress) {
     throw new Error(`${parentName} has no subregistry`);
   }
 
   return {
     data,
-    registry: getRegistryContract(env, data.subregistry),
+    registry: getRegistryContract(env, childRegistry),
   };
 }
 

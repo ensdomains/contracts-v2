@@ -24,11 +24,12 @@ import {
   reregisterName,
   renewName,
 } from "./utils/registrar.js";
-import { showName } from "./utils/display.js";
+import { showName, showAlias } from "./utils/display.js";
 
 // Re-export all utilities for external consumers
 export {
   showName,
+  showAlias,
   createSubname,
   linkName,
   renewName,
@@ -208,6 +209,15 @@ export async function testNames(env: DevnetEnvironment) {
   ];
 
   await showName(env, allNames);
+
+  // Show alias mappings for names that may have aliases
+  const aliasCandidates = [
+    "alias.eth",
+    "sub.alias.eth",
+    "linked.parent.eth",
+    "wallet.linked.parent.eth",
+  ];
+  await showAlias(env, aliasCandidates);
 
   // Verify all names are properly registered
   await verifyNames(env, allNames);
