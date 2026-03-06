@@ -186,11 +186,20 @@ export async function testNames(env: DevnetEnvironment) {
     "✓ sub.test.eth records set — sub.alias.eth should resolve via alias",
   );
 
-  // Create subnames
-  const createdSubnames = await createSubname(
+  // Create sub2.parent.eth with 1-year expiry to demonstrate subname expiration
+  const currentTimestamp = await env.deployment.client
+    .getBlock()
+    .then((b) => b.timestamp);
+  const sub2Names = await createSubname(env, "sub2.parent.eth", {
+    expiry: currentTimestamp + BigInt(365 * ONE_DAY_SECONDS),
+  });
+
+  // Create remaining subname levels (sub2 already exists, will be skipped)
+  const deeperNames = await createSubname(
     env,
     "wallet.sub1.sub2.parent.eth",
   );
+  const createdSubnames = [...sub2Names, ...deeperNames];
 
   // Link sub1.sub2.parent.eth to parent.eth with different label (creates linked.parent.eth with shared children)
   // Now wallet.linked.parent.eth and wallet.sub1.sub2.parent.eth will be the same token

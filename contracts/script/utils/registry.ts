@@ -116,8 +116,13 @@ export async function getParentWithSubregistry(
 export async function createSubname(
   env: DevnetEnvironment,
   fullName: string,
-  account = env.namedAccounts.owner,
+  options: {
+    account?: any;
+    expiry?: bigint;
+  } = {},
 ): Promise<string[]> {
+  const account = options.account ?? env.namedAccounts.owner;
+  const expiry = options.expiry ?? MAX_EXPIRY;
   const createdNames: string[] = [];
 
   const parts = splitName(fullName);
@@ -207,7 +212,7 @@ export async function createSubname(
     } else {
       if (state.latestOwner !== zeroAddress) {
         console.log(
-          `${currentName} exists but is expired, re-registering with MAX_EXPIRY...`,
+          `${currentName} exists but is expired, re-registering...`,
         );
       } else {
         console.log(`Registering ${currentName}...`);
@@ -232,7 +237,7 @@ export async function createSubname(
           zeroAddress, // no nested subregistry yet
           resolver.address,
           ROLES.ALL,
-          MAX_EXPIRY,
+          expiry,
         ],
         { account },
       );
