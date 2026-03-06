@@ -72,13 +72,13 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Abstract function for the NameWrapper node (namehash).
-    function getWrappedNode() public view virtual returns (bytes32);
-
     /// @notice The DNS-encoded name for this registry.
     function getWrappedName() external view returns (bytes memory) {
         return NAME_WRAPPER.names(getWrappedNode());
     }
+
+    /// @dev Abstract function for the NameWrapper node (namehash).
+    function getWrappedNode() public view virtual returns (bytes32);
 
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
