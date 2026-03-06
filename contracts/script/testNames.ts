@@ -1,6 +1,5 @@
 import {
   type Address,
-  type TransactionReceipt,
   decodeFunctionResult,
   encodeFunctionData,
   getContract,
@@ -10,8 +9,20 @@ import {
 
 import { artifacts } from "@rocketh";
 import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
-import { dnsEncodeName, idFromLabel } from "../test/utils/utils.js";
+import {
+  dnsEncodeName,
+  idFromLabel,
+  splitName,
+  getParentName,
+  getLabelAt,
+} from "../test/utils/utils.js";
 import type { DevnetEnvironment } from "./setup.js";
+import { trackGas, displayGasReport, resetGasTracker } from "./utils/gas.js";
+import {
+  getRegistryContract,
+  traverseRegistry,
+  getParentWithSubregistry,
+} from "./utils/registry.js";
 
 // ========== Constants ==========
 
@@ -19,135 +30,7 @@ const ONE_DAY_SECONDS = 86400;
 
 const PermissionedResolverAbi = artifacts.PermissionedResolver.abi;
 
-// ========== Gas Tracking ==========
-
-type GasRecord = {
-  operation: string;
-  gasUsed: bigint;
-  effectiveGasPrice?: bigint;
-  totalCost?: bigint;
-};
-
-const gasTracker: GasRecord[] = [];
-
-async function trackGas(
-  operation: string,
-  receipt: TransactionReceipt,
-): Promise<void> {
-  const gasUsed = BigInt(receipt.gasUsed);
-  const effectiveGasPrice = receipt.effectiveGasPrice
-    ? BigInt(receipt.effectiveGasPrice)
-    : 0n;
-  gasTracker.push({
-    operation,
-    gasUsed,
-    effectiveGasPrice,
-    totalCost: gasUsed * effectiveGasPrice,
-  });
-}
-
-function displayGasReport() {
-  if (gasTracker.length === 0) {
-    console.log("\nNo gas data collected.");
-    return;
-  }
-
-  console.log("\n========== Gas Usage Report ==========");
-
-  const groupedByFunction = new Map<string, bigint[]>();
-
-  for (const { operation, gasUsed } of gasTracker) {
-    const functionName = operation.split("(")[0];
-    if (!groupedByFunction.has(functionName)) {
-      groupedByFunction.set(functionName, []);
-    }
-    groupedByFunction.get(functionName)!.push(gasUsed);
-  }
-
-  const reportData = Array.from(groupedByFunction.entries()).map(
-    ([functionName, gasValues]) => {
-      const count = gasValues.length;
-      const total = gasValues.reduce((sum, val) => sum + val, 0n);
-      const avg = total / BigInt(count);
-      const min = gasValues.reduce(
-        (min, val) => (val < min ? val : min),
-        gasValues[0],
-      );
-      const max = gasValues.reduce(
-        (max, val) => (val > max ? val : max),
-        gasValues[0],
-      );
-
-      return {
-        Function: functionName,
-        Calls: count,
-        "Avg Gas": avg.toString(),
-        "Min Gas": min.toString(),
-        "Max Gas": max.toString(),
-        "Total Gas": total.toString(),
-      };
-    },
-  );
-
-  console.table(reportData);
-
-  const totalGas = gasTracker.reduce((sum, { gasUsed }) => sum + gasUsed, 0n);
-  const totalCostWei = gasTracker.reduce(
-    (sum, { totalCost }) => sum + (totalCost || 0n),
-    0n,
-  );
-
-  console.log(`\nTotal Gas Used: ${totalGas.toString()}`);
-  console.log(`Total Cost: ${totalCostWei.toString()} wei`);
-  console.log(`Total Transactions: ${gasTracker.length}`);
-  console.log("======================================\n");
-}
-
-function resetGasTracker() {
-  gasTracker.length = 0;
-}
-
 // ========== Helper Functions ==========
-
-/**
- * Parse an ENS name into its components
- */
-function parseName(name: string): {
-  label: string;
-  parentName: string;
-  parts: string[];
-  isSecondLevel: boolean;
-  tld: string;
-} {
-  const parts = name.split(".");
-  const tld = parts[parts.length - 1];
-
-  if (tld !== "eth") {
-    throw new Error(`Name must end with .eth, got: ${name}`);
-  }
-
-  return {
-    label: parts[0],
-    parentName: parts.slice(1).join("."),
-    parts,
-    isSecondLevel: parts.length === 2,
-    tld,
-  };
-}
-
-/**
- * Create a UserRegistry contract instance
- */
-function getRegistryContract(
-  env: DevnetEnvironment,
-  registryAddress: `0x${string}`,
-) {
-  return getContract({
-    address: registryAddress,
-    abi: artifacts.UserRegistry.abi,
-    client: env.deployment.client,
-  });
-}
 
 /**
  * Deploy a resolver and set default records
@@ -190,81 +73,6 @@ async function deployResolverWithRecords(
   return resolver;
 }
 
-/**
- * Get parent name data and validate it has a subregistry
- */
-async function getParentWithSubregistry(
-  env: DevnetEnvironment,
-  parentName: string,
-): Promise<{
-  data: NonNullable<Awaited<ReturnType<typeof traverseRegistry>>>;
-  registry: ReturnType<typeof getRegistryContract>;
-}> {
-  const data = await traverseRegistry(env, parentName);
-  if (!data || data.owner === zeroAddress) {
-    throw new Error(`${parentName} does not exist or has no owner`);
-  }
-
-  if (!data.subregistry || data.subregistry === zeroAddress) {
-    throw new Error(`${parentName} has no subregistry`);
-  }
-
-  return {
-    data,
-    registry: getRegistryContract(env, data.subregistry),
-  };
-}
-
-async function traverseRegistry(
-  env: DevnetEnvironment,
-  name: string,
-): Promise<{
-  owner?: `0x${string}`;
-  expiry?: bigint;
-  resolver?: `0x${string}`;
-  subregistry?: `0x${string}`;
-  registry?: `0x${string}`;
-} | null> {
-  const nameParts = name.split(".");
-
-  if (nameParts[nameParts.length - 1] !== "eth") {
-    return null;
-  }
-
-  let currentRegistry = env.deployment.contracts.ETHRegistry;
-
-  // Traverse from right to left: e.g., ["sub1", "sub2", "parent", "eth"]
-  for (let i = nameParts.length - 2; i >= 0; i--) {
-    const label = nameParts[i];
-
-    const [state, resolver, subregistry] = await Promise.all([
-      currentRegistry.read.getState([idFromLabel(label)]),
-      currentRegistry.read.getResolver([label]),
-      currentRegistry.read.getSubregistry([label]),
-    ]);
-
-    if (i === 0) {
-      // This is the final name/subname
-      const owner = await currentRegistry.read.ownerOf([state.tokenId]);
-      return {
-        owner,
-        expiry: state.expiry,
-        resolver,
-        subregistry,
-        registry: currentRegistry.address,
-      };
-    }
-
-    // Move to the subregistry
-    if (subregistry === zeroAddress) {
-      return null;
-    }
-    currentRegistry = getRegistryContract(env, subregistry) as any;
-  }
-
-  return null;
-}
-
 // ========== Main Functions ==========
 
 // Display name information
@@ -275,8 +83,6 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
 
   for (const name of names) {
     const nameHash = namehash(name);
-
-    const { label } = parseName(name);
 
     let owner: `0x${string}` | undefined = undefined;
     let expiryDate: string = "N/A";
@@ -382,8 +188,7 @@ export async function createSubname(
 ): Promise<string[]> {
   const createdNames: string[] = [];
 
-  // Parse the name
-  const { parts } = parseName(fullName);
+  const parts = splitName(fullName);
 
   // Start from the parent name (e.g., "parent.eth")
   const parentLabel = parts[parts.length - 2];
@@ -532,14 +337,10 @@ export async function linkName(
 ) {
   console.log(`\nLinking name: ${sourceName} to parent: ${targetParentName}`);
 
-  // Parse and validate source name
-  const {
-    label: sourceLabel,
-    parentName: sourceParentName,
-    isSecondLevel,
-  } = parseName(sourceName);
+  const sourceLabel = getLabelAt(sourceName);
+  const sourceParentName = getParentName(sourceName);
 
-  if (isSecondLevel) {
+  if (splitName(sourceName).length === 2) {
     throw new Error(
       `Cannot link second-level names directly. Source must be a subname.`,
     );
@@ -626,7 +427,7 @@ export async function renewName(
   durationInDays: number,
   account = env.namedAccounts.owner,
 ) {
-  const { label } = parseName(name);
+  const label = getLabelAt(name);
 
   const expiry = await env.deployment.contracts.ETHRegistry.read.getExpiry([
     idFromLabel(label),
@@ -701,7 +502,7 @@ export async function transferName(
   newOwner: `0x${string}`,
   account = env.namedAccounts.owner,
 ) {
-  const { label } = parseName(name);
+  const label = getLabelAt(name);
 
   const tokenId = await env.deployment.contracts.ETHRegistry.read.getTokenId([
     idFromLabel(label),
@@ -733,7 +534,7 @@ export async function changeRole(
   rolesToRevoke: bigint,
   account = env.namedAccounts.owner,
 ) {
-  const { label } = parseName(name);
+  const label = getLabelAt(name);
 
   const tokenId = await env.deployment.contracts.ETHRegistry.read.getTokenId([
     idFromLabel(label),
