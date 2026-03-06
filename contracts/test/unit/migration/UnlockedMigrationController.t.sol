@@ -425,72 +425,6 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         }
     }
 
-    function test_clearRegistryV1() external {
-        (bytes memory name1, uint256 tokenIdV1) = registerUnwrapped("unwrapped");
-        bytes memory name2 = registerWrappedETH2LD("wrapped", CAN_DO_EVERYTHING);
-
-        bytes32 node1 = NameCoder.namehash(name1, 0);
-        bytes32 node2 = NameCoder.namehash(name2, 0);
-
-        string memory childLabel = "abc";
-        bytes32 childLabelHash = keccak256(bytes(childLabel));
-
-        // set 3LD resolvers
-        vm.prank(user);
-        registryV1.setSubnodeRecord(node1, childLabelHash, user, address(1), 0);
-        vm.prank(user);
-        nameWrapper.setSubnodeRecord(node2, childLabel, user, address(2), 0, 0, 0);
-
-        // migrate 2LD
-        vm.prank(user);
-        ethRegistrarV1.safeTransferFrom(
-            user,
-            address(migrationController),
-            tokenIdV1,
-            abi.encode(_makeData(name1))
-        );
-        vm.prank(user);
-        nameWrapper.safeTransferFrom(
-            user,
-            address(migrationController),
-            uint256(node2),
-            1,
-            abi.encode(_makeData(name2))
-        );
-
-        // confirm 3LD resolvers still exist
-        assertEq(
-            registryV1.resolver(NameCoder.namehash(node1, childLabelHash)),
-            address(1),
-            "before1"
-        );
-        assertEq(
-            registryV1.resolver(NameCoder.namehash(node2, childLabelHash)),
-            address(2),
-            "before2"
-        );
-
-        // clear 3LD resolvers of migrated tokens
-        bytes32[] memory parents = new bytes32[](2);
-        bytes32[] memory labels = new bytes32[](2);
-        parents[0] = node1;
-        parents[1] = node2;
-        labels[0] = childLabelHash;
-        labels[1] = childLabelHash;
-        migrationController.clearRegistryV1(parents, labels);
-
-        assertEq(
-            registryV1.resolver(NameCoder.namehash(node1, childLabelHash)),
-            address(0),
-            "after1"
-        );
-        assertEq(
-            registryV1.resolver(NameCoder.namehash(node2, childLabelHash)),
-            address(0),
-            "after2"
-        );
-    }
-
     function _makeData(bytes memory name) internal view returns (LibMigration.Data memory) {
         return
             LibMigration.Data({
@@ -498,7 +432,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
                 owner: user,
                 subregistry: testRegistry,
                 resolver: testResolver,
-                salt: 0 // ignored
+                salt: 0 // ignored by UnlockedMigrationController
             });
     }
 }

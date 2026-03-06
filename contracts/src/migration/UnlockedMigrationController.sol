@@ -20,24 +20,19 @@ import {LibMigration} from "./libraries/LibMigration.sol";
 /// Assumes premigration has `RESERVED` existing ENSv1 names.
 /// Requires `ROLE_REGISTER_RESERVED` on .eth registry to perform migration.
 ///
-/// Supports two entry points:
-/// 1. Wrapped but unlocked names (ERC1155 from NameWrapper): unwraps via `unwrapETH2LD`
-///    then registers. Reverts with `NameIsWrapped` if the owner-controlled fuse
-///    `CANNOT_UNWRAP` has been burned (i.e., the name is Locked and should be migrated via
-///    `LockedMigrationController` instead).
-/// 2. Unwrapped names (ERC721 from BaseRegistrar): registers directly.
+/// Supports (2) token sources:
+/// 1. NameWrapper (ERC-1155) but unlocked only.
+///    Reverts with `NameIsWrapped` if `_isLocked()` => use LockedMigrationController instead.
+/// 2. BaseRegistrar (ERC-721)
 ///
 /// Unlike locked migration, no subregistry is deployed and no fuse-to-role translation is
-/// performed — the name is registered in the .eth registry with the roles and subregistry
+/// performed.  The name is registered in the .eth registry with the roles and subregistry
 /// specified in the caller-provided `LibMigration.Data`.
 ///
 contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
-
-    /// @dev A separate burn address to avoid extra logic in `onERC721Received()`.
-    address internal constant _UNWRAP_ADDRESS = address(0xdead);
 
     /// @notice The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     IPermissionedRegistry public immutable ETH_REGISTRY;
@@ -99,13 +94,6 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         return this.onERC721Received.selector;
     }
 
-    /// @notice Zero registry descendents of migrated tokens.
-    function clearRegistryV1(bytes32[] calldata parents, bytes32[] calldata labels) external {
-        for (uint256 i; i < parents.length; ++i) {
-            _REGISTRY_V1.setSubnodeRecord(parents[i], labels[i], address(this), address(0), 0);
-        }
-    }
-
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
@@ -131,8 +119,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
                 revert LibMigration.NameDataMismatch(id);
             }
             // clear ENSv1 resolver
-            NAME_WRAPPER.unwrapETH2LD(labelHash, _UNWRAP_ADDRESS, address(this));
-            _REGISTRY_V1.setResolver(bytes32(id), address(0));
+            NAME_WRAPPER.setResolver(bytes32(id), address(0));
             _inject(mds[i]);
         }
     }

@@ -661,7 +661,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             LibMigration.Data({
                 label: NameCoder.firstLabel(name),
                 owner: user,
-                subregistry: IRegistry(address(0)), // ignored
+                subregistry: IRegistry(address(0)), // ignored by LockedMigrationController
                 resolver: testResolver,
                 salt: uint256(keccak256(abi.encode(name, block.timestamp)))
             });

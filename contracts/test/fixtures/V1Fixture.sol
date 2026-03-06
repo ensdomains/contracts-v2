@@ -12,7 +12,6 @@ import {
 } from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
 import {NameWrapper, IMetadataService} from "@ens/contracts/wrapper/NameWrapper.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeResolver.sol";
 import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 
 /// @dev Reusable testing fixture for ENSv1.
