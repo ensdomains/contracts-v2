@@ -20,9 +20,6 @@ library LibMigration {
         /// @dev Resolver address to set for the migrated name.
         ///      Ignored if locked and `CANNOT_SET_RESOLVER`.
         address resolver;
-        /// @dev CREATE2 salt for deterministic WrapperRegistry deployment.
-        ///      Ignored by unlocked migration..
-        uint256 salt;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -30,7 +27,7 @@ library LibMigration {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Minimum size of `abi.encode(Data({...}))`.
-    uint256 internal constant MIN_DATA_SIZE = 8 * 32;
+    uint256 internal constant MIN_DATA_SIZE = 7 * 32;
 
     ////////////////////////////////////////////////////////////////////////
     // Errors

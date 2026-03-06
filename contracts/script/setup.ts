@@ -65,13 +65,14 @@ const contracts = {
   PermissionedResolverImpl: artifacts.PermissionedResolver.abi,
   UserRegistryImpl: artifacts.UserRegistry.abi,
   WrapperRegistryImpl: artifacts.WrapperRegistry.abi,
+  // migration
+  UnlockedMigrationController: artifacts.UnlockedMigrationController.abi,
+  LockedMigrationController: artifacts.LockedMigrationController.abi,
   // resolvers
   UniversalResolverV2: artifacts.UniversalResolverV2.abi,
   DNSTLDResolver: artifacts.DNSTLDResolver.abi,
   DNSTXTResolver: artifacts.DNSTXTResolver.abi,
   DNSAliasResolver: artifacts.DNSAliasResolver.abi,
-  // migration
-  UnlockedMigrationController: artifacts.UnlockedMigrationController.abi,
   // v1
   BatchGatewayProvider: artifacts.GatewayProvider.abi,
   RootV1: artifacts.Root.abi,

@@ -123,7 +123,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             IRegistry subregistry = IRegistry(
                 VERIFIABLE_FACTORY.deployProxy(
                     WRAPPER_REGISTRY_IMPL,
-                    md.salt,
+                    uint256(node),
                     abi.encodeCall(
                         IWrapperRegistry.initialize,
                         (

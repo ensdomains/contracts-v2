@@ -5,10 +5,12 @@ import {
   encodeAbiParameters,
   type Hex,
   labelhash,
+  namehash,
   zeroAddress,
 } from "viem";
-import { STATUS } from "../../script/deploy-constants.js";
+import { STATUS, MAX_EXPIRY, FUSES } from "../../script/deploy-constants.js";
 import { expectVar } from "../utils/expectVar.js";
+import { getLabelAt } from "../utils/utils.js";
 
 // see: LibMigration.sol
 const migrationDataComponents = [
@@ -16,7 +18,6 @@ const migrationDataComponents = [
   { name: "owner", type: "address" },
   { name: "subregistry", type: "address" },
   { name: "resolver", type: "address" },
-  { name: "salt", type: "uint256" },
 ] as const satisfies AbiParameter[];
 
 type MigrationData = AbiParameterToPrimitiveType<{
@@ -39,10 +40,14 @@ describe("Migration", () => {
     },
   });
 
-  async function reserve(label: string, resolverAddress = zeroAddress) {
+  async function ensurePremigration(label: string) {
     const tokenId = BigInt(labelhash(label));
-    const expiry =
-      await env.deployment.contracts.ETHRegistrarV1.read.nameExpires([tokenId]);
+    const [expiry, resolverAddress] = await Promise.all([
+      env.deployment.contracts.ETHRegistrarV1.read.nameExpires([tokenId]),
+      env.deployment.contracts.ENSRegistryV1.read.resolver([
+        namehash(`${label}.eth`),
+      ]),
+    ]);
     await env.deployment.contracts.ETHRegistry.write.register([
       label,
       zeroAddress, // owner
@@ -51,6 +56,48 @@ describe("Migration", () => {
       0n, // roleBitmap
       expiry,
     ]);
+  }
+
+  class WrappedToken {
+    constructor(
+      readonly name: string,
+      readonly account: Account,
+    ) {}
+    get namehash() {
+      return namehash(this.name);
+    }
+    get tokenId() {
+      return BigInt(this.namehash);
+    }
+    label(i = 0) {
+      return getLabelAt(this.name, i);
+    }
+    async createChild({
+      label = "sub",
+      fuses = FUSES.CAN_DO_EVERYTHING,
+      account = this.account,
+      expiry = MAX_EXPIRY,
+    }: {
+      label?: string;
+      fuses?: number;
+      account?: Account;
+      expiry?: bigint;
+    } = {}) {
+      await env.deployment.contracts.NameWrapperV1.write.setSubnodeOwner(
+        [this.namehash, label, account.address, fuses, expiry],
+        { account: this.account },
+      );
+      return new WrappedToken(`${label}.${this.name}`, account);
+    }
+    makeData(data: Partial<MigrationData> = {}): MigrationData {
+      return {
+        label: this.label(),
+        owner: this.account.address,
+        subregistry: zeroAddress,
+        resolver: zeroAddress,
+        ...data,
+      };
+    }
   }
 
   async function registerUnwrapped({
@@ -68,7 +115,7 @@ describe("Migration", () => {
       [unwrappedTokenId, account.address, duration],
       { account: env.namedAccounts.owner },
     );
-    await reserve(label);
+    await ensurePremigration(label);
     const name = `${label}.eth`;
     return {
       label,
@@ -76,6 +123,7 @@ describe("Migration", () => {
       account,
       unwrappedTokenId,
       makeData,
+      wrap,
     };
     function makeData(data: Partial<MigrationData> = {}) {
       return {
@@ -83,9 +131,21 @@ describe("Migration", () => {
         owner: account.address,
         subregistry: zeroAddress,
         resolver: zeroAddress,
-        salt: 0n, // not used
         ...data,
       };
+    }
+    async function wrap(fuses: number = FUSES.CAN_DO_EVERYTHING) {
+      // i think this is simpler than doing it via transfer
+      // TODO: check that this is equivalent to transfer
+      await env.deployment.contracts.ETHRegistrarV1.write.approve(
+        [env.deployment.contracts.NameWrapperV1.address, unwrappedTokenId],
+        { account },
+      );
+      await env.deployment.contracts.NameWrapperV1.write.wrapETH2LD(
+        [label, account.address, fuses, zeroAddress],
+        { account },
+      );
+      return new WrappedToken(name, account);
     }
   }
 
@@ -103,28 +163,29 @@ describe("Migration", () => {
     }
   }
 
-  describe("unwrapped", () => {
-    it("registerUnwrapped", async () => {
+  describe("helpers", () => {
+    it("registerUnwrapped()", async () => {
       await registerUnwrapped();
     });
+    it("wrap()", async () => {
+      const { wrap } = await registerUnwrapped();
+      await wrap();
+    });
+  });
 
+  describe("unwrapped", () => {
     it("by owner", async () => {
-      const {
-        account,
-        unwrappedTokenId,
-        makeData: migrationData,
-      } = await registerUnwrapped();
+      const { account, unwrappedTokenId, makeData } = await registerUnwrapped();
       await env.deployment.contracts.ETHRegistrarV1.write.safeTransferFrom(
         [
           account.address,
           env.deployment.contracts.UnlockedMigrationController.address,
           unwrappedTokenId,
-          encodeMigrationData(migrationData()),
+          encodeMigrationData(makeData()),
         ],
         { account },
       );
-
-      const { latestOwner, status } =
+      const { status, latestOwner } =
         await env.deployment.contracts.ETHRegistry.read.getState([
           unwrappedTokenId,
         ]);
@@ -133,7 +194,49 @@ describe("Migration", () => {
     });
   });
 
-  describe("unlocked", () => {});
+  describe("unlocked", () => {
+    it("by owner", async () => {
+      const { account, unwrappedTokenId, wrap } = await registerUnwrapped();
+      const wrapped = await wrap();
+      await env.deployment.contracts.NameWrapperV1.write.safeTransferFrom(
+        [
+          account.address,
+          env.deployment.contracts.UnlockedMigrationController.address,
+          wrapped.tokenId,
+          1n,
+          encodeMigrationData(wrapped.makeData()),
+        ],
+        { account },
+      );
+      const { status, latestOwner } =
+        await env.deployment.contracts.ETHRegistry.read.getState([
+          unwrappedTokenId,
+        ]);
+      expectVar({ status }).toStrictEqual(STATUS.REGISTERED);
+      expectVar({ latestOwner }).toStrictEqual(account.address);
+    });
+  });
 
-  describe("locked", () => {});
+  describe("locked", () => {
+    it("by owner", async () => {
+      const { account, unwrappedTokenId, wrap } = await registerUnwrapped();
+      const wrapped = await wrap(FUSES.CANNOT_UNWRAP);
+      await env.deployment.contracts.NameWrapperV1.write.safeTransferFrom(
+        [
+          account.address,
+          env.deployment.contracts.LockedMigrationController.address,
+          wrapped.tokenId,
+          1n,
+          encodeMigrationData(wrapped.makeData()),
+        ],
+        { account },
+      );
+      const { status, latestOwner } =
+        await env.deployment.contracts.ETHRegistry.read.getState([
+          unwrappedTokenId,
+        ]);
+      expectVar({ status }).toStrictEqual(STATUS.REGISTERED);
+      expectVar({ latestOwner }).toStrictEqual(account.address);
+    });
+  });
 });

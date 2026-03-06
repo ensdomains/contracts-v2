@@ -551,8 +551,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
                 label: NameCoder.firstLabel(name),
                 owner: user,
                 subregistry: testRegistry,
-                resolver: testResolver,
-                salt: 0 // ignored by UnlockedMigrationController
+                resolver: testResolver
             });
     }
 }
