@@ -65,40 +65,47 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
     });
 
     // Single UniversalResolver call with multicall
-    const [result] =
-      await env.deployment.contracts.UniversalResolverV2.read.resolve([
-        dnsEncodeName(name),
-        multicallData,
-      ]);
+    let ethAddress: string | undefined;
+    let description: string | undefined;
 
-    // Decode the multicall result - returns array of bytes directly
-    const results =
-      result && result !== "0x"
-        ? (decodeFunctionResult({
-            abi: PermissionedResolverAbi,
-            functionName: "multicall",
-            data: result,
-          }) as readonly `0x${string}`[])
-        : [];
+    try {
+      const [result] =
+        await env.deployment.contracts.UniversalResolverV2.read.resolve([
+          dnsEncodeName(name),
+          multicallData,
+        ]);
 
-    // Decode individual results
-    const ethAddress =
-      results[0] && results[0] !== "0x"
-        ? (decodeFunctionResult({
-            abi: PermissionedResolverAbi,
-            functionName: "addr",
-            data: results[0],
-          }) as string)
-        : undefined;
+      // Decode the multicall result - returns array of bytes directly
+      const results =
+        result && result !== "0x"
+          ? (decodeFunctionResult({
+              abi: PermissionedResolverAbi,
+              functionName: "multicall",
+              data: result,
+            }) as readonly `0x${string}`[])
+          : [];
 
-    const description =
-      results[1] && results[1] !== "0x"
-        ? (decodeFunctionResult({
-            abi: PermissionedResolverAbi,
-            functionName: "text",
-            data: results[1],
-          }) as string)
-        : undefined;
+      // Decode individual results
+      ethAddress =
+        results[0] && results[0] !== "0x"
+          ? (decodeFunctionResult({
+              abi: PermissionedResolverAbi,
+              functionName: "addr",
+              data: results[0],
+            }) as string)
+          : undefined;
+
+      description =
+        results[1] && results[1] !== "0x"
+          ? (decodeFunctionResult({
+              abi: PermissionedResolverAbi,
+              functionName: "text",
+              data: results[1],
+            }) as string)
+          : undefined;
+    } catch {
+      // Resolution may fail for names without a resolver (e.g., reserved or unregistered names)
+    }
 
     const truncateAddress = (addr: string | undefined) => {
       if (!addr || addr === "0x") return "-";

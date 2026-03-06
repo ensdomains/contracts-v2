@@ -6,8 +6,8 @@ import {
 } from "viem";
 
 import { artifacts } from "@rocketh";
-import { MAX_EXPIRY, ROLES } from "./deploy-constants.js";
-import { dnsEncodeName } from "../test/utils/utils.js";
+import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
+import { dnsEncodeName, idFromLabel } from "../test/utils/utils.js";
 import type { DevnetEnvironment } from "./setup.js";
 import { trackGas, displayGasReport, resetGasTracker } from "./utils/gas.js";
 import {
@@ -16,6 +16,8 @@ import {
   linkName,
   transferName,
   changeRole,
+  reserveName,
+  unregisterName,
 } from "./utils/registry.js";
 import {
   registerTestNames,
@@ -34,6 +36,8 @@ export {
   changeRole,
   registerTestNames,
   reregisterName,
+  reserveName,
+  unregisterName,
 };
 
 const ONE_DAY_SECONDS = 86400;
@@ -176,6 +180,15 @@ export async function testNames(env: DevnetEnvironment) {
     await trackGas("changeRole(changerole)", receipt);
   }
 
+  // Reserve a name (no owner, no token minted)
+  const reserveReceipt = await reserveName(env, "reserved.eth");
+  await trackGas("reserve(reserved)", reserveReceipt);
+
+  // Register then unregister a name
+  await registerTestNames(env, ["unregistered"], { trackGas: true });
+  const unregisterReceipt = await unregisterName(env, "unregistered.eth");
+  await trackGas("unregister(unregistered)", unregisterReceipt);
+
   const allNames = [
     "test.eth",
     "example.eth",
@@ -187,6 +200,8 @@ export async function testNames(env: DevnetEnvironment) {
     "changerole.eth",
     "alias.eth",
     "sub.alias.eth",
+    "reserved.eth",
+    "unregistered.eth",
     ...createdSubnames,
     "linked.parent.eth",
     "wallet.linked.parent.eth",
@@ -210,8 +225,38 @@ async function verifyNames(env: DevnetEnvironment, names: string[]) {
 
   // Names that resolve only via alias (not directly registered in registry)
   const aliasOnlyNames = new Set(["sub.alias.eth"]);
+  // Names that are reserved (no owner, no token)
+  const reservedNames = new Set(["reserved.eth"]);
+  // Names that were unregistered (back to AVAILABLE)
+  const unregisteredNames = new Set(["unregistered.eth"]);
 
   for (const name of names) {
+    if (reservedNames.has(name)) {
+      const label = name.split(".")[0];
+      const state = await env.deployment.contracts.ETHRegistry.read.getState([
+        idFromLabel(label),
+      ]);
+      if (state.status !== STATUS.RESERVED) {
+        errors.push(
+          `${name}: expected RESERVED status (${STATUS.RESERVED}), got ${state.status}`,
+        );
+      }
+      continue;
+    }
+
+    if (unregisteredNames.has(name)) {
+      const label = name.split(".")[0];
+      const state = await env.deployment.contracts.ETHRegistry.read.getState([
+        idFromLabel(label),
+      ]);
+      if (state.status !== STATUS.AVAILABLE) {
+        errors.push(
+          `${name}: expected AVAILABLE status (${STATUS.AVAILABLE}), got ${state.status}`,
+        );
+      }
+      continue;
+    }
+
     if (aliasOnlyNames.has(name)) {
       // Verify alias resolution via UniversalResolver
       try {

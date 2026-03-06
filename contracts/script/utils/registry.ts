@@ -427,3 +427,84 @@ export async function changeRole(
 
   return receipts;
 }
+
+/**
+ * Reserve a name (registers with owner = address(0), no token minted)
+ *
+ * NOTE: Once PR #233 lands, reservation will use a dedicated `reserve()` function
+ * with a `reservedOwner` field instead of `register(owner=0x0, roleBitmap=0)`.
+ * See: https://github.com/ensdomains/contracts-v2/pull/233
+ */
+export async function reserveName(
+  env: DevnetEnvironment,
+  name: string,
+  options: {
+    expiry?: bigint;
+    account?: any;
+    registrarAccount?: any;
+  } = {},
+) {
+  const label = getLabelAt(name);
+  const account = options.account ?? env.namedAccounts.owner;
+  const registrarAccount =
+    options.registrarAccount ?? env.namedAccounts.deployer;
+
+  const currentTimestamp = await env.deployment.client
+    .getBlock()
+    .then((b) => b.timestamp);
+  const expiry = options.expiry ?? currentTimestamp + BigInt(86400);
+
+  console.log(`\nReserving ${name}...`);
+
+  const { receipt } = await env.waitFor(
+    env.deployment.contracts.ETHRegistry.write.register(
+      [
+        label,
+        zeroAddress, // owner = address(0) triggers reservation
+        zeroAddress, // no subregistry
+        zeroAddress, // no resolver
+        0n, // roleBitmap must be 0 for reservations
+        expiry,
+      ],
+      { account: registrarAccount },
+    ),
+  );
+
+  const state = await env.deployment.contracts.ETHRegistry.read.getState([
+    idFromLabel(label),
+  ]);
+  console.log(`✓ Reserved ${name} (status: ${state.status}, tokenId: ${state.tokenId})`);
+
+  return receipt;
+}
+
+/**
+ * Unregister a name (deletes it from the registry)
+ */
+export async function unregisterName(
+  env: DevnetEnvironment,
+  name: string,
+  account = env.namedAccounts.owner,
+) {
+  const label = getLabelAt(name);
+
+  const tokenId = await env.deployment.contracts.ETHRegistry.read.getTokenId([
+    idFromLabel(label),
+  ]);
+
+  console.log(`\nUnregistering ${name}...`);
+  console.log(`TokenId: ${tokenId}`);
+
+  const { receipt } = await env.waitFor(
+    env.deployment.contracts.ETHRegistry.write.unregister([tokenId], {
+      account,
+    }),
+  );
+
+  const state = await env.deployment.contracts.ETHRegistry.read.getState([
+    idFromLabel(label),
+  ]);
+  console.log(`✓ Unregistered ${name} (status: ${state.status})`);
+
+  return receipt;
+}
