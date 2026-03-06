@@ -91,11 +91,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             "WRAPPER_REGISTRY_IMPL"
         );
-        assertEq(
-            migrationController.getCanonicalName(),
-            NameCoder.encode("eth"),
-            "getCanonicalName"
-        );
+        assertEq(migrationController.getWrappedName(), NameCoder.encode("eth"), "getWrappedName");
+        assertEq(migrationController.getWrappedNode(), NameCoder.ETH_NODE, "getWrappedNode");
     }
 
     function test_supportsInterface() external view {
@@ -365,7 +362,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "WRAPPER_REGISTRY_IMPL"
         );
         assertEq(subregistry.roleCount(RegistryRolesLib.ROLE_SET_PARENT), 0, "ROLE_SET_PARENT");
-        assertEq(subregistry.getCanonicalName(), name, "getCanonicalName");
+        assertEq(subregistry.getWrappedNode(), node, "getWrappedNode");
+        assertEq(subregistry.getWrappedName(), name, "getWrappedName");
         assertEq(universalResolver.findCanonicalName(subregistry), name, "findCanonicalName");
     }
 

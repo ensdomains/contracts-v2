@@ -72,9 +72,12 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Abstract function for the NameWrapper node (namehash).
+    function getWrappedNode() public view virtual returns (bytes32);
+
     /// @notice The DNS-encoded name for this registry.
-    function getCanonicalName() external view returns (bytes memory) {
-        return NAME_WRAPPER.names(_getNode());
+    function getWrappedName() external view returns (bytes memory) {
+        return NAME_WRAPPER.names(getWrappedNode());
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -88,7 +91,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ) internal override {
         IWrapperRegistry.ConstructorArgs memory args;
         args.parentRegistry = _getRegistry();
-        bytes32 parentNode = _getNode();
+        bytes32 parentNode = getWrappedNode();
         for (uint256 i; i < ids.length; ++i) {
             LibMigration.Data memory md = mds[i];
             if (md.owner == address(0)) {
@@ -157,12 +160,9 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @dev Abstract function for the registry being wrapped.
     function _getRegistry() internal view virtual returns (IRegistry);
 
-    /// @dev Abstract function for the node (namehash) being wrapped.
-    function _getNode() internal view virtual returns (bytes32);
-
     /// @dev Determine if `label` is emancipated but not-yet migrated.
     function _isMigratableChild(string memory label) internal view returns (bool) {
-        bytes32 node = NameCoder.namehash(_getNode(), keccak256(bytes(label)));
+        bytes32 node = NameCoder.namehash(getWrappedNode(), keccak256(bytes(label)));
         (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
         return ownerV1 != address(this) && _isLocked(fuses);
     }

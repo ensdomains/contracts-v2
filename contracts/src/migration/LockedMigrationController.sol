@@ -36,6 +36,11 @@ contract LockedMigrationController is LockedWrapperReceiver {
         ETH_REGISTRY = ethRegistry;
     }
 
+    /// @inheritdoc LockedWrapperReceiver
+    function getWrappedNode() public pure override returns (bytes32) {
+        return NameCoder.ETH_NODE;
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Internal Functons
     ////////////////////////////////////////////////////////////////////////
@@ -63,10 +68,5 @@ contract LockedMigrationController is LockedWrapperReceiver {
     /// @inheritdoc LockedWrapperReceiver
     function _getRegistry() internal view override returns (IRegistry) {
         return ETH_REGISTRY;
-    }
-
-    /// @inheritdoc LockedWrapperReceiver
-    function _getNode() internal pure override returns (bytes32) {
-        return NameCoder.ETH_NODE;
     }
 }
