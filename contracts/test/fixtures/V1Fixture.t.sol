@@ -180,6 +180,7 @@ contract V1FixtureTest is V1Fixture {
         vm.prank(user);
         nameWrapper.approve(friend, uint256(node));
         // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L146-L149
+        vm.prank(friend);
         vm.expectRevert(
             abi.encodeWithSignature("Error(string)", "ERC1155: caller is not owner nor approved")
         );
