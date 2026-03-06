@@ -8,6 +8,7 @@ import {
 import { artifacts } from "@rocketh";
 import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
 import { dnsEncodeName, idFromLabel } from "../test/utils/utils.js";
+import { dnsDecodeName } from "../lib/ens-contracts/test/fixtures/dnsDecodeName.js";
 import type { DevnetEnvironment } from "./setup.js";
 import { trackGas, displayGasReport, resetGasTracker } from "./utils/gas.js";
 import {
@@ -51,6 +52,14 @@ export async function testNames(env: DevnetEnvironment) {
   resetGasTracker();
 
   console.log("\n========== Starting testNames with Gas Tracking ==========\n");
+
+  // Set canonical parent on ETHRegistry so findCanonicalRegistry works
+  // NOTE: This should ideally be in the deployment scripts once PR #209 patterns are adopted
+  await env.deployment.contracts.ETHRegistry.write.setParent(
+    [env.deployment.contracts.RootRegistry.address, "eth"],
+    { account: env.namedAccounts.deployer },
+  );
+  console.log("✓ ETHRegistry.setParent(RootRegistry, 'eth')");
 
   // Register reregister
   await registerTestNames(env, ["reregister"], { trackGas: true });
@@ -200,6 +209,37 @@ export async function testNames(env: DevnetEnvironment) {
     "wallet.sub1.sub2.parent.eth",
   );
   const createdSubnames = [...sub2Names, ...deeperNames];
+
+  // Verify setParent works by checking both findCanonicalRegistry and findCanonicalName.
+  // These only work when setParent is correctly set on every UserRegistry in the chain.
+  // findCanonicalRegistry: walks top-down to find the registry, then verifies bottom-up.
+  // findCanonicalName: walks bottom-up from a registry to root, building the DNS name.
+  const namesWithSubregistries = ["parent.eth", "sub2.parent.eth", "sub1.sub2.parent.eth"];
+  for (const name of namesWithSubregistries) {
+    const canonicalRegistry =
+      await env.deployment.contracts.UniversalResolverV2.read.findCanonicalRegistry([
+        dnsEncodeName(name),
+      ]);
+    if (canonicalRegistry === zeroAddress) {
+      throw new Error(
+        `findCanonicalRegistry failed for ${name} — setParent may be missing`,
+      );
+    }
+
+    const canonicalNameBytes =
+      await env.deployment.contracts.UniversalResolverV2.read.findCanonicalName([
+        canonicalRegistry,
+      ]);
+    const canonicalName = canonicalNameBytes && canonicalNameBytes !== "0x"
+      ? dnsDecodeName(canonicalNameBytes)
+      : "";
+    if (canonicalName !== name) {
+      throw new Error(
+        `findCanonicalName mismatch for ${name}: got "${canonicalName}"`,
+      );
+    }
+    console.log(`✓ setParent verified: ${name} ↔ ${canonicalRegistry.slice(0, 9)}..`);
+  }
 
   // Link sub1.sub2.parent.eth to parent.eth with different label (creates linked.parent.eth with shared children)
   // Now wallet.linked.parent.eth and wallet.sub1.sub2.parent.eth will be the same token

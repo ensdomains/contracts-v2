@@ -198,7 +198,15 @@ export async function createSubname(
         );
       }
 
-      console.log(`✓ UserRegistry deployed at ${subregistryAddress}`);
+      // Set canonical parent so findCanonicalRegistry/findCanonicalName work
+      // The label is parts[i+1] because this registry is the subregistry for that label in the parent
+      const newUserRegistry = getRegistryContract(env, subregistryAddress);
+      await newUserRegistry.write.setParent(
+        [currentRegistryAddress, parts[i + 1]],
+        { account },
+      );
+
+      console.log(`✓ UserRegistry deployed at ${subregistryAddress} (parent: ${parts[i + 1]})`);
     }
 
     // Register the subname in the UserRegistry
