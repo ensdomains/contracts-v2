@@ -14,7 +14,7 @@ import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 // initial gas analysis
 // * Unwrapped: 160300
 // * Unlocked: 179367
-// * Locked: 659168 (~500k for WrapperRegistry)
+// * Locked: 658489 (~500k for VerifiedFactory => WrapperRegistry)
 
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;

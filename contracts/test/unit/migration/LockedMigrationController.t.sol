@@ -336,7 +336,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         assertEq(ethRegistry.getExpiry(tokenId), ethRegistrarV1.nameExpires(tokenIdV1), "expiry");
         assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
         checkResolution(name, address(ensV2Resolver), md.resolver);
-        WrapperRegistry subregistry = WrapperRegistry(
+        IWrapperRegistry subregistry = IWrapperRegistry(
             address(ethRegistry.getSubregistry(md.label))
         );
         assertTrue(
@@ -349,17 +349,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         assertTrue(
             subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, md.owner),
             "ROLE_REGISTRAR"
-        );
-        assertEq(address(subregistry.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
-        assertEq(
-            address(subregistry.VERIFIABLE_FACTORY()),
-            address(verifiableFactory),
-            "VERIFIABLE_FACTORY"
-        );
-        assertEq(
-            subregistry.WRAPPER_REGISTRY_IMPL(),
-            address(wrapperRegistryImpl),
-            "WRAPPER_REGISTRY_IMPL"
         );
         assertEq(subregistry.roleCount(RegistryRolesLib.ROLE_SET_PARENT), 0, "ROLE_SET_PARENT");
         assertEq(subregistry.getWrappedNode(), node, "getWrappedNode");

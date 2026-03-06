@@ -124,8 +124,23 @@ contract WrapperRegistry is
         return _isMigratableChild(label) ? V1_RESOLVER : super.getResolver(label);
     }
 
-    /// @inheritdoc LockedWrapperReceiver
-    function getWrappedNode() public view override returns (bytes32) {
+    /// @inheritdoc IWrapperRegistry
+    function getWrappedName()
+        public
+        view
+        override(LockedWrapperReceiver, IWrapperRegistry)
+        returns (bytes memory)
+    {
+        return super.getWrappedName();
+    }
+
+    /// @inheritdoc IWrapperRegistry
+    function getWrappedNode()
+        public
+        view
+        override(LockedWrapperReceiver, IWrapperRegistry)
+        returns (bytes32)
+    {
         return _node;
     }
 

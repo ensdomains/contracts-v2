@@ -76,11 +76,11 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The DNS-encoded name for this registry.
-    function getWrappedName() external view returns (bytes memory) {
+    function getWrappedName() public view virtual returns (bytes memory) {
         return NAME_WRAPPER.names(getWrappedNode());
     }
 
-    /// @dev Abstract function for the NameWrapper node (namehash).
+    /// @notice The NameWrapper node (namehash).
     function getWrappedNode() public view virtual returns (bytes32);
 
     ////////////////////////////////////////////////////////////////////////
@@ -157,7 +157,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         }
     }
 
-    /// @dev Abstract function for registering a locked name.
+    /// @dev Register a locked name.
     function _inject(
         string memory label,
         address owner,
@@ -167,7 +167,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         uint64 expiry
     ) internal virtual returns (uint256 tokenId);
 
-    /// @dev Abstract function for the target of migration.
+    /// @dev The ENSv2 registry being migrated to.
     function _getRegistry() internal view virtual returns (IRegistry);
 
     /// @dev Determine if `label` is emancipated but not-yet migrated.

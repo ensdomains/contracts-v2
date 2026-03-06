@@ -10,17 +10,17 @@ import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 
 import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 
-/// @notice Migration controller for handling locked .eth 2LD NameWrapper names.
+/// @notice Migration controller for handling locked .eth names.
 ///
 /// Assumes premigration has `RESERVED` existing ENSv1 names.
-/// Requires `ROLE_REGISTER_RESERVED` on "eth" registry to perform migration.
+/// Requires `ROLE_REGISTER_RESERVED` on .eth registry to perform migration.
 ///
 contract LockedMigrationController is LockedWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
+    /// @notice The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
     ////////////////////////////////////////////////////////////////////////
@@ -36,16 +36,16 @@ contract LockedMigrationController is LockedWrapperReceiver {
         ETH_REGISTRY = ethRegistry;
     }
 
-    /// @inheritdoc LockedWrapperReceiver
+    /// @notice The DNS-encoded name for "eth".
     function getWrappedNode() public pure override returns (bytes32) {
         return NameCoder.ETH_NODE;
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Internal Functons
+    // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc LockedWrapperReceiver
+    /// @dev Register `RESERVED` .eth token.
     function _inject(
         string memory label,
         address owner,

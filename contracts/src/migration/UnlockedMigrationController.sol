@@ -15,26 +15,31 @@ import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
 
 /// @title UnlockedMigrationController
-/// @notice Handles migration of unlocked .eth 2LD names from ENSv1 to v2. Supports two entry points:
+/// @notice Migration controller for handling unwrapped and unlocked .eth names.
 ///
-/// - Wrapped but unlocked names (ERC1155 from NameWrapper): unwraps via `unwrapETH2LD`
-///   then registers. Reverts with `MigrationNotSupported` if the owner-controlled fuse
-///   `CANNOT_UNWRAP` has been burned (i.e., the name is Locked and should be migrated via
-///   `LockedMigrationController` instead).
-/// - Unwrapped names (ERC721 from BaseRegistrar): registers directly.
+/// Assumes premigration has `RESERVED` existing ENSv1 names.
+/// Requires `ROLE_REGISTER_RESERVED` on .eth registry to perform migration.
+///
+/// Supports two entry points:
+/// 1. Wrapped but unlocked names (ERC1155 from NameWrapper): unwraps via `unwrapETH2LD`
+///    then registers. Reverts with `NameIsWrapped` if the owner-controlled fuse
+///    `CANNOT_UNWRAP` has been burned (i.e., the name is Locked and should be migrated via
+///    `LockedMigrationController` instead).
+/// 2. Unwrapped names (ERC721 from BaseRegistrar): registers directly.
 ///
 /// Unlike locked migration, no subregistry is deployed and no fuse-to-role translation is
 /// performed — the name is registered in the .eth registry with the roles and subregistry
-/// specified in the caller-provided `MigrationData`.
+/// specified in the caller-provided `LibMigration.Data`.
+///
 contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev A separate burn address for ` tokens to avoid extra logic in `onERC721Received()`.
+    /// @dev A separate burn address to avoid extra logic in `onERC721Received()`.
     address internal constant _UNWRAP_ADDRESS = address(0xdead);
 
-    /// @dev The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
+    /// @notice The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
     /// @dev The ENSv1 `BaseRegistrar` contract.

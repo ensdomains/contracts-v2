@@ -30,7 +30,7 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The ENSv1 `NameWrapper` contract that holds wrapped names as ERC1155 tokens.
+    /// @notice The ENSv1 `NameWrapper` contract that holds wrapped names as ERC1155 tokens.
     INameWrapper public immutable NAME_WRAPPER;
 
     /// @dev The ENSv1 `ENSRegistry` contract.
@@ -164,7 +164,7 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Abstract function to migrate received NameWrapper tokens.
+    /// @dev Migrate received NameWrapper tokens.
     ///      Token owner is this contract.
     ///      Token is not expired.
     function _migrateWrapped(
