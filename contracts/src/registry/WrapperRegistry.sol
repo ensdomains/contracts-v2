@@ -7,7 +7,6 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
@@ -78,23 +77,21 @@ contract WrapperRegistry is
     }
 
     /// @inheritdoc IWrapperRegistry
-    function initialize(IWrapperRegistry.ConstructorArgs calldata args) public initializer {
-        if (args.admin == address(0)) {
-            revert InvalidOwner();
-        }
-
-        // remember namehash of the canonical name
-        _node = args.node;
-
+    function initialize(
+        bytes32 node,
+        IRegistry parentRegistry,
+        string calldata childLabel,
+        address admin,
+        uint256 roleBitmap
+    ) public initializer {
+        _node = node;
         // setup canonical parent (ROLE_SET_PARENT is not granted)
-        _parentRegistry = args.parentRegistry;
-        _childLabel = args.childLabel;
-
-        // Configure owner with upgrade permissions and specified roles
+        _parentRegistry = parentRegistry;
+        _childLabel = childLabel;
         _grantRoles(
             ROOT_RESOURCE,
-            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | args.roleBitmap,
-            args.admin,
+            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | roleBitmap,
+            admin,
             false
         );
     }

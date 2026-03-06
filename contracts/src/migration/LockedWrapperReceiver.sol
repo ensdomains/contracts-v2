@@ -43,16 +43,19 @@ uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
 ///     ↪ WrapperRegistry("sub.nick.eth").subregistry("abc") = WrapperRegistry("abc.sub.nick.eth")
 ///
 /// Upon successful migration:
-/// * subregistry is bound to a WrapperRegistry (token does not have `SET_SUBREGISTRY` role)
-/// * subregistry knows the parent node (namehash)
-/// * subregistry migrates children of the same parent
+/// * subregistry is bound to a WrapperRegistry (does not have `ROLE_SET_SUBREGISTRY`)
+/// * subregistry is canonical (does not have `ROLE_SET_PARENT`) and knows its name
+/// * subregistry migrates emancipated children with the same parent
 ///
 abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice The shared factory for verifiable deployments.
     VerifiableFactory public immutable VERIFIABLE_FACTORY;
+
+    /// @notice The `WrapperRegistry` implementation contract.
     address public immutable WRAPPER_REGISTRY_IMPL;
 
     ////////////////////////////////////////////////////////////////////////
@@ -89,8 +92,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         uint256[] calldata ids,
         LibMigration.Data[] calldata mds
     ) internal override {
-        IWrapperRegistry.ConstructorArgs memory args;
-        args.parentRegistry = _getRegistry();
+        IRegistry parentRegistry = _getRegistry();
         bytes32 parentNode = getWrappedNode();
         for (uint256 i; i < ids.length; ++i) {
             LibMigration.Data memory md = mds[i];
@@ -117,31 +119,39 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
             }
 
-            bool fusesFrozen;
-            uint256 tokenRoles;
-            (fusesFrozen, tokenRoles, args.roleBitmap) = _generateRoleBitmapsFromFuses(fuses);
-            // PermissionedRegistry._register() => _grantRoles() => _checkRoleBitmap() :: roles are correct by construction
-
             // create subregistry
-            args.node = node;
-            args.childLabel = md.label;
-            args.admin = md.owner;
             IRegistry subregistry = IRegistry(
                 VERIFIABLE_FACTORY.deployProxy(
                     WRAPPER_REGISTRY_IMPL,
                     md.salt,
-                    abi.encodeCall(IWrapperRegistry.initialize, (args))
+                    abi.encodeCall(
+                        IWrapperRegistry.initialize,
+                        (
+                            node,
+                            parentRegistry,
+                            md.label,
+                            md.owner,
+                            _subregistryRoleBitmapFromFuses(fuses)
+                        )
+                    )
                 )
             );
 
             // add name to ENSv2
-            _inject(md.label, md.owner, subregistry, md.resolver, tokenRoles, expiry);
             // PermissionedRegistry._register() => CannotSetPastExpiration :: see expiry check
             // PermissionedRegistry._register() => NameAlreadyRegistered :: only have ROLE_REGISTER_RESERVED
             // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver :: see owner check
+            _inject(
+                md.label,
+                md.owner,
+                subregistry,
+                md.resolver,
+                _tokenRoleBitmapFromFuses(fuses),
+                expiry
+            );
 
             // Burn all migration fuses
-            if (!fusesFrozen) {
+            if (_notFrozen(fuses)) {
                 NAME_WRAPPER.setFuses(node, uint16(FUSES_TO_BURN));
             }
         }
@@ -157,7 +167,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         uint64 expiry
     ) internal virtual returns (uint256 tokenId);
 
-    /// @dev Abstract function for the registry being wrapped.
+    /// @dev Abstract function for the target of migration.
     function _getRegistry() internal view virtual returns (IRegistry);
 
     /// @dev Determine if `label` is emancipated but not-yet migrated.
@@ -167,47 +177,37 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         return ownerV1 != address(this) && _isLocked(fuses);
     }
 
-    /// @notice Generates role bitmaps based on fuses.
-    /// @param fuses The current fuses on the name
-    /// @return fusesFrozen True if fuses are frozen.
-    /// @return tokenRoles The token roles in parent registry.
-    /// @return registryRoles The root roles in token subregistry.
-    function _generateRoleBitmapsFromFuses(
+    /// @dev Returns `true` if the NameWrapper token fuses are not frozen.
+    function _notFrozen(uint32 fuses) internal pure returns (bool) {
+        return (fuses & CANNOT_BURN_FUSES) == 0;
+    }
+
+    /// @dev Convert fuses to equivalent subregistry root roles.
+    function _subregistryRoleBitmapFromFuses(
         uint32 fuses
-    ) internal pure returns (bool fusesFrozen, uint256 tokenRoles, uint256 registryRoles) {
-        // Check if fuses are permanently frozen
-        fusesFrozen = (fuses & CANNOT_BURN_FUSES) != 0;
-
-        // Include renewal permissions if expiry can be extended
-        if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
-            tokenRoles |= RegistryRolesLib.ROLE_RENEW;
-            if (!fusesFrozen) {
-                tokenRoles |= RegistryRolesLib.ROLE_RENEW_ADMIN;
-            }
-        }
-
-        // Conditionally add resolver roles
-        if ((fuses & CANNOT_SET_RESOLVER) == 0) {
-            tokenRoles |= RegistryRolesLib.ROLE_SET_RESOLVER;
-            if (!fusesFrozen) {
-                tokenRoles |= RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
-            }
-        }
-
-        // Add transfer admin role if transfers are allowed
-        if ((fuses & CANNOT_TRANSFER) == 0) {
-            tokenRoles |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
-        }
-
-        // Owner gets registrar permissions on subregistry only if subdomain creation is allowed
+    ) internal pure returns (uint256 roleBitmap) {
         if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
-            registryRoles |= RegistryRolesLib.ROLE_REGISTRAR;
-            if (!fusesFrozen) {
-                registryRoles |= RegistryRolesLib.ROLE_REGISTRAR_ADMIN;
-            }
+            roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR;
         }
+        if (_notFrozen(fuses)) {
+            roleBitmap |= roleBitmap << 128; // give admin
+        }
+        roleBitmap |= RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN;
+    }
 
-        // Add renewal roles to subregistry
-        registryRoles |= RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN;
+    /// @dev Convert fuses to equivalent token roles.
+    function _tokenRoleBitmapFromFuses(uint32 fuses) internal pure returns (uint256 roleBitmap) {
+        if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_RENEW;
+        }
+        if ((fuses & CANNOT_SET_RESOLVER) == 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_SET_RESOLVER;
+        }
+        if (_notFrozen(fuses)) {
+            roleBitmap |= roleBitmap << 128; // give admin
+        }
+        if ((fuses & CANNOT_TRANSFER) == 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        }
     }
 }
