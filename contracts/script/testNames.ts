@@ -143,7 +143,7 @@ export async function testNames(env: DevnetEnvironment) {
   // Now wallet.linked.parent.eth and wallet.sub1.sub2.parent.eth will be the same token
   await linkName(env, "sub1.sub2.parent.eth", "parent.eth", "linked");
 
-  // With OwnedResolver (node-keyed), children of linked names need an alias so
+  // With PermissionedResolver (node-keyed), children of linked names need an alias so
   // that wallet.linked.parent.eth resolves to the same records as wallet.sub1.sub2.parent.eth
   const walletData = await traverseRegistry(env, "wallet.sub1.sub2.parent.eth");
   if (walletData?.resolver && walletData.resolver !== zeroAddress) {

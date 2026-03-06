@@ -34,7 +34,7 @@ export async function registerTestNames(
     });
 
     if (shouldTrackGas)
-      await trackGas("deployOwnedResolver", resolver.deploymentReceipt);
+      await trackGas("deployPermissionedResolver", resolver.deploymentReceipt);
 
     let expiry: bigint;
     if (options.expiry !== undefined) {
