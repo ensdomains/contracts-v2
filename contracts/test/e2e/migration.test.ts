@@ -31,7 +31,7 @@ describe("Migration", () => {
   setupEnv({
     resetOnEach: true,
     async initialize() {
-      // add owner as controller so we can register() directly
+      // hack: add owner as controller so we can register() directly
       const { owner } = env.namedAccounts;
       await env.deployment.contracts.ETHRegistrarV1.write.addController(
         [owner.address],
@@ -42,18 +42,14 @@ describe("Migration", () => {
 
   async function ensurePremigration(label: string) {
     const tokenId = BigInt(labelhash(label));
-    const [expiry, resolverAddress] = await Promise.all([
-      env.deployment.contracts.ETHRegistrarV1.read.nameExpires([tokenId]),
-      env.deployment.contracts.ENSRegistryV1.read.resolver([
-        namehash(`${label}.eth`),
-      ]),
-    ]);
+    const expiry =
+      await env.deployment.contracts.ETHRegistrarV1.read.nameExpires([tokenId]);
     await env.deployment.contracts.ETHRegistry.write.register([
       label,
-      zeroAddress, // owner
+      zeroAddress, // owner (must be null)
       zeroAddress, // registry
-      resolverAddress,
-      0n, // roleBitmap
+      env.deployment.contracts.ENSV1Resolver.address,
+      0n, // roleBitmap (must be null)
       expiry,
     ]);
   }
@@ -110,10 +106,9 @@ describe("Migration", () => {
     duration?: bigint;
   } = {}) {
     const unwrappedTokenId = BigInt(labelhash(label));
-    // register using controller hack
     await env.deployment.contracts.ETHRegistrarV1.write.register(
       [unwrappedTokenId, account.address, duration],
-      { account: env.namedAccounts.owner },
+      { account: env.namedAccounts.owner }, // register using hack
     );
     await ensurePremigration(label);
     const name = `${label}.eth`;

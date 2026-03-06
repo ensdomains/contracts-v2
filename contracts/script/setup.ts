@@ -73,6 +73,8 @@ const contracts = {
   DNSTLDResolver: artifacts.DNSTLDResolver.abi,
   DNSTXTResolver: artifacts.DNSTXTResolver.abi,
   DNSAliasResolver: artifacts.DNSAliasResolver.abi,
+  ENSV1Resolver: artifacts.ENSV1Resolver.abi,
+  ENSV2Resolver: artifacts.ENSV2Resolver.abi,
   // v1
   BatchGatewayProvider: artifacts.GatewayProvider.abi,
   RootV1: artifacts.Root.abi,

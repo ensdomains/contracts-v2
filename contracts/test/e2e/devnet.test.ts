@@ -1,5 +1,4 @@
-import { beforeAll, describe, expect, it } from "bun:test";
-import { toHex } from "viem";
+import { describe, expect, it } from "bun:test";
 import { expectVar } from "../utils/expectVar.js";
 
 describe("Devnet", () => {
@@ -31,9 +30,7 @@ describe("Devnet", () => {
       await env.deployment.contracts.BatchGatewayProvider.read.gateways();
     await env.deployment.contracts.BatchGatewayProvider.write.setGateways(
       [[]],
-      {
-        account: env.namedAccounts.owner,
-      },
+      { account: env.namedAccounts.owner },
     );
     expect(
       env.deployment.contracts.BatchGatewayProvider.read.gateways(),
