@@ -142,21 +142,29 @@ describe("Migration", () => {
       return idFromLabel(this.label);
     }
     async setResolver(address: Address) {
-      const { name, account } = this;
-      await env.v1.ENSRegistry.write.setResolver([namehash(name), address], {
-        account,
-      });
+      await env.v1.ENSRegistry.write.setResolver(
+        [namehash(this.name), address],
+        { account: this.account },
+      );
     }
     async wrap(fuses: number = FUSES.CAN_DO_EVERYTHING) {
-      // i think this is simpler than doing it via transfer
-      // TODO: check that this is equivalent to transfer
       const { name, account, tokenId, label } = this;
-      await env.v1.BaseRegistrar.write.approve(
-        [env.v1.NameWrapper.address, tokenId],
-        { account },
-      );
-      await env.v1.NameWrapper.write.wrapETH2LD(
-        [label, account.address, fuses, zeroAddress],
+      await env.v1.BaseRegistrar.write.safeTransferFrom(
+        [
+          account.address,
+          env.v1.NameWrapper.address,
+          tokenId,
+          encodeAbiParameters(
+            // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/NameWrapper.sol#L789-L794
+            [
+              { name: "label", type: "string" },
+              { name: "owner", type: "address" },
+              { name: "fuses", type: "uint16" },
+              { name: "resolver", type: "address" },
+            ],
+            [label, account.address, fuses, zeroAddress],
+          ),
+        ],
         { account },
       );
       return new WrappedToken(name, account);
