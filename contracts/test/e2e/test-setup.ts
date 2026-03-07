@@ -24,7 +24,7 @@ declare global {
 
 const t0 = Date.now();
 
-const env = await setupDevnet();
+const env = await setupDevnet({ procLog: false });
 
 // save the initial state
 const resetInitialState = await env.saveState();

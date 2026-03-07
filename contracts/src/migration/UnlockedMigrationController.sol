@@ -45,8 +45,8 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     ////////////////////////////////////////////////////////////////////////
 
     constructor(
-        IPermissionedRegistry ethRegistry,
-        INameWrapper nameWrapper
+        INameWrapper nameWrapper,
+        IPermissionedRegistry ethRegistry
     ) AbstractWrapperReceiver(nameWrapper) {
         ETH_REGISTRY = ethRegistry;
         _REGISTRAR_V1 = nameWrapper.registrar();

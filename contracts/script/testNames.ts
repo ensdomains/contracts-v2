@@ -145,7 +145,7 @@ function getRegistryContract(
   return getContract({
     address: registryAddress,
     abi: artifacts.UserRegistry.abi,
-    client: env.deployment.client,
+    client: env.client,
   });
 }
 
@@ -162,7 +162,7 @@ async function deployResolverWithRecords(
   },
   shouldTrackGas: boolean = false,
 ) {
-  const resolver = await env.deployment.deployPermissionedResolver({ account });
+  const resolver = await env.deployPermissionedResolver({ account });
   const node = namehash(name);
 
   if (shouldTrackGas) {
@@ -171,7 +171,7 @@ async function deployResolverWithRecords(
 
   // Set ETH address (coin type 60)
   if (records.address) {
-    const { receipt } = await env.waitFor(
+    const receipt = await env.waitFor(
       resolver.write.setAddr([node, 60n, records.address], { account }),
     );
     if (shouldTrackGas) await trackGas(`setAddr(${name})`, receipt);
@@ -179,7 +179,7 @@ async function deployResolverWithRecords(
 
   // Set description text record
   if (records.description) {
-    const { receipt } = await env.waitFor(
+    const receipt = await env.waitFor(
       resolver.write.setText([node, "description", records.description], {
         account,
       }),
@@ -231,7 +231,7 @@ async function traverseRegistry(
     return null;
   }
 
-  let currentRegistry = env.deployment.contracts.ETHRegistry;
+  let currentRegistry = env.v2.ETHRegistry;
 
   // Traverse from right to left: e.g., ["sub1", "sub2", "parent", "eth"]
   for (let i = nameParts.length - 2; i >= 0; i--) {
@@ -319,11 +319,10 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
     });
 
     // Single UniversalResolver call with multicall
-    const [result] =
-      await env.deployment.contracts.UniversalResolverV2.read.resolve([
-        dnsEncodeName(name),
-        multicallData,
-      ]);
+    const [result] = await env.v2.UniversalResolver.read.resolve([
+      dnsEncodeName(name),
+      multicallData,
+    ]);
 
     // Decode the multicall result - returns array of bytes directly
     const results =
@@ -393,15 +392,13 @@ export async function createSubname(
   console.log(`Parent name: ${parentName}`);
 
   // Get parent tokenId (assumes parent.eth already exists)
-  const parentTokenId =
-    await env.deployment.contracts.ETHRegistry.read.getTokenId([
-      idFromLabel(parentLabel),
-    ]);
+  const parentTokenId = await env.v2.ETHRegistry.read.getTokenId([
+    idFromLabel(parentLabel),
+  ]);
 
   // For each level of subnames, create UserRegistry and register
   let currentParentTokenId = parentTokenId;
-  let currentRegistryAddress: `0x${string}` =
-    env.deployment.contracts.ETHRegistry.address;
+  let currentRegistryAddress: `0x${string}` = env.v2.ETHRegistry.address;
   let currentName = parentName;
 
   // Process subname parts from right to left (parent to child)
@@ -415,14 +412,11 @@ export async function createSubname(
     // Check if current parent has a subregistry
     let subregistryAddress: `0x${string}`;
 
-    if (
-      currentRegistryAddress === env.deployment.contracts.ETHRegistry.address
-    ) {
+    if (currentRegistryAddress === env.v2.ETHRegistry.address) {
       // Parent is in ETHRegistry
-      subregistryAddress =
-        await env.deployment.contracts.ETHRegistry.read.getSubregistry([
-          parts[i + 1],
-        ]);
+      subregistryAddress = await env.v2.ETHRegistry.read.getSubregistry([
+        parts[i + 1],
+      ]);
     } else {
       // Parent is in a UserRegistry
       const parentRegistry = getRegistryContract(env, currentRegistryAddress);
@@ -435,16 +429,14 @@ export async function createSubname(
     if (subregistryAddress === zeroAddress) {
       console.log(`Deploying UserRegistry for ${currentName}...`);
 
-      const userRegistry = await env.deployment.deployUserRegistry({
+      const userRegistry = await env.deployUserRegistry({
         account,
       });
       subregistryAddress = userRegistry.address;
 
       // Set as subregistry on parent
-      if (
-        currentRegistryAddress === env.deployment.contracts.ETHRegistry.address
-      ) {
-        await env.deployment.contracts.ETHRegistry.write.setSubregistry(
+      if (currentRegistryAddress === env.v2.ETHRegistry.address) {
+        await env.v2.ETHRegistry.write.setSubregistry(
           [currentParentTokenId, subregistryAddress],
           { account },
         );
@@ -628,9 +620,7 @@ export async function renewName(
 ) {
   const { label } = parseName(name);
 
-  const expiry = await env.deployment.contracts.ETHRegistry.read.getExpiry([
-    idFromLabel(label),
-  ]);
+  const expiry = await env.v2.ETHRegistry.read.getExpiry([idFromLabel(label)]);
 
   console.log(`\nRenewing ${name}...`);
   if (expiry === MAX_EXPIRY) {
@@ -644,11 +634,11 @@ export async function renewName(
   console.log(`Extending by: ${durationInDays} days`);
 
   const duration = BigInt(durationInDays * ONE_DAY_SECONDS);
-  const paymentToken = env.deployment.contracts.MockUSDC.address;
+  const paymentToken = env.v2.MockUSDC.address;
   const referrer =
     "0x0000000000000000000000000000000000000000000000000000000000000000";
 
-  const [price] = await env.deployment.contracts.ETHRegistrar.read.rentPrice([
+  const [price] = await env.v2.ETHRegistrar.read.rentPrice([
     label,
     account.address,
     duration,
@@ -657,36 +647,29 @@ export async function renewName(
 
   console.log(`Renewal price: ${price}`);
 
-  const balance = await env.deployment.contracts.MockUSDC.read.balanceOf([
-    account.address,
-  ]);
+  const balance = await env.v2.MockUSDC.read.balanceOf([account.address]);
   console.log(`Current balance: ${balance}`);
 
   if (balance < price) {
     const amountToMint = price - balance + 1000000n;
     console.log(`Minting ${amountToMint} tokens...`);
-    await env.deployment.contracts.MockUSDC.write.mint(
-      [account.address, amountToMint],
-      { account },
-    );
+    await env.v2.MockUSDC.write.mint([account.address, amountToMint], {
+      account,
+    });
   }
 
-  await env.deployment.contracts.MockUSDC.write.approve(
-    [env.deployment.contracts.ETHRegistrar.address, price],
-    { account },
-  );
+  await env.v2.MockUSDC.write.approve([env.v2.ETHRegistrar.address, price], {
+    account,
+  });
 
-  const { receipt } = await env.waitFor(
-    env.deployment.contracts.ETHRegistrar.write.renew(
-      [label, duration, paymentToken, referrer],
-      { account },
-    ),
+  const receipt = await env.waitFor(
+    env.v2.ETHRegistrar.write.renew([label, duration, paymentToken, referrer], {
+      account,
+    }),
   );
 
   const newExpiry = Number(
-    await env.deployment.contracts.ETHRegistry.read.getExpiry([
-      idFromLabel(label),
-    ]),
+    await env.v2.ETHRegistry.read.getExpiry([idFromLabel(label)]),
   );
   console.log(`New expiry: ${new Date(newExpiry * 1000).toISOString()}`);
   console.log(`✓ Renewal completed`);
@@ -703,7 +686,7 @@ export async function transferName(
 ) {
   const { label } = parseName(name);
 
-  const tokenId = await env.deployment.contracts.ETHRegistry.read.getTokenId([
+  const tokenId = await env.v2.ETHRegistry.read.getTokenId([
     idFromLabel(label),
   ]);
 
@@ -712,8 +695,8 @@ export async function transferName(
   console.log(`From: ${account.address}`);
   console.log(`To: ${newOwner}`);
 
-  const { receipt } = await env.waitFor(
-    env.deployment.contracts.ETHRegistry.write.safeTransferFrom(
+  const receipt = await env.waitFor(
+    env.v2.ETHRegistry.write.safeTransferFrom(
       [account.address, newOwner, tokenId, 1n, "0x"],
       { account },
     ),
@@ -735,7 +718,7 @@ export async function changeRole(
 ) {
   const { label } = parseName(name);
 
-  const tokenId = await env.deployment.contracts.ETHRegistry.read.getTokenId([
+  const tokenId = await env.v2.ETHRegistry.read.getTokenId([
     idFromLabel(label),
   ]);
 
@@ -746,8 +729,8 @@ export async function changeRole(
   const receipts: TransactionReceipt[] = [];
 
   if (rolesToGrant > 0n) {
-    const { receipt } = await env.waitFor(
-      env.deployment.contracts.ETHRegistry.write.grantRoles(
+    const receipt = await env.waitFor(
+      env.v2.ETHRegistry.write.grantRoles(
         [tokenId, rolesToGrant, targetAccount],
         { account },
       ),
@@ -756,8 +739,8 @@ export async function changeRole(
   }
 
   if (rolesToRevoke > 0n) {
-    const { receipt } = await env.waitFor(
-      env.deployment.contracts.ETHRegistry.write.revokeRoles(
+    const receipt = await env.waitFor(
+      env.v2.ETHRegistry.write.revokeRoles(
         [tokenId, rolesToRevoke, targetAccount],
         { account },
       ),
@@ -765,9 +748,9 @@ export async function changeRole(
     receipts.push(receipt);
   }
 
-  const newTokenId = await env.deployment.contracts.ETHRegistry.read.getTokenId(
-    [idFromLabel(label)],
-  );
+  const newTokenId = await env.v2.ETHRegistry.read.getTokenId([
+    idFromLabel(label),
+  ]);
   console.log(`TokenId changed from ${tokenId} to ${newTokenId}`);
 
   return receipts;
@@ -788,12 +771,10 @@ export async function registerTestNames(
   const registrarAccount =
     options.registrarAccount ?? env.namedAccounts.deployer;
   const shouldTrackGas = options.trackGas ?? false;
-  const currentTimestamp = await env.deployment.client
-    .getBlock()
-    .then((b) => b.timestamp);
+  const currentTimestamp = await env.client.getBlock().then((b) => b.timestamp);
 
   for (const label of labels) {
-    const resolver = await env.deployment.deployPermissionedResolver({
+    const resolver = await env.deployPermissionedResolver({
       account,
     });
 
@@ -808,7 +789,7 @@ export async function registerTestNames(
     }
 
     const registerTx = await env.waitFor(
-      env.deployment.contracts.ETHRegistry.write.register(
+      env.v2.ETHRegistry.write.register(
         [
           label,
           account.address,
@@ -822,7 +803,7 @@ export async function registerTestNames(
     );
 
     if (shouldTrackGas) {
-      await trackGas(`register(${label})`, registerTx.receipt);
+      await trackGas(`register(${label})`, registerTx);
     }
 
     const node = namehash(`${label}.eth`);
@@ -838,7 +819,7 @@ export async function registerTestNames(
     );
 
     if (shouldTrackGas) {
-      await trackGas(`setAddr(${label})`, setAddrTx.receipt);
+      await trackGas(`setAddr(${label})`, setAddrTx);
     }
 
     const setTextTx = await env.waitFor(
@@ -848,7 +829,7 @@ export async function registerTestNames(
     );
 
     if (shouldTrackGas) {
-      await trackGas(`setText(${label})`, setTextTx.receipt);
+      await trackGas(`setText(${label})`, setTextTx);
     }
   }
 }
@@ -863,10 +844,9 @@ export async function reregisterName(
     `\n=== Testing Re-registration of Expired Name: ${label}.eth ===`,
   );
 
-  const initialExpiry =
-    await env.deployment.contracts.ETHRegistry.read.getExpiry([
-      idFromLabel(label),
-    ]);
+  const initialExpiry = await env.v2.ETHRegistry.read.getExpiry([
+    idFromLabel(label),
+  ]);
   console.log(
     `Initial expiry: ${new Date(Number(initialExpiry) * 1000).toISOString()}`,
   );
@@ -877,15 +857,14 @@ export async function reregisterName(
   await env.sync({ warpSec: warpSeconds });
 
   console.log(
-    `\nCurrent onchain timestamp: ${new Date(Number(await env.deployment.client.getBlock().then((b) => b.timestamp)) * 1000).toISOString()}`,
+    `\nCurrent onchain timestamp: ${new Date(Number(await env.client.getBlock().then((b) => b.timestamp)) * 1000).toISOString()}`,
   );
   console.log(
     `\nCurrent onchain expiry: ${new Date(Number(initialExpiry) * 1000).toISOString()}`,
   );
 
   // Verify name is available for re-registration
-  const isAvailable =
-    await env.deployment.contracts.ETHRegistrar.read.isAvailable([label]);
+  const isAvailable = await env.v2.ETHRegistrar.read.isAvailable([label]);
   console.log(`Name available for re-registration: ${isAvailable}`);
 
   if (!isAvailable) {
@@ -895,7 +874,7 @@ export async function reregisterName(
   // Re-register with proper expiry based on blockchain time
   console.log(`\nRe-registering ${label}.eth...`);
 
-  const currentBlock = await env.deployment.client.getBlock();
+  const currentBlock = await env.client.getBlock();
   const newExpiry = currentBlock.timestamp + BigInt(ONE_DAY_SECONDS);
 
   await registerTestNames(env, [label], {
@@ -905,9 +884,7 @@ export async function reregisterName(
 
   // Verify re-registration succeeded
   const reregisteredExpiry = Number(
-    await env.deployment.contracts.ETHRegistry.read.getExpiry([
-      idFromLabel(label),
-    ]),
+    await env.v2.ETHRegistry.read.getExpiry([idFromLabel(label)]),
   );
   console.log(
     `New expiry: ${new Date(reregisteredExpiry * 1000).toISOString()}`,
@@ -962,12 +939,10 @@ export async function testNames(env: DevnetEnvironment) {
   if (!testNameData?.resolver || testNameData.resolver === zeroAddress) {
     throw new Error("test.eth has no resolver set");
   }
-  const currentTimestamp = await env.deployment.client
-    .getBlock()
-    .then((b) => b.timestamp);
+  const currentTimestamp = await env.client.getBlock().then((b) => b.timestamp);
   const aliasExpiry = currentTimestamp + BigInt(ONE_DAY_SECONDS);
   const aliasRegisterTx = await env.waitFor(
-    env.deployment.contracts.ETHRegistry.write.register(
+    env.v2.ETHRegistry.write.register(
       [
         "alias",
         env.namedAccounts.owner.address,
@@ -979,12 +954,12 @@ export async function testNames(env: DevnetEnvironment) {
       { account: env.namedAccounts.deployer },
     ),
   );
-  await trackGas("register(alias)", aliasRegisterTx.receipt);
+  await trackGas("register(alias)", aliasRegisterTx);
 
   const testResolver = getContract({
     address: testNameData.resolver,
     abi: PermissionedResolverAbi,
-    client: env.deployment.client,
+    client: env.client,
   });
   const aliasTx = await env.waitFor(
     testResolver.write.setAlias(
@@ -992,7 +967,7 @@ export async function testNames(env: DevnetEnvironment) {
       { account: env.namedAccounts.owner },
     ),
   );
-  await trackGas("setAlias(alias→test)", aliasTx.receipt);
+  await trackGas("setAlias(alias→test)", aliasTx);
   console.log("✓ alias.eth → test.eth alias created");
 
   // Set records for sub.test.eth on test.eth's resolver so sub.alias.eth resolves via alias
@@ -1006,14 +981,14 @@ export async function testNames(env: DevnetEnvironment) {
       { account: env.namedAccounts.owner },
     ),
   );
-  await trackGas("setAddr(sub.test.eth)", setSubAddrTx.receipt);
+  await trackGas("setAddr(sub.test.eth)", setSubAddrTx);
   const setSubTextTx = await env.waitFor(
     testResolver.write.setText(
       [subTestNode, "description", "sub.test.eth (via alias)"],
       { account: env.namedAccounts.owner },
     ),
   );
-  await trackGas("setText(sub.test.eth)", setSubTextTx.receipt);
+  await trackGas("setText(sub.test.eth)", setSubTextTx);
   console.log(
     "✓ sub.test.eth records set — sub.alias.eth should resolve via alias",
   );
@@ -1035,7 +1010,7 @@ export async function testNames(env: DevnetEnvironment) {
     const walletResolver = getContract({
       address: walletData.resolver,
       abi: PermissionedResolverAbi,
-      client: env.deployment.client,
+      client: env.client,
     });
     await walletResolver.write.setAlias(
       [
@@ -1105,11 +1080,10 @@ async function verifyNames(env: DevnetEnvironment, names: string[]) {
           functionName: "addr",
           args: [namehash(name)],
         });
-        const [result] =
-          await env.deployment.contracts.UniversalResolverV2.read.resolve([
-            dnsEncodeName(name),
-            addrCall,
-          ]);
+        const [result] = await env.v2.UniversalResolver.read.resolve([
+          dnsEncodeName(name),
+          addrCall,
+        ]);
         if (!result || result === "0x") {
           errors.push(`${name}: alias resolution returned empty result`);
         }
@@ -1132,7 +1106,7 @@ async function verifyNames(env: DevnetEnvironment, names: string[]) {
 
     // Check expiry is in the future
     if (data.expiry && data.expiry !== MAX_EXPIRY) {
-      const currentTimestamp = await env.deployment.client
+      const currentTimestamp = await env.client
         .getBlock()
         .then((b) => b.timestamp);
       if (data.expiry <= currentTimestamp) {

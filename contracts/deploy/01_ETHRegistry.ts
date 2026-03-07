@@ -28,7 +28,7 @@ export default execute(
     });
   },
   {
-    tags: ["ETHRegistry", "l1"],
+    tags: ["ETHRegistry", "v2"],
     dependencies: ["RootRegistry", "HCAFactory", "RegistryMetadata"],
   },
 );

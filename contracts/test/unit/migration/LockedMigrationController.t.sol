@@ -65,8 +65,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             metadata
         );
         migrationController = new LockedMigrationController(
-            ethRegistry,
             nameWrapper,
+            ethRegistry,
             verifiableFactory,
             address(wrapperRegistryImpl)
         );

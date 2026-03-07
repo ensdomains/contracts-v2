@@ -20,33 +20,25 @@ describe("Resolve", () => {
 
   async function expectResolve(kp: KnownProfile) {
     const bundle = bundleCalls(makeResolutions(kp));
-    const [answer] =
-      await env.deployment.contracts.UniversalResolverV2.read.resolve([
-        dnsEncodeName(kp.name),
-        bundle.call,
-      ]);
+    const [answer] = await env.v2.UniversalResolver.read.resolve([
+      dnsEncodeName(kp.name),
+      bundle.call,
+    ]);
     bundle.expect(answer);
   }
 
   describe("Protocol", () => {
     async function named(name: string, fn: () => Address) {
       it(name, async () => {
-        const [resolver] =
-          await env.deployment.contracts.UniversalResolverV2.read.findResolver([
-            dnsEncodeName(name),
-          ]);
+        const [resolver] = await env.v2.UniversalResolver.read.findResolver([
+          dnsEncodeName(name),
+        ]);
         expectVar({ resolver }).toStrictEqual(getAddress(fn())); // toEqualAddress
       });
     }
 
-    named(
-      "reverse",
-      () => env.deployment.contracts.DefaultReverseResolver.address,
-    );
-    named(
-      "addr.reverse",
-      () => env.deployment.contracts.ETHReverseResolver.address,
-    );
+    named("reverse", () => env.shared.DefaultReverseResolver.address);
+    named("addr.reverse", () => env.shared.ETHReverseResolver.address);
   });
 
   describe("L1", () => {
@@ -56,7 +48,7 @@ describe("Resolve", () => {
         addresses: [
           {
             coinType: COIN_TYPE_ETH,
-            value: env.deployment.contracts.DNSTXTResolver.address,
+            value: env.v2.DNSTXTResolver.address,
           },
         ],
       }));
@@ -67,7 +59,7 @@ describe("Resolve", () => {
         addresses: [
           {
             coinType: COIN_TYPE_ETH,
-            value: env.deployment.contracts.DNSAliasResolver.address,
+            value: env.v2.DNSAliasResolver.address,
           },
         ],
       }));
@@ -79,10 +71,10 @@ describe("Resolve", () => {
       const name = `${label}.eth`;
 
       it("addr.reverse", async () => {
-        const { deployer, owner: account } = env.namedAccounts;
+        const account = env.namedAccounts.owner;
 
         // setup addr(default)
-        const resolver = await env.deployment.deployPermissionedResolver({
+        const resolver = await env.deployPermissionedResolver({
           account,
         });
         await resolver.write.setAddr([
@@ -91,24 +83,18 @@ describe("Resolve", () => {
           account.address,
         ]);
         // hack: create name
-        await env.deployment.contracts.ETHRegistry.write.register(
-          [
-            label,
-            account.address,
-            zeroAddress,
-            resolver.address,
-            0n,
-            MAX_EXPIRY,
-          ],
-          { account: deployer },
-        );
+        await env.v2.ETHRegistry.write.register([
+          label,
+          account.address,
+          zeroAddress,
+          resolver.address,
+          0n,
+          MAX_EXPIRY,
+        ]);
         // setup name()
-        await env.deployment.contracts.ETHReverseRegistrar.write.setName(
-          [name],
-          {
-            account,
-          },
-        );
+        await env.shared.ETHReverseRegistrar.write.setName([name], {
+          account,
+        });
 
         await expectResolve({
           name: getReverseName(account.address),
@@ -118,19 +104,18 @@ describe("Resolve", () => {
           name,
           addresses: [{ coinType: COIN_TYPE_ETH, value: account.address }],
         });
-        const [primary] =
-          await env.deployment.contracts.UniversalResolverV2.read.reverse([
-            account.address,
-            COIN_TYPE_ETH,
-          ]);
+        const [primary] = await env.v2.UniversalResolver.read.reverse([
+          account.address,
+          COIN_TYPE_ETH,
+        ]);
         expectVar({ primary }).toStrictEqual(name);
       });
 
       it("default.reverse", async () => {
-        const { deployer, owner: account } = env.namedAccounts;
+        const account = env.namedAccounts.owner;
 
         // setup addr(default)
-        const resolver = await env.deployment.deployPermissionedResolver({
+        const resolver = await env.deployPermissionedResolver({
           account,
         });
         await resolver.write.setAddr([
@@ -139,24 +124,18 @@ describe("Resolve", () => {
           account.address,
         ]);
         // hack: create name
-        await env.deployment.contracts.ETHRegistry.write.register(
-          [
-            label,
-            account.address,
-            zeroAddress,
-            resolver.address,
-            0n,
-            MAX_EXPIRY,
-          ],
-          { account: deployer },
-        );
+        await env.v2.ETHRegistry.write.register([
+          label,
+          account.address,
+          zeroAddress,
+          resolver.address,
+          0n,
+          MAX_EXPIRY,
+        ]);
         // setup name()
-        await env.deployment.contracts.DefaultReverseRegistrar.write.setName(
-          [name],
-          {
-            account,
-          },
-        );
+        await env.shared.DefaultReverseRegistrar.write.setName([name], {
+          account,
+        });
 
         await expectResolve({
           name: getReverseName(account.address, COIN_TYPE_DEFAULT),
@@ -166,11 +145,10 @@ describe("Resolve", () => {
           name,
           addresses: [{ coinType: COIN_TYPE_ETH, value: account.address }],
         });
-        const [primary] =
-          await env.deployment.contracts.UniversalResolverV2.read.reverse([
-            account.address,
-            COIN_TYPE_ETH,
-          ]);
+        const [primary] = await env.v2.UniversalResolver.read.reverse([
+          account.address,
+          COIN_TYPE_ETH,
+        ]);
         expectVar({ primary }).toStrictEqual(name);
       });
     });
@@ -209,7 +187,7 @@ describe("Resolve", () => {
         addresses: [
           {
             coinType: COIN_TYPE_ETH,
-            value: env.deployment.contracts.DNSAliasResolver.address,
+            value: env.v2.DNSAliasResolver.address,
           },
         ],
       }));

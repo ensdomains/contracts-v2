@@ -113,10 +113,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 revert LibMigration.NameNotLocked(uint256(node));
             }
 
-            if ((fuses & CANNOT_SET_RESOLVER) != 0) {
-                md.resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
-            } else {
+            if ((fuses & CANNOT_SET_RESOLVER) == 0) {
                 NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
+            } else {
+                md.resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
             }
 
             // create subregistry

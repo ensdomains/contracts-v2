@@ -47,7 +47,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function setUp() public override {
         super.setUp();
-        migrationController = new UnlockedMigrationController(ethRegistry, nameWrapper);
+        migrationController = new UnlockedMigrationController(nameWrapper, ethRegistry);
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTER_RESERVED,

@@ -45,7 +45,7 @@ export default execute(
     });
   },
   {
-    tags: ["ETHReverseResolver", "l1"],
+    tags: ["ETHReverseResolver", "v2"],
     dependencies: [
       "ENSRegistry",
       "ReverseRegistry", // "RootRegistry"

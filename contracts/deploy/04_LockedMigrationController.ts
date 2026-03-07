@@ -3,7 +3,7 @@ import { ROLES } from "../script/deploy-constants.js";
 
 export default execute(
   async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
-    const nameWrapperV1 =
+    const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
     const ethRegistry =
@@ -20,8 +20,8 @@ export default execute(
       account: deployer,
       artifact: artifacts.LockedMigrationController,
       args: [
+        nameWrapper.address,
         ethRegistry.address,
-        nameWrapperV1.address,
         verifiableFactory.address,
         wrapperRegistryImpl.address,
       ],
@@ -35,7 +35,7 @@ export default execute(
     });
   },
   {
-    tags: ["LockedMigrationController", "l1"],
+    tags: ["LockedMigrationController", "v2"],
     dependencies: [
       "NameWrapper",
       "ETHRegistry",
