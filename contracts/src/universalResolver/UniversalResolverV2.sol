@@ -38,6 +38,15 @@ contract UniversalResolverV2 is AbstractUniversalResolver {
         return LibRegistry.findCanonicalRegistry(ROOT_REGISTRY, name);
     }
 
+    /// @notice Find the exact registry for `name`.
+    ///
+    /// @param name The DNS-encoded name.
+    ///
+    /// @return The canonical registry or null if not found.
+    function findRegistry(bytes calldata name) external view returns (IRegistry) {
+        return LibRegistry.findExactRegistry(ROOT_REGISTRY, name, 0);
+    }
+
     /// @notice Find all registries in the ancestry of `name`.
     /// * `findRegistries("") = [<root>]`
     /// * `findRegistries("eth") = [<eth>, <root>]`

@@ -47,17 +47,17 @@ console.log();
 console.log("Available Named Accounts:");
 console.table(env.accounts.map((x) => ({ Name: x.name, Address: x.address })));
 
-console.table({
-  Chain: `${env.client.chain.id} (${toHex(env.client.chain.id)})`,
-  Endpoint: `{http,ws}://${env.hostPort}`,
-});
-
 console.table(
   Object.entries(env.rocketh.deployments).map(([name, { address }]) => ({
     "Contract Name": name,
     "Contract Address": getAddress(address),
   })),
 );
+
+console.log({
+  Chain: env.client.chain.id,
+  Endpoint: `{http,ws}://${env.hostPort}`,
+});
 
 if (args.values.testNames) {
   await testNames(env);

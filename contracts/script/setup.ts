@@ -5,11 +5,17 @@ import { executeDeployScripts, resolveConfig } from "rocketh";
 import {
   type Account,
   type Address,
+  ContractFunctionExecutionError,
+  ContractFunctionRevertedError,
   createWalletClient,
+  decodeAbiParameters,
   getContract,
   type Hex,
+  hexToString,
   namehash,
   publicActions,
+  slice,
+  stringToHex,
   testActions,
   webSocket,
   zeroAddress,
@@ -29,6 +35,7 @@ import {
 } from "../test/integration/fixtures/deployVerifiableProxy.js";
 import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
+import { dnsEncodeName } from "../test/utils/utils.js";
 
 const NAMED_ACCOUNTS = ["deployer", "owner", "user", "user2"] as const;
 
@@ -193,7 +200,9 @@ export async function setupDevnet({
         accounts: Object.fromEntries(accounts.map((x) => [x.name, x.address])),
       }),
     );
+    console.log("Deployed contracts");
 
+    // note: TypeScript is too slow when the following is generalized
     const shared = {
       BatchGatewayProvider: getContract({
         abi: artifacts.GatewayProvider.abi,
@@ -371,6 +380,7 @@ export async function setupDevnet({
     [shared, v1, v2]
       .flatMap((x) => Object.values(x))
       .forEach(patchContractWrite);
+    console.log("Linked contracts");
 
     const resolvers = Object.fromEntries(
       await Promise.all(
@@ -385,6 +395,7 @@ export async function setupDevnet({
       (typeof NAMED_ACCOUNTS)[number],
       Awaited<ReturnType<typeof deployPermissionedResolver>>
     >;
+    console.log("Created PermissionedResolvers");
 
     await setupEnsDotEth();
     console.log("Setup ens.eth");
@@ -393,16 +404,16 @@ export async function setupDevnet({
     return {
       client,
       createClient,
-      waitFor,
       hostPort,
       accounts,
       namedAccounts,
+      resolvers,
       rocketh,
       shared,
       v1,
       v2,
-      resolvers,
       sync,
+      waitFor,
       saveState,
       shutdown,
       verifiableProxyAddress,
@@ -410,6 +421,9 @@ export async function setupDevnet({
       deployPermissionedResolver,
       deployUserRegistry,
       patchContractWrite,
+      unwrapError,
+      findPermissionedRegistry,
+      findWrapperRegistry,
     };
 
     async function waitFor(hash: Hex | Promise<Hex>) {
@@ -567,6 +581,51 @@ export async function setupDevnet({
       );
     }
 
+    // note: TypeScript is too slow when the following is generalized to any resolver type
+    async function findPermissionedRegistry({
+      name,
+      account = namedAccounts.deployer,
+    }: {
+      name: string;
+      account?: Account;
+    }) {
+      const address = await v2.UniversalResolver.read.findRegistry([
+        dnsEncodeName(name),
+      ]);
+      if (address === zeroAddress) {
+        throw new Error(`expected PermissionedRegistry: ${name}`);
+      }
+      return patchContractWrite(
+        getContract({
+          abi: v2.ETHRegistry.abi,
+          address,
+          client: createClient(account),
+        }),
+      );
+    }
+
+    async function findWrapperRegistry({
+      name,
+      account,
+    }: {
+      name: string;
+      account: Account;
+    }) {
+      const address = await v2.UniversalResolver.read.findCanonicalRegistry([
+        dnsEncodeName(name),
+      ]);
+      if (address === zeroAddress) {
+        throw new Error(`expected WrapperRegistry: ${name}`);
+      }
+      return patchContractWrite(
+        getContract({
+          abi: v2.WrapperRegistryImpl.abi,
+          address,
+          client: createClient(account),
+        }),
+      );
+    }
+
     async function setupEnsDotEth() {
       const resolver = resolvers.owner;
 
@@ -605,6 +664,37 @@ export async function setupDevnet({
           address,
         ]);
       }
+    }
+
+    function unwrapError(err: unknown): never {
+      // see: WrappedErrorLib.sol
+      const ERROR_STRING_SELECTOR = "0x08c379a0";
+      const WRAPPED_ERROR_PREFIX = stringToHex("WrappedError::0x");
+      if (err instanceof ContractFunctionExecutionError) {
+        if (err.cause instanceof ContractFunctionRevertedError) {
+          let { raw } = err.cause;
+          if (raw?.startsWith(ERROR_STRING_SELECTOR)) {
+            [raw] = decodeAbiParameters([{ type: "bytes" }], slice(raw, 4));
+            if (raw.startsWith(WRAPPED_ERROR_PREFIX)) {
+              const abi = [
+                ...v2.UnlockedMigrationController.abi,
+                ...v2.LockedMigrationController.abi,
+                ...v2.WrapperRegistryImpl.abi,
+                ...artifacts.LibMigration.abi,
+              ];
+              const newErr = new ContractFunctionRevertedError({
+                abi,
+                data: `0x${hexToString(slice(raw, 16))}`,
+                functionName: err.functionName,
+              });
+              if (newErr.data) {
+                throw new ContractFunctionExecutionError(newErr, err);
+              }
+            }
+          }
+        }
+      }
+      throw err;
     }
   } catch (err) {
     await shutdown();

@@ -1,5 +1,5 @@
 import { describe, it } from "bun:test";
-import { type Address, getAddress, namehash, zeroAddress } from "viem";
+import { type Address, namehash, zeroAddress } from "viem";
 
 import { MAX_EXPIRY } from "../../script/deploy-constants.js";
 import { expectVar } from "../utils/expectVar.js";
@@ -33,7 +33,7 @@ describe("Resolve", () => {
         const [resolver] = await env.v2.UniversalResolver.read.findResolver([
           dnsEncodeName(name),
         ]);
-        expectVar({ resolver }).toStrictEqual(getAddress(fn())); // toEqualAddress
+        expectVar({ resolver }).toEqualAddress(fn());
       });
     }
 
