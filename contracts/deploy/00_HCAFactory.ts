@@ -10,6 +10,6 @@ export default execute(
     });
   },
   {
-    tags: ["HCAFactory", "l1"],
+    tags: ["HCAFactory", "v2"],
   },
 );

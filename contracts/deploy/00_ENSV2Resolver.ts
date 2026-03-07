@@ -16,7 +16,7 @@ export default execute(
     });
   },
   {
-    tags: ["ENSV2Resolver", "l1"],
+    tags: ["ENSV2Resolver", "v2"],
     dependencies: ["RootRegistry", "BatchGatewayProvider"],
   },
 );

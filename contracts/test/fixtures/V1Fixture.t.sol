@@ -14,6 +14,8 @@ import {V1Fixture, NameCoder} from "./V1Fixture.sol";
 
 // TODO: add more NameWrapper quirks and invariant tests.
 contract V1FixtureTest is V1Fixture {
+    address friend = makeAddr("friend");
+
     function setUp() external {
         deployV1Fixture();
     }
@@ -171,6 +173,23 @@ contract V1FixtureTest is V1Fixture {
         this.registerWrappedETH2LD("test", CANNOT_SET_RESOLVER);
         this.registerWrappedETH2LD("test", CANNOT_SET_RESOLVER | CANNOT_UNWRAP);
     }
+
+    function test_nameWrapper_approveBug() external {
+        bytes memory name = this.registerWrappedETH2LD("test", 0);
+        bytes32 node = NameCoder.namehash(name, 0);
+        vm.prank(user);
+        nameWrapper.approve(friend, uint256(node));
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L146-L149
+        vm.prank(friend);
+        vm.expectRevert(
+            abi.encodeWithSignature("Error(string)", "ERC1155: caller is not owner nor approved")
+        );
+        nameWrapper.safeTransferFrom(user, friend, uint256(node), 1, "");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // BaseRegistrar Quirks
+    ////////////////////////////////////////////////////////////////////////
 
     function test_ethRegistrarV1_ownerOf_unregisteredReverts() external {
         vm.expectRevert();

@@ -10,6 +10,6 @@ export default execute(
     });
   },
   {
-    tags: ["ETHReverseRegistrar", "l1"],
+    tags: ["ETHReverseRegistrar", "v2"],
   },
 );

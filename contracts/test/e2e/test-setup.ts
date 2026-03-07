@@ -1,5 +1,6 @@
 // Global test setup
-import { afterAll, beforeAll, beforeEach } from "bun:test";
+import { afterAll, beforeAll, beforeEach, expect } from "bun:test";
+import type { Address } from "viem";
 import {
   type DevnetEnvironment,
   type StateSnapshot,
@@ -22,9 +23,22 @@ declare global {
   }
 }
 
+expect.extend({
+  toEqualAddress(actual, expected: Address) {
+    const pass =
+      typeof actual === "string" &&
+      !expected.localeCompare(actual, undefined, { sensitivity: "base" });
+    return {
+      pass,
+      message: () =>
+        `expected ${this.utils.printReceived(actual)} ${pass ? " not" : ""} to equal address ${this.utils.printExpected(expected)}`,
+    };
+  },
+});
+
 const t0 = Date.now();
 
-const env = await setupDevnet();
+const env = await setupDevnet({ procLog: false });
 
 // save the initial state
 const resetInitialState = await env.saveState();

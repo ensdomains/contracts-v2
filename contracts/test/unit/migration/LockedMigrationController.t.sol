@@ -65,8 +65,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             metadata
         );
         migrationController = new LockedMigrationController(
-            ethRegistry,
             nameWrapper,
+            ethRegistry,
             verifiableFactory,
             address(wrapperRegistryImpl)
         );
@@ -248,9 +248,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         checkResolution(name, address(ensV2Resolver), address(ensV1Resolver));
         LibMigration.Data memory md = _makeData(name);
         bytes32 node = NameCoder.namehash(name, 0);
+        uint256 salt = uint256(node);
         address expectedRegistry = _computeVerifiableFactoryAddress(
             address(migrationController),
-            md.salt
+            salt
         );
         uint256 tokenIdV1 = LibLabel.id(md.label);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
@@ -276,7 +277,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         emit VerifiableFactory.ProxyDeployed(
             address(migrationController),
             expectedRegistry,
-            md.salt,
+            salt,
             address(wrapperRegistryImpl)
         );
         vm.expectEmit();
@@ -662,8 +663,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 label: NameCoder.firstLabel(name),
                 owner: user,
                 subregistry: IRegistry(address(0)), // ignored by LockedMigrationController
-                resolver: testResolver,
-                salt: uint256(keccak256(abi.encode(name, block.timestamp)))
+                resolver: testResolver
             });
     }
 }

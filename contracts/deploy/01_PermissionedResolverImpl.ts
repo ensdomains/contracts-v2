@@ -12,7 +12,7 @@ export default execute(
     });
   },
   {
-    tags: ["PermissionedResolverImpl", "l1"],
+    tags: ["PermissionedResolverImpl", "v2"],
     dependencies: ["HCAFactory"],
   },
 );

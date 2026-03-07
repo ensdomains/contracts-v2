@@ -25,6 +25,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     address testResolver = makeAddr("resolver");
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address premigrationController = makeAddr("premigrationController");
+    address friend = makeAddr("friend");
 
     function setUp() public virtual {
         deployV1Fixture();

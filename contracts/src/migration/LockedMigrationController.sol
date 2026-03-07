@@ -28,8 +28,8 @@ contract LockedMigrationController is LockedWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
 
     constructor(
-        IPermissionedRegistry ethRegistry,
         INameWrapper nameWrapper,
+        IPermissionedRegistry ethRegistry,
         VerifiableFactory verifiableFactory,
         address wrapperRegistryImpl
     ) LockedWrapperReceiver(nameWrapper, verifiableFactory, wrapperRegistryImpl) {

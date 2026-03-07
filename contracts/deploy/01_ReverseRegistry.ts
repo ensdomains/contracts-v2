@@ -22,12 +22,7 @@ export default execute(
     const reverseRegistry = await deploy("ReverseRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
-      args: [
-        hcaFactory.address,
-        registryMetadata.address,
-        deployer,
-        ROLES.ALL,
-      ],
+      args: [hcaFactory.address, registryMetadata.address, deployer, ROLES.ALL],
     });
 
     // register "reverse" with default resolver
@@ -45,7 +40,7 @@ export default execute(
     });
   },
   {
-    tags: ["ReverseRegistry", "l1"],
+    tags: ["ReverseRegistry", "v2"],
     dependencies: [
       "DefaultReverseResolver",
       "RootRegistry",

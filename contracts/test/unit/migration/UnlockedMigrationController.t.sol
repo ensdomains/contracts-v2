@@ -47,7 +47,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function setUp() public override {
         super.setUp();
-        migrationController = new UnlockedMigrationController(ethRegistry, nameWrapper);
+        migrationController = new UnlockedMigrationController(nameWrapper, ethRegistry);
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
@@ -151,7 +151,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_unwrapped_invalidReceiver() external {
+    function test_unwrapped_invalidOwner() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         LibMigration.Data memory md = _makeData(name);
         md.owner = address(0); // wrong
@@ -165,11 +165,48 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_wrapped_invalidReceiver() external {
+    function test_wrapped_invalidOwner() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
         LibMigration.Data memory md = _makeData(name);
         md.owner = address(0); // wrong
         vm.expectRevert(WrappedErrorLib.wrap(abi.encodeWithSelector(InvalidOwner.selector)));
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
+        );
+    }
+
+    function test_unwrapped_invalidReceiver() external {
+        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        LibMigration.Data memory md = _makeData(name);
+        md.owner = address(ethRegistry); // not a IERC1155Receiver
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
+        );
+        vm.prank(user);
+        ethRegistrarV1.safeTransferFrom(
+            user,
+            address(migrationController),
+            tokenIdV1,
+            abi.encode(md)
+        );
+    }
+
+    function test_wrapped_invalidReceiver() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        LibMigration.Data memory md = _makeData(name);
+        md.owner = address(ethRegistry); // not a IERC1155Receiver
+
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
+            )
+        );
         vm.prank(user);
         nameWrapper.safeTransferFrom(
             user,
@@ -381,6 +418,59 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
+    function test_unwrapped_migrateViaApproval(bool all) external {
+        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        LibMigration.Data memory md = _makeData(name);
+
+        // give friend approval
+        vm.prank(user);
+        if (all) {
+            ethRegistrarV1.setApprovalForAll(friend, true);
+        } else {
+            ethRegistrarV1.approve(friend, tokenIdV1);
+        }
+
+        // friend initiates migration
+        vm.prank(friend);
+        ethRegistrarV1.safeTransferFrom(
+            user,
+            address(migrationController),
+            tokenIdV1,
+            abi.encode(md)
+        );
+
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+        assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
+    }
+
+    function test_wrapped_migrateViaApproval(/* bool all */) external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        LibMigration.Data memory md = _makeData(name);
+        bytes32 node = NameCoder.namehash(name, 0);
+
+        // give friend approval
+        vm.prank(user);
+        // if (all) {
+        nameWrapper.setApprovalForAll(friend, true);
+        // } else {
+        //     nameWrapper.approve(friend, uint256(node));
+        // }
+        // see: V1Fixture.t.sol: `test_nameWrapper_approveBug()`
+
+        // friend initiates migration
+        vm.prank(friend);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
+        );
+
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+        assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
+    }
+
     function test_wrapped_migrateBatch(uint8 count) external {
         vm.assume(count < 5);
         uint256[] memory ids = new uint256[](count);
@@ -425,14 +515,43 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         }
     }
 
+    function test_wrapped_migrateBatch_lastOneWrong(uint8 count) external {
+        vm.assume(count > 1 && count < 5);
+        uint256[] memory ids = new uint256[](count);
+        uint256[] memory amounts = new uint256[](count);
+        LibMigration.Data[] memory mds = new LibMigration.Data[](count);
+        for (uint256 i; i < count; ++i) {
+            bytes memory name = registerWrappedETH2LD(
+                _label(i),
+                i == count - 1 ? CANNOT_UNWRAP : CAN_DO_EVERYTHING
+            );
+            LibMigration.Data memory md = _makeData(name);
+            mds[i] = md;
+            ids[i] = uint256(NameCoder.namehash(name, 0));
+            amounts[i] = 1;
+        }
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(LibMigration.NameIsLocked.selector, ids[count - 1])
+            )
+        );
+        vm.prank(user);
+        nameWrapper.safeBatchTransferFrom(
+            user,
+            address(migrationController),
+            ids,
+            amounts,
+            abi.encode(mds)
+        );
+    }
+
     function _makeData(bytes memory name) internal view returns (LibMigration.Data memory) {
         return
             LibMigration.Data({
                 label: NameCoder.firstLabel(name),
                 owner: user,
                 subregistry: testRegistry,
-                resolver: testResolver,
-                salt: 0 // ignored by UnlockedMigrationController
+                resolver: testResolver
             });
     }
 }

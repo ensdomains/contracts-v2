@@ -17,7 +17,7 @@ export default execute(
     });
   },
   {
-    tags: ["RootRegistry", "l1"],
+    tags: ["RootRegistry", "v2"],
     dependencies: ["HCAFactory", "RegistryMetadata"],
   },
 );
