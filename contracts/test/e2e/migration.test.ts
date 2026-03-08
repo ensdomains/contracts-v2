@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, it } from "bun:test";
 import type { AbiParameter, AbiParameterToPrimitiveType } from "abitype";
 import {
   type Account,
@@ -9,7 +9,7 @@ import {
   zeroAddress,
 } from "viem";
 import { STATUS, MAX_EXPIRY, FUSES } from "../../script/deploy-constants.js";
-import { expectVar } from "../utils/expectVar.js";
+import { expect, expectVar } from "../utils/expectVar.js";
 import {
   dnsEncodeName,
   getLabelAt,
@@ -36,13 +36,9 @@ type MigrationData = AbiParameterToPrimitiveType<{
   components: typeof migrationDataComponents;
 }>;
 
+const anotherAddress = "0x8000000000000000000000000000000000000001";
 const defaultProfile = {
-  addresses: [
-    {
-      coinType: COIN_TYPE_ETH,
-      value: "0x8000000000000000000000000000000000000001",
-    },
-  ],
+  addresses: [{ coinType: COIN_TYPE_ETH, value: anotherAddress }],
   texts: [{ key: "url", value: "https://ens.domains" }],
   contenthash: { value: "0x12345678" },
 } as const satisfies Partial<KnownProfile>;
@@ -55,13 +51,13 @@ describe("Migration", () => {
     async initialize() {
       // hack: add controller so we can register() directly
       await env.v1.BaseRegistrar.write.addController(
-        [env.namedAccounts.deployer.address],
-        { account: env.namedAccounts.owner },
+        [env.named.deployer.address],
+        { account: env.named.owner },
       );
       // set fallback resolver
       await env.v1.BaseRegistrar.write.setResolver(
         [env.v2.ENSV2Resolver.address],
-        { account: env.namedAccounts.owner },
+        { account: env.named.owner },
       );
     },
   });
@@ -79,6 +75,12 @@ describe("Migration", () => {
     ]);
   }
 
+  type MigrateArgs = {
+    target: Address;
+    sender?: Account;
+    data?: Hex | Partial<MigrationData>;
+  };
+
   abstract class TokenV1 {
     constructor(
       readonly name: string,
@@ -92,6 +94,7 @@ describe("Migration", () => {
     }
     abstract get tokenId(): bigint;
     abstract setResolver(address: Address): Promise<void>;
+    abstract migrate(args?: MigrateArgs): Promise<unknown>;
     async makeData(data: Partial<MigrationData> = {}): Promise<MigrationData> {
       const resolver = await env.v1.ENSRegistry.read.resolver([this.namehash]);
       return {
@@ -110,7 +113,9 @@ describe("Migration", () => {
         { account },
       );
     }
-    async checkMigrated() {
+    async checkMigrated({
+      owner = this.account.address,
+    }: { owner?: Address } = {}) {
       const parentRegistry = await env.findPermissionedRegistry({
         name: getParentName(this.name),
       });
@@ -118,7 +123,7 @@ describe("Migration", () => {
         idFromLabel(this.label),
       ]);
       expectVar({ status }).toStrictEqual(STATUS.REGISTERED);
-      expectVar({ latestOwner }).toStrictEqual(this.account.address);
+      expectVar({ latestOwner }).toEqualAddress(owner);
     }
     async checkResolution() {
       const bundle = bundleCalls(
@@ -138,13 +143,27 @@ describe("Migration", () => {
   }
 
   class UnwrappedToken extends TokenV1 {
-    get tokenId() {
+    override get tokenId() {
       return idFromLabel(this.label);
     }
-    async setResolver(address: Address) {
-      await env.v1.ENSRegistry.write.setResolver(
-        [namehash(this.name), address],
-        { account: this.account },
+    override async setResolver(address: Address) {
+      await env.v1.ENSRegistry.write.setResolver([this.namehash, address], {
+        account: this.account,
+      });
+    }
+    override async migrate(args: Partial<MigrateArgs> = {}) {
+      return env.waitFor(
+        env.v1.BaseRegistrar.write.safeTransferFrom(
+          [
+            this.account.address,
+            args.target ?? env.v2.UnlockedMigrationController.address,
+            this.tokenId,
+            typeof args.data === "string"
+              ? args.data
+              : encodeMigrationData(await this.makeData(args.data)),
+          ],
+          { account: args.sender ?? this.account },
+        ),
       );
     }
     async wrap(fuses: number = FUSES.CAN_DO_EVERYTHING) {
@@ -172,12 +191,12 @@ describe("Migration", () => {
   }
 
   class WrappedToken extends TokenV1 {
-    get tokenId() {
+    override get tokenId() {
       return BigInt(this.namehash);
     }
-    async setResolver(address: Address) {
+    override async setResolver(address: Address) {
       const { name, account } = this;
-      await env.v1.NameWrapper.write.setResolver([namehash(name), address], {
+      await env.v1.NameWrapper.write.setResolver([this.namehash, address], {
         account,
       });
     }
@@ -198,25 +217,53 @@ describe("Migration", () => {
       );
       return new WrappedToken(`${label}.${this.name}`, account);
     }
+    burnFuses(fuses: number) {
+      return env.v1.NameWrapper.write.setFuses([this.namehash, fuses], {
+        account: this.account,
+      });
+    }
+    override async migrate(args: MigrateArgs) {
+      return env.waitFor(
+        env.v1.NameWrapper.write.safeTransferFrom(
+          [
+            this.account.address,
+            args.target,
+            this.tokenId,
+            1n,
+            typeof args.data === "string"
+              ? args.data
+              : encodeMigrationData(await this.makeData(args.data)),
+          ],
+          { account: args.sender ?? this.account },
+        ),
+      );
+    }
+    async registry() {
+      return env.findWrapperRegistry(this);
+    }
   }
 
   type BaseRegistrarArgs = {
     label?: string;
     account?: Account;
     duration?: bigint;
+    premigrate?: Boolean;
   };
 
   async function registerUnwrapped({
     label = "test",
-    account = env.namedAccounts.user,
+    account = env.named.user,
     duration = 86400n,
+    premigrate = true,
   }: BaseRegistrarArgs = {}) {
     await env.v1.BaseRegistrar.write.register([
       idFromLabel(label),
       account.address,
       duration,
     ]);
-    await ensurePremigration(label);
+    if (premigrate) {
+      await ensurePremigration(label);
+    }
     return new UnwrappedToken(`${label}.eth`, account);
   }
 
@@ -254,6 +301,21 @@ describe("Migration", () => {
       const wrapped = await registerWrapped();
       await wrapped.createChild();
     });
+    it("ensurePremigration()", async () => {
+      const unwrapped = await registerUnwrapped();
+      const status = await env.v2.ETHRegistry.read.getStatus([
+        unwrapped.tokenId,
+      ]);
+      expectVar({ status }).toStrictEqual(STATUS.RESERVED);
+    });
+    it("ensurePremigration() of empty name", async () => {
+      expect(registerUnwrapped({ label: "" })).rejects.toThrow("LabelIsEmpty");
+    });
+    it("ensurePremigration() of long name", async () => {
+      expect(registerUnwrapped({ label: "a".repeat(256) })).rejects.toThrow(
+        "LabelIsTooLong",
+      );
+    });
   });
 
   describe("unwrapped", () => {
@@ -261,214 +323,219 @@ describe("Migration", () => {
       const unwrapped = await registerUnwrapped();
       await unwrapped.setupPublicResolver();
       await unwrapped.checkResolution();
-      await env.v1.BaseRegistrar.write.safeTransferFrom(
-        [
-          unwrapped.account.address,
-          env.v2.UnlockedMigrationController.address,
-          unwrapped.tokenId,
-          encodeMigrationData(await unwrapped.makeData()),
-        ],
-        { account: unwrapped.account },
-      );
+      await unwrapped.migrate();
       await unwrapped.checkMigrated();
       await unwrapped.checkResolution();
+    });
+
+    it("by approved", async () => {
+      const unwrapped = await registerUnwrapped();
+      const { user2 } = env.named;
+      await env.v1.BaseRegistrar.write.setApprovalForAll(
+        [user2.address, true],
+        { account: unwrapped.account },
+      );
+      await unwrapped.migrate({ sender: user2 });
+      await unwrapped.checkMigrated();
+    });
+
+    it("new owner", async () => {
+      const unwrapped = await registerUnwrapped();
+      const { user2 } = env.named;
+      await unwrapped.migrate({
+        data: { owner: user2.address },
+      });
+      await unwrapped.checkMigrated({ owner: user2.address });
+    });
+
+    it("new resolver", async () => {
+      const unwrapped = await registerUnwrapped();
+      await unwrapped.setupPublicResolver();
+      await unwrapped.checkResolution();
+      const { resolver } = env.named.user;
+      await unwrapped.migrate({
+        data: { resolver: resolver.address },
+      });
+      await unwrapped.checkMigrated();
+      await resolver.write.multicall([
+        makeResolutions({ name: unwrapped.name, ...defaultProfile }).map(
+          (x) => x.write,
+        ),
+      ]);
+      await unwrapped.checkResolution();
+    });
+
+    it("custom subregistry", async () => {
+      const unwrapped = await registerUnwrapped();
+      await unwrapped.migrate({ data: { subregistry: anotherAddress } });
+      await unwrapped.checkMigrated();
+      const subregistry = await env.v2.ETHRegistry.read.getSubregistry([
+        unwrapped.label,
+      ]);
+      expectVar({ subregistry }).toEqualAddress(anotherAddress);
+    });
+
+    it("invalid owner", async () => {
+      const unwrapped = await registerUnwrapped();
+      expect(
+        unwrapped.migrate({ data: { owner: zeroAddress } }), // wrong
+      ).rejects.toThrow("InvalidOwner");
+    });
+
+    it("empty name", async () => {
+      const unwrapped = await registerUnwrapped({
+        label: "",
+        premigrate: false, // required
+      });
+      expect(unwrapped.migrate()).rejects.toThrow("InvalidData"); // MIN_DATA_SIZE assumes label.length > 0
+    });
+
+    it("long name", async () => {
+      const unwrapped = await registerUnwrapped({
+        label: "a".repeat(256),
+        premigrate: false, // required
+      });
+      expect(unwrapped.migrate()).rejects.toThrow("LabelIsTooLong");
     });
 
     it("wrong controller", async () => {
       const unwrapped = await registerUnwrapped();
       expect(
-        env.v1.BaseRegistrar.write.safeTransferFrom(
-          [
-            unwrapped.account.address,
-            env.v2.LockedMigrationController.address, // wrong
-            unwrapped.tokenId,
-            encodeMigrationData(await unwrapped.makeData()),
-          ],
-          { account: unwrapped.account },
-        ),
+        unwrapped.migrate({ target: env.v2.LockedMigrationController.address }), // wrong
       ).rejects.toThrow("ERC721: transfer to non ERC721Receiver implementer");
+    });
+
+    it("invalid data", async () => {
+      const unwrapped = await registerUnwrapped();
+      expect(
+        unwrapped.migrate({ data: "0x1234" }), // wrong
+      ).rejects.toThrow("InvalidData");
+    });
+
+    it("wrong label", async () => {
+      const unwrapped = await registerUnwrapped();
+      expect(
+        unwrapped.migrate({ data: { label: unwrapped.label + "2" } }), // wrong
+      ).rejects.toThrow("NameDataMismatch");
     });
   });
 
   describe("unlocked", () => {
     it("by owner", async () => {
-      const wrapped = await registerWrapped();
-      await wrapped.setupPublicResolver();
-      await wrapped.checkResolution();
-      await env.v1.NameWrapper.write.safeTransferFrom(
-        [
-          wrapped.account.address,
-          env.v2.UnlockedMigrationController.address,
-          wrapped.tokenId,
-          1n,
-          encodeMigrationData(await wrapped.makeData()),
-        ],
-        { account: wrapped.account },
-      );
-      await wrapped.checkMigrated();
-      await wrapped.checkResolution();
+      const unlocked = await registerWrapped();
+      await unlocked.setupPublicResolver();
+      await unlocked.checkResolution();
+      await unlocked.migrate({
+        target: env.v2.UnlockedMigrationController.address,
+      });
+      await unlocked.checkMigrated();
+      await unlocked.checkResolution();
+    });
+
+    it("invalid owner", async () => {
+      const unlocked = await registerWrapped();
+      expect(
+        unlocked.migrate({
+          target: env.v2.UnlockedMigrationController.address,
+          data: { owner: zeroAddress }, // wrong
+        }),
+      ).rejects.toThrow("InvalidOwner");
     });
 
     it("wrong controller", async () => {
-      const wrapped = await registerWrapped();
+      const unlocked = await registerWrapped();
       expect(
-        env.v1.NameWrapper.write
-          .safeTransferFrom(
-            [
-              wrapped.account.address,
-              env.v2.LockedMigrationController.address, // wrong
-              wrapped.tokenId,
-              1n,
-              encodeMigrationData(await wrapped.makeData()),
-            ],
-            { account: wrapped.account },
-          )
-          .catch(env.unwrapError),
+        unlocked.migrate({ target: env.v2.LockedMigrationController.address }), // wrong
       ).rejects.toThrow("NameNotLocked");
     });
 
     it("invalid data", async () => {
-      const wrapped = await registerWrapped();
+      const unlocked = await registerWrapped();
       expect(
-        env.v1.NameWrapper.write
-          .safeTransferFrom(
-            [
-              wrapped.account.address,
-              env.v2.UnlockedMigrationController.address,
-              wrapped.tokenId,
-              1n,
-              "0x", // wrong
-            ],
-            { account: wrapped.account },
-          )
-          .catch(env.unwrapError),
+        unlocked.migrate({
+          target: env.v2.UnlockedMigrationController.address,
+          data: "0x1234", // wrong
+        }),
       ).rejects.toThrow("InvalidData");
     });
 
-    it("data mismatch", async () => {
-      const wrapped = await registerWrapped();
+    it("wrong label", async () => {
+      const unlocked = await registerWrapped();
       expect(
-        env.v1.NameWrapper.write
-          .safeTransferFrom(
-            [
-              wrapped.account.address,
-              env.v2.UnlockedMigrationController.address,
-              wrapped.tokenId,
-              1n,
-              encodeMigrationData(
-                await wrapped.makeData({
-                  label: "wrong",
-                }),
-              ),
-            ],
-            { account: wrapped.account },
-          )
-          .catch(env.unwrapError),
+        unlocked.migrate({
+          target: env.v2.UnlockedMigrationController.address,
+          data: { label: unlocked.label + "2" }, // wrong
+        }),
       ).rejects.toThrow("NameDataMismatch");
     });
   });
 
   describe("locked", () => {
     it("by owner", async () => {
-      const wrapped = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
-      await wrapped.setupPublicResolver();
-      await wrapped.checkResolution();
-      await env.v1.NameWrapper.write.safeTransferFrom(
-        [
-          wrapped.account.address,
-          env.v2.LockedMigrationController.address,
-          wrapped.tokenId,
-          1n,
-          encodeMigrationData(await wrapped.makeData()),
-        ],
-        { account: wrapped.account },
-      );
-      await wrapped.checkMigrated();
-      await wrapped.checkResolution();
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      await locked.setupPublicResolver();
+      await locked.checkResolution();
+      await locked.migrate({
+        target: env.v2.LockedMigrationController.address,
+      });
+      await locked.checkMigrated();
+      await locked.checkResolution();
     });
 
-    it("wrong controller", async () => {
-      const wrapped = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
-      expect(
-        env.v1.NameWrapper.write
-          .safeTransferFrom(
-            [
-              wrapped.account.address,
-              env.v2.UnlockedMigrationController.address, // wrong
-              wrapped.tokenId,
-              1n,
-              encodeMigrationData(await wrapped.makeData()),
-            ],
-            { account: wrapped.account },
-          )
-          .catch(env.unwrapError),
-      ).rejects.toThrow("NameIsLocked");
+    it("locked resolver", async () => {
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      await locked.setupPublicResolver();
+      await locked.burnFuses(FUSES.CANNOT_SET_RESOLVER);
+      await locked.migrate({
+        target: env.v2.LockedMigrationController.address,
+        data: { resolver: anotherAddress },
+      });
+      await locked.checkMigrated();
+      const resolver = await env.v2.ETHRegistry.read.getResolver([
+        locked.label,
+      ]);
+      expectVar({ resolver }).toEqualAddress(env.v1.PublicResolver.address);
     });
 
-    it("migrated emancipated child", async () => {
-      const wrapped = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
-      const wrappedChild = await wrapped.createChild({
+    it("migrated locked child", async () => {
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      const lockedChild = await locked.createChild({
         fuses: FUSES.PARENT_CANNOT_CONTROL | FUSES.CANNOT_UNWRAP,
       });
-      await wrappedChild.setupPublicResolver();
-      await wrappedChild.checkResolution();
-
-      await env.v1.NameWrapper.write.safeTransferFrom(
-        [
-          wrapped.account.address,
-          env.v2.LockedMigrationController.address,
-          wrapped.tokenId,
-          1n,
-          encodeMigrationData(await wrapped.makeData()),
-        ],
-        { account: wrapped.account },
-      );
-      const wrapperRegistry = await env.findWrapperRegistry(wrapped);
-
-      await env.v1.NameWrapper.write.safeTransferFrom(
-        [
-          wrappedChild.account.address,
-          wrapperRegistry.address,
-          wrappedChild.tokenId,
-          1n,
-          encodeMigrationData(await wrappedChild.makeData()),
-        ],
-        { account: wrappedChild.account },
-      );
-      await wrappedChild.checkMigrated();
-      await wrappedChild.checkResolution();
+      await lockedChild.setupPublicResolver();
+      await lockedChild.checkResolution();
+      await locked.migrate({
+        target: env.v2.LockedMigrationController.address,
+      });
+      const wrappedRegistry = await locked.registry();
+      await lockedChild.migrate({
+        target: wrappedRegistry.address,
+      });
+      await lockedChild.checkMigrated();
+      await lockedChild.checkResolution();
     });
 
-    it("unmigrated emancipated child", async () => {
-      const wrapped = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
-      const wrappedChild = await wrapped.createChild({
+    it("unmigrated locked child", async () => {
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      const lockedChild = await locked.createChild({
         fuses: FUSES.PARENT_CANNOT_CONTROL | FUSES.CANNOT_UNWRAP,
       });
-      await wrappedChild.setupPublicResolver();
-
-      await env.v1.NameWrapper.write.safeTransferFrom(
-        [
-          wrapped.account.address,
-          env.v2.LockedMigrationController.address,
-          wrapped.tokenId,
-          1n,
-          encodeMigrationData(await wrapped.makeData()),
-        ],
-        { account: wrapped.account },
-      );
+      await locked.migrate({
+        target: env.v2.LockedMigrationController.address,
+      });
+      const lockedRegistry = await locked.registry();
 
       // name has fallback resolver
-      const wrapperRegistry = await env.findWrapperRegistry(wrapped);
-      const resolver = await wrapperRegistry.read.getResolver([
-        wrappedChild.label,
+      const resolver = await lockedRegistry.read.getResolver([
+        lockedChild.label,
       ]);
       expectVar({ resolver }).toEqualAddress(env.v2.ENSV1Resolver.address);
 
       // name cannot be registered
       expect(
-        wrapperRegistry.write.register([
-          wrappedChild.label,
-          wrappedChild.account.address,
+        lockedRegistry.write.register([
+          lockedChild.label,
+          lockedChild.account.address,
           zeroAddress,
           zeroAddress,
           0n,
@@ -477,38 +544,94 @@ describe("Migration", () => {
       ).rejects.toThrow("NameRequiresMigration");
     });
 
-    it("unmigrated controlled child", async () => {
-      const wrapped = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
-      const wrappedChild = await wrapped.createChild();
-      await wrappedChild.setupPublicResolver();
+    it("unmigrated unlocked child", async () => {
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      const unlockedChild = await locked.createChild();
+      await unlockedChild.setupPublicResolver();
+      await locked.migrate({
+        target: env.v2.LockedMigrationController.address,
+      });
+      const lockedRegistry = await locked.registry();
 
-      await env.v1.NameWrapper.write.safeTransferFrom(
-        [
-          wrapped.account.address,
-          env.v2.LockedMigrationController.address,
-          wrapped.tokenId,
-          1n,
-          encodeMigrationData(await wrapped.makeData()),
-        ],
-        { account: wrapped.account },
-      );
+      // name cannot be migrated
+      expect(
+        unlockedChild.migrate({ target: lockedRegistry.address }),
+      ).rejects.toThrow("NameNotLocked");
 
       // name has null resolver
-      const wrapperRegistry = await env.findWrapperRegistry(wrapped);
-      const resolver = await wrapperRegistry.read.getResolver([
-        wrappedChild.label,
+      const resolver = await lockedRegistry.read.getResolver([
+        unlockedChild.label,
       ]);
       expectVar({ resolver }).toEqualAddress(zeroAddress);
 
       // name can be clobbered
-      await wrapperRegistry.write.register([
-        wrappedChild.label,
-        wrappedChild.account.address,
+      await lockedRegistry.write.register([
+        unlockedChild.label,
+        unlockedChild.account.address,
         zeroAddress,
         zeroAddress,
         0n,
         MAX_EXPIRY,
       ]);
+    });
+
+    it("wrong controller", async () => {
+      const locked1 = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      const lockedChild = await locked1.createChild({
+        fuses: FUSES.PARENT_CANNOT_CONTROL | FUSES.CANNOT_UNWRAP,
+      });
+      const locked2 = await registerWrapped({
+        label: locked1.label + "2",
+        fuses: FUSES.CANNOT_UNWRAP,
+      });
+      await locked2.migrate({
+        target: env.v2.LockedMigrationController.address,
+      });
+      const locked2Registry = await locked2.registry();
+
+      // 2LD => UnlockedMigrationController
+      expect(
+        locked1.migrate({
+          target: env.v2.UnlockedMigrationController.address,
+        }),
+      ).rejects.toThrow("NameIsLocked");
+
+      // 3LD => LockedMigrationController
+      expect(
+        lockedChild.migrate({
+          target: env.v2.LockedMigrationController.address,
+        }),
+      ).rejects.toThrow("NameDataMismatch");
+
+      // 2LD => WrapperRegistry
+      expect(
+        locked1.migrate({ target: locked2Registry.address }),
+      ).rejects.toThrow("NameDataMismatch");
+
+      // 3LD => wrong WrapperRegistry
+      expect(
+        lockedChild.migrate({ target: locked2Registry.address }),
+      ).rejects.toThrow("NameDataMismatch");
+    });
+
+    it("invalid data", async () => {
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      expect(
+        locked.migrate({
+          target: env.v2.LockedMigrationController.address,
+          data: "0x1234", // wrong
+        }),
+      ).rejects.toThrow("InvalidData");
+    });
+
+    it("wrong label", async () => {
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      expect(
+        locked.migrate({
+          target: env.v2.LockedMigrationController.address,
+          data: { label: locked.label + "2" }, // wrong
+        }),
+      ).rejects.toThrow("NameDataMismatch");
     });
   });
 });

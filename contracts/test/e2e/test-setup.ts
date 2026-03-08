@@ -31,7 +31,7 @@ expect.extend({
     return {
       pass,
       message: () =>
-        `expected ${this.utils.printReceived(actual)} ${pass ? " not" : ""} to equal address ${this.utils.printExpected(expected)}`,
+        `expected ${this.utils.printReceived(actual)}${pass ? " not " : " "}to equal address ${this.utils.printExpected(expected)}`,
     };
   },
 });

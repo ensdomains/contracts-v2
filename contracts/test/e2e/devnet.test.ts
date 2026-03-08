@@ -28,7 +28,7 @@ describe("Devnet", () => {
   it("saveState", async () => {
     const gateways = await env.shared.BatchGatewayProvider.read.gateways();
     await env.shared.BatchGatewayProvider.write.setGateways([[]], {
-      account: env.namedAccounts.owner,
+      account: env.named.owner,
     });
     expect(
       env.shared.BatchGatewayProvider.read.gateways(),
@@ -40,7 +40,7 @@ describe("Devnet", () => {
   });
 
   it(`verifiableProxyAddress`, async () => {
-    const account = env.namedAccounts.deployer;
+    const account = env.named.deployer;
     const salt = 1234n;
     const contract = await env.deployPermissionedResolver({
       account,

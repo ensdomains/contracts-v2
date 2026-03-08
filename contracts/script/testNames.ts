@@ -377,7 +377,7 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
 export async function createSubname(
   env: DevnetEnvironment,
   fullName: string,
-  account = env.namedAccounts.owner,
+  account = env.named.owner,
 ): Promise<string[]> {
   const createdNames: string[] = [];
 
@@ -520,7 +520,7 @@ export async function linkName(
   sourceName: string,
   targetParentName: string,
   linkLabel: string,
-  account = env.namedAccounts.owner,
+  account = env.named.owner,
 ) {
   console.log(`\nLinking name: ${sourceName} to parent: ${targetParentName}`);
 
@@ -616,7 +616,7 @@ export async function renewName(
   env: DevnetEnvironment,
   name: string,
   durationInDays: number,
-  account = env.namedAccounts.owner,
+  account = env.named.owner,
 ) {
   const { label } = parseName(name);
 
@@ -682,7 +682,7 @@ export async function transferName(
   env: DevnetEnvironment,
   name: string,
   newOwner: `0x${string}`,
-  account = env.namedAccounts.owner,
+  account = env.named.owner,
 ) {
   const { label } = parseName(name);
 
@@ -714,7 +714,7 @@ export async function changeRole(
   targetAccount: `0x${string}`,
   rolesToGrant: bigint,
   rolesToRevoke: bigint,
-  account = env.namedAccounts.owner,
+  account = env.named.owner,
 ) {
   const { label } = parseName(name);
 
@@ -767,9 +767,8 @@ export async function registerTestNames(
     trackGas?: boolean;
   } = {},
 ) {
-  const account = options.account ?? env.namedAccounts.owner;
-  const registrarAccount =
-    options.registrarAccount ?? env.namedAccounts.deployer;
+  const account = options.account ?? env.named.owner;
+  const registrarAccount = options.registrarAccount ?? env.named.deployer;
   const shouldTrackGas = options.trackGas ?? false;
   const currentTimestamp = await env.client.getBlock().then((b) => b.timestamp);
 
@@ -838,7 +837,7 @@ export async function registerTestNames(
 export async function reregisterName(
   env: DevnetEnvironment,
   label: string,
-  account = env.namedAccounts.owner,
+  account = env.named.owner,
 ) {
   console.log(
     `\n=== Testing Re-registration of Expired Name: ${label}.eth ===`,
@@ -925,7 +924,7 @@ export async function testNames(env: DevnetEnvironment) {
   const transferReceipt = await transferName(
     env,
     "newowner.eth",
-    env.namedAccounts.user.address,
+    env.named.user.address,
   );
   await trackGas("transfer(newowner)", transferReceipt);
 
@@ -945,13 +944,13 @@ export async function testNames(env: DevnetEnvironment) {
     env.v2.ETHRegistry.write.register(
       [
         "alias",
-        env.namedAccounts.owner.address,
+        env.named.owner.address,
         zeroAddress,
         testNameData.resolver,
         ROLES.ALL,
         aliasExpiry,
       ],
-      { account: env.namedAccounts.deployer },
+      { account: env.named.deployer },
     ),
   );
   await trackGas("register(alias)", aliasRegisterTx);
@@ -964,7 +963,7 @@ export async function testNames(env: DevnetEnvironment) {
   const aliasTx = await env.waitFor(
     testResolver.write.setAlias(
       [dnsEncodeName("alias.eth"), dnsEncodeName("test.eth")],
-      { account: env.namedAccounts.owner },
+      { account: env.named.owner },
     ),
   );
   await trackGas("setAlias(alias→test)", aliasTx);
@@ -976,16 +975,15 @@ export async function testNames(env: DevnetEnvironment) {
   );
   const subTestNode = namehash("sub.test.eth");
   const setSubAddrTx = await env.waitFor(
-    testResolver.write.setAddr(
-      [subTestNode, 60n, env.namedAccounts.owner.address],
-      { account: env.namedAccounts.owner },
-    ),
+    testResolver.write.setAddr([subTestNode, 60n, env.named.owner.address], {
+      account: env.named.owner,
+    }),
   );
   await trackGas("setAddr(sub.test.eth)", setSubAddrTx);
   const setSubTextTx = await env.waitFor(
     testResolver.write.setText(
       [subTestNode, "description", "sub.test.eth (via alias)"],
-      { account: env.namedAccounts.owner },
+      { account: env.named.owner },
     ),
   );
   await trackGas("setText(sub.test.eth)", setSubTextTx);
@@ -1017,7 +1015,7 @@ export async function testNames(env: DevnetEnvironment) {
         dnsEncodeName("linked.parent.eth"),
         dnsEncodeName("sub1.sub2.parent.eth"),
       ],
-      { account: env.namedAccounts.owner },
+      { account: env.named.owner },
     );
     console.log(
       "✓ Set alias on wallet resolver: linked.parent.eth → sub1.sub2.parent.eth",
@@ -1028,7 +1026,7 @@ export async function testNames(env: DevnetEnvironment) {
   const roleReceipts = await changeRole(
     env,
     "changerole.eth",
-    env.namedAccounts.user.address,
+    env.named.user.address,
     ROLES.REGISTRY.SET_RESOLVER,
     ROLES.REGISTRY.SET_SUBREGISTRY,
   );
@@ -1119,12 +1117,9 @@ async function verifyNames(env: DevnetEnvironment, names: string[]) {
 
   // Verify specific ownership expectations
   const newownerData = await traverseRegistry(env, "newowner.eth");
-  if (
-    newownerData?.owner &&
-    newownerData.owner !== env.namedAccounts.user.address
-  ) {
+  if (newownerData?.owner && newownerData.owner !== env.named.user.address) {
     errors.push(
-      `newowner.eth: expected owner ${env.namedAccounts.user.address}, got ${newownerData.owner}`,
+      `newowner.eth: expected owner ${env.named.user.address}, got ${newownerData.owner}`,
     );
   }
 

@@ -48,7 +48,6 @@ function ansi(c: any, s: any) {
 
 export async function setupDevnet({
   port = 0,
-  extraAccounts = 5,
   mnemonic = "test test test test test test test test test test test junk",
   saveDeployments = false,
   quiet = !saveDeployments,
@@ -56,7 +55,6 @@ export async function setupDevnet({
   extraTime = 0,
 }: {
   port?: number;
-  extraAccounts?: number;
   mnemonic?: string;
   saveDeployments?: boolean;
   quiet?: boolean;
@@ -82,12 +80,9 @@ export async function setupDevnet({
     console.log("Deploying ENSv2...");
     await patchArtifactsV1();
 
-    // list of named wallets
-    extraAccounts += NAMED_ACCOUNTS.length;
-
     process.env["RUST_LOG"] = "info"; // required to capture console.log()
     const anvilInstance = createAnvil({
-      accounts: extraAccounts,
+      accounts: NAMED_ACCOUNTS.length,
       mnemonic,
       chainId: mainnet.id,
       port,
@@ -96,14 +91,11 @@ export async function setupDevnet({
         : {}),
     });
 
-    const accounts = Array.from({ length: extraAccounts }, (_, i) =>
+    const accounts = NAMED_ACCOUNTS.map((name, i) =>
       Object.assign(mnemonicToAccount(mnemonic, { addressIndex: i }), {
-        name: NAMED_ACCOUNTS[i] ?? `unnamed${i}`,
+        name,
       }),
     );
-    const namedAccounts = Object.fromEntries(
-      accounts.map((x) => [x.name, x]),
-    ) as Record<(typeof NAMED_ACCOUNTS)[number], (typeof accounts)[number]>;
 
     console.log("Launching devnet");
     await anvilInstance.start();
@@ -168,7 +160,7 @@ export async function setupDevnet({
         .extend(testActions({ mode: "anvil" }));
     }
 
-    const client = createClient(namedAccounts.deployer);
+    const client = createClient(accounts[0]);
 
     console.log("Deploying contracts");
     const deploymentName = "devnet-local";
@@ -382,20 +374,20 @@ export async function setupDevnet({
       .forEach(patchContractWrite);
     console.log("Linked contracts");
 
-    const resolvers = Object.fromEntries(
+    const named = Object.fromEntries(
       await Promise.all(
-        NAMED_ACCOUNTS.map(async (name, i) => {
-          return [
-            name,
-            await deployPermissionedResolver({ account: accounts[i] }),
-          ];
+        accounts.map(async (account, i) => {
+          const resolver = await deployPermissionedResolver({ account });
+          return [account.name, Object.assign(account, { resolver })];
         }),
       ),
     ) as Record<
       (typeof NAMED_ACCOUNTS)[number],
-      Awaited<ReturnType<typeof deployPermissionedResolver>>
+      (typeof accounts)[number] & {
+        resolver: Awaited<ReturnType<typeof deployPermissionedResolver>>;
+      }
     >;
-    console.log("Created PermissionedResolvers");
+    console.log("Created PermissionedResolver for each account");
 
     await setupEnsDotEth();
     console.log("Setup ens.eth");
@@ -403,11 +395,9 @@ export async function setupDevnet({
     console.log("Deployed ENSv2");
     return {
       client,
-      createClient,
       hostPort,
       accounts,
-      namedAccounts,
-      resolvers,
+      named,
       rocketh,
       shared,
       v1,
@@ -416,12 +406,12 @@ export async function setupDevnet({
       waitFor,
       saveState,
       shutdown,
-      verifiableProxyAddress,
-      deployPermissionedRegistry,
-      deployPermissionedResolver,
-      deployUserRegistry,
+      createClient,
       patchContractWrite,
-      unwrapError,
+      verifiableProxyAddress,
+      deployPermissionedResolver,
+      deployPermissionedRegistry,
+      deployUserRegistry,
       findPermissionedRegistry,
       findWrapperRegistry,
     };
@@ -443,8 +433,12 @@ export async function setupDevnet({
           {
             get(_, functionName: string) {
               return async (...parameters: unknown[]) => {
+                const promise = write0[functionName](...parameters);
                 const receipt = await waitFor(
-                  write0[functionName](...parameters),
+                  functionName === "safeTransferFrom" ||
+                    functionName === "safeBatchTransferFrom"
+                    ? promise.catch(handleTransferError) // v1 abi lacks v2 errors
+                    : promise,
                 );
                 return receipt.transactionHash;
               };
@@ -584,7 +578,7 @@ export async function setupDevnet({
     // note: TypeScript is too slow when the following is generalized to any resolver type
     async function findPermissionedRegistry({
       name,
-      account = namedAccounts.deployer,
+      account = named.deployer,
     }: {
       name: string;
       account?: Account;
@@ -627,12 +621,12 @@ export async function setupDevnet({
     }
 
     async function setupEnsDotEth() {
-      const resolver = resolvers.owner;
+      const { resolver } = named.owner;
 
       // hack register "ens.eth"
       await v2.ETHRegistry.write.register([
         "ens",
-        namedAccounts.owner.address,
+        named.owner.address,
         zeroAddress,
         resolver.address,
         0n,
@@ -666,7 +660,7 @@ export async function setupDevnet({
       }
     }
 
-    function unwrapError(err: unknown): never {
+    function handleTransferError(err: unknown): never {
       // see: WrappedErrorLib.sol
       const ERROR_STRING_SELECTOR = "0x08c379a0";
       const WRAPPED_ERROR_PREFIX = stringToHex("WrappedError::0x");
@@ -676,21 +670,21 @@ export async function setupDevnet({
           if (raw?.startsWith(ERROR_STRING_SELECTOR)) {
             [raw] = decodeAbiParameters([{ type: "bytes" }], slice(raw, 4));
             if (raw.startsWith(WRAPPED_ERROR_PREFIX)) {
-              const abi = [
-                ...v2.UnlockedMigrationController.abi,
-                ...v2.LockedMigrationController.abi,
-                ...v2.WrapperRegistryImpl.abi,
-                ...artifacts.LibMigration.abi,
-              ];
-              const newErr = new ContractFunctionRevertedError({
-                abi,
-                data: `0x${hexToString(slice(raw, 16))}`,
-                functionName: err.functionName,
-              });
-              if (newErr.data) {
-                throw new ContractFunctionExecutionError(newErr, err);
-              }
+              raw = `0x${hexToString(slice(raw, 16))}`;
             }
+          }
+          const abi = [
+            ...v2.UnlockedMigrationController.abi,
+            ...v2.LockedMigrationController.abi,
+            ...v2.WrapperRegistryImpl.abi,
+          ];
+          const newErr = new ContractFunctionRevertedError({
+            abi,
+            data: raw,
+            functionName: err.functionName,
+          });
+          if (newErr.data) {
+            throw new ContractFunctionExecutionError(newErr, err);
           }
         }
       }
