@@ -244,7 +244,7 @@ describe("Migration", () => {
     label?: string;
     account?: Account;
     duration?: bigint;
-    premigrate?: Boolean;
+    premigrate?: boolean;
   };
 
   async function registerUnwrapped({

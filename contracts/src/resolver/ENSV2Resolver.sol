@@ -9,7 +9,7 @@ import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 
 import {AbstractMirrorResolver} from "./AbstractMirrorResolver.sol";
 
-/// @notice Resolver that performs resolutions using ENSv2 with override for ENSv1 .eth resolver.
+/// @notice Resolver that performs resolutions using ENSv2 with override for ENSv1 "eth" resolver.
 contract ENSV2Resolver is AbstractMirrorResolver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -18,7 +18,7 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     /// @dev The ENSv2 root registry used to traverse the registry hierarchy and locate resolvers.
     IRegistry public immutable ROOT_REGISTRY;
 
-    /// @dev The ENSv1 resolver for .eth
+    /// @dev The ENSv1 resolver for "eth".
     address public immutable ETH_RESOLVER;
 
     ////////////////////////////////////////////////////////////////////////
