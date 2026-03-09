@@ -449,11 +449,7 @@ export async function changeRole(
 }
 
 /**
- * Reserve a name (registers with owner = address(0), no token minted)
- *
- * NOTE: Once PR #233 lands, reservation will use a dedicated `reserve()` function
- * with a `reservedOwner` field instead of `register(owner=0x0, roleBitmap=0)`.
- * See: https://github.com/ensdomains/contracts-v2/pull/233
+ * Reserve a name (registers with owner = address(0) and roleBitmap = 0, no token minted)
  */
 export async function reserveName(
   env: DevnetEnvironment,
