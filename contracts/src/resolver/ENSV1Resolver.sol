@@ -12,7 +12,7 @@ contract ENSV1Resolver is AbstractMirrorResolver {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The ENS v1 registry used to look up resolvers for names.
+    /// @dev The ENSv1 registry used to look up resolvers for names.
     ENS public immutable REGISTRY_V1;
 
     ////////////////////////////////////////////////////////////////////////

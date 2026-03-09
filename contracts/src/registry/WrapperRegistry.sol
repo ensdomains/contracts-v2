@@ -7,10 +7,10 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
-import {MigrationErrors} from "../migration/MigrationErrors.sol";
-import {WrapperReceiver} from "../migration/WrapperReceiver.sol";
+import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
+import {LibMigration} from "../migration/libraries/LibMigration.sol";
+import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 
 import {IRegistry} from "./interfaces/IRegistry.sol";
@@ -19,12 +19,12 @@ import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
-/// @notice UUPS-upgradeable registry that wraps an ENS V1 NameWrapper, supporting migration of
+/// @notice UUPS-upgradeable registry that wraps an ENSv1 NameWrapper, supporting migration of
 ///         wrapped names into the namechain registry system.
 contract WrapperRegistry is
     IWrapperRegistry,
     PermissionedRegistry,
-    WrapperReceiver,
+    LockedWrapperReceiver,
     Initializable,
     UUPSUpgradeable
 {
@@ -32,13 +32,15 @@ contract WrapperRegistry is
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Fallback resolver for ENSv1 resolution.
     address public immutable V1_RESOLVER;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    bytes32 public parentNode;
+    /// @dev The namehash of this registry.
+    bytes32 internal _node;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -52,7 +54,7 @@ contract WrapperRegistry is
         IRegistryMetadata metadataProvider
     )
         PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) // no roles are granted
-        WrapperReceiver(nameWrapper, verifiableFactory, address(this))
+        LockedWrapperReceiver(nameWrapper, verifiableFactory, address(this))
     {
         V1_RESOLVER = ensV1Resolver;
         _disableInitializers();
@@ -61,7 +63,13 @@ contract WrapperRegistry is
     /// @inheritdoc IERC165
     function supportsInterface(
         bytes4 interfaceId
-    ) public view virtual override(IERC165, WrapperReceiver, PermissionedRegistry) returns (bool) {
+    )
+        public
+        view
+        virtual
+        override(IERC165, AbstractWrapperReceiver, PermissionedRegistry)
+        returns (bool)
+    {
         return
             type(IWrapperRegistry).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
@@ -69,19 +77,21 @@ contract WrapperRegistry is
     }
 
     /// @inheritdoc IWrapperRegistry
-    function initialize(IWrapperRegistry.ConstructorArgs calldata args) public initializer {
-        if (args.owner == address(0)) {
-            revert InvalidOwner();
-        }
-
-        // Set the parent domain for name resolution fallback
-        parentNode = args.node;
-
-        // Configure owner with upgrade permissions and specified roles
+    function initialize(
+        bytes32 node,
+        IRegistry parentRegistry,
+        string calldata childLabel,
+        address admin,
+        uint256 roleBitmap
+    ) public initializer {
+        _node = node;
+        // setup canonical parent (ROLE_SET_PARENT is not granted)
+        _parentRegistry = parentRegistry;
+        _childLabel = childLabel;
         _grantRoles(
             ROOT_RESOURCE,
-            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | args.ownerRoles,
-            args.owner,
+            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | roleBitmap,
+            admin,
             false
         );
     }
@@ -91,7 +101,7 @@ contract WrapperRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc PermissionedRegistry
-    /// @dev Prevent registration of emancipated children.
+    /// @dev Blocks registration of emancipated children.
     function register(
         string memory label,
         address owner,
@@ -101,7 +111,7 @@ contract WrapperRegistry is
         uint64 expiry
     ) public override(IStandardRegistry, PermissionedRegistry) returns (uint256 tokenId) {
         if (_isMigratableChild(label)) {
-            revert MigrationErrors.NameRequiresMigration();
+            revert LibMigration.NameRequiresMigration();
         }
         return super.register(label, owner, registry, resolver, roleBitmap, expiry);
     }
@@ -114,8 +124,32 @@ contract WrapperRegistry is
         return _isMigratableChild(label) ? V1_RESOLVER : super.getResolver(label);
     }
 
-    /// @inheritdoc WrapperReceiver
-    /// @dev Allow registration of emancipated children.
+    /// @inheritdoc IWrapperRegistry
+    function getWrappedName()
+        public
+        view
+        override(LockedWrapperReceiver, IWrapperRegistry)
+        returns (bytes memory)
+    {
+        return super.getWrappedName();
+    }
+
+    /// @inheritdoc IWrapperRegistry
+    function getWrappedNode()
+        public
+        view
+        override(LockedWrapperReceiver, IWrapperRegistry)
+        returns (bytes32)
+    {
+        return _node;
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @inheritdoc LockedWrapperReceiver
+    /// @dev Allows registration of emancipated children.
     function _inject(
         string memory label,
         address owner,
@@ -127,14 +161,15 @@ contract WrapperRegistry is
         return super.register(label, owner, subregistry, resolver, roleBitmap, expiry);
     }
 
-    /// @dev Allow `ROLE_UPGRADE` to upgrade.
+    /// @dev Requires `ROLE_UPGRADE` to upgrade.
     function _authorizeUpgrade(
         address
     ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {
         //
     }
 
-    function _parentNode() internal view override returns (bytes32) {
-        return parentNode;
+    /// @inheritdoc LockedWrapperReceiver
+    function _getRegistry() internal view override returns (IRegistry) {
+        return this;
     }
 }

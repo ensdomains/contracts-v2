@@ -31,7 +31,7 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The v2 root registry used to look up resolvers for rewritten names.
+    /// @dev The ENSv2 root registry used to look up resolvers for rewritten names.
     IRegistry public immutable ROOT_REGISTRY;
 
     /// @dev Provider for batch CCIP-Read gateway URLs, used when forwarding resolution calls.

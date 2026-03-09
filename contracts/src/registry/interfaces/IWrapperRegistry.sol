@@ -2,43 +2,27 @@
 pragma solidity >=0.8.13;
 
 import {IPermissionedRegistry} from "./IPermissionedRegistry.sol";
-
-/// @dev Minimum Size of `abi.encode(Data({...}))`.
-uint256 constant MIN_DATA_SIZE = 4 * 32;
+import {IRegistry} from "./IRegistry.sol";
 
 /// @notice Interface for a registry that manages a locked NameWrapper name.
-/// @dev Interface selector: `0x8cd02f97`
+/// @dev Interface selector: `0x6b2f7339`
 interface IWrapperRegistry is IPermissionedRegistry {
-    ////////////////////////////////////////////////////////////////////////
-    // Types
-    ////////////////////////////////////////////////////////////////////////
+    /// @param node Namehash of this registry.
+    /// @param parentRegistry The parent of this registry.
+    /// @param childLabel The subdomain for this registry.
+    /// @param admin Address that will control this registry.
+    /// @param roleBitmap The roles assigned to `admin`.
+    function initialize(
+        bytes32 node,
+        IRegistry parentRegistry,
+        string calldata childLabel,
+        address admin,
+        uint256 roleBitmap
+    ) external;
 
-    /// @dev Typed arguments for `initialize()`.
-    struct ConstructorArgs {
-        bytes32 node;
-        address owner;
-        uint256 ownerRoles;
-    }
+    /// @notice The DNS-encoded name for this registry.
+    function getWrappedName() external view returns (bytes memory);
 
-    /// @dev Typed arguments for NameWrapper token transfer.
-    struct Data {
-        string label;
-        address owner;
-        address resolver;
-        uint256 salt;
-    }
-
-    ////////////////////////////////////////////////////////////////////////
-    // Errors
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice The encoded `Data` struct(s) are invalid.
-    /// @dev Error selector: `0x5cb045db`
-    error InvalidData();
-
-    ////////////////////////////////////////////////////////////////////////
-    // Functions
-    ////////////////////////////////////////////////////////////////////////
-
-    function initialize(ConstructorArgs calldata args) external;
+    /// @notice The NameWrapper node (namehash).
+    function getWrappedNode() external view returns (bytes32);
 }
