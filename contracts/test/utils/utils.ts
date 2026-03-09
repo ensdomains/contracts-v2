@@ -1,6 +1,5 @@
 // note: viem's labelhash() has long-label support, which ENSv2 is not using
 // we should eventually replace all labelhash(*) usage with keccak256(toBytes(*)).
-
 import { keccak256, stringToBytes } from "viem";
 
 export { dnsEncodeName } from "../../lib/ens-contracts/test/fixtures/dnsEncodeName.js";

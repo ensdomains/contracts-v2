@@ -36,7 +36,7 @@ contract V1FixtureTest is V1Fixture {
 
     function test_registerWrappedETH3LD() external {
         bytes memory parentName = registerWrappedETH2LD("test", 0);
-        bytes memory name = createWrappedChild(parentName, "sub", 0);
+        bytes memory name = createWrappedChild(parentName, "sub", address(0), 0);
         assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), user, "owner");
     }
 
@@ -47,7 +47,7 @@ contract V1FixtureTest is V1Fixture {
 
     function test_registerWrappedDNS3LD() external {
         bytes memory parentName = createWrappedName("ens.domains", 0);
-        bytes memory name = createWrappedChild(parentName, "sub", 0);
+        bytes memory name = createWrappedChild(parentName, "sub", address(0), 0);
         assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), user, "owner");
     }
 
@@ -114,10 +114,10 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL() external {
         bytes memory name = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        createWrappedChild(name, "1", PARENT_CANNOT_CONTROL);
-        createWrappedChild(name, "2", PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
+        createWrappedChild(name, "1", address(0), PARENT_CANNOT_CONTROL);
+        createWrappedChild(name, "2", address(0), PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
         vm.expectRevert();
-        this.createWrappedChild(name, "3", CANNOT_UNWRAP);
+        this.createWrappedChild(name, "3", address(0), CANNOT_UNWRAP);
     }
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_setFuses() external {
@@ -131,7 +131,12 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_wrap() external {
         bytes memory parentName = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        bytes memory name = createWrappedChild(parentName, "sub", PARENT_CANNOT_CONTROL);
+        bytes memory name = createWrappedChild(
+            parentName,
+            "sub",
+            address(0),
+            PARENT_CANNOT_CONTROL
+        );
         (bytes32 labelhash, ) = NameCoder.readLabel(name, 0);
         vm.startPrank(user);
         nameWrapper.setFuses(NameCoder.namehash(name, 0), uint16(PARENT_CANNOT_CONTROL));
@@ -154,6 +159,7 @@ contract V1FixtureTest is V1Fixture {
         bytes memory name = createWrappedChild(
             parentName,
             "sub",
+            address(0),
             CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
         );
         // setChildFuses() does not allow fuse changes if PCC

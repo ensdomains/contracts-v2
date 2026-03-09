@@ -3,11 +3,10 @@ import { type Address, zeroAddress } from "viem";
 import {
   LOCAL_BATCH_GATEWAY_URL,
   ROLES,
+  MAX_EXPIRY,
 } from "../../../script/deploy-constants.js";
 import { splitName, idFromLabel } from "../../utils/utils.js";
 import { deployVerifiableProxy } from "./deployVerifiableProxy.js";
-
-export const MAX_EXPIRY = (1n << 64n) - 1n;
 
 export async function deployV2Fixture(
   network: NetworkConnection,

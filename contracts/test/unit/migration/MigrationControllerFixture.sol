@@ -31,7 +31,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
         deployV1Fixture();
         deployV2Fixture();
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
-        ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider);
+        ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
         dummy1155 = new MockERC1155();
         ethRegistrarV1.setResolver(address(ensV2Resolver));
     }

@@ -54,11 +54,8 @@ describe("Migration", () => {
         [env.named.deployer.address],
         { account: env.named.owner },
       );
-      // set fallback resolver
-      await env.v1.BaseRegistrar.write.setResolver(
-        [env.v2.ENSV2Resolver.address],
-        { account: env.named.owner },
-      );
+      // assumes fallback resolver set during deployment
+      // see: deploy/00_ENSV2Resolver.ts
     },
   });
 
@@ -318,8 +315,37 @@ describe("Migration", () => {
     });
   });
 
+  describe("premigration", () => {
+    // these should never happen
+    it("empty name", async () => {
+      const unwrapped = await registerUnwrapped({
+        label: "",
+        premigrate: false,
+      });
+      // not LabelIsEmpty() because MIN_DATA_SIZE assumes label.length > 0
+      expect(unwrapped.migrate()).rejects.toThrow("InvalidData");
+    });
+
+    it("long name", async () => {
+      const unwrapped = await registerUnwrapped({
+        label: "a".repeat(256),
+        premigrate: false,
+      });
+      expect(unwrapped.migrate()).rejects.toThrow("LabelIsTooLong");
+    });
+
+    it("not reserved", async () => {
+      const unwrapped = await registerUnwrapped({
+        premigrate: false,
+      });
+      expect(unwrapped.migrate()).rejects.toThrow(
+        "EACUnauthorizedAccountRoles",
+      );
+    });
+  });
+
   describe("unwrapped", () => {
-    it("by owner", async () => {
+    it("migrate", async () => {
       const unwrapped = await registerUnwrapped();
       await unwrapped.setupPublicResolver();
       await unwrapped.checkResolution();
@@ -328,7 +354,7 @@ describe("Migration", () => {
       await unwrapped.checkResolution();
     });
 
-    it("by approved", async () => {
+    it("migrate with approval", async () => {
       const unwrapped = await registerUnwrapped();
       const { user2 } = env.named;
       await env.v1.BaseRegistrar.write.setApprovalForAll(
@@ -382,20 +408,11 @@ describe("Migration", () => {
       ).rejects.toThrow("InvalidOwner");
     });
 
-    it("empty name", async () => {
-      const unwrapped = await registerUnwrapped({
-        label: "",
-        premigrate: false, // required
-      });
-      expect(unwrapped.migrate()).rejects.toThrow("InvalidData"); // MIN_DATA_SIZE assumes label.length > 0
-    });
-
-    it("long name", async () => {
-      const unwrapped = await registerUnwrapped({
-        label: "a".repeat(256),
-        premigrate: false, // required
-      });
-      expect(unwrapped.migrate()).rejects.toThrow("LabelIsTooLong");
+    it("invalid receiver", async () => {
+      const unwrapped = await registerUnwrapped();
+      expect(
+        unwrapped.migrate({ data: { owner: env.v2.ETHRegistry.address } }), // not IERC1155Receiver
+      ).rejects.toThrow("ERC1155InvalidReceiver");
     });
 
     it("wrong controller", async () => {
@@ -421,7 +438,7 @@ describe("Migration", () => {
   });
 
   describe("unlocked", () => {
-    it("by owner", async () => {
+    it("migrate", async () => {
       const unlocked = await registerWrapped();
       await unlocked.setupPublicResolver();
       await unlocked.checkResolution();
@@ -440,6 +457,16 @@ describe("Migration", () => {
           data: { owner: zeroAddress }, // wrong
         }),
       ).rejects.toThrow("InvalidOwner");
+    });
+
+    it("invalid receiver", async () => {
+      const unlocked = await registerUnwrapped();
+      expect(
+        unlocked.migrate({
+          target: env.v2.UnlockedMigrationController.address,
+          data: { owner: env.v2.ETHRegistry.address }, // not IERC1155Receiver
+        }),
+      ).rejects.toThrow("ERC1155InvalidReceiver");
     });
 
     it("wrong controller", async () => {
@@ -471,7 +498,7 @@ describe("Migration", () => {
   });
 
   describe("locked", () => {
-    it("by owner", async () => {
+    it("migrate", async () => {
       const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
       await locked.setupPublicResolver();
       await locked.checkResolution();
@@ -497,7 +524,28 @@ describe("Migration", () => {
       expectVar({ resolver }).toEqualAddress(env.v1.PublicResolver.address);
     });
 
-    it("migrated locked child", async () => {
+    it("locked transfer", async () => {
+      const locked = await registerWrapped({
+        fuses: FUSES.CANNOT_UNWRAP | FUSES.CANNOT_TRANSFER,
+      });
+      expect(
+        locked.migrate({
+          target: env.v2.LockedMigrationController.address,
+        }),
+      ).rejects.toThrow("OperationProhibited");
+    });
+
+    it("locked fuses", async () => {
+      const locked = await registerWrapped({
+        fuses: FUSES.CANNOT_UNWRAP | FUSES.CANNOT_BURN_FUSES,
+      });
+      await locked.migrate({
+        target: env.v2.LockedMigrationController.address,
+      });
+      await locked.checkMigrated();
+    });
+
+    it("migrate locked child", async () => {
       const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
       const lockedChild = await locked.createChild({
         fuses: FUSES.PARENT_CANNOT_CONTROL | FUSES.CANNOT_UNWRAP,
@@ -573,6 +621,50 @@ describe("Migration", () => {
         0n,
         MAX_EXPIRY,
       ]);
+    });
+
+    it("can extend expiry", async () => {
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      const lockedChild = await locked.createChild({
+        account: env.named.user2,
+        fuses:
+          FUSES.PARENT_CANNOT_CONTROL |
+          FUSES.CANNOT_UNWRAP |
+          FUSES.CAN_EXTEND_EXPIRY,
+      });
+      await locked.migrate({
+        target: env.v2.LockedMigrationController.address,
+      });
+      const lockedRegistry = await locked.registry();
+      await lockedChild.migrate({
+        target: lockedRegistry.address,
+      });
+      const state = await lockedRegistry.read.getState([
+        idFromLabel(lockedChild.label),
+      ]);
+      await lockedRegistry.write.renew([state.tokenId, state.expiry + 1n], {
+        account: lockedChild.account,
+      });
+    });
+
+    it("invalid owner", async () => {
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      expect(
+        locked.migrate({
+          target: env.v2.LockedMigrationController.address,
+          data: { owner: zeroAddress }, // wrong
+        }),
+      ).rejects.toThrow("InvalidOwner");
+    });
+
+    it("invalid receiver", async () => {
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      expect(
+        locked.migrate({
+          target: env.v2.LockedMigrationController.address,
+          data: { owner: env.v2.ETHRegistry.address }, // not IERC1155Receiver
+        }),
+      ).rejects.toThrow("ERC1155InvalidReceiver");
     });
 
     it("wrong controller", async () => {

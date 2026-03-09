@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { parseArgs } from "node:util";
-import { getAddress, toHex } from "viem";
+import { getAddress } from "viem";
 import { setupDevnet } from "./setup.js";
 import { testNames } from "./testNames.js";
 

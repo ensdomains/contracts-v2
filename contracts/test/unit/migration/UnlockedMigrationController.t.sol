@@ -184,7 +184,6 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         LibMigration.Data memory md = _makeData(name);
         md.owner = address(ethRegistry); // not a IERC1155Receiver
-
         vm.expectRevert(
             abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
         );
