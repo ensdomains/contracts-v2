@@ -244,6 +244,7 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("expiring"));
         assertEq(registry.ownerOf(state.tokenId), newOwner, "Owner should be newOwner");
         assertEq(state.expiry, newExpiry, "Expiry should match new expiry");
+        assertEq(registry.getResolver("expiring"), resolver, "Resolver should be set on re-registration");
     }
 
     function test_batchRegister_empty_array() public {
@@ -362,6 +363,80 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
             }
         }
         assertTrue(foundExpiryUpdated, "ExpiryUpdated event should be emitted");
+    }
+
+    function test_batchRegister_skips_already_registered_names() public {
+        // Reserve a name first
+        uint64 expiry = uint64(block.timestamp + 86400 * 365);
+        BatchRegistrarName[] memory initialNames = new BatchRegistrarName[](1);
+        initialNames[0] = BatchRegistrarName({
+            label: "registered",
+            owner: address(0),
+            registry: IRegistry(address(0)),
+            resolver: resolver,
+            roleBitmap: 0,
+            expires: expiry
+        });
+        batchRegistrar.batchRegister(initialNames);
+
+        // Promote to REGISTERED with a real owner
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTER_RESERVED, address(this));
+        address realOwner = address(0x1234);
+        registry.register(
+            "registered",
+            realOwner,
+            IRegistry(address(0)),
+            resolver,
+            RegistryRolesLib.ROLE_SET_RESOLVER,
+            expiry
+        );
+
+        IPermissionedRegistry.State memory stateBefore = registry.getState(LibLabel.id("registered"));
+        assertEq(uint256(stateBefore.status), uint256(IPermissionedRegistry.Status.REGISTERED));
+
+        // Batch with a mix of new and already-REGISTERED names should not revert
+        uint64 newExpiry = uint64(block.timestamp + 86400 * 730);
+        BatchRegistrarName[] memory mixedNames = new BatchRegistrarName[](3);
+        mixedNames[0] = BatchRegistrarName({
+            label: "fresh1",
+            owner: address(0),
+            registry: IRegistry(address(0)),
+            resolver: resolver,
+            roleBitmap: 0,
+            expires: newExpiry
+        });
+        mixedNames[1] = BatchRegistrarName({
+            label: "registered",
+            owner: address(0),
+            registry: IRegistry(address(0)),
+            resolver: resolver,
+            roleBitmap: 0,
+            expires: newExpiry
+        });
+        mixedNames[2] = BatchRegistrarName({
+            label: "fresh2",
+            owner: address(0),
+            registry: IRegistry(address(0)),
+            resolver: resolver,
+            roleBitmap: 0,
+            expires: newExpiry
+        });
+        batchRegistrar.batchRegister(mixedNames);
+
+        // The REGISTERED name should be untouched
+        IPermissionedRegistry.State memory stateAfter = registry.getState(LibLabel.id("registered"));
+        assertEq(uint256(stateAfter.status), uint256(IPermissionedRegistry.Status.REGISTERED));
+        assertEq(registry.ownerOf(stateAfter.tokenId), realOwner, "Owner should remain unchanged");
+        assertEq(stateAfter.expiry, expiry, "Expiry should remain unchanged");
+
+        // New names should be reserved
+        IPermissionedRegistry.State memory fresh1 = registry.getState(LibLabel.id("fresh1"));
+        assertEq(uint256(fresh1.status), uint256(IPermissionedRegistry.Status.RESERVED));
+        assertEq(fresh1.expiry, newExpiry);
+
+        IPermissionedRegistry.State memory fresh2 = registry.getState(LibLabel.id("fresh2"));
+        assertEq(uint256(fresh2.status), uint256(IPermissionedRegistry.Status.RESERVED));
+        assertEq(fresh2.expiry, newExpiry);
     }
 
     function test_batchRegister_reservedThenRegister() public {

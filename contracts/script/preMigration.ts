@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { createReadStream, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  createPublicClient,
   createWalletClient,
   defineChain,
   getContract,
@@ -46,29 +47,6 @@ const BASE_REGISTRAR_ABI = [
     inputs: [{ internalType: "uint256", name: "id", type: "uint256" }],
     name: "nameExpires",
     outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
-  },
-] as const;
-
-// Minimal ABI for PermissionedRegistry read operations
-const PERMISSIONED_REGISTRY_ABI = [
-  {
-    inputs: [{ name: "anyId", type: "uint256" }],
-    name: "getState",
-    outputs: [
-      {
-        name: "state",
-        type: "tuple",
-        components: [
-          { name: "status", type: "uint8" },
-          { name: "expiry", type: "uint64" },
-          { name: "latestOwner", type: "address" },
-          { name: "tokenId", type: "uint256" },
-          { name: "resource", type: "uint256" },
-        ],
-      },
-    ],
     stateMutability: "view",
     type: "function",
   },
@@ -144,9 +122,7 @@ export interface Checkpoint {
 const CHECKPOINT_FILE = "preMigration-checkpoint.json";
 const ERROR_LOG_FILE = "preMigration-errors.log";
 const INFO_LOG_FILE = "preMigration.log";
-const MAX_RETRIES = 3;
 
-// Configuration constants
 const RPC_TIMEOUT_MS = 30000;
 
 // ENS v1 BaseRegistrar on Ethereum mainnet
@@ -228,18 +204,10 @@ class PreMigrationLogger extends Logger {
     );
   }
 
-  failed(
-    name: string,
-    error: string,
-    attempt?: number,
-    maxRetries?: number
-  ): void {
-    const attemptInfo = attempt
-      ? ` (attempt ${attempt}/${maxRetries})`
-      : ` after ${maxRetries} attempts`;
+  failed(name: string, error: string): void {
     this.rawError(
-      red(`  → ✗ Failed${attemptInfo}:`) + dim(` ${error}`),
-      `  → ✗ Failed${attemptInfo}: ${error}`
+      red(`  → ✗ Failed:`) + dim(` ${error}`),
+      `  → ✗ Failed: ${error}`
     );
   }
 
@@ -450,24 +418,14 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-async function fetchAndReserveInBatches(
-  config: PreMigrationConfig,
-): Promise<void> {
-  let checkpoint: Checkpoint | null = null;
+interface MigrationClients {
+  client: any;
+  mainnetClient: any;
+  registry: any;
+  batchRegistrar: any;
+}
 
-  if (config.continue) {
-    checkpoint = loadCheckpoint();
-    if (checkpoint) {
-      logger.info(`Resuming from checkpoint: ${checkpoint.totalProcessed} names already processed from line ${checkpoint.lastProcessedLineNumber}`);
-      config.startIndex = checkpoint.lastProcessedLineNumber;
-    }
-  }
-
-  if (!checkpoint) {
-    checkpoint = createFreshCheckpoint();
-  }
-
-  // Get chain for v2 operations (mainnet or custom chain)
+async function createMigrationClients(config: PreMigrationConfig): Promise<MigrationClients> {
   const v2Chain: Chain = config.chainId === 1 ? mainnet : defineChain({
     id: config.chainId,
     name: "Custom",
@@ -475,36 +433,41 @@ async function fetchAndReserveInBatches(
     rpcUrls: { default: { http: [config.rpcUrl] } },
   });
 
-  // Client for v2 operations (can be devnet or mainnet)
   const client = createWalletClient({
     account: privateKeyToAccount(config.privateKey),
     chain: v2Chain,
     transport: http(config.rpcUrl, { retryCount: 0, timeout: RPC_TIMEOUT_MS }),
   }).extend(publicActions);
 
-  // Separate client for mainnet v1 verification
-  const mainnetClient = createWalletClient({
-    account: privateKeyToAccount(config.privateKey),
+  const mainnetClient = createPublicClient({
     chain: mainnet,
     transport: http(config.mainnetRpcUrl, { retryCount: 0, timeout: RPC_TIMEOUT_MS }),
-  }).extend(publicActions);
+  });
 
+  const registryArtifact = loadArtifact("PermissionedRegistry");
   const registry = getContract({
     address: config.registryAddress,
-    abi: PERMISSIONED_REGISTRY_ABI,
+    abi: registryArtifact.abi,
     client,
   });
 
-  // Validate BatchRegistrar is deployed
   await validateBatchRegistrar(client, config.batchRegistrarAddress);
 
-  // Load BatchRegistrar ABI from artifacts
   const batchRegistrarArtifact = loadArtifact("BatchRegistrar");
   const batchRegistrar = getContract({
     address: config.batchRegistrarAddress,
     abi: batchRegistrarArtifact.abi,
     client,
   });
+
+  return { client, mainnetClient, registry, batchRegistrar };
+}
+
+async function fetchAndReserveInBatches(
+  config: PreMigrationConfig,
+  checkpoint: Checkpoint,
+): Promise<void> {
+  const { client, mainnetClient, registry, batchRegistrar } = await createMigrationClients(config);
 
   logger.info(`\nReading CSV file and reserving in batches of ${config.batchSize}...`);
   logger.info(`CSV file: ${config.csvFilePath}`);
@@ -608,6 +571,7 @@ async function processBatch(
       if (v2State.status === 2) {
         logger.error(`Name ${registration.labelName}.eth is already registered with owner: ${v2State.latestOwner}`);
         checkpoint.failureCount++;
+        checkpoint.totalProcessed++;
         logger.finishedName(registration.labelName, 'failed');
         continue;
       }
@@ -628,6 +592,7 @@ async function processBatch(
           : "expired";
         logger.v1NotRegistered(registration.labelName, reason);
         checkpoint.skippedCount++;
+        checkpoint.totalProcessed++;
         logger.finishedName(registration.labelName, 'skipped');
         continue;
       }
@@ -636,6 +601,7 @@ async function processBatch(
         const daysUntilExpiry = Number((v1Result.expiry - BigInt(Math.floor(Date.now() / 1000))) / 86400n);
         logger.skippingExpiringSoon(registration.labelName, daysUntilExpiry);
         checkpoint.skippedCount++;
+        checkpoint.totalProcessed++;
         logger.finishedName(registration.labelName, 'skipped');
         continue;
       }
@@ -653,7 +619,7 @@ async function processBatch(
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.failed(registration.labelName, errorMessage, undefined, MAX_RETRIES);
+      logger.failed(registration.labelName, errorMessage);
       checkpoint.failureCount++;
       checkpoint.totalProcessed++;
       logger.finishedName(registration.labelName, 'failed');
@@ -702,7 +668,7 @@ async function processBatch(
           }
         } catch (individualError) {
           const individualMsg = individualError instanceof Error ? individualError.message : String(individualError);
-          logger.failed(name.label, individualMsg, undefined, MAX_RETRIES);
+          logger.failed(name.label, individualMsg);
           checkpoint.totalProcessed++;
           checkpoint.failureCount++;
           logger.finishedName(name.label, 'failed');
@@ -767,93 +733,6 @@ function printFinalSummary(checkpoint: Checkpoint): void {
   }
 }
 
-export async function batchReserveNames(
-  config: PreMigrationConfig,
-  registrations: ENSRegistration[],
-  providedClient?: any,
-  providedRegistry?: any,
-  providedMainnetClient?: any
-): Promise<void> {
-  // Get chain for v2 operations (mainnet or custom chain)
-  const v2Chain: Chain = config.chainId === 1 ? mainnet : defineChain({
-    id: config.chainId,
-    name: "Custom",
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: { default: { http: [config.rpcUrl] } },
-  });
-
-  const client = providedClient || createWalletClient({
-    account: privateKeyToAccount(config.privateKey),
-    chain: v2Chain,
-    transport: http(config.rpcUrl, {
-      retryCount: 0,
-      timeout: RPC_TIMEOUT_MS,
-    }),
-  }).extend(publicActions);
-
-  // Mainnet client for v1 verification
-  const mainnetClient = providedMainnetClient || createWalletClient({
-    account: privateKeyToAccount(config.privateKey),
-    chain: mainnet,
-    transport: http(config.mainnetRpcUrl, {
-      retryCount: 0,
-      timeout: RPC_TIMEOUT_MS,
-    }),
-  }).extend(publicActions);
-
-  const registry = providedRegistry || getContract({
-    address: config.registryAddress,
-    abi: PERMISSIONED_REGISTRY_ABI,
-    client,
-  });
-
-  // Validate BatchRegistrar is deployed
-  await validateBatchRegistrar(client, config.batchRegistrarAddress);
-
-  // Load BatchRegistrar ABI from artifacts
-  const batchRegistrarArtifact = loadArtifact("BatchRegistrar");
-  const batchRegistrar = getContract({
-    address: config.batchRegistrarAddress,
-    abi: batchRegistrarArtifact.abi,
-    client,
-  });
-
-  let checkpoint: Checkpoint;
-  if (config.disableCheckpoint) {
-    checkpoint = createFreshCheckpoint();
-    checkpoint.totalExpected = registrations.length;
-  } else if (config.continue) {
-    const loaded = loadCheckpoint();
-    if (loaded) {
-      checkpoint = {
-        ...loaded,
-        renewedCount: loaded.renewedCount ?? 0,
-        skippedCount: loaded.skippedCount ?? 0,
-        invalidLabelCount: loaded.invalidLabelCount ?? 0,
-        totalExpected: (loaded.totalExpected ?? loaded.totalProcessed) + registrations.length,
-      };
-    } else {
-      checkpoint = createFreshCheckpoint();
-      checkpoint.totalExpected = registrations.length;
-    }
-  } else {
-    checkpoint = createFreshCheckpoint();
-    checkpoint.totalExpected = registrations.length;
-  }
-
-  await processBatch(
-    config,
-    registrations,
-    client,
-    mainnetClient,
-    registry,
-    batchRegistrar,
-    checkpoint
-  );
-
-  printFinalSummary(checkpoint);
-}
-
 export async function main(argv = process.argv): Promise<void> {
   const program = new Command()
     .name("premigrate")
@@ -910,18 +789,20 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config('Limit', config.limit ?? "none");
     logger.config('Dry Run', config.dryRun);
     logger.config('Continue Mode', config.continue ?? false);
-    if (config.continue && loadCheckpoint()) {
-      const cp = loadCheckpoint()!;
-      const renewedCount = cp.renewedCount ?? 0;
-      const invalidCount = cp.invalidLabelCount ?? 0;
-      const lastLine = cp.lastProcessedLineNumber ?? -1;
-      logger.config('Checkpoint Found', `${cp.totalProcessed} processed (${cp.successCount} reserved, ${renewedCount} renewed, ${cp.skippedCount} skipped, ${invalidCount} invalid, ${cp.failureCount} failed) (last line: ${lastLine})`);
-      config.startIndex = lastLine;
-      logger.info(`Resuming from CSV line ${config.startIndex}`);
+
+    let checkpoint = createFreshCheckpoint();
+    if (config.continue) {
+      const cp = loadCheckpoint();
+      if (cp) {
+        checkpoint = cp;
+        config.startIndex = cp.lastProcessedLineNumber;
+        logger.config('Checkpoint Found', `${cp.totalProcessed} processed (${cp.successCount} reserved, ${cp.renewedCount} renewed, ${cp.skippedCount} skipped, ${cp.invalidLabelCount} invalid, ${cp.failureCount} failed) (last line: ${cp.lastProcessedLineNumber})`);
+        logger.info(`Resuming from CSV line ${config.startIndex}`);
+      }
     }
     logger.info("");
 
-    await fetchAndReserveInBatches(config);
+    await fetchAndReserveInBatches(config, checkpoint);
 
     logger.success("\nPre-migration script completed successfully!");
   } catch (error) {

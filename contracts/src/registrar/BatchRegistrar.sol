@@ -29,9 +29,10 @@ contract BatchRegistrar is Ownable {
     /// @notice Batch register or renew names
     /// @param names Array of names to register or renew
     /// @dev For each name:
+    ///      - If fully registered (not expired, has owner): skip
     ///      - If not registered or expired: register it
-    ///      - If registered with different expiry: renew to sync expiry with v1
-    ///      - If registered with same expiry: skip (no-op)
+    ///      - If reserved with different expiry: renew to sync expiry with v1
+    ///      - If reserved with same expiry: skip (no-op)
     function batchRegister(BatchRegistrarName[] calldata names) external onlyOwner {
         for (uint256 i = 0; i < names.length; i++) {
             BatchRegistrarName calldata name = names[i];
@@ -40,7 +41,11 @@ contract BatchRegistrar is Ownable {
                 LibLabel.id(name.label)
             );
 
-            if (state.expiry == 0 || state.expiry <= block.timestamp) {
+            if (state.expiry > block.timestamp && state.latestOwner != address(0)) {
+                continue;
+            }
+
+            if (state.expiry <= block.timestamp) {
                 ETH_REGISTRY.register(
                     name.label,
                     name.owner,
