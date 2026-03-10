@@ -15,9 +15,8 @@ Names are registered on v2 in a **reserved** state (owner set to `address(0)`) w
   - `BatchRegistrar` (owned by the deployer account)
   - `ENSV1Resolver` (deployed on v2 for fallback resolution)
 - **Private key** for the `BatchRegistrar` owner account
-- **RPC endpoints:**
-  - v2 chain RPC (where the v2 registry lives)
-  - Ethereum mainnet RPC (for v1 expiry lookups)
+- **RPC endpoint** for Ethereum mainnet (where both v1 and v2 contracts live). The chain ID is auto-detected from the RPC.
+  - Optionally, a separate `--mainnet-rpc-url` if v1 reads should go to a different endpoint (e.g. when running v2 on a local devnet that also has v1 contracts deployed)
 - **CSV file** of v1 registrations (see [CSV Format](#csv-format))
 
 ## CLI Reference
@@ -43,8 +42,7 @@ bun run script/preMigration.ts [options]
 
 | Option | Default | Description |
 |---|---|---|
-| `--mainnet-rpc-url <url>` | `https://eth.drpc.org` | Mainnet RPC for v1 BaseRegistrar expiry lookups |
-| `--chain-id <number>` | `1` | Chain ID for the v2 RPC |
+| `--mainnet-rpc-url <url>` | `https://eth.drpc.org` | Mainnet RPC for v1 BaseRegistrar expiry lookups. Useful when v2 is running on a local devnet with its own v1 contracts, so v1 reads can be pointed at the devnet instead of real mainnet. |
 | `--batch-size <number>` | `50` | Names per on-chain batch transaction |
 | `--start-index <number>` | `-1` | CSV line number to start from (used internally with `--continue`) |
 | `--limit <number>` | none | Maximum total names to process |
@@ -273,6 +271,5 @@ bun run script/preMigration.ts --min-expiry-days 30 [other options]
 bun run script/preMigration.ts \
   --v1-base-registrar 0xCustomBaseRegistrar... \
   --mainnet-rpc-url http://localhost:8545 \
-  --chain-id 31337 \
   [other options]
 ```

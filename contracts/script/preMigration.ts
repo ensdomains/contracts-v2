@@ -91,7 +91,6 @@ export interface BatchReserveName {
 export interface PreMigrationConfig {
   rpcUrl: string;
   mainnetRpcUrl: string;
-  chainId: number;
   registryAddress: Address;
   batchRegistrarAddress: Address;
   privateKey: `0x${string}`;
@@ -427,8 +426,13 @@ interface MigrationClients {
 }
 
 async function createMigrationClients(config: PreMigrationConfig): Promise<MigrationClients> {
-  const v2Chain: Chain = config.chainId === 1 ? mainnet : defineChain({
-    id: config.chainId,
+  const tempClient = createPublicClient({
+    transport: http(config.rpcUrl, { retryCount: 0, timeout: RPC_TIMEOUT_MS }),
+  });
+  const chainId = await tempClient.getChainId();
+
+  const v2Chain: Chain = chainId === 1 ? mainnet : defineChain({
+    id: chainId,
     name: "Custom",
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: { default: { http: [config.rpcUrl] } },
@@ -745,7 +749,6 @@ export async function main(argv = process.argv): Promise<void> {
     .requiredOption("--private-key <key>", "Deployer private key")
     .requiredOption("--csv-file <path>", "Path to CSV file containing ENS registrations")
     .option("--mainnet-rpc-url <url>", "Mainnet RPC endpoint for v1 verification (default: public endpoint)", "https://eth.drpc.org")
-    .option("--chain-id <number>", "Chain ID for v2 RPC (default: 1 for mainnet)", "1")
     .option("--batch-size <number>", "Number of names to process per batch", "50")
     .option("--start-index <number>", "Starting index for resuming partial migrations", "-1")
     .option("--limit <number>", "Maximum total number of names to process and register")
@@ -761,7 +764,6 @@ export async function main(argv = process.argv): Promise<void> {
   const config: PreMigrationConfig = {
     rpcUrl: opts.rpcUrl,
     mainnetRpcUrl: opts.mainnetRpcUrl,
-    chainId: parseInt(opts.chainId) || 1,
     registryAddress: opts.registry as Address,
     batchRegistrarAddress: opts.batchRegistrar as Address,
     privateKey: opts.privateKey as `0x${string}`,
@@ -782,7 +784,6 @@ export async function main(argv = process.argv): Promise<void> {
 
     logger.info(`Configuration:`);
     logger.config('RPC URL', config.rpcUrl);
-    logger.config('Chain ID', config.chainId);
     logger.config('Registry', config.registryAddress);
     logger.config('BatchRegistrar', config.batchRegistrarAddress);
     logger.config('Mainnet RPC (v1)', config.mainnetRpcUrl);

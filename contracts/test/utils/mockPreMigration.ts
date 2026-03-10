@@ -86,7 +86,6 @@ export function buildMainArgs(
   const registryAddress = deployment.contracts.ETHRegistry.address;
   const batchRegistrarAddress = getBatchRegistrarAddress(deployment);
   const v1ResolverAddress = getENSV1ResolverAddress(deployment);
-  const chainId = String(deployment.client.chain!.id);
 
   const args = [
     "node",
@@ -105,8 +104,6 @@ export function buildMainArgs(
     v1ResolverAddress,
     "--mainnet-rpc-url",
     rpcUrl,
-    "--chain-id",
-    chainId,
     "--min-expiry-days",
     String(overrides.minExpiryDays ?? 0),
     "--v1-base-registrar",

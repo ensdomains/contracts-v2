@@ -4,9 +4,10 @@ setDefaultTimeout(30_000);
 import { existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
-import { zeroAddress } from "viem";
+import { createPublicClient, http, zeroAddress } from "viem";
+import { mainnet } from "viem/chains";
 import { STATUS, MAX_EXPIRY, ROLES } from "../../script/deploy-constants.js";
-import { main } from "../../script/preMigration.js";
+import { main, verifyNameOnV1 } from "../../script/preMigration.js";
 import {
   setupBaseRegistrarController,
   registerV1Name,
@@ -276,5 +277,28 @@ describe("PreMigration", () => {
 
     const normalState = await verifyV2State(env.deployment, normalLabel);
     expect(normalState.status).toBe(STATUS.RESERVED);
+  });
+});
+
+describe("PreMigration - Live Mainnet v1 Verification", () => {
+  const mainnetClient = createPublicClient({
+    chain: mainnet,
+    transport: http("https://eth.drpc.org", { retryCount: 2, timeout: 15_000 }),
+  });
+
+  it("verifies well-known names are registered on v1 mainnet", async () => {
+    const wellKnownNames = ["nick", "vitalik"];
+
+    for (const name of wellKnownNames) {
+      const result = await verifyNameOnV1(name, mainnetClient);
+      expect(result.isRegistered).toBe(true);
+      expect(result.expiry).toBeGreaterThan(BigInt(Math.floor(Date.now() / 1000)));
+    }
+  });
+
+  it("verifies a non-existent name returns not-registered on v1 mainnet", async () => {
+    const nonExistentName = "thisisaverylongnamethatwillneverberegistered12345678";
+    const result = await verifyNameOnV1(nonExistentName, mainnetClient);
+    expect(result.isRegistered).toBe(false);
   });
 });
