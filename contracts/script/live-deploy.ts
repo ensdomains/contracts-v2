@@ -97,7 +97,7 @@ const privateKey = async (protocolString: string) => {
   };
 };
 
-const networkName = `${opts.chain}Fresh`;
+const networkName = opts.chain;
 
 const runDeploy = async (
   scripts: string[],

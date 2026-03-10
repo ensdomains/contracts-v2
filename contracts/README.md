@@ -394,6 +394,7 @@ bun run deploy -- --chain sepolia --fresh-v1
 Options:
 - `--chain <name>` — chain name (`sepolia`, `mainnet`). Default: `sepolia`
 - `--fresh-v1` — deploy V1 contracts from scratch before V2. Default: off
+- `--local` — use minimal TLD suffixes (4 instead of ~9000) for faster local deploys. Default: off
 
 ### How `getV1` resolves V1 contract addresses
 
@@ -408,15 +409,36 @@ V2 deploy scripts use `getV1()` to reference V1 contract addresses. It checks th
 ```
 deployments/
   v1/
-    sepoliaFresh/           # Only when using --fresh-v1
+    sepolia/           # Only when using --fresh-v1
       ENSRegistry.json
       NameWrapper.json
       ...
-  sepoliaFresh/             # V2 contracts
+  sepolia/             # V2 contracts
     RootRegistry.json
     ETHRegistry.json
     UniversalResolverV2.json
     ...
+```
+
+### Contract Verification
+
+After deploying to a live network, verify source code using `@rocketh/verifier`:
+
+**Etherscan** (Sepolia/Mainnet):
+
+```bash
+# V2 contracts
+ETHERSCAN_API_KEY=<your_key> npx rocketh-verify -n sepolia -d deployments etherscan
+
+# V1 contracts (if deployed with --fresh-v1)
+ETHERSCAN_API_KEY=<your_key> npx rocketh-verify -n sepolia -d deployments/v1 etherscan
+```
+
+**Tenderly**: Contracts deployed to a Tenderly fork are automatically decoded if you upload source via the Tenderly dashboard or CLI (`tenderly contracts verify`). Alternatively, use the Etherscan-compatible endpoint:
+
+```bash
+ETHERSCAN_API_KEY=<tenderly_access_token> npx rocketh-verify -n sepolia -d deployments etherscan \
+  --endpoint https://api.tenderly.co/api/v1/account/<account>/project/<project>/etherscan/verify/network/<chain_id>
 ```
 
 ## Miscellaneous
