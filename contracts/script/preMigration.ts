@@ -104,6 +104,7 @@ export interface PreMigrationConfig {
   disableCheckpoint?: boolean;
   minExpiryDays: number;
   v1ResolverAddress: Address;
+  v1BaseRegistrarAddress: Address;
 }
 
 export interface Checkpoint {
@@ -583,7 +584,8 @@ async function processBatch(
       logger.verifyingV1(registration.labelName);
       const v1Result = await verifyNameOnV1(
         registration.labelName,
-        mainnetClient
+        mainnetClient,
+        config.v1BaseRegistrarAddress
       );
 
       if (!v1Result.isRegistered) {
@@ -745,12 +747,13 @@ export async function main(argv = process.argv): Promise<void> {
     .option("--mainnet-rpc-url <url>", "Mainnet RPC endpoint for v1 verification (default: public endpoint)", "https://eth.drpc.org")
     .option("--chain-id <number>", "Chain ID for v2 RPC (default: 1 for mainnet)", "1")
     .option("--batch-size <number>", "Number of names to process per batch", "50")
-    .option("--start-index <number>", "Starting index for resuming partial migrations", "0")
+    .option("--start-index <number>", "Starting index for resuming partial migrations", "-1")
     .option("--limit <number>", "Maximum total number of names to process and register")
     .option("--dry-run", "Simulate without executing transactions", false)
     .option("--continue", "Continue from previous checkpoint if it exists", false)
     .option("--min-expiry-days <days>", "Skip names expiring within this many days", "7")
-    .requiredOption("--v1-resolver <address>", "ENSV1Resolver address deployed on v2 for fallback resolution");
+    .requiredOption("--v1-resolver <address>", "ENSV1Resolver address deployed on v2 for fallback resolution")
+    .option("--v1-base-registrar <address>", "V1 BaseRegistrar address for expiry lookups", BASE_REGISTRAR_ADDRESS);
 
   program.parse(argv);
   const opts = program.opts();
@@ -770,6 +773,7 @@ export async function main(argv = process.argv): Promise<void> {
     continue: opts.continue,
     minExpiryDays: parseInt(opts.minExpiryDays) || 7,
     v1ResolverAddress: opts.v1Resolver as Address,
+    v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
   };
 
   try {
