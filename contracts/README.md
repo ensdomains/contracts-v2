@@ -370,6 +370,55 @@ To stop the devnet:
 docker compose down
 ```
 
+## Testnet Deployment
+
+### Environment Variables
+
+```bash
+export DEPLOYER_KEY=0x...       # Private key with funded ETH
+export RPC_URL=https://...      # RPC endpoint (Sepolia, Mainnet, or Tenderly fork)
+```
+
+### Deploy
+
+```bash
+cd contracts
+
+# Deploy V2 only (default — for Tenderly forks where V1 already exists)
+bun run deploy -- --chain sepolia
+
+# Deploy V1 + V2 from scratch (for fresh environments)
+bun run deploy -- --chain sepolia --fresh-v1
+```
+
+Options:
+- `--chain <name>` — chain name (`sepolia`, `mainnet`). Default: `sepolia`
+- `--fresh-v1` — deploy V1 contracts from scratch before V2. Default: off
+
+### How `getV1` resolves V1 contract addresses
+
+V2 deploy scripts use `getV1()` to reference V1 contract addresses. It checks three locations in order:
+
+1. `deployments/v1/{networkName}/` — fresh V1 deploy artifacts (when using `--fresh-v1`)
+2. `lib/ens-contracts/deployments/{networkName}/` — existing V1 artifacts from ens-contracts (for Tenderly forks)
+3. Current deployment namespace — local devnet fallback (V1 and V2 deployed together)
+
+### Deployment Directory Structure
+
+```
+deployments/
+  v1/
+    sepoliaFresh/           # Only when using --fresh-v1
+      ENSRegistry.json
+      NameWrapper.json
+      ...
+  sepoliaFresh/             # V2 contracts
+    RootRegistry.json
+    ETHRegistry.json
+    UniversalResolverV2.json
+    ...
+```
+
 ## Miscellaneous
 
 Foundry also comes with cast, anvil, and chisel, all of which are useful for local development ([docs](https://book.getfoundry.sh/))

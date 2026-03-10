@@ -78,27 +78,42 @@ const functions = {
   ...readExecuteFunctions,
   ...viemFunctions,
   getV1: (env: Environment_) => {
-    const path = resolve(env.config.deployments, "v1");
-    const v1Deployments = (() => {
-      if (deploymentsCache.has(path)) return deploymentsCache.get(path)!;
+    const loadCached = (dirPath: string, networkName: string) => {
+      const key = `${dirPath}/${networkName}`;
+      if (deploymentsCache.has(key)) return deploymentsCache.get(key)!;
       try {
         const { deployments: deployments_ } = loadDeployments(
-          path,
-          env.config.network.name,
+          dirPath,
+          networkName,
           false,
         );
-        deploymentsCache.set(path, deployments_);
+        deploymentsCache.set(key, deployments_);
         return deployments_;
       } catch {
-        // V1 deployment directory not found, return empty
-        deploymentsCache.set(path, {});
+        deploymentsCache.set(key, {});
         return {};
       }
-    })();
+    };
+
+    // Fallback 1: Fresh V1 deploy directory (deployments/v1/{networkName}/)
+    const v1Path = resolve(env.config.deployments, "v1");
+    const v1Deployments = loadCached(v1Path, env.config.network.name);
+
+    // Fallback 2: Existing V1 artifacts from ens-contracts
+    // (lib/ens-contracts/deployments/{chainName}/)
+    const ensContractsPath = resolve("lib/ens-contracts/deployments");
+    const v1ExistingDeployments = loadCached(
+      ensContractsPath,
+      env.config.network.name,
+    );
+
     return <TAbi extends Abi>(name: string): Deployment<TAbi> => {
-      // Try V1 deployment directory first
+      // Try fresh V1 deployment directory first
       const v1Deployment = v1Deployments[name];
       if (v1Deployment) return v1Deployment as Deployment<TAbi>;
+      // Try existing V1 artifacts from ens-contracts (for Tenderly forks)
+      const v1Existing = v1ExistingDeployments[name];
+      if (v1Existing) return v1Existing as Deployment<TAbi>;
       // Fall back to current deployment namespace (for local devnet where
       // V1 and V2 are deployed together)
       const currentDeployment = env.deployments[name];

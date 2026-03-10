@@ -60,6 +60,7 @@
     "coverage:upload": "bun ./script/uploadCoverage.ts",
     "coverage": "bun run coverage:forge && bun run coverage:hardhat && bun run coverage:reports",
     "clean": "forge clean && hardhat clean && rm -rf coverage/",
+    "deploy": "bun run compile && bun ./script/live-deploy.ts",
     "devnet": "bun run compile && bun ./script/runDevnet.ts",
     "aakit": "bun ./script/deployAAkit.ts",
     "check:types": "tsc --noEmit"
