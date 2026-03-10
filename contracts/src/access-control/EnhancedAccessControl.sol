@@ -282,6 +282,9 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         address account,
         bool executeCallbacks
     ) internal virtual returns (bool) {
+        if (roleBitmap == 0) {
+            return false;
+        }
         _checkRoleBitmap(roleBitmap);
         if (account == address(0)) {
             revert EACInvalidAccount();
