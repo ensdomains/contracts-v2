@@ -75,7 +75,7 @@ describe("ENSV2Resolver", () => {
         contenthash: { value: "0xabcdef" },
       };
       const res = bundleCalls(makeResolutions(kp));
-      const myResolver = await F.mainnetV2.deployOwnedResolver();
+      const myResolver = await F.mainnetV2.deployPermissionedResolver();
       await F.mainnetV1.setupName({
         name,
         resolverAddress: F.ensV2Resolver.address,

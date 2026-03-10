@@ -59,11 +59,11 @@ contract ETHRegistrarTest is Test {
     address testOwner = user;
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address testResolver = makeAddr("resolver");
-    bytes32 testSecret; //       |
-    bytes32 testReferrer; //     |
-    IERC20 testPaymentToken; //  | set below
-    uint64 testDuration; //      |
-    uint256 testCommitDelay; //  |
+    IERC20 testPaymentToken; ///|
+    bytes32 testSecret; ////////|
+    bytes32 testReferrer; //////| set below
+    uint64 testDuration; ///////|
+    uint256 testCommitDelay; ///|
 
     function setUp() external {
         hcaFactory = new MockHCAFactoryBasic();
