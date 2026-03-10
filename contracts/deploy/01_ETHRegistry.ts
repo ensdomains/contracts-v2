@@ -1,10 +1,10 @@
 import { artifacts, execute } from "@rocketh";
-import { zeroAddress } from "viem";
+import { labelhash, zeroAddress } from "viem";
 import { MAX_EXPIRY, ROLES } from "../script/deploy-constants.js";
 
 // TODO: ownership
 export default execute(
-  async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
+  async ({ deploy, execute: write, read, get, namedAccounts: { deployer } }) => {
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
@@ -21,11 +21,32 @@ export default execute(
       args: [hcaFactory.address, registryMetadata.address, deployer, ROLES.ALL],
     });
 
-    await write(rootRegistry, {
-      account: deployer,
-      functionName: "register",
-      args: ["eth", deployer, ethRegistry.address, zeroAddress, 0n, MAX_EXPIRY],
+    const expiry = await read(rootRegistry, {
+      functionName: "getExpiry",
+      args: [BigInt(labelhash("eth"))],
     });
+
+    if (expiry !== 0n) {
+      // already registered, update subregistry
+      await write(rootRegistry, {
+        account: deployer,
+        functionName: "setSubregistry",
+        args: [BigInt(labelhash("eth")), ethRegistry.address],
+      });
+    } else {
+      await write(rootRegistry, {
+        account: deployer,
+        functionName: "register",
+        args: [
+          "eth",
+          deployer,
+          ethRegistry.address,
+          zeroAddress,
+          0n,
+          MAX_EXPIRY,
+        ],
+      });
+    }
   },
   {
     tags: ["ETHRegistry", "l1"],

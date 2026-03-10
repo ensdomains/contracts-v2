@@ -2,7 +2,9 @@
 // ------------------------------------------------------------------------------------------------
 // Typed Config
 // ------------------------------------------------------------------------------------------------
-import type { UserConfig } from "rocketh";
+import { resolve } from "path";
+import type { Deployment, UnknownDeployments, UserConfig } from "rocketh";
+import type { Abi } from "viem";
 export const config = {
   accounts: {
     deployer: {
@@ -37,6 +39,13 @@ export const config = {
       scripts: ["deploy/l1/universalResolver"],
       tags: [],
     },
+    sepoliaFresh: {
+      scripts: [
+        "lib/ens-contracts/deploy",
+        "deploy",
+      ],
+      tags: ["l1", "l2", "use_root", "allow_unsafe", "legacy"],
+    },
   },
 } as const satisfies UserConfig;
 
@@ -56,15 +65,47 @@ export { artifacts };
 // ------------------------------------------------------------------------------------------------
 
 import {
+  loadDeployments,
   setup,
   type CurriedFunctions,
   type Environment as Environment_,
 } from "rocketh";
 
+const deploymentsCache = new Map<string, UnknownDeployments>();
+
 const functions = {
   ...deployFunctions,
   ...readExecuteFunctions,
   ...viemFunctions,
+  getV1: (env: Environment_) => {
+    const path = resolve(env.config.deployments, "v1");
+    const v1Deployments = (() => {
+      if (deploymentsCache.has(path)) return deploymentsCache.get(path)!;
+      try {
+        const { deployments: deployments_ } = loadDeployments(
+          path,
+          env.config.network.name,
+          false,
+        );
+        deploymentsCache.set(path, deployments_);
+        return deployments_;
+      } catch {
+        // V1 deployment directory not found, return empty
+        deploymentsCache.set(path, {});
+        return {};
+      }
+    })();
+    return <TAbi extends Abi>(name: string): Deployment<TAbi> => {
+      // Try V1 deployment directory first
+      const v1Deployment = v1Deployments[name];
+      if (v1Deployment) return v1Deployment as Deployment<TAbi>;
+      // Fall back to current deployment namespace (for local devnet where
+      // V1 and V2 are deployed together)
+      const currentDeployment = env.deployments[name];
+      if (currentDeployment) return currentDeployment as Deployment<TAbi>;
+      throw new Error(`V1 Deployment ${name} not found`);
+    };
+  },
 };
 
 export type Environment = Environment_<typeof config.accounts> &
@@ -72,8 +113,7 @@ export type Environment = Environment_<typeof config.accounts> &
 
 const enhanced = setup<typeof functions, typeof config.accounts>(functions);
 
-// import type { RockethArguments } from "./script/types.ts";
+export const execute = enhanced.deployScript;
+export const deployScript = enhanced.deployScript;
 
-export const execute = enhanced.deployScript; //<RockethArguments>;
-
-export const loadAndExecuteDeployments = enhanced.loadAndExecuteDeployments; //<RockethArguments>;
+export const loadAndExecuteDeployments = enhanced.loadAndExecuteDeployments;

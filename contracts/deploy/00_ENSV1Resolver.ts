@@ -1,13 +1,13 @@
 import { artifacts, execute } from "@rocketh";
 
 export default execute(
-  async ({ get, deploy, namedAccounts: { deployer } }) => {
+  async ({ get, getV1, deploy, namedAccounts: { deployer } }) => {
     const ensRegistryV1 =
-      get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
+      getV1<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
-    const batchGatewayProvider = get<(typeof artifacts.GatewayProvider)["abi"]>(
-      "BatchGatewayProvider",
-    );
+    const batchGatewayProvider = getV1<
+      (typeof artifacts.GatewayProvider)["abi"]
+    >("BatchGatewayProvider");
 
     await deploy("ENSV1Resolver", {
       account: deployer,

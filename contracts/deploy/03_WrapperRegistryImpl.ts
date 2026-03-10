@@ -1,9 +1,9 @@
 import { artifacts, execute } from "@rocketh";
 
 export default execute(
-  async ({ deploy, get, namedAccounts: { deployer } }) => {
+  async ({ deploy, get, getV1, namedAccounts: { deployer } }) => {
     const nameWrapperV1 =
-      get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
+      getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");

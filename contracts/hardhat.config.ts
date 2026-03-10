@@ -1,14 +1,23 @@
-import type { HardhatUserConfig } from "hardhat/config";
+import { configVariable, type HardhatUserConfig } from "hardhat/config";
 
 import HardhatChaiMatchersViemPlugin from "@ensdomains/hardhat-chai-matchers-viem";
+import HardhatKeystore from "@nomicfoundation/hardhat-keystore";
 import HardhatNetworkHelpersPlugin from "@nomicfoundation/hardhat-network-helpers";
 import HardhatViem from "@nomicfoundation/hardhat-viem";
 import HardhatDeploy from "hardhat-deploy";
 
-import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 import HardhatIgnoreWarningsPlugin from "./plugins/ignore-warnings/index.ts";
+import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
 const config = {
+  networks: {
+    sepoliaFresh: {
+      type: "http",
+      url: configVariable("SEPOLIA_RPC_URL"),
+      accounts: [configVariable("DEPLOYER_KEY")],
+      chainId: 11155111,
+    },
+  },
   solidity: {
     compilers: [
       {
@@ -56,6 +65,7 @@ const config = {
     HardhatStorageLayoutPlugin,
     HardhatIgnoreWarningsPlugin,
     HardhatDeploy,
+    HardhatKeystore,
   ],
 } satisfies HardhatUserConfig;
 
