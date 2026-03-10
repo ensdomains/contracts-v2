@@ -9,7 +9,7 @@ export default execute(
     const batchRegistrar = await deploy("BatchRegistrar", {
       account: deployer,
       artifact: artifacts.BatchRegistrar,
-      args: [ethRegistry.address],
+      args: [ethRegistry.address, deployer],
     });
 
     await write(ethRegistry, {

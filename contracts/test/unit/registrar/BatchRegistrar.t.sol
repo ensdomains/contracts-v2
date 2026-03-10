@@ -3,9 +3,10 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, namechain/ordering, one-contract-per-file
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
@@ -43,9 +44,8 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
             EACBaseRolesLib.ALL_ROLES
         );
 
-        batchRegistrar = new BatchRegistrar(registry);
+        batchRegistrar = new BatchRegistrar(registry, owner);
 
-        // Grant REGISTRAR and RENEW roles to batch registrar
         registry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW,
             address(batchRegistrar)
@@ -84,7 +84,6 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
 
         batchRegistrar.batchRegister(names);
 
-        // Verify all names were reserved
         for (uint256 i = 0; i < names.length; i++) {
             IPermissionedRegistry.State memory state = registry.getState(LibLabel.id(names[i].label));
             assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Status should be RESERVED");
@@ -94,7 +93,6 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
     }
 
     function test_batchRegister_renews_if_newer_expiry() public {
-        // First register the name with a short expiry
         uint64 originalExpiry = uint64(block.timestamp + 86400);
         BatchRegistrarName[] memory initialNames = new BatchRegistrarName[](1);
         initialNames[0] = BatchRegistrarName({
@@ -107,11 +105,9 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         });
         batchRegistrar.batchRegister(initialNames);
 
-        // Verify initial registration
         IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("test"));
         assertEq(state.expiry, originalExpiry, "Initial expiry should match");
 
-        // Now try to "register" again with a later expiry
         uint64 newExpiry = uint64(block.timestamp + 86400 * 365);
         BatchRegistrarName[] memory renewNames = new BatchRegistrarName[](1);
         renewNames[0] = BatchRegistrarName({
@@ -124,13 +120,11 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         });
         batchRegistrar.batchRegister(renewNames);
 
-        // Verify expiry was updated
         state = registry.getState(LibLabel.id("test"));
         assertEq(state.expiry, newExpiry, "Expiry should be renewed");
     }
 
     function test_batchRegister_skips_if_same_or_older_expiry() public {
-        // First register the name with a long expiry
         uint64 originalExpiry = uint64(block.timestamp + 86400 * 365);
         BatchRegistrarName[] memory initialNames = new BatchRegistrarName[](1);
         initialNames[0] = BatchRegistrarName({
@@ -143,11 +137,9 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         });
         batchRegistrar.batchRegister(initialNames);
 
-        // Verify initial registration
         IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("test"));
         assertEq(state.expiry, originalExpiry, "Initial expiry should match");
 
-        // Now try to "register" again with an earlier expiry (should be skipped)
         uint64 earlierExpiry = uint64(block.timestamp + 86400);
         BatchRegistrarName[] memory renewNames = new BatchRegistrarName[](1);
         renewNames[0] = BatchRegistrarName({
@@ -160,13 +152,11 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         });
         batchRegistrar.batchRegister(renewNames);
 
-        // Verify expiry was NOT changed
         state = registry.getState(LibLabel.id("test"));
         assertEq(state.expiry, originalExpiry, "Expiry should remain unchanged");
     }
 
     function test_batchRegister_mixed_new_and_existing() public {
-        // Register one name first
         uint64 originalExpiry = uint64(block.timestamp + 86400);
         BatchRegistrarName[] memory initialNames = new BatchRegistrarName[](1);
         initialNames[0] = BatchRegistrarName({
@@ -179,7 +169,6 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         });
         batchRegistrar.batchRegister(initialNames);
 
-        // Now batch register with a mix of new and existing names
         uint64 newExpiry = uint64(block.timestamp + 86400 * 365);
         BatchRegistrarName[] memory mixedNames = new BatchRegistrarName[](3);
 
@@ -212,7 +201,6 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
 
         batchRegistrar.batchRegister(mixedNames);
 
-        // Verify new names were reserved
         IPermissionedRegistry.State memory state1 = registry.getState(LibLabel.id("new1"));
         assertEq(uint256(state1.status), uint256(IPermissionedRegistry.Status.RESERVED), "new1 should be RESERVED");
         assertEq(state1.expiry, newExpiry, "new1 expiry should match");
@@ -221,13 +209,11 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         assertEq(uint256(state2.status), uint256(IPermissionedRegistry.Status.RESERVED), "new2 should be RESERVED");
         assertEq(state2.expiry, newExpiry, "new2 expiry should match");
 
-        // Verify existing name was renewed
         IPermissionedRegistry.State memory existingState = registry.getState(LibLabel.id("existing"));
         assertEq(existingState.expiry, newExpiry, "existing expiry should be renewed");
     }
 
     function test_batchRegister_registers_expired_names() public {
-        // First register a name
         uint64 originalExpiry = uint64(block.timestamp + 86400);
         BatchRegistrarName[] memory initialNames = new BatchRegistrarName[](1);
         initialNames[0] = BatchRegistrarName({
@@ -240,10 +226,8 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         });
         batchRegistrar.batchRegister(initialNames);
 
-        // Warp past expiry
         vm.warp(block.timestamp + 86401);
 
-        // Now try to register the same name again (should succeed as a new registration)
         uint64 newExpiry = uint64(block.timestamp + 86400 * 365);
         address newOwner = address(0x9999);
         BatchRegistrarName[] memory reregisterNames = new BatchRegistrarName[](1);
@@ -257,7 +241,6 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         });
         batchRegistrar.batchRegister(reregisterNames);
 
-        // Verify name was re-registered with new owner
         IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("expiring"));
         assertEq(registry.ownerOf(state.tokenId), newOwner, "Owner should be newOwner");
         assertEq(state.expiry, newExpiry, "Expiry should match new expiry");
@@ -265,8 +248,6 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
 
     function test_batchRegister_empty_array() public {
         BatchRegistrarName[] memory emptyNames = new BatchRegistrarName[](0);
-
-        // Should not revert
         batchRegistrar.batchRegister(emptyNames);
     }
 
@@ -286,5 +267,139 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("single"));
         assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Status should be RESERVED");
         assertEq(state.expiry, singleName[0].expires, "Expiry should match");
+    }
+
+    function test_batchRegister_onlyOwner() public {
+        BatchRegistrarName[] memory names = new BatchRegistrarName[](1);
+        names[0] = BatchRegistrarName({
+            label: "test",
+            owner: address(0),
+            registry: IRegistry(address(0)),
+            resolver: resolver,
+            roleBitmap: 0,
+            expires: uint64(block.timestamp + 86400)
+        });
+
+        address unauthorized = address(0xBEEF);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, unauthorized));
+        vm.prank(unauthorized);
+        batchRegistrar.batchRegister(names);
+    }
+
+    function test_batchRegister_duplicateLabelsInBatch() public {
+        BatchRegistrarName[] memory names = new BatchRegistrarName[](2);
+        uint64 expiry1 = uint64(block.timestamp + 86400);
+        uint64 expiry2 = uint64(block.timestamp + 86400 * 2);
+
+        names[0] = BatchRegistrarName({
+            label: "duplicate",
+            owner: address(0),
+            registry: IRegistry(address(0)),
+            resolver: resolver,
+            roleBitmap: 0,
+            expires: expiry1
+        });
+
+        names[1] = BatchRegistrarName({
+            label: "duplicate",
+            owner: address(0),
+            registry: IRegistry(address(0)),
+            resolver: resolver,
+            roleBitmap: 0,
+            expires: expiry2
+        });
+
+        batchRegistrar.batchRegister(names);
+
+        IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("duplicate"));
+        assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Status should be RESERVED");
+        assertEq(state.expiry, expiry2, "Expiry should be the renewed (second) value");
+    }
+
+    function test_batchRegister_events() public {
+        BatchRegistrarName[] memory names = new BatchRegistrarName[](1);
+        uint64 expiry = uint64(block.timestamp + 86400);
+        names[0] = BatchRegistrarName({
+            label: "eventtest",
+            owner: address(0),
+            registry: IRegistry(address(0)),
+            resolver: resolver,
+            roleBitmap: 0,
+            expires: expiry
+        });
+
+        vm.recordLogs();
+        batchRegistrar.batchRegister(names);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        bytes32 nameReservedSig = keccak256("NameReserved(uint256,bytes32,string,uint64,address)");
+        bool foundNameReserved = false;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == nameReservedSig) {
+                foundNameReserved = true;
+                bytes32 labelHash = keccak256(bytes("eventtest"));
+                assertEq(logs[i].topics[2], labelHash, "labelHash topic should match");
+                assertEq(logs[i].topics[3], bytes32(uint256(uint160(address(batchRegistrar)))), "sender topic should match");
+                break;
+            }
+        }
+        assertTrue(foundNameReserved, "NameReserved event should be emitted");
+
+        // Renew and check ExpiryUpdated event
+        uint64 newExpiry = uint64(block.timestamp + 86400 * 2);
+        names[0].expires = newExpiry;
+
+        vm.recordLogs();
+        batchRegistrar.batchRegister(names);
+        logs = vm.getRecordedLogs();
+
+        bytes32 expiryUpdatedSig = keccak256("ExpiryUpdated(uint256,uint64,address)");
+        bool foundExpiryUpdated = false;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == expiryUpdatedSig) {
+                foundExpiryUpdated = true;
+                break;
+            }
+        }
+        assertTrue(foundExpiryUpdated, "ExpiryUpdated event should be emitted");
+    }
+
+    function test_batchRegister_reservedThenRegister() public {
+        // Reserve with owner=0
+        BatchRegistrarName[] memory names = new BatchRegistrarName[](1);
+        uint64 expiry = uint64(block.timestamp + 86400 * 365);
+        names[0] = BatchRegistrarName({
+            label: "migratable",
+            owner: address(0),
+            registry: IRegistry(address(0)),
+            resolver: resolver,
+            roleBitmap: 0,
+            expires: expiry
+        });
+        batchRegistrar.batchRegister(names);
+
+        IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("migratable"));
+        assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Should be RESERVED");
+
+        // Grant REGISTER_RESERVED role to this test contract so it can promote
+        registry.grantRootRoles(
+            RegistryRolesLib.ROLE_REGISTER_RESERVED,
+            address(this)
+        );
+
+        // Promote to REGISTERED with an actual owner
+        address realOwner = address(0x1234);
+        registry.register(
+            "migratable",
+            realOwner,
+            IRegistry(address(0)),
+            resolver,
+            RegistryRolesLib.ROLE_SET_RESOLVER,
+            expiry
+        );
+
+        state = registry.getState(LibLabel.id("migratable"));
+        assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.REGISTERED), "Should be REGISTERED");
+        assertEq(registry.ownerOf(state.tokenId), realOwner, "Owner should be realOwner");
     }
 }

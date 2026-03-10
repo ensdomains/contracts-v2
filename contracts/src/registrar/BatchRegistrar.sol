@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
@@ -15,11 +17,12 @@ struct BatchRegistrarName {
 }
 
 /// @title BatchRegistrar
-/// @notice Simple batch registration contract for pre-migration of ENS names
-contract BatchRegistrar {
+/// @notice Simple batch registration contract for pre-migration of ENS names.
+///         Only the owner can invoke batch registration.
+contract BatchRegistrar is Ownable {
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
-    constructor(IPermissionedRegistry ethRegistry_) {
+    constructor(IPermissionedRegistry ethRegistry_, address owner_) Ownable(owner_) {
         ETH_REGISTRY = ethRegistry_;
     }
 
@@ -29,7 +32,7 @@ contract BatchRegistrar {
     ///      - If not registered or expired: register it
     ///      - If registered with different expiry: renew to sync expiry with v1
     ///      - If registered with same expiry: skip (no-op)
-    function batchRegister(BatchRegistrarName[] calldata names) external {
+    function batchRegister(BatchRegistrarName[] calldata names) external onlyOwner {
         for (uint256 i = 0; i < names.length; i++) {
             BatchRegistrarName calldata name = names[i];
 

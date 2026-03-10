@@ -54,29 +54,21 @@ const BASE_REGISTRAR_ABI = [
 // Minimal ABI for PermissionedRegistry read operations
 const PERMISSIONED_REGISTRY_ABI = [
   {
-    inputs: [{ name: "label", type: "string" }],
-    name: "getNameData",
+    inputs: [{ name: "anyId", type: "uint256" }],
+    name: "getState",
     outputs: [
-      { name: "tokenId", type: "uint256" },
       {
-        name: "entry",
+        name: "state",
         type: "tuple",
         components: [
+          { name: "status", type: "uint8" },
           { name: "expiry", type: "uint64" },
-          { name: "subregistry", type: "address" },
-          { name: "resolver", type: "address" },
-          { name: "eacVersionId", type: "uint8" },
-          { name: "tokenVersionId", type: "uint8" },
+          { name: "latestOwner", type: "address" },
+          { name: "tokenId", type: "uint256" },
+          { name: "resource", type: "uint256" },
         ],
       },
     ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ name: "tokenId", type: "uint256" }],
-    name: "ownerOf",
-    outputs: [{ name: "", type: "address" }],
     stateMutability: "view",
     type: "function",
   },
@@ -133,6 +125,7 @@ export interface PreMigrationConfig {
   continue?: boolean;
   disableCheckpoint?: boolean;
   minExpiryDays: number;
+  v1ResolverAddress: Address;
 }
 
 export interface Checkpoint {
@@ -158,7 +151,6 @@ const RPC_TIMEOUT_MS = 30000;
 
 // ENS v1 BaseRegistrar on Ethereum mainnet
 const BASE_REGISTRAR_ADDRESS = "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85" as Address;
-const PRE_MIGRATION_RESOLVER = "0x0000000000000000000000000000000000000001" as Address;
 
 export function createFreshCheckpoint(): Checkpoint {
   return {
@@ -610,21 +602,18 @@ async function processBatch(
 
     try {
       let isAlreadyReserved = false;
-      try {
-        const [tokenId, entry] = await registry.read.getNameData([registration.labelName]);
-        if (entry.expiry > 0n && entry.expiry > BigInt(Math.floor(Date.now() / 1000))) {
-          const owner = await registry.read.ownerOf([tokenId]);
-          if (owner !== zeroAddress) {
-            logger.error(`Name ${registration.labelName}.eth is already registered with owner: ${owner}`);
-            checkpoint.failureCount++;
-            logger.finishedName(registration.labelName, 'failed');
-            continue;
-          }
-          isAlreadyReserved = true;
-          alreadyReservedNames.add(registration.labelName);
-        }
-      } catch {
-        // Name not found - proceed with v1 verification
+      const labelId = BigInt(keccak256(toHex(registration.labelName)));
+      const v2State = await registry.read.getState([labelId]);
+      // Status enum: 0=AVAILABLE, 1=RESERVED, 2=REGISTERED
+      if (v2State.status === 2) {
+        logger.error(`Name ${registration.labelName}.eth is already registered with owner: ${v2State.latestOwner}`);
+        checkpoint.failureCount++;
+        logger.finishedName(registration.labelName, 'failed');
+        continue;
+      }
+      if (v2State.status === 1) {
+        isAlreadyReserved = true;
+        alreadyReservedNames.add(registration.labelName);
       }
 
       logger.verifyingV1(registration.labelName);
@@ -658,7 +647,7 @@ async function processBatch(
         label: registration.labelName,
         owner: zeroAddress,
         registry: zeroAddress,
-        resolver: PRE_MIGRATION_RESOLVER,
+        resolver: config.v1ResolverAddress,
         roleBitmap: 0n,
         expires: v1Result.expiry,
       });
@@ -666,19 +655,10 @@ async function processBatch(
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.failed(registration.labelName, errorMessage, undefined, MAX_RETRIES);
       checkpoint.failureCount++;
+      checkpoint.totalProcessed++;
       logger.finishedName(registration.labelName, 'failed');
     }
-
-    checkpoint.totalProcessed++;
-    checkpoint.lastProcessedLineNumber = lastLineNumber;
-    checkpoint.timestamp = new Date().toISOString();
-
-    if (!config.disableCheckpoint) {
-      saveCheckpoint(checkpoint);
-    }
   }
-
-  checkpoint.lastProcessedLineNumber = lastLineNumber;
 
   if (batchNames.length > 0 && !config.dryRun) {
     logger.info(`\nBatch reserving ${batchNames.length} names...`);
@@ -690,6 +670,7 @@ async function processBatch(
       logger.success(`Batch reservation successful (tx: ${hash})`);
 
       for (const name of batchNames) {
+        checkpoint.totalProcessed++;
         if (alreadyReservedNames.has(name.label)) {
           checkpoint.renewedCount++;
           logger.renewed(hash);
@@ -702,12 +683,30 @@ async function processBatch(
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`Batch reservation failed: ${errorMessage}`);
-      checkpoint.failureCount += batchNames.length;
+      logger.error(`Batch reservation failed: ${errorMessage}. Falling back to individual reservations...`);
 
       for (const name of batchNames) {
-        logger.failed(name.label, errorMessage, undefined, MAX_RETRIES);
-        logger.finishedName(name.label, 'failed');
+        try {
+          const hash = await batchRegistrar.write.batchRegister([[name]]);
+          await waitForSuccessfulTransactionReceipt(client, { hash });
+
+          checkpoint.totalProcessed++;
+          if (alreadyReservedNames.has(name.label)) {
+            checkpoint.renewedCount++;
+            logger.renewed(hash);
+            logger.finishedName(name.label, 'renewed');
+          } else {
+            checkpoint.successCount++;
+            logger.reserved(hash);
+            logger.finishedName(name.label, 'reserved');
+          }
+        } catch (individualError) {
+          const individualMsg = individualError instanceof Error ? individualError.message : String(individualError);
+          logger.failed(name.label, individualMsg, undefined, MAX_RETRIES);
+          checkpoint.totalProcessed++;
+          checkpoint.failureCount++;
+          logger.finishedName(name.label, 'failed');
+        }
       }
     }
   } else if (batchNames.length > 0 && config.dryRun) {
@@ -715,6 +714,7 @@ async function processBatch(
 
     for (const name of batchNames) {
       logger.dryRun();
+      checkpoint.totalProcessed++;
       if (alreadyReservedNames.has(name.label)) {
         checkpoint.renewedCount++;
         logger.finishedName(name.label, 'renewed');
@@ -725,6 +725,7 @@ async function processBatch(
     }
   }
 
+  checkpoint.lastProcessedLineNumber = lastLineNumber;
   checkpoint.timestamp = new Date().toISOString();
 
   if (!config.disableCheckpoint) {
@@ -869,7 +870,8 @@ export async function main(argv = process.argv): Promise<void> {
     .option("--limit <number>", "Maximum total number of names to process and register")
     .option("--dry-run", "Simulate without executing transactions", false)
     .option("--continue", "Continue from previous checkpoint if it exists", false)
-    .option("--min-expiry-days <days>", "Skip names expiring within this many days", "7");
+    .option("--min-expiry-days <days>", "Skip names expiring within this many days", "7")
+    .requiredOption("--v1-resolver <address>", "ENSV1Resolver address deployed on v2 for fallback resolution");
 
   program.parse(argv);
   const opts = program.opts();
@@ -888,6 +890,7 @@ export async function main(argv = process.argv): Promise<void> {
     dryRun: opts.dryRun,
     continue: opts.continue,
     minExpiryDays: parseInt(opts.minExpiryDays) || 7,
+    v1ResolverAddress: opts.v1Resolver as Address,
   };
 
   try {
@@ -903,6 +906,7 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config('CSV File', config.csvFilePath);
     logger.config('Batch Size', config.batchSize);
     logger.config('Min Expiry Days', config.minExpiryDays);
+    logger.config('V1 Resolver', config.v1ResolverAddress);
     logger.config('Limit', config.limit ?? "none");
     logger.config('Dry Run', config.dryRun);
     logger.config('Continue Mode', config.continue ?? false);
