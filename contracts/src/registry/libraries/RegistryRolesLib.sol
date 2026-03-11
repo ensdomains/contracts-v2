@@ -33,8 +33,13 @@ library RegistryRolesLib {
     uint256 internal constant ROLE_SET_RESOLVER = 1 << 24;
     uint256 internal constant ROLE_SET_RESOLVER_ADMIN = ROLE_SET_RESOLVER << 128;
 
-    /// @dev Nybble 7 — admin-only, authorizes ERC1155 token transfers. Token-only.
+    /// @dev Nybble 7 — authorizes ERC1155 token transfers. Root or token.
+    ///      This role is only checked on the token owner, not the operator.
     uint256 internal constant ROLE_CAN_TRANSFER_ADMIN = (1 << 28) << 128;
+
+    /// @dev Nybble 8 — authorizes transfer of registry. Root-only.
+    uint256 internal constant ROLE_CAN_TRANSFER_ROOT = (1 << 32);
+    uint256 internal constant ROLE_CAN_TRANSFER_ROOT_ADMIN = ROLE_CAN_TRANSFER_ROOT << 128;
 
     /// @dev Nybble 31 — authorizes UUPS proxy upgrades. Root-only.
     uint256 internal constant ROLE_UPGRADE = 1 << 124;

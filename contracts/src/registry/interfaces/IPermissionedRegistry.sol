@@ -5,7 +5,7 @@ import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedA
 
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0xafff3a63`
+/// @dev Interface selector: `0x4aab0b54`
 interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -44,6 +44,10 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Transfer control of this registry to `account`.
+    /// @param account The new registry controller.
+    function transferRootRoles(address account) external;
 
     /// @notice Get the latest owner of a token.
     ///         If the token was burned, returns null.

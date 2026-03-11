@@ -26,6 +26,8 @@ import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
+uint256 constant ROOT_ROLES = EACBaseRolesLib.ALL_ROLES;
+
 contract PermissionedRegistryTest is Test, ERC1155Holder {
     MockPermissionedRegistry registry;
     MockHCAFactoryBasic hcaFactory;
@@ -45,16 +47,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new SimpleRegistryMetadata(hcaFactory);
-        registry = new MockPermissionedRegistry(
-            hcaFactory,
-            metadata,
-            address(this),
-            EACBaseRolesLib.ALL_ROLES
-        );
+        registry = new MockPermissionedRegistry(hcaFactory, metadata, address(this), ROOT_ROLES);
     }
 
     function test_constructor() external view {
-        assertTrue(registry.hasRootRoles(EACBaseRolesLib.ALL_ROLES, address(this)));
+        assertTrue(registry.hasRootRoles(ROOT_ROLES, address(this)));
     }
 
     function test_supportsInterface() external view {
@@ -67,6 +64,29 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
             "IPermissionedRegistry"
         );
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // transferRootRoles()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_transferRootRoles() external {
+        registry.transferRootRoles(user1);
+        assertFalse(registry.hasRootRoles(ROOT_ROLES, address(this)), "old");
+        assertTrue(registry.hasRootRoles(ROOT_ROLES, user1), "new");
+    }
+
+    function test_transferRootRoles_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_CAN_TRANSFER_ROOT,
+                actor
+            )
+        );
+        vm.prank(actor);
+        registry.transferRootRoles(user1);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -619,6 +639,27 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         );
         vm.prank(user2);
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_rootAuthorizationIgnored() external {
+        // even though root has ROLE_CAN_TRANSFER_ADMIN and has approval for transfer,
+        // the transfer role check is only applied to the token owner
+        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
+        uint256 tokenId = this._register();
+        assertEq(registry.ownerOf(tokenId), user1);
+        vm.prank(user1);
+        registry.setApprovalForAll(address(this), true);
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+        );
+        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_rootOwnedToken() external {
+        testOwner = address(this);
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256 tokenId = this._register();
+        registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
     }
 
     function test_safeBatchTransferFrom() external {

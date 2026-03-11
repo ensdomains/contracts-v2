@@ -269,6 +269,13 @@ contract PermissionedRegistry is
         return super.revokeRoles(getResource(anyId), roleBitmap, account);
     }
 
+    /// @inheritdoc IPermissionedRegistry
+    function transferRootRoles(
+        address account
+    ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ROOT) {
+        _transferRoles(ROOT_RESOURCE, _msgSender(), account, false);
+    }
+
     /// @inheritdoc IRegistry
     function getSubregistry(string calldata label) public view virtual returns (IRegistry) {
         Entry storage entry = _entry(LibLabel.id(label));
@@ -400,6 +407,7 @@ contract PermissionedRegistry is
         uint256[] memory tokenIds,
         uint256[] memory values
     ) internal virtual override {
+        // note: from is token owner
         bool externalTransfer = to != address(0) && from != address(0);
         if (externalTransfer) {
             // Check ROLE_CAN_TRANSFER for actual transfers only
