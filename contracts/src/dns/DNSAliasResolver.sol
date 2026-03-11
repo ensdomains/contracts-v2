@@ -101,10 +101,6 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
         );
     }
 
-    ////////////////////////////////////////////////////////////////////////
-    // Internal Functions
-    ////////////////////////////////////////////////////////////////////////
-
     /// @dev Applies the rewrite rule encoded in `context` to `name`. If `context` contains a
     ///      space, it is split into an old suffix and a new suffix; the old suffix is matched
     ///      against `name` and replaced with the new suffix. If there is no space, the entire

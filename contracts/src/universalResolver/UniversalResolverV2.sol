@@ -24,6 +24,10 @@ contract UniversalResolverV2 is AbstractUniversalResolver {
         ROOT_REGISTRY = root;
     }
 
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
     /// @notice Construct the canonical name for `registry`.
     ///
     /// @param registry The registry to name.

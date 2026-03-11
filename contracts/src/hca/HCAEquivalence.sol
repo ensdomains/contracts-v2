@@ -26,6 +26,10 @@ abstract contract HCAEquivalence {
         HCA_FACTORY = hcaFactory;
     }
 
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
+
     /// @dev Returns the HCA owner if `msg.sender` is a registered HCA, otherwise returns `msg.sender`.
     function _msgSenderWithHcaEquivalence() internal view returns (address) {
         if (address(HCA_FACTORY) == address(0)) return msg.sender;
