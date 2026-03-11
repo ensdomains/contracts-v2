@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 import {IRegistryEvents} from "./IRegistryEvents.sol";
 
-/// @dev Interface selector: `0xd1011f61`
+/// @dev Interface selector: `0x51f67f40`
 interface IRegistry is IRegistryEvents {
     /// @dev Fetches the registry for a label.
     /// @param label The label to resolve.
