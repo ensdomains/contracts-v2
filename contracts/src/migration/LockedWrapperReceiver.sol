@@ -138,8 +138,8 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             );
 
             // add name to ENSv2
-            // PermissionedRegistry._register() => CannotSetPastExpiration :: see expiry check
-            // PermissionedRegistry._register() => NameAlreadyRegistered :: only have ROLE_REGISTER_RESERVED
+            // PermissionedRegistry._register() => CannotSetPastExpiry :: see expiry check
+            // PermissionedRegistry._register() => LabelAlreadyRegistered :: only have ROLE_REGISTER_RESERVED
             // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver :: see owner check
             _inject(
                 md.label,

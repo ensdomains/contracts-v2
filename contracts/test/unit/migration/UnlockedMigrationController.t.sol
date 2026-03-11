@@ -28,6 +28,7 @@ import {
     IRegistryMetadata,
     LibLabel
 } from "~src/registry/PermissionedRegistry.sol";
+import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {
     UnlockedMigrationController,
     LibMigration,
@@ -305,7 +306,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IERC721.Transfer(user, address(migrationController), tokenIdV1);
         vm.expectEmit();
-        emit IRegistry.NameRegistered(
+        emit IRegistryEvents.LabelRegistered(
             tokenId,
             keccak256(bytes(md.label)),
             md.label,
@@ -324,13 +325,13 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
-        emit IRegistry.SubregistryUpdated(
+        emit IRegistryEvents.SubregistryUpdated(
             tokenId,
             IRegistry(md.subregistry),
             address(migrationController)
         );
         vm.expectEmit();
-        emit IRegistry.ResolverUpdated(tokenId, md.resolver, address(migrationController));
+        emit IRegistryEvents.ResolverUpdated(tokenId, md.resolver, address(migrationController));
         vm.prank(user);
         uint256 g = gasleft();
         ethRegistrarV1.safeTransferFrom(
@@ -368,7 +369,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             1
         );
         vm.expectEmit();
-        emit IRegistry.NameRegistered(
+        emit IRegistryEvents.LabelRegistered(
             tokenId,
             keccak256(bytes(md.label)),
             md.label,
@@ -387,13 +388,13 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
-        emit IRegistry.SubregistryUpdated(
+        emit IRegistryEvents.SubregistryUpdated(
             tokenId,
             IRegistry(md.subregistry),
             address(migrationController)
         );
         vm.expectEmit();
-        emit IRegistry.ResolverUpdated(tokenId, md.resolver, address(migrationController));
+        emit IRegistryEvents.ResolverUpdated(tokenId, md.resolver, address(migrationController));
         vm.prank(user);
         uint256 g = gasleft();
         nameWrapper.safeTransferFrom(
