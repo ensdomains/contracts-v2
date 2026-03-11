@@ -28,19 +28,26 @@ interface IRegistryEvents {
     event LabelUnregistered(uint256 indexed tokenId, address indexed sender);
 
     /// @notice Expiry of label was changed.
-    event ExpiryUpdated(uint256 indexed tokenId, uint64 newExpiry, address indexed sender);
+    event ExpiryUpdated(uint256 indexed tokenId, uint64 indexed newExpiry, address indexed sender);
 
     /// @notice Subregistry of label was changed.
     event SubregistryUpdated(
         uint256 indexed tokenId,
-        IRegistry subregistry,
+        IRegistry indexed subregistry,
         address indexed sender
     );
 
     /// @notice Resolver of label was changed.
-    event ResolverUpdated(uint256 indexed tokenId, address resolver, address indexed sender);
+    event ResolverUpdated(
+        uint256 indexed tokenId,
+        address indexed resolver,
+        address indexed sender
+    );
 
     /// @notice Token was regenerated with a new token ID.
     ///         This occurs when roles are granted or revoked to maintain ERC1155 compliance.
     event TokenRegenerated(uint256 indexed oldTokenId, uint256 indexed newTokenId);
+
+    /// @notice Parent was changed.
+    event ParentUpdated(IRegistry indexed parent, string label, address indexed sender);
 }

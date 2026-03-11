@@ -15,8 +15,17 @@ import {HCAContext} from "../hca/HCAContext.sol";
 
 import {IERC1155Singleton} from "./interfaces/IERC1155Singleton.sol";
 
-/// @notice ERC1155 implementation that supports only a single token per ID. Stores owner information to allow
-///         fetching ownership information for a tokenId via `ownerOf`.
+/// @notice ERC1155 variant enforcing exactly one owner per token ID.
+///
+///         Instead of the standard nested balance mapping (`id → address → balance`), uses a flat
+///         `id → address` ownership mapping. `balanceOf` returns 1 if the account is the owner,
+///         0 otherwise. Transferring value > 1 reverts.
+///
+///         Used by `PermissionedRegistry` to represent domain name ownership as non-divisible tokens.
+///         The registry overrides `ownerOf` to add expiry and version validation on top of raw ownership.
+///
+///         Inherits `HCAContext` so that `_msgSender()` resolves HCA proxy accounts to their real
+///         owners for approval checks and operator tracking.
 /// @author OpenZeppelin (https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/token/ERC1155/ERC1155.sol)
 /// @dev This contract has been modified from the implementation at the above link.
 abstract contract ERC1155Singleton is
@@ -33,8 +42,10 @@ abstract contract ERC1155Singleton is
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Maps each token ID to its single owner address.
     mapping(uint256 id => address account) private _owners;
 
+    /// @dev Standard ERC1155 operator approval mapping.
     mapping(address account => mapping(address operator => bool)) private _operatorApprovals;
 
     ////////////////////////////////////////////////////////////////////////
@@ -389,7 +400,9 @@ abstract contract ERC1155Singleton is
     // Private Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Creates an array in memory with only one value for each of the elements provided.
+    /// @dev Gas-optimized assembly helper that creates two length-1 memory arrays without Solidity's
+    ///      default zero-initialization overhead. Used to adapt single-token operations (`_mint`,
+    ///      `_burn`, `_safeTransferFrom`) to the array-based `_update` function.
     function _asSingletonArrays(
         uint256 element1,
         uint256 element2

@@ -7,7 +7,6 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
-import {InvalidOwner} from "../CommonErrors.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
@@ -21,13 +20,26 @@ import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {MetadataMixin} from "./MetadataMixin.sol";
 
-/// @notice A tokenized registry with permissions that apply to every label or a specific label.
+/// @notice A tokenized (ERC1155) registry with resource-scoped access control for subdomain management.
+///
+/// Many functions accept an `anyId` parameter that can be a labelhash, tokenId, or resource
+/// interchangeably. Internally, `_entry()` zeroes version bits (via `LibLabel.withVersion(anyId, 0)`)
+/// to resolve any of these to the canonical storage slot for the name.
+///
+/// The registry maintains two independent version counters per name:
+///   - `eacVersionId`: incremented on unregister/re-register. Combined with the labelhash to form
+///     the EAC resource ID. This means a re-registered name gets a fresh permission scope.
+///   - `tokenVersionId`: incremented on unregister and whenever the token is regenerated (burn + mint)
+///     due to role changes. Combined with the labelhash to form the ERC1155 token ID, ensuring
+///     changes to roles create new tokens and prevent frontrunning a transfer with a role revocation.
+///
+/// Names are treated as `AVAILABLE` once `block.timestamp >= expiry`.
 ///
 /// State diagram:
 ///
-///                    register()
-///                 +ROLE_REGISTRAR
-///       +------------------------------------------+
+///                      register()
+///                   +ROLE_REGISTRAR
+///       +------------------->----------------------+
 ///       |                                          |
 ///       |                renew()                   |    renew()
 ///       |              +ROLE_RENEW                 |  +ROLE_RENEW
@@ -35,16 +47,13 @@ import {MetadataMixin} from "./MetadataMixin.sol";
 ///       |               |      |                   |   |      |
 ///       ʌ               ʌ      v                   v   v      |
 ///   AVAILABLE --------> RESERVED -------------> REGISTERED >--+
-///     ʌ   ʌ    reserve()   v       register()        v
-///     |   |  +ROLE_RESERVE |     +ROLE_REGISTRAR     |
-///     |   |                |     +ROLE_RESERVE       |
-///     |   +----------------+                         |
-///     |       unregister()                           |
-///     |    +ROLE_UNREGISTER                          |
-///     |                                              |
-///     +----------------------------------------------+
+///       ʌ    register()    v       register()        v
+///       |    w/owner=0     | +ROLE_REGISTER_RESERVED |
+///       | +ROLE_REGISTRAR  |                         |
+///       |                  |                         |
+///       +--------<---------+------------<------------+
 ///                     unregister()
-///                   +ROLE_UNREGISTER
+///                  +ROLE_UNREGISTER
 ///
 contract PermissionedRegistry is
     IRegistry,
@@ -58,10 +67,15 @@ contract PermissionedRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     struct Entry {
+        /// @dev Incremented on unregister; combined with labelhash to form the EAC resource ID.
         uint32 eacVersionId;
+        /// @dev Incremented on unregister and on token regeneration; combined with labelhash to form the ERC1155 token ID.
         uint32 tokenVersionId;
+        /// @dev Child registry for this name.
         IRegistry subregistry;
+        /// @dev Timestamp at or after which the name is considered expired/available.
         uint64 expiry;
+        /// @dev Resolver address for this name.
         address resolver;
     }
 
@@ -69,6 +83,8 @@ contract PermissionedRegistry is
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    IRegistry internal _parentRegistry;
+    string internal _childLabel;
     mapping(uint256 storageId => Entry entry) internal _entries;
 
     ////////////////////////////////////////////////////////////////////////
@@ -96,6 +112,7 @@ contract PermissionedRegistry is
     {
         return
             interfaceId == type(IPermissionedRegistry).interfaceId ||
+            interfaceId == type(IStandardRegistry).interfaceId ||
             interfaceId == type(IRegistry).interfaceId ||
             super.supportsInterface(interfaceId);
     }
@@ -105,7 +122,7 @@ contract PermissionedRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IStandardRegistry
-    function setSubregistry(uint256 anyId, IRegistry registry) public override {
+    function setSubregistry(uint256 anyId, IRegistry registry) public virtual {
         (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
             anyId,
             RegistryRolesLib.ROLE_SET_SUBREGISTRY
@@ -115,7 +132,7 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
-    function setResolver(uint256 anyId, address resolver) public override {
+    function setResolver(uint256 anyId, address resolver) public virtual {
         (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
             anyId,
             RegistryRolesLib.ROLE_SET_RESOLVER
@@ -125,26 +142,82 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
-    /// @dev Requires `AVAILABLE` and `ROLE_REGISTRAR` on root.
-    ///      Requires `RESERVED` and `ROLE_REGISTER | ROLE_RESERVED` on root.
+    function setParent(
+        IRegistry parent,
+        string memory label
+    ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_SET_PARENT) {
+        _parentRegistry = parent;
+        _childLabel = label;
+        emit ParentUpdated(parent, label, _msgSender());
+    }
+
+    /// @inheritdoc IStandardRegistry
+    /// @dev If `AVAILABLE`, requires `ROLE_REGISTRAR` on root.
+    ///         * If `owner` is null (`roleBitmap` must be 0), status becomes `RESERVED` instead of `REGISTERED`.
+    ///      If `RESERVED`, requires `ROLE_REGISTER_RESERVED` on root.
+    ///         * If `expiry` is 0, uses current expiry.
     function register(
-        string calldata label,
+        string memory label,
         address owner,
         IRegistry registry,
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    )
-        public
-        virtual
-        override
-        onlyRootRoles(RegistryRolesLib.ROLE_REGISTRAR)
-        returns (uint256 tokenId)
-    {
-        if (owner == address(0)) {
-            revert InvalidOwner();
+    ) public virtual override returns (uint256 tokenId) {
+        NameCoder.assertLabelSize(label);
+        uint256 labelId = LibLabel.id(label);
+        Entry storage entry = _entry(labelId);
+        tokenId = _constructTokenId(labelId, entry);
+        address prevOwner = super.ownerOf(tokenId);
+        address sender = _msgSender(); // the registrar, not the registrant
+        if (_isExpired(entry.expiry)) {
+            if (sender != address(this)) {
+                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, sender);
+            }
+            if (owner == address(0) && roleBitmap != 0) {
+                revert EACCannotGrantRoles(ROOT_RESOURCE, roleBitmap, sender); // strict
+            }
+        } else {
+            if (prevOwner != address(0)) {
+                revert LabelAlreadyRegistered(label); // cannot overwrite REGISTERED
+            } else if (owner == address(0)) {
+                revert LabelAlreadyReserved(label); // cannot reserve/register RESERVED
+            }
+            if (sender != address(this)) {
+                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
+            }
+            if (expiry == 0) {
+                expiry = entry.expiry; // use current expiry
+            }
         }
-        return _register(label, owner, registry, resolver, roleBitmap, expiry, _msgSender());
+        if (_isExpired(expiry)) {
+            revert CannotSetPastExpiry(expiry);
+        }
+        if (prevOwner != address(0)) {
+            _burn(prevOwner, tokenId, 1);
+            ++entry.eacVersionId;
+            ++entry.tokenVersionId;
+            tokenId = _constructTokenId(tokenId, entry);
+        }
+        entry.expiry = expiry;
+        entry.subregistry = registry;
+        entry.resolver = resolver;
+        // emit LabelRegistered before mint so we can determine this is a registry (in an indexer)
+        if (owner == address(0)) {
+            emit LabelReserved(tokenId, bytes32(labelId), label, expiry, sender);
+        } else {
+            emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
+            _mint(owner, tokenId, 1, "");
+            uint256 resource = _constructResource(tokenId, entry);
+            emit TokenResource(tokenId, resource);
+            _grantRoles(resource, roleBitmap, owner, false);
+        }
+        if (address(registry) != address(0)) {
+            emit SubregistryUpdated(tokenId, registry, sender);
+        }
+        if (address(resolver) != address(0)) {
+            emit ResolverUpdated(tokenId, resolver, sender);
+        }
     }
 
     /// @inheritdoc IStandardRegistry
@@ -162,23 +235,6 @@ contract PermissionedRegistry is
             ++entry.tokenVersionId;
         }
         entry.expiry = uint64(block.timestamp);
-    }
-
-    /// @inheritdoc IPermissionedRegistry
-    /// @dev Requires `AVAILABLE` and `ROLE_RESERVE` on root.
-    function reserve(
-        string calldata label,
-        address resolver,
-        uint64 expiry
-    )
-        public
-        virtual
-        override
-        onlyRootRoles(RegistryRolesLib.ROLE_RESERVE)
-        returns (uint256 tokenId)
-    {
-        return
-            _register(label, address(0), IRegistry(address(0)), resolver, 0, expiry, _msgSender());
     }
 
     /// @inheritdoc IStandardRegistry
@@ -223,6 +279,11 @@ contract PermissionedRegistry is
     function getResolver(string calldata label) public view virtual returns (address) {
         Entry storage entry = _entry(LibLabel.id(label));
         return _isExpired(entry.expiry) ? address(0) : entry.resolver;
+    }
+
+    /// @inheritdoc IRegistry
+    function getParent() public view virtual returns (IRegistry parent, string memory label) {
+        return (_parentRegistry, _childLabel);
     }
 
     /// @inheritdoc ERC1155Singleton
@@ -280,8 +341,10 @@ contract PermissionedRegistry is
                 : super.ownerOf(tokenId);
     }
 
-    // Enhanced access control methods adapted for token-based resources
+    /// @dev EAC view overrides — each translates `anyId` to the canonical EAC resource
+    ///      (via `getResource`) before delegating to the base `EnhancedAccessControl` implementation.
 
+    /// @inheritdoc IEnhancedAccessControl
     function roles(
         uint256 anyId,
         address account
@@ -289,20 +352,23 @@ contract PermissionedRegistry is
         return super.roles(getResource(anyId), account);
     }
 
+    /// @inheritdoc IEnhancedAccessControl
     function roleCount(
         uint256 anyId
     ) public view override(EnhancedAccessControl, IEnhancedAccessControl) returns (uint256) {
         return super.roleCount(getResource(anyId));
     }
 
+    /// @inheritdoc IEnhancedAccessControl
     function hasRoles(
         uint256 anyId,
-        uint256 rolesBitmap,
+        uint256 roleBitmap,
         address account
     ) public view override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
-        return super.hasRoles(getResource(anyId), rolesBitmap, account);
+        return super.hasRoles(getResource(anyId), roleBitmap, account);
     }
 
+    /// @inheritdoc IEnhancedAccessControl
     function hasAssignees(
         uint256 anyId,
         uint256 roleBitmap
@@ -310,6 +376,7 @@ contract PermissionedRegistry is
         return super.hasAssignees(getResource(anyId), roleBitmap);
     }
 
+    /// @inheritdoc IEnhancedAccessControl
     function getAssigneeCount(
         uint256 anyId,
         uint256 roleBitmap
@@ -325,68 +392,6 @@ contract PermissionedRegistry is
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Internal register method that takes string memory and performs the actual registration logic.
-    /// @param label The label to register.
-    /// @param owner The owner of the registered label or null if reserved.
-    /// @param registry The registry to use for the label.
-    /// @param resolver The resolver to set for the label.
-    /// @param roleBitmap The roles to grant to the owner.
-    /// @param expiry The expiry of the label.
-    /// @return tokenId The token ID of the registered name.
-    function _register(
-        string memory label,
-        address owner,
-        IRegistry registry,
-        address resolver,
-        uint256 roleBitmap,
-        uint64 expiry,
-        address sender
-    ) internal virtual returns (uint256 tokenId) {
-        NameCoder.assertLabelSize(label);
-        if (_isExpired(expiry)) {
-            revert CannotSetPastExpiry(expiry);
-        }
-        uint256 labelId = LibLabel.id(label);
-        Entry storage entry = _entry(labelId);
-        tokenId = _constructTokenId(labelId, entry);
-        address prevOwner = super.ownerOf(tokenId);
-        if (!_isExpired(entry.expiry)) {
-            if (prevOwner != address(0)) {
-                revert LabelAlreadyRegistered(label); // cannot overwrite REGISTERED
-            } else if (owner == address(0)) {
-                revert LabelAlreadyReserved(label); // cannot reserve RESERVED
-            }
-            // therefore, label is RESERVED
-            // role required to convert to REGISTERED
-            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_RESERVE, sender);
-        }
-        if (prevOwner != address(0)) {
-            _burn(prevOwner, tokenId, 1);
-            ++entry.eacVersionId;
-            ++entry.tokenVersionId;
-            tokenId = _constructTokenId(tokenId, entry);
-        }
-        entry.expiry = expiry;
-        entry.subregistry = registry;
-        entry.resolver = resolver;
-        // emit LabelRegistered before mint so we can determine this is a registry (in an indexer)
-        if (owner == address(0)) {
-            emit LabelReserved(tokenId, bytes32(labelId), label, expiry, sender);
-        } else {
-            emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
-            _mint(owner, tokenId, 1, "");
-            uint256 resource = _constructResource(tokenId, entry);
-            emit TokenResource(tokenId, resource);
-            _grantRoles(resource, roleBitmap, owner, false);
-        }
-        if (address(registry) != address(0)) {
-            emit SubregistryUpdated(tokenId, registry, sender);
-        }
-        if (address(resolver) != address(0)) {
-            emit ResolverUpdated(tokenId, resolver, sender);
-        }
-    }
 
     /// @dev Override the base registry _update function to transfer the roles to the new owner when the token is transferred.
     function _update(
@@ -470,6 +475,7 @@ contract PermissionedRegistry is
         return adminRoleBitmap >> 128;
     }
 
+    /// @dev Zeroes version bits in `anyId` to return the canonical storage entry for the name.
     function _entry(uint256 anyId) internal view returns (Entry storage) {
         return _entries[LibLabel.withVersion(anyId, 0)];
     }

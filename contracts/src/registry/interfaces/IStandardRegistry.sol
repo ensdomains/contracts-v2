@@ -7,7 +7,7 @@ import {IRegistry} from "./IRegistry.sol";
 
 /// @title IStandardRegistry
 /// @notice A tokenized registry.
-/// @dev Interface selector: `0xeb138d53`
+/// @dev Interface selector: `0xb844ab6c`
 interface IStandardRegistry is IRegistry, IERC1155Singleton {
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -44,6 +44,7 @@ interface IStandardRegistry is IRegistry, IERC1155Singleton {
     /// @param resolver The resolver to set for the label.
     /// @param roleBitmap The role bitmap to set for the label.
     /// @param expiry The expiry of the label, in seconds.
+    /// @return tokenId The token ID.
     function register(
         string calldata label,
         address owner,
@@ -71,6 +72,12 @@ interface IStandardRegistry is IRegistry, IERC1155Singleton {
     /// @param anyId The labelhash, token ID, or resource.
     /// @param resolver The new resolver.
     function setResolver(uint256 anyId, address resolver) external;
+
+    /// @notice Change canonical "location".
+    /// @dev Should emit `ParentUpdated`.
+    /// @param parent The canonical parent of this registry.
+    /// @param label The canonical subdomain of this registry.
+    function setParent(IRegistry parent, string calldata label) external;
 
     /// @notice Get expiry of label.
     /// @param anyId The labelhash, token ID, or resource.
