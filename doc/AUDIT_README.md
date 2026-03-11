@@ -60,9 +60,6 @@ The following PRs modify in-scope `.sol` files and may merge before the audit co
 
 | PR | Title | Author | Status | Reviewers | .sol files |
 |----|-------|--------|--------|-----------|------------|
-| #231 | Add `IPermissionedResolver` | adraffy | Approved | -- | `PermissionedResolver`, `IPermissionedResolver`, +4 |
-| #225 | Add `IContractName` to `L2ReverseRegistrar` | adraffy | Approved | TateB | `L2ReverseRegistrar`, `IContractName`, +4 |
-| #226 | feat: interface finalisations | TateB | Approved | -- | `IRegistry`, `IPermissionedRegistry`, +8 |
 | #229 | chore: documentation consistency | TateB | Draft | -- | `DNSAliasResolver`, `ERC1155Singleton`, +9 |
 | #235 | More Migration Tests | adraffy | Review | Arachnid | `LockedMigrationController`, `UnlockedMigrationController`, +10 |
 | #213 | BET 559: add pre migration script | hiddentao | Review | adraffy, Arachnid | `BatchRegistrar`, +1 |
@@ -70,16 +67,17 @@ The following PRs modify in-scope `.sol` files and may merge before the audit co
 
 ## 5. Key Areas of Concern
 
-Areas where the team particularly welcomes auditor scrutiny:
+Areas where the team particularly welcomes auditor scrutiny, listed in recommended reading order:
 
-- **Migration logic**: Locked vs unlocked migration paths from ENSv1, wrapper receiver contracts, edge cases around expired/burned V1 names
-- **Access control**: EAC bitmap role system, admin role restrictions, role inheritance on transfer, token ID regeneration on permission changes
-- **Payment handling**: ERC20 token payments in ETHRegistrar, price oracle rounding, minimum payment enforcement
-- **Upgradeability**: UUPS proxy patterns (UserRegistry, PermissionedResolver, UniversalResolverV2)
-- **Name transfer safety**: Ensuring ownership state is fully reset on transfer/re-registration, preventing previous owners from retaining access (cf. [CVE-2020-5232](https://github.com/ensdomains/ens/security/advisories/GHSA-8f9f-pc5v-9r5h) in ENSv1)
-- **DNS/DNSSEC integration**: `DNSTLDResolver` trusts the DNSSEC oracle for proof verification and TXT record parsing; previous ENSv1 DNSSEC padding vulnerability (cf. [GHSA-c6rr-7pmc-73wc](https://github.com/ensdomains/ens-contracts/security/advisories/GHSA-c6rr-7pmc-73wc))
-- **Universal resolution**: Recursive registry traversal, wildcard handling, CCIP-Read integration
-- **HCA proxy resolution**: `_msgSender()` override via HCA context, equivalence checking across contracts
+1. **Enhanced Access Control (EAC)** (`src/access-control/`): Bitmap-based role system underpinning all permission logic. Admin role restrictions, role grant/revoke semantics, resource-scoped vs root-scoped permissions.
+2. **PermissionedRegistry** (`src/registry/PermissionedRegistry.sol`): Primary use-case of EAC. Token ownership, admin restrictions, role inheritance on transfer, token ID regeneration on permission changes.
+3. **Name transfer safety**: Ensuring ownership state is fully reset on transfer/re-registration, preventing previous owners from retaining access (cf. [CVE-2020-5232](https://github.com/ensdomains/ens/security/advisories/GHSA-8f9f-pc5v-9r5h) in ENSv1).
+4. **ETHRegistrar** (`src/registrar/ETHRegistrar.sol`): Use-case of both EAC and PermissionedRegistry. Registration, renewal, commit-reveal, and ERC20 payment flow. Price oracle rounding and minimum payment enforcement.
+5. **Migration logic** (`src/migration/`): Locked vs unlocked migration paths from ENSv1, wrapper receiver contracts, edge cases around expired/burned V1 names.
+6. **Upgradeability**: UUPS proxy patterns (UserRegistry, PermissionedResolver, UniversalResolverV2).
+7. **Universal resolution** (`src/universalResolver/`): Recursive registry traversal, wildcard handling, CCIP-Read integration.
+8. **DNS/DNSSEC integration** (`src/dns/`): `DNSTLDResolver` trusts the DNSSEC oracle for proof verification and TXT record parsing; previous ENSv1 DNSSEC padding vulnerability (cf. [GHSA-c6rr-7pmc-73wc](https://github.com/ensdomains/ens-contracts/security/advisories/GHSA-c6rr-7pmc-73wc)).
+9. **HCA proxy resolution** (`src/hca/`): `_msgSender()` override via HCA context, equivalence checking across contracts.
 
 ## 6. Key Invariants
 
@@ -87,8 +85,8 @@ The following invariants have been verified in the source code:
 
 **Ownership & Access Control:**
 - Each ERC1155 token ID has at most one owner (`ERC1155Singleton`)
-- Only the NFT owner can hold admin roles for that name
-- Admin roles cannot be granted to others via external EAC methods
+- Each token resource has at most one admin (the token owner). Admin roles can never be directly granted via external EAC methods — only revoked from oneself, or swapped to a new owner through transfer.
+- This grant restriction also applies to the root resource, which means that as long as root permissions do not overlap with token-level permissions, the token owner is the sole controller of their name. See the [Static Deployment Permissions](../contracts/README.md#static-deployment-permissions) table in the contracts README for the exact role assignments per contract, which demonstrates the orthogonal separation between root-level and token-level roles (the ENSv2 equivalent of NameWrapper's `PARENT_CANNOT_CONTROL`).
 - Token ID regeneration fully invalidates previous roles via `tokenVersionId` increment (`PermissionedRegistry.sol`)
 - On transfer, the new owner receives all admin roles; the previous owner retains none
 
@@ -132,7 +130,7 @@ These contracts are deployed per user and controlled by individual name owners:
 These use OpenZeppelin `Ownable` or are implicit trust assumptions outside the EAC system.
 
 - **StandardRentPriceOracle owner** (`Ownable`): Can update base pricing rates, discount points, payment token configurations, and halving parameters.
-- **Root registry deployer**: Whoever deploys and initialises the root registry has initial control over TLD registrations.
+- **Deployer roles**: The deployer receives specific admin roles per contract during deployment (not all roles). See the [Static Deployment Permissions](../contracts/README.md#static-deployment-permissions) table in the contracts README for the exact role matrix.
 - **ETHRegistrar BENEFICIARY** (`immutable`): All registration and renewal payments (ERC20 via `safeTransferFrom`) are sent to this address. Set at construction and cannot be changed.
 
 ### Trusted External Contracts
@@ -172,6 +170,3 @@ Previously disclosed vulnerabilities on ENSv1:
 - [GHSA-rrxv-q8m4-wch3](https://github.com/ensdomains/ens-contracts/security/advisories/GHSA-rrxv-q8m4-wch3) (Aug 2023, Medium): .eth registrar controller can shorten the duration of registered names
 - [GHSA-c6rr-7pmc-73wc](https://github.com/ensdomains/ens-contracts/security/advisories/GHSA-c6rr-7pmc-73wc) (Feb 2025, Low): RSA Signature Forgery via Missing PKCS#1 v1.5 Padding Validation in ENS DNSSEC Oracle
 
-## 10. Open Questions
-
-- Which contracts are intended to be owned/controlled by the ENS DAO? Based on ENSv1 precedent, likely candidates include: Root PermissionedRegistry, ETHRegistrar, StandardRentPriceOracle, UniversalResolverV2, and migration controllers (`LockedMigrationController`, `UnlockedMigrationController`). Needs confirmation.
