@@ -43,6 +43,7 @@
   },
   "scripts": {
     "lint": "NODE_PATH=./node_modules solhint --noPoster 'src/**/*.sol'",
+    "lint:fix": "NODE_PATH=./node_modules solhint --noPoster --fix",
     "compile:forge": "forge build",
     "compile:hardhat": "hardhat compile",
     "compile": "bun run compile:forge && bun run compile:hardhat",
