@@ -20,7 +20,7 @@ import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 
-import {UnauthorizedCaller} from "~src/CommonErrors.sol";
+import {InvalidOwner, UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
@@ -29,7 +29,6 @@ import {
     LockedMigrationController,
     IPermissionedRegistry
 } from "~src/migration/LockedMigrationController.sol";
-import {InvalidOwner, FUSES_TO_BURN} from "~src/migration/LockedWrapperReceiver.sol";
 import {
     IEnhancedAccessControl,
     EACBaseRolesLib
@@ -336,11 +335,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         vm.expectEmit();
         emit IRegistryEvents.ResolverUpdated(tokenId, md.resolver, address(migrationController));
-        vm.expectEmit();
-        emit INameWrapper.FusesSet(
-            node,
-            FUSES_TO_BURN | CANNOT_UNWRAP | PARENT_CANNOT_CONTROL | IS_DOT_ETH
-        );
         vm.prank(user);
         uint256 g = gasleft();
         nameWrapper.safeTransferFrom(
@@ -643,11 +637,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         // migrate 3LD
         LibMigration.Data memory data3 = _makeData(name3);
-        vm.expectEmit();
-        emit INameWrapper.FusesSet(
-            NameCoder.namehash(name3, 0),
-            FUSES_TO_BURN | CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
-        );
         vm.prank(friend);
         nameWrapper.safeTransferFrom(
             friend,

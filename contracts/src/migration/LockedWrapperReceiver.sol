@@ -8,7 +8,6 @@ import {
     CANNOT_BURN_FUSES,
     CANNOT_TRANSFER,
     CANNOT_SET_RESOLVER,
-    CANNOT_SET_TTL,
     CANNOT_CREATE_SUBDOMAIN
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
@@ -20,13 +19,6 @@ import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
-
-/// @dev Fuses which translate directly to PermissionedRegistry logic.
-uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
-    CANNOT_TRANSFER |
-    CANNOT_SET_RESOLVER |
-    CANNOT_SET_TTL |
-    CANNOT_CREATE_SUBDOMAIN;
 
 /// @title LockedWrappedReceiver
 /// @notice AbstractWrapperReceiver for locked NameWrapper tokens.
@@ -149,11 +141,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 _tokenRoleBitmapFromFuses(fuses),
                 expiry
             );
-
-            // Burn all migration fuses
-            if (_notFrozen(fuses)) {
-                NAME_WRAPPER.setFuses(node, uint16(FUSES_TO_BURN));
-            }
         }
     }
 
