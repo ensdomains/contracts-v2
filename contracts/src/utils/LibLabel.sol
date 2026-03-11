@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+/// @dev Utilities for computing labelhash-based token IDs and applying version suffixes.
 library LibLabel {
     /// @notice Compute `labelhash(label)`.
     function id(string memory label) internal pure returns (uint256) {

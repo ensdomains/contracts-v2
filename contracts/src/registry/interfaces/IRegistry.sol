@@ -14,4 +14,10 @@ interface IRegistry is IRegistryEvents {
     /// @param label The label to fetch a resolver for.
     /// @return resolver The address of a resolver responsible for this label, or `address(0)` if none exists.
     function getResolver(string calldata label) external view returns (address);
+
+    /// @notice Get canonical "location" of this registry.
+    ///
+    /// @return parent The canonical parent of this registry.
+    /// @return label The canonical subdomain of this registry.
+    function getParent() external view returns (IRegistry parent, string memory label);
 }

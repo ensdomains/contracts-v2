@@ -3,555 +3,436 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Test, Vm} from "forge-std/Test.sol";
-
-import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {INameWrapper, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
-import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
-import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import {console} from "forge-std/console.sol";
+import {
+    INameWrapper,
+    CAN_DO_EVERYTHING,
+    CANNOT_UNWRAP
+} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 
-import {UnauthorizedCaller} from "~src/CommonErrors.sol";
+import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
+import {
+    IEnhancedAccessControl,
+    EACBaseRolesLib
+} from "~src/access-control/EnhancedAccessControl.sol";
 import {
     PermissionedRegistry,
     IPermissionedRegistry,
     RegistryRolesLib,
+    IRegistry,
     IRegistryMetadata,
-    EACBaseRolesLib
+    LibLabel
 } from "~src/registry/PermissionedRegistry.sol";
-import {UnlockedMigrationController} from "~src/migration/UnlockedMigrationController.sol";
-import {TransferData, MigrationData} from "~src/migration/types/MigrationTypes.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
-import {MockBaseRegistrar} from "~test/mocks/v1/MockBaseRegistrar.sol";
+import {
+    UnlockedMigrationController,
+    LibMigration,
+    InvalidOwner,
+    UnauthorizedCaller
+} from "~src/migration/UnlockedMigrationController.sol";
+import {
+    MigrationControllerFixture,
+    ERC165Checker,
+    NameCoder
+} from "./MigrationControllerFixture.sol";
+import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
+import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
-// Simple mock that implements IRegistryMetadata
-contract MockRegistryMetadata is IRegistryMetadata {
-    function tokenUri(uint256) external pure override returns (string memory) {
-        return "";
-    }
-}
+contract UnlockedMigrationControllerTest is MigrationControllerFixture {
+    UnlockedMigrationController migrationController;
 
-// Mock ERC1155 contract for wrapped names
-contract MockNameWrapper is ERC1155 {
-    mapping(uint256 tokenId => address owner) private _tokenOwners;
-    mapping(uint256 tokenId => uint32 fuses) private _tokenFuses;
-
-    MockBaseRegistrar public registrar;
-
-    constructor(MockBaseRegistrar _registrar) ERC1155("https://metadata.ens.domains/") {
-        registrar = _registrar;
-    }
-
-    function wrapETH2LD(string memory label, address owner, uint16, address) external {
-        uint256 tokenId = uint256(keccak256(bytes(label)));
-        _mint(owner, tokenId, 1, "");
-        _tokenOwners[tokenId] = owner;
+    function setUp() public override {
+        super.setUp();
+        migrationController = new UnlockedMigrationController(ethRegistry, nameWrapper);
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
+        ethRegistry.grantRootRoles(
+            RegistryRolesLib.ROLE_REGISTER_RESERVED,
+            address(migrationController)
+        );
     }
 
-    function ownerOf(uint256 tokenId) external view returns (address) {
-        return _tokenOwners[tokenId];
+    function test_constructor() external view {
+        assertEq(address(migrationController.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
+        assertEq(address(migrationController.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
     }
 
-    function getData(uint256 tokenId) external view returns (address, uint32, uint64) {
-        return (_tokenOwners[tokenId], _tokenFuses[tokenId], 0);
+    function test_supportsInterface() external view {
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(migrationController),
+                type(IERC1155Receiver).interfaceId
+            ),
+            "IERC1155Receiver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(migrationController),
+                type(IERC721Receiver).interfaceId
+            ),
+            "IERC721Receiver"
+        );
     }
 
-    function setFuses(uint256 tokenId, uint32 fuses) external {
-        _tokenFuses[tokenId] = fuses;
+    function test_finishERC1155Migration_unauthorizedCaller() external {
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, user));
+        vm.prank(user);
+        migrationController.finishERC1155Migration(new uint256[](0), new LibMigration.Data[](0));
     }
 
-    function safeTransferFrom(
-        address from,
-        address to,
-        uint256 id,
-        uint256 amount,
-        bytes memory data
-    ) public override {
-        super.safeTransferFrom(from, to, id, amount, data);
-        _tokenOwners[id] = to;
+    function test_safeTransferFrom_unauthorizedCaller() external {
+        uint256 tokenId = dummy1155.mint(user);
+        vm.expectRevert(
+            WrappedErrorLib.wrap(abi.encodeWithSelector(UnauthorizedCaller.selector, dummy1155))
+        );
+        vm.prank(user);
+        dummy1155.safeTransferFrom(user, address(migrationController), tokenId, 1, ""); // wrong
     }
 
-    function safeBatchTransferFrom(
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory amounts,
-        bytes memory data
-    ) public override {
-        super.safeBatchTransferFrom(from, to, ids, amounts, data);
-        for (uint256 i = 0; i < ids.length; i++) {
-            _tokenOwners[ids[i]] = to;
+    function test_unwrapped_invalidData() external {
+        (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        vm.expectRevert(abi.encodeWithSelector(LibMigration.InvalidData.selector));
+        vm.prank(user);
+        ethRegistrarV1.safeTransferFrom(
+            user,
+            address(migrationController),
+            tokenIdV1,
+            "" // wrong
+        );
+    }
+
+    function test_wrapped_invalidData() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        vm.expectRevert(
+            WrappedErrorLib.wrap(abi.encodeWithSelector(LibMigration.InvalidData.selector))
+        );
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            "" // wrong
+        );
+    }
+
+    function test_wrapped_invalidArrayLength() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        uint256[] memory ids = new uint256[](1);
+        uint256[] memory amounts = new uint256[](1);
+        LibMigration.Data[] memory mds = new LibMigration.Data[](1);
+        ids[0] = uint256(NameCoder.namehash(name, 0));
+        mds[0] = _makeData(name);
+        amounts[0] = 1;
+        bytes memory payload = abi.encode(mds);
+        uint256 fakeLength = 0;
+        assembly {
+            mstore(add(payload, 64), fakeLength) // wrong
+        }
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(
+                    IERC1155Errors.ERC1155InvalidArrayLength.selector,
+                    ids.length,
+                    fakeLength
+                )
+            )
+        );
+        vm.prank(user);
+        nameWrapper.safeBatchTransferFrom(
+            user,
+            address(migrationController),
+            ids,
+            amounts,
+            payload
+        );
+    }
+
+    function test_unwrapped_invalidReceiver() external {
+        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        LibMigration.Data memory md = _makeData(name);
+        md.owner = address(0); // wrong
+        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
+        vm.prank(user);
+        ethRegistrarV1.safeTransferFrom(
+            user,
+            address(migrationController),
+            tokenIdV1,
+            abi.encode(md)
+        );
+    }
+
+    function test_wrapped_invalidReceiver() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        LibMigration.Data memory md = _makeData(name);
+        md.owner = address(0); // wrong
+        vm.expectRevert(WrappedErrorLib.wrap(abi.encodeWithSelector(InvalidOwner.selector)));
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
+        );
+    }
+
+    function test_wrapped_nameDataMismatch() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        bytes32 node = NameCoder.namehash(name, 0);
+        LibMigration.Data memory md = _makeData(name);
+        md.label = "wrong";
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(LibMigration.NameDataMismatch.selector, node)
+            )
+        );
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
+        );
+    }
+
+    function test_wrapped_nameIsLocked() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes32 node = NameCoder.namehash(name, 0);
+        LibMigration.Data memory md = _makeData(name);
+        vm.expectRevert(
+            WrappedErrorLib.wrap(abi.encodeWithSelector(LibMigration.NameIsLocked.selector, node))
+        );
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
+        );
+    }
+
+    function test_unwrapped_notReserved() external {
+        premigrationController = address(0); // disable premigration
+        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        LibMigration.Data memory md = _makeData(name);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                ethRegistry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_REGISTRAR,
+                address(migrationController)
+            )
+        );
+        vm.prank(user);
+        ethRegistrarV1.safeTransferFrom(
+            user,
+            address(migrationController),
+            tokenIdV1,
+            abi.encode(md)
+        );
+    }
+
+    function test_wrapped_notReserved() external {
+        premigrationController = address(0); // disable premigration
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        LibMigration.Data memory md = _makeData(name);
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(
+                    IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                    ethRegistry.ROOT_RESOURCE(),
+                    RegistryRolesLib.ROLE_REGISTRAR,
+                    address(migrationController)
+                )
+            )
+        );
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
+        );
+    }
+
+    function test_unwrapped_migrate() external {
+        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        LibMigration.Data memory md = _makeData(name);
+        uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
+        vm.expectEmit();
+        emit IERC721.Transfer(user, address(migrationController), tokenIdV1);
+        vm.expectEmit();
+        emit IRegistry.NameRegistered(
+            tokenId,
+            keccak256(bytes(md.label)),
+            md.label,
+            md.owner,
+            uint64(ethRegistrarV1.nameExpires(tokenIdV1)),
+            address(migrationController)
+        );
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(
+            address(migrationController),
+            address(0),
+            md.owner,
+            tokenId,
+            1
+        );
+        vm.expectEmit();
+        emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
+        vm.expectEmit();
+        emit IRegistry.SubregistryUpdated(
+            tokenId,
+            IRegistry(md.subregistry),
+            address(migrationController)
+        );
+        vm.expectEmit();
+        emit IRegistry.ResolverUpdated(tokenId, md.resolver, address(migrationController));
+        vm.prank(user);
+        uint256 g = gasleft();
+        ethRegistrarV1.safeTransferFrom(
+            user,
+            address(migrationController),
+            tokenIdV1,
+            abi.encode(md)
+        );
+        console.log("Gas: %s", g - gasleft());
+
+        assertEq(ethRegistry.getTokenId(tokenIdV1), tokenId, "tokenId");
+        assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
+        assertEq(ethRegistry.getExpiry(tokenId), ethRegistrarV1.nameExpires(tokenIdV1), "expiry");
+        assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
+        checkResolution(name, address(ensV2Resolver), md.resolver);
+        assertEq(
+            address(ethRegistry.getSubregistry(md.label)),
+            address(md.subregistry),
+            "subregistry"
+        );
+        assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), "resolverV1");
+    }
+
+    function test_wrapped_migrate() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        LibMigration.Data memory md = _makeData(name);
+        uint256 tokenIdV1 = uint256(keccak256(bytes(md.label)));
+        uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(
+            user,
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1
+        );
+        vm.expectEmit();
+        emit IRegistry.NameRegistered(
+            tokenId,
+            keccak256(bytes(md.label)),
+            md.label,
+            md.owner,
+            uint64(ethRegistrarV1.nameExpires(tokenIdV1)),
+            address(migrationController)
+        );
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(
+            address(migrationController),
+            address(0),
+            md.owner,
+            tokenId,
+            1
+        );
+        vm.expectEmit();
+        emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
+        vm.expectEmit();
+        emit IRegistry.SubregistryUpdated(
+            tokenId,
+            IRegistry(md.subregistry),
+            address(migrationController)
+        );
+        vm.expectEmit();
+        emit IRegistry.ResolverUpdated(tokenId, md.resolver, address(migrationController));
+        vm.prank(user);
+        uint256 g = gasleft();
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
+        );
+        console.log("Gas: %s", g - gasleft());
+
+        assertEq(ethRegistry.getTokenId(tokenIdV1), tokenId, "tokenId");
+        assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
+        assertEq(ethRegistry.getExpiry(tokenId), ethRegistrarV1.nameExpires(tokenIdV1), "expiry");
+        assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
+        checkResolution(name, address(ensV2Resolver), md.resolver);
+        assertEq(
+            address(ethRegistry.getSubregistry(md.label)),
+            address(md.subregistry),
+            "subregistry"
+        );
+    }
+
+    function test_wrapped_migrateBatch(uint8 count) external {
+        vm.assume(count < 5);
+        uint256[] memory ids = new uint256[](count);
+        uint256[] memory amounts = new uint256[](count);
+        LibMigration.Data[] memory mds = new LibMigration.Data[](count);
+        for (uint256 i; i < count; ++i) {
+            bytes memory name = registerWrappedETH2LD(_label(i), CAN_DO_EVERYTHING);
+            LibMigration.Data memory md = _makeData(name);
+            md.resolver = address(uint160(i));
+            mds[i] = md;
+            ids[i] = uint256(NameCoder.namehash(name, 0));
+            amounts[i] = 1;
+        }
+        vm.prank(user);
+        nameWrapper.safeBatchTransferFrom(
+            user,
+            address(migrationController),
+            ids,
+            amounts,
+            abi.encode(mds)
+        );
+        for (uint256 i; i < count; ++i) {
+            LibMigration.Data memory md = mds[i];
+            uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+            assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
+            assertEq(
+                ethRegistry.getExpiry(tokenId),
+                ethRegistrarV1.nameExpires(uint256(keccak256(bytes(md.label)))),
+                "expiry"
+            );
+            assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
+            checkResolution(
+                NameCoder.ethName(md.label),
+                address(ensV2Resolver),
+                address(uint160(i))
+            );
+            assertEq(
+                address(ethRegistry.getSubregistry(md.label)),
+                address(md.subregistry),
+                "subregistry"
+            );
         }
     }
 
-    function unwrapETH2LD(
-        bytes32 label,
-        address newRegistrant,
-        address /*newController*/
-    ) external {
-        uint256 tokenId = uint256(label);
-        // Mock unwrap by burning the ERC1155 token from the caller (migration controller)
-        _burn(msg.sender, tokenId, 1);
-        _tokenOwners[tokenId] = newRegistrant;
-    }
-}
-
-contract UnlockedMigrationControllerTest is Test, ERC1155Holder, ERC721Holder {
-    MockBaseRegistrar ethRegistrarV1;
-    MockNameWrapper nameWrapper;
-    UnlockedMigrationController migrationController;
-
-    // Real components for testing
-    PermissionedRegistry registry;
-    MockRegistryMetadata registryMetadata;
-    MockHCAFactoryBasic hcaFactory;
-
-    address user = address(0x1234);
-    address controller = address(0x5678);
-
-    string testLabel = "test";
-    uint256 testTokenId;
-
-    /**
-     * Helper method to create properly encoded migration data for transfers
-     */
-    function _createMigrationData(
-        string memory label
-    ) internal pure returns (MigrationData memory) {
+    function _makeData(bytes memory name) internal view returns (LibMigration.Data memory) {
         return
-            MigrationData({
-                transferData: TransferData({
-                    dnsEncodedName: NameCoder.ethName(label),
-                    owner: address(0),
-                    subregistry: address(0),
-                    resolver: address(0),
-                    roleBitmap: 0,
-                    expires: 0
-                }),
-                salt: 0
+            LibMigration.Data({
+                label: NameCoder.firstLabel(name),
+                owner: user,
+                subregistry: testRegistry,
+                resolver: testResolver,
+                salt: 0 // ignored by UnlockedMigrationController
             });
-    }
-
-    /**
-     * Helper method to create migration data with valid expiry
-     */
-    function _createMigrationDataWithExpiry(
-        string memory label
-    ) internal view returns (MigrationData memory) {
-        return
-            MigrationData({
-                transferData: TransferData({
-                    dnsEncodedName: NameCoder.ethName(label),
-                    owner: address(0x1111),
-                    subregistry: address(0x2222),
-                    resolver: address(0x3333),
-                    roleBitmap: 0,
-                    expires: uint64(block.timestamp + 86400)
-                }),
-                salt: 0
-            });
-    }
-
-    function setUp() public {
-        // Set up real registry infrastructure
-        hcaFactory = new MockHCAFactoryBasic();
-        registryMetadata = new MockRegistryMetadata();
-
-        // Deploy the real registry
-        registry = new PermissionedRegistry(
-            hcaFactory,
-            registryMetadata,
-            address(this),
-            EACBaseRolesLib.ALL_ROLES
-        );
-
-        // Deploy mock base registrar and name wrapper (keep these as mocks)
-        ethRegistrarV1 = new MockBaseRegistrar();
-        ethRegistrarV1.addController(controller);
-        nameWrapper = new MockNameWrapper(ethRegistrarV1);
-
-        // Deploy migration controller
-        migrationController = new UnlockedMigrationController(
-            INameWrapper(address(nameWrapper)),
-            IPermissionedRegistry(address(registry))
-        );
-
-        // Grant necessary roles to the migration controller
-        registry.grantRootRoles(
-            RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW,
-            address(migrationController)
-        );
-
-        testTokenId = uint256(keccak256(bytes(testLabel)));
-    }
-
-    function test_constructor() public view {
-        assertEq(address(migrationController.NAME_WRAPPER()), address(nameWrapper));
-        assertEq(address(migrationController.ETH_REGISTRY()), address(registry));
-    }
-
-    function test_migrateUnwrappedEthName() public {
-        // Register a name in the v1 registrar
-        vm.prank(controller);
-        ethRegistrarV1.register(testTokenId, user, 86400);
-
-        // Verify user owns the token
-        assertEq(ethRegistrarV1.ownerOf(testTokenId), user);
-
-        // Create migration data with proper owner
-        MigrationData memory migrationData = _createMigrationDataWithExpiry(testLabel);
-        // Update owner to match the actual token owner for this test
-        migrationData.transferData.owner = user;
-        bytes memory data = abi.encode(migrationData);
-
-        // Transfer to migration controller (simulating migration)
-        vm.prank(user);
-        ethRegistrarV1.safeTransferFrom(user, address(migrationController), testTokenId, data);
-
-        // Verify the migration controller owns the token
-        assertEq(ethRegistrarV1.ownerOf(testTokenId), address(migrationController));
-
-        // Verify the name was registered in the ETH registry
-        assertEq(address(registry.getSubregistry(testLabel)) != address(0), true);
-    }
-
-    function test_Revert_migrateUnwrappedEthName_wrong_caller() public {
-        // Register a name in the v1 registrar
-        vm.prank(controller);
-        ethRegistrarV1.register(testTokenId, user, 86400);
-
-        // Create migration data
-        MigrationData memory migrationData = _createMigrationData(testLabel);
-        bytes memory data = abi.encode(migrationData);
-
-        // Try to transfer from wrong registry
-        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, address(this)));
-        migrationController.onERC721Received(address(this), user, testTokenId, data);
-    }
-
-    function test_Revert_migrateUnwrappedEthName_not_owner() public {
-        // Register a name in the v1 registrar
-        vm.prank(controller);
-        ethRegistrarV1.register(testTokenId, user, 86400);
-
-        // Create migration data
-        MigrationData memory migrationData = _createMigrationData(testLabel);
-        bytes memory data = abi.encode(migrationData);
-
-        // Try to call onERC721Received directly when migration controller doesn't own the token
-        // This should fail with UnauthorizedCaller because we're calling it directly
-        // and msg.sender is not ethRegistrarV1
-        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, address(this)));
-        migrationController.onERC721Received(address(this), user, testTokenId, data);
-    }
-
-    function test_migrateUnlockedWrappedEthName_single() public {
-        // Wrap a name (simulate) - this should mint the token to the user
-        nameWrapper.wrapETH2LD(testLabel, user, 0, address(0));
-        // Ensure fuses are 0 (unlocked)
-        nameWrapper.setFuses(testTokenId, 0);
-
-        // Verify user owns the wrapped token
-        assertEq(nameWrapper.balanceOf(user, testTokenId), 1);
-
-        // Create migration data with proper owner
-        MigrationData memory migrationData = _createMigrationDataWithExpiry(testLabel);
-        migrationData.transferData.owner = user;
-        bytes memory data = abi.encode(migrationData);
-
-        // Transfer wrapped token to migration controller
-        vm.prank(user);
-        nameWrapper.safeTransferFrom(user, address(migrationController), testTokenId, 1, data);
-
-        // Verify the name was registered in the ETH registry
-        assertEq(address(registry.getSubregistry(testLabel)) != address(0), true);
-    }
-
-    function test_migrateWrappedEthName_batch_allUnlocked() public {
-        string memory label1 = "unlocked1";
-        string memory label2 = "unlocked2";
-        uint256 tokenId1 = uint256(keccak256(bytes(label1)));
-        uint256 tokenId2 = uint256(keccak256(bytes(label2)));
-
-        nameWrapper.wrapETH2LD(label1, user, 0, address(0));
-        nameWrapper.setFuses(tokenId1, 0); // Unlocked
-        nameWrapper.wrapETH2LD(label2, user, 0, address(0));
-        nameWrapper.setFuses(tokenId2, 0); // Unlocked
-
-        // Verify user owns the wrapped tokens
-        assertEq(nameWrapper.balanceOf(user, tokenId1), 1);
-        assertEq(nameWrapper.balanceOf(user, tokenId2), 1);
-
-        uint256[] memory tokenIds = new uint256[](2);
-        tokenIds[0] = tokenId1;
-        tokenIds[1] = tokenId2;
-
-        uint256[] memory amounts = new uint256[](2);
-        amounts[0] = 1;
-        amounts[1] = 1;
-
-        MigrationData[] memory migrationDataArray = new MigrationData[](2);
-        migrationDataArray[0] = _createMigrationDataWithExpiry(label1);
-        migrationDataArray[0].transferData.owner = user;
-        migrationDataArray[1] = _createMigrationDataWithExpiry(label2);
-        migrationDataArray[1].transferData.owner = user;
-
-        bytes memory data = abi.encode(migrationDataArray);
-
-        vm.prank(user);
-        nameWrapper.safeBatchTransferFrom(
-            user,
-            address(migrationController),
-            tokenIds,
-            amounts,
-            data
-        );
-
-        // Verify both names were registered in the ETH registry
-        assertEq(address(registry.getSubregistry(label1)) != address(0), true);
-        assertEq(address(registry.getSubregistry(label2)) != address(0), true);
-    }
-
-    function test_Revert_migrateWrappedEthName_single_locked() public {
-        // First wrap a name so the user actually owns it
-        vm.prank(user);
-        nameWrapper.wrapETH2LD(testLabel, user, 0, address(0));
-        nameWrapper.setFuses(testTokenId, CANNOT_UNWRAP); // Mark as locked
-
-        // Create migration data
-        MigrationData memory migrationData = _createMigrationData(testLabel);
-        bytes memory data = abi.encode(migrationData);
-
-        // Try to transfer locked name (should revert with MigrationNotSupported)
-        vm.expectRevert(
-            abi.encodeWithSelector(UnlockedMigrationController.MigrationNotSupported.selector)
-        );
-        vm.prank(user);
-        nameWrapper.safeTransferFrom(user, address(migrationController), testTokenId, 1, data);
-    }
-
-    function test_Revert_migrateWrappedEthName_batch_locked() public {
-        string memory label1 = "locked1";
-        string memory label2 = "locked2";
-        uint256 tokenId1 = uint256(keccak256(bytes(label1)));
-        uint256 tokenId2 = uint256(keccak256(bytes(label2)));
-
-        // First wrap names so the user actually owns them
-        vm.startPrank(user);
-        nameWrapper.wrapETH2LD(label1, user, 0, address(0));
-        nameWrapper.setFuses(tokenId1, CANNOT_UNWRAP); // Mark as locked
-        nameWrapper.wrapETH2LD(label2, user, 0, address(0));
-        nameWrapper.setFuses(tokenId2, CANNOT_UNWRAP); // Mark as locked
-        vm.stopPrank();
-
-        // Prepare batch data
-        uint256[] memory tokenIds = new uint256[](2);
-        tokenIds[0] = tokenId1;
-        tokenIds[1] = tokenId2;
-
-        uint256[] memory amounts = new uint256[](2);
-        amounts[0] = 1;
-        amounts[1] = 1;
-
-        MigrationData[] memory migrationDataArray = new MigrationData[](2);
-        migrationDataArray[0] = _createMigrationData(label1);
-        migrationDataArray[1] = _createMigrationData(label2);
-
-        bytes memory data = abi.encode(migrationDataArray);
-
-        // Should revert when processing the first locked name
-        vm.expectRevert(
-            abi.encodeWithSelector(UnlockedMigrationController.MigrationNotSupported.selector)
-        );
-        vm.prank(user);
-        nameWrapper.safeBatchTransferFrom(
-            user,
-            address(migrationController),
-            tokenIds,
-            amounts,
-            data
-        );
-    }
-
-    function test_supportsInterface() public view {
-        assertTrue(migrationController.supportsInterface(type(IERC165).interfaceId));
-        assertTrue(migrationController.supportsInterface(type(IERC721Receiver).interfaceId));
-        assertTrue(migrationController.supportsInterface(type(IERC1155Receiver).interfaceId));
-        // Ownable is not directly advertised via supportsInterface in UnlockedMigrationController based on its ERC165 logic
-        // assertTrue(migrationController.supportsInterface(type(Ownable).interfaceId));
-    }
-
-    function test_Revert_onERC1155Received_wrong_caller() public {
-        // Create migration data
-        MigrationData memory migrationData = _createMigrationData(testLabel);
-        bytes memory data = abi.encode(migrationData);
-
-        // Try to call onERC1155Received from wrong contract (not nameWrapper)
-        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, address(this)));
-        migrationController.onERC1155Received(address(this), user, testTokenId, 1, data);
-    }
-
-    function test_Revert_onERC1155BatchReceived_wrong_caller() public {
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = testTokenId;
-
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = 1;
-
-        // For batch, data is MigrationData[]
-        MigrationData[] memory migrationDataArray = new MigrationData[](1);
-        migrationDataArray[0] = _createMigrationData(testLabel);
-
-        bytes memory data = abi.encode(migrationDataArray);
-
-        // Try to call onERC1155BatchReceived from wrong contract (not nameWrapper)
-        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, address(this)));
-        migrationController.onERC1155BatchReceived(address(this), user, tokenIds, amounts, data);
-    }
-
-    function test_onERC1155Received_nameWrapper_authorization() public {
-        // Create migration data (single item)
-        MigrationData memory migrationData = _createMigrationData(testLabel);
-        bytes memory data = abi.encode(migrationData); // onERC1155Received expects a single MigrationData
-
-        // Call onERC1155Received as nameWrapper (should work)
-        // Use a locked token so it doesn't try to unwrap (which would trigger the ERC1155InvalidReceiver issue)
-        nameWrapper.setFuses(testTokenId, CANNOT_UNWRAP); // Mark as locked
-
-        vm.expectRevert(
-            abi.encodeWithSelector(UnlockedMigrationController.MigrationNotSupported.selector)
-        );
-        vm.prank(address(nameWrapper));
-        migrationController.onERC1155Received(address(this), user, testTokenId, 1, data);
-    }
-
-    function test_onERC1155BatchReceived_nameWrapper_authorization() public {
-        string memory label1 = "batchAuth1";
-        uint256 tokenId1 = uint256(keccak256(bytes(label1)));
-
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = tokenId1;
-
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = 1;
-
-        MigrationData[] memory migrationDataArray = new MigrationData[](1);
-        migrationDataArray[0] = _createMigrationData(label1);
-
-        bytes memory data = abi.encode(migrationDataArray); // onERC1155BatchReceived expects MigrationData[]
-
-        // Call onERC1155BatchReceived as nameWrapper (should work)
-        // Use a locked token so it doesn't try to unwrap (which would trigger the ERC1155InvalidReceiver issue)
-        nameWrapper.setFuses(tokenId1, CANNOT_UNWRAP); // Mark as locked
-
-        vm.expectRevert(
-            abi.encodeWithSelector(UnlockedMigrationController.MigrationNotSupported.selector)
-        );
-        vm.prank(address(nameWrapper));
-        migrationController.onERC1155BatchReceived(address(this), user, tokenIds, amounts, data);
-    }
-
-    function test_Revert_migrateUnwrappedEthName_tokenId_mismatch() public {
-        // Register a name in the v1 registrar
-        vm.prank(controller);
-        ethRegistrarV1.register(testTokenId, user, 86400);
-
-        // Create migration data with wrong label
-        MigrationData memory migrationData = _createMigrationData("wronglabel");
-        bytes memory data = abi.encode(migrationData);
-
-        // Calculate expected tokenId for the wrong label
-        uint256 expectedTokenId = uint256(keccak256(bytes("wronglabel")));
-
-        // Try to transfer with mismatched tokenId and label
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                UnlockedMigrationController.TokenIdMismatch.selector,
-                testTokenId,
-                expectedTokenId
-            )
-        );
-        vm.prank(user);
-        ethRegistrarV1.safeTransferFrom(user, address(migrationController), testTokenId, data);
-    }
-
-    function test_Revert_migrateWrappedEthName_tokenId_mismatch() public {
-        // Wrap a name (simulate) - this should mint the token to the user
-        nameWrapper.wrapETH2LD(testLabel, user, 0, address(0));
-
-        // Verify user owns the wrapped token
-        assertEq(nameWrapper.balanceOf(user, testTokenId), 1);
-
-        // Create migration data with wrong label
-        MigrationData memory migrationData = _createMigrationData("wronglabel");
-        bytes memory data = abi.encode(migrationData);
-
-        // Calculate expected tokenId for the wrong label
-        uint256 expectedTokenId = uint256(keccak256(bytes("wronglabel")));
-
-        // Try to transfer with mismatched tokenId and label
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                UnlockedMigrationController.TokenIdMismatch.selector,
-                testTokenId,
-                expectedTokenId
-            )
-        );
-        vm.prank(user);
-        nameWrapper.safeTransferFrom(user, address(migrationController), testTokenId, 1, data);
-    }
-
-    function test_Revert_migrateWrappedEthName_batch_tokenId_mismatch() public {
-        string memory label1 = "correct1";
-        string memory wrongLabel2 = "wrong2";
-        uint256 tokenId1 = uint256(keccak256(bytes(label1)));
-        uint256 tokenId2 = uint256(keccak256(bytes("correct2"))); // This is the correct tokenId
-
-        nameWrapper.wrapETH2LD(label1, user, 0, address(0));
-        nameWrapper.wrapETH2LD("correct2", user, 0, address(0));
-
-        // Verify user owns the wrapped tokens
-        assertEq(nameWrapper.balanceOf(user, tokenId1), 1);
-        assertEq(nameWrapper.balanceOf(user, tokenId2), 1);
-
-        uint256[] memory tokenIds = new uint256[](2);
-        tokenIds[0] = tokenId1;
-        tokenIds[1] = tokenId2;
-
-        uint256[] memory amounts = new uint256[](2);
-        amounts[0] = 1;
-        amounts[1] = 1;
-
-        // Create migration data with one wrong label
-        MigrationData[] memory migrationDataArray = new MigrationData[](2);
-        migrationDataArray[0] = _createMigrationDataWithExpiry(label1);
-        migrationDataArray[0].transferData.owner = user;
-        migrationDataArray[1] = _createMigrationDataWithExpiry(wrongLabel2);
-        migrationDataArray[1].transferData.owner = user;
-
-        bytes memory data = abi.encode(migrationDataArray);
-
-        // Calculate expected tokenId for the wrong label
-        uint256 expectedTokenId = uint256(keccak256(bytes(wrongLabel2)));
-
-        // Should revert when processing the second token with mismatched data
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                UnlockedMigrationController.TokenIdMismatch.selector,
-                tokenId2,
-                expectedTokenId
-            )
-        );
-        vm.prank(user);
-        nameWrapper.safeBatchTransferFrom(
-            user,
-            address(migrationController),
-            tokenIds,
-            amounts,
-            data
-        );
     }
 }

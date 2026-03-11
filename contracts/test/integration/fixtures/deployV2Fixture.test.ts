@@ -64,20 +64,22 @@ describe("deployV2Fixture", () => {
     ]);
   });
 
-  it("deployOwnedResolver", async () => {
+  it("deployPermissionedResolver", async () => {
     const F = await loadFixture();
-    await F.deployOwnedResolver();
+    await F.deployPermissionedResolver();
   });
 
   it("setupName() w/resolver", async () => {
     const F = await loadFixture();
-    const ownedResolver = await F.deployOwnedResolver();
+    const resolver = await F.deployPermissionedResolver();
     const { parentRegistry, name } = await F.setupName({
       name: "test.eth",
-      resolverAddress: ownedResolver.address,
+      resolverAddress: resolver.address,
     });
-    const resolver = await parentRegistry.read.getResolver([getLabelAt(name)]);
-    expectVar({ resolver }).toEqualAddress(ownedResolver.address);
+    const resolverAddress = await parentRegistry.read.getResolver([
+      getLabelAt(name),
+    ]);
+    expectVar({ resolverAddress }).toEqualAddress(resolver.address);
   });
 
   it("setupName() matches findRegistries()", async () => {
@@ -111,7 +113,7 @@ describe("deployV2Fixture", () => {
     const F = await loadFixture();
     const { parentRegistry, tokenId } = await F.setupName({
       name: "locked.test.eth",
-      roles: ROLES.ALL & ~ROLES.OWNER.EAC.SET_RESOLVER,
+      roles: ROLES.ALL & ~ROLES.REGISTRY.SET_RESOLVER,
     });
     await parentRegistry.write.setSubregistry([tokenId, testAddress]);
     await expect(
@@ -123,7 +125,7 @@ describe("deployV2Fixture", () => {
     const F = await loadFixture();
     const { parentRegistry, tokenId } = await F.setupName({
       name: "locked.test.eth",
-      roles: ROLES.ALL & ~ROLES.OWNER.EAC.SET_SUBREGISTRY,
+      roles: ROLES.ALL & ~ROLES.REGISTRY.SET_SUBREGISTRY,
     });
     await parentRegistry.write.setResolver([tokenId, testAddress]);
     await expect(

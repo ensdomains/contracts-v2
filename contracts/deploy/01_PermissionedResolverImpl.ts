@@ -5,14 +5,14 @@ export default execute(
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
-    await deploy("OwnedResolverV2", {
+    await deploy("PermissionedResolverImpl", {
       account: deployer,
-      artifact: artifacts["src/resolver/OwnedResolver.sol/OwnedResolver"],
+      artifact: artifacts["PermissionedResolver"],
       args: [hcaFactory.address],
     });
   },
   {
-    tags: ["OwnedResolverV2", "l1"],
+    tags: ["PermissionedResolverImpl", "l1"],
     dependencies: ["HCAFactory"],
   },
 );
