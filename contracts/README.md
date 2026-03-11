@@ -132,21 +132,18 @@ Roles granted during core deployment.
 
 | Contract        | Scope     | Target                        | REGISTRAR       | REGISTER_RESERVED  | SET_PARENT       | UNREGISTER       | RENEW           | SET_SUBREGISTRY   | SET_RESOLVER      | CAN_TRANSFER_ADMIN | UPGRADE           |
 |-----------------|-----------|-------------------------------|-----------------|--------------------|------------------|------------------|-----------------|-------------------|-------------------|------------------- |-------------------|
-| RootRegistry    | Root      | Deployer                      | **✓✓**          | **✓✓**             | **✓✓**           |                  | **✓✓**          |                   |                   |                    |                   |
-| RootRegistry    | .eth      | Deployer                      |                 |                    |                  |                  |                 |                   | **✓✓**            | **✓✓**             |                   |
-| RootRegistry    | .reverse  | Deployer                      |                 |                    |                  | **✓✓**           | **✓✓**          | **✓✓**            | **✓✓**            | **✓✓**             |                   |
-| ETHRegistry     | Root      | Deployer                      | **✓**           | **✓**              | **✓✓**           |                  | **✓**           |                   |                   |                    |                   |
-| ETHRegistry     | Root      | `ETHRegistrar`                | ✓               |                    |                  |                  | ✓               |                   |                   |                    |                   |
-| ETHRegistry     | Root      | `BatchRegistrar`              | ✓               |                    |                  |                  | ✓               |                   |                   |                    |                   |
-| ETHRegistry     | Root      | `UnlockedMigrationController` |                 | ✓                  |                  |                  |                 |                   |                   |                    |                   |
-| ETHRegistry     | Root      | `LockedMigrationController`   |                 | ✓                  |                  |                  |                 |                   |                   |                    |                   |
-| ReverseRegistry | Root      | Deployer                      | **✓✓**          | **✓✓**             | **✓✓**           | **✓✓**           | **✓✓**          | **✓✓**            | **✓✓**            | **✓✓**             | **✓✓**            |
-| ReverseRegistry | .addr     | Deployer                      |                 |                    |                  | **✓✓**           | **✓✓**          | **✓✓**            | **✓✓**            | **✓✓**             |                   |
+| RootRegistry    | Root      | Deployer                      | AR              | AR                 | AR               |                  | AR              |                   |                   |                    |                   |
+| RootRegistry    | .eth      | Deployer                      |                 |                    |                  |                  |                 |                   | AR                | AR                 |                   |
+| RootRegistry    | .reverse  | Deployer                      |                 |                    |                  | AR               | AR              | AR                | AR                | AR                 |                   |
+| ETHRegistry     | Root      | Deployer                      | A               | A                  | AR               |                  | A               |                   |                   |                    |                   |
+| ETHRegistry     | Root      | `ETHRegistrar`                | R               |                    |                  |                  | R               |                   |                   |                    |                   |
+| ETHRegistry     | Root      | `BatchRegistrar`              | R               |                    |                  |                  | R               |                   |                   |                    |                   |
+| ETHRegistry     | Root      | `UnlockedMigrationController` |                 | R                  |                  |                  |                 |                   |                   |                    |                   |
+| ETHRegistry     | Root      | `LockedMigrationController`   |                 | R                  |                  |                  |                 |                   |                   |                    |                   |
+| ReverseRegistry | Root      | Deployer                      | AR              | AR                 | AR               | AR               | AR              | AR                | AR                | AR                 | AR                |
+| ReverseRegistry | .addr     | Deployer                      |                 |                    |                  | AR               | AR              | AR                | AR                | AR                 |                   |
 
-Legend:  
-- **✓✓** = admin **and** regular role  
-- **✓** = admin role only  
-- ✓ = regular role only
+Legend: A = admin only, R = regular only, AR = admin and regular
 
 *StandardRentPriceOracle uses Ownable, not EAC. Implementation contracts (PermissionedResolverImpl, UserRegistryImpl, WrapperRegistryImpl) grant no roles at deployment; proxies receive roles via `initialize()` when created.*
 
