@@ -622,7 +622,7 @@ async function processBatch(
     logger.info(`\nBatch reserving ${batchLabels.length} names...`);
 
     try {
-      const hash = await batchRegistrar.write.batchRegister([zeroAddress, zeroAddress, config.v1ResolverAddress, 0n, batchLabels, batchExpires]);
+      const hash = await batchRegistrar.write.batchRegister([zeroAddress, config.v1ResolverAddress, batchLabels, batchExpires]);
       await waitForSuccessfulTransactionReceipt(client, { hash });
 
       logger.success(`Batch reservation successful (tx: ${hash})`);
@@ -646,7 +646,7 @@ async function processBatch(
       for (let i = 0; i < batchLabels.length; i++) {
         const label = batchLabels[i];
         try {
-          const hash = await batchRegistrar.write.batchRegister([zeroAddress, zeroAddress, config.v1ResolverAddress, 0n, [label], [batchExpires[i]]]);
+          const hash = await batchRegistrar.write.batchRegister([zeroAddress, config.v1ResolverAddress, [label], [batchExpires[i]]]);
           await waitForSuccessfulTransactionReceipt(client, { hash });
 
           checkpoint.totalProcessed++;
