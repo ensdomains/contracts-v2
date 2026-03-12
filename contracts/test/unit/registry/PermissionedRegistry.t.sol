@@ -618,6 +618,29 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
 
+    function test_safeTransferFrom_rootAuthorizationIgnored() external {
+        // even though root has ROLE_CAN_TRANSFER_ADMIN and has approval for transfer,
+        // the transfer role check is only applied to the token owner
+        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
+        uint256 tokenId = this._register();
+        assertEq(registry.ownerOf(tokenId), user1);
+        vm.prank(user1);
+        registry.setApprovalForAll(address(this), true);
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+        );
+        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_rootOwnedTokenWithoutRoles() external {
+        // as long as the token owner has ROLE_CAN_TRANSFER_ADMIN on root or token, the transfer can occur
+        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
+        testOwner = address(this); // mint to account with root
+        uint256 tokenId = this._register();
+        assertEq(registry.roles(tokenId, address(this)), 0); // no roles
+        registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
+    }
+
     function test_safeBatchTransferFrom() external {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
@@ -922,34 +945,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             )
         );
         registry.grantRoles(tokenId, roleBitmap, user2);
-    }
-
-    ////////////////////////////////////////////////////////////////////////
-    // safeTransferFrom() only checks
-    ////////////////////////////////////////////////////////////////////////
-
-    function test_safeTransferFrom_rootAuthorizationIgnored() external {
-        // even though root has ROLE_CAN_TRANSFER_ADMIN and has approval for transfer,
-        // the transfer role check is only applied to the token owner
-        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
-        uint256 tokenId = this._register();
-        assertEq(registry.ownerOf(tokenId), user1);
-        vm.prank(user1);
-        registry.setApprovalForAll(address(this), true);
-        vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
-        );
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-    }
-
-    function test_safeTransferFrom_rootOwnedTokenWithoutRoles() external {
-        // as long as the token owner has ROLE_CAN_TRANSFER_ADMIN on root or token
-        // the transfer can occur
-        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
-        testOwner = address(this); // mint to account with root
-        uint256 tokenId = this._register();
-        assertEq(registry.roles(tokenId, address(this)), 0); // no roles
-        registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
     }
 
     ////////////////////////////////////////////////////////////////////////
