@@ -79,15 +79,6 @@ export interface ENSRegistration {
   lineNumber: number;
 }
 
-export interface BatchReserveName {
-  label: string;
-  owner: Address;
-  registry: Address;
-  resolver: Address;
-  roleBitmap: bigint;
-  expires: bigint;
-}
-
 export interface PreMigrationConfig {
   rpcUrl: string;
   mainnetRpcUrl: string;
@@ -555,7 +546,8 @@ async function processBatch(
   batchRegistrar: any,
   checkpoint: Checkpoint
 ): Promise<Checkpoint> {
-  const batchNames: BatchReserveName[] = [];
+  const batchLabels: string[] = [];
+  const batchExpires: bigint[] = [];
   const alreadyReservedNames = new Set<string>();
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
 
@@ -615,14 +607,8 @@ async function processBatch(
       const expiryDateFormatted = new Date(Number(v1Result.expiry) * 1000).toISOString().split('T')[0];
       logger.v1Verified(registration.labelName, expiryDateFormatted);
 
-      batchNames.push({
-        label: registration.labelName,
-        owner: zeroAddress,
-        registry: zeroAddress,
-        resolver: config.v1ResolverAddress,
-        roleBitmap: 0n,
-        expires: v1Result.expiry,
-      });
+      batchLabels.push(registration.labelName);
+      batchExpires.push(v1Result.expiry);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.failed(registration.labelName, errorMessage);
@@ -632,67 +618,68 @@ async function processBatch(
     }
   }
 
-  if (batchNames.length > 0 && !config.dryRun) {
-    logger.info(`\nBatch reserving ${batchNames.length} names...`);
+  if (batchLabels.length > 0 && !config.dryRun) {
+    logger.info(`\nBatch reserving ${batchLabels.length} names...`);
 
     try {
-      const hash = await batchRegistrar.write.batchRegister([batchNames]);
+      const hash = await batchRegistrar.write.batchRegister([zeroAddress, zeroAddress, config.v1ResolverAddress, 0n, batchLabels, batchExpires]);
       await waitForSuccessfulTransactionReceipt(client, { hash });
 
       logger.success(`Batch reservation successful (tx: ${hash})`);
 
-      for (const name of batchNames) {
+      for (const label of batchLabels) {
         checkpoint.totalProcessed++;
-        if (alreadyReservedNames.has(name.label)) {
+        if (alreadyReservedNames.has(label)) {
           checkpoint.renewedCount++;
           logger.renewed(hash);
-          logger.finishedName(name.label, 'renewed');
+          logger.finishedName(label, 'renewed');
         } else {
           checkpoint.successCount++;
           logger.reserved(hash);
-          logger.finishedName(name.label, 'reserved');
+          logger.finishedName(label, 'reserved');
         }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(`Batch reservation failed: ${errorMessage}. Falling back to individual reservations...`);
 
-      for (const name of batchNames) {
+      for (let i = 0; i < batchLabels.length; i++) {
+        const label = batchLabels[i];
         try {
-          const hash = await batchRegistrar.write.batchRegister([[name]]);
+          const hash = await batchRegistrar.write.batchRegister([zeroAddress, zeroAddress, config.v1ResolverAddress, 0n, [label], [batchExpires[i]]]);
           await waitForSuccessfulTransactionReceipt(client, { hash });
 
           checkpoint.totalProcessed++;
-          if (alreadyReservedNames.has(name.label)) {
+          if (alreadyReservedNames.has(label)) {
             checkpoint.renewedCount++;
             logger.renewed(hash);
-            logger.finishedName(name.label, 'renewed');
+            logger.finishedName(label, 'renewed');
           } else {
             checkpoint.successCount++;
             logger.reserved(hash);
-            logger.finishedName(name.label, 'reserved');
+            logger.finishedName(label, 'reserved');
           }
         } catch (individualError) {
           const individualMsg = individualError instanceof Error ? individualError.message : String(individualError);
-          logger.failed(name.label, individualMsg);
+          logger.failed(label, individualMsg);
           checkpoint.totalProcessed++;
           checkpoint.failureCount++;
-          logger.finishedName(name.label, 'failed');
+          logger.finishedName(label, 'failed');
         }
       }
     }
-  } else if (batchNames.length > 0 && config.dryRun) {
-    logger.info(`\nDry run: Would batch reserve ${batchNames.length} names`);
+  } else if (batchLabels.length > 0 && config.dryRun) {
+    logger.info(`\nDry run: Would batch reserve ${batchLabels.length} names`);
 
-    for (const name of batchNames) {
+    for (const label of batchLabels) {
       logger.dryRun();
       checkpoint.totalProcessed++;
-      if (alreadyReservedNames.has(name.label)) {
+      if (alreadyReservedNames.has(label)) {
         checkpoint.renewedCount++;
-        logger.finishedName(name.label, 'renewed');
+        logger.finishedName(label, 'renewed');
       } else {
         checkpoint.successCount++;
-        logger.finishedName(name.label, 'reserved');
+        logger.finishedName(label, 'reserved');
       }
     }
   }
