@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
@@ -34,34 +35,10 @@ import {
 } from "~src/resolver/PermissionedResolver.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
+bytes4 constant TEST_SELECTOR = 0x12345678;
+
 contract PermissionedResolverTest is Test {
     uint256 constant DEFAULT_ROLES = EACBaseRolesLib.ALL_ROLES;
-
-    struct I {
-        bytes4 interfaceId;
-        string name;
-    }
-    function _supportedInterfaces() internal pure returns (I[] memory v) {
-        uint256 i;
-        v = new I[](16);
-        v[i++] = I(type(IPermissionedResolver).interfaceId, "IPermissionedResolver");
-        v[i++] = I(type(IExtendedResolver).interfaceId, "IExtendedResolver");
-        v[i++] = I(type(IERC7996).interfaceId, "IERC7996");
-        v[i++] = I(type(IMulticallable).interfaceId, "IMulticallable");
-        v[i++] = I(type(IABIResolver).interfaceId, "IABIResolver");
-        v[i++] = I(type(IAddrResolver).interfaceId, "IAddrResolver");
-        v[i++] = I(type(IAddressResolver).interfaceId, "IAddressResolver");
-        v[i++] = I(type(IContentHashResolver).interfaceId, "IContentHashResolver");
-        v[i++] = I(type(IHasAddressResolver).interfaceId, "IHasAddressResolver");
-        v[i++] = I(type(IInterfaceResolver).interfaceId, "IInterfaceResolver");
-        v[i++] = I(type(INameResolver).interfaceId, "INameResolver");
-        v[i++] = I(type(IPubkeyResolver).interfaceId, "IPubkeyResolver");
-        v[i++] = I(type(ITextResolver).interfaceId, "ITextResolver");
-        v[i++] = I(type(IVersionableResolver).interfaceId, "IVersionableResolver");
-        v[i++] = I(type(UUPSUpgradeable).interfaceId, "UUPSUpgradeable");
-        v[i++] = I(type(IEnhancedAccessControl).interfaceId, "IEnhancedAccessControl");
-        assertEq(v.length, i);
-    }
 
     MockHCAFactoryBasic hcaFactory;
     PermissionedResolver resolver;
@@ -71,7 +48,7 @@ contract PermissionedResolverTest is Test {
 
     bytes testName;
     bytes32 testNode;
-    address testAddr = 0x8000000000000000000000000000000000000001;
+    address testAddr = makeAddr("test");
     bytes testAddress = abi.encodePacked(testAddr);
     string testString = "abc";
 
@@ -125,14 +102,51 @@ contract PermissionedResolverTest is Test {
     }
 
     function test_supportsInterface() external view {
-        assertTrue(ERC165Checker.supportsERC165(address(resolver)), "ERC165");
-        I[] memory v = _supportedInterfaces();
-        for (uint256 i; i < v.length; i++) {
-            assertTrue(
-                ERC165Checker.supportsInterface(address(resolver), v[i].interfaceId),
-                v[i].name
-            );
-        }
+        assertTrue(ERC165Checker.supportsERC165(address(resolver)));
+        assertTrue(
+            resolver.supportsInterface(type(IPermissionedResolver).interfaceId),
+            "IPermissionedResolver"
+        );
+        assertTrue(
+            resolver.supportsInterface(type(IEnhancedAccessControl).interfaceId),
+            "IEnhancedAccessControl"
+        );
+        assertTrue(resolver.supportsInterface(type(IMulticallable).interfaceId), "IMulticallable");
+        assertTrue(resolver.supportsInterface(type(IERC7996).interfaceId), "IERC7996");
+        assertTrue(
+            resolver.supportsInterface(type(UUPSUpgradeable).interfaceId),
+            "UUPSUpgradeable"
+        );
+
+        // profiles
+        assertTrue(resolver.supportsInterface(type(IABIResolver).interfaceId), "IABIResolver");
+        assertTrue(resolver.supportsInterface(type(IAddrResolver).interfaceId), "IAddrResolver");
+        assertTrue(
+            resolver.supportsInterface(type(IAddressResolver).interfaceId),
+            "IAddressResolver"
+        );
+        assertTrue(
+            resolver.supportsInterface(type(IContentHashResolver).interfaceId),
+            "IContentHashResolver"
+        );
+        assertTrue(
+            resolver.supportsInterface(type(IHasAddressResolver).interfaceId),
+            "IHasAddressResolver"
+        );
+        assertTrue(
+            resolver.supportsInterface(type(IInterfaceResolver).interfaceId),
+            "IInterfaceResolver"
+        );
+        assertTrue(resolver.supportsInterface(type(INameResolver).interfaceId), "INameResolver");
+        assertTrue(
+            resolver.supportsInterface(type(IPubkeyResolver).interfaceId),
+            "IPubkeyResolver"
+        );
+        assertTrue(resolver.supportsInterface(type(ITextResolver).interfaceId), "ITextResolver");
+        assertTrue(
+            resolver.supportsInterface(type(IVersionableResolver).interfaceId),
+            "IVersionableResolver"
+        );
     }
 
     function test_supportsFeature() external view {
@@ -656,18 +670,20 @@ contract PermissionedResolverTest is Test {
         assertEq(result, abi.encode(impl), "extended");
     }
 
-    function test_interfaceImplementer_overlap() external {
-        vm.prank(owner);
-        resolver.setAddr(testNode, COIN_TYPE_ETH, abi.encodePacked(resolver));
+    function test_interfaceImplementer_withPointer() external {
+        MockInterface c = new MockInterface();
+        assertTrue(ERC165Checker.supportsInterface(address(c), TEST_SELECTOR));
 
-        I[] memory v = _supportedInterfaces();
-        for (uint256 i; i < v.length; ++i) {
-            assertEq(
-                resolver.interfaceImplementer(testNode, v[i].interfaceId),
-                address(resolver),
-                v[i].name
-            );
-        }
+        vm.prank(owner);
+        resolver.setAddr(testNode, COIN_TYPE_ETH, abi.encodePacked(c));
+
+        assertEq(resolver.interfaceImplementer(testNode, TEST_SELECTOR), address(c), "immediate");
+
+        bytes memory result = resolver.resolve(
+            testName,
+            abi.encodeCall(IInterfaceResolver.interfaceImplementer, (bytes32(0), TEST_SELECTOR))
+        );
+        assertEq(result, abi.encode(c), "extended");
     }
 
     function test_setInterface_notAuthorized() external {
@@ -749,17 +765,15 @@ contract PermissionedResolverTest is Test {
         vm.prank(owner);
         resolver.setName(testNode, testString);
 
-        bytes4 selector = 0x12345678;
-
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeCall(INameResolver.name, (testNode));
-        calls[1] = abi.encodeWithSelector(selector, selector);
+        calls[1] = abi.encodeWithSelector(TEST_SELECTOR);
 
         bytes[] memory answers = new bytes[](calls.length);
         answers[0] = abi.encode(testString);
         answers[1] = abi.encodeWithSelector(
             IPermissionedResolver.UnsupportedResolverProfile.selector,
-            selector
+            TEST_SELECTOR
         );
 
         bytes memory result = resolver.resolve(
@@ -907,4 +921,10 @@ contract MockUpgrade is UUPSUpgradeable {
         return address(1);
     }
     function _authorizeUpgrade(address) internal override {}
+}
+
+contract MockInterface is ERC165 {
+    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
+        return interfaceId == TEST_SELECTOR || super.supportsInterface(interfaceId);
+    }
 }

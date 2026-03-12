@@ -468,8 +468,11 @@ contract PermissionedResolver is
         bytes4 interfaceId
     ) external view returns (address implementer) {
         implementer = _record(node).interfaces[interfaceId];
-        if (implementer == address(0) && ERC165Checker.supportsInterface(addr(node), interfaceId)) {
-            implementer = address(this);
+        if (implementer == address(0)) {
+            address pointer = addr(node);
+            if (ERC165Checker.supportsInterface(pointer, interfaceId)) {
+                implementer = pointer;
+            }
         }
     }
 
