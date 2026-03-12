@@ -192,15 +192,45 @@ Standard interface all registries must implement:
 
 ```solidity
 interface IRegistry is IERC1155Singleton {
-  event NameRegistered(uint256 indexed tokenId, bytes32 indexed labelHash, string label, address owner, uint64 expiry, address indexed sender);
-  event NameReserved(uint256 indexed tokenId, bytes32 indexed labelHash, string label, uint64 expiry, address indexed sender);
+  event NameRegistered(
+    uint256 indexed tokenId,
+    bytes32 indexed labelHash,
+    string label,
+    address owner,
+    uint64 expiry,
+    address indexed sender
+  );
+  event NameReserved(
+    uint256 indexed tokenId,
+    bytes32 indexed labelHash,
+    string label,
+    uint64 expiry,
+    address indexed sender
+  );
   event NameUnregistered(uint256 indexed tokenId, address indexed sender);
-  event ExpiryUpdated(uint256 indexed tokenId, uint64 newExpiry, address indexed sender);
-  event SubregistryUpdated(uint256 indexed tokenId, IRegistry subregistry, address indexed sender);
-  event ResolverUpdated(uint256 indexed tokenId, address resolver, address indexed sender);
-  event TokenRegenerated(uint256 indexed oldTokenId, uint256 indexed newTokenId);
+  event ExpiryUpdated(
+    uint256 indexed tokenId,
+    uint64 newExpiry,
+    address indexed sender
+  );
+  event SubregistryUpdated(
+    uint256 indexed tokenId,
+    IRegistry subregistry,
+    address indexed sender
+  );
+  event ResolverUpdated(
+    uint256 indexed tokenId,
+    address resolver,
+    address indexed sender
+  );
+  event TokenRegenerated(
+    uint256 indexed oldTokenId,
+    uint256 indexed newTokenId
+  );
 
-  function getSubregistry(string calldata label) external view returns (IRegistry);
+  function getSubregistry(
+    string calldata label
+  ) external view returns (IRegistry);
   function getResolver(string calldata label) external view returns (address);
 }
 ```
@@ -228,11 +258,11 @@ Feature-complete registry with role-based access control:
 
 ```solidity
 struct Entry {
-  uint32 eacVersionId;    // Version counter for access control changes (incremented on permission updates)
-  uint32 tokenVersionId;  // Version counter for token regeneration (incremented on burn/remint)
-  IRegistry subregistry;  // Registry contract for subdomains under this name
-  uint64 expiry;          // Timestamp when the name expires (0 = never expires)
-  address resolver;       // Resolver contract for name resolution data
+  uint32 eacVersionId; // Version counter for access control changes (incremented on permission updates)
+  uint32 tokenVersionId; // Version counter for token regeneration (incremented on burn/remint)
+  IRegistry subregistry; // Registry contract for subdomains under this name
+  uint64 expiry; // Timestamp when the name expires (0 = never expires)
+  address resolver; // Resolver contract for name resolution data
 }
 ```
 
@@ -326,6 +356,7 @@ Or run specific test suites:
 bun run test:hardhat  # Run Hardhat tests
 bun run test:forge    # Run Forge tests
 bun run test:hardhat test/Ens.t.ts # specific Hardhat test
+bun run test:e2e # end-to-end tests
 ```
 
 ## Running the Devnet

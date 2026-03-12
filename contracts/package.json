@@ -48,7 +48,7 @@
     "compile:hardhat": "hardhat compile",
     "compile": "bun run compile:forge && bun run compile:hardhat",
     "test:forge": "forge test",
-    "test:hardhat": "bun run compile && vitest run",
+    "test:hardhat": "bun run compile:hardhat && vitest run",
     "test:e2e": "bun run compile --quiet && bun test ./test/e2e/",
     "test": "bun run test:forge && bun run test:hardhat",
     "interfaces": "bun run compile:hardhat --quiet && bun ./lib/ens-contracts/scripts/interfaces.ts",
