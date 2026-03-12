@@ -3,8 +3,9 @@ pragma solidity >=0.8.13;
 
 /// @notice Roles for PermissionedResolver.
 library PermissionedResolverLib {
-    uint256 internal constant ROLE_SET_ADDR = 1 << 0;
-    uint256 internal constant ROLE_SET_ADDR_ADMIN = ROLE_SET_ADDR << 128;
+    /// @dev Nybble 0 — authorizes setting address records. Root or name.
+    uint256 internal constant ROLE_SET_ADDRESS = 1 << 0;
+    uint256 internal constant ROLE_SET_ADDRESS_ADMIN = ROLE_SET_ADDRESS << 128;
 
     /// @dev Nybble 1 — authorizes setting text records. Root or name.
     uint256 internal constant ROLE_SET_TEXT = 1 << 4;
@@ -30,53 +31,38 @@ library PermissionedResolverLib {
     uint256 internal constant ROLE_SET_NAME = 1 << 24;
     uint256 internal constant ROLE_SET_NAME_ADMIN = ROLE_SET_NAME << 128;
 
-    /// @dev Nybble 7 — authorizes setting alias targets for name rewriting. Root-only.
-    uint256 internal constant ROLE_SET_ALIAS = 1 << 28;
-    uint256 internal constant ROLE_SET_ALIAS_ADMIN = ROLE_SET_ALIAS << 128;
+    /// @dev Nybble 7 — authorizes setting data records. Root or name.
+    uint256 internal constant ROLE_SET_DATA = 1 << 28;
+    uint256 internal constant ROLE_SET_DATA_ADMIN = ROLE_SET_TEXT << 128;
 
-    /// @dev Nybble 8 — authorizes clearing (version-bumping) all records for a node. Root or name.
-    uint256 internal constant ROLE_CLEAR = 1 << 32;
-    uint256 internal constant ROLE_CLEAR_ADMIN = ROLE_CLEAR << 128;
+    /// @dev Nybble 8 — authorizes linking records to names.  Root only.
+    uint256 internal constant ROLE_RECORDS = 1 << 32;
+    uint256 internal constant ROLE_RECORDS_ADMIN = ROLE_RECORDS << 128;
 
     /// @dev Nybble 31 — authorizes UUPS proxy upgrades. Root-only.
     uint256 internal constant ROLE_UPGRADE = 1 << 124;
     uint256 internal constant ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
 
-    /// @dev Computes `keccak256(node, part)` to create a unique EAC resource ID scoped to both
-    ///      a name and a record type. Enables fine-grained per-record permissions.
-    /// @param node The ENS namehash of the name.
-    /// @param part The record-type identifier (e.g. from `addrPart` or `textPart`).
-    /// @return ret The computed resource ID.
-    function resource(bytes32 node, bytes32 part) internal pure returns (uint256 ret) {
-        assembly {
-            mstore(0, node)
-            mstore(32, part)
-            ret := keccak256(0, 64)
-        }
-        // Equivalent: return uint256(keccak256(abi.encode(node, part)));
+    bytes32 internal constant ANY_PART = 0;
+
+    /// @dev Compute unique EAC resource ID.
+    /// @param recordId The resource ID.
+    /// @param part The part hash.
+    /// @return The computed resource ID.
+    function resource(uint256 recordId, bytes32 part) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(bytes2(0x1900), recordId, part)));
     }
 
-    /// @dev Computes a record-type identifier for address records, namespaced by coin type.
-    /// @param coinType The SLIP-44 coin type.
-    /// @return part The computed record-type identifier.
-    function addrPart(uint256 coinType) internal pure returns (bytes32 part) {
-        assembly {
-            mstore8(0, 1)
-            mstore(1, coinType)
-            part := keccak256(0, 33)
-        }
-        // Equivalent: return keccak256(abi.encodePacked(uint8(1), coinType));
+    /// @dev Compute `part` from `string` key.
+    function partHash(string memory s) internal pure returns (bytes32) {
+        return keccak256(bytes(s));
     }
 
-    /// @dev Computes a record-type identifier for text records, namespaced by key.
-    /// @param key The text record key.
-    /// @return part The computed record-type identifier.
-    function textPart(string memory key) internal pure returns (bytes32 part) {
+    /// @dev Compute `part` from `uint256` key.
+    function partHash(uint256 x) internal pure returns (bytes32 ret) {
         assembly {
-            mstore8(0, 2)
-            mstore(1, keccak256(add(key, 32), mload(key)))
-            part := keccak256(0, 33)
+            mstore(0, x)
+            ret := keccak256(0, 32)
         }
-        // Equivalent: return keccak256(abi.encodePacked(uint8(2), key));
     }
 }
