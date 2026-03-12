@@ -179,7 +179,18 @@ contract PermissionedResolver is
     }
 
     // @inheritdoc IRecordResolver
-    function updateRecord(
+    function updateRecordByName(bytes calldata name_, bytes[] calldata setters) external {
+        uint256 recordId = _recordIds[NameCoder.namehash(name_, 0)];
+        if (recordId == 0) {
+            revert InvalidRecord();
+        }
+        for (uint256 i; i < setters.length; ++i) {
+            _updateRecord(recordId, setters[i]);
+        }
+    }
+
+    // @inheritdoc IRecordResolver
+    function updateRecordById(
         uint256 recordId,
         bytes[] calldata setters
     ) external validRecord(recordId) {
@@ -483,14 +494,15 @@ contract PermissionedResolver is
             record.datas[key] = data_;
             emit DataUpdated(recordId, keccak256(bytes(key)), key, data_, sender);
         } else if (bytes4(setter) == IRecordSetters.setContentHash.selector) {
-            bytes memory v = abi.decode(setter[4:], (bytes));
+            bytes memory contentHash = abi.decode(setter[4:], (bytes));
             _checkRecordRoles(
                 recordId,
                 PermissionedResolverLib.ROLE_SET_CONTENTHASH,
                 PermissionedResolverLib.ANY_PART,
                 sender
             );
-            record.contentHash = v;
+            record.contentHash = contentHash;
+            emit ContentHashUpdated(recordId, contentHash, sender);
         } else if (bytes4(setter) == IRecordSetters.setName.selector) {
             string memory name_ = abi.decode(setter[4:], (string));
             _checkRecordRoles(
@@ -513,12 +525,12 @@ contract PermissionedResolver is
                 sender
             );
             record.abis[contentType] = data_;
-            emit ABIUpdated(recordId, contentType, data_, sender);
+            emit ABIUpdated(recordId, contentType, sender);
         } else if (bytes4(setter) == IRecordSetters.setInterface.selector) {
             (bytes4 interfaceId, address implementer) = abi.decode(setter[4:], (bytes4, address));
             _checkRecordRoles(
                 recordId,
-                PermissionedResolverLib.ROLE_SET_CONTENTHASH,
+                PermissionedResolverLib.ROLE_SET_INTERFACE,
                 PermissionedResolverLib.partHash(uint32(interfaceId)),
                 sender
             );
@@ -556,8 +568,7 @@ contract PermissionedResolver is
         if (
             part == PermissionedResolverLib.ANY_PART ||
             (!hasRoles(PermissionedResolverLib.resource(recordId, part), roleBitmap, sender) &&
-                (recordId == 0 ||
-                    !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, sender)))
+                !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, sender))
         ) {
             _checkRoles(PermissionedResolverLib.resource(recordId, 0), roleBitmap, sender); // reverts using "widest" resource
         }

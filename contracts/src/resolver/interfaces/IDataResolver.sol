@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+// TODO: https://github.com/ensdomains/ens-contracts/pull/503
+
 /// @dev Interface selector: `0xecbfada3`
 interface IDataResolver {
     /// @notice For a specific `node`, the data associated with a `key` has changed.

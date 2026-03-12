@@ -11,8 +11,9 @@ import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol
 import {IPubkeyResolver} from "@ens/contracts/resolvers/profiles/IPubkeyResolver.sol";
 import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
 
-import {IDataResolver} from "./IDataResolver.sol"; // TODO: https://github.com/ensdomains/ens-contracts/pull/503
+import {IDataResolver} from "./IDataResolver.sol";
 
+/// @dev The complete interface selector: `0x604cb589`
 bytes4 constant RECORD_RESOLVER_INTERFACE_ID = type(IABIResolver).interfaceId ^
     type(IAddressResolver).interfaceId ^
     type(IAddrResolver).interfaceId ^
@@ -24,7 +25,7 @@ bytes4 constant RECORD_RESOLVER_INTERFACE_ID = type(IABIResolver).interfaceId ^
     type(IPubkeyResolver).interfaceId ^
     type(ITextResolver).interfaceId;
 
-/// @dev Interface selector: `0xfac2f507`
+/// @dev Interface selector: `0x042c07b4`
 interface IRecordResolver is
     IABIResolver,
     IAddrResolver,
@@ -45,12 +46,7 @@ interface IRecordResolver is
     ///         If `recordId = 0`, the association is cleared.
     event RecordName(uint256 indexed recordId, bytes32 indexed node, bytes name);
 
-    event ABIUpdated(
-        uint256 indexed recordId,
-        uint256 indexed contentType,
-        bytes data,
-        address indexed sender
-    );
+    event ABIUpdated(uint256 indexed recordId, uint256 indexed contentType, address indexed sender);
     event AddressUpdated(
         uint256 indexed recordId,
         uint256 indexed coinType,
@@ -114,10 +110,15 @@ interface IRecordResolver is
         bytes[] calldata setters
     ) external returns (uint256 recordId);
 
-    /// @notice Update an existing record.
+    /// @notice Update an existing record by `name`.
+    /// @param name The DNS-encoded name.
+    /// @param setters The ABI-encoded `IRecordSetter` calldata.
+    function updateRecordByName(bytes calldata name, bytes[] calldata setters) external;
+
+    /// @notice Update an existing record by `recordId`.
     /// @param recordId The record ID.
     /// @param setters The ABI-encoded `IRecordSetter` calldata.
-    function updateRecord(uint256 recordId, bytes[] calldata setters) external;
+    function updateRecordById(uint256 recordId, bytes[] calldata setters) external;
 
     /// @notice Associate `name` with `recordId`.
     function bindRecord(bytes calldata name, uint256 recordId) external;

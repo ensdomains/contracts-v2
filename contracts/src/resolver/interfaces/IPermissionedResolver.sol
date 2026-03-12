@@ -5,7 +5,7 @@ import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedA
 
 import {IRecordResolver} from "./IRecordResolver.sol";
 
-/// @dev The derived interface identifier.
+/// @dev The complete interface selector: `0x5999b442`
 bytes4 constant PERMISSIONED_RESOLVER_INTERFACE_ID = type(IPermissionedResolver).interfaceId ^
     type(IEnhancedAccessControl).interfaceId ^
     type(IRecordResolver).interfaceId;
