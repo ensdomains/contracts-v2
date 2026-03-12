@@ -51,8 +51,8 @@ describe("Migration", () => {
     async initialize() {
       // hack: add controller so we can register() directly
       await env.v1.BaseRegistrar.write.addController(
-        [env.named.deployer.address],
-        { account: env.named.owner },
+        [env.namedAccounts.deployer.address],
+        { account: env.namedAccounts.owner },
       );
       // assumes fallback resolver set during deployment
       // see: deploy/00_ENSV2Resolver.ts
@@ -249,7 +249,7 @@ describe("Migration", () => {
 
   async function registerUnwrapped({
     label = "test",
-    account = env.named.user,
+    account = env.namedAccounts.user,
     duration = 86400n,
     premigrate = true,
   }: BaseRegistrarArgs = {}) {
@@ -356,7 +356,7 @@ describe("Migration", () => {
 
     it("migrate with approval", async () => {
       const unwrapped = await registerUnwrapped();
-      const { user2 } = env.named;
+      const { user2 } = env.namedAccounts;
       await env.v1.BaseRegistrar.write.setApprovalForAll(
         [user2.address, true],
         { account: unwrapped.account },
@@ -367,7 +367,7 @@ describe("Migration", () => {
 
     it("new owner", async () => {
       const unwrapped = await registerUnwrapped();
-      const { user2 } = env.named;
+      const { user2 } = env.namedAccounts;
       await unwrapped.migrate({
         data: { owner: user2.address },
       });
@@ -378,7 +378,7 @@ describe("Migration", () => {
       const unwrapped = await registerUnwrapped();
       await unwrapped.setupPublicResolver();
       await unwrapped.checkResolution();
-      const { resolver } = env.named.user;
+      const { resolver } = env.namedAccounts.user;
       await unwrapped.migrate({
         data: { resolver: resolver.address },
       });
@@ -626,7 +626,7 @@ describe("Migration", () => {
     it("can extend expiry", async () => {
       const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
       const lockedChild = await locked.createChild({
-        account: env.named.user2,
+        account: env.namedAccounts.user2,
         fuses:
           FUSES.PARENT_CANNOT_CONTROL |
           FUSES.CANNOT_UNWRAP |

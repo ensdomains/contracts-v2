@@ -374,7 +374,7 @@ export async function setupDevnet({
       .forEach(patchContractWrite);
     console.log("Linked contracts");
 
-    const named = Object.fromEntries(
+    const namedAccounts = Object.fromEntries(
       await Promise.all(
         accounts.map(async (account, i) => {
           const resolver = await deployPermissionedResolver({ account });
@@ -397,7 +397,7 @@ export async function setupDevnet({
       client,
       hostPort,
       accounts,
-      named,
+      namedAccounts,
       rocketh,
       shared,
       v1,
@@ -578,7 +578,7 @@ export async function setupDevnet({
     // note: TypeScript is too slow when the following is generalized to any resolver type
     async function findPermissionedRegistry({
       name,
-      account = named.deployer,
+      account = namedAccounts.deployer,
     }: {
       name: string;
       account?: Account;
@@ -621,12 +621,12 @@ export async function setupDevnet({
     }
 
     async function setupEnsDotEth() {
-      const { resolver } = named.owner;
+      const { resolver } = namedAccounts.owner;
 
       // hack register "ens.eth"
       await v2.ETHRegistry.write.register([
         "ens",
-        named.owner.address,
+        namedAccounts.owner.address,
         zeroAddress,
         resolver.address,
         0n,

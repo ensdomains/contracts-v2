@@ -71,7 +71,7 @@ describe("Resolve", () => {
       const name = `${label}.eth`;
 
       it("addr.reverse", async () => {
-        const account = env.named.owner;
+        const account = env.namedAccounts.owner;
 
         // setup addr(default)
         const resolver = await env.deployPermissionedResolver({
@@ -112,7 +112,7 @@ describe("Resolve", () => {
       });
 
       it("default.reverse", async () => {
-        const account = env.named.owner;
+        const account = env.namedAccounts.owner;
 
         // setup addr(default)
         const resolver = await env.deployPermissionedResolver({

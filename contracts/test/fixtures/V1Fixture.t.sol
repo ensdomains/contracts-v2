@@ -6,6 +6,7 @@ import {
     CANNOT_SET_RESOLVER,
     CANNOT_UNWRAP,
     CANNOT_BURN_FUSES,
+    CANNOT_APPROVE,
     LabelTooShort,
     LabelTooLong
 } from "@ens/contracts/wrapper/NameWrapper.sol";
@@ -178,6 +179,12 @@ contract V1FixtureTest is V1Fixture {
         vm.expectRevert();
         this.registerWrappedETH2LD("test", CANNOT_SET_RESOLVER);
         this.registerWrappedETH2LD("test", CANNOT_SET_RESOLVER | CANNOT_UNWRAP);
+    }
+
+    function test_nameWrapper_CANNOT_APPROVE_requires_CANNOT_UNWRAP() external {
+        vm.expectRevert();
+        this.registerWrappedETH2LD("test", CANNOT_APPROVE);
+        this.registerWrappedETH2LD("test", CANNOT_APPROVE | CANNOT_UNWRAP);
     }
 
     function test_nameWrapper_approveBug() external {
