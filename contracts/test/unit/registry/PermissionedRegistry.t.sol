@@ -9,6 +9,7 @@ import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
+import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {
     PermissionedRegistry,
     IPermissionedRegistry,
@@ -17,7 +18,6 @@ import {
     IStandardRegistry,
     IRegistryMetadata,
     IHCAFactoryBasic,
-    EACBaseRolesLib,
     RegistryRolesLib,
     NameCoder,
     LibLabel
@@ -64,29 +64,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
             "IPermissionedRegistry"
         );
-    }
-
-    ////////////////////////////////////////////////////////////////////////
-    // transferRootRoles()
-    ////////////////////////////////////////////////////////////////////////
-
-    function test_transferRootRoles() external {
-        registry.transferRootRoles(user1);
-        assertFalse(registry.hasRootRoles(ROOT_ROLES, address(this)), "old");
-        assertTrue(registry.hasRootRoles(ROOT_ROLES, user1), "new");
-    }
-
-    function test_transferRootRoles_notAuthorized() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                registry.ROOT_RESOURCE(),
-                RegistryRolesLib.ROLE_CAN_TRANSFER_ROOT,
-                actor
-            )
-        );
-        vm.prank(actor);
-        registry.transferRootRoles(user1);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -641,27 +618,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
 
-    function test_safeTransferFrom_rootAuthorizationIgnored() external {
-        // even though root has ROLE_CAN_TRANSFER_ADMIN and has approval for transfer,
-        // the transfer role check is only applied to the token owner
-        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
-        uint256 tokenId = this._register();
-        assertEq(registry.ownerOf(tokenId), user1);
-        vm.prank(user1);
-        registry.setApprovalForAll(address(this), true);
-        vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
-        );
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-    }
-
-    function test_safeTransferFrom_rootOwnedToken() external {
-        testOwner = address(this);
-        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
-        uint256 tokenId = this._register();
-        registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
-    }
-
     function test_safeBatchTransferFrom() external {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
@@ -927,8 +883,92 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // EAC Override: grantRoles() cannot grant admin
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_grantRolesWithAdmin_neverAuthorized(uint8 roleIndex) external {
+        vm.assume(roleIndex < 32);
+        uint256 roleBitmap = (1 << (roleIndex << 2)) << 128; // every admin bit
+        assertTrue((EACBaseRolesLib.ADMIN_ROLES & roleBitmap) != 0);
+
+        uint256 tokenId = this._register();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                tokenId,
+                roleBitmap,
+                user1
+            )
+        );
+        vm.prank(user1);
+        registry.grantRoles(tokenId, roleBitmap, user2);
+    }
+
+    function test_grantRolesWithAdminAsRoot_neverAuthorized(uint8 roleIndex) external {
+        vm.assume(roleIndex < 32);
+        uint256 roleBitmap = (1 << (roleIndex << 2)) << 128; // every admin bit
+        assertTrue((EACBaseRolesLib.ADMIN_ROLES & roleBitmap) != 0);
+
+        testOwner = address(this); // mint to account with root
+        uint256 tokenId = this._register();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                tokenId,
+                roleBitmap,
+                address(this)
+            )
+        );
+        registry.grantRoles(tokenId, roleBitmap, user2);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // safeTransferFrom() only checks
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_safeTransferFrom_rootAuthorizationIgnored() external {
+        // even though root has ROLE_CAN_TRANSFER_ADMIN and has approval for transfer,
+        // the transfer role check is only applied to the token owner
+        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
+        uint256 tokenId = this._register();
+        assertEq(registry.ownerOf(tokenId), user1);
+        vm.prank(user1);
+        registry.setApprovalForAll(address(this), true);
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+        );
+        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_rootOwnedTokenWithoutRoles() external {
+        // as long as the token owner has ROLE_CAN_TRANSFER_ADMIN on root or token
+        // the transfer can occur
+        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
+        testOwner = address(this); // mint to account with root
+        uint256 tokenId = this._register();
+        assertEq(registry.roles(tokenId, address(this)), 0); // no roles
+        registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // Specific Cases
     ////////////////////////////////////////////////////////////////////////
+
+    // scenerio: how to transfer a registry control
+    function test_transferRegistryControl() external {
+        uint256 roleBitmap = registry.roles(registry.ROOT_RESOURCE(), address(this));
+        // 1. grant same roles
+        registry.grantRootRoles(roleBitmap, user1);
+        assertTrue(registry.hasRootRoles(roleBitmap, user1), "granted");
+        assertEq(registry.roleCount(registry.ROOT_RESOURCE()), EACBaseRolesLib.ALL_ROLES * 2);
+        // 2. revoke our roles
+        registry.revokeRootRoles(roleBitmap, address(this));
+        assertFalse(registry.hasRootRoles(roleBitmap, address(this)), "revoked");
+        // 3. registry is transferred
+        assertEq(registry.roleCount(registry.ROOT_RESOURCE()), EACBaseRolesLib.ALL_ROLES * 1);
+    }
 
     // scenerio:
     // 1. user2 buys token from an exchange from user1
