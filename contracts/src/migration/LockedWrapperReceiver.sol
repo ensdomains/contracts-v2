@@ -50,6 +50,15 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @notice The `WrapperRegistry` implementation contract.
     address public immutable WRAPPER_REGISTRY_IMPL;
 
+    bool internal _requireNullApproval;
+
+    ////////////////////////////////////////////////////////////////////////
+    // Errors
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Error selector: `0xdfd43283`
+    error ImmutableTokenApproval();
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -66,6 +75,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
+
+    function requireNullApproval() external {
+        _requireNullApproval = true;
+    }
 
     /// @notice The DNS-encoded name for this registry.
     function getWrappedName() public view virtual returns (bytes memory) {
@@ -103,6 +116,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             (, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
             if (!_isLocked(fuses)) {
                 revert LibMigration.NameNotLocked(uint256(node));
+            }
+
+            if (_requireNullApproval && NAME_WRAPPER.getApproved(uint256(node)) != address(0)) {
+                revert ImmutableTokenApproval();
             }
 
             if ((fuses & CANNOT_SET_RESOLVER) == 0) {

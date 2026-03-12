@@ -7,6 +7,7 @@ import {
     OperationProhibited,
     CANNOT_UNWRAP,
     CAN_DO_EVERYTHING,
+    CANNOT_APPROVE,
     CANNOT_BURN_FUSES,
     CANNOT_TRANSFER,
     CANNOT_SET_RESOLVER,
@@ -27,6 +28,7 @@ import {LibLabel} from "~src/utils/LibLabel.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {
     LockedMigrationController,
+    LockedWrapperReceiver,
     IPermissionedRegistry
 } from "~src/migration/LockedMigrationController.sol";
 import {
@@ -680,6 +682,79 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.prank(friend);
         nameWrapper.setResolver(NameCoder.namehash(name3unmigrated, 0), testResolver);
         checkResolution(name3unmigrated, testResolver, address(ensV1Resolver));
+    }
+
+    function test_ignoreExistingApproval() external {
+        // create "test.eth" and "sub.test.eth"
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes memory name3 = createWrappedChild(
+            name2,
+            "sub",
+            friend,
+            CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
+        );
+
+        bytes32 node2 = NameCoder.namehash(name2, 0);
+
+        // give approval on 2LD
+        vm.prank(user);
+        nameWrapper.approve(address(this), uint256(node2));
+        assertEq(nameWrapper.getApproved(uint256(node2)), address(this), "approved");
+
+        // lock approval
+        vm.prank(user);
+        nameWrapper.setFuses(node2, uint16(CANNOT_APPROVE));
+
+        // migrate 2LD
+        LibMigration.Data memory data2 = _makeData(name2);
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(node2),
+            1,
+            abi.encode(data2)
+        );
+
+        // check we still have it
+        assertEq(nameWrapper.getApproved(uint256(node2)), address(this), "still approved");
+
+        // use approval after migration
+        (, , uint64 expiry) = nameWrapper.getData(uint256(NameCoder.namehash(name3, 0)));
+        nameWrapper.extendExpiry(node2, keccak256("sub"), expiry + 1);
+    }
+
+    function test_requireNullApproval() external {
+        migrationController.requireNullApproval();
+
+        // create "test.eth"
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes32 node2 = NameCoder.namehash(name2, 0);
+
+        // give approval on 2LD
+        vm.prank(user);
+        nameWrapper.approve(address(this), uint256(node2));
+        assertEq(nameWrapper.getApproved(uint256(node2)), address(this), "approved");
+
+        // lock approval
+        vm.prank(user);
+        nameWrapper.setFuses(node2, uint16(CANNOT_APPROVE));
+
+        // migration fails
+        LibMigration.Data memory data2 = _makeData(name2);
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(LockedWrapperReceiver.ImmutableTokenApproval.selector)
+            )
+        );
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(node2),
+            1,
+            abi.encode(data2)
+        );
     }
 
     function _makeData(bytes memory name) internal view returns (LibMigration.Data memory) {
