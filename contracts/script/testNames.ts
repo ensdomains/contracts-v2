@@ -11,7 +11,7 @@ import {
 import { artifacts } from "@rocketh";
 import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
 import { dnsEncodeName, idFromLabel } from "../test/utils/utils.js";
-import type { DevnetEnvironment } from "./setup.js";
+import type { DevnetEnvironment, DevnetAccount } from "./setup.js";
 
 // ========== Constants ==========
 
@@ -152,9 +152,9 @@ function getRegistryContract(
 /**
  * Deploy a resolver and set default records
  */
-async function deployResolverWithRecords(
+async function setupResolver(
   env: DevnetEnvironment,
-  account: any,
+  account: DevnetAccount,
   name: string,
   records: {
     description?: string;
@@ -162,17 +162,12 @@ async function deployResolverWithRecords(
   },
   shouldTrackGas: boolean = false,
 ) {
-  const resolver = await env.deployPermissionedResolver({ account });
   const node = namehash(name);
-
-  if (shouldTrackGas) {
-    await trackGas("deployResolver", resolver.deploymentReceipt);
-  }
 
   // Set ETH address (coin type 60)
   if (records.address) {
     const receipt = await env.waitFor(
-      resolver.write.setAddr([node, 60n, records.address], { account }),
+      account.resolver.write.setAddr([node, 60n, records.address]),
     );
     if (shouldTrackGas) await trackGas(`setAddr(${name})`, receipt);
   }
@@ -180,14 +175,14 @@ async function deployResolverWithRecords(
   // Set description text record
   if (records.description) {
     const receipt = await env.waitFor(
-      resolver.write.setText([node, "description", records.description], {
-        account,
-      }),
+      account.resolver.write.setText([
+        node,
+        "description",
+        records.description,
+      ]),
     );
     if (shouldTrackGas) await trackGas(`setText(${name})`, receipt);
   }
-
-  return resolver;
 }
 
 /**
@@ -275,8 +270,6 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
 
   for (const name of names) {
     const nameHash = namehash(name);
-
-    const { label } = parseName(name);
 
     let owner: `0x${string}` | undefined = undefined;
     let expiryDate: string = "N/A";
@@ -469,23 +462,18 @@ export async function createSubname(
       }
 
       // Deploy resolver for this subname
-      const resolver = await deployResolverWithRecords(
-        env,
-        account,
-        currentName,
-        {
-          description: currentName,
-          address: account.address,
-        },
-      );
-      console.log(`✓ Resolver deployed at ${resolver.address}`);
+      await setupResolver(env, account, currentName, {
+        description: currentName,
+        address: account.address,
+      });
+      console.log(`✓ Resolver populated`);
 
       await userRegistry.write.register(
         [
           label,
           account.address,
           zeroAddress, // no nested subregistry yet
-          resolver.address,
+          account.resolver.address,
           ROLES.ALL,
           MAX_EXPIRY,
         ],
@@ -580,19 +568,18 @@ export async function linkName(
     });
     console.log(`✓ Updated ${linkedName} to point to shared subregistry`);
   } else {
-    console.log(`Deploying resolver for ${linkedName}...`);
-    const resolver = await deployResolverWithRecords(env, account, linkedName, {
+    await setupResolver(env, account, linkedName, {
       description: `Linked to ${sourceName}`,
       address: account.address,
     });
-    console.log(`✓ Resolver deployed at ${resolver.address}`);
+    console.log(`✓ Resolver populated`);
 
     await targetRegistry.write.register(
       [
         linkLabel,
         account.address,
         subregistry,
-        resolver.address,
+        account.resolver.address,
         ROLES.ALL,
         MAX_EXPIRY,
       ],
@@ -761,26 +748,21 @@ export async function registerTestNames(
   env: DevnetEnvironment,
   labels: string[],
   options: {
-    account?: any;
+    account?: DevnetAccount;
     expiry?: bigint;
-    registrarAccount?: any;
     trackGas?: boolean;
   } = {},
 ) {
   const account = options.account ?? env.namedAccounts.owner;
-  const registrarAccount =
-    options.registrarAccount ?? env.namedAccounts.deployer;
   const shouldTrackGas = options.trackGas ?? false;
   const currentTimestamp = await env.client.getBlock().then((b) => b.timestamp);
+  const { resolver } = account;
+
+  if (shouldTrackGas) {
+    await trackGas("deployResolver", resolver.deploymentReceipt);
+  }
 
   for (const label of labels) {
-    const resolver = await env.deployPermissionedResolver({
-      account,
-    });
-
-    if (shouldTrackGas)
-      await trackGas("deployOwnedResolver", resolver.deploymentReceipt);
-
     let expiry: bigint;
     if (options.expiry !== undefined) {
       expiry = options.expiry;
@@ -798,7 +780,7 @@ export async function registerTestNames(
           ROLES.ALL,
           expiry,
         ],
-        { account: registrarAccount },
+        { account: env.namedAccounts.deployer },
       ),
     );
 

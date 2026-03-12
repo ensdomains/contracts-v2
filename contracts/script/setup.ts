@@ -9,9 +9,11 @@ import {
   ContractFunctionRevertedError,
   createWalletClient,
   decodeAbiParameters,
+  encodeAbiParameters,
   getContract,
   type Hex,
   hexToString,
+  keccak256,
   namehash,
   publicActions,
   slice,
@@ -41,6 +43,8 @@ const NAMED_ACCOUNTS = ["deployer", "owner", "user", "user2"] as const;
 
 export type StateSnapshot = () => Promise<void>;
 export type DevnetEnvironment = Awaited<ReturnType<typeof setupDevnet>>;
+export type DevnetAccount =
+  DevnetEnvironment["namedAccounts"][(typeof NAMED_ACCOUNTS)[number]];
 
 function ansi(c: any, s: any) {
   return `\x1b[${c}m${s}\x1b[0m`;
@@ -376,8 +380,11 @@ export async function setupDevnet({
 
     const namedAccounts = Object.fromEntries(
       await Promise.all(
-        accounts.map(async (account, i) => {
-          const resolver = await deployPermissionedResolver({ account });
+        accounts.map(async (account) => {
+          const resolver = await deployPermissionedResolver({
+            account,
+            ownedVersion: 0n,
+          });
           return [account.name, Object.assign(account, { resolver })];
         }),
       ),
@@ -495,17 +502,45 @@ export async function setupDevnet({
       });
     }
 
+    function computeOwnedResolverSalt({
+      address,
+      version = 0n,
+    }: {
+      address: Address;
+      version?: bigint;
+    }) {
+      return BigInt(
+        keccak256(
+          encodeAbiParameters(
+            [
+              { name: "account", type: "address" },
+              { name: "version", type: "uint256" },
+            ],
+            [address, version],
+          ),
+        ),
+      );
+    }
+
     async function deployPermissionedResolver({
-      account,
+      account, // deployer
       admin = account.address,
       roles = ROLES.ALL,
+      ownedVersion,
       salt,
     }: {
       account: Account;
       admin?: Address;
       roles?: bigint;
       salt?: bigint;
+      ownedVersion?: bigint;
     }) {
+      if (typeof salt === "undefined" && typeof ownedVersion === "bigint") {
+        salt = computeOwnedResolverSalt({
+          address: admin,
+          version: ownedVersion,
+        });
+      }
       return patchContractWrite(
         await deployVerifiableProxy({
           walletClient: createClient(account),
