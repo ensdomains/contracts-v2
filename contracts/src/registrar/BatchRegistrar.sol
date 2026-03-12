@@ -17,18 +17,14 @@ contract BatchRegistrar is Ownable {
         ETH_REGISTRY = ethRegistry_;
     }
 
-    /// @notice Batch register or renew names that share the same owner, registry, resolver, and role bitmap
-    /// @param owner The owner for all names
+    /// @notice Batch reserve or renew names for pre-migration
     /// @param registry The registry for all names
     /// @param resolver The resolver for all names
-    /// @param roleBitmap The role bitmap for all names
-    /// @param labels Array of labels to register or renew
+    /// @param labels Array of labels to reserve or renew
     /// @param expires Array of expiry timestamps corresponding to each label
     function batchRegister(
-        address owner,
         IRegistry registry,
         address resolver,
-        uint256 roleBitmap,
         string[] calldata labels,
         uint64[] calldata expires
     ) external onlyOwner {
@@ -39,16 +35,12 @@ contract BatchRegistrar is Ownable {
                 LibLabel.id(labels[i])
             );
 
-            if (state.expiry > block.timestamp && state.latestOwner != address(0)) {
-                continue;
-            }
-
-            if (state.expiry <= block.timestamp) {
-                ETH_REGISTRY.register(labels[i], owner, registry, resolver, roleBitmap, expires[i]);
-            } else {
-                if (expires[i] > state.expiry) {
-                    ETH_REGISTRY.renew(state.tokenId, expires[i]);
-                }
+            if (state.status == IPermissionedRegistry.Status.AVAILABLE) {
+                ETH_REGISTRY.register(labels[i], address(0), registry, resolver, 0, expires[i]);
+            } else if (
+                state.status == IPermissionedRegistry.Status.RESERVED && expires[i] > state.expiry
+            ) {
+                ETH_REGISTRY.renew(state.tokenId, expires[i]);
             }
         }
     }
