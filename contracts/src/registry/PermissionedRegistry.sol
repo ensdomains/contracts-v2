@@ -97,9 +97,7 @@ contract PermissionedRegistry is
         address ownerAddress,
         uint256 ownerRoles
     ) HCAEquivalence(hcaFactory) MetadataMixin(metadata) {
-        if (ownerRoles != 0) {
-            _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
-        }
+        _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
     }
 
     /// @inheritdoc IERC165
@@ -181,9 +179,9 @@ contract PermissionedRegistry is
             }
         } else {
             if (prevOwner != address(0)) {
-                revert NameAlreadyRegistered(label); // cannot overwrite REGISTERED
+                revert LabelAlreadyRegistered(label); // cannot overwrite REGISTERED
             } else if (owner == address(0)) {
-                revert NameAlreadyReserved(label); // cannot reserve/register RESERVED
+                revert LabelAlreadyReserved(label); // cannot reserve/register RESERVED
             }
             if (sender != address(this)) {
                 _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
@@ -193,7 +191,7 @@ contract PermissionedRegistry is
             }
         }
         if (_isExpired(expiry)) {
-            revert CannotSetPastExpiration(expiry);
+            revert CannotSetPastExpiry(expiry);
         }
         if (prevOwner != address(0)) {
             _burn(prevOwner, tokenId, 1);
@@ -204,11 +202,11 @@ contract PermissionedRegistry is
         entry.expiry = expiry;
         entry.subregistry = registry;
         entry.resolver = resolver;
-        // emit NameRegistered before mint so we can determine this is a registry (in an indexer)
+        // emit LabelRegistered before mint so we can determine this is a registry (in an indexer)
         if (owner == address(0)) {
-            emit NameReserved(tokenId, bytes32(labelId), label, expiry, sender);
+            emit LabelReserved(tokenId, bytes32(labelId), label, expiry, sender);
         } else {
-            emit NameRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
+            emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
             _mint(owner, tokenId, 1, "");
             uint256 resource = _constructResource(tokenId, entry);
             emit TokenResource(tokenId, resource);
@@ -229,7 +227,7 @@ contract PermissionedRegistry is
             anyId,
             RegistryRolesLib.ROLE_UNREGISTER
         );
-        emit NameUnregistered(tokenId, _msgSender());
+        emit LabelUnregistered(tokenId, _msgSender());
         address owner = super.ownerOf(tokenId);
         if (owner != address(0)) {
             _burn(owner, tokenId, 1);
@@ -247,7 +245,7 @@ contract PermissionedRegistry is
             RegistryRolesLib.ROLE_RENEW
         );
         if (newExpiry < entry.expiry) {
-            revert CannotReduceExpiration(entry.expiry, newExpiry);
+            revert CannotReduceExpiry(entry.expiry, newExpiry);
         }
         entry.expiry = newExpiry;
         emit ExpiryUpdated(tokenId, newExpiry, _msgSender());
@@ -490,7 +488,7 @@ contract PermissionedRegistry is
         entry = _entry(anyId);
         tokenId = _constructTokenId(anyId, entry);
         if (_isExpired(entry.expiry)) {
-            revert NameExpired(tokenId);
+            revert LabelExpired(tokenId);
         }
         _checkRoles(_constructResource(anyId, entry), roleBitmap, _msgSender());
     }
