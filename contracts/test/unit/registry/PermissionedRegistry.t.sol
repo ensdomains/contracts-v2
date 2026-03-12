@@ -911,7 +911,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_grantRolesWithAdmin_neverAuthorized(uint8 roleIndex) external {
         vm.assume(roleIndex < 32);
-        uint256 roleBitmap = (1 << (roleIndex << 2)) << 128; // every admin bit
+        uint256 roleBitmap = (1 << 128) << (roleIndex << 2); // every admin bit
         assertTrue((EACBaseRolesLib.ADMIN_ROLES & roleBitmap) != 0);
 
         uint256 tokenId = this._register();
@@ -930,7 +930,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_grantRolesWithAdminAsRoot_neverAuthorized(uint8 roleIndex) external {
         vm.assume(roleIndex < 32);
-        uint256 roleBitmap = (1 << (roleIndex << 2)) << 128; // every admin bit
+        uint256 roleBitmap = (1 << 128) << (roleIndex << 2); // every admin bit
         assertTrue((EACBaseRolesLib.ADMIN_ROLES & roleBitmap) != 0);
 
         testOwner = address(this); // mint to account with root
