@@ -49,7 +49,7 @@
     "compile": "bun run compile:forge && bun run compile:hardhat",
     "test:forge": "forge test",
     "test:hardhat": "bun run compile:hardhat && vitest run",
-    "test:e2e": "bun run compile:hardhat --quiet && bun test ./test/e2e/",
+    "test:e2e": "bun run compile --quiet && bun test ./test/e2e/",
     "test": "bun run test:forge && bun run test:hardhat",
     "interfaces": "bun run compile:hardhat --quiet && bun ./lib/ens-contracts/scripts/interfaces.ts",
     "coverage:forge": "mkdir -p coverage/ && forge coverage --report lcov --report-file coverage/forge.lcov",
