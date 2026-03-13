@@ -43,6 +43,7 @@ import {
     RegistryRolesLib,
     LibMigration
 } from "~src/registry/WrapperRegistry.sol";
+import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {
     MigrationControllerFixture,
     ERC165Checker,
@@ -280,7 +281,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl)
         );
         vm.expectEmit();
-        emit IRegistry.NameRegistered(
+        emit IRegistryEvents.LabelRegistered(
             tokenId,
             bytes32(tokenIdV1),
             md.label,
@@ -308,13 +309,13 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN
         );
         vm.expectEmit();
-        emit IRegistry.SubregistryUpdated(
+        emit IRegistryEvents.SubregistryUpdated(
             tokenId,
             IRegistry(expectedRegistry),
             address(migrationController)
         );
         vm.expectEmit();
-        emit IRegistry.ResolverUpdated(tokenId, md.resolver, address(migrationController));
+        emit IRegistryEvents.ResolverUpdated(tokenId, md.resolver, address(migrationController));
         vm.expectEmit();
         emit INameWrapper.FusesSet(
             node,
@@ -634,7 +635,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         // check migrated 3LD child
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.NameAlreadyRegistered.selector, data3.label)
+            abi.encodeWithSelector(IStandardRegistry.LabelAlreadyRegistered.selector, data3.label)
         );
         vm.prank(user);
         registry2.register(data3.label, user, IRegistry(address(0)), address(0), 0, _soon());

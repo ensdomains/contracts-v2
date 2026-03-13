@@ -1,38 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-/// @notice Storage layout and roles for PermissionedResolver.
+/// @notice Roles for PermissionedResolver.
 library PermissionedResolverLib {
-    /// @dev Top-level storage layout for `PermissionedResolver`.
-    /// @param aliases DNS-encoded alias target for internal name rewriting, keyed by node.
-    /// @param versions Monotonically increasing version counter per node; incrementing
-    ///        invalidates all existing records for the node.
-    /// @param records The actual resolver records for the current version, keyed by
-    ///        `(node, version)`.
-    struct Storage {
-        mapping(bytes32 node => bytes) aliases;
-        mapping(bytes32 node => uint64) versions;
-        mapping(bytes32 node => mapping(uint64 version => Record)) records;
-    }
-
-    /// @dev Holds all resolver record types for a single name version -- contenthash,
-    ///      public key, reverse name, plus mappings for multi-chain addresses, text records,
-    ///      ABIs, and interface implementations.
-    struct Record {
-        bytes contenthash;
-        bytes32[2] pubkey;
-        string name;
-        mapping(uint256 coinType => bytes addressBytes) addresses;
-        mapping(string key => string value) texts;
-        mapping(uint256 contentType => bytes data) abis;
-        mapping(bytes4 interfaceId => address implementer) interfaces;
-    }
-
-    /// @dev Named storage slot for `PermissionedResolver`.
-    uint256 internal constant NAMED_SLOT =
-        uint256(keccak256("eth.ens.storage.PermissionedResolver"));
-
-    /// @dev Nybble 0 — authorizes setting multi-chain address records. Root or name.
     uint256 internal constant ROLE_SET_ADDR = 1 << 0;
     uint256 internal constant ROLE_SET_ADDR_ADMIN = ROLE_SET_ADDR << 128;
 
