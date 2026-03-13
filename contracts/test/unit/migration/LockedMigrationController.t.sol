@@ -7,6 +7,7 @@ import {
     OperationProhibited,
     CANNOT_UNWRAP,
     CAN_DO_EVERYTHING,
+    CANNOT_APPROVE,
     CANNOT_BURN_FUSES,
     CANNOT_TRANSFER,
     CANNOT_SET_RESOLVER,
@@ -655,6 +656,35 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.prank(user);
         nameWrapper.setResolver(NameCoder.namehash(name3unmigrated, 0), testResolver);
         checkResolution(name3unmigrated, testResolver, address(ensV1Resolver));
+    }
+
+    function test_migrate_frozenTokenApproval() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes32 node = NameCoder.namehash(name, 0);
+
+        // give approval
+        vm.prank(user);
+        nameWrapper.approve(address(this), uint256(node));
+        assertEq(nameWrapper.getApproved(uint256(node)), address(this), "approved");
+
+        // freeze approval
+        vm.prank(user);
+        nameWrapper.setFuses(node, uint16(CANNOT_APPROVE));
+
+        LibMigration.Data memory data = _makeData(name);
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(LibMigration.FrozenTokenApproval.selector, node)
+            )
+        );
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(data)
+        );
     }
 
     function _makeData(bytes memory name) internal view returns (LibMigration.Data memory) {
