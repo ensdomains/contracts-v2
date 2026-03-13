@@ -11,11 +11,23 @@ import {LibLabel} from "../utils/LibLabel.sol";
 /// @notice Simple batch registration contract for pre-migration of ENS names.
 ///         Only the owner can invoke batch registration.
 contract BatchRegistrar is Ownable {
+    /// @notice The ETH registry to use for batch registration.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
+    ////////////////////////////////////////////////////////////////////////
+    // Initialization
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Initializes the BatchRegistrar.
+    /// @param ethRegistry_ The ETH registry to use for batch registration.
+    /// @param owner_ The owner of the contract.
     constructor(IPermissionedRegistry ethRegistry_, address owner_) Ownable(owner_) {
         ETH_REGISTRY = ethRegistry_;
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
 
     /// @notice Batch reserve or renew names for pre-migration
     /// @param registry The registry for all names

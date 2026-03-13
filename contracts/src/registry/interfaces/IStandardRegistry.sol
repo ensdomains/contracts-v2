@@ -37,7 +37,7 @@ interface IStandardRegistry is IRegistry, IERC1155Singleton {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Registers a new label.
+    /// @notice Registers a new label.
     /// @param label The label to register.
     /// @param owner The address of the owner of the label.
     /// @param registry The registry to set as the label.

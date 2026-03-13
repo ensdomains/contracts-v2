@@ -12,13 +12,16 @@ contract ENSV1Resolver is AbstractMirrorResolver {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The ENSv1 registry used to look up resolvers for names.
+    /// @notice The ENSv1 registry used to look up resolvers for names.
     ENS public immutable REGISTRY_V1;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes the ENSV1Resolver with the ENSv1 registry and batch gateway provider.
+    /// @param registryV1 The ENSv1 registry.
+    /// @param batchGatewayProvider The batch gateway provider.
     constructor(
         ENS registryV1,
         IGatewayProvider batchGatewayProvider

@@ -13,6 +13,8 @@ library LibHalving {
     /// @dev Fixed-point scale factor (10^18).
     uint256 private constant PRECISION = 1e18;
 
+    // solhint-disable natspec
+
     /// @dev Precomputed values of `0.5^(2^k / 65536) * 10^18` for the corresponding power-of-two
     ///      bit position. Together they compose any fractional power of 0.5 in 16-bit resolution
     ///      via binary decomposition.
@@ -32,6 +34,8 @@ library LibHalving {
     uint256 private constant BIT14 = 917004043204671232;
     uint256 private constant BIT15 = 840896415253714560;
     uint256 private constant BIT16 = 707106781186547584;
+
+    // solhint-enable natspec
 
     ////////////////////////////////////////////////////////////////////////
     // Library Functions

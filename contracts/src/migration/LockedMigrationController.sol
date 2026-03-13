@@ -27,6 +27,11 @@ contract LockedMigrationController is LockedWrapperReceiver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes LockedMigrationController.
+    /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
+    /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @param verifiableFactory The shared factory for verifiable deployments.
+    /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
     constructor(
         IPermissionedRegistry ethRegistry,
         INameWrapper nameWrapper,
@@ -36,7 +41,11 @@ contract LockedMigrationController is LockedWrapperReceiver {
         ETH_REGISTRY = ethRegistry;
     }
 
-    /// @notice The DNS-encoded name for "eth".
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Returns the DNS-encoded name for "eth".
     function getWrappedNode() public pure override returns (bytes32) {
         return NameCoder.ETH_NODE;
     }
