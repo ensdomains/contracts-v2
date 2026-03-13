@@ -8,9 +8,13 @@ import {L2ReverseRegistrar} from "./L2ReverseRegistrar.sol";
 
 /// @dev Interface selector: `0x4ec3bd23`
 interface IL2ReverseRegistrarV1 {
+    /// @notice Returns the name for an address.
+    /// @param addr The address to get the name for.
+    /// @return The name for the address.
     function nameForAddr(address addr) external view returns (string memory);
 }
 
+/// @notice An L2 Reverse Registrar that allows migrating from a prior registrar.
 contract L2ReverseRegistrarWithMigration is L2ReverseRegistrar, Ownable {
     ////////////////////////////////////////////////////////////////////////
     // Constants & Immutables
@@ -24,9 +28,9 @@ contract L2ReverseRegistrarWithMigration is L2ReverseRegistrar, Ownable {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Initialises the contract with the chain ID and label for this L2 chain.
-    /// @param owner The owner of the contract.
     /// @param chainId The chain ID of the chain this contract is deployed to.
     /// @param label The hex string label for the coin type (used in reverse node computation).
+    /// @param owner The owner of the contract.
     /// @param oldL2ReverseRegistrar The v1 reverse registrar to migrate from.
     constructor(
         uint256 chainId,

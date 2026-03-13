@@ -17,7 +17,7 @@ library ChainIdsBuilderLib {
     /// @dev Error selector: `0x756925c8`
     error CurrentChainNotFound(uint256 chainId);
 
-    /// @notice Validates chain IDs are strictly ascending, contain `currentChainId`,
+    /// @dev Validates chain IDs are strictly ascending, contain `currentChainId`,
     ///         and builds the comma-separated display string.
     /// @param chainIds       Calldata array of chain IDs (must be strictly ascending).
     /// @param currentChainId The chain ID that must be present in the array.

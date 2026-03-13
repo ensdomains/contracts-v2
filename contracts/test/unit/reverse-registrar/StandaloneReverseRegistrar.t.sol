@@ -10,7 +10,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {
     StandaloneReverseRegistrar,
-    IENSIP16,
+    IRegistryEvents,
     IExtendedResolver,
     INameResolver,
     IStandaloneReverseRegistrar,
@@ -317,18 +317,19 @@ contract StandaloneReverseRegistrarTest is Test {
         assertEq(registrar.name(node), name_, "Name should be stored");
     }
 
-    function test_setName_emitsNameRegisteredEvent() public {
+    function test_setName_emitsLabelRegisteredEvent() public {
         string memory name_ = "alice.eth";
         string memory expectedLabel = LibString.toAddressString(user1);
         uint256 expectedTokenId = uint256(keccak256(abi.encodePacked(expectedLabel)));
 
         vm.expectEmit(true, false, false, true);
-        emit IENSIP16.NameRegistered(
+        emit IRegistryEvents.LabelRegistered(
             expectedTokenId,
+            bytes32(expectedTokenId),
             expectedLabel,
+            user1,
             type(uint64).max,
-            address(this),
-            0
+            address(this)
         );
 
         registrar.setName(user1, name_);
@@ -340,7 +341,7 @@ contract StandaloneReverseRegistrarTest is Test {
         uint256 expectedTokenId = uint256(keccak256(abi.encodePacked(expectedLabel)));
 
         vm.expectEmit(true, false, false, true);
-        emit IENSIP16.ResolverUpdated(expectedTokenId, address(registrar));
+        emit IRegistryEvents.ResolverUpdated(expectedTokenId, address(registrar), address(this));
 
         registrar.setName(user1, name_);
     }
@@ -371,12 +372,12 @@ contract StandaloneReverseRegistrarTest is Test {
         // Verify event topics
         assertEq(
             logs[0].topics[0],
-            keccak256("NameRegistered(uint256,string,uint64,address,uint256)"),
-            "First event should be NameRegistered"
+            keccak256("LabelRegistered(uint256,bytes32,string,address,uint64,address)"),
+            "First event should be LabelRegistered"
         );
         assertEq(
             logs[1].topics[0],
-            keccak256("ResolverUpdated(uint256,address)"),
+            keccak256("ResolverUpdated(uint256,address,address)"),
             "Second event should be ResolverUpdated"
         );
         assertEq(

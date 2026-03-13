@@ -9,8 +9,11 @@ library LibString {
     // Address to String Conversions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Converts an address to its lowercase hex string representation (without 0x prefix).
-    /// @dev Uses inline assembly for gas efficiency. Produces exactly 40 hex characters.
+    /// @dev Converts an address to its lowercase hex string representation (without 0x prefix).
+    ///
+    /// Uses inline assembly for gas efficiency.
+    /// Produces exactly 40 hex characters.
+    ///
     /// @param value The address to convert.
     /// @return result The lowercase hex string (40 bytes, no 0x prefix).
     function toAddressString(address value) internal pure returns (string memory result) {
@@ -41,9 +44,11 @@ library LibString {
         }
     }
 
-    /// @notice Converts an address to its EIP-55 checksummed hex string.
-    /// @dev Uses toAddressString for lowercase conversion, then applies EIP-55 checksum.
-    ///      Produces "0x" + 40 hex characters.
+    /// @dev Converts an address to its EIP-55 checksummed hex string.
+    ///
+    /// Uses toAddressString for lowercase conversion, then applies EIP-55 checksum.
+    /// Produces "0x" + 40 hex characters.
+    ///
     /// @param addr The address to convert.
     /// @return result The checksummed hex string (42 bytes).
     function toChecksumHexString(address addr) internal pure returns (string memory result) {
@@ -91,7 +96,7 @@ library LibString {
     // Number to String Conversions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Converts a uint256 to its ASCII decimal string representation.
+    /// @dev Converts a uint256 to its ASCII decimal string representation.
     /// @param value The value to convert.
     /// @return result The decimal string.
     function toString(uint256 value) internal pure returns (string memory result) {

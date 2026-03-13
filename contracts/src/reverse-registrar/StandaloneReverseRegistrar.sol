@@ -10,16 +10,15 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-import {IENSIP16} from "../utils/interfaces/IENSIP16.sol";
+import {IRegistryEvents} from "../registry/interfaces/IRegistryEvents.sol";
 import {LibString} from "../utils/LibString.sol";
 
-/// @title Standalone Reverse Registrar
-/// @notice A standalone reverse registrar, detached from the ENS registry.
+/// @dev A standalone reverse registrar, detached from the ENS registry.
 abstract contract StandaloneReverseRegistrar is
     ERC165,
     IStandaloneReverseRegistrar,
     IExtendedResolver,
-    IENSIP16,
+    IRegistryEvents,
     INameResolver,
     Context
 {
@@ -124,12 +123,11 @@ abstract contract StandaloneReverseRegistrar is
 
     /// @notice Resolves a DNS-encoded reverse name to its primary ENS name.
     /// @dev Implements ENSIP-10 wildcard resolution for reverse lookups.
-    ///      Only supports the `name(bytes32)` resolver profile.
+    /// Only supports the `name(bytes32)` resolver profile.
     ///
-    ///      Expected name format: {40-char-hex-address}.{label}.reverse
-    ///      DNS-encoded: {0x28}{40-hex-chars}{labelLen}{label}{0x07}reverse{0x00}
+    /// Expected name format: {40-char-hex-address}.{label}.reverse
+    /// DNS-encoded: {0x28}{40-hex-chars}{labelLen}{label}{0x07}reverse{0x00}
     ///
-    /// @inheritdoc IExtendedResolver
     /// @param name_ The DNS-encoded reverse name to resolve.
     /// @param data The ABI-encoded function call (must be `name(bytes32)`).
     /// @return The ABI-encoded primary ENS name.
@@ -160,9 +158,9 @@ abstract contract StandaloneReverseRegistrar is
 
     /// @notice Sets the primary ENS name for an address.
     /// @dev Computes the reverse node from the address and stores the name.
-    ///      Emits ENSIP-16 events for indexer compatibility.
+    /// Emits ENSIP-16 events for indexer compatibility.
     ///
-    ///      IMPORTANT: Authorisation must be checked by the caller before invoking this function.
+    /// IMPORTANT: Authorisation must be checked by the caller before invoking this function.
     ///
     /// @param addr The address to set the primary name for.
     /// @param name_ The primary ENS name to associate with the address.
@@ -171,8 +169,9 @@ abstract contract StandaloneReverseRegistrar is
         string memory label = LibString.toAddressString(addr);
 
         // Compute the token ID and reverse node
-        uint256 tokenId = uint256(keccak256(abi.encodePacked(label)));
-        bytes32 node = keccak256(abi.encodePacked(PARENT_NODE, tokenId));
+        bytes32 labelHash = keccak256(bytes(label));
+        uint256 tokenId = uint256(labelHash);
+        bytes32 node = keccak256(abi.encodePacked(PARENT_NODE, labelHash));
 
         // Reverse names never expire
         uint64 expiry = type(uint64).max;
@@ -181,8 +180,8 @@ abstract contract StandaloneReverseRegistrar is
         _names[node] = name_;
 
         // Emit ENSIP-16 events for indexer compatibility
-        emit NameRegistered(tokenId, label, expiry, _msgSender(), 0);
-        emit ResolverUpdated(tokenId, address(this));
+        emit LabelRegistered(tokenId, labelHash, label, addr, expiry, _msgSender());
+        emit ResolverUpdated(tokenId, address(this), _msgSender());
         emit NameChanged(node, name_);
     }
 }

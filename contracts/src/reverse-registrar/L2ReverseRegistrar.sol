@@ -22,11 +22,11 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     // Constants & Immutables
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The ERC6492 detection suffix.
+    /// @dev The ERC6492 detection suffix.
     bytes32 private constant _ERC6492_DETECTION_SUFFIX =
         0x6492649264926492649264926492649264926492649264926492649264926492;
 
-    /// @notice The universal signature validator for ERC6492 signatures.
+    /// @dev The universal signature validator for ERC6492 signatures.
     IUniversalSignatureValidator private constant _UNIVERSAL_SIG_VALIDATOR =
         IUniversalSignatureValidator(0x164af34fAF9879394370C7f09064127C043A35E9);
 
@@ -218,28 +218,28 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
         }
     }
 
-    /// @notice Creates the EIP-191 message hash for signature-based name claims.
+    /// @dev Creates the EIP-191 message hash for signature-based name claims.
     ///
-    ///         For address claims (owner == address(0)):
-    ///         ```
-    ///         You are setting your ENS primary name to:
-    ///         {name}
+    /// For address claims (owner == address(0)):
+    /// ```
+    /// You are setting your ENS primary name to:
+    /// {name}
     ///
-    ///         Address: {address}
-    ///         Chains: {chainList}
-    ///         Signed At: {signedAt}
-    ///         ```
+    /// Address: {address}
+    /// Chains: {chainList}
+    /// Signed At: {signedAt}
+    /// ```
     ///
-    ///         For ownable contract claims (owner != address(0)):
-    ///         ```
-    ///         You are setting the ENS primary name for a contract you own to:
-    ///         {name}
+    /// For ownable contract claims (owner != address(0)):
+    /// ```
+    /// You are setting the ENS primary name for a contract you own to:
+    /// {name}
     ///
-    ///         Contract Address: {address}
-    ///         Owner: {owner}
-    ///         Chains: {chainList}
-    ///         Signed At: {signedAt}
-    ///         ```
+    /// Contract Address: {address}
+    /// Owner: {owner}
+    /// Chains: {chainList}
+    /// Signed At: {signedAt}
+    /// ```
     ///
     /// @param claim The name claim data.
     /// @param chainIdsString The pre-validated chain IDs as a display string.

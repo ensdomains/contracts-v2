@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
+/// @dev Library for converting uint256 timestamps to ISO 8601 strings.
 library LibISO8601 {
     /// @dev The timestamp is out of range.
     /// @dev Error selector: `0x09064f83`
     error TimestampOutOfRange(uint256 timestamp);
 
+    /// @dev Converts a timestamp to an ISO 8601 string.
     function toISO8601(uint256 ts) internal pure returns (string memory result) {
         if (ts >= 253402300800) revert TimestampOutOfRange(ts);
 
