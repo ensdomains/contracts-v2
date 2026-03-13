@@ -53,7 +53,7 @@ library LibMigration {
     error NameDataMismatch(uint256 tokenId);
 
     /// @notice NameWrapper token has existing approval and burned `CANNOT_APPROVE`.
-    /// @dev Error selector: `0x7e106b6d`
+    /// @dev Error selector: `0xa4f07713`
     error FrozenTokenApproval(uint256 tokenId);
 
     /// @notice The encoded data is invalid.
