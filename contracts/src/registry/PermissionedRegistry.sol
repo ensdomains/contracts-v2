@@ -6,7 +6,6 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
-import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
@@ -408,6 +407,7 @@ contract PermissionedRegistry is
         uint256[] memory tokenIds,
         uint256[] memory values
     ) internal virtual override {
+        // note: from is token owner
         bool externalTransfer = to != address(0) && from != address(0);
         if (externalTransfer) {
             // Check ROLE_CAN_TRANSFER for actual transfers only
@@ -466,10 +466,12 @@ contract PermissionedRegistry is
 
     /// @dev Override to prevent admin roles from being granted in the registry.
     ///
-    /// In the registry context, admin roles are only assigned during name registration
-    /// to maintain controlled permission management. This ensures that role delegation
+    /// Token admin roles are only assigned during name registration to maintain
+    /// controlled permission management. This ensures that role delegation
     /// follows the intended security model where admin privileges are granted at
     /// registration time and cannot be arbitrarily granted afterward.
+    ///
+    /// Root admin roles are unaffected.
     ///
     /// @param resource The resource to get settable roles for.
     /// @param account The account to get settable roles for.
@@ -478,9 +480,10 @@ contract PermissionedRegistry is
         uint256 resource,
         address account
     ) internal view virtual override returns (uint256) {
-        uint256 allRoles = super.roles(resource, account) | super.roles(ROOT_RESOURCE, account);
-        uint256 adminRoleBitmap = allRoles & EACBaseRolesLib.ADMIN_ROLES;
-        return adminRoleBitmap >> 128;
+        return
+            resource == ROOT_RESOURCE
+                ? super._getSettableRoles(resource, account)
+                : (super.roles(resource, account) | super.roles(ROOT_RESOURCE, account)) >> 128;
     }
 
     /// @dev Zeroes version bits in `anyId` to return the canonical storage entry for the name.
