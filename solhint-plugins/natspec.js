@@ -139,6 +139,16 @@ class NatspecChecker {
     return names;
   }
 
+  _countTagOccurrences(comments, tag) {
+    let count = 0;
+    const regex = new RegExp(`@${tag}\\b`, "g");
+    for (const comment of comments) {
+      const matches = comment.match(regex);
+      if (matches) count += matches.length;
+    }
+    return count;
+  }
+
   _arraysEqual(a, b) {
     if (a.length !== b.length) return false;
     return a.every((v, i) => v === b[i]);
@@ -252,25 +262,31 @@ class NatspecChecker {
     const padding = group.expectedSpaces - 1;
 
     if (padding > 0) {
-      for (const entry of group.continuations) {
-        if (entry.isEmpty) continue;
-        if (entry.actualSpaces < group.expectedSpaces) continue;
+      const nonEmptyLines = group.continuations.filter((e) => !e.isEmpty);
+      const minIndent =
+        nonEmptyLines.length > 0
+          ? Math.min(...nonEmptyLines.map((l) => l.actualSpaces))
+          : 0;
 
-        const correctedSpaces = entry.actualSpaces - padding;
-        const leadingWs = entry.line.content.length - entry.trimmed.length;
-        const slashesEnd = entry.line.start + leadingWs + 3;
-        const correctSpaces = " ".repeat(correctedSpaces);
+      // Only strip padding if the entire block is uniformly padded
+      if (minIndent >= group.expectedSpaces) {
+        for (const entry of nonEmptyLines) {
+          const correctedSpaces = entry.actualSpaces - padding;
+          const leadingWs = entry.line.content.length - entry.trimmed.length;
+          const slashesEnd = entry.line.start + leadingWs + 3;
+          const correctSpaces = " ".repeat(correctedSpaces);
 
-        this.reporter.error(
-          node,
-          ruleId,
-          `Long natspec block should not use tag-level padding`,
-          (fixer) =>
-            fixer.replaceTextRange(
-              [slashesEnd, slashesEnd + entry.actualSpaces - 1],
-              correctSpaces,
-            ),
-        );
+          this.reporter.error(
+            node,
+            ruleId,
+            `Long natspec block should not use tag-level padding`,
+            (fixer) =>
+              fixer.replaceTextRange(
+                [slashesEnd, slashesEnd + entry.actualSpaces - 1],
+                correctSpaces,
+              ),
+          );
+        }
       }
     }
 
@@ -384,7 +400,7 @@ class NatspecChecker {
     }
   }
 
-  _checkNode(node, type, tagsRequired, nodeContext) {
+  _checkNode(node, type, tagsRequired, nodeContext, forbiddenTags) {
     const name = node.name || (node.id && node.id.name) || "<anonymous>";
     const startOffset = node.range[0];
     const comments = this._getLeadingNatSpecComments(startOffset);
@@ -397,6 +413,19 @@ class NatspecChecker {
 
     // If no tags required and no natspec present, skip entirely
     if (applicableTags.length === 0 && tags.length === 0) return;
+
+    // Check for forbidden tags
+    if (forbiddenTags) {
+      for (const tag of forbiddenTags) {
+        if (tags.includes(tag)) {
+          this.reporter.error(
+            node,
+            ruleId,
+            `@${tag} tag not allowed on simple view/pure getter '${name}'`,
+          );
+        }
+      }
+    }
 
     // If @inheritdoc is present, skip tag checks but still check formatting
     if (tags.includes("inheritdoc")) {
@@ -434,12 +463,15 @@ class NatspecChecker {
               `Mismatch in @param names for ${type} '${name}'. Expected: [${namedParams.join(", ")}], Found: [${docParams.join(", ")}]`,
             );
           }
-        } else if (solidityParams.length !== docParams.length) {
-          this.reporter.error(
-            node,
-            ruleId,
-            `Mismatch in @param count for ${type} '${name}'. Expected: ${solidityParams.length}, Found: ${docParams.length}`,
-          );
+        } else {
+          const totalDocParams = this._countTagOccurrences(comments, "param");
+          if (solidityParams.length !== totalDocParams) {
+            this.reporter.error(
+              node,
+              ruleId,
+              `Mismatch in @param count for ${type} '${name}'. Expected: ${solidityParams.length}, Found: ${totalDocParams}`,
+            );
+          }
         }
       }
 
@@ -462,12 +494,15 @@ class NatspecChecker {
               `Mismatch in @return names for ${type} '${name}'. Expected: [${namedReturns.join(", ")}], Found: [${docReturns.join(", ")}]`,
             );
           }
-        } else if (solidityReturns.length !== docReturns.length) {
-          this.reporter.error(
-            node,
-            ruleId,
-            `Mismatch in @return count for ${type} '${name}'. Expected: ${solidityReturns.length}, Found: ${docReturns.length}`,
-          );
+        } else {
+          const totalDocReturns = this._countTagOccurrences(comments, "return");
+          if (solidityReturns.length !== totalDocReturns) {
+            this.reporter.error(
+              node,
+              ruleId,
+              `Mismatch in @return count for ${type} '${name}'. Expected: ${solidityReturns.length}, Found: ${totalDocReturns}`,
+            );
+          }
         }
       }
     }
@@ -489,16 +524,30 @@ class NatspecChecker {
     const nodeContext = `function:${visibility}`;
 
     const tags = [...NATSPEC_TARGETS.function];
-    if (!node.parameters || node.parameters.length === 0) {
+    const forbiddenTags = [];
+    const paramCount = node.parameters?.length || 0;
+    const returnCount = node.returnParameters?.length || 0;
+    const mutability = node.stateMutability;
+    const isSimpleGetter =
+      (mutability === "view" || mutability === "pure") &&
+      paramCount === 0 &&
+      returnCount === 1;
+
+    if (paramCount === 0) {
       const idx = tags.indexOf("param");
       if (idx !== -1) tags.splice(idx, 1);
+      if (isSimpleGetter) forbiddenTags.push("param");
     }
-    if (!node.returnParameters || node.returnParameters.length === 0) {
+    if (returnCount === 0) {
       const idx = tags.indexOf("return");
       if (idx !== -1) tags.splice(idx, 1);
+    } else if (isSimpleGetter) {
+      const idx = tags.indexOf("return");
+      if (idx !== -1) tags.splice(idx, 1);
+      forbiddenTags.push("return");
     }
 
-    this._checkNode(node, "function", tags, nodeContext);
+    this._checkNode(node, "function", tags, nodeContext, forbiddenTags);
   }
 
   EventDefinition(node) {

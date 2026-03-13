@@ -20,7 +20,9 @@
               "function:private",
               "library",
               "variable:internal",
-              "variable:private"
+              "variable:private",
+              "abstract",
+              "interface"
             ]
           },
           "dev": {
@@ -30,7 +32,8 @@
               "function:private",
               "library",
               "variable:internal",
-              "variable:private"
+              "variable:private",
+              "abstract"
             ]
           },
           "param": {
