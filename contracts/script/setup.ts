@@ -662,14 +662,20 @@ export async function setupDevnet({
     async function setupEnsDotEth() {
       const { resolver } = namedAccounts.owner;
 
-      // hack register of "ens.eth" by deployer (normally would be migrated by current ens.eth owner)
+      // temporary registration of "ens.eth" by deployer
+      // (normally would be migrated by current ens.eth owner)
+      // Deployer has REGISTRAR_ADMIN but not REGISTRAR; grant self REGISTRAR for setup
+      await v2.ETHRegistry.write.grantRootRoles([
+        ROLES.REGISTRY.REGISTRAR,
+        namedAccounts.deployer.address,
+      ]);
       // create "ens.eth" (owner gets full roles for devnet setup)
       await v2.ETHRegistry.write.register([
         "ens",
         namedAccounts.owner.address,
         zeroAddress,
         resolver.address,
-        0n,
+        ROLES.ALL,
         MAX_EXPIRY,
       ]);
 
