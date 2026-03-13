@@ -7,9 +7,6 @@ out/
 /broadcast/*/31337/
 /broadcast/**/dry-run/
 
-# Docs
-docs/
-
 # Dotenv file
 .env
 
@@ -26,5 +23,8 @@ lcov.info
 generated/
 
 deployments/devnet-local/
+
+preMigration.log
+preMigration-checkpoint.json
 
 csv-data/
