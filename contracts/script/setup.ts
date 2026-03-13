@@ -26,18 +26,18 @@ import { mainnet } from "viem/chains";
 import { mnemonicToAccount } from "viem/accounts";
 
 import {
+  computeVerifiableProxyAddress,
+  deployVerifiableProxy,
+} from "../test/integration/fixtures/deployVerifiableProxy.js";
+import { dnsEncodeName } from "../test/utils/utils.js";
+import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
+import {
   LOCAL_BATCH_GATEWAY_URL,
   MAX_EXPIRY,
   ROLES,
 } from "./deploy-constants.js";
 import { deployArtifact } from "../test/integration/fixtures/deployArtifact.js";
-import {
-  computeVerifiableProxyAddress,
-  deployVerifiableProxy,
-} from "../test/integration/fixtures/deployVerifiableProxy.js";
-import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
-import { dnsEncodeName } from "../test/utils/utils.js";
 
 const NAMED_ACCOUNTS = ["deployer", "owner", "user", "user2"] as const;
 
@@ -216,10 +216,13 @@ export async function setupDevnet({
         client,
       }),
       ETHReverseRegistrar: getContract({
-        abi: artifacts.L2ReverseRegistrar.abi,
+        // TODO: update to actual reverse registrar when we have it
+        abi: artifacts[
+          "lib/ens-contracts/contracts/reverseRegistrar/L2ReverseRegistrar.sol/L2ReverseRegistrar"
+        ].abi,
         address: rocketh.get("ETHReverseRegistrar").address,
         client,
-      }), // TODO: change to using v1
+      }),
       ETHReverseResolver: getContract({
         abi: artifacts.ETHReverseResolver.abi,
         address: rocketh.get("ETHReverseResolver").address,
@@ -429,6 +432,7 @@ export async function setupDevnet({
       });
     }
 
+    // inject waitForSuccessfulTransactionReceipt into viem contract wrapper
     function patchContractWrite<T extends object>(contract: T): T {
       if ("write" in contract) {
         const write0 = contract.write as Record<
@@ -618,7 +622,7 @@ export async function setupDevnet({
       name: string;
       account?: Account;
     }) {
-      const address = await v2.UniversalResolver.read.findRegistry([
+      const address = await v2.UniversalResolver.read.findExactRegistry([
         dnsEncodeName(name),
       ]);
       if (address === zeroAddress) {

@@ -3,6 +3,7 @@ pragma solidity >=0.8.13;
 
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
+/// @dev Primitives for migration.
 library LibMigration {
     ////////////////////////////////////////////////////////////////////////
     // Types

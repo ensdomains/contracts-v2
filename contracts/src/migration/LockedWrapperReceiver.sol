@@ -21,7 +21,7 @@ import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
 
 /// @title LockedWrappedReceiver
-/// @notice AbstractWrapperReceiver for locked NameWrapper tokens.
+/// @dev AbstractWrapperReceiver for locked NameWrapper tokens.
 ///
 /// There are (2) LockedWrapperReceiver implementations:
 /// 1. LockedMigrationController only accepts .eth 2LD tokens.
@@ -54,6 +54,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes LockedWrapperReceiver.
+    /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @param verifiableFactory The shared factory for verifiable deployments.
+    /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
     constructor(
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
@@ -67,12 +71,12 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The DNS-encoded name for this registry.
+    /// @notice Returns the DNS-encoded name for this registry.
     function getWrappedName() public view virtual returns (bytes memory) {
         return NAME_WRAPPER.names(getWrappedNode());
     }
 
-    /// @notice The NameWrapper node (namehash).
+    /// @notice Returns the NameWrapper node (namehash).
     function getWrappedNode() public view virtual returns (bytes32);
 
     ////////////////////////////////////////////////////////////////////////

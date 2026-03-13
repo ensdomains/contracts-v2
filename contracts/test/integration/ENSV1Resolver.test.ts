@@ -48,7 +48,7 @@ describe("ENSV1Resolver", () => {
 
   it("requiresOffchain", async () => {
     const F = await network.networkHelpers.loadFixture(fixture);
-    expect(
+    await expect(
       F.ensV1Resolver.read.requiresOffchain([dnsEncodeName("any.eth")]),
     ).resolves.toStrictEqual(false);
   });

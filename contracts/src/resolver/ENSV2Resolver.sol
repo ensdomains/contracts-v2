@@ -15,16 +15,20 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The ENSv2 root registry used to traverse the registry hierarchy and locate resolvers.
+    /// @notice The ENSv2 root registry used to traverse the registry hierarchy and locate resolvers.
     IRegistry public immutable ROOT_REGISTRY;
 
-    /// @dev The ENSv1 resolver for "eth".
+    /// @notice The ENSv1 resolver for "eth".
     address public immutable ETH_RESOLVER;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes the ENSV2Resolver with the root registry and batch gateway provider.
+    /// @param rootRegistry The root registry.
+    /// @param batchGatewayProvider The batch gateway provider.
+    /// @param ethResolver The override resolver for "eth" or null to use ENSv2.
     constructor(
         IRegistry rootRegistry,
         IGatewayProvider batchGatewayProvider,

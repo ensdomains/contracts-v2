@@ -73,9 +73,9 @@ import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib
 /// `setAddr(coinType)` can be restricted to a coinType using: `part = addrPart(<coinType>)`.
 ///
 /// Setters with `node` check (4) EAC resources:
-///                                                   Parts
+///                                           Parts
 ///        Resources      +-----------------------------+------------------------------+
-///                       |           Any (*)           |         Specific (1)         |
+///               |           Any (*)           |         Specific (1)         |
 ///        +--------------+-----------------------------+------------------------------+
 ///        |      Any (*) |       resource(0, 0)        |      resource(0, <part>)     |
 ///  Names |--------------+-----------------------------+------------------------------+
@@ -118,8 +118,11 @@ contract PermissionedResolver is
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Aliases for names.
     mapping(bytes32 node => bytes name) internal _aliases;
+    /// @dev Versions for nodes.
     mapping(bytes32 node => uint64 version) internal _versions;
+    /// @dev Records for nodes.
     mapping(bytes32 node => mapping(uint64 version => Record)) internal _records;
 
     ////////////////////////////////////////////////////////////////////////
@@ -127,9 +130,15 @@ contract PermissionedResolver is
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Associate an EAC resource with a name.
+    /// @param resource The EAC resource.
+    /// @param name The name.
     event NamedResource(uint256 indexed resource, bytes name);
 
     /// @notice Associate an EAC resource with a name and specific `text(key)` record.
+    /// @param resource The EAC resource.
+    /// @param name The name.
+    /// @param keyHash The hash of the key.
+    /// @param key The key.
     event NamedTextResource(
         uint256 indexed resource,
         bytes name,
@@ -138,6 +147,9 @@ contract PermissionedResolver is
     );
 
     /// @notice Associate an EAC resource with a name and specific `addr(coinType)` record.
+    /// @param resource The EAC resource.
+    /// @param name The name.
+    /// @param coinType The coin type.
     event NamedAddrResource(uint256 indexed resource, bytes name, uint256 indexed coinType);
 
     ////////////////////////////////////////////////////////////////////////
@@ -159,6 +171,8 @@ contract PermissionedResolver is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Creates the PermissionedResolver implementation.
+    /// @param hcaFactory The HCA factory.
     constructor(IHCAFactoryBasic hcaFactory) HCAEquivalence(hcaFactory) {
         _disableInitializers();
     }
@@ -191,10 +205,6 @@ contract PermissionedResolver is
         return ResolverFeatures.RESOLVE_MULTICALL == feature;
     }
 
-    ////////////////////////////////////////////////////////////////////////
-    // Implementation
-    ////////////////////////////////////////////////////////////////////////
-
     /// @inheritdoc IPermissionedResolver
     function initialize(address admin, uint256 roleBitmap) external initializer {
         if (admin == address(0)) {
@@ -204,8 +214,11 @@ contract PermissionedResolver is
         _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
     }
 
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
     /// @notice Clear all records for `node`.
-    ///
     /// @param node The node to update.
     function clearRecords(
         bytes32 node
@@ -225,6 +238,10 @@ contract PermissionedResolver is
 
     /// @notice Grant `roleBitmap` permissions to `account` for `toName`.
     ///         Use `NameCoder.encode("")` for any name, which is equivalent to `grantRootRoles()`.
+    /// @param toName The name to grant roles for.
+    /// @param roleBitmap The roles to grant.
+    /// @param account The account to grant roles to.
+    /// @return success Whether the roles were updated.
     function grantNameRoles(
         bytes calldata toName,
         uint256 roleBitmap,
@@ -239,6 +256,10 @@ contract PermissionedResolver is
 
     /// @notice Grant `setText(key)` permission to `account` for `toName`.
     ///         Use `NameCoder.encode("")` for any name.
+    /// @param toName The name to grant roles for.
+    /// @param key The text key to grant roles for.
+    /// @param account The account to grant roles to.
+    /// @return success Whether the roles were updated.
     function grantTextRoles(
         bytes calldata toName,
         string calldata key,
@@ -260,6 +281,10 @@ contract PermissionedResolver is
 
     /// @notice Grant `setAddr(coinType)` permission to `account` for `toName`.
     ///         Use `NameCoder.encode("")` for any name.
+    /// @param toName The name to grant roles for.
+    /// @param coinType The coin type to grant roles for.
+    /// @param account The account to grant roles to.
+    /// @return success Whether the roles were updated.
     function grantAddrRoles(
         bytes calldata toName,
         uint256 coinType,
@@ -280,7 +305,6 @@ contract PermissionedResolver is
     }
 
     /// @notice Set ABI data of the associated ENS node.
-    ///
     /// @param node The node to update.
     /// @param contentType The content type of the ABI.
     /// @param data The ABI data.
@@ -298,7 +322,6 @@ contract PermissionedResolver is
 
     /// @notice Set Ethereum mainnet address of the associated ENS node.
     ///         `address(0)` is stored as `new bytes(20)`.
-    ///
     /// @param node The node to update.
     /// @param addr_ The mainnet address.
     function setAddr(bytes32 node, address addr_) external {
@@ -306,7 +329,6 @@ contract PermissionedResolver is
     }
 
     /// @notice Set the contenthash of the associated ENS node.
-    ///
     /// @param node The node to update.
     /// @param hash The contenthash to set.
     function setContenthash(
@@ -318,7 +340,6 @@ contract PermissionedResolver is
     }
 
     /// @notice Set an interface of the associated ENS node.
-    ///
     /// @param node The node to update.
     /// @param interfaceId The EIP-165 interface ID.
     /// @param implementer The address of the contract that implements this interface for this node.
@@ -332,7 +353,6 @@ contract PermissionedResolver is
     }
 
     /// @notice Set the SECP256k1 public key associated with an ENS node.
-    ///
     /// @param node The node to update.
     /// @param x The x coordinate of the public key.
     /// @param y The y coordinate of the public key.
@@ -346,7 +366,6 @@ contract PermissionedResolver is
     }
 
     /// @notice Set the name of the associated ENS node.
-    ///
     /// @param node The node to update.
     /// @param primary The primary name.
     function setName(
@@ -358,7 +377,6 @@ contract PermissionedResolver is
     }
 
     /// @notice Set the text for `key` of the associated ENS node.
-    ///
     /// @param node The node to update.
     /// @param key The text key.
     /// @param value The text value.
@@ -381,8 +399,11 @@ contract PermissionedResolver is
     /// @notice Same as `multicall()`.
     /// @dev The node parameter is accepted for interface compatibility but is not used.
     ///      Permission checking is handled by individual function calls within the multicall.
+    /// @param {node} Ignored, for interface compatibility.
+    /// @param calls The calls to make.
+    /// @return results The results of the calls.
     function multicallWithNodeCheck(
-        bytes32,
+        bytes32 /* node */,
         bytes[] calldata calls
     ) external returns (bytes[] memory) {
         return multicall(calls);
@@ -428,14 +449,13 @@ contract PermissionedResolver is
     }
 
     /// @notice Get the current version.
-    ///
     /// @param node The node to check.
+    /// @return version The current version.
     function recordVersions(bytes32 node) external view returns (uint64) {
         return _versions[node];
     }
 
     /// @inheritdoc IABIResolver
-    // solhint-disable-next-line func-name-mixedcase
     function ABI(
         bytes32 node,
         uint256 contentTypes
@@ -495,6 +515,8 @@ contract PermissionedResolver is
 
     /// @notice Perform multiple write operations.
     /// @dev Reverts with first error.
+    /// @param calls The calls to make.
+    /// @return results The results of the calls.
     function multicall(bytes[] calldata calls) public returns (bytes[] memory results) {
         results = new bytes[](calls.length);
         for (uint256 i; i < calls.length; ++i) {
@@ -511,7 +533,6 @@ contract PermissionedResolver is
 
     /// @notice Set the address for `coinType` of the associated ENS node.
     ///         Reverts `InvalidEVMAddress` if coin type is EVM and not 0 or 20 bytes.
-    ///
     /// @param node The node to update.
     /// @param coinType The coin type.
     /// @param addressBytes The encoded address.
@@ -568,6 +589,10 @@ contract PermissionedResolver is
     }
 
     /// @notice Function is disabled.  Use `grant(Name|Text|Addr)Roles()` instead.
+    /// @param resource Ignored.
+    /// @param roleBitmap Ignored.
+    /// @param account Ignored.
+    /// @return success Ignored, always reverts.
     function grantRoles(
         uint256 resource,
         uint256 roleBitmap,
@@ -587,6 +612,7 @@ contract PermissionedResolver is
         //
     }
 
+    /// @dev HCA-compatible `_msgSender()`.
     function _msgSender()
         internal
         view
@@ -597,6 +623,8 @@ contract PermissionedResolver is
         return HCAContextUpgradeable._msgSender();
     }
 
+    /// @dev Returns the original `msg.data`.
+    ///      Needed to resolve Context/ContextUpgradable inheritance.
     function _msgData()
         internal
         view
@@ -607,6 +635,8 @@ contract PermissionedResolver is
         return msg.data;
     }
 
+    /// @dev Returns 0.
+    ///      Needed to resolve Context/ContextUpgradable inheritance.
     function _contextSuffixLength()
         internal
         view
@@ -618,9 +648,7 @@ contract PermissionedResolver is
     }
 
     /// @dev Apply one round of aliasing.
-    ///
     /// @param fromName The source DNS-encoded name.
-    ///
     /// @return matchName The alias that matched.
     /// @return toName The destination DNS-encoded name or empty if no match.
     function _resolveAlias(

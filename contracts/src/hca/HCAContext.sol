@@ -10,7 +10,7 @@ import {HCAEquivalence} from "./HCAEquivalence.sol";
 ///      calls in the contract (including inherited modifiers and access control) automatically
 ///      resolve HCA proxy accounts to their owners.
 abstract contract HCAContext is Context, HCAEquivalence {
-    /// @notice Returns either the account owner of an HCA or the original sender
+    /// @dev Returns either the account owner of an HCA or the original sender
     function _msgSender() internal view virtual override returns (address) {
         return _msgSenderWithHcaEquivalence();
     }

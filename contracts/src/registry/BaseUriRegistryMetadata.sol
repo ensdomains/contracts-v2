@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
@@ -32,10 +34,13 @@ contract BaseUriRegistryMetadata is EnhancedAccessControl, IRegistryMetadata {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes BaseUriRegistryMetadata, granting all roles to the caller.
+    /// @param hcaFactory The HCA factory.
     constructor(IHCAFactoryBasic hcaFactory) HCAEquivalence(hcaFactory) {
         _grantRoles(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, _msgSender(), true);
     }
 
+    /// @inheritdoc IERC165
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return
             interfaceId == type(IRegistryMetadata).interfaceId ||
@@ -57,8 +62,9 @@ contract BaseUriRegistryMetadata is EnhancedAccessControl, IRegistryMetadata {
 
     /// @notice Returns the metadata URI for the given token.
     /// @dev Because this implementation uses a single shared URI, the token ID parameter is ignored.
+    /// @param {tokenId} Ignored.
     /// @return The shared base URI.
-    function tokenUri(uint256 /*tokenId*/) external view returns (string memory) {
+    function tokenUri(uint256 /* tokenId */) external view returns (string memory) {
         return _tokenBaseUri;
     }
 }
