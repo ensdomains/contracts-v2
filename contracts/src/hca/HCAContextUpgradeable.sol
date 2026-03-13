@@ -5,9 +5,10 @@ import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Cont
 
 import {HCAEquivalence} from "./HCAEquivalence.sol";
 
-/// @dev Replaces msg.sender
+/// @dev Same as `HCAContext` but extends `ContextUpgradeable` for use in UUPS-upgradeable
+///      contracts. Used by `PermissionedResolver`.
 abstract contract HCAContextUpgradeable is ContextUpgradeable, HCAEquivalence {
-    /// @notice Returns either the account owner of an HCA or the original sender
+    /// @dev Returns either the account owner of an HCA or the original sender
     function _msgSender() internal view virtual override(ContextUpgradeable) returns (address) {
         return _msgSenderWithHcaEquivalence();
     }

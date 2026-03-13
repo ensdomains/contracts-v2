@@ -49,17 +49,27 @@ const renames: Record<string, string> = {
 };
 
 const contracts = {
+  // v2
   SimpleRegistryMetadata: artifacts.SimpleRegistryMetadata.abi,
   HCAFactory: artifacts.MockHCAFactoryBasic.abi,
   VerifiableFactory: artifacts.VerifiableFactory.abi,
-  OwnedResolverV2:
-    artifacts["src/resolver/OwnedResolver.sol/OwnedResolver"].abi,
-  UserRegistry: artifacts.UserRegistry.abi,
+  // core
+  RootRegistry: artifacts.PermissionedRegistry.abi,
   ETHRegistry: artifacts.PermissionedRegistry.abi,
+  // eth registrar
   ETHRegistrar: artifacts.ETHRegistrar.abi,
   StandardRentPriceOracle: artifacts.StandardRentPriceOracle.abi,
   MockUSDC: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
   MockDAI: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
+  // VerifiableFactory implementations
+  PermissionedResolverImpl: artifacts.PermissionedResolver.abi,
+  UserRegistryImpl: artifacts.UserRegistry.abi,
+  WrapperRegistryImpl: artifacts.WrapperRegistry.abi,
+  // resolvers
+  UniversalResolverV2: artifacts.UniversalResolverV2.abi,
+  DNSTLDResolver: artifacts.DNSTLDResolver.abi,
+  DNSTXTResolver: artifacts.DNSTXTResolver.abi,
+  DNSAliasResolver: artifacts.DNSAliasResolver.abi,
   // v1
   BatchGatewayProvider: artifacts.GatewayProvider.abi,
   RootV1: artifacts.Root.abi,
@@ -72,17 +82,9 @@ const contracts = {
   // v1 compat
   DefaultReverseRegistrar: artifacts.DefaultReverseRegistrar.abi,
   DefaultReverseResolver: artifacts.DefaultReverseResolver.abi,
-  //
-  MigratedWrappedNameRegistryImpl: artifacts.MigratedWrappedNameRegistry.abi,
-  //
-  UniversalResolverV2: artifacts.UniversalResolverV2.abi,
-  RootRegistry: artifacts.PermissionedRegistry.abi,
   // TODO: update to actual reverse registrar when we have it
   ETHReverseRegistrar: artifacts['lib/ens-contracts/contracts/reverseRegistrar/L2ReverseRegistrar.sol/L2ReverseRegistrar'].abi,
   ETHReverseResolver: artifacts.ETHReverseResolver.abi,
-  DNSTLDResolver: artifacts.DNSTLDResolver.abi,
-  DNSTXTResolver: artifacts.DNSTXTResolver.abi,
-  DNSAliasResolver: artifacts.DNSAliasResolver.abi,
 } as const satisfies DeployedArtifacts;
 
 export type StateSnapshot = () => Promise<void>;
@@ -200,7 +202,7 @@ export class DeploymentInstance<
       client: walletClient,
     });
   }
-  async deployOwnedResolver({
+  async deployPermissionedResolver({
     account,
     admin = account.address,
     roles = ROLES.ALL,
@@ -214,8 +216,8 @@ export class DeploymentInstance<
     return deployVerifiableProxy({
       walletClient: createClient(this.transport, this.client.chain, account),
       factoryAddress: this.contracts.VerifiableFactory.address,
-      implAddress: this.contracts.OwnedResolverV2.address,
-      abi: this.contracts.OwnedResolverV2.abi,
+      implAddress: this.contracts.PermissionedResolverImpl.address,
+      abi: this.contracts.PermissionedResolverImpl.abi,
       functionName: "initialize",
       args: [admin, roles],
       salt,
@@ -235,8 +237,8 @@ export class DeploymentInstance<
     return deployVerifiableProxy({
       walletClient: createClient(this.transport, this.client.chain, account),
       factoryAddress: this.contracts.VerifiableFactory.address,
-      implAddress: this.contracts.UserRegistry.address,
-      abi: this.contracts.UserRegistry.abi,
+      implAddress: this.contracts.UserRegistryImpl.address,
+      abi: this.contracts.UserRegistryImpl.abi,
       functionName: "initialize",
       args: [admin, roles],
       salt,
@@ -492,7 +494,7 @@ async function setupEnsDotEth(deployment: Deployment, account: Account) {
   // });
 
   // created owned resolver for "ens.eth"
-  const resolver = await deployment.deployOwnedResolver({ account });
+  const resolver = await deployment.deployPermissionedResolver({ account });
 
   // create "ens.eth"
   await deployment.contracts.ETHRegistry.write.register([
@@ -510,7 +512,7 @@ async function setupEnsDotEth(deployment: Deployment, account: Account) {
     "dnsname",
     await deployArtifact(deployment.client, {
       file: new URL(
-        "../test/integration/l1/dns/ExtendedDNSResolver_53f64de872aad627467a34836be1e2b63713a438.json",
+        "../test/integration/dns/ExtendedDNSResolver_53f64de872aad627467a34836be1e2b63713a438.json",
         import.meta.url,
       ),
     }),

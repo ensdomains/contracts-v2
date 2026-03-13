@@ -20,9 +20,9 @@ import {
     EACBaseRolesLib,
     RegistryRolesLib,
     NameCoder,
-    LibLabel,
-    InvalidOwner
+    LibLabel
 } from "~src/registry/PermissionedRegistry.sol";
+import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
@@ -57,6 +57,18 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.hasRootRoles(EACBaseRolesLib.ALL_ROLES, address(this)));
     }
 
+    function test_supportsInterface() external view {
+        assertTrue(registry.supportsInterface(type(IRegistry).interfaceId), "IRegistry");
+        assertTrue(
+            registry.supportsInterface(type(IStandardRegistry).interfaceId),
+            "IStandardRegistry"
+        );
+        assertTrue(
+            registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
+            "IPermissionedRegistry"
+        );
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // register()
     ////////////////////////////////////////////////////////////////////////
@@ -65,7 +77,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256 labelId = LibLabel.id(testLabel);
         uint256 expectedTokenId = LibLabel.withVersion(labelId, 0);
         vm.expectEmit();
-        emit IRegistry.NameRegistered(
+        emit IRegistryEvents.LabelRegistered(
             expectedTokenId,
             bytes32(labelId),
             testLabel,
@@ -78,9 +90,9 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(expectedTokenId, expectedTokenId);
         vm.expectEmit();
-        emit IRegistry.SubregistryUpdated(expectedTokenId, testRegistry, address(this));
+        emit IRegistryEvents.SubregistryUpdated(expectedTokenId, testRegistry, address(this));
         vm.expectEmit();
-        emit IRegistry.ResolverUpdated(expectedTokenId, testResolver, address(this));
+        emit IRegistryEvents.ResolverUpdated(expectedTokenId, testResolver, address(this));
         uint256 tokenId = this._register();
         assertEq(registry.getExpiry(tokenId), testExpiry, "expiry");
         assertEq(registry.ownerOf(tokenId), testOwner, "owner");
@@ -106,14 +118,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         testResolver = address(0);
         vm.recordLogs();
         this._register();
-        _expectNoEmit(vm.getRecordedLogs(), IRegistry.ResolverUpdated.selector);
+        _expectNoEmit(vm.getRecordedLogs(), IRegistryEvents.ResolverUpdated.selector);
     }
 
     function test_register_withNullRegistry() external {
         testRegistry = IRegistry(address(0));
         vm.recordLogs();
         this._register();
-        _expectNoEmit(vm.getRecordedLogs(), IRegistry.SubregistryUpdated.selector);
+        _expectNoEmit(vm.getRecordedLogs(), IRegistryEvents.SubregistryUpdated.selector);
     }
 
     function test_register_notAuthorized() external {
@@ -133,16 +145,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         this._register();
     }
 
-    function test_register_invalidOwner() external {
-        testOwner = address(0);
-        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
-        this._register();
-    }
-
-    function test_register_cannotSetPastExpiration() external {
+    function test_register_cannotSetPastExpiry() external {
         testExpiry = 0;
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.CannotSetPastExpiration.selector, testExpiry)
+            abi.encodeWithSelector(IStandardRegistry.CannotSetPastExpiry.selector, testExpiry)
         );
         this._register();
     }
@@ -162,25 +168,25 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function test_register_alreadyRegistered() external {
         this._register();
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.NameAlreadyRegistered.selector, testLabel)
+            abi.encodeWithSelector(IStandardRegistry.LabelAlreadyRegistered.selector, testLabel)
         );
         this._register();
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // reserve()
+    // reserve() == register() with null owner
     ////////////////////////////////////////////////////////////////////////
 
     function test_reserve() external {
         vm.expectEmit();
-        emit IRegistry.NameReserved(
+        emit IRegistryEvents.LabelReserved(
             LibLabel.withVersion(LibLabel.id(testLabel), 0),
             bytes32(LibLabel.id(testLabel)),
             testLabel,
             testExpiry,
             address(this)
         );
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         IPermissionedRegistry.State memory state = registry.getState(tokenId);
         assertEq(uint8(state.status), uint8(IPermissionedRegistry.Status.RESERVED), "reserved");
         assertEq(state.latestOwner, address(0), "owner");
@@ -190,21 +196,25 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_reserve_alreadyReserved() external {
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, actor);
         vm.expectRevert(
-            abi.encodeWithSelector(IPermissionedRegistry.NameAlreadyReserved.selector, testLabel)
+            abi.encodeWithSelector(IPermissionedRegistry.LabelAlreadyReserved.selector, testLabel)
         );
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
     }
 
     function test_reserve_alreadyRegistered() external {
         this._register();
-        registry.grantRootRoles(RegistryRolesLib.ROLE_RESERVE, actor);
+        registry.grantRootRoles(
+            RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_REGISTER_RESERVED,
+            actor
+        );
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.NameAlreadyRegistered.selector, testLabel)
+            abi.encodeWithSelector(IStandardRegistry.LabelAlreadyRegistered.selector, testLabel)
         );
         vm.prank(actor);
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
     }
 
     function test_reserve_notAuthorized() external {
@@ -212,39 +222,51 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
                 registry.ROOT_RESOURCE(),
-                RegistryRolesLib.ROLE_RESERVE,
+                RegistryRolesLib.ROLE_REGISTRAR,
                 actor
             )
         );
         vm.prank(actor);
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
         // retry with permissions
-        registry.grantRootRoles(RegistryRolesLib.ROLE_RESERVE, actor);
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, actor);
         vm.prank(actor);
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
+    }
+
+    function test_reserve_withRoles() external {
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                registry.ROOT_RESOURCE(),
+                testRoles,
+                address(this)
+            )
+        );
+        this._reserve();
     }
 
     function test_reserve_then_register() external {
-        registry.reserve(testLabel, testResolver, testExpiry);
+        this._reserve();
         this._register();
     }
 
     function test_reserve_then_register_notAuthorized() external {
-        registry.reserve(testLabel, testResolver, testExpiry);
-        // both ROLE_REGISTAR and ROLE_RESERVE are required
-        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, actor);
+        this._reserve();
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, actor); // insufficient
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
                 registry.ROOT_RESOURCE(),
-                RegistryRolesLib.ROLE_RESERVE,
+                RegistryRolesLib.ROLE_REGISTER_RESERVED,
                 actor
             )
         );
         vm.prank(actor);
         this._register();
         // retry with permissions
-        registry.grantRootRoles(RegistryRolesLib.ROLE_RESERVE, actor);
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTER_RESERVED, actor);
         vm.prank(actor);
         this._register();
     }
@@ -257,13 +279,13 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256 tokenId = this._register();
         ++testExpiry;
         vm.expectEmit();
-        emit IRegistry.ExpiryUpdated(tokenId, testExpiry, address(this));
+        emit IRegistryEvents.ExpiryUpdated(tokenId, testExpiry, address(this));
         registry.renew(tokenId, testExpiry);
         assertEq(registry.getExpiry(tokenId), testExpiry);
     }
 
     function test_renew_reserved() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         ++testExpiry;
         registry.renew(tokenId, testExpiry);
         assertEq(registry.getExpiry(tokenId), testExpiry);
@@ -271,7 +293,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_renew_available() external {
         uint256 tokenId = registry.getTokenId(LibLabel.id(testLabel));
-        vm.expectRevert(abi.encodeWithSelector(IStandardRegistry.NameExpired.selector, tokenId));
+        vm.expectRevert(abi.encodeWithSelector(IStandardRegistry.LabelExpired.selector, tokenId));
         registry.renew(tokenId, testExpiry);
     }
 
@@ -279,7 +301,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256 tokenId = this._register();
         vm.warp(testExpiry);
         testExpiry += testExpiry;
-        vm.expectRevert(abi.encodeWithSelector(IStandardRegistry.NameExpired.selector, tokenId));
+        vm.expectRevert(abi.encodeWithSelector(IStandardRegistry.LabelExpired.selector, tokenId));
         registry.renew(tokenId, testExpiry);
     }
 
@@ -301,12 +323,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.renew(tokenId, testExpiry);
     }
 
-    function test_renew_cannotReduceExpiration() external {
+    function test_renew_cannotReduceExpiry() external {
         uint256 tokenId = this._register();
         testExpiry -= 1;
         vm.expectRevert(
             abi.encodeWithSelector(
-                IStandardRegistry.CannotReduceExpiration.selector,
+                IStandardRegistry.CannotReduceExpiry.selector,
                 testExpiry + 1,
                 testExpiry
             )
@@ -345,14 +367,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_unregister_available() external {
         uint256 tokenId = registry.getTokenId(LibLabel.id(testLabel));
-        vm.expectRevert(abi.encodeWithSelector(IStandardRegistry.NameExpired.selector, tokenId));
+        vm.expectRevert(abi.encodeWithSelector(IStandardRegistry.LabelExpired.selector, tokenId));
         registry.unregister(tokenId);
     }
 
     function test_unregister_registered() external {
         uint256 tokenId = this._register();
         vm.expectEmit();
-        emit IRegistry.NameUnregistered(tokenId, address(this));
+        emit IRegistryEvents.LabelUnregistered(tokenId, address(this));
         vm.expectEmit();
         emit IERC1155.TransferSingle(address(this), testOwner, address(0), tokenId, 1);
         registry.unregister(tokenId);
@@ -368,10 +390,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_unregister_reserved() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         vm.recordLogs();
         vm.expectEmit();
-        emit IRegistry.NameUnregistered(tokenId, address(this));
+        emit IRegistryEvents.LabelUnregistered(tokenId, address(this));
         registry.unregister(tokenId);
         _expectNoEmit(vm.getRecordedLogs(), IERC1155.TransferSingle.selector);
     }
@@ -402,25 +424,55 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Transitions that require unregister()
+    // Transitions that require multiple actions
     ////////////////////////////////////////////////////////////////////////
 
-    function test_register_then_reserve() external {
-        uint256 tokenId = this._register();
-        registry.unregister(tokenId); // #1
-        registry.reserve(testLabel, testResolver, testExpiry); // #2
-    }
-
+    // REGISTERED => REGISTERED
     function test_register_then_register() external {
         uint256 tokenId = this._register();
         registry.unregister(tokenId); // #1
         this._register(); // #2
     }
 
-    function test_reserve_withReducedExpiry() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+    // REGISTERED => RESERVED
+    function test_register_then_reserve() external {
+        uint256 tokenId = this._register();
         registry.unregister(tokenId); // #1
-        registry.reserve(testLabel, testResolver, testExpiry >> 1); // #2
+        this._reserve(); // #2
+    }
+
+    // RESERVED => RESERVED
+    function test_reserve_then_reserve() external {
+        uint256 tokenId = this._reserve();
+        registry.unregister(tokenId); // #1
+        --testExpiry;
+        this._reserve(); // #2
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // setParent() and getParent()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_setParent() external {
+        vm.expectEmit();
+        emit IRegistryEvents.ParentUpdated(testRegistry, testLabel, address(this));
+        registry.setParent(testRegistry, testLabel);
+        (IRegistry parent, string memory label) = registry.getParent();
+        assertEq(address(parent), address(testRegistry), "parent");
+        assertEq(label, testLabel, "label");
+    }
+
+    function test_setParent_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_SET_PARENT,
+                user1
+            )
+        );
+        vm.prank(user1);
+        registry.setParent(IRegistry(address(1)), "abc");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -431,7 +483,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         testRoles = RegistryRolesLib.ROLE_SET_SUBREGISTRY;
         uint256 tokenId = this._register();
         vm.expectEmit();
-        emit IRegistry.SubregistryUpdated(tokenId, testRegistry, testOwner);
+        emit IRegistryEvents.SubregistryUpdated(tokenId, testRegistry, testOwner);
         vm.prank(testOwner);
         registry.setSubregistry(tokenId, testRegistry);
         vm.assertEq(address(registry.getSubregistry(testLabel)), address(testRegistry));
@@ -449,7 +501,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_setSubregistry_whileReserved() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         registry.setSubregistry(tokenId, testRegistry);
     }
 
@@ -479,7 +531,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
         uint256 tokenId = this._register();
         vm.expectEmit();
-        emit IRegistry.ResolverUpdated(tokenId, testResolver, testOwner);
+        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, testOwner);
         vm.prank(testOwner);
         registry.setResolver(tokenId, testResolver);
         vm.assertEq(registry.getResolver(testLabel), testResolver, "before");
@@ -497,7 +549,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_setResolver_whileReserved() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         registry.setResolver(tokenId, testResolver);
     }
 
@@ -618,7 +670,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_getState_reserved() external {
-        uint256 tokenId = registry.reserve(testLabel, testResolver, testExpiry);
+        uint256 tokenId = this._reserve();
         IPermissionedRegistry.State memory state = registry.getState(tokenId);
         assertEq(uint8(state.status), uint8(IPermissionedRegistry.Status.RESERVED), "status");
         assertEq(state.expiry, testExpiry, "expiry");
@@ -729,7 +781,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         );
     }
 
-    function test_getResource_root() external {
+    function test_getResource_rootNeverExpires() external view {
         assertEq(registry.getResource(registry.ROOT_RESOURCE()), registry.ROOT_RESOURCE());
     }
 
@@ -942,6 +994,19 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
                 testLabel,
                 testOwner,
                 testRegistry,
+                testResolver,
+                testRoles,
+                testExpiry
+            );
+    }
+
+    function _reserve() external returns (uint256) {
+        vm.prank(msg.sender); // propagate
+        return
+            registry.register(
+                testLabel,
+                address(0),
+                IRegistry(address(0)),
                 testResolver,
                 testRoles,
                 testExpiry

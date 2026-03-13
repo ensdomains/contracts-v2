@@ -1,54 +1,63 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {INameWrapper, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
-import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import {ERC165, IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {UnauthorizedCaller} from "../CommonErrors.sol";
+import {InvalidOwner, UnauthorizedCaller} from "../CommonErrors.sol";
+import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
-import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 
-import {MigrationData} from "./types/MigrationTypes.sol";
+import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
+import {LibMigration} from "./libraries/LibMigration.sol";
 
 /// @title UnlockedMigrationController
-/// @dev Contract for the v1-to-v2 migration controller that only handles unlocked .eth 2LD names.
-contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC165 {
+/// @notice Migration controller for handling unwrapped and unlocked .eth names.
+///
+/// Assumes premigration has `RESERVED` existing ENSv1 names.
+/// Requires `ROLE_REGISTER_RESERVED` on .eth registry to perform migration.
+///
+/// Supports (2) token sources:
+/// 1. NameWrapper (ERC-1155) but unlocked only.
+///    Reverts with `NameIsWrapped` if `_isLocked()` => use LockedMigrationController instead.
+/// 2. BaseRegistrar (ERC-721)
+///
+/// Unlike locked migration, no subregistry is deployed and no fuse-to-role translation is
+/// performed.  The name is registered in the .eth registry with the roles and subregistry
+/// specified in the caller-provided `LibMigration.Data`.
+///
+contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    INameWrapper public immutable NAME_WRAPPER;
-
+    /// @notice The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
-    ////////////////////////////////////////////////////////////////////////
-    // Errors
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Error selector: `0x4fa09b3f`
-    error TokenIdMismatch(uint256 tokenId, uint256 expectedTokenId);
-
-    /// @dev Error selector: `0x80da7148`
-    error MigrationNotSupported();
+    /// @dev The ENSv1 `BaseRegistrar` contract.
+    IBaseRegistrar internal immutable _REGISTRAR_V1;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor(INameWrapper nameWrapper, IPermissionedRegistry ethRegistry) {
-        NAME_WRAPPER = nameWrapper;
+    /// @notice Initializes UnlockedMigrationController.
+    /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
+    /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    constructor(
+        IPermissionedRegistry ethRegistry,
+        INameWrapper nameWrapper
+    ) AbstractWrapperReceiver(nameWrapper) {
         ETH_REGISTRY = ethRegistry;
+        _REGISTRAR_V1 = nameWrapper.registrar();
     }
 
-    /// Implements ERC165.supportsInterface
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(ERC165, IERC165) returns (bool) {
+    /// @inheritdoc IERC165
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
-            interfaceId == type(IERC1155Receiver).interfaceId ||
             interfaceId == type(IERC721Receiver).interfaceId ||
             super.supportsInterface(interfaceId);
     }
@@ -57,66 +66,36 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// Implements ERC1155Receiver.onERC1155Received
-    function onERC1155Received(
-        address /*operator*/,
-        address /*from*/,
-        uint256 tokenId,
-        uint256 /*amount*/,
-        bytes calldata data
-    ) external virtual returns (bytes4) {
-        if (msg.sender != address(NAME_WRAPPER)) {
-            revert UnauthorizedCaller(msg.sender);
-        }
-
-        (MigrationData memory migrationData) = abi.decode(data, (MigrationData));
-        MigrationData[] memory migrationDataArray = new MigrationData[](1);
-        migrationDataArray[0] = migrationData;
-
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = tokenId;
-
-        _migrateWrappedEthNames(tokenIds, migrationDataArray);
-
-        return this.onERC1155Received.selector;
-    }
-
-    /// Implements ERC1155Receiver.onERC1155BatchReceived
-    function onERC1155BatchReceived(
-        address /*operator*/,
-        address /*from*/,
-        uint256[] calldata tokenIds,
-        uint256[] calldata /*amounts*/,
-        bytes calldata data
-    ) external virtual returns (bytes4) {
-        if (msg.sender != address(NAME_WRAPPER)) {
-            revert UnauthorizedCaller(msg.sender);
-        }
-
-        (MigrationData[] memory migrationDataArray) = abi.decode(data, (MigrationData[]));
-
-        _migrateWrappedEthNames(tokenIds, migrationDataArray);
-
-        return this.onERC1155BatchReceived.selector;
-    }
-
-    /// @dev Implements ERC721Receiver.onERC721Received
-    ///
-    /// If this is called then it means an unwrapped .eth name is being migrated to v2.
+    /// @notice Receives an unwrapped .eth name via ERC721 `safeTransferFrom` from the `BaseRegistrar`.
+    ///         Decodes a single `LibMigration.Data` from `data` and registers the equivalent name in ENSv2.
+    /// @param {operator} Ignored.
+    /// @param {from} Ignored.
+    /// @param tokenId The BaseRegistrar token ID (labelhash) of the name being migrated.
+    /// @param data ABI-encoded `LibMigration.Data` struct containing migration parameters.
+    /// @return The selector of the `onERC721Received` function.
     function onERC721Received(
         address /*operator*/,
         address /*from*/,
         uint256 tokenId,
         bytes calldata data
-    ) external virtual returns (bytes4) {
-        if (msg.sender != address(NAME_WRAPPER.registrar())) {
+    ) external returns (bytes4) {
+        if (msg.sender != address(_REGISTRAR_V1)) {
             revert UnauthorizedCaller(msg.sender);
         }
-
-        (MigrationData memory migrationData) = abi.decode(data, (MigrationData));
-
-        _migrateNameToRegistry(tokenId, migrationData);
-
+        if (data.length < LibMigration.MIN_DATA_SIZE) {
+            revert LibMigration.InvalidData();
+        }
+        LibMigration.Data memory md = abi.decode(data, (LibMigration.Data)); // reverts if invalid
+        if (tokenId != uint256(keccak256(bytes(md.label)))) {
+            revert LibMigration.NameDataMismatch(tokenId);
+        }
+        // clear ENSv1 resolver
+        _REGISTRAR_V1.reclaim(tokenId, address(this));
+        _REGISTRY_V1.setResolver(
+            NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenId)),
+            address(0)
+        );
+        _inject(md);
         return this.onERC721Received.selector;
     }
 
@@ -124,51 +103,44 @@ contract UnlockedMigrationController is IERC1155Receiver, IERC721Receiver, ERC16
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Called when wrapped .eth 2LD names are being migrated to v2.
-    /// Only supports unlocked names - reverts for locked names.
-    ///
-    /// @param tokenIds The token IDs of the .eth names.
-    /// @param migrationDataArray The migration data for each .eth name.
-    function _migrateWrappedEthNames(
-        uint256[] memory tokenIds,
-        MigrationData[] memory migrationDataArray
-    ) internal {
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            (, uint32 fuses, ) = NAME_WRAPPER.getData(tokenIds[i]);
-
-            if (fuses & CANNOT_UNWRAP != 0) {
-                // Name is locked
-                revert MigrationNotSupported();
-            } else {
-                // Unwrap the unlocked name before migration
-                bytes32 labelHash = bytes32(tokenIds[i]);
-                NAME_WRAPPER.unwrapETH2LD(labelHash, address(this), address(this));
-                // Process migration
-                _migrateNameToRegistry(tokenIds[i], migrationDataArray[i]);
+    /// @inheritdoc AbstractWrapperReceiver
+    /// @dev Reverts `NameIsLocked` if any token is locked.
+    ///      Reverts `NameDataMismatch` if any token is mislabeled.
+    /// @param ids The NameWrapper token IDs (namehash) of the names to migrate.
+    /// @param mds The migration parameters for each name, indexed in parallel with `ids`.
+    function _migrateWrapped(
+        uint256[] calldata ids,
+        LibMigration.Data[] calldata mds
+    ) internal override {
+        for (uint256 i; i < ids.length; ++i) {
+            uint256 id = ids[i];
+            (, uint32 fuses, ) = NAME_WRAPPER.getData(id);
+            if (_isLocked(fuses)) {
+                revert LibMigration.NameIsLocked(id);
             }
+            bytes32 labelHash = keccak256(bytes(mds[i].label));
+            if (bytes32(id) != NameCoder.namehash(NameCoder.ETH_NODE, labelHash)) {
+                revert LibMigration.NameDataMismatch(id);
+            }
+            // clear ENSv1 resolver
+            NAME_WRAPPER.setResolver(bytes32(id), address(0));
+            _inject(mds[i]);
         }
     }
 
-    /// @dev Migrate a name to the registry.
-    ///
-    /// @param tokenId The token ID of the .eth name.
-    /// @param migrationData The migration data.
-    function _migrateNameToRegistry(uint256 tokenId, MigrationData memory migrationData) internal {
-        // Validate that tokenId matches the label hash
-        (bytes32 labelHash, ) = NameCoder.readLabel(migrationData.transferData.dnsEncodedName, 0);
-        if (tokenId != uint256(labelHash)) {
-            revert TokenIdMismatch(tokenId, uint256(labelHash));
+    /// @dev Claim premigrated reservation.
+    function _inject(LibMigration.Data memory md) internal {
+        if (md.owner == address(0)) {
+            revert InvalidOwner();
         }
-
         // Register the name in the ETH registry
-        string memory label = NameCoder.firstLabel(migrationData.transferData.dnsEncodedName);
         ETH_REGISTRY.register(
-            label,
-            migrationData.transferData.owner,
-            IRegistry(migrationData.transferData.subregistry),
-            migrationData.transferData.resolver,
-            migrationData.transferData.roleBitmap,
-            migrationData.transferData.expires
-        );
+            md.label,
+            md.owner,
+            md.subregistry,
+            md.resolver,
+            REGISTRATION_ROLE_BITMAP,
+            0 // use reserved expiry
+        ); // reverts if not RESERVED
     }
 }

@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+/// @dev Rewrites the `bytes32 node` parameter in resolver calldata. Resolver functions follow
+/// the convention `func(bytes32 node, ...)`, with the node at calldata offset 4. This library
+/// replaces that node in a memory copy of the calldata, recursively handling `multicall(bytes[])`
+/// (selector `0xac9650d8`) to rewrite the node in every nested call at arbitrary depth.
+///
+/// Used by `PermissionedResolver` when resolving aliased names: after determining the alias target,
+/// the original calldata must be updated with the new node before forwarding to the actual
+/// resolver logic.
+///
 library ResolverProfileRewriterLib {
     /// @dev Replace the node in the calldata with a new node.
-    ///      Supports `multicall()` to arbirary depth.
+    ///      Supports `multicall()` to arbitrary depth.
     /// @param call The calldata for a resolver.
     /// @param newNode The replacement node.
     /// @return copy A copy of the calldata with node replaced.

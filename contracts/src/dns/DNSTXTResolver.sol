@@ -89,6 +89,11 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
     ///
     /// Multicalling this contract directly will not include these values.
     ///
+    /// @param {name} Ignored.
+    /// @param data The ABI-encoded resolver call (selector + arguments) to answer.
+    /// @param context The human-readable context string from the `ENS1` TXT record, parsed by
+    ///        `DNSTXTParserLib`.
+    /// @return result The ABI-encoded response matching the requested resolver profile.
     function resolve(
         bytes calldata /* name */,
         bytes calldata data,
@@ -143,11 +148,9 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
     /// @dev Extract address from context according to coin type.
     ///      Reverts `InvalidHexData` if non-null and not a hex string.
     ///      Reverts `InvalidEVMAddress` if non-null, coin type is EVM, and address is not 20 bytes.
-    ///
     /// @param context The DNS context string.
     /// @param coinType The coin type.
     /// @param useDefault If true and address is null and coin type is EVM, use default EVM coin type.
-    ///
     /// @return v The address or null if not found.
     function _extractAddress(
         bytes memory context,
@@ -184,9 +187,7 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
 
     /// @dev Convert 0x-prefixed hex-string to bytes.
     ///      Reverts `InvalidHexData` if non-null and not a hex string.
-    ///
     /// @param s The string to parse.
-    ///
     /// @return v The parsed bytes.
     function _parse0xString(bytes memory s) internal pure returns (bytes memory v) {
         if (s.length > 0) {

@@ -11,18 +11,43 @@ import {HCAContext} from "../hca/HCAContext.sol";
 import {IEnhancedAccessControl} from "./interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "./libraries/EACBaseRolesLib.sol";
 
-/// @dev Access control system that allows for:
+/// @dev Resource-scoped access control system with bitmap-packed roles.
 ///
-///      - Resource-based roles.
-///      - Obtaining assignee count for each role in each resource.
-///      - Root resource override (0x0) - role assignments in the `ROOT_RESOURCE` auto-apply to all resources.
-///      - Up to 32 roles and 32 corresponding admin roles - stored as a bitmap in uint256 (see below).
-///      - Up to 15 assignees per role - stored as a bitmap in uint256 (64 * 4 bits = 256 bits) (see below).
+/// Subclasses define custom roles as constants and assign them to accounts within specific
+/// resources. A resource is an arbitrary uint256 identifier whose meaning is determined by
+/// the subclass (e.g. a token ID, a name hash, etc.).
 ///
-///      Role representation:
-///      - A role bitmap is a uint256, where the lower 128 bits represent the regular roles (0-31), and the upper 128 bits represent the admin roles (32-63) for those roles.
-///      - Each role is represented by a nybble (4 bits), in little-endian order.
-///      - If a given role left-most nybble bit is located at index N then the corresponding admin role nybble starts at bit position N << 128.
+/// Features:
+/// - Resource-based roles: each resource has independent role assignments.
+/// - ROOT_RESOURCE fallback: roles granted in `ROOT_RESOURCE` (0x0) automatically apply
+///   to all resources. Role checks OR the account's root roles with their resource-specific
+///   roles, so holding a role in either scope satisfies the check.
+/// - Admin roles: each regular role has a corresponding admin role. Holding an admin role
+///   grants authority to grant and revoke both the regular role and the admin role itself.
+/// - Assignee counting: per-role assignee counts are tracked, with a maximum of 15 per role.
+/// - Callbacks: subclasses can override `_onRolesGranted` and `_onRolesRevoked` to react
+///   to role changes (e.g. regenerating tokens, updating metadata).
+/// - Separate root operations: `grantRoles`/`revokeRoles` reject `ROOT_RESOURCE` directly;
+///   use `grantRootRoles`/`revokeRootRoles` for root-level assignments.
+///
+/// Bitmap layout (uint256, 64 nybbles):
+///
+///   255         128 127            0
+///   ┌──────────────┬───────────────┐
+///   │ Admin Roles  │ Regular Roles │
+///   └──────────────┴───────────────┘
+///   63           32 31             0
+///
+/// Each role occupies one nybble (4 bits). A regular role at nybble index N occupies bits
+/// N*4 to N*4+3, and its admin counterpart occupies the same relative position in the upper
+/// half at bits N*4+128 to N*4+131.
+///
+/// Defining roles: `uint256 constant MY_ROLE = 1 << (N * 4)` where N is the nybble index
+/// (0-31), and the admin role as `uint256 constant MY_ROLE_ADMIN = MY_ROLE << 128`.
+///
+/// The same nybble-per-role layout is used for assignee counting: each nybble in the count
+/// bitmap tracks the number of accounts holding that role within a resource (4 bits = max 15).
+///
 abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -41,8 +66,9 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @dev The number of assignees for a given role in a given resource.
     ///
-    ///      Each role's count is represented by 4 bits, in little-endian order.
-    ///      This results in max. 64 roles, and 15 assignees per role.
+    /// Each role's count is represented by 4 bits, in little-endian order.
+    /// This results in max. 64 roles, and 15 assignees per role.
+    ///
     mapping(uint256 resource => uint256 roleCount) private _roleCount;
 
     ////////////////////////////////////////////////////////////////////////
@@ -61,7 +87,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         _;
     }
 
-    /// @dev Modifier that checks that sender has all the given roles within the given resource.
+    /// @dev Modifier that checks that sender has all the given roles within the given resource or the ROOT_RESOURCE.
     modifier onlyRoles(uint256 resource, uint256 roleBitmap) {
         _checkRoles(resource, roleBitmap, _msgSender());
         _;
@@ -89,15 +115,10 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
-    /// @dev Grants all roles in the given role bitmap to `account`.
-    ///
-    /// The caller must have all the necessary admin roles for the roles being granted.
-    /// Cannot be used with ROOT_RESOURCE directly, use grantRootRoles instead.
-    ///
-    /// @param resource The resource to grant roles within.
-    /// @param roleBitmap The roles bitmap to grant.
-    /// @param account The account to grant roles to.
-    /// @return `true` if the roles were granted, `false` otherwise.
+
+    /// @inheritdoc IEnhancedAccessControl
+    /// @dev The caller must have all the necessary admin roles for the roles being granted.
+    ///      Cannot be used with ROOT_RESOURCE directly, use grantRootRoles instead.
     function grantRoles(
         uint256 resource,
         uint256 roleBitmap,
@@ -109,13 +130,8 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         return _grantRoles(resource, roleBitmap, account, true);
     }
 
-    /// @dev Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE.
-    ///
-    /// The caller must have all the necessary admin roles for the roles being granted.
-    ///
-    /// @param roleBitmap The roles bitmap to grant.
-    /// @param account The account to grant roles to.
-    /// @return `true` if the roles were granted, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
+    /// @dev The caller must have all the necessary admin roles for the roles being granted.
     function grantRootRoles(
         uint256 roleBitmap,
         address account
@@ -123,15 +139,9 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         return _grantRoles(ROOT_RESOURCE, roleBitmap, account, true);
     }
 
-    /// @dev Revokes all roles in the given role bitmap from `account`.
-    ///
-    /// The caller must have all the necessary admin roles for the roles being revoked.
-    /// Cannot be used with ROOT_RESOURCE directly, use revokeRootRoles instead.
-    ///
-    /// @param resource The resource to revoke roles within.
-    /// @param roleBitmap The roles bitmap to revoke.
-    /// @param account The account to revoke roles from.
-    /// @return `true` if the roles were revoked, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
+    /// @dev The caller must have all the necessary admin roles for the roles being revoked.
+    ///      Cannot be used with ROOT_RESOURCE directly, use revokeRootRoles instead.
     function revokeRoles(
         uint256 resource,
         uint256 roleBitmap,
@@ -143,13 +153,8 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         return _revokeRoles(resource, roleBitmap, account, true);
     }
 
-    /// @dev Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE.
-    ///
-    /// The caller must have all the necessary admin roles for the roles being revoked.
-    ///
-    /// @param roleBitmap The roles bitmap to revoke.
-    /// @param account The account to revoke roles from.
-    /// @return `true` if the roles were revoked, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
+    /// @dev The caller must have all the necessary admin roles for the roles being revoked.
     function revokeRootRoles(
         uint256 roleBitmap,
         address account
@@ -157,57 +162,38 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         return _revokeRoles(ROOT_RESOURCE, roleBitmap, account, true);
     }
 
-    /// @notice Returns the roles bitmap for an account in a resource.
+    /// @inheritdoc IEnhancedAccessControl
     function roles(uint256 resource, address account) public view virtual returns (uint256) {
         return _roles[resource][account];
     }
 
-    /// @notice Returns the role count bitmap for a resource.
+    /// @inheritdoc IEnhancedAccessControl
     function roleCount(uint256 resource) public view virtual returns (uint256) {
         return _roleCount[resource];
     }
 
-    /// @dev Returns `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`.
-    ///
-    /// @param rolesBitmap The roles bitmap to check.
-    /// @param account The account to check.
-    /// @return `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`, `false` otherwise.
-    function hasRootRoles(uint256 rolesBitmap, address account) public view virtual returns (bool) {
-        return _roles[ROOT_RESOURCE][account] & rolesBitmap == rolesBitmap;
+    /// @inheritdoc IEnhancedAccessControl
+    function hasRootRoles(uint256 roleBitmap, address account) public view virtual returns (bool) {
+        return _roles[ROOT_RESOURCE][account] & roleBitmap == roleBitmap;
     }
 
-    /// @dev Returns `true` if `account` has been granted all the given roles in `resource`.
-    ///
-    /// @param resource The resource to check.
-    /// @param rolesBitmap The roles bitmap to check.
-    /// @param account The account to check.
-    /// @return `true` if `account` has been granted all the given roles in either `resource` or the `ROOT_RESOURCE`, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
     function hasRoles(
         uint256 resource,
-        uint256 rolesBitmap,
+        uint256 roleBitmap,
         address account
     ) public view virtual returns (bool) {
         return
-            (_roles[ROOT_RESOURCE][account] | _roles[resource][account]) & rolesBitmap ==
-            rolesBitmap;
+            (_roles[ROOT_RESOURCE][account] | _roles[resource][account]) & roleBitmap == roleBitmap;
     }
 
-    /// @dev Get if any of the roles in the given role bitmap has assignees.
-    ///
-    /// @param resource The resource to check.
-    /// @param roleBitmap The roles bitmap to check.
-    /// @return `true` if any of the roles in the given role bitmap has assignees, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
     function hasAssignees(uint256 resource, uint256 roleBitmap) public view virtual returns (bool) {
         (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);
         return counts != 0;
     }
 
-    /// @dev Get the no. of assignees for the roles in the given role bitmap.
-    ///
-    /// @param resource The resource to check.
-    /// @param roleBitmap The roles bitmap to check.
-    /// @return counts The no. of assignees for each of the roles in the given role bitmap, expressed as a packed array of 4-bit ints.
-    /// @return mask The mask for the given role bitmap.
+    /// @inheritdoc IEnhancedAccessControl
     function getAssigneeCount(
         uint256 resource,
         uint256 roleBitmap
@@ -247,7 +233,6 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     }
 
     /// @dev Grants multiple roles to `account`.
-    ///
     /// @param resource The resource to grant roles within.
     /// @param roleBitmap The roles bitmap to grant.
     /// @param account The account to grant roles to.
@@ -259,6 +244,9 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         address account,
         bool executeCallbacks
     ) internal virtual returns (bool) {
+        if (roleBitmap == 0) {
+            return false;
+        }
         _checkRoleBitmap(roleBitmap);
         if (account == address(0)) {
             revert EACInvalidAccount();
@@ -281,7 +269,6 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     }
 
     /// @dev Attempts to revoke roles from `account` and returns a boolean indicating if roles were revoked.
-    ///
     /// @param resource The resource to revoke roles within.
     /// @param roleBitmap The roles bitmap to revoke.
     /// @param account The account to revoke roles from.
@@ -343,7 +330,6 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     }
 
     /// @dev Callback for when roles are granted.
-    ///
     /// @param resource The resource that the roles were granted within.
     /// @param account The account that the roles were granted to.
     /// @param oldRoles The old roles for the account.
@@ -360,7 +346,6 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     }
 
     /// @dev Callback for when roles are revoked.
-    ///
     /// @param resource The resource that the roles were revoked within.
     /// @param account The account that the roles were revoked from.
     /// @param oldRoles The old roles for the account.
@@ -432,7 +417,6 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     /// @dev Returns the revokable roles for `account` within `resource`.
     ///
     /// The revokable roles are the roles (including admin roles) that the account can revoke.
-    /// Unlike settable roles, this includes admin roles that can be revoked.
     ///
     /// @param resource The resource to get revokable roles for.
     /// @param account The account to get revokable roles for.
@@ -452,7 +436,6 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Checks if a role bitmap contains only valid role bits.
-    ///
     /// @param roleBitmap The role bitmap to check.
     function _checkRoleBitmap(uint256 roleBitmap) private pure {
         if ((roleBitmap & ~EACBaseRolesLib.ALL_ROLES) != 0) {
@@ -473,7 +456,6 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     }
 
     /// @dev Checks if the given value has any zero nybbles.
-    ///
     /// @param value The value to check.
     /// @return `true` if the value has any zero nybbles, `false` otherwise.
     function _hasZeroNybbles(uint256 value) private pure returns (bool) {

@@ -1,13 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+/// @dev Computes exponential decay `initial / 2^(elapsed / half)` using fixed-point arithmetic
+///      with 18-decimal precision. The elapsed/half ratio is decomposed into integer and fractional
+///      parts: the integer part is applied via right-shift, the fractional part via multiplication
+///      with precomputed constants.
 library LibHalving {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Fixed-point scale factor (10^18).
     uint256 private constant PRECISION = 1e18;
 
+    // solhint-disable natspec
+
+    /// @dev Precomputed values of `0.5^(2^k / 65536) * 10^18` for the corresponding power-of-two
+    ///      bit position. Together they compose any fractional power of 0.5 in 16-bit resolution
+    ///      via binary decomposition.
     uint256 private constant BIT1 = 999989423469314432; // 0.5 ^ 1/65536 * (10 ** 18)
     uint256 private constant BIT2 = 999978847050491904; // 0.5 ^ 2/65536 * (10 ** 18)
     uint256 private constant BIT3 = 999957694548431104;
@@ -24,6 +34,8 @@ library LibHalving {
     uint256 private constant BIT14 = 917004043204671232;
     uint256 private constant BIT15 = 840896415253714560;
     uint256 private constant BIT16 = 707106781186547584;
+
+    // solhint-enable natspec
 
     ////////////////////////////////////////////////////////////////////////
     // Library Functions
@@ -46,6 +58,9 @@ library LibHalving {
         return _addFraction(initial >> i, (f << 16) / PRECISION);
     }
 
+    /// @dev Applies the fractional part of the exponent by multiplying `x` with each precomputed
+    ///      constant whose corresponding bit is set in the 16-bit fraction, implementing
+    ///      `x * 0.5^(fraction / 65536)`.
     function _addFraction(uint256 x, uint256 fraction) private pure returns (uint256) {
         if (fraction & (1 << 0) != 0) {
             x = (x * BIT1) / PRECISION;

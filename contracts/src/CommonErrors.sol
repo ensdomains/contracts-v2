@@ -12,9 +12,3 @@ error InvalidOwner();
 /// @dev Error selector: `0xd86ad9cf`
 /// @param caller The address that attempted the unauthorized operation
 error UnauthorizedCaller(address caller);
-
-/// @notice Arrays have different lengths.
-/// @param length1 The first array length.
-/// @param length2 The second array length.
-/// @dev Error selector: `0xfa5dbe08`
-error ArrayLengthMismatch(uint256 length1, uint256 length2);

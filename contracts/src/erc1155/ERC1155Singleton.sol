@@ -1,8 +1,4 @@
 // SPDX-License-Identifier: MIT
-
-// ERC1155 implementation that supports only a single token per ID. Stores owner information to allow
-// fetching ownership information for a tokenId via `ownerOf`.
-// Portions from OpenZeppelin Contracts (token/ERC1155/ERC1155.sol)
 pragma solidity >=0.8.13;
 
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -19,6 +15,20 @@ import {HCAContext} from "../hca/HCAContext.sol";
 
 import {IERC1155Singleton} from "./interfaces/IERC1155Singleton.sol";
 
+/// @notice ERC1155 variant enforcing exactly one owner per token ID.
+///
+/// Instead of the standard nested balance mapping (`id → address → balance`), uses a flat
+/// `id → address` ownership mapping. `balanceOf` returns 1 if the account is the owner,
+/// 0 otherwise. Transferring value > 1 reverts.
+///
+/// Used by `PermissionedRegistry` to represent domain name ownership as non-divisible tokens.
+/// The registry overrides `ownerOf` to add expiry and version validation on top of raw ownership.
+///
+/// Inherits `HCAContext` so that `_msgSender()` resolves HCA proxy accounts to their real
+/// owners for approval checks and operator tracking.
+///
+/// @author OpenZeppelin (https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/token/ERC1155/ERC1155.sol)
+/// @dev This contract has been modified from the implementation at the above link.
 abstract contract ERC1155Singleton is
     HCAContext,
     ERC165,
@@ -33,14 +43,20 @@ abstract contract ERC1155Singleton is
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Maps each token ID to its single owner address.
     mapping(uint256 id => address account) private _owners;
 
+    /// @dev Standard ERC1155 operator approval mapping.
     mapping(address account => mapping(address operator => bool)) private _operatorApprovals;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice An approval for all operator was set.
+    /// @param owner The owner of the token.
+    /// @param approved The approved address.
+    /// @param tokenId The token ID.
     event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
 
     ////////////////////////////////////////////////////////////////////////
@@ -62,12 +78,24 @@ abstract contract ERC1155Singleton is
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev See {IERC1155-setApprovalForAll}.
+    /// @notice Sets the approval for all operator.
+    /// @param operator The operator to set the approval for.
+    /// @param approved The approval status.
     function setApprovalForAll(address operator, bool approved) public virtual {
         _setApprovalForAll(_msgSender(), operator, approved);
     }
 
-    /// @dev See {IERC1155-safeTransferFrom}.
+    /// @notice Transfers a single token from one address to another.
+    /// @param from The address to transfer the token from.
+    /// @param to The address to transfer the token to.
+    /// @param id The token ID.
+    /// @param value The amount of tokens to transfer.
+    /// @param data Additional data to pass to the receiver.
+    /// @dev `to` cannot be the zero address.
+    /// @dev If the caller is not `from`, it must have been approved to spend `from`'s tokens via `setApprovalForAll`.
+    /// @dev `from` must have a balance of tokens of type `id` of at least `value` amount.
+    /// @dev If `to` refers to a smart contract, it must implement IERC1155Receiver.onERC1155Received and return the
+    ///      acceptance magic value.
     function safeTransferFrom(
         address from,
         address to,
@@ -82,7 +110,15 @@ abstract contract ERC1155Singleton is
         _safeTransferFrom(from, to, id, value, data);
     }
 
-    /// @dev See {IERC1155-safeBatchTransferFrom}.
+    /// @notice Transfers multiple tokens from one address to another.
+    /// @param from The address to transfer the tokens from.
+    /// @param to The address to transfer the tokens to.
+    /// @param ids The token IDs.
+    /// @param values The amounts of tokens to transfer.
+    /// @param data Additional data to pass to the receiver.
+    /// @dev `ids` and `values` must have the same length.
+    /// @dev If `to` refers to a smart contract, it must implement IERC1155Receiver.onERC1155BatchReceived and return the
+    ///      acceptance magic value.
     function safeBatchTransferFrom(
         address from,
         address to,
@@ -97,22 +133,29 @@ abstract contract ERC1155Singleton is
         _safeBatchTransferFrom(from, to, ids, values, data);
     }
 
+    /// @inheritdoc IERC1155Singleton
     function ownerOf(uint256 id) public view virtual returns (address owner) {
         return _owners[id];
     }
 
-    function uri(uint256 /* id */) public view virtual returns (string memory);
+    /// @notice Returns the URI for a token.
+    /// @param id The token ID.
+    /// @return uri The URI for the token.
+    function uri(uint256 id) public view virtual returns (string memory uri);
 
-    /// @dev See {IERC1155-balanceOf}.
+    /// @notice Returns the balance of a token for an account.
+    /// @param account The account to get the balance for.
+    /// @param id The token ID.
+    /// @return balance The balance of the token for the account. This will only ever be 1 or 0.
     function balanceOf(address account, uint256 id) public view virtual returns (uint256) {
         return ownerOf(id) == account ? 1 : 0;
     }
 
-    /// @dev See {IERC1155-balanceOfBatch}.
-    ///
-    /// Requirements:
-    ///
-    /// - `accounts` and `ids` must have the same length.
+    /// @notice Returns the balances of a batch of tokens for an account.
+    /// @param accounts The accounts to get the balances for.
+    /// @param ids The token IDs.
+    /// @return batchBalances The balances of the tokens for the accounts. These will only ever be 1 or 0.
+    /// @dev `accounts` and `ids` must have the same length.
     function balanceOfBatch(
         address[] memory accounts,
         uint256[] memory ids
@@ -130,7 +173,10 @@ abstract contract ERC1155Singleton is
         return batchBalances;
     }
 
-    /// @dev See {IERC1155-isApprovedForAll}.
+    /// @notice Returns the approval for all operator.
+    /// @param account The account to get the approval for.
+    /// @param operator The operator to get the approval for.
+    /// @return approved The approval status.
     function isApprovedForAll(
         address account,
         address operator
@@ -142,18 +188,15 @@ abstract contract ERC1155Singleton is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Transfers a `value` amount of tokens of type `id` from `from` to `to`. Will mint (or burn) if `from`
-    /// (or `to`) is the zero address.
-    ///
-    /// Emits a {TransferSingle} event if the arrays contain one element, and {TransferBatch} otherwise.
-    ///
-    /// Requirements:
-    ///
-    /// - If `to` refers to a smart contract, it must implement either {IERC1155Receiver-onERC1155Received}
-    ///   or {IERC1155Receiver-onERC1155BatchReceived} and return the acceptance magic value.
-    /// - `ids` and `values` must have the same length.
-    ///
-    /// NOTE: The ERC-1155 acceptance check is not performed in this function. See {_updateWithAcceptanceCheck} instead.
+    /// @notice Apply token updates for each pair in `ids` and `values`.
+    /// @param from Address tokens are moved from. Use `address(0)` for mints.
+    /// @param to Address tokens are moved to. Use `address(0)` for burns.
+    /// @param ids Token IDs to update.
+    /// @param values Amounts for each token ID.
+    /// @dev Reverts with `ERC1155InvalidArrayLength` if `ids.length != values.length`.
+    /// @dev Reverts with `ERC1155InsufficientBalance` if `from` is not the current owner or `value > 1`.
+    /// @dev This function does not perform ERC-1155 receiver acceptance checks.
+    /// @dev Emits `TransferSingle` when one token ID is updated, otherwise emits `TransferBatch`.
     function _update(
         address from,
         address to,
@@ -190,13 +233,15 @@ abstract contract ERC1155Singleton is
         }
     }
 
-    /// @dev Version of {_update} that performs the token acceptance check by calling
-    /// {IERC1155Receiver-onERC1155Received} or {IERC1155Receiver-onERC1155BatchReceived} on the receiver address if it
-    /// contains code (eg. is a smart contract at the moment of execution).
-    ///
-    /// IMPORTANT: Overriding this function is discouraged because it poses a reentrancy risk from the receiver. So any
-    /// update to the contract state after this function would break the check-effect-interaction pattern. Consider
-    /// overriding {_update} instead.
+    /// @notice Apply token updates and run ERC-1155 receiver acceptance checks.
+    /// @param from Address tokens are moved from. Use `address(0)` for mints.
+    /// @param to Address tokens are moved to. Use `address(0)` for burns.
+    /// @param ids Token IDs to update.
+    /// @param values Amounts for each token ID.
+    /// @param data Additional calldata passed to receiver hooks.
+    /// @dev Calls `_update` before external receiver callbacks.
+    /// @dev If `to` is a contract, this calls `onERC1155Received` or `onERC1155BatchReceived`.
+    /// @dev Overriding is discouraged because post-callback state writes can introduce reentrancy bugs.
     function _updateWithAcceptanceCheck(
         address from,
         address to,
@@ -217,16 +262,16 @@ abstract contract ERC1155Singleton is
         }
     }
 
-    /// @dev Transfers a `value` tokens of token type `id` from `from` to `to`.
-    ///
-    /// Emits a {TransferSingle} event.
-    ///
-    /// Requirements:
-    ///
-    /// - `to` cannot be the zero address.
-    /// - `from` must have a balance of tokens of type `id` of at least `value` amount.
-    /// - If `to` refers to a smart contract, it must implement {IERC1155Receiver-onERC1155Received} and return the
-    /// acceptance magic value.
+    /// @notice Safely transfer `value` tokens of token ID `id` from `from` to `to`.
+    /// @param from Address to transfer from.
+    /// @param to Address to transfer to.
+    /// @param id Token ID to transfer.
+    /// @param value Amount to transfer.
+    /// @param data Additional calldata passed to receiver hooks.
+    /// @dev Reverts with `ERC1155InvalidSender` if `from` is the zero address.
+    /// @dev Reverts with `ERC1155InvalidReceiver` if `to` is the zero address.
+    /// @dev If `to` is a contract, it must return the ERC-1155 acceptance magic value.
+    /// @dev Emits `TransferSingle`.
     function _safeTransferFrom(
         address from,
         address to,
@@ -244,15 +289,17 @@ abstract contract ERC1155Singleton is
         _updateWithAcceptanceCheck(from, to, ids, values, data);
     }
 
-    /// @dev xref:ROOT:erc1155.adoc#batch-operations[Batched] version of {_safeTransferFrom}.
-    ///
-    /// Emits a {TransferBatch} event.
-    ///
-    /// Requirements:
-    ///
-    /// - If `to` refers to a smart contract, it must implement {IERC1155Receiver-onERC1155BatchReceived} and return the
-    /// acceptance magic value.
-    /// - `ids` and `values` must have the same length.
+    /// @notice Safely transfer multiple token IDs from `from` to `to`.
+    /// @param from Address to transfer from.
+    /// @param to Address to transfer to.
+    /// @param ids Token IDs to transfer.
+    /// @param values Amounts to transfer for each token ID.
+    /// @param data Additional calldata passed to receiver hooks.
+    /// @dev Reverts with `ERC1155InvalidSender` if `from` is the zero address.
+    /// @dev Reverts with `ERC1155InvalidReceiver` if `to` is the zero address.
+    /// @dev Reverts with `ERC1155InvalidArrayLength` if `ids.length != values.length`.
+    /// @dev If `to` is a contract, it must return the ERC-1155 acceptance magic value.
+    /// @dev Emits `TransferBatch`.
     function _safeBatchTransferFrom(
         address from,
         address to,
@@ -269,15 +316,14 @@ abstract contract ERC1155Singleton is
         _updateWithAcceptanceCheck(from, to, ids, values, data);
     }
 
-    /// @dev Creates a `value` amount of tokens of type `id`, and assigns them to `to`.
-    ///
-    /// Emits a {TransferSingle} event.
-    ///
-    /// Requirements:
-    ///
-    /// - `to` cannot be the zero address.
-    /// - If `to` refers to a smart contract, it must implement {IERC1155Receiver-onERC1155Received} and return the
-    /// acceptance magic value.
+    /// @notice Mint `value` tokens of token ID `id` to `to`.
+    /// @param to Address receiving the minted token.
+    /// @param id Token ID to mint.
+    /// @param value Amount to mint.
+    /// @param data Additional calldata passed to receiver hooks.
+    /// @dev Reverts with `ERC1155InvalidReceiver` if `to` is the zero address.
+    /// @dev If `to` is a contract, it must return the ERC-1155 acceptance magic value.
+    /// @dev Emits `TransferSingle`.
     function _mint(address to, uint256 id, uint256 value, bytes memory data) internal {
         if (to == address(0)) {
             revert ERC1155InvalidReceiver(address(0));
@@ -286,16 +332,15 @@ abstract contract ERC1155Singleton is
         _updateWithAcceptanceCheck(address(0), to, ids, values, data);
     }
 
-    /// @dev xref:ROOT:erc1155.adoc#batch-operations[Batched] version of {_mint}.
-    ///
-    /// Emits a {TransferBatch} event.
-    ///
-    /// Requirements:
-    ///
-    /// - `ids` and `values` must have the same length.
-    /// - `to` cannot be the zero address.
-    /// - If `to` refers to a smart contract, it must implement {IERC1155Receiver-onERC1155BatchReceived} and return the
-    /// acceptance magic value.
+    /// @notice Mint multiple token IDs to `to`.
+    /// @param to Address receiving the minted tokens.
+    /// @param ids Token IDs to mint.
+    /// @param values Amounts to mint for each token ID.
+    /// @param data Additional calldata passed to receiver hooks.
+    /// @dev Reverts with `ERC1155InvalidReceiver` if `to` is the zero address.
+    /// @dev Reverts with `ERC1155InvalidArrayLength` if `ids.length != values.length`.
+    /// @dev If `to` is a contract, it must return the ERC-1155 acceptance magic value.
+    /// @dev Emits `TransferBatch`.
     function _mintBatch(
         address to,
         uint256[] memory ids,
@@ -308,14 +353,13 @@ abstract contract ERC1155Singleton is
         _updateWithAcceptanceCheck(address(0), to, ids, values, data);
     }
 
-    /// @dev Destroys a `value` amount of tokens of type `id` from `from`
-    ///
-    /// Emits a {TransferSingle} event.
-    ///
-    /// Requirements:
-    ///
-    /// - `from` cannot be the zero address.
-    /// - `from` must have at least `value` amount of tokens of type `id`.
+    /// @notice Burn `value` tokens of token ID `id` from `from`.
+    /// @param from Address to burn from.
+    /// @param id Token ID to burn.
+    /// @param value Amount to burn.
+    /// @dev Reverts with `ERC1155InvalidSender` if `from` is the zero address.
+    /// @dev Reverts with `ERC1155InsufficientBalance` if `from` is not current owner or `value > 1`.
+    /// @dev Emits `TransferSingle`.
     function _burn(address from, uint256 id, uint256 value) internal {
         if (from == address(0)) {
             revert ERC1155InvalidSender(address(0));
@@ -324,15 +368,14 @@ abstract contract ERC1155Singleton is
         _updateWithAcceptanceCheck(from, address(0), ids, values, "");
     }
 
-    /// @dev xref:ROOT:erc1155.adoc#batch-operations[Batched] version of {_burn}.
-    ///
-    /// Emits a {TransferBatch} event.
-    ///
-    /// Requirements:
-    ///
-    /// - `from` cannot be the zero address.
-    /// - `from` must have at least `value` amount of tokens of type `id`.
-    /// - `ids` and `values` must have the same length.
+    /// @notice Burn multiple token IDs from `from`.
+    /// @param from Address to burn from.
+    /// @param ids Token IDs to burn.
+    /// @param values Amounts to burn for each token ID.
+    /// @dev Reverts with `ERC1155InvalidSender` if `from` is the zero address.
+    /// @dev Reverts with `ERC1155InvalidArrayLength` if `ids.length != values.length`.
+    /// @dev Reverts with `ERC1155InsufficientBalance` if `from` is not current owner or `value > 1`.
+    /// @dev Emits `TransferBatch`.
     function _burnBatch(address from, uint256[] memory ids, uint256[] memory values) internal {
         if (from == address(0)) {
             revert ERC1155InvalidSender(address(0));
@@ -340,13 +383,12 @@ abstract contract ERC1155Singleton is
         _updateWithAcceptanceCheck(from, address(0), ids, values, "");
     }
 
-    /// @dev Approve `operator` to operate on all of `owner` tokens
-    ///
-    /// Emits an {ApprovalForAll} event.
-    ///
-    /// Requirements:
-    ///
-    /// - `operator` cannot be the zero address.
+    /// @notice Set or clear approval for `operator` to manage all tokens owned by `owner`.
+    /// @param owner Token owner granting or revoking approval.
+    /// @param operator Operator receiving approval.
+    /// @param approved Approval status to set.
+    /// @dev Reverts with `ERC1155InvalidOperator` if `operator` is the zero address.
+    /// @dev Emits `ApprovalForAll`.
     function _setApprovalForAll(address owner, address operator, bool approved) internal virtual {
         if (operator == address(0)) {
             revert ERC1155InvalidOperator(address(0));
@@ -359,7 +401,9 @@ abstract contract ERC1155Singleton is
     // Private Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Creates an array in memory with only one value for each of the elements provided.
+    /// @dev Gas-optimized assembly helper that creates two length-1 memory arrays without Solidity's
+    ///      default zero-initialization overhead. Used to adapt single-token operations (`_mint`,
+    ///      `_burn`, `_safeTransferFrom`) to the array-based `_update` function.
     function _asSingletonArrays(
         uint256 element1,
         uint256 element2
