@@ -8,6 +8,6 @@ export default execute(
     });
   },
   {
-    tags: ["VerifiableFactory", "l1"],
+    tags: ["VerifiableFactory", "v2"],
   },
 );

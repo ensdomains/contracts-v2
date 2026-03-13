@@ -95,7 +95,7 @@ export default execute(
     });
   },
   {
-    tags: ["StandardRentPriceOracle", "l1"],
+    tags: ["StandardRentPriceOracle", "v2"],
     dependencies: ["MockTokens", "ETHRegistry"],
   },
 );

@@ -45,7 +45,7 @@ export default execute(
     });
   },
   {
-    tags: ["ETHRegistrar", "l1"],
+    tags: ["ETHRegistrar", "v2"],
     dependencies: ["HCAFactory", "ETHRegistry", "StandardRentPriceOracle"],
   },
 );

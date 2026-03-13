@@ -8,6 +8,6 @@ export default execute(
     });
   },
   {
-    tags: ["DNSTXTResolver", "l1"],
+    tags: ["DNSTXTResolver", "v2"],
   },
 );

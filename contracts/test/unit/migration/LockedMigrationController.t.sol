@@ -20,7 +20,7 @@ import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 
-import {UnauthorizedCaller} from "~src/CommonErrors.sol";
+import {InvalidOwner, UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
@@ -29,7 +29,6 @@ import {
     LockedMigrationController,
     IPermissionedRegistry
 } from "~src/migration/LockedMigrationController.sol";
-import {InvalidOwner, FUSES_TO_BURN} from "~src/migration/LockedWrapperReceiver.sol";
 import {
     IEnhancedAccessControl,
     EACBaseRolesLib
@@ -66,8 +65,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             metadata
         );
         migrationController = new LockedMigrationController(
-            ethRegistry,
             nameWrapper,
+            ethRegistry,
             verifiableFactory,
             address(wrapperRegistryImpl)
         );
@@ -168,11 +167,30 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_migrate_invalidReceiver() external {
+    function test_migrate_invalidOwner() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         LibMigration.Data memory md = _makeData(name);
         md.owner = address(0); // wrong
         vm.expectRevert(WrappedErrorLib.wrap(abi.encodeWithSelector(InvalidOwner.selector)));
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
+        );
+    }
+
+    function test_migrate_invalidReceiver() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        LibMigration.Data memory md = _makeData(name);
+        md.owner = address(ethRegistry); // not a IERC1155Receiver
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
+            )
+        );
         vm.prank(user);
         nameWrapper.safeTransferFrom(
             user,
@@ -249,9 +267,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         checkResolution(name, address(ensV2Resolver), address(ensV1Resolver));
         LibMigration.Data memory md = _makeData(name);
         bytes32 node = NameCoder.namehash(name, 0);
+        uint256 salt = uint256(node);
         address expectedRegistry = _computeVerifiableFactoryAddress(
             address(migrationController),
-            md.salt
+            salt
         );
         uint256 tokenIdV1 = LibLabel.id(md.label);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
@@ -277,7 +296,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         emit VerifiableFactory.ProxyDeployed(
             address(migrationController),
             expectedRegistry,
-            md.salt,
+            salt,
             address(wrapperRegistryImpl)
         );
         vm.expectEmit();
@@ -316,11 +335,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         vm.expectEmit();
         emit IRegistryEvents.ResolverUpdated(tokenId, md.resolver, address(migrationController));
-        vm.expectEmit();
-        emit INameWrapper.FusesSet(
-            node,
-            FUSES_TO_BURN | CANNOT_UNWRAP | PARENT_CANNOT_CONTROL | IS_DOT_ETH
-        );
         vm.prank(user);
         uint256 g = gasleft();
         nameWrapper.safeTransferFrom(
@@ -476,8 +490,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_migrate_lockedExpiry() external {
-        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP | CAN_EXTEND_EXPIRY);
+    function test_migrate_lockedFuses() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP | CANNOT_BURN_FUSES);
         LibMigration.Data memory md = _makeData(name);
 
         vm.prank(user);
@@ -490,18 +504,17 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
 
         uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
-        assertFalse(ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_RENEW, user));
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                tokenId,
-                RegistryRolesLib.ROLE_RENEW,
-                user
-            )
+        assertEq(
+            ethRegistry.roles(tokenId, user) & EACBaseRolesLib.ADMIN_ROLES,
+            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
+            "token"
         );
-        vm.prank(user);
-        ethRegistry.renew(tokenId, _soon());
+        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
+        assertEq(
+            registry.roles(registry.ROOT_RESOURCE(), user) & EACBaseRolesLib.ADMIN_ROLES,
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN | RegistryRolesLib.ROLE_RENEW_ADMIN,
+            "registry"
+        );
     }
 
     function test_migrate_lockedChildren() external {
@@ -542,31 +555,46 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_migrate_lockedFuses() external {
-        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP | CANNOT_BURN_FUSES);
-        LibMigration.Data memory md = _makeData(name);
+    function test_migrate_canExtendExpiry() external {
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes memory name3 = createWrappedChild(
+            name2,
+            "sub",
+            friend,
+            CANNOT_UNWRAP | PARENT_CANNOT_CONTROL | CAN_EXTEND_EXPIRY
+        );
 
+        // migrate 2LD
+        LibMigration.Data memory data2 = _makeData(name2);
         vm.prank(user);
         nameWrapper.safeTransferFrom(
             user,
             address(migrationController),
-            uint256(NameCoder.namehash(name, 0)),
+            uint256(NameCoder.namehash(name2, 0)),
             1,
-            abi.encode(md)
+            abi.encode(data2)
+        );
+        IWrapperRegistry registry2 = IWrapperRegistry(
+            address(ethRegistry.getSubregistry(data2.label))
         );
 
-        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
-        assertEq(
-            ethRegistry.roles(tokenId, user) & EACBaseRolesLib.ADMIN_ROLES,
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
-            "token"
+        // migrate 3LD
+        LibMigration.Data memory data3 = _makeData(name3);
+        vm.prank(friend);
+        nameWrapper.safeTransferFrom(
+            friend,
+            address(registry2),
+            uint256(NameCoder.namehash(name3, 0)),
+            1,
+            abi.encode(data3)
         );
-        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
-        assertEq(
-            registry.roles(registry.ROOT_RESOURCE(), user) & EACBaseRolesLib.ADMIN_ROLES,
-            RegistryRolesLib.ROLE_UPGRADE_ADMIN | RegistryRolesLib.ROLE_RENEW_ADMIN,
-            "registry"
-        );
+
+        uint256 tokenId = registry2.getTokenId(LibLabel.id(data3.label));
+        assertTrue(registry2.hasRoles(tokenId, RegistryRolesLib.ROLE_RENEW, friend), "ROLE_RENEW");
+
+        uint64 expiry = registry2.getExpiry(tokenId);
+        vm.prank(friend);
+        registry2.renew(tokenId, expiry + 1);
     }
 
     function test_migrate_emancipatedChildren() external {
@@ -574,11 +602,13 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         bytes memory name3 = createWrappedChild(
             name2,
             "sub",
+            friend,
             CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
         );
         bytes memory name3unmigrated = createWrappedChild(
             name2,
             "unmigrated",
+            friend,
             CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
         );
 
@@ -607,14 +637,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         // migrate 3LD
         LibMigration.Data memory data3 = _makeData(name3);
-        vm.expectEmit();
-        emit INameWrapper.FusesSet(
-            NameCoder.namehash(name3, 0),
-            FUSES_TO_BURN | CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
-        );
-        vm.prank(user);
+        vm.prank(friend);
         nameWrapper.safeTransferFrom(
-            user,
+            friend,
             address(registry2),
             uint256(NameCoder.namehash(name3, 0)),
             1,
@@ -637,22 +662,22 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectRevert(
             abi.encodeWithSelector(IStandardRegistry.LabelAlreadyRegistered.selector, data3.label)
         );
-        vm.prank(user);
+        vm.prank(friend);
         registry2.register(data3.label, user, IRegistry(address(0)), address(0), 0, _soon());
 
         // check unmigrated 3LD child
         vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));
-        vm.prank(user);
+        vm.prank(friend);
         registry2.register(
             NameCoder.firstLabel(name3unmigrated),
-            user,
+            friend,
             IRegistry(address(0)),
             address(0),
             0,
             _soon()
         );
 
-        vm.prank(user);
+        vm.prank(friend);
         nameWrapper.setResolver(NameCoder.namehash(name3unmigrated, 0), testResolver);
         checkResolution(name3unmigrated, testResolver, address(ensV1Resolver));
     }
@@ -661,10 +686,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         return
             LibMigration.Data({
                 label: NameCoder.firstLabel(name),
-                owner: user,
+                owner: nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))),
                 subregistry: IRegistry(address(0)), // ignored by LockedMigrationController
-                resolver: testResolver,
-                salt: uint256(keccak256(abi.encode(name, block.timestamp)))
+                resolver: testResolver
             });
     }
 }

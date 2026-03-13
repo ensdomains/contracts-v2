@@ -9,12 +9,18 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 /// * Root resource override
 /// * Up to 32 roles and 32 corresponding admin roles
 /// * Up to 15 assignees per role
+///
 /// @dev Interface selector: `0x8f452d62`
 interface IEnhancedAccessControl is IERC165 {
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Emitted when roles are changed.
+    /// @param resource The resource that the roles were changed within.
+    /// @param account The account that the roles were changed for.
+    /// @param oldRoleBitmap The old roles for the account.
+    /// @param newRoleBitmap The new roles for the account.
     event EACRolesChanged(
         uint256 indexed resource,
         address indexed account,
@@ -54,49 +60,82 @@ interface IEnhancedAccessControl is IERC165 {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Grants all roles in the given role bitmap to `account`.
+    /// @notice Grants all roles in the given role bitmap to `account`.
+    /// @param resource The resource to grant roles within.
+    /// @param roleBitmap The roles bitmap to grant.
+    /// @param account The account to grant roles to.
+    /// @return `true` if the roles were granted, `false` otherwise.
     function grantRoles(
         uint256 resource,
         uint256 roleBitmap,
         address account
     ) external returns (bool);
 
-    /// @dev Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE.
+    /// @notice Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE.
+    /// @param roleBitmap The roles bitmap to grant.
+    /// @param account The account to grant roles to.
+    /// @return `true` if the roles were granted, `false` otherwise.
     function grantRootRoles(uint256 roleBitmap, address account) external returns (bool);
 
-    /// @dev Revokes all roles in the given role bitmap from `account`.
+    /// @notice Revokes all roles in the given role bitmap from `account`.
+    /// @param resource The resource to revoke roles within.
+    /// @param roleBitmap The roles bitmap to revoke.
+    /// @param account The account to revoke roles from.
+    /// @return `true` if the roles were revoked, `false` otherwise.
     function revokeRoles(
         uint256 resource,
         uint256 roleBitmap,
         address account
     ) external returns (bool);
 
-    /// @dev Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE.
+    /// @notice Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE.
+    /// @param roleBitmap The roles bitmap to revoke.
+    /// @param account The account to revoke roles from.
+    /// @return `true` if the roles were revoked, `false` otherwise.
     function revokeRootRoles(uint256 roleBitmap, address account) external returns (bool);
 
-    /// @dev Returns the `ROOT_RESOURCE` constant.
+    /// @notice Returns the `ROOT_RESOURCE` constant.
     function ROOT_RESOURCE() external view returns (uint256);
 
-    /// @dev Returns the roles bitmap for an account in a resource.
+    /// @notice Returns the roles bitmap for an account in a resource.
+    /// @param resource The resource to get the roles for.
+    /// @param account The account to get the roles for.
+    /// @return The roles bitmap for the account in the resource.
     function roles(uint256 resource, address account) external view returns (uint256);
 
-    /// @dev Returns the role count bitmap for a resource.
+    /// @notice Returns the role count bitmap for a resource.
+    /// @param resource The resource to get the role count for.
+    /// @return count The role count bitmap for the resource.
     function roleCount(uint256 resource) external view returns (uint256);
 
-    /// @dev Returns `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`.
+    /// @notice Checks if the given account has been granted all the given roles in the `ROOT_RESOURCE`.
+    /// @param roleBitmap The roles bitmap to check.
+    /// @param account The account to check.
+    /// @return `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`, `false` otherwise.
     function hasRootRoles(uint256 roleBitmap, address account) external view returns (bool);
 
-    /// @dev Returns `true` if `account` has been granted all the given roles in `resource` or the `ROOT_RESOURCE`.
+    /// @notice Checks if the given account has been granted all the given roles in the given resource or the `ROOT_RESOURCE`.
+    /// @param resource The resource to check.
+    /// @param roleBitmap The roles bitmap to check.
+    /// @param account The account to check.
+    /// @return `true` if `account` has been granted all the given roles in the given resource or the `ROOT_RESOURCE`, `false` otherwise.
     function hasRoles(
         uint256 resource,
         uint256 roleBitmap,
         address account
     ) external view returns (bool);
 
-    /// @dev Get if any of the roles in the given role bitmap has assignees.
+    /// @notice Checks if any of the roles in the given role bitmap has assignees.
+    /// @param resource The resource to check.
+    /// @param roleBitmap The roles bitmap to check.
+    /// @return `true` if any of the roles in the given role bitmap has assignees, `false` otherwise.
     function hasAssignees(uint256 resource, uint256 roleBitmap) external view returns (bool);
 
-    /// @dev Get the no. of assignees for the roles in the given role bitmap.
+    /// @notice Returns the number of assignees for the roles in the given role bitmap.
+    /// @param resource The resource to check.
+    /// @param roleBitmap The roles bitmap to check.
+    /// @return counts The number of assignees for each of the roles in the given role bitmap, expressed as a packed array of 4-bit ints.
+    /// @return mask The mask for the given role bitmap.
     function getAssigneeCount(
         uint256 resource,
         uint256 roleBitmap

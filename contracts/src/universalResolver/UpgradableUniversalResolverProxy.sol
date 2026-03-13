@@ -6,18 +6,18 @@ import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 
 /// @title UpgradableUniversalResolverProxy
-/// @dev A specialized proxy for UniversalResolver that forwards method calls
-/// and properly handles CCIP-Read reverts. Admin can upgrade the implementation.
+/// @notice A specialized proxy for UniversalResolver that forwards method calls
+///         and properly handles CCIP-Read reverts. Admin can upgrade the implementation.
 contract UpgradableUniversalResolverProxy {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    // Storage slot for implementation address (EIP-1967 compatible)
+    /// @dev Storage slot for implementation address (EIP-1967 compatible)
     bytes32 private constant _IMPLEMENTATION_SLOT =
         0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
 
-    // Storage slot for admin (EIP-1967 compatible)
+    /// @dev Storage slot for admin (EIP-1967 compatible)
     bytes32 private constant _ADMIN_SLOT =
         0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103;
 
@@ -25,10 +25,17 @@ contract UpgradableUniversalResolverProxy {
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Event emitted when the implementation is upgraded.
+    /// @param implementation The new implementation address
     event Upgraded(address indexed implementation);
 
+    /// @notice Event emitted when the admin is changed.
+    /// @param previousAdmin The previous admin address
+    /// @param newAdmin The new admin address
     event AdminChanged(address indexed previousAdmin, address indexed newAdmin);
 
+    /// @notice Event emitted when the admin is removed.
+    /// @param admin The admin address that was removed
     event AdminRemoved(address indexed admin);
 
     ////////////////////////////////////////////////////////////////////////
@@ -58,7 +65,9 @@ contract UpgradableUniversalResolverProxy {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Initializes the proxy with an implementation and admin.
+    /// @notice Initializes the proxy with an implementation and admin.
+    /// @param admin_ The address of the admin
+    /// @param implementation_ The address of the implementation
     constructor(address admin_, address implementation_) {
         _validateImplementation(implementation_);
         _setImplementation(implementation_);
@@ -69,8 +78,8 @@ contract UpgradableUniversalResolverProxy {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Fallback function that handles forwarding calls to the implementation
-    /// and properly manages CCIP-Read reverts.
+    /// @notice Fallback function that handles forwarding calls to the implementation
+    ///         and properly manages CCIP-Read reverts.
     fallback() external {
         (bool ok, bytes memory v) = _getImplementation().staticcall(msg.data);
         if (!ok && bytes4(v) == OffchainLookup.selector) {
@@ -97,7 +106,7 @@ contract UpgradableUniversalResolverProxy {
         }
     }
 
-    /// @dev Upgrades to a new implementation.
+    /// @notice Upgrades to a new implementation.
     /// @param newImplementation Address of the new implementation
     function upgradeTo(address newImplementation) external onlyAdmin {
         _validateImplementation(newImplementation);
@@ -105,19 +114,19 @@ contract UpgradableUniversalResolverProxy {
         emit Upgraded(newImplementation);
     }
 
-    /// @dev Allows admin to revoke their admin rights by setting admin to address(0).
+    /// @notice Allows admin to revoke their admin rights by setting admin to address(0).
     function renounceAdmin() external onlyAdmin {
         address admin_ = _getAdmin();
         _setAdmin(address(0));
         emit AdminRemoved(admin_);
     }
 
-    /// @dev Returns the current implementation address.
+    /// @notice Returns the current implementation address.
     function implementation() external view returns (address) {
         return _getImplementation();
     }
 
-    /// @dev Returns the current admin address.
+    /// @notice Returns the current admin address.
     function admin() external view returns (address) {
         return _getAdmin();
     }

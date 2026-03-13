@@ -82,14 +82,22 @@ contract PermissionedRegistry is
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev The parent registry of this registry.
     IRegistry internal _parentRegistry;
+    /// @dev The child label of this registry.
     string internal _childLabel;
+    /// @dev The entries of this registry.
     mapping(uint256 storageId => Entry entry) internal _entries;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes the PermissionedRegistry.
+    /// @param hcaFactory The HCA factory to use.
+    /// @param metadata The metadata provider to use.
+    /// @param ownerAddress The address that will receive the specified roles.
+    /// @param ownerRoles The roles to grant to `ownerAddress`.
     constructor(
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadata,
