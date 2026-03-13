@@ -11,11 +11,36 @@
       "error",
       {
         "tags": {
-          "title": { "enabled": false, "skipInternal": false },
-          "author": { "enabled": false, "skipInternal": false },
-          "notice": { "enabled": true, "skipInternal": false },
-          "param": { "enabled": true, "skipInternal": false },
-          "return": { "enabled": true, "skipInternal": false }
+          "title": { "enabled": false },
+          "author": { "enabled": false },
+          "notice": {
+            "enabled": true,
+            "exclude": [
+              "function:internal",
+              "function:private",
+              "library",
+              "variable:internal",
+              "variable:private"
+            ]
+          },
+          "dev": {
+            "enabled": true,
+            "include": [
+              "function:internal",
+              "function:private",
+              "library",
+              "variable:internal",
+              "variable:private"
+            ]
+          },
+          "param": {
+            "enabled": true,
+            "exclude": ["function:internal", "function:private", "library"]
+          },
+          "return": {
+            "enabled": true,
+            "exclude": ["function:internal", "function:private", "library"]
+          }
         },
         "continuationIndent": "padded"
       }

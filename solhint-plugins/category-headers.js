@@ -419,6 +419,50 @@ class CategoryHeadersChecker {
       }
     }
 
+    // Category headers must have an empty line above and below
+    for (const block of blocks) {
+      const firstDividerIdx = block.lineIdx - 1;
+      const lastDividerIdx = block.lineIdx + 1;
+
+      // Check empty line above (skip if preceded by the contract opening brace)
+      const lineAboveIdx = firstDividerIdx - 1;
+      if (lineAboveIdx >= 0) {
+        const lineAbove = this._lines[lineAboveIdx];
+        const trimmedAbove = lineAbove.content.trim();
+        if (trimmedAbove !== "" && !trimmedAbove.endsWith("{")) {
+          const pos = this._lines[firstDividerIdx].start;
+          const preservedChar = this.inputSrc[pos] || "";
+          this.reporter.error(
+            node,
+            ruleId,
+            `Category header '${block.name}' must have an empty line above it`,
+            // Range end is inclusive in solhint's applyFixes
+            (fixer) =>
+              fixer.replaceTextRange([pos, pos], "\n" + preservedChar),
+          );
+        }
+      }
+
+      // Check empty line below (skip if followed by the contract closing brace)
+      const lineBelowIdx = lastDividerIdx + 1;
+      if (lineBelowIdx < this._lines.length) {
+        const lineBelow = this._lines[lineBelowIdx];
+        const trimmedBelow = lineBelow.content.trim();
+        if (trimmedBelow !== "" && trimmedBelow !== "}") {
+          const pos = lineBelow.start;
+          const preservedChar = this.inputSrc[pos] || "";
+          this.reporter.error(
+            node,
+            ruleId,
+            `Category header '${block.name}' must have an empty line below it`,
+            // Range end is inclusive in solhint's applyFixes
+            (fixer) =>
+              fixer.replaceTextRange([pos, pos], "\n" + preservedChar),
+          );
+        }
+      }
+    }
+
   }
 
   FunctionDefinition(node) {
