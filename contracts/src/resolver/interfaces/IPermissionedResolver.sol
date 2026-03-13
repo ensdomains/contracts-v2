@@ -11,6 +11,11 @@ interface IPermissionedResolver is IExtendedResolver, IEnhancedAccessControl {
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice An alias was changed.
+    /// @param indexedFromName The source DNS-encoded name. (indexed bytes, hashed)
+    /// @param indexedToName The destination DNS-encoded name. (indexed bytes, hashed)
+    /// @param fromName The source DNS-encoded name.
+    /// @param toName The destination DNS-encoded name.
     event AliasChanged(
         bytes indexed indexedFromName,
         bytes indexed indexedToName,
@@ -39,21 +44,17 @@ interface IPermissionedResolver is IExtendedResolver, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Initialize the contract.
-    ///
     /// @param admin The resolver owner.
     /// @param roleBitmap The roles granted to `admin`.
     function initialize(address admin, uint256 roleBitmap) external;
 
     /// @notice Create an alias from `fromName` to `toName`.
-    ///
     /// @param fromName The source DNS-encoded name.
     /// @param toName The destination DNS-encoded name.
     function setAlias(bytes calldata fromName, bytes calldata toName) external;
 
     /// @notice Determine which name is queried when `fromName` is resolved.
-    ///
     /// @param fromName The source DNS-encoded name.
-    ///
     /// @return toName The destination DNS-encoded name or empty if not aliased.
     function getAlias(bytes memory fromName) external view returns (bytes memory toName);
 }

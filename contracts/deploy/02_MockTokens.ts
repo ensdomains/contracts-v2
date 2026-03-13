@@ -20,7 +20,7 @@ export default execute(
     });
   },
   {
-    tags: ["MockTokens", "l1"],
+    tags: ["MockTokens", "v2"],
     dependencies: ["HCAFactory"],
   },
 );

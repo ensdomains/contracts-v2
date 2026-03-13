@@ -9,6 +9,6 @@ export default execute(
     });
   },
   {
-    tags: ["DNSSECGatewayProvider", "l1"],
+    tags: ["DNSSECGatewayProvider", "v2"],
   },
 );

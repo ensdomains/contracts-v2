@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { parseArgs } from "node:util";
-import { getAddress, toHex } from "viem";
+import { getAddress } from "viem";
 import { setupDevnet } from "./setup.js";
 import { testNames } from "./testNames.js";
 
@@ -47,19 +47,17 @@ console.log();
 console.log("Available Named Accounts:");
 console.table(env.accounts.map((x) => ({ Name: x.name, Address: x.address })));
 
-console.table({
-  [env.deployment.client.chain.name]: {
-    Chain: `${env.deployment.client.chain.id} (${toHex(env.deployment.client.chain.id)})`,
-    Endpoint: `{http,ws}://${env.deployment.hostPort}`,
-  },
-});
-
 console.table(
-  Object.entries(env.deployment.env.deployments).map(([name, { address }]) => ({
-    [env.deployment.client.chain.name]: name,
+  Object.entries(env.rocketh.deployments).map(([name, { address }]) => ({
+    "Contract Name": name,
     "Contract Address": getAddress(address),
   })),
 );
+
+console.log({
+  Chain: env.client.chain.id,
+  Endpoint: `{http,ws}://${env.hostPort}`,
+});
 
 if (args.values.testNames) {
   await testNames(env);

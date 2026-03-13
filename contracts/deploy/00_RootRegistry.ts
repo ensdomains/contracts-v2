@@ -1,5 +1,5 @@
 import { artifacts, execute } from "@rocketh";
-import { ROLES } from "../script/deploy-constants.js";
+import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
 
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer } }) => {
@@ -13,11 +13,16 @@ export default execute(
     await deploy("RootRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
-      args: [hcaFactory.address, registryMetadata.address, deployer, ROLES.ALL],
+      args: [
+        hcaFactory.address,
+        registryMetadata.address,
+        deployer,
+        DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
+      ],
     });
   },
   {
-    tags: ["RootRegistry", "l1"],
+    tags: ["RootRegistry", "v2"],
     dependencies: ["HCAFactory", "RegistryMetadata"],
   },
 );
