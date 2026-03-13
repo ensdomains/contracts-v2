@@ -11,12 +11,16 @@ import {LibRegistry, IRegistry} from "./libraries/LibRegistry.sol";
 /// @notice ENS Universal Resolver that traverses the namechain registry hierarchy to locate
 ///         resolvers and registries for any DNS-encoded name.
 contract UniversalResolverV2 is AbstractUniversalResolver {
+    /// @notice The ENSv2 root registry.
     IRegistry public immutable ROOT_REGISTRY;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes the UniversalResolverV2 with the root registry and batch gateway provider.
+    /// @param root The root registry.
+    /// @param batchGatewayProvider The batch gateway provider.
     constructor(
         IRegistry root,
         IGatewayProvider batchGatewayProvider

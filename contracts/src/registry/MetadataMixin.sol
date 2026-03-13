@@ -15,16 +15,16 @@ abstract contract MetadataMixin {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Initializes the mixin with a metadata provider
-    /// @param metadataProvider_ Address of the metadata provider contract
-    constructor(IRegistryMetadata metadataProvider_) {
-        METADATA_PROVIDER = metadataProvider_;
+    /// @param metadataProvider Address of the metadata provider contract
+    constructor(IRegistryMetadata metadataProvider) {
+        METADATA_PROVIDER = metadataProvider;
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Returns the token URI for a given token ID
+    /// @dev Returns the token URI for a given token ID
     /// @param tokenId The ID of the token to query
     /// @return URI string for the token metadata
     function _tokenURI(uint256 tokenId) internal view virtual returns (string memory) {

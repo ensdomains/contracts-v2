@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 
-/// @notice Library for parsing ENS records from DNS TXT data.
+/// @dev Library for parsing ENS records from DNS TXT data.
 ///
 /// The record data consists of a series of key=value pairs, separated by spaces. Keys
 /// may have an optional argument in square brackets, and values may be either unquoted
@@ -37,11 +37,17 @@ library DNSTXTParserLib {
         IGNORED_UNQUOTED_VALUE
     }
 
-    bytes1 private constant CH_BACKSLASH = bytes1(0x5C); // "\"
+    /// @dev The codepoint for the `\` character.
+    bytes1 private constant CH_BACKSLASH = bytes1(0x5C);
+    /// @dev The codepoint for the `'` character.
     bytes1 private constant CH_QUOTE = "'";
+    /// @dev The codepoint for the ` ` character.
     bytes1 private constant CH_SPACE = " ";
+    /// @dev The codepoint for the `=` character.
     bytes1 private constant CH_EQUAL = "=";
+    /// @dev The codepoint for the `[` character.
     bytes1 private constant CH_ARG_OPEN = "[";
+    /// @dev The codepoint for the `]` character.
     bytes1 private constant CH_ARG_CLOSE = "]";
 
     ////////////////////////////////////////////////////////////////////////

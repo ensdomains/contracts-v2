@@ -5,7 +5,8 @@ pragma solidity >=0.8.25;
 
 /// @dev Low-level memory helpers for copying, pointer conversion, and word loading.
 library LibMem {
-    bool public constant REMAPPED = true;
+    /// @dev If true, LibMem uses mcopy.
+    bool internal constant REMAPPED = true;
 
     /// @dev Copy `mem[src:src+len]` to `mem[dst:dst+len]`.
     /// @param src The source memory offset.

@@ -46,7 +46,7 @@ library LibRegistry {
         node = NameCoder.namehash(node, labelHash); // update namehash
     }
 
-    /// @notice Find (registry, resolver) for `name[offset:]` starting from
+    /// @dev Find (registry, resolver) for `name[offset:]` starting from
     ///         (parentRegistry, parentResolver) for `name[:parentOffset]`.
     /// @param name The DNS-encoded name to search.
     /// @param offset The offset into `name` to begin the search.
@@ -86,7 +86,7 @@ library LibRegistry {
         }
     }
 
-    /// @notice Construct the canonical name for `registry`.
+    /// @dev Construct the canonical name for `registry`.
     /// @param rootRegistry The root ENS registry.
     /// @param registry The registry to name.
     /// @return name The DNS-encoded name or empty if not canonical.
@@ -114,7 +114,7 @@ library LibRegistry {
         }
     }
 
-    /// @notice Find the registry for `name` and return it iff it is canonical for that name.
+    /// @dev Find the registry for `name` and return it iff it is canonical for that name.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name.
     /// @return The canonical registry or null if not canonical.
@@ -131,7 +131,7 @@ library LibRegistry {
                 : IRegistry(address(0));
     }
 
-    /// @notice Find the exact registry for `name[offset:]`.
+    /// @dev Find the exact registry for `name[offset:]`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
     /// @return exactRegistry The exact registry or null if not found.
@@ -151,7 +151,7 @@ library LibRegistry {
         }
     }
 
-    /// @notice Find the parent registry for `name[offset:]`.
+    /// @dev Find the parent registry for `name[offset:]`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
     /// @return parentRegistry The parent registry or null if not found.
@@ -166,7 +166,7 @@ library LibRegistry {
         }
     }
 
-    /// @notice Find all registries in the ancestry of `name`.
+    /// @dev Find all registries in the ancestry of `name`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name.
     /// @param offset The offset into `name` to begin the search.

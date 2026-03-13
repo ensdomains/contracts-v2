@@ -58,20 +58,20 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The permissioned registry used to look up name state (expiry, latest owner) for premium and discount calculations.
+    /// @notice The permissioned registry used to look up name state (expiry, latest owner) for premium and discount calculations.
     IPermissionedRegistry public immutable REGISTRY;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Starting value of the exponential decay premium for recently expired names, in base pricing units.
+    /// @notice Starting value of the exponential decay premium for recently expired names, in base pricing units.
     uint256 public premiumPriceInitial;
 
-    /// @dev Number of seconds for the premium to halve in value.
+    /// @notice Number of seconds for the premium to halve in value.
     uint64 public premiumHalvingPeriod;
 
-    /// @dev Total duration of the premium window; the premium reaches zero at this offset from expiry.
+    /// @notice Total duration of the premium window; the premium reaches zero at this offset from expiry.
     uint64 public premiumPeriod;
 
     /// @dev Per-second base rates indexed by codepoint count; `_baseRatePerCp[i]` prices labels with `i+1` codepoints.
@@ -88,12 +88,17 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Discount points were changed.
+    /// @param points The new discount points.
     event DiscountPointsChanged(DiscountPoint[] points);
 
     /// @notice Base rates were changed.
+    /// @param ratePerCp The new base rates.
     event BaseRatesChanged(uint256[] ratePerCp);
 
     /// @notice Premium pricing was changed.
+    /// @param initialPrice The new initial price.
+    /// @param halvingPeriod The new halving period.
+    /// @param period The new period.
     event PremiumPricingChanged(
         uint256 indexed initialPrice,
         uint64 indexed halvingPeriod,
@@ -116,6 +121,15 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes StandardRentPriceOracle.
+    /// @param owner_ The owner of the contract.
+    /// @param registry The permissioned registry.
+    /// @param baseRatePerCp The initial base rates, in base units per second.
+    /// @param discountPoints The initial discount points.
+    /// @param premiumPriceInitial_ The initial price, in base units.
+    /// @param premiumHalvingPeriod_ The initial premium halving period, in seconds.
+    /// @param premiumPeriod_ The initial premium period, in seconds.
+    /// @param paymentRatios The initial payment ratios, mapping payment token to its numerator/denominator ratio.
     constructor(
         address owner_,
         IPermissionedRegistry registry,
@@ -173,16 +187,17 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     }
 
     /// @notice Update the discount function.
-    ///
     /// @dev - Each point is (∆t, intervalDiscount).
-    ///      - Discounts are relative to `type(uint128).max`.
-    ///      - Given an average discount, solve for the corresponding interval:
-    ///        * Assume: 1yr at 0% discount
-    ///        * Solve: 2yr * 5% == 1yr * 0% + 1yr * x => x = 10.00%
-    //         * Point: (1yr, 10%) == (1 years, type(uint128).max / 10)
-    ///      - Final discount is the derived from the weighted average over the intervals.
-    ///      - Use empty array to disable.
-    ///      - Emits `DiscountPointsChanged`.
+    /// - Discounts are relative to `type(uint128).max`.
+    /// - Given an average discount, solve for the corresponding interval:
+    ///   * Assume: 1yr at 0% discount
+    ///   * Solve: 2yr * 5% == 1yr * 0% + 1yr * x => x = 10.00%
+    ///   * Point: (1yr, 10%) == (1 years, type(uint128).max / 10)
+    /// - Final discount is the derived from the weighted average over the intervals.
+    /// - Use empty array to disable.
+    /// - Emits `DiscountPointsChanged`.
+    ///
+    /// @param points The new discount points.
     function updateDiscountPoints(DiscountPoint[] calldata points) external onlyOwner {
         _setDiscountPoints(points);
     }
@@ -211,9 +226,13 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
 
     /// @notice Update `paymentToken` support and/or exchange rate.
     /// @dev - Use `denom = 0` to remove.
-    ///      - Emits `PaymentTokenAdded` if now supported.
-    ///      - Emits `PaymentTokenRemoved` if no longer supported.
-    ///      - Reverts if invalid exchange rate.
+    /// - Emits `PaymentTokenAdded` if now supported.
+    /// - Emits `PaymentTokenRemoved` if no longer supported.
+    /// - Reverts if invalid exchange rate.
+    ///
+    /// @param paymentToken The payment token.
+    /// @param numer The numerator of the exchange rate.
+    /// @param denom The denominator of the exchange rate.
     function updatePaymentToken(
         IERC20 paymentToken,
         uint128 numer,
@@ -234,12 +253,12 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         }
     }
 
-    /// @notice Get all base rates, in base units per second.
+    /// @notice Returns all base rates, in base units per second.
     function getBaseRates() external view returns (uint256[] memory) {
         return _baseRatePerCp;
     }
 
-    /// @notice Get all discount function points.
+    /// @notice Returns all discount function points.
     function getDiscountPoints() external view returns (DiscountPoint[] memory) {
         return _discountPoints;
     }
@@ -289,6 +308,8 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     }
 
     /// @notice Get premium price for an expiry relative to now.
+    /// @param expiry The expiry time, in seconds.
+    /// @return The premium price, in base units.
     function premiumPrice(uint64 expiry) public view returns (uint256) {
         uint64 t = uint64(block.timestamp);
         return t >= expiry ? premiumPriceAfter(t - expiry) : 0;

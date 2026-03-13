@@ -12,10 +12,10 @@ pragma solidity ^0.8.20;
 ///
 library EACBaseRolesLib {
     /// @dev Mask with bit 0 set in every nybble — represents one unit per role slot across all 64 slots.
-    uint256 public constant ALL_ROLES =
+    uint256 internal constant ALL_ROLES =
         0x1111111111111111111111111111111111111111111111111111111111111111;
 
     /// @dev Mask selecting only the 32 admin role nybbles (upper 128 bits).
-    uint256 public constant ADMIN_ROLES =
+    uint256 internal constant ADMIN_ROLES =
         0x1111111111111111111111111111111100000000000000000000000000000000;
 }

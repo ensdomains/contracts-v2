@@ -57,25 +57,25 @@ contract DNSTLDResolver is
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The ENSv1 registry, used to check for existing resolvers on mainnet before falling
-    ///      back to DNSSEC resolution.
+    /// @notice The ENSv1 registry, used to check for existing resolvers on mainnet before falling
+    ///         back to DNSSEC resolution.
     ENS public immutable ENS_REGISTRY_V1;
 
-    /// @dev The v1 DNS TLD resolver address. If the v1 registry points to this resolver (or to
-    ///      this contract), the name is considered unresolved in v1 and DNSSEC fallback is used.
+    /// @notice The v1 DNS TLD resolver address. If the v1 registry points to this resolver (or to
+    ///         this contract), the name is considered unresolved in v1 and DNSSEC fallback is used.
     address public immutable DNS_TLD_RESOLVER_V1;
 
-    /// @dev The ENSv2 root registry, used to resolve names parsed from `ENS1` TXT records.
+    /// @notice The ENSv2 root registry, used to resolve names parsed from `ENS1` TXT records.
     IRegistry public immutable ROOT_REGISTRY;
 
-    /// @dev The DNSSEC oracle contract that verifies signed DNS resource-record sets.
+    /// @notice The DNSSEC oracle contract that verifies signed DNS resource-record sets.
     DNSSEC public immutable DNSSEC_ORACLE;
 
-    /// @dev Gateway provider for the DNSSEC oracle CCIP-Read queries.
+    /// @notice Gateway provider for the DNSSEC oracle CCIP-Read queries.
     IGatewayProvider public immutable ORACLE_GATEWAY_PROVIDER;
 
-    /// @dev Gateway provider for batch CCIP-Read calls when forwarding resolution to downstream
-    ///      resolvers.
+    /// @notice Gateway provider for batch CCIP-Read calls when forwarding resolution to downstream
+    ///         resolvers.
     IGatewayProvider public immutable BATCH_GATEWAY_PROVIDER;
 
     ////////////////////////////////////////////////////////////////////////
@@ -90,6 +90,13 @@ contract DNSTLDResolver is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes DNSTLDResolver.
+    /// @param ensRegistryV1 The ENSv1 registry.
+    /// @param dnsTLDResolverV1 The v1 DNS TLD resolver address.
+    /// @param rootRegistry The ENSv2 root registry.
+    /// @param dnssecOracle The DNSSEC oracle contract.
+    /// @param oracleGatewayProvider The gateway provider for the DNSSEC oracle CCIP-Read queries.
+    /// @param batchGatewayProvider The gateway provider for batch CCIP-Read calls when forwarding resolution to downstream resolvers.
     constructor(
         ENS ensRegistryV1,
         address dnsTLDResolverV1,
@@ -147,6 +154,9 @@ contract DNSTLDResolver is
     }
 
     /// @notice CCIP-Read callback for `getDNSSECRecords()`.
+    /// @param response The response data.
+    /// @param name The DNS-encoded name.
+    /// @return txts The verified DNSSEC TXT records.
     function getDNSSECRecordsCallback(
         bytes calldata response,
         bytes calldata name
@@ -211,6 +221,10 @@ contract DNSTLDResolver is
     }
 
     /// @notice CCIP-Read callback for `getResolver()`.
+    /// @param response The response data.
+    /// @param name The DNS-encoded name.
+    /// @return resolver The underlying resolver address.
+    /// @return offchain `true` if `resolver` is offchain.
     function getResolverCallback(
         bytes calldata response,
         bytes calldata name
@@ -222,6 +236,9 @@ contract DNSTLDResolver is
     /// @notice Resolve `name` using ENSv1 or DNSSEC.
     ///         Caller should enable EIP-3668.
     /// @dev This function executes over multiple steps.
+    /// @param name The DNS-encoded name.
+    /// @param data The data to resolve.
+    /// @return The abi-encoded result from the resolver.
     function resolve(
         bytes calldata name,
         bytes calldata data

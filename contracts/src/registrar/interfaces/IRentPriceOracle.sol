@@ -11,9 +11,11 @@ interface IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice `paymentToken` is now supported.
+    /// @param paymentToken The payment token added.
     event PaymentTokenAdded(IERC20 indexed paymentToken);
 
     /// @notice `paymentToken` is no longer supported.
+    /// @param paymentToken The payment token removed.
     event PaymentTokenRemoved(IERC20 indexed paymentToken);
 
     ////////////////////////////////////////////////////////////////////////

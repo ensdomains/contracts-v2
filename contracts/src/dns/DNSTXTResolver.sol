@@ -89,6 +89,7 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
     ///
     /// Multicalling this contract directly will not include these values.
     ///
+    /// @param {name} Ignored.
     /// @param data The ABI-encoded resolver call (selector + arguments) to answer.
     /// @param context The human-readable context string from the `ENS1` TXT record, parsed by
     ///        `DNSTXTParserLib`.

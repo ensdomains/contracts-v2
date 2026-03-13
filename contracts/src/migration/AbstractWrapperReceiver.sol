@@ -13,7 +13,7 @@ import {WrappedErrorLib} from "../utils/WrappedErrorLib.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
 
 /// @title AbstractWrapperReceiver
-/// @notice Abstract IERC1155Receiver which handles NameWrapper token migration via transfer.
+/// @dev Abstract IERC1155Receiver which handles NameWrapper token migration via transfer.
 ///
 /// NameWrapper only allows `Error(string)` exceptions during transfer and squelches typed errors.
 /// https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L317-L335
@@ -66,6 +66,8 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes AbstractWrapperReceiver.
+    /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     constructor(INameWrapper nameWrapper) {
         NAME_WRAPPER = nameWrapper;
         _REGISTRY_V1 = nameWrapper.ens();
@@ -140,12 +142,14 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
         }
     }
 
-    /// @dev Convert NameWrapper tokens to their equivalent ENSv2 form.
-    /// Only callable by ourself and invoked by our `IERC1155Receiver` handlers.
+    /// @notice Convert NameWrapper tokens to their equivalent ENSv2 form.
+    /// @dev Only callable by ourself and invoked by our `IERC1155Receiver` handlers.
     ///
     /// TODO: gas analysis and optimization
     /// NOTE: converting this to an internal call requires catching many reverts
     ///
+    /// @param ids The NameWrapper token IDs (namehashes) of the names being migrated.
+    /// @param mds The migration parameters for each name, indexed in parallel with `ids`.
     function finishERC1155Migration(
         uint256[] calldata ids,
         LibMigration.Data[] calldata mds

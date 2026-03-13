@@ -118,8 +118,11 @@ contract PermissionedResolver is
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Aliases for names.
     mapping(bytes32 node => bytes name) internal _aliases;
+    /// @dev Versions for nodes.
     mapping(bytes32 node => uint64 version) internal _versions;
+    /// @dev Records for nodes.
     mapping(bytes32 node => mapping(uint64 version => Record)) internal _records;
 
     ////////////////////////////////////////////////////////////////////////
@@ -127,9 +130,15 @@ contract PermissionedResolver is
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Associate an EAC resource with a name.
+    /// @param resource The EAC resource.
+    /// @param name The name.
     event NamedResource(uint256 indexed resource, bytes name);
 
     /// @notice Associate an EAC resource with a name and specific `text(key)` record.
+    /// @param resource The EAC resource.
+    /// @param name The name.
+    /// @param keyHash The hash of the key.
+    /// @param key The key.
     event NamedTextResource(
         uint256 indexed resource,
         bytes name,
@@ -138,6 +147,9 @@ contract PermissionedResolver is
     );
 
     /// @notice Associate an EAC resource with a name and specific `addr(coinType)` record.
+    /// @param resource The EAC resource.
+    /// @param name The name.
+    /// @param coinType The coin type.
     event NamedAddrResource(uint256 indexed resource, bytes name, uint256 indexed coinType);
 
     ////////////////////////////////////////////////////////////////////////
@@ -159,6 +171,8 @@ contract PermissionedResolver is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Creates the PermissionedResolver implementation.
+    /// @param hcaFactory The HCA factory.
     constructor(IHCAFactoryBasic hcaFactory) HCAEquivalence(hcaFactory) {
         _disableInitializers();
     }
@@ -224,6 +238,10 @@ contract PermissionedResolver is
 
     /// @notice Grant `roleBitmap` permissions to `account` for `toName`.
     ///         Use `NameCoder.encode("")` for any name, which is equivalent to `grantRootRoles()`.
+    /// @param toName The name to grant roles for.
+    /// @param roleBitmap The roles to grant.
+    /// @param account The account to grant roles to.
+    /// @return success Whether the roles were updated.
     function grantNameRoles(
         bytes calldata toName,
         uint256 roleBitmap,
@@ -238,6 +256,10 @@ contract PermissionedResolver is
 
     /// @notice Grant `setText(key)` permission to `account` for `toName`.
     ///         Use `NameCoder.encode("")` for any name.
+    /// @param toName The name to grant roles for.
+    /// @param key The text key to grant roles for.
+    /// @param account The account to grant roles to.
+    /// @return success Whether the roles were updated.
     function grantTextRoles(
         bytes calldata toName,
         string calldata key,
@@ -259,6 +281,10 @@ contract PermissionedResolver is
 
     /// @notice Grant `setAddr(coinType)` permission to `account` for `toName`.
     ///         Use `NameCoder.encode("")` for any name.
+    /// @param toName The name to grant roles for.
+    /// @param coinType The coin type to grant roles for.
+    /// @param account The account to grant roles to.
+    /// @return success Whether the roles were updated.
     function grantAddrRoles(
         bytes calldata toName,
         uint256 coinType,
@@ -373,8 +399,11 @@ contract PermissionedResolver is
     /// @notice Same as `multicall()`.
     /// @dev The node parameter is accepted for interface compatibility but is not used.
     ///      Permission checking is handled by individual function calls within the multicall.
+    /// @param {node} Ignored, for interface compatibility.
+    /// @param calls The calls to make.
+    /// @return results The results of the calls.
     function multicallWithNodeCheck(
-        bytes32,
+        bytes32 /* node */,
         bytes[] calldata calls
     ) external returns (bytes[] memory) {
         return multicall(calls);
@@ -421,12 +450,12 @@ contract PermissionedResolver is
 
     /// @notice Get the current version.
     /// @param node The node to check.
+    /// @return version The current version.
     function recordVersions(bytes32 node) external view returns (uint64) {
         return _versions[node];
     }
 
     /// @inheritdoc IABIResolver
-    // solhint-disable-next-line func-name-mixedcase
     function ABI(
         bytes32 node,
         uint256 contentTypes
@@ -483,6 +512,8 @@ contract PermissionedResolver is
 
     /// @notice Perform multiple write operations.
     /// @dev Reverts with first error.
+    /// @param calls The calls to make.
+    /// @return results The results of the calls.
     function multicall(bytes[] calldata calls) public returns (bytes[] memory results) {
         results = new bytes[](calls.length);
         for (uint256 i; i < calls.length; ++i) {
@@ -555,6 +586,10 @@ contract PermissionedResolver is
     }
 
     /// @notice Function is disabled.  Use `grant(Name|Text|Addr)Roles()` instead.
+    /// @param resource Ignored.
+    /// @param roleBitmap Ignored.
+    /// @param account Ignored.
+    /// @return success Ignored, always reverts.
     function grantRoles(
         uint256 resource,
         uint256 roleBitmap,
@@ -574,6 +609,7 @@ contract PermissionedResolver is
         //
     }
 
+    /// @dev HCA-compatible `_msgSender()`.
     function _msgSender()
         internal
         view
@@ -584,6 +620,8 @@ contract PermissionedResolver is
         return HCAContextUpgradeable._msgSender();
     }
 
+    /// @dev Returns the original `msg.data`.
+    ///      Needed to resolve Context/ContextUpgradable inheritance.
     function _msgData()
         internal
         view
@@ -594,6 +632,8 @@ contract PermissionedResolver is
         return msg.data;
     }
 
+    /// @dev Returns 0.
+    ///      Needed to resolve Context/ContextUpgradable inheritance.
     function _contextSuffixLength()
         internal
         view

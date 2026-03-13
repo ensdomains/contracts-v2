@@ -116,15 +116,9 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Grants all roles in the given role bitmap to `account`.
-    ///
-    /// The caller must have all the necessary admin roles for the roles being granted.
-    /// Cannot be used with ROOT_RESOURCE directly, use grantRootRoles instead.
-    ///
-    /// @param resource The resource to grant roles within.
-    /// @param roleBitmap The roles bitmap to grant.
-    /// @param account The account to grant roles to.
-    /// @return `true` if the roles were granted, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
+    /// @dev The caller must have all the necessary admin roles for the roles being granted.
+    ///      Cannot be used with ROOT_RESOURCE directly, use grantRootRoles instead.
     function grantRoles(
         uint256 resource,
         uint256 roleBitmap,
@@ -136,13 +130,8 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         return _grantRoles(resource, roleBitmap, account, true);
     }
 
-    /// @dev Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE.
-    ///
-    /// The caller must have all the necessary admin roles for the roles being granted.
-    ///
-    /// @param roleBitmap The roles bitmap to grant.
-    /// @param account The account to grant roles to.
-    /// @return `true` if the roles were granted, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
+    /// @dev The caller must have all the necessary admin roles for the roles being granted.
     function grantRootRoles(
         uint256 roleBitmap,
         address account
@@ -150,15 +139,9 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         return _grantRoles(ROOT_RESOURCE, roleBitmap, account, true);
     }
 
-    /// @dev Revokes all roles in the given role bitmap from `account`.
-    ///
-    /// The caller must have all the necessary admin roles for the roles being revoked.
-    /// Cannot be used with ROOT_RESOURCE directly, use revokeRootRoles instead.
-    ///
-    /// @param resource The resource to revoke roles within.
-    /// @param roleBitmap The roles bitmap to revoke.
-    /// @param account The account to revoke roles from.
-    /// @return `true` if the roles were revoked, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
+    /// @dev The caller must have all the necessary admin roles for the roles being revoked.
+    ///      Cannot be used with ROOT_RESOURCE directly, use revokeRootRoles instead.
     function revokeRoles(
         uint256 resource,
         uint256 roleBitmap,
@@ -170,13 +153,8 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         return _revokeRoles(resource, roleBitmap, account, true);
     }
 
-    /// @dev Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE.
-    ///
-    /// The caller must have all the necessary admin roles for the roles being revoked.
-    ///
-    /// @param roleBitmap The roles bitmap to revoke.
-    /// @param account The account to revoke roles from.
-    /// @return `true` if the roles were revoked, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
+    /// @dev The caller must have all the necessary admin roles for the roles being revoked.
     function revokeRootRoles(
         uint256 roleBitmap,
         address account
@@ -184,29 +162,22 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         return _revokeRoles(ROOT_RESOURCE, roleBitmap, account, true);
     }
 
-    /// @notice Returns the roles bitmap for an account in a resource.
+    /// @inheritdoc IEnhancedAccessControl
     function roles(uint256 resource, address account) public view virtual returns (uint256) {
         return _roles[resource][account];
     }
 
-    /// @notice Returns the role count bitmap for a resource.
+    /// @inheritdoc IEnhancedAccessControl
     function roleCount(uint256 resource) public view virtual returns (uint256) {
         return _roleCount[resource];
     }
 
-    /// @dev Returns `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`.
-    /// @param roleBitmap The roles bitmap to check.
-    /// @param account The account to check.
-    /// @return `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
     function hasRootRoles(uint256 roleBitmap, address account) public view virtual returns (bool) {
         return _roles[ROOT_RESOURCE][account] & roleBitmap == roleBitmap;
     }
 
-    /// @dev Returns `true` if `account` has been granted all the given roles in `resource` or the `ROOT_RESOURCE`.
-    /// @param resource The resource to check.
-    /// @param roleBitmap The roles bitmap to check.
-    /// @param account The account to check.
-    /// @return `true` if `account` has been granted all the given roles in either `resource` or the `ROOT_RESOURCE`, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
     function hasRoles(
         uint256 resource,
         uint256 roleBitmap,
@@ -216,20 +187,13 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
             (_roles[ROOT_RESOURCE][account] | _roles[resource][account]) & roleBitmap == roleBitmap;
     }
 
-    /// @dev Get if any of the roles in the given role bitmap has assignees.
-    /// @param resource The resource to check.
-    /// @param roleBitmap The roles bitmap to check.
-    /// @return `true` if any of the roles in the given role bitmap has assignees, `false` otherwise.
+    /// @inheritdoc IEnhancedAccessControl
     function hasAssignees(uint256 resource, uint256 roleBitmap) public view virtual returns (bool) {
         (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);
         return counts != 0;
     }
 
-    /// @dev Get the no. of assignees for the roles in the given role bitmap.
-    /// @param resource The resource to check.
-    /// @param roleBitmap The roles bitmap to check.
-    /// @return counts The no. of assignees for each of the roles in the given role bitmap, expressed as a packed array of 4-bit ints.
-    /// @return mask The mask for the given role bitmap.
+    /// @inheritdoc IEnhancedAccessControl
     function getAssigneeCount(
         uint256 resource,
         uint256 roleBitmap
