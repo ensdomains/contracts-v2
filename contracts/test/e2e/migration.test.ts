@@ -113,9 +113,9 @@ describe("Migration", () => {
     async checkMigrated({
       owner = this.account.address,
     }: { owner?: Address } = {}) {
-      const parentRegistry = await env.findPermissionedRegistry({
-        name: getParentName(this.name),
-      });
+      const parentRegistry = await env.findPermissionedRegistry(
+        getParentName(this.name),
+      );
       const { status, latestOwner } = await parentRegistry.read.getState([
         idFromLabel(this.label),
       ]);
