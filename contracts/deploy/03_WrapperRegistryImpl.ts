@@ -2,7 +2,7 @@ import { artifacts, execute } from "@rocketh";
 
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer } }) => {
-    const nameWrapperV1 =
+    const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
     const hcaFactory =
@@ -22,16 +22,16 @@ export default execute(
       account: deployer,
       artifact: artifacts.WrapperRegistry,
       args: [
-        nameWrapperV1.address,
+        nameWrapper.address,
         verifiableFactory.address,
+        ensV1Resolver.address,
         hcaFactory.address,
         registryMetadata.address,
-        ensV1Resolver.address,
       ],
     });
   },
   {
-    tags: ["WrapperRegistryImpl", "l1"],
+    tags: ["WrapperRegistryImpl", "v2"],
     dependencies: [
       "NameWrapper",
       "HCAFactory",

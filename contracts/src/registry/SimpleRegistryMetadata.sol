@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
@@ -32,10 +34,13 @@ contract SimpleRegistryMetadata is EnhancedAccessControl, IRegistryMetadata {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes SimpleRegistryMetadata, granting all roles to the caller.
+    /// @param hcaFactory The HCA factory.
     constructor(IHCAFactoryBasic hcaFactory) HCAEquivalence(hcaFactory) {
         _grantRoles(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, _msgSender(), true);
     }
 
+    /// @inheritdoc IERC165
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return
             interfaceId == type(IRegistryMetadata).interfaceId ||

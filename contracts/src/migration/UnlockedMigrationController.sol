@@ -44,9 +44,12 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes UnlockedMigrationController.
+    /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     constructor(
-        IPermissionedRegistry ethRegistry,
-        INameWrapper nameWrapper
+        INameWrapper nameWrapper,
+        IPermissionedRegistry ethRegistry
     ) AbstractWrapperReceiver(nameWrapper) {
         ETH_REGISTRY = ethRegistry;
         _REGISTRAR_V1 = nameWrapper.registrar();
@@ -63,11 +66,13 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Receives an unwrapped .eth name via ERC721 `safeTransferFrom` from the `BaseRegistrar`.
-    ///      Decodes a single `LibMigration.Data` from `data` and registers the equivalent name in ENSv2.
-    ///
+    /// @notice Receives an unwrapped .eth name via ERC721 `safeTransferFrom` from the `BaseRegistrar`.
+    ///         Decodes a single `LibMigration.Data` from `data` and registers the equivalent name in ENSv2.
+    /// @param {operator} Ignored.
+    /// @param {from} Ignored.
     /// @param tokenId The BaseRegistrar token ID (labelhash) of the name being migrated.
     /// @param data ABI-encoded `LibMigration.Data` struct containing migration parameters.
+    /// @return The selector of the `onERC721Received` function.
     function onERC721Received(
         address /*operator*/,
         address /*from*/,
@@ -101,7 +106,6 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     /// @inheritdoc AbstractWrapperReceiver
     /// @dev Reverts `NameIsLocked` if any token is locked.
     ///      Reverts `NameDataMismatch` if any token is mislabeled.
-    ///
     /// @param ids The NameWrapper token IDs (namehash) of the names to migrate.
     /// @param mds The migration parameters for each name, indexed in parallel with `ids`.
     function _migrateWrapped(

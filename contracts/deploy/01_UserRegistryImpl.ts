@@ -16,7 +16,7 @@ export default execute(
     });
   },
   {
-    tags: ["UserRegistryImpl", "l1"],
+    tags: ["UserRegistryImpl", "v2"],
     dependencies: ["HCAFactory", "RegistryMetadata"],
   },
 );

@@ -94,7 +94,7 @@ export default execute(
     }
   },
   {
-    tags: ["DNSTLDResolver", "l1"],
+    tags: ["DNSTLDResolver", "v2"],
     dependencies: [
       "RootRegistry",
       "OffchainDNSResolver", // "ENSRegistry" + "DNSSECImpl"

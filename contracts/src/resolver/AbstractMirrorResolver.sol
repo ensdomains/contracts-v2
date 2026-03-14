@@ -10,19 +10,21 @@ import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.so
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-/// @notice Resolver that mirrors resolution of the same name to a different registry.
+/// @dev Resolver that mirrors resolution of the same name to a different registry.
 abstract contract AbstractMirrorResolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Shared batch gateway provider.
+    /// @notice Shared batch gateway provider.
     IGatewayProvider public immutable BATCH_GATEWAY_PROVIDER;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes the AbstractMirrorResolver with the batch gateway provider.
+    /// @param batchGatewayProvider The batch gateway provider.
     constructor(IGatewayProvider batchGatewayProvider) CCIPReader(DEFAULT_UNSAFE_CALL_GAS) {
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
     }

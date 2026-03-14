@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 
-/// @notice Library for parsing ENS records from DNS TXT data.
+/// @dev Library for parsing ENS records from DNS TXT data.
 ///
 /// The record data consists of a series of key=value pairs, separated by spaces. Keys
 /// may have an optional argument in square brackets, and values may be either unquoted
@@ -37,18 +37,26 @@ library DNSTXTParserLib {
         IGNORED_UNQUOTED_VALUE
     }
 
-    bytes1 private constant CH_BACKSLASH = bytes1(0x5C); // "\"
+    /// @dev The codepoint for the `\` character.
+    bytes1 private constant CH_BACKSLASH = bytes1(0x5C);
+    /// @dev The codepoint for the `'` character.
     bytes1 private constant CH_QUOTE = "'";
+    /// @dev The codepoint for the ` ` character.
     bytes1 private constant CH_SPACE = " ";
+    /// @dev The codepoint for the `=` character.
     bytes1 private constant CH_EQUAL = "=";
+    /// @dev The codepoint for the `[` character.
     bytes1 private constant CH_ARG_OPEN = "[";
+    /// @dev The codepoint for the `]` character.
     bytes1 private constant CH_ARG_CLOSE = "]";
 
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
     /// @dev Implements a DFA to parse the text record, looking for an entry matching `key`.
-    ///
     /// @param data The text record to parse.
     /// @param key The exact key to search for with trailing equals, eg. "key=".
-    ///
     /// @return value The value if found, or an empty string if `key` does not exist.
     function find(bytes memory data, bytes memory key) internal pure returns (bytes memory value) {
         // Here we use a simple state machine to parse the text record. We

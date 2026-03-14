@@ -28,43 +28,44 @@ uint256 constant REGISTRATION_ROLE_BITMAP = 0 |
 uint256 constant ROLE_SET_ORACLE = 1 << 0;
 
 /// @notice Commit-reveal registrar for .eth names. Registration requires two transactions: first
-///         `commit(hash)` to record a commitment, then `register(...)` after the minimum commitment
-///         age but before the maximum commitment age has elapsed. The commitment hash binds all
-///         registration parameters (label, owner, secret, subregistry, resolver, duration, referrer)
-///         to prevent front-running.
+/// `commit(hash)` to record a commitment, then `register(...)` after the minimum commitment
+/// age but before the maximum commitment age has elapsed. The commitment hash binds all
+/// registration parameters (label, owner, secret, subregistry, resolver, duration, referrer)
+/// to prevent front-running.
 ///
-///         Delegates actual name storage to an `IPermissionedRegistry`, granting the owner a fixed
-///         set of roles (set subregistry, set resolver, and transfer — each with their admin
-///         counterpart).
+/// Delegates actual name storage to an `IPermissionedRegistry`, granting the owner a fixed
+/// set of roles (set subregistry, set resolver, and transfer — each with their admin
+/// counterpart).
 ///
-///         Payment is collected via ERC20 `safeTransferFrom` to an immutable beneficiary address.
-///         Pricing is delegated to a swappable `IRentPriceOracle`. Renewals pay only the base rate;
-///         registrations pay base + premium (for recently expired names).
+/// Payment is collected via ERC20 `safeTransferFrom` to an immutable beneficiary address.
+/// Pricing is delegated to a swappable `IRentPriceOracle`. Renewals pay only the base rate;
+/// registrations pay base + premium (for recently expired names).
+///
 contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The permissioned registry where .eth names are stored and managed.
+    /// @notice The permissioned registry where .eth names are stored and managed.
     IPermissionedRegistry public immutable REGISTRY;
 
-    /// @dev Address that receives all registration and renewal payments.
+    /// @notice Address that receives all registration and renewal payments.
     address public immutable BENEFICIARY;
 
-    /// @dev Minimum seconds a commitment must age before registration can proceed.
+    /// @notice Minimum seconds a commitment must age before registration can proceed.
     uint64 public immutable MIN_COMMITMENT_AGE;
 
-    /// @dev Maximum seconds a commitment remains valid; expired commitments are rejected.
+    /// @notice Maximum seconds a commitment remains valid; expired commitments are rejected.
     uint64 public immutable MAX_COMMITMENT_AGE;
 
-    /// @dev Shortest allowed registration duration, in seconds.
+    /// @notice Shortest allowed registration duration, in seconds.
     uint64 public immutable MIN_REGISTER_DURATION;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Current pricing oracle used for computing registration and renewal costs.
+    /// @notice Current pricing oracle used for computing registration and renewal costs.
     IRentPriceOracle public rentPriceOracle;
 
     /// @inheritdoc IETHRegistrar
@@ -74,7 +75,7 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     // Events
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Emitted when the rent price oracle is replaced.
+    /// @notice Emitted when the rent price oracle is replaced.
     /// @param oracle The new `IRentPriceOracle` instance.
     event RentPriceOracleChanged(IRentPriceOracle oracle);
 
@@ -82,6 +83,14 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes ETHRegistrar.
+    /// @param registry The permissioned registry where .eth names are stored and managed.
+    /// @param hcaFactory The HCA factory.
+    /// @param beneficiary The address that receives all registration and renewal payments.
+    /// @param minCommitmentAge The minimum seconds a commitment must age before registration can proceed.
+    /// @param maxCommitmentAge The maximum seconds a commitment remains valid; expired commitments are rejected.
+    /// @param minRegisterDuration The shortest allowed registration duration, in seconds.
+    /// @param rentPriceOracle_ The initial pricing oracle used for computing registration and renewal costs.
     constructor(
         IPermissionedRegistry registry,
         IHCAFactoryBasic hcaFactory,
@@ -120,7 +129,8 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Change the rent price oracle.
+    /// @notice Change the rent price oracle.
+    /// @param oracle The new `IRentPriceOracle` instance.
     function setRentPriceOracle(IRentPriceOracle oracle) external onlyRootRoles(ROLE_SET_ORACLE) {
         rentPriceOracle = oracle;
         emit RentPriceOracleChanged(oracle);

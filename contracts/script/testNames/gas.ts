@@ -11,10 +11,7 @@ type GasRecord = {
 
 const gasTracker: GasRecord[] = [];
 
-export async function trackGas(
-  operation: string,
-  receipt: TransactionReceipt,
-): Promise<void> {
+export function trackGas(operation: string, receipt: TransactionReceipt) {
   const gasUsed = BigInt(receipt.gasUsed);
   const effectiveGasPrice = receipt.effectiveGasPrice
     ? BigInt(receipt.effectiveGasPrice)
