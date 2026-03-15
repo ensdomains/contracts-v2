@@ -685,7 +685,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(state.expiry, 0, "expiry");
         assertEq(state.latestOwner, address(0), "owner");
         assertEq(state.tokenId, tokenId, "tokenId");
-        assertEq(state.resource, tokenId + 1, "resource"); // next
+        assertEq(state.resource, tokenId, "resource");
         _checkStateGetters(state);
     }
 
@@ -719,7 +719,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(state.expiry, testExpiry, "expiry");
         assertEq(state.latestOwner, testOwner, "owner");
         assertEq(state.tokenId, tokenId, "tokenId");
-        assertEq(state.resource, tokenId + 1, "resource"); // next
+        assertEq(state.resource, tokenId, "resource");
         _checkStateGetters(state);
     }
 
@@ -731,7 +731,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(state.expiry, block.timestamp, "expiry");
         assertEq(state.latestOwner, address(0), "owner");
         assertEq(state.tokenId, tokenId + 1, "tokenId"); // burned
-        assertEq(state.resource, tokenId + 2, "resource"); // next
+        assertEq(state.resource, tokenId + 1, "resource"); // ^^^^
         _checkStateGetters(state);
     }
 
@@ -906,7 +906,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // EAC Override: grantRoles() cannot grant admin
+    // EAC Override: grantRoles() cannot grant admin and requires REGISTERED
     ////////////////////////////////////////////////////////////////////////
 
     function test_grantRolesWithAdmin_neverAuthorized(uint8 roleIndex) external {
@@ -919,7 +919,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
-                tokenId,
+                tokenId, // same as resource
                 roleBitmap,
                 user1
             )
@@ -939,7 +939,45 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
-                tokenId,
+                tokenId, // same as resource
+                roleBitmap,
+                address(this)
+            )
+        );
+        registry.grantRoles(tokenId, roleBitmap, user2);
+    }
+
+    function test_grantRolesWhileAvailableAsRoot_neverAuthorized(uint8 roleIndex) external {
+        vm.assume(roleIndex < 32);
+        uint256 roleBitmap = 1 << (roleIndex << 2); // every normal bit
+        assertTrue(((EACBaseRolesLib.ADMIN_ROLES >> 128) & roleBitmap) != 0);
+
+        uint256 tokenId = LibLabel.withVersion(LibLabel.id(testLabel), 0); // exact token
+        assertTrue(registry.getStatus(tokenId) == IPermissionedRegistry.Status.AVAILABLE);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                tokenId, // same as resource
+                roleBitmap,
+                address(this)
+            )
+        );
+        registry.grantRoles(tokenId, roleBitmap, user2);
+    }
+
+    function test_grantRolesWhileReservedAsRoot_neverAuthorized(uint8 roleIndex) external {
+        vm.assume(roleIndex < 32);
+        uint256 roleBitmap = 1 << (roleIndex << 2); // every normal bit
+        assertTrue(((EACBaseRolesLib.ADMIN_ROLES >> 128) & roleBitmap) != 0);
+
+        uint256 tokenId = this._reserve();
+        assertTrue(registry.getStatus(tokenId) == IPermissionedRegistry.Status.RESERVED);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                tokenId, // same as resource
                 roleBitmap,
                 address(this)
             )

@@ -6,6 +6,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
+import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
@@ -245,7 +246,7 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
-    /// @dev Requires an `REGISTERED | RESERVED` and `ROLE_RENEW`.
+    /// @dev Requires `REGISTERED | RESERVED` and `ROLE_RENEW`.
     function renew(uint256 anyId, uint64 newExpiry) public override {
         (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
             anyId,
@@ -259,12 +260,28 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IEnhancedAccessControl
+    /// @notice Cannot grant admin role and requires `REGISTERED`.
+    ///
+    /// Token admin roles are only assigned during name registration to maintain
+    /// controlled permission management. This ensures that role delegation
+    /// follows the intended security model where admin privileges are granted at
+    /// registration time and cannot be arbitrarily granted afterward.
+    ///
     function grantRoles(
         uint256 anyId,
         uint256 roleBitmap,
         address account
     ) public override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
-        return super.grantRoles(getResource(anyId), roleBitmap, account);
+        Entry storage entry = _entry(anyId);
+        uint256 resource = _constructResource(anyId, entry);
+        if (
+            _isExpired(entry.expiry) || // expired
+            super.ownerOf(_constructTokenId(anyId, entry)) == address(0) || // reserved
+            (roleBitmap & ~(super._getSettableRoles(resource, _msgSender()) >> 128)) != 0
+        ) {
+            revert EACCannotGrantRoles(resource, roleBitmap, _msgSender());
+        }
+        return _grantRoles(resource, roleBitmap, account, true);
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -305,7 +322,7 @@ contract PermissionedRegistry is
 
     /// @inheritdoc IPermissionedRegistry
     function getResource(uint256 anyId) public view returns (uint256) {
-        return anyId == ROOT_RESOURCE ? ROOT_RESOURCE : _constructResource(anyId, _entry(anyId));
+        return _constructResource(anyId, _entry(anyId));
     }
 
     /// @inheritdoc IPermissionedRegistry
@@ -434,7 +451,7 @@ contract PermissionedRegistry is
         uint256 /*newRoles*/,
         uint256 /*roleBitmap*/
     ) internal virtual override {
-        _regenerateToken(resource);
+        _regenerate(resource);
     }
 
     /// @dev Override the base registry _onRolesRevoked function to regenerate the token when the roles are revoked.
@@ -445,45 +462,25 @@ contract PermissionedRegistry is
         uint256 /*newRoles*/,
         uint256 /*roleBitmap*/
     ) internal virtual override {
-        _regenerateToken(resource);
+        _regenerate(resource);
     }
 
     /// @dev Bump `tokenVersionId` via burn+mint if token is not expired.
-    function _regenerateToken(uint256 anyId) internal {
-        Entry storage entry = _entry(anyId);
-        if (!_isExpired(entry.expiry)) {
-            uint256 tokenId = _constructTokenId(anyId, entry);
-            address owner = super.ownerOf(tokenId); // skip expiry check
-            if (owner != address(0)) {
-                _burn(owner, tokenId, 1);
-                ++entry.tokenVersionId;
-                uint256 newTokenId = _constructTokenId(tokenId, entry);
-                _mint(owner, newTokenId, 1, "");
-                emit TokenRegenerated(tokenId, newTokenId); // resource is unchanged
+    function _regenerate(uint256 resource) internal {
+        if (resource != ROOT_RESOURCE) {
+            Entry storage entry = _entry(resource);
+            if (!_isExpired(entry.expiry)) {
+                uint256 tokenId = _constructTokenId(resource, entry);
+                address owner = super.ownerOf(tokenId); // skip expiry check
+                if (owner != address(0)) {
+                    _burn(owner, tokenId, 1);
+                    ++entry.tokenVersionId;
+                    uint256 newTokenId = _constructTokenId(tokenId, entry);
+                    _mint(owner, newTokenId, 1, "");
+                    emit TokenRegenerated(tokenId, newTokenId); // resource is unchanged
+                }
             }
         }
-    }
-
-    /// @dev Override to prevent admin roles from being granted in the registry.
-    ///
-    /// Token admin roles are only assigned during name registration to maintain
-    /// controlled permission management. This ensures that role delegation
-    /// follows the intended security model where admin privileges are granted at
-    /// registration time and cannot be arbitrarily granted afterward.
-    ///
-    /// Root admin roles are unaffected.
-    ///
-    /// @param resource The resource to get settable roles for.
-    /// @param account The account to get settable roles for.
-    /// @return The settable roles (regular roles only, not admin roles).
-    function _getSettableRoles(
-        uint256 resource,
-        address account
-    ) internal view virtual override returns (uint256) {
-        return
-            resource == ROOT_RESOURCE
-                ? super._getSettableRoles(resource, account)
-                : (super.roles(resource, account) | super.roles(ROOT_RESOURCE, account)) >> 128;
     }
 
     /// @dev Zeroes version bits in `anyId` to return the canonical storage entry for the name.
@@ -505,7 +502,6 @@ contract PermissionedRegistry is
     }
 
     /// @dev Internal logic for expired status.
-    ///      Only use of `block.timestamp`.
     function _isExpired(uint64 expiry) internal view returns (bool) {
         return block.timestamp >= expiry;
     }
@@ -516,11 +512,7 @@ contract PermissionedRegistry is
         uint256 anyId,
         Entry storage entry
     ) internal view returns (uint256) {
-        return
-            LibLabel.withVersion(
-                anyId,
-                _isExpired(entry.expiry) ? entry.eacVersionId + 1 : entry.eacVersionId
-            );
+        return LibLabel.withVersion(anyId, entry.eacVersionId);
     }
 
     /// @dev Create `tokenId` from parts.
