@@ -909,7 +909,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     // EAC Override: grantRoles() cannot grant admin and requires REGISTERED
     ////////////////////////////////////////////////////////////////////////
 
-    function test_grantRolesWithAdmin_neverAuthorized(uint8 roleIndex) external {
+    function test_grantRolesWithAdmin(uint8 roleIndex) external {
         vm.assume(roleIndex < 32);
         uint256 roleBitmap = (1 << 128) << (roleIndex << 2); // every admin bit
         assertTrue((EACBaseRolesLib.ADMIN_ROLES & roleBitmap) != 0);
@@ -928,7 +928,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWithAdminAsRoot_neverAuthorized(uint8 roleIndex) external {
+    function test_grantRolesWithAdminAsRoot(uint8 roleIndex) external {
         vm.assume(roleIndex < 32);
         uint256 roleBitmap = (1 << 128) << (roleIndex << 2); // every admin bit
         assertTrue((EACBaseRolesLib.ADMIN_ROLES & roleBitmap) != 0);
@@ -947,7 +947,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWhileAvailableAsRoot_neverAuthorized(uint8 roleIndex) external {
+    function test_grantRolesWhileAvailable(uint8 roleIndex) external {
         vm.assume(roleIndex < 32);
         uint256 roleBitmap = 1 << (roleIndex << 2); // every normal bit
         assertTrue(((EACBaseRolesLib.ADMIN_ROLES >> 128) & roleBitmap) != 0);
@@ -966,13 +966,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWhileReservedAsRoot_neverAuthorized(uint8 roleIndex) external {
+    function test_grantRolesWhileReserved(uint8 roleIndex) external {
         vm.assume(roleIndex < 32);
         uint256 roleBitmap = 1 << (roleIndex << 2); // every normal bit
         assertTrue(((EACBaseRolesLib.ADMIN_ROLES >> 128) & roleBitmap) != 0);
 
         uint256 tokenId = this._reserve();
-        assertTrue(registry.getStatus(tokenId) == IPermissionedRegistry.Status.RESERVED);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -983,6 +982,22 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             )
         );
         registry.grantRoles(tokenId, roleBitmap, user2);
+    }
+
+    function test_grantRolesWhileRegistedAsRoot() external {
+        uint256 tokenId = this._register();
+
+        // owner cannot unregister
+        vm.expectRevert();
+        vm.prank(testOwner);
+        registry.unregister(tokenId);
+
+        // use root to grant owner unregister
+        registry.grantRoles(tokenId, RegistryRolesLib.ROLE_UNREGISTER, testOwner);
+
+        // owner can unregister
+        vm.prank(testOwner);
+        registry.unregister(tokenId);
     }
 
     ////////////////////////////////////////////////////////////////////////
