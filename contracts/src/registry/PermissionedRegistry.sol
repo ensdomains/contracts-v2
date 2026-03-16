@@ -452,17 +452,13 @@ contract PermissionedRegistry is
     function _regenerate(uint256 resource) internal {
         if (resource != ROOT_RESOURCE) {
             Entry storage entry = _entry(resource);
-            if (!_isExpired(entry.expiry)) {
-                uint256 tokenId = _constructTokenId(resource, entry);
-                address owner = super.ownerOf(tokenId); // skip expiry check
-                if (owner != address(0)) {
-                    _burn(owner, tokenId, 1);
-                    ++entry.tokenVersionId;
-                    uint256 newTokenId = _constructTokenId(tokenId, entry);
-                    _mint(owner, newTokenId, 1, "");
-                    emit TokenRegenerated(tokenId, newTokenId); // resource is unchanged
-                }
-            }
+            uint256 tokenId = _constructTokenId(resource, entry);
+            address owner = super.ownerOf(tokenId); // grant/revoke only on registered
+            _burn(owner, tokenId, 1);
+            ++entry.tokenVersionId;
+            uint256 newTokenId = _constructTokenId(tokenId, entry);
+            _mint(owner, newTokenId, 1, "");
+            emit TokenRegenerated(tokenId, newTokenId); // resource is unchanged
         }
     }
 
@@ -486,12 +482,12 @@ contract PermissionedRegistry is
         address account
     ) internal view virtual override returns (uint256) {
         uint256 roleBitmap = super._getSettableRoles(resource, account);
-        return
-            resource == ROOT_RESOURCE
-                ? roleBitmap
-                : ownerOf(_constructTokenId(resource, _entry(resource))) != address(0)
-                    ? roleBitmap >> 128 // remove admin
-                    : 0; // available or reserved
+        if (resource == ROOT_RESOURCE) {
+            return roleBitmap;
+        } else if (ownerOf(_constructTokenId(resource, _entry(resource))) == address(0)) {
+            return 0; // available or reserved
+        }
+        return roleBitmap >> 128; // remove admin
     }
 
     /// @inheritdoc EnhancedAccessControl
