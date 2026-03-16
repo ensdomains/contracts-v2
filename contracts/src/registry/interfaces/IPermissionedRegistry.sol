@@ -40,6 +40,7 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Label cannot be reserved again.
     /// @dev Error selector: `0xf60759e0`
     error LabelAlreadyReserved(string label);
 
