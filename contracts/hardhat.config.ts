@@ -5,8 +5,8 @@ import HardhatNetworkHelpersPlugin from "@nomicfoundation/hardhat-network-helper
 import HardhatViem from "@nomicfoundation/hardhat-viem";
 import HardhatDeploy from "hardhat-deploy";
 
-import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 import HardhatIgnoreWarningsPlugin from "./plugins/ignore-warnings/index.ts";
+import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
 const config = {
   solidity: {
@@ -26,6 +26,16 @@ const config = {
           },
         },
       },
+      {
+        version: "0.8.27",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1000,
+          },
+          evmVersion: "cancun",
+        },
+      }
     ],
   },
   paths: {
