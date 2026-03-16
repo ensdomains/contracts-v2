@@ -501,11 +501,13 @@ contract PermissionedRegistry is
         uint256 resource,
         address account
     ) internal view virtual override returns (uint256) {
-        return
-            resource == ROOT_RESOURCE ||
-                ownerOf(_constructTokenId(resource, _entry(resource))) != address(0)
-                ? super._getSettableRoles(resource, account)
-                : 0; // available or reserved
+        if (
+            resource != ROOT_RESOURCE &&
+            ownerOf(_constructTokenId(resource, _entry(resource))) == address(0)
+        ) {
+            return 0; // available or reserved
+        }
+        return super._getRevokableRoles(resource, account);
     }
 
     /// @dev Zeroes version bits in `anyId` to return the canonical storage entry for the name.
