@@ -256,6 +256,11 @@ export async function setupDevnet({
         address: rocketh.get("NameWrapper").address,
         client,
       }),
+      RegistrarSecurityController: getContract({
+        abi: artifacts.RegistrarSecurityController.abi,
+        address: rocketh.get("RegistrarSecurityController").address,
+        client,
+      }),
       // resolvers
       PublicResolver: getContract({
         abi: artifacts.PublicResolver.abi,

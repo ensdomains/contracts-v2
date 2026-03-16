@@ -19,9 +19,9 @@ export default execute(
     const ensRegistry =
       get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
-    const baseRegistrar = get<
-      (typeof artifacts.BaseRegistrarImplementation)["abi"]
-    >("BaseRegistrarImplementation");
+    const registrarSecurityController = get<
+      (typeof artifacts.RegistrarSecurityController)["abi"]
+    >("RegistrarSecurityController");
 
     console.log("Deploying ENSV2Resolver");
     console.log("  - Getting ENSv1 .eth resolver");
@@ -38,9 +38,9 @@ export default execute(
     });
 
     console.log("  - Setting ENSv1 .eth resolver to ENSV2Resolver");
-    await write(baseRegistrar, {
+    await write(registrarSecurityController, {
       account: owner,
-      functionName: "setResolver",
+      functionName: "setRegistrarResolver",
       args: [ensV2Resolver.address],
     });
   },
@@ -50,6 +50,7 @@ export default execute(
       "RootRegistry",
       "BatchGatewayProvider",
       "EthOwnedResolver", // BaseRegistrarImplementation:setup => eventually setup as OwnedResolver
+      "RegistrarSecurityController",
     ],
   },
 );
