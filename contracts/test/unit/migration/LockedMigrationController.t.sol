@@ -368,7 +368,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         assertEq(
             subregistry.roleCount(subregistry.ROOT_RESOURCE()) &
-                (RegistryRolesLib.ROLE_SET_PARENT * 16),
+                (RegistryRolesLib.ROLE_SET_PARENT * 15),
             0,
             "ROLE_SET_PARENT"
         );
