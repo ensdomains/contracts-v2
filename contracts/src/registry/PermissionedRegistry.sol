@@ -276,7 +276,7 @@ contract PermissionedRegistry is
         if (
             _isExpired(entry.expiry) || // available
             super.ownerOf(_constructTokenId(anyId, entry)) == address(0) || // reserved
-            (roleBitmap & ~(super._getSettableRoles(resource, _msgSender()) >> 128)) != 0 // admin or not grantable
+            (roleBitmap & ~(_getSettableRoles(resource, _msgSender()) >> 128)) != 0 // admin or not grantable
         ) {
             revert EACCannotGrantRoles(resource, roleBitmap, _msgSender());
         }
@@ -295,7 +295,7 @@ contract PermissionedRegistry is
         if (
             _isExpired(entry.expiry) || // available
             super.ownerOf(_constructTokenId(anyId, entry)) == address(0) || // reserved
-            (roleBitmap & ~super._getRevokableRoles(resource, _msgSender())) != 0 // not revokable
+            (roleBitmap & ~_getRevokableRoles(resource, _msgSender())) != 0 // not revokable
         ) {
             revert EACCannotRevokeRoles(resource, roleBitmap, _msgSender());
         }
