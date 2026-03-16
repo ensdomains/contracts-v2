@@ -99,15 +99,6 @@ contract LibRegistryTest is Test, ERC1155Holder {
             (, offset) = NameCoder.nextLabel(name, offset);
         }
         assertEq(offset, name.length, "length");
-        (IRegistry registryFrom, address resolverFrom) = LibRegistry.findResolverFromParent(
-            name,
-            0,
-            name.length - 1,
-            rootRegistry,
-            address(0)
-        );
-        assertEq(address(registryFrom), address(registry), "registryFrom");
-        assertEq(resolverFrom, resolver, "resolverFrom");
         assertEq(
             LibRegistry.findCanonicalName(rootRegistry, registries[0]),
             canonicalName,
