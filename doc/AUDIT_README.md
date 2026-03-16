@@ -5,9 +5,10 @@
 ENSv2 is the next-generation Ethereum Name Service, transitioning from a flat registry to a hierarchical system with cross-chain support.
 
 - **Design doc**: [go.ens.xyz/ensv2](http://go.ens.xyz/ensv2)
+- **Docs**:[v2 docs (WIP)](https://github.com/ensdomains/docs/tree/master/src/pages/contracts/ensv2)
 - **Repository**: [github.com/ensdomains/contracts-v2](https://github.com/ensdomains/contracts-v2)
 - **Contracts README**: [contracts/README.md](../contracts/README.md) (architecture, access control, usage examples)
-- **Audit commit**: `<TODO: insert frozen commit hash>`
+- **Audit commit**: [41b67f10d8a62151e67649d98b92bc2317fa56a8](https://github.com/ensdomains/contracts-v2/commit/41b67f10d8a62151e67649d98b92bc2317fa56a8)
 
 ## 2. Architecture
 
@@ -25,6 +26,7 @@ See the [contracts README](../contracts/README.md) for detailed architecture doc
 | [OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts) | ERC1155, ERC165, UUPS, access control base |
 | [OpenZeppelin Contracts v4](https://github.com/OpenZeppelin/openzeppelin-contracts) | Used by vendored ENSv1 contracts |
 | [ENSv1 contracts](https://github.com/ensdomains/ens-contracts) | V1 registry, NameWrapper, BaseRegistrar (for migration) |
+| [ENS metadata service](https://github.com/ensdomains/ens-metadata-service) | ENS metadata service |
 | [Rhinestone ENS Modules](https://github.com/rhinestone-external/ens-modules) | Custom HCA (Hierarchical Context Authority) module and cross-chain intent for registration/renewal (**separate audit scope**) |
 | [Verifiable Factory](https://github.com/ensdomains/verifiable-factory) | Deterministic deployment with verification (**in scope**, see below) |
 | [Unruggable Gateways](https://github.com/unruggable-eth/unruggable-gateways) | CCIP-Read gateway support |
