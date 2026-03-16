@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+// solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file, contracts-v2/natspec
+
 import {Test} from "forge-std/Test.sol";
 
-import {HCA} from "../../src/hca/HCA.sol";
-import {HCAFactory} from "../../src/hca/HCAFactory.sol";
-import {IHCAFactory} from "../../src/hca/IHCAFactory.sol";
-import {HCAInitDataGenerator} from "../../src/hca/HCAInitDataGenerator.sol";
-import {StaticK1Validator} from "../../src/hca/StaticK1Validator.sol";
-
 import {NexusBootstrap} from "nexus/utils/NexusBootstrap.sol";
+
+import {HCA} from "~src/hca/HCA.sol";
+import {HCAFactory} from "~src/hca/HCAFactory.sol";
+import {HCAInitDataGenerator} from "~src/hca/HCAInitDataGenerator.sol";
+import {IHCAFactory} from "~src/hca/IHCAFactory.sol";
+import {StaticK1Validator} from "~src/hca/StaticK1Validator.sol";
 
 contract HCAFactoryTest is Test {
     address private _entryPoint;
@@ -39,7 +41,12 @@ contract HCAFactoryTest is Test {
         _initDataGenerator = new HCAInitDataGenerator(address(_bootstrap));
         _factory = new HCAFactory(address(0), _initDataGenerator, _factoryOwner);
 
-        _hcaImplementation = new HCA(IHCAFactory(address(_factory)), _entryPoint, address(_validator), initData);
+        _hcaImplementation = new HCA(
+            IHCAFactory(address(_factory)),
+            _entryPoint,
+            address(_validator),
+            initData
+        );
 
         vm.prank(_factoryOwner);
         _factory.setImplementation(address(_hcaImplementation));
@@ -138,7 +145,7 @@ contract HCAFactoryTest is Test {
         StaticK1Validator newValidator = new StaticK1Validator();
         bytes memory newInitData = abi.encodePacked(makeAddr("differentOwner"));
         NexusBootstrap newBootstrap = new NexusBootstrap(address(newValidator), newInitData);
-        
+
         HCAInitDataGenerator newGenerator = new HCAInitDataGenerator(address(newBootstrap));
 
         vm.expectEmit(true, false, false, false);
@@ -152,7 +159,10 @@ contract HCAFactoryTest is Test {
         address account = _factory.createAccount(newOwner);
 
         // Account should still work (basic smoke test)
-        assertTrue(account != address(0), "Account should be created successfully with new generator");
+        assertTrue(
+            account != address(0),
+            "Account should be created successfully with new generator"
+        );
     }
 
     function testGetAccountOwnerReturnsZeroForNonAccount() public {
@@ -181,15 +191,15 @@ contract HCAFactoryTest is Test {
 
     function testFallbackBlocksERC721AndERC1155Receivers() public {
         // onERC721Received
-        (bool ok721,) = address(_hca).call(abi.encodeWithSelector(0x150b7a02));
+        (bool ok721, ) = address(_hca).call(abi.encodeWithSelector(0x150b7a02));
         assertFalse(ok721, "ERC721 receiver should revert");
 
         // onERC1155Received
-        (bool ok1155,) = address(_hca).call(abi.encodeWithSelector(0xf23a6e61));
+        (bool ok1155, ) = address(_hca).call(abi.encodeWithSelector(0xf23a6e61));
         assertFalse(ok1155, "ERC1155 receiver should revert");
 
         // onERC1155BatchReceived
-        (bool ok1155Batch,) = address(_hca).call(abi.encodeWithSelector(0xbc197c81));
+        (bool ok1155Batch, ) = address(_hca).call(abi.encodeWithSelector(0xbc197c81));
         assertFalse(ok1155Batch, "ERC1155 batch receiver should revert");
     }
 
@@ -219,7 +229,11 @@ contract HCAFactoryTest is Test {
         vm.prank(_factoryOwner);
         _factory.setInitDataGenerator(newGenerator);
 
-        assertEq(address(_factory.getInitDataGenerator()), address(newGenerator), "Generator should be updated");
+        assertEq(
+            address(_factory.getInitDataGenerator()),
+            address(newGenerator),
+            "Generator should be updated"
+        );
     }
 
     function testSetInitDataGeneratorFailsAsNonOwner() public {
@@ -233,8 +247,9 @@ contract HCAFactoryTest is Test {
 
     function testGetInitDataGenerator() public {
         assertEq(
-            address(_factory.getInitDataGenerator()), address(_initDataGenerator), "Should return correct generator"
+            address(_factory.getInitDataGenerator()),
+            address(_initDataGenerator),
+            "Should return correct generator"
         );
     }
-
 }

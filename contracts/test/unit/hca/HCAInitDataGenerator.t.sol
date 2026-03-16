@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+// solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file, contracts-v2/natspec
+
 import {Test} from "forge-std/Test.sol";
 
-import {HCAInitDataGenerator} from "../../src/hca/HCAInitDataGenerator.sol";
-import {IInitDataGenerator} from "../../src/hca/IInitDataGenerator.sol";
-import {StaticK1Validator} from "../../src/hca/StaticK1Validator.sol";
-
-import {NexusBootstrap, BootstrapConfig, BootstrapPreValidationHookConfig} from "nexus/utils/NexusBootstrap.sol";
 import {CALLTYPE_SINGLE} from "nexus/lib/ModeLib.sol";
+import {
+    NexusBootstrap,
+    BootstrapConfig,
+    BootstrapPreValidationHookConfig
+} from "nexus/utils/NexusBootstrap.sol";
+
+import {HCAInitDataGenerator} from "~src/hca/HCAInitDataGenerator.sol";
+import {IInitDataGenerator} from "~src/hca/IInitDataGenerator.sol";
+import {StaticK1Validator} from "~src/hca/StaticK1Validator.sol";
 
 contract HCAInitDataGeneratorTest is Test {
     HCAInitDataGenerator private _generator;
@@ -40,7 +46,10 @@ contract HCAInitDataGeneratorTest is Test {
         bytes memory generatedData = _generator.generateInitData(owner);
 
         // Verify the generated data has correct structure
-        (address bootstrap, bytes memory bootstrapCall) = abi.decode(generatedData, (address, bytes));
+        (address bootstrap, bytes memory bootstrapCall) = abi.decode(
+            generatedData,
+            (address, bytes)
+        );
 
         assertEq(bootstrap, address(_bootstrap), "Bootstrap address should match");
         assertTrue(bootstrapCall.length > 0, "Bootstrap call should not be empty");
@@ -52,7 +61,7 @@ contract HCAInitDataGeneratorTest is Test {
             paramsData[i] = bootstrapCall[i + 4];
         }
 
-        (bytes memory validatorData,,,,,) = abi.decode(
+        (bytes memory validatorData, , , , , ) = abi.decode(
             paramsData,
             (
                 bytes,
@@ -74,7 +83,10 @@ contract HCAInitDataGeneratorTest is Test {
         bytes memory generatedData = _generator.generateInitData(owner);
 
         // Should still work with zero address
-        (address bootstrap, bytes memory bootstrapCall) = abi.decode(generatedData, (address, bytes));
+        (address bootstrap, bytes memory bootstrapCall) = abi.decode(
+            generatedData,
+            (address, bytes)
+        );
 
         assertEq(bootstrap, address(_bootstrap), "Bootstrap address should match");
         assertTrue(bootstrapCall.length > 0, "Bootstrap call should not be empty");
@@ -88,11 +100,14 @@ contract HCAInitDataGeneratorTest is Test {
         bytes memory data2 = _generator.generateInitData(owner2);
 
         // Data should be different for different owners
-        assertFalse(keccak256(data1) == keccak256(data2), "Generated data should be different for different owners");
+        assertFalse(
+            keccak256(data1) == keccak256(data2),
+            "Generated data should be different for different owners"
+        );
 
         // But bootstrap addresses should be the same
-        (address bootstrap1,) = abi.decode(data1, (address, bytes));
-        (address bootstrap2,) = abi.decode(data2, (address, bytes));
+        (address bootstrap1, ) = abi.decode(data1, (address, bytes));
+        (address bootstrap2, ) = abi.decode(data2, (address, bytes));
 
         assertEq(bootstrap1, bootstrap2, "Bootstrap addresses should be the same");
     }
@@ -101,7 +116,10 @@ contract HCAInitDataGeneratorTest is Test {
         address owner = makeAddr("structureTestOwner");
 
         bytes memory generatedData = _generator.generateInitData(owner);
-        (address bootstrap, bytes memory bootstrapCall) = abi.decode(generatedData, (address, bytes));
+        (address bootstrap, bytes memory bootstrapCall) = abi.decode(
+            generatedData,
+            (address, bytes)
+        );
 
         // Decode the bootstrap call parameters
         bytes memory paramsData = new bytes(bootstrapCall.length - 4);
@@ -117,16 +135,16 @@ contract HCAInitDataGeneratorTest is Test {
             BootstrapConfig[] memory fallbacks,
             BootstrapPreValidationHookConfig[] memory preValidationHooks
         ) = abi.decode(
-            paramsData,
-            (
-                bytes,
-                BootstrapConfig[],
-                BootstrapConfig[],
-                BootstrapConfig,
-                BootstrapConfig[],
-                BootstrapPreValidationHookConfig[]
-            )
-        );
+                paramsData,
+                (
+                    bytes,
+                    BootstrapConfig[],
+                    BootstrapConfig[],
+                    BootstrapConfig,
+                    BootstrapConfig[],
+                    BootstrapPreValidationHookConfig[]
+                )
+            );
 
         // Verify structure is preserved
         assertEq(validators.length, 0, "Validators array should be empty");
@@ -137,7 +155,9 @@ contract HCAInitDataGeneratorTest is Test {
 
         // Verify fallback handlers are preserved
         assertEq(
-            fallbacks[0].data, abi.encodePacked(bytes4(0x150b7a02), CALLTYPE_SINGLE), "First fallback data should match"
+            fallbacks[0].data,
+            abi.encodePacked(bytes4(0x150b7a02), CALLTYPE_SINGLE),
+            "First fallback data should match"
         );
         assertEq(
             fallbacks[1].data,
@@ -145,7 +165,9 @@ contract HCAInitDataGeneratorTest is Test {
             "Second fallback data should match"
         );
         assertEq(
-            fallbacks[2].data, abi.encodePacked(bytes4(0xbc197c81), CALLTYPE_SINGLE), "Third fallback data should match"
+            fallbacks[2].data,
+            abi.encodePacked(bytes4(0xbc197c81), CALLTYPE_SINGLE),
+            "Third fallback data should match"
         );
     }
 
@@ -187,7 +209,10 @@ contract HCAInitDataGeneratorTest is Test {
         bytes memory generatedData = _generator.generateInitData(owner);
 
         // Should handle max address
-        (address bootstrap, bytes memory bootstrapCall) = abi.decode(generatedData, (address, bytes));
+        (address bootstrap, bytes memory bootstrapCall) = abi.decode(
+            generatedData,
+            (address, bytes)
+        );
 
         assertEq(bootstrap, address(_bootstrap), "Bootstrap address should match");
         assertTrue(bootstrapCall.length > 0, "Bootstrap call should not be empty");
@@ -197,10 +222,15 @@ contract HCAInitDataGeneratorTest is Test {
         address owner = makeAddr("callStructureOwner");
 
         bytes memory generatedData = _generator.generateInitData(owner);
-        (address bootstrap, bytes memory bootstrapCall) = abi.decode(generatedData, (address, bytes));
+        (address bootstrap, bytes memory bootstrapCall) = abi.decode(
+            generatedData,
+            (address, bytes)
+        );
 
         // Verify the bootstrap call starts with the correct function selector
-        bytes4 expectedSelector = NexusBootstrap.initNexusWithDefaultValidatorAndOtherModulesNoRegistry.selector;
+        bytes4 expectedSelector = NexusBootstrap
+            .initNexusWithDefaultValidatorAndOtherModulesNoRegistry
+            .selector;
         bytes4 actualSelector = bytes4(bootstrapCall);
 
         assertEq(actualSelector, expectedSelector, "Function selector should be preserved");

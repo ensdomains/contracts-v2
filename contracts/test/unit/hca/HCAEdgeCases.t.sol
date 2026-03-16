@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+// solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file, contracts-v2/natspec
+
 import {Test} from "forge-std/Test.sol";
 
-import {HCA} from "../../src/hca/HCA.sol";
-import {HCAFactory} from "../../src/hca/HCAFactory.sol";
-import {HCAInitDataGenerator} from "../../src/hca/HCAInitDataGenerator.sol";
-import {StaticK1Validator} from "../../src/hca/StaticK1Validator.sol";
-import {IHCAFactory} from "../../src/hca/IHCAFactory.sol";
 import {INexusEventsAndErrors} from "nexus/interfaces/INexusEventsAndErrors.sol";
 import {NexusBootstrap} from "nexus/utils/NexusBootstrap.sol";
+
+import {HCA} from "~src/hca/HCA.sol";
+import {HCAFactory} from "~src/hca/HCAFactory.sol";
+import {HCAInitDataGenerator} from "~src/hca/HCAInitDataGenerator.sol";
+import {IHCAFactory} from "~src/hca/IHCAFactory.sol";
+import {StaticK1Validator} from "~src/hca/StaticK1Validator.sol";
 
 contract HCAEdgeCasesTest is Test {
     address private _entryPoint;
@@ -36,7 +39,12 @@ contract HCAEdgeCasesTest is Test {
         _initDataGenerator = new HCAInitDataGenerator(address(_bootstrap));
         _factory = new HCAFactory(address(0), _initDataGenerator, _factoryOwner);
 
-        _hcaImplementation = new HCA(IHCAFactory(address(_factory)), _entryPoint, address(_validator), initData);
+        _hcaImplementation = new HCA(
+            IHCAFactory(address(_factory)),
+            _entryPoint,
+            address(_validator),
+            initData
+        );
 
         vm.prank(_factoryOwner);
         _factory.setImplementation(address(_hcaImplementation));
@@ -46,8 +54,11 @@ contract HCAEdgeCasesTest is Test {
         // Test factory with a different bootstrap configuration
         StaticK1Validator differentValidator = new StaticK1Validator();
         bytes memory differentInitData = abi.encodePacked(makeAddr("differentOwner"));
-        NexusBootstrap differentBootstrap = new NexusBootstrap(address(differentValidator), differentInitData);
-        
+        NexusBootstrap differentBootstrap = new NexusBootstrap(
+            address(differentValidator),
+            differentInitData
+        );
+
         HCAInitDataGenerator generator = new HCAInitDataGenerator(address(differentBootstrap));
         HCAFactory differentFactory = new HCAFactory(address(0), generator, _factoryOwner);
 
@@ -63,7 +74,7 @@ contract HCAEdgeCasesTest is Test {
     function testCreateAccountWithZeroAddressOwner() public {
         // Test account creation with zero address owner (should fail during deployment)
         address zeroOwner = address(0);
-        
+
         // Account creation should revert due to validator rejecting zero address
         vm.expectRevert();
         _factory.createAccount(zeroOwner);
@@ -115,7 +126,10 @@ contract HCAEdgeCasesTest is Test {
         // All should be different
         for (uint256 i = 0; i < 5; i++) {
             for (uint256 j = i + 1; j < 5; j++) {
-                assertFalse(accounts[i] == accounts[j], "Accounts with similar owners should be different");
+                assertFalse(
+                    accounts[i] == accounts[j],
+                    "Accounts with similar owners should be different"
+                );
             }
         }
     }
@@ -137,7 +151,11 @@ contract HCAEdgeCasesTest is Test {
         vm.prank(newFactoryOwner);
         _factory.setImplementation(newImpl);
 
-        assertEq(_factory.getImplementation(), newImpl, "Implementation should be updated by new owner");
+        assertEq(
+            _factory.getImplementation(),
+            newImpl,
+            "Implementation should be updated by new owner"
+        );
     }
 
     function testReinitializationAttempt() public {
@@ -158,7 +176,12 @@ contract HCAEdgeCasesTest is Test {
         address entryPoint2 = makeAddr("entryPoint2");
 
         // Create HCA with different entry point
-        HCA hca2 = new HCA(IHCAFactory(address(_factory)), entryPoint2, address(_validator), abi.encodePacked(_owner));
+        HCA hca2 = new HCA(
+            IHCAFactory(address(_factory)),
+            entryPoint2,
+            address(_validator),
+            abi.encodePacked(_owner)
+        );
 
         // Should work fine
         assertTrue(address(hca2) != address(0), "HCA with different entry point should be created");
@@ -200,15 +223,18 @@ contract HCAEdgeCasesTest is Test {
         // Test generator with complex bootstrap that has many configurations
         StaticK1Validator complexValidator = new StaticK1Validator();
         bytes memory complexInitData = abi.encodePacked(makeAddr("complexOwner"));
-        NexusBootstrap complexBootstrap = new NexusBootstrap(address(complexValidator), complexInitData);
-        
+        NexusBootstrap complexBootstrap = new NexusBootstrap(
+            address(complexValidator),
+            complexInitData
+        );
+
         // This should handle it gracefully
         HCAInitDataGenerator generator = new HCAInitDataGenerator(address(complexBootstrap));
         HCAFactory complexFactory = new HCAFactory(address(0), generator, _factoryOwner);
-        
+
         vm.prank(_factoryOwner);
         complexFactory.setImplementation(address(_hcaImplementation));
-        
+
         // Account creation should work
         address owner = makeAddr("complexBootstrapOwner");
         address account = complexFactory.createAccount(owner);

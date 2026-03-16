@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.25;
+pragma solidity ^0.8.27;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file, contracts-v2/natspec
 
@@ -15,8 +15,8 @@ import {NexusBootstrap} from "nexus/utils/NexusBootstrap.sol";
 import {HCA} from "~src/hca/HCA.sol";
 import {HCAFactory} from "~src/hca/HCAFactory.sol";
 import {HCAInitDataGenerator} from "~src/hca/HCAInitDataGenerator.sol";
-import {StaticK1Validator} from "~src/hca/StaticK1Validator.sol";
 import {IHCAFactory} from "~src/hca/IHCAFactory.sol";
+import {StaticK1Validator} from "~src/hca/StaticK1Validator.sol";
 
 contract HCATest is Test {
     address private _entryPoint;
