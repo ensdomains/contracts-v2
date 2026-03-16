@@ -366,7 +366,12 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, md.owner),
             "ROLE_REGISTRAR"
         );
-        assertEq(subregistry.roleCount(RegistryRolesLib.ROLE_SET_PARENT), 0, "ROLE_SET_PARENT");
+        assertEq(
+            subregistry.roleCount(subregistry.ROOT_RESOURCE()) &
+                (RegistryRolesLib.ROLE_SET_PARENT * 15),
+            0,
+            "ROLE_SET_PARENT"
+        );
         assertEq(subregistry.getWrappedNode(), node, "getWrappedNode");
         assertEq(subregistry.getWrappedName(), name, "getWrappedName");
         assertEq(universalResolver.findCanonicalName(subregistry), name, "findCanonicalName");

@@ -16,6 +16,20 @@ contract DNSTXTParserLibTest is Test {
         assertEq(DNSTXTParserLib.find("  a=3", "a="), "3");
     }
 
+    function test_find_balancedSquareBrackets() external pure {
+        assertEq(DNSTXTParserLib.find("a[[]]=1", "a[[]]="), "1");
+        assertEq(DNSTXTParserLib.find("a[b[]]=2", "a[b[]]="), "2");
+        assertEq(DNSTXTParserLib.find("a[b[c]]=3", "a[b[c]]="), "3");
+        assertEq(DNSTXTParserLib.find("a[[b]]=4", "a[[b]]="), "4");
+    }
+
+    function test_find_unbalancedSquareBrackets() external pure {
+        assertEq(DNSTXTParserLib.find("a[[]=1", "a[]="), "");
+        assertEq(DNSTXTParserLib.find("a[]]=2", "a[]="), "");
+        assertEq(DNSTXTParserLib.find("a[[[=3", "a[]="), "");
+        assertEq(DNSTXTParserLib.find("a[]]=4 a[]=1", "a[]="), "1");
+    }
+
     function test_find_ignored() external pure {
         assertEq(DNSTXTParserLib.find("a a=1", "a="), "1");
         assertEq(DNSTXTParserLib.find("a[b] a=2", "a="), "2");
