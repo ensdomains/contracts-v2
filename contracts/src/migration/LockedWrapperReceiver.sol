@@ -8,7 +8,6 @@ import {
     CANNOT_BURN_FUSES,
     CANNOT_TRANSFER,
     CANNOT_SET_RESOLVER,
-    CANNOT_SET_TTL,
     CANNOT_CREATE_SUBDOMAIN
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
@@ -21,15 +20,8 @@ import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
 
-/// @dev Fuses which translate directly to PermissionedRegistry logic.
-uint32 constant FUSES_TO_BURN = CANNOT_BURN_FUSES |
-    CANNOT_TRANSFER |
-    CANNOT_SET_RESOLVER |
-    CANNOT_SET_TTL |
-    CANNOT_CREATE_SUBDOMAIN;
-
 /// @title LockedWrappedReceiver
-/// @notice AbstractWrapperReceiver for locked NameWrapper tokens.
+/// @dev AbstractWrapperReceiver for locked NameWrapper tokens.
 ///
 /// There are (2) LockedWrapperReceiver implementations:
 /// 1. LockedMigrationController only accepts .eth 2LD tokens.
@@ -62,6 +54,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Initializes LockedWrapperReceiver.
+    /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @param verifiableFactory The shared factory for verifiable deployments.
+    /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
     constructor(
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
@@ -75,12 +71,12 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The DNS-encoded name for this registry.
+    /// @notice Returns the DNS-encoded name for this registry.
     function getWrappedName() public view virtual returns (bytes memory) {
         return NAME_WRAPPER.names(getWrappedNode());
     }
 
-    /// @notice The NameWrapper node (namehash).
+    /// @notice Returns the NameWrapper node (namehash).
     function getWrappedNode() public view virtual returns (bytes32);
 
     ////////////////////////////////////////////////////////////////////////
@@ -113,17 +109,21 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 revert LibMigration.NameNotLocked(uint256(node));
             }
 
-            if ((fuses & CANNOT_SET_RESOLVER) != 0) {
-                md.resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
-            } else {
+            if (NAME_WRAPPER.getApproved(uint256(node)) != address(0)) {
+                revert LibMigration.FrozenTokenApproval(uint256(node));
+            }
+
+            if ((fuses & CANNOT_SET_RESOLVER) == 0) {
                 NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
+            } else {
+                md.resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
             }
 
             // create subregistry
             IRegistry subregistry = IRegistry(
                 VERIFIABLE_FACTORY.deployProxy(
                     WRAPPER_REGISTRY_IMPL,
-                    md.salt,
+                    uint256(node),
                     abi.encodeCall(
                         IWrapperRegistry.initialize,
                         (
@@ -149,11 +149,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 _tokenRoleBitmapFromFuses(fuses),
                 expiry
             );
-
-            // Burn all migration fuses
-            if (_notFrozen(fuses)) {
-                NAME_WRAPPER.setFuses(node, uint16(FUSES_TO_BURN));
-            }
         }
     }
 

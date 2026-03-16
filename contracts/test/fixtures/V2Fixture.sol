@@ -8,8 +8,8 @@ import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
 import {VerifiableFactory, UUPSProxy} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
-import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {BaseUriRegistryMetadata} from "~src/registry/BaseUriRegistryMetadata.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
@@ -26,6 +26,36 @@ contract V2Fixture is Test, ERC1155Holder {
     GatewayProvider batchGatewayProvider;
     UniversalResolverV2 universalResolver;
 
+    /// @dev Role bitmaps matching README Static Deployment Permissions.
+    function _rootRegistryRootRoles() internal pure returns (uint256) {
+        return
+            RegistryRolesLib.ROLE_REGISTRAR |
+            RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
+            RegistryRolesLib.ROLE_REGISTER_RESERVED |
+            RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN |
+            RegistryRolesLib.ROLE_SET_PARENT |
+            RegistryRolesLib.ROLE_SET_PARENT_ADMIN |
+            RegistryRolesLib.ROLE_RENEW |
+            RegistryRolesLib.ROLE_RENEW_ADMIN;
+    }
+
+    function _ethRegistryRootRoles() internal pure returns (uint256) {
+        return
+            RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
+            RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN |
+            RegistryRolesLib.ROLE_SET_PARENT |
+            RegistryRolesLib.ROLE_SET_PARENT_ADMIN |
+            RegistryRolesLib.ROLE_RENEW_ADMIN;
+    }
+
+    function _ethTokenRoles() internal pure returns (uint256) {
+        return
+            RegistryRolesLib.ROLE_SET_SUBREGISTRY |
+            RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN |
+            RegistryRolesLib.ROLE_SET_RESOLVER |
+            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+    }
+
     function deployV2Fixture() public {
         verifiableFactory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
@@ -35,23 +65,24 @@ contract V2Fixture is Test, ERC1155Holder {
             hcaFactory,
             metadata,
             address(this),
-            EACBaseRolesLib.ALL_ROLES
+            _rootRegistryRootRoles()
         );
         ethRegistry = new PermissionedRegistry(
             hcaFactory,
             metadata,
             address(this),
-            EACBaseRolesLib.ALL_ROLES
+            _ethRegistryRootRoles()
         );
         rootRegistry.register(
             "eth",
             address(this),
             ethRegistry,
             address(0),
-            EACBaseRolesLib.ALL_ROLES,
+            _ethTokenRoles(),
             type(uint64).max
         );
         ethRegistry.setParent(rootRegistry, "eth");
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(this));
         batchGatewayProvider = new GatewayProvider(address(this), new string[](0));
         universalResolver = new UniversalResolverV2(rootRegistry, batchGatewayProvider);
     }

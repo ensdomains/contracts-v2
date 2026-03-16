@@ -16,7 +16,7 @@ export default execute(
     });
   },
   {
-    tags: ["DNSAliasResolver", "l1"],
+    tags: ["DNSAliasResolver", "v2"],
     dependencies: ["RootRegistry", "BatchGatewayProvider"],
   },
 );

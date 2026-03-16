@@ -11,9 +11,11 @@ interface IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice `paymentToken` is now supported.
+    /// @param paymentToken The payment token added.
     event PaymentTokenAdded(IERC20 indexed paymentToken);
 
     /// @notice `paymentToken` is no longer supported.
+    /// @param paymentToken The payment token removed.
     event PaymentTokenRemoved(IERC20 indexed paymentToken);
 
     ////////////////////////////////////////////////////////////////////////
@@ -33,28 +35,21 @@ interface IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Check if `paymentToken` is supported for payment.
-    ///
     /// @param paymentToken The ERC-20 to check.
-    ///
     /// @return `true` if `paymentToken` is supported.
     function isPaymentToken(IERC20 paymentToken) external view returns (bool);
 
     /// @notice Check if a `label` is valid.
-    ///
     /// @param label The name.
-    ///
     /// @return `true` if the `label` is valid.
     function isValid(string memory label) external view returns (bool);
 
     /// @notice Get rent price for `label`.
-    ///
     /// @dev Reverts `PaymentTokenNotSupported` or `NotValid`.
-    ///
     /// @param label The name.
     /// @param owner The new owner address.
     /// @param duration The duration to price, in seconds.
     /// @param paymentToken The ERC-20 to use.
-    ///
     /// @return base The base price, relative to `paymentToken`.
     /// @return premium The premium price, relative to `paymentToken`.
     function rentPrice(

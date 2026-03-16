@@ -1,7 +1,7 @@
 {
   "name": "contracts",
   "dependencies": {
-    "@ensdomains/hardhat-chai-matchers-viem": "^0.1.14",
+    "@ensdomains/hardhat-chai-matchers-viem": "^0.1.16",
     "@nomicfoundation/hardhat-network-helpers": "3.0.0",
     "@nomicfoundation/hardhat-viem": "3.0.0",
     "@rocketh/deploy": "0.14.0",
@@ -23,6 +23,7 @@
     "@rocketh/proxy": "0.14.0",
     "@rocketh/verifier": "0.14.4",
     "@types/bun": "^1.3.2",
+    "abitype": "^1.2.3",
     "chai": "^5.1.1",
     "ethers": "^6.15.0",
     "prettier": "^3.5.3",

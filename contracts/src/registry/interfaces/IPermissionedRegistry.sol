@@ -32,12 +32,15 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Associate a token with an EAC resource.
+    /// @param tokenId The token ID.
+    /// @param resource The EAC resource.
     event TokenResource(uint256 indexed tokenId, uint256 indexed resource);
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Label cannot be reserved again.
     /// @dev Error selector: `0xf60759e0`
     error LabelAlreadyReserved(string label);
 

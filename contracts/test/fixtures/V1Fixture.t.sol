@@ -6,6 +6,7 @@ import {
     CANNOT_SET_RESOLVER,
     CANNOT_UNWRAP,
     CANNOT_BURN_FUSES,
+    CANNOT_APPROVE,
     LabelTooShort,
     LabelTooLong
 } from "@ens/contracts/wrapper/NameWrapper.sol";
@@ -14,6 +15,8 @@ import {V1Fixture, NameCoder} from "./V1Fixture.sol";
 
 // TODO: add more NameWrapper quirks and invariant tests.
 contract V1FixtureTest is V1Fixture {
+    address friend = makeAddr("friend");
+
     function setUp() external {
         deployV1Fixture();
     }
@@ -34,7 +37,7 @@ contract V1FixtureTest is V1Fixture {
 
     function test_registerWrappedETH3LD() external {
         bytes memory parentName = registerWrappedETH2LD("test", 0);
-        bytes memory name = createWrappedChild(parentName, "sub", 0);
+        bytes memory name = createWrappedChild(parentName, "sub", address(0), 0);
         assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), user, "owner");
     }
 
@@ -45,7 +48,7 @@ contract V1FixtureTest is V1Fixture {
 
     function test_registerWrappedDNS3LD() external {
         bytes memory parentName = createWrappedName("ens.domains", 0);
-        bytes memory name = createWrappedChild(parentName, "sub", 0);
+        bytes memory name = createWrappedChild(parentName, "sub", address(0), 0);
         assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), user, "owner");
     }
 
@@ -112,10 +115,10 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL() external {
         bytes memory name = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        createWrappedChild(name, "1", PARENT_CANNOT_CONTROL);
-        createWrappedChild(name, "2", PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
+        createWrappedChild(name, "1", address(0), PARENT_CANNOT_CONTROL);
+        createWrappedChild(name, "2", address(0), PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
         vm.expectRevert();
-        this.createWrappedChild(name, "3", CANNOT_UNWRAP);
+        this.createWrappedChild(name, "3", address(0), CANNOT_UNWRAP);
     }
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_setFuses() external {
@@ -129,7 +132,12 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_wrap() external {
         bytes memory parentName = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        bytes memory name = createWrappedChild(parentName, "sub", PARENT_CANNOT_CONTROL);
+        bytes memory name = createWrappedChild(
+            parentName,
+            "sub",
+            address(0),
+            PARENT_CANNOT_CONTROL
+        );
         (bytes32 labelhash, ) = NameCoder.readLabel(name, 0);
         vm.startPrank(user);
         nameWrapper.setFuses(NameCoder.namehash(name, 0), uint16(PARENT_CANNOT_CONTROL));
@@ -152,6 +160,7 @@ contract V1FixtureTest is V1Fixture {
         bytes memory name = createWrappedChild(
             parentName,
             "sub",
+            address(0),
             CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
         );
         // setChildFuses() does not allow fuse changes if PCC
@@ -171,6 +180,29 @@ contract V1FixtureTest is V1Fixture {
         this.registerWrappedETH2LD("test", CANNOT_SET_RESOLVER);
         this.registerWrappedETH2LD("test", CANNOT_SET_RESOLVER | CANNOT_UNWRAP);
     }
+
+    function test_nameWrapper_CANNOT_APPROVE_requires_CANNOT_UNWRAP() external {
+        vm.expectRevert();
+        this.registerWrappedETH2LD("test", CANNOT_APPROVE);
+        this.registerWrappedETH2LD("test", CANNOT_APPROVE | CANNOT_UNWRAP);
+    }
+
+    function test_nameWrapper_approveBug() external {
+        bytes memory name = this.registerWrappedETH2LD("test", 0);
+        bytes32 node = NameCoder.namehash(name, 0);
+        vm.prank(user);
+        nameWrapper.approve(friend, uint256(node));
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L146-L149
+        vm.prank(friend);
+        vm.expectRevert(
+            abi.encodeWithSignature("Error(string)", "ERC1155: caller is not owner nor approved")
+        );
+        nameWrapper.safeTransferFrom(user, friend, uint256(node), 1, "");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // BaseRegistrar Quirks
+    ////////////////////////////////////////////////////////////////////////
 
     function test_ethRegistrarV1_ownerOf_unregisteredReverts() external {
         vm.expectRevert();

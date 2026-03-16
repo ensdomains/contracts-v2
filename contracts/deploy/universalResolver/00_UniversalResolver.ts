@@ -16,7 +16,7 @@ export default execute(
     });
   },
   {
-    tags: ["UniversalResolverV2", "l1"],
+    tags: ["UniversalResolverV2", "v2"],
     dependencies: ["RootRegistry", "BatchGatewayProvider"],
   },
 );

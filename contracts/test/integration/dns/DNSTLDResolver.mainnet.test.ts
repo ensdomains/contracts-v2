@@ -19,7 +19,7 @@ if (url) {
 
   async function fixture() {
     await chain.networkHelpers.mine(); // https://github.com/NomicFoundation/hardhat/issues/5511#issuecomment-2288072104
-    const mainnetV2 = await deployV2Fixture(chain, true); // CCIP on UR
+    const v2 = await deployV2Fixture(chain, true); // CCIP on UR
     const ensRegistry = await chain.viem.getContractAt(
       "ENSRegistry",
       "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e",
@@ -35,29 +35,29 @@ if (url) {
     const oracleGatewayProvider = await chain.viem.deployContract(
       "GatewayProvider",
       [
-        mainnetV2.walletClient.account.address,
+        v2.walletClient.account.address,
         [await dnsTLDResolverV1.read.gatewayURL()],
       ],
     );
     const dnsTLDResolver = await chain.viem.deployContract("DNSTLDResolver", [
       ensRegistry.address,
       dnsTLDResolverV1.address,
-      mainnetV2.rootRegistry.address,
+      v2.rootRegistry.address,
       DNSSEC.address,
       oracleGatewayProvider.address,
-      mainnetV2.batchGatewayProvider.address,
+      v2.batchGatewayProvider.address,
     ]);
     for (const name of ["dnsname.ens.eth"]) {
-      await mainnetV2.setupName({
+      await v2.setupName({
         name,
         resolverAddress: await ensRegistry.read.resolver([namehash(name)]),
       });
     }
     return {
+      v2,
       ensRegistry,
       dnsTLDResolverV1,
       DNSSEC,
-      mainnetV2,
       dnsTLDResolver,
     };
   }
@@ -68,16 +68,15 @@ if (url) {
       for (const kp of KNOWN_DNS) {
         it(kp.name, { timeout }, async () => {
           const F = await chain.networkHelpers.loadFixture(fixture);
-          await F.mainnetV2.setupName({
+          await F.v2.setupName({
             name: getLabelAt(kp.name, -1),
             resolverAddress: F.dnsTLDResolverV1.address,
           });
           const bundle = bundleCalls(makeResolutions(kp));
-          const [answer, resolver] =
-            await F.mainnetV2.universalResolver.read.resolve([
-              dnsEncodeName(kp.name),
-              bundle.call,
-            ]);
+          const [answer, resolver] = await F.v2.universalResolver.read.resolve([
+            dnsEncodeName(kp.name),
+            bundle.call,
+          ]);
           expectVar({ resolver }).toEqualAddress(F.dnsTLDResolverV1.address);
           bundle.expect(answer);
         });
@@ -87,16 +86,15 @@ if (url) {
       for (const kp of KNOWN_DNS) {
         it(kp.name, { timeout }, async () => {
           const F = await chain.networkHelpers.loadFixture(fixture);
-          await F.mainnetV2.setupName({
+          await F.v2.setupName({
             name: getLabelAt(kp.name, -1),
             resolverAddress: F.dnsTLDResolver.address,
           });
           const bundle = bundleCalls(makeResolutions(kp));
-          const [answer, resolver] =
-            await F.mainnetV2.universalResolver.read.resolve([
-              dnsEncodeName(kp.name),
-              bundle.call,
-            ]);
+          const [answer, resolver] = await F.v2.universalResolver.read.resolve([
+            dnsEncodeName(kp.name),
+            bundle.call,
+          ]);
           expectVar({ resolver }).toEqualAddress(F.dnsTLDResolver.address);
           bundle.expect(answer);
         });

@@ -6,29 +6,46 @@
     "compiler-version": ["error", ">=0.8.13"],
     "no-unused-import": "error",
     "no-global-import": "error",
-    "use-natspec": [
-      "off",
+    "use-natspec": "off",
+    "contracts-v2/natspec": [
+      "error",
       {
-        "title": {
-          "enabled": true,
-          "ignore": {}
+        "tags": {
+          "title": { "enabled": false },
+          "author": { "enabled": false },
+          "notice": {
+            "enabled": true,
+            "exclude": [
+              "function:internal",
+              "function:private",
+              "library",
+              "variable:internal",
+              "variable:private",
+              "abstract",
+              "interface"
+            ]
+          },
+          "dev": {
+            "enabled": true,
+            "include": [
+              "function:internal",
+              "function:private",
+              "library",
+              "variable:internal",
+              "variable:private",
+              "abstract"
+            ]
+          },
+          "param": {
+            "enabled": true,
+            "exclude": ["function:internal", "function:private", "library"]
+          },
+          "return": {
+            "enabled": true,
+            "exclude": ["function:internal", "function:private", "library"]
+          }
         },
-        "author": {
-          "enabled": true,
-          "ignore": {}
-        },
-        "notice": {
-          "enabled": true,
-          "ignore": {}
-        },
-        "param": {
-          "enabled": true,
-          "ignore": {}
-        },
-        "return": {
-          "enabled": true,
-          "ignore": {}
-        }
+        "continuationIndent": "padded"
       }
     ],
     "duplicated-imports": "error",
@@ -67,6 +84,18 @@
       }
     ],
     "contracts-v2/selector-tags": "error",
-    "contracts-v2/natspec-triple-slash": "error"
+    "contracts-v2/natspec-triple-slash": "error",
+    "contracts-v2/category-headers": [
+      "error",
+      {
+        "minCategories": 3,
+        "initializationFunctions": [
+          "constructor",
+          "supportsInterface",
+          "supportsFeature",
+          "initialize"
+        ]
+      }
+    ]
   }
 }
