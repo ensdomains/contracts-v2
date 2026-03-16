@@ -961,11 +961,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWhileAvailable(uint256) external {
+    function test_grantRolesWhileExpired(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, true);
 
-        uint256 tokenId = LibLabel.withVersion(LibLabel.id(testLabel), 0);
-        assertTrue(registry.getStatus(tokenId) == IPermissionedRegistry.Status.AVAILABLE);
+        uint256 tokenId = this._register();
+        vm.warp(testExpiry);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -1035,7 +1035,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
     }
 
-    function test_revokeRolesWhileExpiredAsRoot(uint256) external {
+    function test_revokeRolesWhileExpired(uint256) external {
         testRoles = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._register();
@@ -1052,7 +1052,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.revokeRoles(tokenId, testRoles, testOwner);
     }
 
-    function test_revokeRolesWhileReservedAsRoot(uint256) external {
+    function test_revokeRolesWhileReserved(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._reserve();
