@@ -166,6 +166,20 @@ export async function setupDevnet({
 
     const client = createClient(accounts[0]);
 
+    // Mock the EIP-7951 P-256 precompile at address 0x100.
+    // ens-contracts v1.7.0 replaced the pure-Solidity EllipticCurve library with
+    // a call to this precompile for DNSSEC P256SHA256 signature verification.
+    // Anvil does not yet support EIP-7951 (requires Osaka/Fusaka hardfork), so we
+    // deploy minimal bytecode that always returns 0x00...01 (valid signature).
+    // Bytecode: PUSH1 0x01, PUSH0, MSTORE, PUSH1 0x20, PUSH0, RETURN
+    await client.request({
+      method: "anvil_setCode" as any,
+      params: [
+        "0x0000000000000000000000000000000000000100",
+        "0x60015f5260205ff3",
+      ],
+    });
+
     console.log("Deploying contracts");
     const deploymentName = "devnet-local";
     if (saveDeployments) {
