@@ -259,47 +259,21 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    /// @notice Requires `REGISTERED` and cannot grant admin roles.
-    ///
-    /// Admin roles are only assigned during name registration to maintain
-    /// controlled permission management. This ensures that role delegation
-    /// follows the intended security model where admin privileges are granted at
-    /// registration time and cannot be arbitrarily granted afterward.
-    ///
     function grantRoles(
         uint256 anyId,
         uint256 roleBitmap,
         address account
     ) public override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
-        Entry storage entry = _entry(anyId);
-        uint256 resource = _constructResource(anyId, entry);
-        if (
-            _isExpired(entry.expiry) || // available
-            super.ownerOf(_constructTokenId(anyId, entry)) == address(0) || // reserved
-            (roleBitmap & ~(_getSettableRoles(resource, _msgSender()) >> 128)) != 0 // admin or not grantable
-        ) {
-            revert EACCannotGrantRoles(resource, roleBitmap, _msgSender());
-        }
-        return _grantRoles(resource, roleBitmap, account, true);
+        return super.grantRoles(getResource(anyId), roleBitmap, account);
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    /// @notice Requires `REGISTERED`.
     function revokeRoles(
         uint256 anyId,
         uint256 roleBitmap,
         address account
     ) public override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
-        Entry storage entry = _entry(anyId);
-        uint256 resource = _constructResource(anyId, entry);
-        if (
-            _isExpired(entry.expiry) || // available
-            super.ownerOf(_constructTokenId(anyId, entry)) == address(0) || // reserved
-            (roleBitmap & ~_getRevokableRoles(resource, _msgSender())) != 0 // not revokable
-        ) {
-            revert EACCannotRevokeRoles(resource, roleBitmap, _msgSender());
-        }
-        return _revokeRoles(resource, roleBitmap, account, true);
+        return super.revokeRoles(getResource(anyId), roleBitmap, account);
     }
 
     /// @inheritdoc IRegistry
@@ -490,6 +464,52 @@ contract PermissionedRegistry is
                 }
             }
         }
+    }
+
+    /// @inheritdoc EnhancedAccessControl
+    /// @dev Override for token-dependent logic:
+    ///
+    /// Token non-admin roles can only be granted to registered tokens.
+    ///
+    /// Token admin roles are only assigned during name registration to maintain
+    /// controlled permission management. This ensures that role delegation
+    /// follows the intended security model where admin privileges are granted at
+    /// registration time and cannot be arbitrarily granted afterward.
+    ///
+    /// Root admin roles are unaffected.
+    ///
+    /// @param resource The resource to get settable roles for.
+    /// @param account The account to get settable roles for.
+    /// @return The settable roles (regular roles only, not admin roles).
+    function _getSettableRoles(
+        uint256 resource,
+        address account
+    ) internal view virtual override returns (uint256) {
+        uint256 roleBitmap = super._getSettableRoles(resource, account);
+        return
+            resource == ROOT_RESOURCE
+                ? roleBitmap
+                : ownerOf(_constructTokenId(resource, _entry(resource))) != address(0)
+                    ? roleBitmap >> 128 // remove admin
+                    : 0; // available or reserved
+    }
+
+    /// @inheritdoc EnhancedAccessControl
+    /// @dev Override for token-dependent logic:
+    ///
+    /// Token roles can only be revoked from registered tokens.
+    ///
+    /// Root roles are unaffected.
+    ///
+    function _getRevokableRoles(
+        uint256 resource,
+        address account
+    ) internal view virtual override returns (uint256) {
+        return
+            resource == ROOT_RESOURCE ||
+                ownerOf(_constructTokenId(resource, _entry(resource))) != address(0)
+                ? super._getSettableRoles(resource, account)
+                : 0; // available or reserved
     }
 
     /// @dev Zeroes version bits in `anyId` to return the canonical storage entry for the name.
