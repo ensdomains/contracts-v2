@@ -44,10 +44,6 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     /// @dev Error selector: `0xf60759e0`
     error LabelAlreadyReserved(string label);
 
-    /// @notice Label is not registered.
-    /// @dev Error selector: `0x4a99168b`
-    error LabelNotRegistered(uint256 tokenId);
-
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
