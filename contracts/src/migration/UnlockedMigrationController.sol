@@ -45,11 +45,11 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Initializes UnlockedMigrationController.
-    /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     constructor(
-        IPermissionedRegistry ethRegistry,
-        INameWrapper nameWrapper
+        INameWrapper nameWrapper,
+        IPermissionedRegistry ethRegistry
     ) AbstractWrapperReceiver(nameWrapper) {
         ETH_REGISTRY = ethRegistry;
         _REGISTRAR_V1 = nameWrapper.registrar();

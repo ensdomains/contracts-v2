@@ -1,54 +1,42 @@
 import { writeFileSync } from "node:fs";
-import { keccak256, toHex, zeroAddress, type Address } from "viem";
-import type { DevnetEnvironment, Deployment } from "../../script/setup.js";
-import { STATUS } from "../../script/deploy-constants.js";
+import type { Address } from "viem";
+import type { DevnetEnvironment } from "../../script/setup.js";
+import { idFromLabel } from "./utils.js";
 
 const DEPLOYER_PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
 
-export async function setupBaseRegistrarController(
-  deployment: Deployment,
-  namedAccounts: DevnetEnvironment["namedAccounts"],
-) {
-  const deployer = namedAccounts.deployer;
-  const owner = namedAccounts.owner;
-  await deployment.contracts.ETHRegistrarV1.write.addController(
-    [deployer.address],
-    { account: owner },
-  );
+export async function setupBaseRegistrarController(env: DevnetEnvironment) {
+  const { deployer, owner } = env.namedAccounts;
+  await env.v1.BaseRegistrar.write.addController([deployer.address], {
+    account: owner,
+  });
 }
 
 export async function registerV1Name(
-  deployment: Deployment,
+  env: DevnetEnvironment,
   label: string,
   ownerAddress: Address,
   durationSeconds: number,
 ) {
-  const tokenId = BigInt(keccak256(toHex(label)));
-  await deployment.contracts.ETHRegistrarV1.write.register([
+  const tokenId = idFromLabel(label);
+  await env.v1.BaseRegistrar.write.register([
     tokenId,
     ownerAddress,
     BigInt(durationSeconds),
   ]);
-  const expiry = await deployment.contracts.ETHRegistrarV1.read.nameExpires([
-    tokenId,
-  ]);
+  const expiry = await env.v1.BaseRegistrar.read.nameExpires([tokenId]);
   return expiry;
 }
 
 export async function renewV1Name(
-  deployment: Deployment,
+  env: DevnetEnvironment,
   label: string,
   additionalDuration: number,
 ) {
-  const tokenId = BigInt(keccak256(toHex(label)));
-  await deployment.contracts.ETHRegistrarV1.write.renew([
-    tokenId,
-    BigInt(additionalDuration),
-  ]);
-  const expiry = await deployment.contracts.ETHRegistrarV1.read.nameExpires([
-    tokenId,
-  ]);
+  const tokenId = idFromLabel(label);
+  await env.v1.BaseRegistrar.write.renew([tokenId, BigInt(additionalDuration)]);
+  const expiry = await env.v1.BaseRegistrar.read.nameExpires([tokenId]);
   return expiry;
 }
 
@@ -56,23 +44,13 @@ const CSV_HEADER =
   "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate";
 
 export function createCSVFile(filePath: string, labels: string[]) {
-  const rows = labels.map(
-    (label) => `,,,,,,${label},,`,
-  );
+  const rows = labels.map((label) => `,,,,,,${label},,`);
   const content = [CSV_HEADER, ...rows].join("\n");
   writeFileSync(filePath, content);
 }
 
-export function getBatchRegistrarAddress(deployment: Deployment): Address {
-  return deployment.env.get("BatchRegistrar").address;
-}
-
-export function getENSV1ResolverAddress(deployment: Deployment): Address {
-  return deployment.env.get("ENSV1Resolver").address;
-}
-
 export function buildMainArgs(
-  deployment: Deployment,
+  env: DevnetEnvironment,
   csvFilePath: string,
   overrides: {
     dryRun?: boolean;
@@ -82,10 +60,8 @@ export function buildMainArgs(
     batchSize?: number;
   } = {},
 ): string[] {
-  const rpcUrl = `http://${deployment.hostPort}`;
-  const registryAddress = deployment.contracts.ETHRegistry.address;
-  const batchRegistrarAddress = getBatchRegistrarAddress(deployment);
-  const v1ResolverAddress = getENSV1ResolverAddress(deployment);
+  const rpcUrl = `http://${env.hostPort}`;
+  const registryAddress = env.v2.ETHRegistry.address;
 
   const args = [
     "node",
@@ -95,19 +71,19 @@ export function buildMainArgs(
     "--registry",
     registryAddress,
     "--batch-registrar",
-    batchRegistrarAddress,
+    env.rocketh.get("BatchRegistrar").address,
     "--private-key",
     DEPLOYER_PRIVATE_KEY,
     "--csv-file",
     csvFilePath,
     "--v1-resolver",
-    v1ResolverAddress,
+    env.v2.ENSV1Resolver.address,
     "--mainnet-rpc-url",
     rpcUrl,
     "--min-expiry-days",
     String(overrides.minExpiryDays ?? 0),
     "--v1-base-registrar",
-    deployment.contracts.ETHRegistrarV1.address,
+    env.v1.BaseRegistrar.address,
   ];
 
   if (overrides.dryRun) {
@@ -127,18 +103,12 @@ export function buildMainArgs(
 }
 
 export async function verifyV2State(
-  deployment: Deployment,
+  env: DevnetEnvironment,
   label: string,
 ): Promise<{
   status: number;
   expiry: bigint;
   latestOwner: Address;
 }> {
-  const labelId = BigInt(keccak256(toHex(label)));
-  const state = await deployment.contracts.ETHRegistry.read.getState([labelId]);
-  return {
-    status: state.status,
-    expiry: state.expiry,
-    latestOwner: state.latestOwner,
-  };
+  return env.v2.ETHRegistry.read.getState([idFromLabel(label)]);
 }

@@ -1,6 +1,9 @@
 import { artifacts, execute } from "@rocketh";
 import { zeroAddress } from "viem";
-import { MAX_EXPIRY, ROLES } from "../script/deploy-constants.js";
+import {
+  MAX_EXPIRY,
+  DEPLOYMENT_ROLES,
+} from "../script/deploy-constants.js";
 
 // TODO: ownership
 export default execute(
@@ -15,20 +18,47 @@ export default execute(
       (typeof artifacts.SimpleRegistryMetadata)["abi"]
     >("SimpleRegistryMetadata");
 
+    console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
-      args: [hcaFactory.address, registryMetadata.address, deployer, ROLES.ALL],
+      args: [
+        hcaFactory.address,
+        registryMetadata.address,
+        deployer,
+        DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+      ],
     });
 
+    console.log("  - Registering in parent");
     await write(rootRegistry, {
       account: deployer,
       functionName: "register",
-      args: ["eth", deployer, ethRegistry.address, zeroAddress, 0n, MAX_EXPIRY],
+      args: [
+        "eth",
+        deployer,
+        ethRegistry.address,
+        zeroAddress,
+        DEPLOYMENT_ROLES.ETH_TOKEN,
+        MAX_EXPIRY,
+      ],
+    });
+
+    await write(ethRegistry, {
+      account: deployer,
+      functionName: "setParent",
+      args: [rootRegistry.address, "eth"],
+    });
+
+    console.log("  - Setting canonical parent");
+    await write(ethRegistry, {
+      account: deployer,
+      functionName: "setParent",
+      args: [rootRegistry.address, "eth"],
     });
   },
   {
-    tags: ["ETHRegistry", "l1"],
+    tags: ["ETHRegistry", "v2"],
     dependencies: ["RootRegistry", "HCAFactory", "RegistryMetadata"],
   },
 );

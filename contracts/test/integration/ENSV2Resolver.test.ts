@@ -1,6 +1,7 @@
 import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/behaviour";
 import hre from "hardhat";
 import { describe, expect, it } from "vitest";
+import { namehash, zeroAddress } from "viem";
 
 import {
   COIN_TYPE_ETH,
@@ -9,7 +10,7 @@ import {
   makeResolutions,
 } from "../utils/resolutions.js";
 import { shouldSupportFeatures } from "../utils/supportsFeatures.js";
-import { dnsEncodeName } from "../utils/utils.js";
+import { dnsEncodeName, idFromLabel } from "../utils/utils.js";
 import { deployV1Fixture } from "./fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "./fixtures/deployV2Fixture.js";
 import { expectVar } from "../utils/expectVar.js";
@@ -17,13 +18,20 @@ import { expectVar } from "../utils/expectVar.js";
 const network = await hre.network.connect();
 
 async function fixture() {
-  const mainnetV1 = await deployV1Fixture(network, true);
-  const mainnetV2 = await deployV2Fixture(network, true);
+  const v1 = await deployV1Fixture(network, true);
+  const v2 = await deployV2Fixture(network, true);
+  const ethResolver = v1.ownedResolver.address;
   const ensV2Resolver = await network.viem.deployContract("ENSV2Resolver", [
-    mainnetV2.rootRegistry.address,
-    mainnetV2.batchGatewayProvider.address,
+    v2.rootRegistry.address,
+    v2.batchGatewayProvider.address,
+    ethResolver,
   ]);
-  return { mainnetV1, mainnetV2, ensV2Resolver };
+  // setup fallback resolver
+  await v1.setupName({
+    name: "eth",
+    resolverAddress: ensV2Resolver.address,
+  });
+  return { v1, v2, ensV2Resolver, ethResolver };
 }
 
 describe("ENSV2Resolver", () => {
@@ -46,23 +54,47 @@ describe("ENSV2Resolver", () => {
     },
   });
 
-  it("requiresOffchain", async () => {
+  it("eth override", async () => {
     const F = await network.networkHelpers.loadFixture(fixture);
-    expect(
-      F.ensV2Resolver.read.requiresOffchain([dnsEncodeName("any.eth")]),
-    ).resolves.toStrictEqual(false);
+    // setup invalid resolver in v2
+    await F.v2.rootRegistry.write.setResolver([
+      idFromLabel("eth"),
+      "0x1111111111111111111111111111111111111111",
+    ]);
+    // resolve in v1
+    {
+      const res = bundleCalls(
+        makeResolutions({
+          name: "eth",
+          addresses: [
+            {
+              coinType: COIN_TYPE_ETH,
+              value: F.v1.baseRegistrar.address,
+            },
+          ],
+        }),
+      );
+      const [answer, resolver] = await F.v1.universalResolver.read.resolve([
+        dnsEncodeName("eth"),
+        res.call,
+      ]);
+      expectVar({ resolver }).toEqualAddress(F.ensV2Resolver.address);
+      res.expect(answer);
+    }
+    // check getResolver
+    {
+      const [resolver, offchain] = await F.ensV2Resolver.read.getResolver([
+        dnsEncodeName("eth"),
+      ]);
+      expectVar({ resolver }).toEqualAddress(F.ethResolver);
+      expectVar({ offchain }).toStrictEqual(false);
+    }
   });
 
-  it("getResolver", async () => {
-    const F = await network.networkHelpers.loadFixture(fixture);
-    expect(
-      F.ensV2Resolver.read.requiresOffchain([dnsEncodeName("any.eth")]),
-    ).resolves.toStrictEqual(false);
-  });
-
-  for (const name of ["test.eth", "sub.test.eth"]) {
+  for (const name of ["test.eth", "sub.test.eth", "abc.sub.test.eth"]) {
     it(name, async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
+      // setup profile in v2
       const kp: KnownProfile = {
         name,
         addresses: [
@@ -75,23 +107,36 @@ describe("ENSV2Resolver", () => {
         contenthash: { value: "0xabcdef" },
       };
       const res = bundleCalls(makeResolutions(kp));
-      const myResolver = await F.mainnetV2.deployPermissionedResolver();
-      await F.mainnetV1.setupName({
-        name,
-        resolverAddress: F.ensV2Resolver.address,
-      });
-      await F.mainnetV2.setupName({
+      const myResolver = await F.v2.deployPermissionedResolver();
+      await F.v2.setupName({
         name,
         resolverAddress: myResolver.address,
       });
       await myResolver.write.multicall([res.resolutions.map((x) => x.write)]);
-      const [answer, resolver] =
-        await F.mainnetV1.universalResolver.read.resolve([
+      // resolve in v1
+      {
+        const [answer, resolver] = await F.v1.universalResolver.read.resolve([
           dnsEncodeName(kp.name),
           res.call,
         ]);
-      expectVar({ resolver }).toEqualAddress(F.ensV2Resolver.address);
-      res.expect(answer);
+        expectVar({ resolver }).toEqualAddress(F.ensV2Resolver.address);
+        res.expect(answer);
+      }
+      // check getResolver
+      {
+        const [resolver, offchain] = await F.ensV2Resolver.read.getResolver([
+          dnsEncodeName(name),
+        ]);
+        expectVar({ resolver }).toEqualAddress(myResolver.address);
+        expectVar({ offchain }).toStrictEqual(false);
+      }
+      // check requiresOffchain
+      {
+        const offchain = await F.ensV2Resolver.read.requiresOffchain([
+          dnsEncodeName(name),
+        ]);
+        expectVar({ offchain }).toStrictEqual(false);
+      }
     });
   }
 });
