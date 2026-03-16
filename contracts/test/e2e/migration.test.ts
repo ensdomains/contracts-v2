@@ -50,7 +50,8 @@ describe("Migration", () => {
     resetOnEach: true,
     async initialize() {
       // hack: add controller so we can register() directly
-      await env.v1.BaseRegistrar.write.addController(
+      // v1.7.0: BaseRegistrar is now owned by RegistrarSecurityController
+      await env.v1.RegistrarSecurityController.write.addRegistrarController(
         [env.namedAccounts.deployer.address],
         { account: env.namedAccounts.owner },
       );

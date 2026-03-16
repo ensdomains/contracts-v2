@@ -8,9 +8,11 @@ const DEPLOYER_PRIVATE_KEY =
 
 export async function setupBaseRegistrarController(env: DevnetEnvironment) {
   const { deployer, owner } = env.namedAccounts;
-  await env.v1.BaseRegistrar.write.addController([deployer.address], {
-    account: owner,
-  });
+  // v1.7.0: BaseRegistrar is now owned by RegistrarSecurityController
+  await env.v1.RegistrarSecurityController.write.addRegistrarController(
+    [deployer.address],
+    { account: owner },
+  );
 }
 
 export async function registerV1Name(
