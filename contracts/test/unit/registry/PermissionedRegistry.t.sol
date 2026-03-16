@@ -1221,10 +1221,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function _randomRoleBitmap(bool admin, bool normal) internal returns (uint256 roleBitmap) {
         uint256 bits;
         if (normal) {
-            bits = vm.randomUint(1, (1 << 32) - 1); // 1+ bits [0, 32)
+            bits |= vm.randomUint(1, (1 << 32) - 1); // 1+ bits [0, 32)
         }
         if (admin) {
-            bits = vm.randomUint((1 << 32) + 1, (1 << 64) - 1); // 1+ bits [32, 64)
+            bits |= vm.randomUint((1 << 32) + 1, (1 << 64) - 1); // 1+ bits [32, 64)
         }
         for (uint256 i; i < 64; ++i) {
             if ((bits & (1 << i)) != 0) {
