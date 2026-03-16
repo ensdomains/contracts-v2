@@ -260,9 +260,9 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    /// @notice Cannot grant admin role and requires `REGISTERED`.
+    /// @notice Requires `REGISTERED` and cannot grant admin roles.
     ///
-    /// Token admin roles are only assigned during name registration to maintain
+    /// Admin roles are only assigned during name registration to maintain
     /// controlled permission management. This ensures that role delegation
     /// follows the intended security model where admin privileges are granted at
     /// registration time and cannot be arbitrarily granted afterward.
@@ -275,9 +275,9 @@ contract PermissionedRegistry is
         Entry storage entry = _entry(anyId);
         uint256 resource = _constructResource(anyId, entry);
         if (
-            _isExpired(entry.expiry) || // expired
+            _isExpired(entry.expiry) || // available
             super.ownerOf(_constructTokenId(anyId, entry)) == address(0) || // reserved
-            (roleBitmap & ~(super._getSettableRoles(resource, _msgSender()) >> 128)) != 0
+            (roleBitmap & ~(super._getSettableRoles(resource, _msgSender()) >> 128)) != 0 // admin or not grantable
         ) {
             revert EACCannotGrantRoles(resource, roleBitmap, _msgSender());
         }
@@ -285,12 +285,22 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IEnhancedAccessControl
+    /// @notice Requires `REGISTERED`.
     function revokeRoles(
         uint256 anyId,
         uint256 roleBitmap,
         address account
     ) public override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
-        return super.revokeRoles(getResource(anyId), roleBitmap, account);
+        Entry storage entry = _entry(anyId);
+        uint256 resource = _constructResource(anyId, entry);
+        if (
+            _isExpired(entry.expiry) || // available
+            super.ownerOf(_constructTokenId(anyId, entry)) == address(0) || // reserved
+            (roleBitmap & ~super._getRevokableRoles(resource, _msgSender())) != 0 // not revokable
+        ) {
+            revert EACCannotRevokeRoles(resource, roleBitmap, _msgSender());
+        }
+        return _revokeRoles(resource, roleBitmap, account, true);
     }
 
     /// @inheritdoc IRegistry

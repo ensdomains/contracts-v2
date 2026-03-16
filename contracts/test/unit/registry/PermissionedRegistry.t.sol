@@ -106,8 +106,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     // is this needed?
-    function test_register_roles(uint16 compactRoles) external {
-        testRoles = _expandRoles(compactRoles);
+    function test_register_roles(uint256) external {
+        testRoles = _randomRoleBitmap(true, true);
         assertTrue(registry.hasRoles(this._register(), testRoles, testOwner));
     }
 
@@ -874,8 +874,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(s1.resource + 1, s2.resource, "resource:12");
     }
 
-    function test_regenerate_safeTransferFrom(uint16 compactRoles) external {
-        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | _expandRoles(compactRoles);
+    function test_regenerate_safeTransferFrom(uint256) external {
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | _randomRoleBitmap(true, true);
         uint256 tokenId = this._register();
         IPermissionedRegistry.State memory s0 = registry.getState(tokenId);
         assertEq(s0.latestOwner, user1, "before:owner");
@@ -906,13 +906,29 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // EAC Override: grantRoles() cannot grant admin and requires REGISTERED
+    // EAC Override: grantRoles() and revokeRoles()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_grantRolesWithAdmin(uint8 roleIndex) external {
-        vm.assume(roleIndex < 32);
-        uint256 roleBitmap = (1 << 128) << (roleIndex << 2); // every admin bit
-        assertTrue((EACBaseRolesLib.ADMIN_ROLES & roleBitmap) != 0);
+    function test_grantRolesAsOwner(uint256) external {
+        uint256 roleBitmap = _randomRoleBitmap(false, true);
+
+        testRoles = roleBitmap << 128; // admin
+        uint256 tokenId = this._register();
+
+        vm.prank(testOwner);
+        assertTrue(registry.grantRoles(tokenId, roleBitmap, user2));
+    }
+
+    function test_grantRolesAsRoot(uint256) external {
+        uint256 roleBitmap = _randomRoleBitmap(false, true);
+
+        uint256 tokenId = this._register();
+
+        assertTrue(registry.grantRoles(tokenId, roleBitmap, testOwner));
+    }
+
+    function test_grantRolesWithAdminAsOwner(uint256) external {
+        uint256 roleBitmap = _randomRoleBitmap(true, false);
 
         uint256 tokenId = this._register();
 
@@ -921,17 +937,15 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
                 tokenId, // same as resource
                 roleBitmap,
-                user1
+                testOwner
             )
         );
-        vm.prank(user1);
+        vm.prank(testOwner);
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWithAdminAsRoot(uint8 roleIndex) external {
-        vm.assume(roleIndex < 32);
-        uint256 roleBitmap = (1 << 128) << (roleIndex << 2); // every admin bit
-        assertTrue((EACBaseRolesLib.ADMIN_ROLES & roleBitmap) != 0);
+    function test_grantRolesWithAdminAsOwnerAndRoot(uint256) external {
+        uint256 roleBitmap = _randomRoleBitmap(true, false);
 
         testOwner = address(this); // mint to account with root
         uint256 tokenId = this._register();
@@ -947,12 +961,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWhileAvailable(uint8 roleIndex) external {
-        vm.assume(roleIndex < 32);
-        uint256 roleBitmap = 1 << (roleIndex << 2); // every normal bit
-        assertTrue(((EACBaseRolesLib.ADMIN_ROLES >> 128) & roleBitmap) != 0);
+    function test_grantRolesWhileAvailable(uint256) external {
+        uint256 roleBitmap = _randomRoleBitmap(true, true);
 
-        uint256 tokenId = LibLabel.withVersion(LibLabel.id(testLabel), 0); // exact token
+        uint256 tokenId = LibLabel.withVersion(LibLabel.id(testLabel), 0);
         assertTrue(registry.getStatus(tokenId) == IPermissionedRegistry.Status.AVAILABLE);
 
         vm.expectRevert(
@@ -966,10 +978,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWhileReserved(uint8 roleIndex) external {
-        vm.assume(roleIndex < 32);
-        uint256 roleBitmap = 1 << (roleIndex << 2); // every normal bit
-        assertTrue(((EACBaseRolesLib.ADMIN_ROLES >> 128) & roleBitmap) != 0);
+    function test_grantRolesWhileReserved(uint256) external {
+        uint256 roleBitmap = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._reserve();
 
@@ -984,20 +994,78 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWhileRegistedAsRoot() external {
+    function test_revokeRolesAsOwnerHavingAdmin(uint256) external {
+        uint256 roleBitmap = _randomRoleBitmap(false, true);
+        uint256 adminRoleBitmap = roleBitmap << 128;
+
+        testRoles = adminRoleBitmap | roleBitmap; // both
         uint256 tokenId = this._register();
 
-        // owner cannot unregister
-        vm.expectRevert();
+        // revoke normal role
         vm.prank(testOwner);
-        registry.unregister(tokenId);
+        assertTrue(registry.revokeRoles(tokenId, roleBitmap, testOwner));
 
-        // use root to grant owner unregister
-        registry.grantRoles(tokenId, RegistryRolesLib.ROLE_UNREGISTER, testOwner);
-
-        // owner can unregister
+        // revoke admin role
         vm.prank(testOwner);
-        registry.unregister(tokenId);
+        assertTrue(registry.revokeRoles(tokenId, adminRoleBitmap, testOwner));
+    }
+
+    function test_revokeRolesAsOwnerLackingAdmin(uint256) external {
+        testRoles = _randomRoleBitmap(false, true);
+
+        uint256 tokenId = this._register();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                tokenId, // same as resource
+                testRoles,
+                testOwner
+            )
+        );
+        vm.prank(testOwner);
+        registry.revokeRoles(tokenId, testRoles, testOwner);
+    }
+
+    function test_revokeRolesAsRoot(uint256) external {
+        testRoles = _randomRoleBitmap(true, true);
+
+        uint256 tokenId = this._register();
+
+        assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
+    }
+
+    function test_revokeRolesWhileExpiredAsRoot(uint256) external {
+        testRoles = _randomRoleBitmap(true, true);
+
+        uint256 tokenId = this._register();
+        vm.warp(testExpiry);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                tokenId, // same as resource
+                testRoles,
+                address(this)
+            )
+        );
+        registry.revokeRoles(tokenId, testRoles, testOwner);
+    }
+
+    function test_revokeRolesWhileReservedAsRoot(uint256) external {
+        uint256 roleBitmap = _randomRoleBitmap(true, true);
+
+        uint256 tokenId = this._reserve();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                tokenId, // same as resource
+                roleBitmap,
+                address(this)
+            )
+        );
+        registry.revokeRoles(tokenId, roleBitmap, testOwner);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1150,10 +1218,17 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         }
     }
 
-    function _expandRoles(uint16 compactRoles) internal pure returns (uint256 roles) {
-        for (uint256 i; i < 16; ++i) {
-            if ((compactRoles & (1 << i)) != 0) {
-                roles |= (1 << (i << 2));
+    function _randomRoleBitmap(bool admin, bool normal) internal returns (uint256 roleBitmap) {
+        uint256 bits;
+        if (normal) {
+            bits = vm.randomUint(1, (1 << 32) - 1); // 1+ bits [0, 32)
+        }
+        if (admin) {
+            bits = vm.randomUint((1 << 32) + 1, (1 << 64) - 1); // 1+ bits [32, 64)
+        }
+        for (uint256 i; i < 64; ++i) {
+            if ((bits & (1 << i)) != 0) {
+                roleBitmap |= 1 << (i << 2);
             }
         }
     }
