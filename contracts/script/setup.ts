@@ -26,10 +26,10 @@ import { mainnet } from "viem/chains";
 import { mnemonicToAccount } from "viem/accounts";
 
 import {
-  computeVerifiableProxyAddress,
+  computeVerifiableProxyAddress as computeVerifiableProxyAddress_,
   deployVerifiableProxy,
 } from "../test/integration/fixtures/deployVerifiableProxy.js";
-import { dnsEncodeName } from "../test/utils/utils.js";
+import { dnsEncodeName, splitName } from "../test/utils/utils.js";
 import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
 import {
   LOCAL_BATCH_GATEWAY_URL,
@@ -325,16 +325,6 @@ export async function setupDevnet({
         address: rocketh.get("StandardRentPriceOracle").address,
         client,
       }),
-      MockUSDC: getContract({
-        abi: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
-        address: rocketh.get("MockUSDC").address,
-        client,
-      }),
-      MockDAI: getContract({
-        abi: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
-        address: rocketh.get("MockDAI").address,
-        client,
-      }),
       // VerifiableFactory implementations
       PermissionedResolverImpl: getContract({
         abi: artifacts.PermissionedResolver.abi,
@@ -395,7 +385,20 @@ export async function setupDevnet({
       }),
     };
 
-    [shared, v1, v2]
+    const erc20 = {
+      MockUSDC: getContract({
+        abi: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
+        address: rocketh.get("MockUSDC").address,
+        client,
+      }),
+      MockDAI: getContract({
+        abi: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
+        address: rocketh.get("MockDAI").address,
+        client,
+      }),
+    };
+
+    [shared, v1, v2, erc20]
       .flatMap((x) => Object.values(x))
       .forEach(patchContractWrite);
     console.log("Linked contracts");
@@ -405,7 +408,7 @@ export async function setupDevnet({
         accounts.map(async (account) => {
           const resolver = await deployPermissionedResolver({
             account,
-            ownedVersion: 0n,
+            salt: { ownedVersion: 0n },
           });
           return [account.name, Object.assign(account, { resolver })];
         }),
@@ -431,18 +434,22 @@ export async function setupDevnet({
       shared,
       v1,
       v2,
+      erc20,
       sync,
       waitFor,
       saveState,
       shutdown,
       createClient,
-      patchContractWrite,
-      verifiableProxyAddress,
-      deployPermissionedResolver,
-      deployPermissionedRegistry,
+      computeVerifiableProxyAddress,
+      computeUserRegistrySalt,
+      computeOwnedResolverSalt,
+      castUserRegistry,
+      castPermissionedResolver,
       deployUserRegistry,
+      deployPermissionedResolver,
       findPermissionedRegistry,
       findWrapperRegistry,
+      patchContractWrite,
     };
 
     async function waitFor(hash: Hex | Promise<Hex>) {
@@ -514,32 +521,40 @@ export async function setupDevnet({
       return BigInt(timestamp);
     }
 
-    async function verifiableProxyAddress(args: {
-      deployer: Address;
-      salt: bigint;
-    }) {
-      return computeVerifiableProxyAddress({
+    function computeVerifiableProxyAddress(deployer: Address, salt: bigint) {
+      return computeVerifiableProxyAddress_({
         factoryAddress: v2.VerifiableFactory.address,
         bytecode: artifacts["UUPSProxy"].bytecode,
-        ...args,
+        deployer,
+        salt,
       });
     }
 
-    function computeOwnedResolverSalt({
-      address,
-      version = 0n,
-    }: {
-      address: Address;
-      version?: bigint;
-    }) {
+    function computeOwnedResolverSalt(owner: Address, version = 0n) {
       return BigInt(
         keccak256(
           encodeAbiParameters(
             [
-              { name: "account", type: "address" },
+              { name: "id", type: "bytes32" },
+              { name: "owner", type: "address" },
               { name: "version", type: "uint256" },
             ],
-            [address, version],
+            [keccak256(stringToHex("OwnedResolver")), owner, version],
+          ),
+        ),
+      );
+    }
+
+    function computeUserRegistrySalt(name: string, version = 0n) {
+      return BigInt(
+        keccak256(
+          encodeAbiParameters(
+            [
+              { name: "id", type: "bytes32" },
+              { name: "node", type: "bytes32" },
+              { name: "version", type: "uint256" },
+            ],
+            [keccak256(stringToHex("UserRegistry")), namehash(name), version],
           ),
         ),
       );
@@ -549,20 +564,15 @@ export async function setupDevnet({
       account, // deployer
       admin = account.address,
       roles = ROLES.ALL,
-      ownedVersion,
       salt,
     }: {
       account: Account;
       admin?: Address;
       roles?: bigint;
-      salt?: bigint;
-      ownedVersion?: bigint;
+      salt?: bigint | { ownedVersion: bigint };
     }) {
-      if (typeof salt === "undefined" && typeof ownedVersion === "bigint") {
-        salt = computeOwnedResolverSalt({
-          address: admin,
-          version: ownedVersion,
-        });
+      if (typeof salt === "object") {
+        salt = computeOwnedResolverSalt(admin, salt.ownedVersion);
       }
       return patchContractWrite(
         await deployVerifiableProxy({
@@ -577,38 +587,6 @@ export async function setupDevnet({
       );
     }
 
-    async function deployPermissionedRegistry({
-      account,
-      roles = ROLES.ALL,
-    }: {
-      account: Account;
-      roles?: bigint;
-    }) {
-      const walletClient = createClient(account);
-      const { abi, bytecode } = artifacts.PermissionedRegistry;
-      const hash = await walletClient.deployContract({
-        abi,
-        bytecode,
-        args: [
-          v2.HCAFactory.address,
-          v2.SimpleRegistryMetadata.address,
-          account.address,
-          roles,
-        ],
-      });
-      const receipt = await waitForSuccessfulTransactionReceipt(walletClient, {
-        hash,
-        ensureDeployment: true,
-      });
-      return patchContractWrite(
-        getContract({
-          abi,
-          address: receipt.contractAddress,
-          client: walletClient,
-        }),
-      );
-    }
-
     async function deployUserRegistry({
       account,
       admin = account.address,
@@ -618,13 +596,17 @@ export async function setupDevnet({
       account: Account;
       admin?: Address;
       roles?: bigint;
-      salt?: bigint;
+      salt?: bigint | { name: string; version?: bigint };
     }) {
+      const implAddress = v2.UserRegistryImpl.address;
+      if (typeof salt === "object") {
+        salt = computeUserRegistrySalt(salt.name, salt.version);
+      }
       return patchContractWrite(
         await deployVerifiableProxy({
           walletClient: createClient(account),
           factoryAddress: v2.VerifiableFactory.address,
-          implAddress: v2.UserRegistryImpl.address,
+          implAddress,
           abi: v2.UserRegistryImpl.abi,
           functionName: "initialize",
           args: [admin, roles],
@@ -633,42 +615,69 @@ export async function setupDevnet({
       );
     }
 
-    // note: TypeScript is too slow when the following is generalized to any resolver type
-    async function findPermissionedRegistry({
-      name,
-      account = namedAccounts.deployer,
-    }: {
-      name: string;
-      account?: Account;
-    }) {
-      const address = await v2.UniversalResolver.read.findExactRegistry([
-        dnsEncodeName(name),
-      ]);
-      if (address === zeroAddress) {
-        throw new Error(`expected PermissionedRegistry: ${name}`);
-      }
+    function castUserRegistry(
+      address: Address,
+      account: Account = namedAccounts.deployer,
+    ) {
       return patchContractWrite(
         getContract({
-          abi: v2.ETHRegistry.abi,
+          abi: v2.UserRegistryImpl.abi,
           address,
           client: createClient(account),
         }),
       );
     }
 
-    async function findWrapperRegistry({
-      name,
-      account,
-    }: {
-      name: string;
-      account: Account;
-    }) {
-      const address = await v2.UniversalResolver.read.findCanonicalRegistry([
+    function castPermissionedResolver(
+      address: Address,
+      account: Account = namedAccounts.deployer,
+    ) {
+      return patchContractWrite(
+        getContract({
+          abi: v2.PermissionedResolverImpl.abi,
+          address,
+          client: createClient(account),
+        }),
+      );
+    }
+
+    // note: casts to UserRegistry even if PermissionRegistry
+    // note: TypeScript is too slow when the following is generalized to any resolver type
+    async function findPermissionedRegistry(name: string, account?: Account) {
+      const address = await v2.UniversalResolver.read.findExactRegistry([
         dnsEncodeName(name),
       ]);
       if (address === zeroAddress) {
-        throw new Error(`expected WrapperRegistry: ${name}`);
+        throw new Error(`expected PermissionedRegistry: ${name}`);
       }
+      // TODO: do a supportsInterface check?
+      return castUserRegistry(address, account);
+    }
+
+    function computeWrapperRegistryAddress(name: string) {
+      const labels = splitName(name);
+      let currentName = labels.pop();
+      if (currentName !== "eth" || !labels.length) {
+        throw new Error(`expected .eth 2LD+: ${name}`);
+      }
+      let address = v2.LockedMigrationController.address;
+      while (labels.length) {
+        currentName = `${labels.pop()}.${currentName}`;
+        address = computeVerifiableProxyAddress(
+          address,
+          BigInt(namehash(currentName)),
+        );
+      }
+      return address;
+    }
+
+    function findWrapperRegistry(
+      name: string,
+      account: Account = namedAccounts.deployer,
+    ) {
+      const address = computeWrapperRegistryAddress(name);
+      // this may not be deployed yet
+      // this is equivalent to `findExactRegistry()` when deployed
       return patchContractWrite(
         getContract({
           abi: v2.WrapperRegistryImpl.abi,
