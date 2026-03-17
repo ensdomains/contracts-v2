@@ -20,28 +20,27 @@ export default execute(
     deploy,
     execute: write,
     get,
-    getV1,
     read,
     namedAccounts: { deployer },
     network,
   }) => {
     const ensRegistryV1 =
-      getV1<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
+      get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
-    const dnsTLDResolverV1 = getV1<
+    const dnsTLDResolverV1 = get<
       (typeof artifacts.OffchainDNSResolver)["abi"]
     >("OffchainDNSResolver");
 
-    const publicSuffixList = getV1<
+    const publicSuffixList = get<
       (typeof artifacts.SimplePublicSuffixList)["abi"]
     >("SimplePublicSuffixList");
 
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
-    const dnssecOracle = getV1<(typeof artifacts.DNSSEC)["abi"]>("DNSSECImpl");
+    const dnssecOracle = get<(typeof artifacts.DNSSEC)["abi"]>("DNSSECImpl");
 
-    const batchGatewayProvider = getV1<
+    const batchGatewayProvider = get<
       (typeof artifacts.GatewayProvider)["abi"]
     >("BatchGatewayProvider");
 
@@ -95,7 +94,7 @@ export default execute(
     }
   },
   {
-    tags: ["DNSTLDResolver", "l1"],
+    tags: ["DNSTLDResolver", "v2"],
     dependencies: [
       "RootRegistry",
       "OffchainDNSResolver", // "ENSRegistry" + "DNSSECImpl"

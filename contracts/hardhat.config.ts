@@ -36,6 +36,23 @@ const config = {
         },
       },
     ],
+    overrides: {
+      'src/L2/reverse-registrar/L2ReverseRegistrar.sol': {
+        version: "0.8.25",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1_000_000,
+          },
+          evmVersion: "paris",
+          outputSelection: {
+            "*": {
+              "*": ["storageLayout"],
+            },
+          },
+        },
+      }
+    }
   },
   paths: {
     sources: {

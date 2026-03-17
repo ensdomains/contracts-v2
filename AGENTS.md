@@ -38,3 +38,7 @@ NEVER create files unless they're absolutely necessary for achieving your goal.
 ALWAYS prefer editing an existing file to creating a new one.
 NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 - when writing tests that involve constants already defined in the source (e.g contracts/src/registry/libraries/RegistryRolesLib.sol) use those defined constants directly instead of hardcoding their values in the tests.
+
+# Documentation
+
+The `contracts/docs/` folder contains operational documentation for scripts and tools. When making changes to code that is covered by documentation in `contracts/docs/`, the corresponding documentation MUST be kept up-to-date alongside the code changes.

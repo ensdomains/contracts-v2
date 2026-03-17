@@ -1,11 +1,11 @@
 import { artifacts, execute } from "@rocketh";
 
 export default execute(
-  async ({ deploy, get, getV1, namedAccounts: { deployer } }) => {
+  async ({ deploy, get, namedAccounts: { deployer } }) => {
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
-    const batchGatewayProvider = getV1<
+    const batchGatewayProvider = get<
       (typeof artifacts.GatewayProvider)["abi"]
     >("BatchGatewayProvider");
 
@@ -16,7 +16,7 @@ export default execute(
     });
   },
   {
-    tags: ["DNSAliasResolver", "l1"],
+    tags: ["DNSAliasResolver", "v2"],
     dependencies: ["RootRegistry", "BatchGatewayProvider"],
   },
 );

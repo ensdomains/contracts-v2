@@ -3,14 +3,17 @@ pragma solidity >=0.8.13;
 
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 
-/// @notice Library for parsing ENS records from DNS TXT data.
+/// @dev Library for parsing ENS records from DNS TXT data.
 ///
-/// The record data consists of a series of key=value pairs, separated by spaces. Keys
-/// may have an optional argument in square brackets, and values may be either unquoted
-/// - in which case they may not contain spaces - or single-quoted. Single quotes in
-/// a quoted value may be backslash-escaped.
+/// The record data consists of a series of key=value pairs, separated by spaces.
 ///
-/// eg. `a=x`, `a[]=x`, `a[b]=x`, `a[b]='x y'`, `a[b]='x y\'s'`
+/// Keys may have an optional argument in square brackets.
+/// Keys may contain additional square brackets but they must be balanced.
+/// eg. `key`, `key[]`, `key[arg]`, `key[arg[abc]]`
+///
+/// Values may be unquoted (therefore no spaces) or single-quoted.
+/// Single quotes in a quoted value may be backslash-escaped.
+/// eg. `x`, `'x y'`, `'x y\'s'`
 ///
 /// <records> ::= " "* <rr>* " "*
 ///      <rr> ::= <r> | <r> <rr>
@@ -19,9 +22,9 @@ import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 ///      <kv> ::= <k> "=" <v>
 ///       <k> ::= <u> | <u> "[" <a> "]"
 ///       <v> ::= "'" <q> "'" | <u>
-///       <q> ::= <all octets except "'" unless preceded by "\">
+///       <q> ::= <all octets except "'" unless immediately preceded by "\">
 ///       <u> ::= <all octets except " ">
-///       <a> ::= <all octets except "]">
+///       <a> ::= <all octets until "]" without an unique preceeding "[">
 ///
 library DNSTXTParserLib {
     /// @dev The DFA internal states.
@@ -37,18 +40,26 @@ library DNSTXTParserLib {
         IGNORED_UNQUOTED_VALUE
     }
 
-    bytes1 private constant CH_BACKSLASH = bytes1(0x5C); // "\"
+    /// @dev The codepoint for the `\` character.
+    bytes1 private constant CH_BACKSLASH = bytes1(0x5C);
+    /// @dev The codepoint for the `'` character.
     bytes1 private constant CH_QUOTE = "'";
+    /// @dev The codepoint for the ` ` character.
     bytes1 private constant CH_SPACE = " ";
+    /// @dev The codepoint for the `=` character.
     bytes1 private constant CH_EQUAL = "=";
+    /// @dev The codepoint for the `[` character.
     bytes1 private constant CH_ARG_OPEN = "[";
+    /// @dev The codepoint for the `]` character.
     bytes1 private constant CH_ARG_CLOSE = "]";
 
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
     /// @dev Implements a DFA to parse the text record, looking for an entry matching `key`.
-    ///
     /// @param data The text record to parse.
     /// @param key The exact key to search for with trailing equals, eg. "key=".
-    ///
     /// @return value The value if found, or an empty string if `key` does not exist.
     function find(bytes memory data, bytes memory key) internal pure returns (bytes memory value) {
         // Here we use a simple state machine to parse the text record. We
@@ -90,17 +101,24 @@ library DNSTXTParserLib {
                 }
             } else if (state == State.IGNORED_KEY_ARG) {
                 // look for the end of the key arg
+                uint256 depth;
                 for (; i < len; ++i) {
-                    if (data[i] == CH_ARG_CLOSE) {
-                        ++i; // parsed key[arg]
-                        if (i < len && data[i] == CH_EQUAL) {
-                            state = State.IGNORED_VALUE; // ignore its value
-                            ++i;
+                    if (data[i] == CH_ARG_OPEN) {
+                        ++depth;
+                    } else if (data[i] == CH_ARG_CLOSE) {
+                        if (depth == 0) {
+                            ++i; // parsed key[arg]
+                            if (i < len && data[i] == CH_EQUAL) {
+                                state = State.IGNORED_VALUE; // ignore its value
+                                ++i;
+                            } else {
+                                // this is recoverable parsing error
+                                state = State.IGNORED_UNQUOTED_VALUE; // assume unquoted and ignore its value
+                            }
+                            break;
                         } else {
-                            // this is recoverable parsing error
-                            state = State.IGNORED_UNQUOTED_VALUE; // assume unquoted and ignore its value
+                            --depth;
                         }
-                        break;
                     }
                 }
             } else if (state == State.VALUE) {

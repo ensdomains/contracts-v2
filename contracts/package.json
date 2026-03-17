@@ -1,13 +1,11 @@
 {
   "name": "contracts",
   "dependencies": {
-    "@ensdomains/hardhat-chai-matchers-viem": "^0.1.14",
-    "@nomicfoundation/hardhat-keystore": "3.0.0",
+    "@ensdomains/hardhat-chai-matchers-viem": "^0.1.16",
     "@nomicfoundation/hardhat-network-helpers": "3.0.0",
     "@nomicfoundation/hardhat-viem": "3.0.0",
     "@rocketh/deploy": "0.14.0",
     "@rocketh/read-execute": "0.14.0",
-    "@rocketh/signer": "0.14.0",
     "@rocketh/viem": "0.14.0",
     "commander": "^14.0.1",
     "dns-packet": "^5.6.1",
@@ -25,6 +23,7 @@
     "@rocketh/proxy": "0.14.0",
     "@rocketh/verifier": "0.14.4",
     "@types/bun": "^1.3.2",
+    "abitype": "^1.2.3",
     "chai": "^5.1.1",
     "ethers": "^6.15.0",
     "prettier": "^3.5.3",
@@ -34,8 +33,7 @@
     "solhint-plugin-prettier": "^0.1.0",
     "ts-node": "^10.9.2",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "3.1.3",
-    "eip-1193": "^0.6.5"
+    "vitest": "3.1.3"
   },
   "peerDependencies": {
     "typescript": "^5.8.3"
@@ -46,12 +44,13 @@
   },
   "scripts": {
     "lint": "NODE_PATH=./node_modules solhint --noPoster 'src/**/*.sol'",
+    "lint:fix": "NODE_PATH=./node_modules solhint --noPoster --fix",
     "compile:forge": "forge build",
     "compile:hardhat": "hardhat compile",
     "compile": "bun run compile:forge && bun run compile:hardhat",
     "test:forge": "forge test",
     "test:hardhat": "bun run compile:hardhat && vitest run",
-    "test:e2e": "bun run compile:hardhat --quiet && bun test ./test/e2e/",
+    "test:e2e": "bun run compile --quiet && bun test ./test/e2e/",
     "test": "bun run test:forge && bun run test:hardhat",
     "interfaces": "bun run compile:hardhat --quiet && bun ./lib/ens-contracts/scripts/interfaces.ts",
     "coverage:forge": "mkdir -p coverage/ && forge coverage --report lcov --report-file coverage/forge.lcov",
@@ -60,7 +59,6 @@
     "coverage:upload": "bun ./script/uploadCoverage.ts",
     "coverage": "bun run coverage:forge && bun run coverage:hardhat && bun run coverage:reports",
     "clean": "forge clean && hardhat clean && rm -rf coverage/",
-    "deploy": "bun run compile && bun ./script/live-deploy.ts",
     "devnet": "bun run compile && bun ./script/runDevnet.ts",
     "aakit": "bun ./script/deployAAkit.ts",
     "check:types": "tsc --noEmit"

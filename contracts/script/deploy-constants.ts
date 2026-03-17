@@ -49,10 +49,44 @@ function adminify(flags: Flags): Flags {
   );
 }
 
+const ADMIN = adminify(FLAGS) as typeof FLAGS;
+
 export const ROLES = {
   ...FLAGS,
-  ADMIN: adminify(FLAGS),
-} as const satisfies Flags;
+  ADMIN,
+} as const;
+
+/** Role bitmaps for static deployment per README Static Deployment Permissions. */
+export const DEPLOYMENT_ROLES = {
+  /** RootRegistry root: REGISTRAR✓✓, REGISTER_RESERVED✓✓, SET_PARENT✓✓, RENEW✓✓ */
+  ROOT_REGISTRY_ROOT:
+    ROLES.REGISTRY.REGISTRAR |
+    ROLES.ADMIN.REGISTRY.REGISTRAR |
+    ROLES.REGISTRY.REGISTER_RESERVED |
+    ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
+    ROLES.REGISTRY.SET_PARENT |
+    ROLES.ADMIN.REGISTRY.SET_PARENT |
+    ROLES.REGISTRY.RENEW |
+    ROLES.ADMIN.REGISTRY.RENEW,
+  /** .eth token: SET_SUBREGISTRY AR, SET_RESOLVER AR */
+  ETH_TOKEN:
+    ROLES.REGISTRY.SET_SUBREGISTRY |
+    ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
+    ROLES.REGISTRY.SET_RESOLVER |
+    ROLES.ADMIN.REGISTRY.SET_RESOLVER,
+  /**
+   * Full registry role bitmap for ReverseRegistry root, .reverse token, and .addr token.
+   * Granting all roles is harmless; some (e.g. REGISTRAR) are root-only and don't apply to tokens.
+   */
+  REVERSE_AND_ADDR: FLAGS.ALL,
+  /** ETHRegistry root deployer: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓, RENEW✓ */
+  ETH_REGISTRY_ROOT:
+    ROLES.ADMIN.REGISTRY.REGISTRAR |
+    ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
+    ROLES.REGISTRY.SET_PARENT |
+    ROLES.ADMIN.REGISTRY.SET_PARENT |
+    ROLES.ADMIN.REGISTRY.RENEW,
+} as const;
 
 // see: IPermissionedRegistry.sol
 export const STATUS = {
@@ -60,3 +94,24 @@ export const STATUS = {
   RESERVED: 1,
   REGISTERED: 2,
 };
+
+// see: INameWrapper.sol
+export const FUSES = {
+  CANNOT_UNWRAP: 1 << 0,
+  CANNOT_BURN_FUSES: 1 << 1,
+  CANNOT_TRANSFER: 1 << 2,
+  CANNOT_SET_RESOLVER: 1 << 3,
+  CANNOT_SET_TTL: 1 << 4,
+  CANNOT_CREATE_SUBDOMAIN: 1 << 5,
+  CANNOT_APPROVE: 1 << 6,
+  PARENT_CANNOT_CONTROL: 1 << 16,
+  IS_DOT_ETH: 1 << 17,
+  CAN_EXTEND_EXPIRY: 1 << 18,
+  CAN_DO_EVERYTHING: 0,
+} as const;
+
+export const FUSE_MASKS = {
+  PARENT_CONTROLLED: 0xffff0000,
+  PARENT_RESERVED: 0x0000ff80, // bits 7-15 (docs say 17-32)
+  USER_SETTABLE: 0xfffdffff, // ~IS_DOT_ETH
+} as const;

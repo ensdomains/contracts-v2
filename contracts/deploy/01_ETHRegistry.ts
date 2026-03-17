@@ -1,10 +1,13 @@
 import { artifacts, execute } from "@rocketh";
-import { labelhash, zeroAddress } from "viem";
-import { MAX_EXPIRY, ROLES } from "../script/deploy-constants.js";
+import { zeroAddress } from "viem";
+import {
+  MAX_EXPIRY,
+  DEPLOYMENT_ROLES,
+} from "../script/deploy-constants.js";
 
 // TODO: ownership
 export default execute(
-  async ({ deploy, execute: write, read, get, namedAccounts: { deployer } }) => {
+  async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
@@ -15,41 +18,47 @@ export default execute(
       (typeof artifacts.SimpleRegistryMetadata)["abi"]
     >("SimpleRegistryMetadata");
 
+    console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
-      args: [hcaFactory.address, registryMetadata.address, deployer, ROLES.ALL],
+      args: [
+        hcaFactory.address,
+        registryMetadata.address,
+        deployer,
+        DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+      ],
     });
 
-    const expiry = await read(rootRegistry, {
-      functionName: "getExpiry",
-      args: [BigInt(labelhash("eth"))],
+    console.log("  - Registering in parent");
+    await write(rootRegistry, {
+      account: deployer,
+      functionName: "register",
+      args: [
+        "eth",
+        deployer,
+        ethRegistry.address,
+        zeroAddress,
+        DEPLOYMENT_ROLES.ETH_TOKEN,
+        MAX_EXPIRY,
+      ],
     });
 
-    if (expiry !== 0n) {
-      // already registered, update subregistry
-      await write(rootRegistry, {
-        account: deployer,
-        functionName: "setSubregistry",
-        args: [BigInt(labelhash("eth")), ethRegistry.address],
-      });
-    } else {
-      await write(rootRegistry, {
-        account: deployer,
-        functionName: "register",
-        args: [
-          "eth",
-          deployer,
-          ethRegistry.address,
-          zeroAddress,
-          0n,
-          MAX_EXPIRY,
-        ],
-      });
-    }
+    await write(ethRegistry, {
+      account: deployer,
+      functionName: "setParent",
+      args: [rootRegistry.address, "eth"],
+    });
+
+    console.log("  - Setting canonical parent");
+    await write(ethRegistry, {
+      account: deployer,
+      functionName: "setParent",
+      args: [rootRegistry.address, "eth"],
+    });
   },
   {
-    tags: ["ETHRegistry", "l1"],
+    tags: ["ETHRegistry", "v2"],
     dependencies: ["RootRegistry", "HCAFactory", "RegistryMetadata"],
   },
 );

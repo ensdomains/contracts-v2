@@ -1,18 +1,10 @@
 import { artifacts, execute } from "@rocketh";
-import { labelhash } from "viem";
-import { MAX_EXPIRY, ROLES } from "../script/deploy-constants.js";
+import { DEPLOYMENT_ROLES, MAX_EXPIRY } from "../script/deploy-constants.js";
 
 // TODO: ownership
 export default execute(
-  async ({
-    deploy,
-    execute: write,
-    read,
-    get,
-    getV1,
-    namedAccounts: { deployer },
-  }) => {
-    const defaultReverseResolverV1 = getV1<
+  async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
+    const defaultReverseResolverV1 = get<
       (typeof artifacts.DefaultReverseResolver)["abi"]
     >("DefaultReverseResolver");
 
@@ -26,7 +18,9 @@ export default execute(
       (typeof artifacts.SimpleRegistryMetadata)["abi"]
     >("SimpleRegistryMetadata");
 
-    // create "reverse" registry
+    // ReverseRegistry root and .reverse/.addr tokens use full role bitmap
+    const reverseRoles = DEPLOYMENT_ROLES.REVERSE_AND_ADDR;
+
     const reverseRegistry = await deploy("ReverseRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
@@ -34,45 +28,31 @@ export default execute(
         hcaFactory.address,
         registryMetadata.address,
         deployer,
-        ROLES.ALL,
+        reverseRoles,
       ],
     });
 
-    const expiry = await read(rootRegistry, {
-      functionName: "getExpiry",
-      args: [BigInt(labelhash("reverse"))],
+    await write(rootRegistry, {
+      account: deployer,
+      functionName: "register",
+      args: [
+        "reverse",
+        deployer,
+        reverseRegistry.address,
+        defaultReverseResolverV1.address,
+        reverseRoles,
+        MAX_EXPIRY,
+      ],
     });
 
-    if (expiry !== 0n) {
-      // already registered, update subregistry and resolver
-      await write(rootRegistry, {
-        account: deployer,
-        functionName: "setSubregistry",
-        args: [BigInt(labelhash("reverse")), reverseRegistry.address],
-      });
-
-      await write(rootRegistry, {
-        account: deployer,
-        functionName: "setResolver",
-        args: [BigInt(labelhash("reverse")), defaultReverseResolverV1.address],
-      });
-    } else {
-      await write(rootRegistry, {
-        account: deployer,
-        functionName: "register",
-        args: [
-          "reverse",
-          deployer,
-          reverseRegistry.address,
-          defaultReverseResolverV1.address,
-          0n,
-          MAX_EXPIRY,
-        ],
-      });
-    }
+    await write(reverseRegistry, {
+      account: deployer,
+      functionName: "setParent",
+      args: [rootRegistry.address, "reverse"],
+    });
   },
   {
-    tags: ["ReverseRegistry", "l1"],
+    tags: ["ReverseRegistry", "v2"],
     dependencies: [
       "DefaultReverseResolver",
       "RootRegistry",

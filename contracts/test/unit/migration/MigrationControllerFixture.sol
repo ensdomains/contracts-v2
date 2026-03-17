@@ -25,12 +25,13 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     address testResolver = makeAddr("resolver");
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address premigrationController = makeAddr("premigrationController");
+    address friend = makeAddr("friend");
 
     function setUp() public virtual {
         deployV1Fixture();
         deployV2Fixture();
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
-        ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider);
+        ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
         dummy1155 = new MockERC1155();
         ethRegistrarV1.setResolver(address(ensV2Resolver));
     }

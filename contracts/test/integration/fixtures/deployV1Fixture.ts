@@ -8,7 +8,10 @@ import {
   zeroAddress,
 } from "viem";
 import { splitName } from "../../utils/utils.js";
-import { LOCAL_BATCH_GATEWAY_URL } from "../../../script/deploy-constants.js";
+import {
+  LOCAL_BATCH_GATEWAY_URL,
+  MAX_EXPIRY,
+} from "../../../script/deploy-constants.js";
 
 export async function deployV1Fixture(
   network: NetworkConnection,
@@ -19,7 +22,7 @@ export async function deployV1Fixture(
   });
   const [walletClient] = await network.viem.getWalletClients();
   const ensRegistry = await network.viem.deployContract("ENSRegistry");
-  const ethRegistrar = await network.viem.deployContract(
+  const baseRegistrar = await network.viem.deployContract(
     "BaseRegistrarImplementation",
     [ensRegistry.address, namehash("eth")],
   );
@@ -57,23 +60,24 @@ export async function deployV1Fixture(
     ],
     { client: { public: publicClient } },
   );
-  await ethRegistrar.write.addController([walletClient.account.address]);
+  await baseRegistrar.write.addController([walletClient.account.address]);
+  const ownedResolver = await network.viem.deployContract("OwnedResolver");
   await ensRegistry.write.setSubnodeRecord([
     namehash(""),
     labelhash("eth"),
     walletClient.account.address,
-    zeroAddress,
+    ownedResolver.address,
     0n,
   ]);
-  await publicResolver.write.setAddr([namehash("eth"), ethRegistrar.address]);
+  await ownedResolver.write.setAddr([namehash("eth"), baseRegistrar.address]);
   await ensRegistry.write.setSubnodeOwner([
     namehash(""),
     labelhash("eth"),
-    ethRegistrar.address,
+    baseRegistrar.address,
   ]);
   const nameWrapper = await network.viem.deployContract("NameWrapper", [
     ensRegistry.address,
-    ethRegistrar.address,
+    baseRegistrar.address,
     zeroAddress, // IMetadataService
   ]);
   return {
@@ -82,8 +86,9 @@ export async function deployV1Fixture(
     walletClient,
     ensRegistry,
     reverseRegistrar,
-    ethRegistrar,
+    baseRegistrar,
     publicResolver,
+    ownedResolver,
     batchGatewayProvider,
     universalResolver,
     nameWrapper,
@@ -104,10 +109,10 @@ export async function deployV1Fixture(
     const labels = splitName(name);
     let i = labels.length;
     if (name.endsWith(".eth")) {
-      await ethRegistrar.write.register([
+      await baseRegistrar.write.register([
         BigInt(labelhash(labels[(i -= 2)])),
         account.address,
-        (1n << 64n) - 1n,
+        MAX_EXPIRY,
       ]);
     }
     while (i > 0) {

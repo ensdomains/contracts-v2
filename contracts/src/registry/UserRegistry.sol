@@ -3,6 +3,7 @@ pragma solidity >=0.8.13;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
@@ -21,10 +22,13 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Creates the UserRegistry implementation.
+    /// @param hcaFactory The HCA factory.
+    /// @param metadataProvider The metadata provider.
     constructor(
-        IHCAFactoryBasic hcaFactory_,
-        IRegistryMetadata metadataProvider_
-    ) PermissionedRegistry(hcaFactory_, metadataProvider_, address(0), 0) {
+        IHCAFactoryBasic hcaFactory,
+        IRegistryMetadata metadataProvider
+    ) PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) {
         // This disables initialization for the implementation contract
         _disableInitializers();
     }
@@ -41,7 +45,7 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
         _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
     }
 
-    /// @dev See {IERC165-supportsInterface}.
+    /// @inheritdoc IERC165
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(UUPSUpgradeable).interfaceId ||

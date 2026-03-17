@@ -1,14 +1,14 @@
 import { artifacts, execute } from "@rocketh";
-import { MAX_EXPIRY } from "../script/deploy-constants.js";
 import { zeroAddress } from "viem";
+import { DEPLOYMENT_ROLES, MAX_EXPIRY } from "../script/deploy-constants.js";
 
 // TODO: ownership
 export default execute(
-  async ({ deploy, execute: write, get, getV1, namedAccounts: { deployer } }) => {
+  async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
     const ensRegistryV1 =
-      getV1<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
+      get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
-    const defaultReverseRegistrarV1 = getV1<
+    const defaultReverseRegistrarV1 = get<
       (typeof artifacts.DefaultReverseRegistrar)["abi"]
     >("DefaultReverseRegistrar");
 
@@ -16,7 +16,7 @@ export default execute(
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ReverseRegistry");
 
     const ethReverseRegistrar = get<
-      (typeof artifacts.StandaloneReverseRegistrar)["abi"]
+      (typeof artifacts)["lib/ens-contracts/contracts/reverseRegistrar/L2ReverseRegistrar.sol/L2ReverseRegistrar"]["abi"]
     >("ETHReverseRegistrar");
 
     // create resolver for "addr.reverse"
@@ -39,13 +39,13 @@ export default execute(
         deployer,
         zeroAddress,
         ethReverseResolver.address,
-        0n,
+        DEPLOYMENT_ROLES.REVERSE_AND_ADDR,
         MAX_EXPIRY,
       ],
     });
   },
   {
-    tags: ["ETHReverseResolver", "l1"],
+    tags: ["ETHReverseResolver", "v2"],
     dependencies: [
       "ENSRegistry",
       "ReverseRegistry", // "RootRegistry"

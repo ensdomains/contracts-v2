@@ -32,7 +32,7 @@ contract WrapperRegistry is
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Fallback resolver for ENSv1 resolution.
+    /// @notice Fallback resolver for ENSv1 resolution.
     address public immutable V1_RESOLVER;
 
     ////////////////////////////////////////////////////////////////////////
@@ -46,6 +46,12 @@ contract WrapperRegistry is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Creates the WrapperRegistry implementation.
+    /// @param nameWrapper The ENSv1 NameWrapper.
+    /// @param verifiableFactory The VerifiableFactory.
+    /// @param ensV1Resolver The ENSv1 resolver.
+    /// @param hcaFactory The HCA factory.
+    /// @param metadataProvider The metadata provider.
     constructor(
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
