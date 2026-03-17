@@ -46,10 +46,7 @@ describe("Devnet", () => {
       account,
       salt,
     });
-    const address = await env.computeVerifiableProxyAddress(
-      account.address,
-      salt,
-    );
+    const address = env.computeVerifiableProxyAddress(account.address, salt);
     expect(address).toStrictEqual(contract.address);
   });
 });

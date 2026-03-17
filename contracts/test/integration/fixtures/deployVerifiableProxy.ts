@@ -75,7 +75,7 @@ export async function deployVerifiableProxy<
   });
 }
 
-export async function computeVerifiableProxyAddress({
+export function computeVerifiableProxyAddress({
   factoryAddress,
   bytecode,
   deployer,

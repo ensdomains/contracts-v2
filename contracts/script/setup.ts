@@ -29,7 +29,7 @@ import {
   computeVerifiableProxyAddress as computeVerifiableProxyAddress_,
   deployVerifiableProxy,
 } from "../test/integration/fixtures/deployVerifiableProxy.js";
-import { dnsEncodeName } from "../test/utils/utils.js";
+import { dnsEncodeName, splitName } from "../test/utils/utils.js";
 import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
 import {
   LOCAL_BATCH_GATEWAY_URL,
@@ -521,10 +521,7 @@ export async function setupDevnet({
       return BigInt(timestamp);
     }
 
-    async function computeVerifiableProxyAddress(
-      deployer: Address,
-      salt: bigint,
-    ) {
+    function computeVerifiableProxyAddress(deployer: Address, salt: bigint) {
       return computeVerifiableProxyAddress_({
         factoryAddress: v2.VerifiableFactory.address,
         bytecode: artifacts["UUPSProxy"].bytecode,
@@ -657,19 +654,30 @@ export async function setupDevnet({
       return castUserRegistry(address, account);
     }
 
-    async function findWrapperRegistry({
-      name,
-      account,
-    }: {
-      name: string;
-      account: Account;
-    }) {
-      const address = await v2.UniversalResolver.read.findCanonicalRegistry([
-        dnsEncodeName(name),
-      ]);
-      if (address === zeroAddress) {
-        throw new Error(`expected WrapperRegistry: ${name}`);
+    function computeWrapperRegistryAddress(name: string) {
+      const labels = splitName(name);
+      let currentName = labels.pop();
+      if (currentName !== "eth" || !labels.length) {
+        throw new Error(`expected .eth 2LD+: ${name}`);
       }
+      let address = v2.LockedMigrationController.address;
+      while (labels.length) {
+        currentName = `${labels.pop()}.${currentName}`;
+        address = computeVerifiableProxyAddress(
+          address,
+          BigInt(namehash(currentName)),
+        );
+      }
+      return address;
+    }
+
+    function findWrapperRegistry(
+      name: string,
+      account: Account = namedAccounts.deployer,
+    ) {
+      const address = computeWrapperRegistryAddress(name);
+      // this may not be deployed yet
+      // this is equivalent to `findExactRegistry()` when deployed
       return patchContractWrite(
         getContract({
           abi: v2.WrapperRegistryImpl.abi,

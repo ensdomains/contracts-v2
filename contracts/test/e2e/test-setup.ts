@@ -1,6 +1,6 @@
 // Global test setup
 import { afterAll, beforeAll, beforeEach, expect } from "bun:test";
-import type { Address } from "viem";
+import { isAddress, isAddressEqual, type Address } from "viem";
 import {
   type DevnetEnvironment,
   type StateSnapshot,
@@ -24,10 +24,12 @@ declare global {
 }
 
 expect.extend({
+  // bug: bun custom maters don't relay `message`
   toEqualAddress(actual, expected: Address) {
     const pass =
       typeof actual === "string" &&
-      !expected.localeCompare(actual, undefined, { sensitivity: "base" });
+      isAddress(actual) &&
+      isAddressEqual(actual, expected);
     return {
       pass,
       message: () =>

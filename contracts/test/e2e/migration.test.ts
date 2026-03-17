@@ -236,8 +236,8 @@ describe("Migration", () => {
         ),
       );
     }
-    async registry() {
-      return env.findWrapperRegistry(this);
+    wrapperRegistry(account = this.account) {
+      return env.findWrapperRegistry(this.name, account);
     }
   }
 
@@ -546,6 +546,28 @@ describe("Migration", () => {
       await locked.checkMigrated();
     });
 
+    it("findWrapperRegistry", async () => {
+      const v = [await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP })];
+      for (let i = 0; i < 5; ++i) {
+        v.push(
+          await v[v.length - 1].createChild({
+            fuses: FUSES.PARENT_CANNOT_CONTROL | FUSES.CANNOT_UNWRAP,
+          }),
+        );
+      }
+      let target = env.v2.LockedMigrationController.address;
+      for (const x of v) {
+        await x.migrate({ target });
+        target = x.wrapperRegistry().address;
+      }
+      for (const x of v) {
+        const registry = await env.v2.UniversalResolver.read.findExactRegistry([
+          dnsEncodeName(x.name),
+        ]);
+        expectVar({ registry }).toEqualAddress(x.wrapperRegistry().address);
+      }
+    });
+
     it("migrate locked child", async () => {
       const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
       const lockedChild = await locked.createChild({
@@ -556,9 +578,9 @@ describe("Migration", () => {
       await locked.migrate({
         target: env.v2.LockedMigrationController.address,
       });
-      const wrappedRegistry = await locked.registry();
+      const lockedRegistry = locked.wrapperRegistry();
       await lockedChild.migrate({
-        target: wrappedRegistry.address,
+        target: lockedRegistry.address,
       });
       await lockedChild.checkMigrated();
       await lockedChild.checkResolution();
@@ -572,7 +594,7 @@ describe("Migration", () => {
       await locked.migrate({
         target: env.v2.LockedMigrationController.address,
       });
-      const lockedRegistry = await locked.registry();
+      const lockedRegistry = locked.wrapperRegistry();
 
       // name has fallback resolver
       const resolver = await lockedRegistry.read.getResolver([
@@ -600,7 +622,7 @@ describe("Migration", () => {
       await locked.migrate({
         target: env.v2.LockedMigrationController.address,
       });
-      const lockedRegistry = await locked.registry();
+      const lockedRegistry = locked.wrapperRegistry();
 
       // name cannot be migrated
       expect(
@@ -636,7 +658,7 @@ describe("Migration", () => {
       await locked.migrate({
         target: env.v2.LockedMigrationController.address,
       });
-      const lockedRegistry = await locked.registry();
+      const lockedRegistry = locked.wrapperRegistry();
       await lockedChild.migrate({
         target: lockedRegistry.address,
       });
@@ -680,7 +702,7 @@ describe("Migration", () => {
       await locked2.migrate({
         target: env.v2.LockedMigrationController.address,
       });
-      const locked2Registry = await locked2.registry();
+      const locked2Registry = locked2.wrapperRegistry();
 
       // 2LD => UnlockedMigrationController
       expect(
