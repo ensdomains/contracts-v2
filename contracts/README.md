@@ -443,6 +443,8 @@ docker compose down
 
 ## Testnet Deployment
 
+> **Note**: Testnet deployment infrastructure is under active development. The `--fresh-v1` flag is currently broken — V1 and V2 contracts must be deployed into the same namespace for `get()` lookups to work.
+
 ### Environment Variables
 
 ```bash
@@ -455,37 +457,29 @@ export RPC_URL=https://...      # RPC endpoint (Sepolia, Mainnet, or Tenderly fo
 ```bash
 cd contracts
 
-# Deploy V2 only (default — for Tenderly forks where V1 already exists)
+# Deploy to Sepolia
 bun run deploy -- --chain sepolia
-
-# Deploy V1 + V2 from scratch (for fresh environments)
-bun run deploy -- --chain sepolia --fresh-v1
 ```
 
 Options:
 - `--chain <name>` — chain name (`sepolia`, `mainnet`). Default: `sepolia`
-- `--fresh-v1` — deploy V1 contracts from scratch before V2. Default: off
-- `--local` — use minimal TLD suffixes (4 instead of ~9000) for faster local deploys. Default: off
 
-### How `getV1` resolves V1 contract addresses
+### How V1 contracts are resolved
 
-V2 deploy scripts use `getV1()` to reference V1 contract addresses. It checks three locations in order:
+V2 deploy scripts reference V1 contracts (ENSRegistry, NameWrapper, BaseRegistrar, etc.) using `get()` — the same lookup used for V2 contracts. This means V1 and V2 contracts must exist in the same deployment namespace.
 
-1. `deployments/v1/{networkName}/` — fresh V1 deploy artifacts (when using `--fresh-v1`)
-2. `lib/ens-contracts/deployments/{networkName}/` — existing V1 artifacts from ens-contracts (for Tenderly forks)
-3. Current deployment namespace — local devnet fallback (V1 and V2 deployed together)
+On the local devnet this happens automatically: V1 contracts are deployed first (via `lib/ens-contracts/deploy`), then V2 contracts, all into the same namespace.
 
 ### Deployment Directory Structure
 
 ```
 deployments/
-  v1/
-    sepolia/           # Only when using --fresh-v1
-      ENSRegistry.json
-      NameWrapper.json
-      ...
-  sepolia/             # V2 contracts
-    RootRegistry.json
+  sepolia/
+    ENSRegistry.json          # V1 contracts
+    NameWrapper.json
+    BaseRegistrarImplementation.json
+    ...
+    RootRegistry.json         # V2 contracts
     ETHRegistry.json
     UniversalResolverV2.json
     ...
@@ -498,11 +492,7 @@ After deploying to a live network, verify source code using `@rocketh/verifier`:
 **Etherscan** (Sepolia/Mainnet):
 
 ```bash
-# V2 contracts
 ETHERSCAN_API_KEY=<your_key> npx rocketh-verify -n sepolia -d deployments etherscan
-
-# V1 contracts (if deployed with --fresh-v1)
-ETHERSCAN_API_KEY=<your_key> npx rocketh-verify -n sepolia -d deployments/v1 etherscan
 ```
 
 **Tenderly**: Contracts deployed to a Tenderly fork are automatically decoded if you upload source via the Tenderly dashboard or CLI (`tenderly contracts verify`). Alternatively, use the Etherscan-compatible endpoint:
