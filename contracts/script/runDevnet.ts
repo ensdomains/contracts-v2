@@ -45,7 +45,13 @@ process.once("uncaughtException", async (err) => {
 
 console.log();
 console.log("Available Named Accounts:");
-console.table(env.accounts.map((x) => ({ Name: x.name, Address: x.address })));
+console.table(
+  Object.values(env.namedAccounts).map((x) => ({
+    Name: x.name,
+    Address: x.address,
+    Resolver: x.resolver.address,
+  })),
+);
 
 console.table(
   Object.entries(env.rocketh.deployments).map(([name, { address }]) => ({
