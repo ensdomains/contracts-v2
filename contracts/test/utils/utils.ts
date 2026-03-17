@@ -3,6 +3,7 @@
 import { keccak256, stringToBytes } from "viem";
 
 export { dnsEncodeName } from "../../lib/ens-contracts/test/fixtures/dnsEncodeName.js";
+export { dnsDecodeName } from "../../lib/ens-contracts/test/fixtures/dnsDecodeName.js";
 
 // LibLabel.id()
 export function idFromLabel(label: string): bigint {

@@ -39,17 +39,14 @@ describe("Devnet", () => {
     ).resolves.toStrictEqual(gateways);
   });
 
-  it(`verifiableProxyAddress`, async () => {
+  it(`computeVerifiableProxyAddress`, async () => {
     const account = env.namedAccounts.deployer;
     const salt = 1234n;
     const contract = await env.deployPermissionedResolver({
       account,
       salt,
     });
-    const address = await env.verifiableProxyAddress({
-      deployer: account.address,
-      salt,
-    });
+    const address = env.computeVerifiableProxyAddress(account.address, salt);
     expect(address).toStrictEqual(contract.address);
   });
 });

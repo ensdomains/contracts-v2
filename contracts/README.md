@@ -402,6 +402,17 @@ bun run devnet        # runs w/last build
 
 This will start a local chain at http://localhost:8545 (Chain ID: 31337)
 
+To populate the devnet with test names (registrations, subnames, aliases, renewals, etc.):
+
+```sh
+bun run devnet --testNames
+```
+
+This runs `testNames()` which creates 17 names in various states. For details on the test data and the events emitted, see:
+
+- [Indexing Test Names](../docs/indexing-test-names.md) — what each test name does and which events it emits
+- [Indexing ENSv2 Events](../docs/indexing-ensv2-events.md) — full reference of all ENSv2 contract events
+
 ### Using Docker Compose
 
 1. Make sure you have Docker and Docker Compose installed
