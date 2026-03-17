@@ -27,9 +27,9 @@ export default execute(
     const ensRegistryV1 =
       get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
-    const dnsTLDResolverV1 = get<
-      (typeof artifacts.OffchainDNSResolver)["abi"]
-    >("OffchainDNSResolver");
+    const dnsTLDResolverV1 = get<(typeof artifacts.OffchainDNSResolver)["abi"]>(
+      "OffchainDNSResolver",
+    );
 
     const publicSuffixList = get<
       (typeof artifacts.SimplePublicSuffixList)["abi"]
@@ -40,9 +40,9 @@ export default execute(
 
     const dnssecOracle = get<(typeof artifacts.DNSSEC)["abi"]>("DNSSECImpl");
 
-    const batchGatewayProvider = get<
-      (typeof artifacts.GatewayProvider)["abi"]
-    >("BatchGatewayProvider");
+    const batchGatewayProvider = get<(typeof artifacts.GatewayProvider)["abi"]>(
+      "BatchGatewayProvider",
+    );
 
     const dnssecGatewayProvider = get<
       (typeof artifacts.GatewayProvider)["abi"]

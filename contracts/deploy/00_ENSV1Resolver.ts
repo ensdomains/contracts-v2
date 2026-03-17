@@ -5,9 +5,9 @@ export default execute(
     const ensRegistryV1 =
       get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
-    const batchGatewayProvider = get<
-      (typeof artifacts.GatewayProvider)["abi"]
-    >("BatchGatewayProvider");
+    const batchGatewayProvider = get<(typeof artifacts.GatewayProvider)["abi"]>(
+      "BatchGatewayProvider",
+    );
 
     await deploy("ENSV1Resolver", {
       account: deployer,
