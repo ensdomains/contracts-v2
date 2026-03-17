@@ -535,11 +535,11 @@ export async function setupDevnet({
         keccak256(
           encodeAbiParameters(
             [
-              { name: "implementation", type: "address" },
+              { name: "id", type: "bytes32" },
               { name: "owner", type: "address" },
               { name: "version", type: "uint256" },
             ],
-            [v2.PermissionedResolverImpl.address, owner, version],
+            [keccak256(stringToHex("OwnedResolver")), owner, version],
           ),
         ),
       );
@@ -550,11 +550,11 @@ export async function setupDevnet({
         keccak256(
           encodeAbiParameters(
             [
-              { name: "implementation", type: "address" },
+              { name: "id", type: "bytes32" },
               { name: "node", type: "bytes32" },
               { name: "version", type: "uint256" },
             ],
-            [v2.UserRegistryImpl.address, namehash(name), version],
+            [keccak256(stringToHex("UserRegistry")), namehash(name), version],
           ),
         ),
       );

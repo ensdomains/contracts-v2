@@ -299,6 +299,27 @@ describe("Migration", () => {
       const wrapped = await registerWrapped();
       await wrapped.createChild();
     });
+    it("wrapperRegistry", async () => {
+      const v = [await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP })];
+      for (let i = 0; i < 5; ++i) {
+        v.push(
+          await v[v.length - 1].createChild({
+            fuses: FUSES.PARENT_CANNOT_CONTROL | FUSES.CANNOT_UNWRAP,
+          }),
+        );
+      }
+      let target = env.v2.LockedMigrationController.address;
+      for (const x of v) {
+        await x.migrate({ target });
+        target = x.wrapperRegistry().address;
+      }
+      for (const x of v) {
+        const registry = await env.v2.UniversalResolver.read.findExactRegistry([
+          dnsEncodeName(x.name),
+        ]);
+        expectVar({ registry }).toEqualAddress(x.wrapperRegistry().address);
+      }
+    });
     it("ensurePremigration()", async () => {
       const unwrapped = await registerUnwrapped();
       const status = await env.v2.ETHRegistry.read.getStatus([
@@ -544,28 +565,6 @@ describe("Migration", () => {
         target: env.v2.LockedMigrationController.address,
       });
       await locked.checkMigrated();
-    });
-
-    it("findWrapperRegistry", async () => {
-      const v = [await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP })];
-      for (let i = 0; i < 5; ++i) {
-        v.push(
-          await v[v.length - 1].createChild({
-            fuses: FUSES.PARENT_CANNOT_CONTROL | FUSES.CANNOT_UNWRAP,
-          }),
-        );
-      }
-      let target = env.v2.LockedMigrationController.address;
-      for (const x of v) {
-        await x.migrate({ target });
-        target = x.wrapperRegistry().address;
-      }
-      for (const x of v) {
-        const registry = await env.v2.UniversalResolver.read.findExactRegistry([
-          dnsEncodeName(x.name),
-        ]);
-        expectVar({ registry }).toEqualAddress(x.wrapperRegistry().address);
-      }
     });
 
     it("migrate locked child", async () => {
