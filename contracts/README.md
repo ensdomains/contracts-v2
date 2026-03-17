@@ -443,8 +443,6 @@ docker compose down
 
 ## Testnet Deployment
 
-> **Note**: Testnet deployment infrastructure is under active development. The `--fresh-v1` flag is currently broken — V1 and V2 contracts must be deployed into the same namespace for `get()` lookups to work.
-
 ### Environment Variables
 
 ```bash
@@ -463,27 +461,6 @@ bun run deploy -- --chain sepolia
 
 Options:
 - `--chain <name>` — chain name (`sepolia`, `mainnet`). Default: `sepolia`
-
-### How V1 contracts are resolved
-
-V2 deploy scripts reference V1 contracts (ENSRegistry, NameWrapper, BaseRegistrar, etc.) using `get()` — the same lookup used for V2 contracts. This means V1 and V2 contracts must exist in the same deployment namespace.
-
-On the local devnet this happens automatically: V1 contracts are deployed first (via `lib/ens-contracts/deploy`), then V2 contracts, all into the same namespace.
-
-### Deployment Directory Structure
-
-```
-deployments/
-  sepolia/
-    ENSRegistry.json          # V1 contracts
-    NameWrapper.json
-    BaseRegistrarImplementation.json
-    ...
-    RootRegistry.json         # V2 contracts
-    ETHRegistry.json
-    UniversalResolverV2.json
-    ...
-```
 
 ### Contract Verification
 
