@@ -272,7 +272,7 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         return baseRate(label) > 0;
     }
 
-    /// @notice Get `PaymentRatio` components for `paymentToken`.
+    /// @notice Get `Ratio` components for `paymentToken`.
     /// @param paymentToken The payment token.
     /// @return numer The numerator of the exchange rate.
     /// @return denom The denominator of the exchange rate.
