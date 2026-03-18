@@ -272,6 +272,17 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         return baseRate(label) > 0;
     }
 
+    /// @notice Get `PaymentRatio` components for `paymentToken`.
+    /// @param paymentToken The payment token.
+    /// @return numer The numerator of the exchange rate.
+    /// @return denom The denominator of the exchange rate.
+    function getPaymentTokenRatio(
+        IERC20 paymentToken
+    ) external view returns (uint128 numer, uint128 denom) {
+        Ratio storage ratio = _paymentRatios[paymentToken];
+        return (ratio.numer, ratio.denom);
+    }
+
     /// @inheritdoc IRentPriceOracle
     function isPaymentToken(IERC20 paymentToken) public view returns (bool) {
         return _paymentRatios[paymentToken].denom > 0;
