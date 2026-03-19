@@ -16,10 +16,6 @@ export default execute(
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
-    const registryMetadata = get<
-      (typeof artifacts.SimpleRegistryMetadata)["abi"]
-    >("SimpleRegistryMetadata");
-
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
     const approvedUpgradeGate = get<
@@ -41,7 +37,6 @@ export default execute(
         verifiableFactory.address,
         ensV1Resolver.address,
         hcaFactory.address,
-        registryMetadata.address,
         approvedUpgradeGate.address,
         labelStore.address,
         publicResolverSet.address,
@@ -57,7 +52,6 @@ export default execute(
       "VerifiableFactory",
       "ENSV1Resolver",
       "HCAFactory",
-      "RegistryMetadata",
       "ApprovedUpgradeGate",
       "LabelStore",
       "PublicResolverSet",

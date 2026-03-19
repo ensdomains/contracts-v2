@@ -14,10 +14,9 @@ import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
-import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
+import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
-import {MetadataMixin} from "./MetadataMixin.sol";
 
 /// @notice A tokenized (ERC1155) registry with resource-scoped access control for subdomain management.
 ///
@@ -33,6 +32,8 @@ import {MetadataMixin} from "./MetadataMixin.sol";
 ///     changes to roles create new tokens and prevent frontrunning a transfer with a role revocation.
 ///
 /// Names are treated as `AVAILABLE` once `block.timestamp >= expiry`.
+///
+/// URI renderer address is embedded into URI data as `abi.encodePacked(uint8(1), address)`.
 ///
 /// State diagram:
 ///
@@ -57,8 +58,7 @@ import {MetadataMixin} from "./MetadataMixin.sol";
 contract PermissionedRegistry is
     ERC1155Singleton,
     EnhancedAccessControl,
-    IPermissionedRegistry,
-    MetadataMixin
+    IPermissionedRegistry
 {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -93,6 +93,12 @@ contract PermissionedRegistry is
 
     /// @dev The child label of this registry.
     string internal _childLabel;
+    
+    /// @dev The metadata URI.
+    string internal _uri;
+
+    /// @dev The metadata renderer.
+    IRegistryURIRenderer internal _uriRenderer;
 
     /// @dev The entries of this registry.
     mapping(uint256 storageId => Entry entry) internal _entries;
@@ -105,19 +111,16 @@ contract PermissionedRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @param hcaFactory The HCA factory to use.
-    /// @param metadata The metadata provider to use.
     /// @param labelStore The shared label database.
     /// @param rootAccount Account granted root roles.
     /// @param roleBitmap The role bitmap granted to `rootAccount`.
     constructor(
         IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadata,
         ILabelStore labelStore,
         address rootAccount,
         uint256 roleBitmap
     )
         HCAEquivalence(hcaFactory)
-        MetadataMixin(metadata)
     {
         emit RegistryCreated();
         LABEL_STORE = labelStore;
@@ -157,6 +160,18 @@ contract PermissionedRegistry is
             _checkExpiryAndTokenRoles(anyId, RegistryRolesLib.ROLE_SET_RESOLVER);
         entry.resolver = resolver;
         emit ResolverUpdated(tokenId, resolver, _msgSender());
+    }
+
+    /// @notice Set the URI for the registry.
+    /// @param uri_ The new URI.
+    /// @param renderer The new renderer address.
+    function setURI(
+        string calldata uri_,
+        IRegistryURIRenderer renderer
+    ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_SET_URI) {
+        _uri = uri_;
+        _uriRenderer = renderer;
+        emit URIUpdated(uri_, address(renderer), _msgSender());
     }
 
     /// @inheritdoc IStandardRegistry
@@ -259,7 +274,13 @@ contract PermissionedRegistry is
 
     /// @inheritdoc ERC1155Singleton
     function uri(uint256 tokenId) public view override returns (string memory) {
-        return _tokenURI(tokenId);
+        if (address(_uriRenderer) != address(0)) {
+            Entry storage entry = _entry(tokenId);
+            if (tokenId == _constructTokenId(tokenId, entry) && !_isExpired(entry.expiry)) {
+                return _uriRenderer.renderURI(this, tokenId);
+            }
+        }
+        return _uri;
     }
 
     /// @inheritdoc IStandardRegistry

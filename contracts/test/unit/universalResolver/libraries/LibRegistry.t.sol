@@ -7,28 +7,32 @@ import {Test} from "forge-std/Test.sol";
 
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {
-    PermissionedRegistry,
-    IStandardRegistry,
-    IRegistry,
-    IRegistryMetadata
+    IRegistry
+} from "~src/registry/interfaces/IRegistry.sol";
+import {
+    IStandardRegistry
+} from "~src/registry/interfaces/IStandardRegistry.sol";
+import {
+    PermissionedRegistry
 } from "~src/registry/PermissionedRegistry.sol";
-import {LibRegistry, NameCoder} from "~src/universalResolver/libraries/LibRegistry.sol";
+import {LibRegistry} from "~src/universalResolver/libraries/LibRegistry.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 
 contract LibRegistryTest is Test, ERC1155Holder {
     PermissionedRegistry rootRegistry;
     LabelStore labelStore;
+    
     address resolverAddress = makeAddr("resolver");
 
     function _createRegistry() internal returns (PermissionedRegistry) {
         return
             new PermissionedRegistry(
                 IHCAFactoryBasic(address(0)),
-                IRegistryMetadata(address(0)),
                 labelStore,
                 address(this),
                 EACBaseRolesLib.ALL_ROLES

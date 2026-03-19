@@ -8,7 +8,6 @@ import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
 import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
-import {BaseUriRegistryMetadata} from "~src/registry/BaseUriRegistryMetadata.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
@@ -20,7 +19,6 @@ import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 contract V2Fixture is Test, ERC1155Holder {
     VerifiableFactory verifiableFactory;
     MockHCAFactoryBasic hcaFactory;
-    BaseUriRegistryMetadata metadata;
     LabelStore labelStore;
     UserRegistry userRegistryImpl;
     PermissionedRegistry rootRegistry;
@@ -61,19 +59,16 @@ contract V2Fixture is Test, ERC1155Holder {
     function deployV2Fixture() public {
         verifiableFactory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
-        metadata = new BaseUriRegistryMetadata(hcaFactory);
         labelStore = new LabelStore();
-        userRegistryImpl = new UserRegistry(hcaFactory, metadata, labelStore);
+        userRegistryImpl = new UserRegistry(hcaFactory, labelStore);
         rootRegistry = new PermissionedRegistry(
             hcaFactory,
-            metadata,
             labelStore,
             address(this),
             _rootRegistryRootRoles()
         );
         ethRegistry = new PermissionedRegistry(
             hcaFactory,
-            metadata,
             labelStore,
             address(this),
             _ethRegistryRootRoles()
