@@ -8,7 +8,6 @@ import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
 import {VerifiableFactory, UUPSProxy} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
-import {BaseUriRegistryMetadata} from "~src/registry/BaseUriRegistryMetadata.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
@@ -19,7 +18,6 @@ import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 contract V2Fixture is Test, ERC1155Holder {
     VerifiableFactory verifiableFactory;
     MockHCAFactoryBasic hcaFactory;
-    BaseUriRegistryMetadata metadata;
     UserRegistry userRegistryImpl;
     PermissionedRegistry rootRegistry;
     PermissionedRegistry ethRegistry;
@@ -59,20 +57,13 @@ contract V2Fixture is Test, ERC1155Holder {
     function deployV2Fixture() public {
         verifiableFactory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
-        metadata = new BaseUriRegistryMetadata(hcaFactory);
-        userRegistryImpl = new UserRegistry(hcaFactory, metadata);
+        userRegistryImpl = new UserRegistry(hcaFactory);
         rootRegistry = new PermissionedRegistry(
             hcaFactory,
-            metadata,
             address(this),
             _rootRegistryRootRoles()
         );
-        ethRegistry = new PermissionedRegistry(
-            hcaFactory,
-            metadata,
-            address(this),
-            _ethRegistryRootRoles()
-        );
+        ethRegistry = new PermissionedRegistry(hcaFactory, address(this), _ethRegistryRootRoles());
         rootRegistry.register(
             "eth",
             address(this),

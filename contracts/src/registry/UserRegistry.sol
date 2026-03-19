@@ -8,7 +8,6 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 
-import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
@@ -24,11 +23,7 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
 
     /// @notice Creates the UserRegistry implementation.
     /// @param hcaFactory The HCA factory.
-    /// @param metadataProvider The metadata provider.
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadataProvider
-    ) PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) {
+    constructor(IHCAFactoryBasic hcaFactory) PermissionedRegistry(hcaFactory, address(0), 0) {
         // This disables initialization for the implementation contract
         _disableInitializers();
     }

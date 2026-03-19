@@ -12,7 +12,6 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {StandardPricing} from "./StandardPricing.sol";
 
 import {PermissionedRegistry, IEnhancedAccessControl} from "~src/registry/PermissionedRegistry.sol";
-import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {
     ETHRegistrar,
     IETHRegistrar,
@@ -69,7 +68,6 @@ contract ETHRegistrarTest is Test {
         hcaFactory = new MockHCAFactoryBasic();
         ethRegistry = new PermissionedRegistry(
             hcaFactory,
-            new SimpleRegistryMetadata(hcaFactory),
             address(this),
             EACBaseRolesLib.ALL_ROLES
         );

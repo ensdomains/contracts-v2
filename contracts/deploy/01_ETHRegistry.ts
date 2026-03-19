@@ -1,9 +1,6 @@
 import { artifacts, execute } from "@rocketh";
 import { zeroAddress } from "viem";
-import {
-  MAX_EXPIRY,
-  DEPLOYMENT_ROLES,
-} from "../script/deploy-constants.js";
+import { MAX_EXPIRY, DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
 
 // TODO: ownership
 export default execute(
@@ -14,20 +11,11 @@ export default execute(
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
-    const registryMetadata = get<
-      (typeof artifacts.SimpleRegistryMetadata)["abi"]
-    >("SimpleRegistryMetadata");
-
     console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
-      args: [
-        hcaFactory.address,
-        registryMetadata.address,
-        deployer,
-        DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
-      ],
+      args: [hcaFactory.address, deployer, DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT],
     });
 
     console.log("  - Registering in parent");
@@ -59,6 +47,6 @@ export default execute(
   },
   {
     tags: ["ETHRegistry", "v2"],
-    dependencies: ["RootRegistry", "HCAFactory", "RegistryMetadata"],
+    dependencies: ["RootRegistry", "HCAFactory"],
   },
 );
