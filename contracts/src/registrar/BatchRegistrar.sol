@@ -34,24 +34,18 @@ contract BatchRegistrar is Ownable {
     /// @param resolver The resolver for all names
     /// @param labels Array of labels to reserve or renew
     /// @param expires Array of expiry timestamps corresponding to each label
-    function batchRegister(
-        IRegistry registry,
-        address resolver,
-        string[] calldata labels,
-        uint64[] calldata expires
-    ) external onlyOwner {
+    function batchRegister(IRegistry registry, address resolver, string[] calldata labels, uint64[] calldata expires)
+        external
+        onlyOwner
+    {
         require(labels.length == expires.length);
 
         for (uint256 i = 0; i < labels.length; i++) {
-            IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(
-                LibLabel.id(labels[i])
-            );
+            IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(labels[i]));
 
             if (state.status == IPermissionedRegistry.Status.AVAILABLE) {
                 ETH_REGISTRY.register(labels[i], address(0), registry, resolver, 0, expires[i]);
-            } else if (
-                state.status == IPermissionedRegistry.Status.RESERVED && expires[i] > state.expiry
-            ) {
+            } else if (state.status == IPermissionedRegistry.Status.RESERVED && expires[i] > state.expiry) {
                 ETH_REGISTRY.renew(state.tokenId, expires[i]);
             }
         }

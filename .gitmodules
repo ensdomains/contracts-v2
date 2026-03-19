@@ -27,7 +27,7 @@
 	url = https://github.com/unruggable-labs/unruggable-gateways
 [submodule "contracts/lib/nexus"]
 	path = contracts/lib/nexus
-	url = https://github.com/bcnmy/nexus
+	url = git@github.com:rhinestonewtf/rhinestone-nexus.git
 [submodule "contracts/lib/sentinellist"]
 	path = contracts/lib/sentinellist
 	url = https://github.com/rhinestonewtf/sentinellist

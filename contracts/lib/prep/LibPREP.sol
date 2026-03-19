@@ -16,11 +16,7 @@ library LibPREP {
     /// Returns a non-zero `r` for the PREP signature, if valid.
     /// Otherwise returns 0.
     /// `r` will be less than `2**160`, allowing for optional storage packing.
-    function rPREP(
-        address target,
-        bytes32 digest,
-        bytes32 saltAndDelegation
-    ) internal view returns (bytes32 r) {
+    function rPREP(address target, bytes32 digest, bytes32 saltAndDelegation) internal view returns (bytes32 r) {
         r = (EfficientHashLib.hash(digest, saltAndDelegation >> 160) << 96) >> 96;
         if (!isValid(target, r, address(uint160(uint256(saltAndDelegation))))) r = 0;
     }

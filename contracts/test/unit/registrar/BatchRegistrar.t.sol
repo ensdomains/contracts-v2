@@ -37,19 +37,11 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         metadata = new MockRegistryMetadata();
         hcaFactory = new MockHCAFactoryBasic();
 
-        registry = new PermissionedRegistry(
-            hcaFactory,
-            metadata,
-            owner,
-            EACBaseRolesLib.ALL_ROLES
-        );
+        registry = new PermissionedRegistry(hcaFactory, metadata, owner, EACBaseRolesLib.ALL_ROLES);
 
         batchRegistrar = new BatchRegistrar(registry, owner);
 
-        registry.grantRootRoles(
-            RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW,
-            address(batchRegistrar)
-        );
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW, address(batchRegistrar));
     }
 
     function test_batchRegister_new_names() public {
@@ -234,7 +226,9 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
                 foundLabelReserved = true;
                 bytes32 labelHash = keccak256(bytes("eventtest"));
                 assertEq(logs[i].topics[2], labelHash, "labelHash topic should match");
-                assertEq(logs[i].topics[3], bytes32(uint256(uint160(address(batchRegistrar)))), "sender topic should match");
+                assertEq(
+                    logs[i].topics[3], bytes32(uint256(uint160(address(batchRegistrar)))), "sender topic should match"
+                );
                 break;
             }
         }
@@ -269,12 +263,7 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTER_RESERVED, address(this));
         address realOwner = address(0x1234);
         registry.register(
-            "registered",
-            realOwner,
-            IRegistry(address(0)),
-            resolver,
-            RegistryRolesLib.ROLE_SET_RESOLVER,
-            expiry
+            "registered", realOwner, IRegistry(address(0)), resolver, RegistryRolesLib.ROLE_SET_RESOLVER, expiry
         );
 
         IPermissionedRegistry.State memory stateBefore = registry.getState(LibLabel.id("registered"));
@@ -317,19 +306,11 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("migratable"));
         assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Should be RESERVED");
 
-        registry.grantRootRoles(
-            RegistryRolesLib.ROLE_REGISTER_RESERVED,
-            address(this)
-        );
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTER_RESERVED, address(this));
 
         address realOwner = address(0x1234);
         registry.register(
-            "migratable",
-            realOwner,
-            IRegistry(address(0)),
-            resolver,
-            RegistryRolesLib.ROLE_SET_RESOLVER,
-            expiry
+            "migratable", realOwner, IRegistry(address(0)), resolver, RegistryRolesLib.ROLE_SET_RESOLVER, expiry
         );
 
         state = registry.getState(LibLabel.id("migratable"));

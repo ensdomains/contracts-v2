@@ -28,32 +28,21 @@ contract V2Fixture is Test, ERC1155Holder {
 
     /// @dev Role bitmaps matching README Static Deployment Permissions.
     function _rootRegistryRootRoles() internal pure returns (uint256) {
-        return
-            RegistryRolesLib.ROLE_REGISTRAR |
-            RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
-            RegistryRolesLib.ROLE_REGISTER_RESERVED |
-            RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN |
-            RegistryRolesLib.ROLE_SET_PARENT |
-            RegistryRolesLib.ROLE_SET_PARENT_ADMIN |
-            RegistryRolesLib.ROLE_RENEW |
-            RegistryRolesLib.ROLE_RENEW_ADMIN;
+        return RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_REGISTRAR_ADMIN
+            | RegistryRolesLib.ROLE_REGISTER_RESERVED | RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN
+            | RegistryRolesLib.ROLE_SET_PARENT | RegistryRolesLib.ROLE_SET_PARENT_ADMIN | RegistryRolesLib.ROLE_RENEW
+            | RegistryRolesLib.ROLE_RENEW_ADMIN;
     }
 
     function _ethRegistryRootRoles() internal pure returns (uint256) {
-        return
-            RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
-            RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN |
-            RegistryRolesLib.ROLE_SET_PARENT |
-            RegistryRolesLib.ROLE_SET_PARENT_ADMIN |
-            RegistryRolesLib.ROLE_RENEW_ADMIN;
+        return RegistryRolesLib.ROLE_REGISTRAR_ADMIN | RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN
+            | RegistryRolesLib.ROLE_SET_PARENT | RegistryRolesLib.ROLE_SET_PARENT_ADMIN
+            | RegistryRolesLib.ROLE_RENEW_ADMIN;
     }
 
     function _ethTokenRoles() internal pure returns (uint256) {
-        return
-            RegistryRolesLib.ROLE_SET_SUBREGISTRY |
-            RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN |
-            RegistryRolesLib.ROLE_SET_RESOLVER |
-            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+        return RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN
+            | RegistryRolesLib.ROLE_SET_RESOLVER | RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
     }
 
     function deployV2Fixture() public {
@@ -61,26 +50,9 @@ contract V2Fixture is Test, ERC1155Holder {
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new BaseUriRegistryMetadata(hcaFactory);
         userRegistryImpl = new UserRegistry(hcaFactory, metadata);
-        rootRegistry = new PermissionedRegistry(
-            hcaFactory,
-            metadata,
-            address(this),
-            _rootRegistryRootRoles()
-        );
-        ethRegistry = new PermissionedRegistry(
-            hcaFactory,
-            metadata,
-            address(this),
-            _ethRegistryRootRoles()
-        );
-        rootRegistry.register(
-            "eth",
-            address(this),
-            ethRegistry,
-            address(0),
-            _ethTokenRoles(),
-            type(uint64).max
-        );
+        rootRegistry = new PermissionedRegistry(hcaFactory, metadata, address(this), _rootRegistryRootRoles());
+        ethRegistry = new PermissionedRegistry(hcaFactory, metadata, address(this), _ethRegistryRootRoles());
+        rootRegistry.register("eth", address(this), ethRegistry, address(0), _ethTokenRoles(), type(uint64).max);
         ethRegistry.setParent(rootRegistry, "eth");
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(this));
         batchGatewayProvider = new GatewayProvider(address(this), new string[](0));
@@ -88,39 +60,23 @@ contract V2Fixture is Test, ERC1155Holder {
     }
 
     function findResolverV2(bytes memory name) public view returns (address resolver) {
-        (resolver, , ) = universalResolver.findResolver(name);
+        (resolver,,) = universalResolver.findResolver(name);
     }
 
-    function deployUserRegistry(
-        address owner,
-        uint256 roleBitmap,
-        uint256 salt
-    ) public returns (UserRegistry) {
-        return
-            UserRegistry(
-                verifiableFactory.deployProxy(
-                    address(userRegistryImpl),
-                    salt,
-                    abi.encodeCall(UserRegistry.initialize, (owner, roleBitmap))
-                )
-            );
+    function deployUserRegistry(address owner, uint256 roleBitmap, uint256 salt) public returns (UserRegistry) {
+        return UserRegistry(
+            verifiableFactory.deployProxy(
+                address(userRegistryImpl), salt, abi.encodeCall(UserRegistry.initialize, (owner, roleBitmap))
+            )
+        );
     }
 
-    function _computeVerifiableFactoryAddress(
-        address deployer,
-        uint256 salt
-    ) internal view returns (address) {
+    function _computeVerifiableFactoryAddress(address deployer, uint256 salt) internal view returns (address) {
         bytes32 outerSalt = keccak256(abi.encode(deployer, salt));
-        return
-            vm.computeCreate2Address(
-                outerSalt,
-                keccak256(
-                    abi.encodePacked(
-                        type(UUPSProxy).creationCode,
-                        abi.encode(verifiableFactory, outerSalt)
-                    )
-                ),
-                address(verifiableFactory)
-            );
+        return vm.computeCreate2Address(
+            outerSalt,
+            keccak256(abi.encodePacked(type(UUPSProxy).creationCode, abi.encode(verifiableFactory, outerSalt))),
+            address(verifiableFactory)
+        );
     }
 }

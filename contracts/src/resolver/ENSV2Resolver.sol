@@ -29,11 +29,9 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     /// @param rootRegistry The root registry.
     /// @param batchGatewayProvider The batch gateway provider.
     /// @param ethResolver The override resolver for "eth" or null to use ENSv2.
-    constructor(
-        IRegistry rootRegistry,
-        IGatewayProvider batchGatewayProvider,
-        address ethResolver
-    ) AbstractMirrorResolver(batchGatewayProvider) {
+    constructor(IRegistry rootRegistry, IGatewayProvider batchGatewayProvider, address ethResolver)
+        AbstractMirrorResolver(batchGatewayProvider)
+    {
         ROOT_REGISTRY = rootRegistry;
         ETH_RESOLVER = ethResolver;
     }
@@ -45,7 +43,7 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     /// @inheritdoc AbstractMirrorResolver
     function _findResolver(bytes calldata name) internal view override returns (address resolver) {
         bytes32 node;
-        (, resolver, node, ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
+        (, resolver, node,) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
         if (node == NameCoder.ETH_NODE && address(ETH_RESOLVER) != address(0)) {
             resolver = ETH_RESOLVER;
         }

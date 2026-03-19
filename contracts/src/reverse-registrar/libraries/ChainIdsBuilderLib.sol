@@ -22,10 +22,11 @@ library ChainIdsBuilderLib {
     /// @param chainIds       Calldata array of chain IDs (must be strictly ascending).
     /// @param currentChainId The chain ID that must be present in the array.
     /// @return result The comma-separated string, e.g. "1, 10, 8453".
-    function validateAndBuild(
-        uint256[] calldata chainIds,
-        uint256 currentChainId
-    ) internal pure returns (string memory result) {
+    function validateAndBuild(uint256[] calldata chainIds, uint256 currentChainId)
+        internal
+        pure
+        returns (string memory result)
+    {
         uint256 length = chainIds.length;
         if (length == 0) revert CurrentChainNotFound(currentChainId);
 
@@ -49,10 +50,7 @@ library ChainIdsBuilderLib {
                 if i {
                     if iszero(gt(val, prev)) {
                         // revert ChainIdsNotAscending()
-                        mstore(
-                            0x00,
-                            0xea0b14e200000000000000000000000000000000000000000000000000000000
-                        )
+                        mstore(0x00, 0xea0b14e200000000000000000000000000000000000000000000000000000000)
                         revert(0x00, 0x04)
                     }
                 }

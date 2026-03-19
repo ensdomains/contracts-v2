@@ -23,31 +23,18 @@ contract LibRegistryTest is Test, ERC1155Holder {
     address resolverAddress = makeAddr("resolver");
 
     function _createRegistry() internal returns (PermissionedRegistry) {
-        return
-            new PermissionedRegistry(
-                IHCAFactoryBasic(address(0)),
-                IRegistryMetadata(address(0)),
-                address(this),
-                EACBaseRolesLib.ALL_ROLES
-            );
-    }
-    function _register(
-        PermissionedRegistry parentRegistry,
-        string memory label,
-        IRegistry registry,
-        address resolver
-    ) internal {
-        parentRegistry.register(
-            label,
-            address(this),
-            registry,
-            resolver,
-            EACBaseRolesLib.ALL_ROLES,
-            uint64(block.timestamp + 1000)
+        return new PermissionedRegistry(
+            IHCAFactoryBasic(address(0)), IRegistryMetadata(address(0)), address(this), EACBaseRolesLib.ALL_ROLES
         );
-        if (
-            ERC165Checker.supportsInterface(address(registry), type(IStandardRegistry).interfaceId)
-        ) {
+    }
+
+    function _register(PermissionedRegistry parentRegistry, string memory label, IRegistry registry, address resolver)
+        internal
+    {
+        parentRegistry.register(
+            label, address(this), registry, resolver, EACBaseRolesLib.ALL_ROLES, uint64(block.timestamp + 1000)
+        );
+        if (ERC165Checker.supportsInterface(address(registry), type(IStandardRegistry).interfaceId)) {
             IStandardRegistry(address(registry)).setParent(parentRegistry, label);
         }
     }
@@ -63,30 +50,18 @@ contract LibRegistryTest is Test, ERC1155Holder {
         IRegistry[] memory registries,
         bytes memory canonicalName
     ) internal view {
-        (IRegistry registry, address resolver, bytes32 node, uint256 resolverOffset_) = LibRegistry
-            .findResolver(rootRegistry, name, 0);
-        assertEq(
-            address(LibRegistry.findExactRegistry(rootRegistry, name, 0)),
-            address(registry),
-            "exact"
-        );
+        (IRegistry registry, address resolver, bytes32 node, uint256 resolverOffset_) =
+            LibRegistry.findResolver(rootRegistry, name, 0);
+        assertEq(address(LibRegistry.findExactRegistry(rootRegistry, name, 0)), address(registry), "exact");
         assertEq(resolver, resolverAddress, "resolver");
         assertEq(node, NameCoder.namehash(name, 0), "node");
         assertEq(resolverOffset_, resolverOffset, "offset");
-        assertEq(
-            address(LibRegistry.findParentRegistry(rootRegistry, name, 0)),
-            parentRegistry,
-            "parent"
-        );
+        assertEq(address(LibRegistry.findParentRegistry(rootRegistry, name, 0)), parentRegistry, "parent");
         {
             IRegistry[] memory regs = LibRegistry.findRegistries(rootRegistry, name, 0);
             assertEq(registries.length, regs.length, "count");
             for (uint256 i; i < regs.length; ++i) {
-                assertEq(
-                    address(registries[i]),
-                    address(regs[i]),
-                    string.concat("registry[", vm.toString(i), "]")
-                );
+                assertEq(address(registries[i]), address(regs[i]), string.concat("registry[", vm.toString(i), "]"));
             }
         }
         uint256 offset;
@@ -99,20 +74,11 @@ contract LibRegistryTest is Test, ERC1155Holder {
             (, offset) = NameCoder.nextLabel(name, offset);
         }
         assertEq(offset, name.length, "length");
-        (IRegistry registryFrom, address resolverFrom) = LibRegistry.findResolverFromParent(
-            name,
-            0,
-            name.length - 1,
-            rootRegistry,
-            address(0)
-        );
+        (IRegistry registryFrom, address resolverFrom) =
+            LibRegistry.findResolverFromParent(name, 0, name.length - 1, rootRegistry, address(0));
         assertEq(address(registryFrom), address(registry), "registryFrom");
         assertEq(resolverFrom, resolver, "resolverFrom");
-        assertEq(
-            LibRegistry.findCanonicalName(rootRegistry, registries[0]),
-            canonicalName,
-            "findCanonicalName"
-        );
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, registries[0]), canonicalName, "findCanonicalName");
         if (canonicalName.length > 0) {
             assertEq(
                 address(LibRegistry.findCanonicalRegistry(rootRegistry, canonicalName)),
@@ -202,26 +168,10 @@ contract LibRegistryTest is Test, ERC1155Holder {
         _register(rootRegistry, "eth", ethRegistry, address(0));
         _register(ethRegistry, "test", testRegistry, address(0));
         _register(testRegistry, "sub", subRegistry, address(0));
-        assertEq(
-            LibRegistry.findCanonicalName(rootRegistry, rootRegistry),
-            NameCoder.encode(""),
-            "<root>"
-        );
-        assertEq(
-            LibRegistry.findCanonicalName(rootRegistry, ethRegistry),
-            NameCoder.encode("eth"),
-            "eth"
-        );
-        assertEq(
-            LibRegistry.findCanonicalName(rootRegistry, testRegistry),
-            NameCoder.encode("test.eth"),
-            "test"
-        );
-        assertEq(
-            LibRegistry.findCanonicalName(rootRegistry, subRegistry),
-            NameCoder.encode("sub.test.eth"),
-            "sub"
-        );
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, rootRegistry), NameCoder.encode(""), "<root>");
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, ethRegistry), NameCoder.encode("eth"), "eth");
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), NameCoder.encode("test.eth"), "test");
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, subRegistry), NameCoder.encode("sub.test.eth"), "sub");
     }
 
     function test_findCanonicalRegistry() external {
@@ -247,9 +197,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
             "test"
         );
         assertEq(
-            address(
-                LibRegistry.findCanonicalRegistry(rootRegistry, NameCoder.encode("sub.test.eth"))
-            ),
+            address(LibRegistry.findCanonicalRegistry(rootRegistry, NameCoder.encode("sub.test.eth"))),
             address(subRegistry),
             "sub"
         );
@@ -276,11 +224,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
         _register(rootRegistry, "eth", ethRegistry, address(0));
         _register(ethRegistry, "test", testRegistry, address(0));
         ethRegistry.setParent(IRegistry(address(0)), "eth"); // wrong
-        assertEq(
-            LibRegistry.findCanonicalName(rootRegistry, testRegistry),
-            "",
-            "findCanonicalName"
-        );
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
         assertEq(
             address(LibRegistry.findCanonicalRegistry(rootRegistry, NameCoder.encode("test.eth"))),
             address(0),
@@ -294,11 +238,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
         _register(rootRegistry, "eth", ethRegistry, address(0));
         _register(ethRegistry, "test", testRegistry, address(0));
         ethRegistry.setParent(IRegistry(address(0)), "xyz"); // wrong
-        assertEq(
-            LibRegistry.findCanonicalName(rootRegistry, testRegistry),
-            "",
-            "findCanonicalName"
-        );
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
         assertEq(
             address(LibRegistry.findCanonicalRegistry(rootRegistry, NameCoder.encode("test.eth"))),
             address(0),
@@ -311,11 +251,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
         PermissionedRegistry testRegistry = _createRegistry();
         _register(rootRegistry, "eth", ethRegistry, address(0));
         _register(ethRegistry, "test", testRegistry, address(0));
-        assertEq(
-            LibRegistry.findCanonicalName(rootRegistry, testRegistry),
-            NameCoder.encode("test.eth"),
-            "eth"
-        );
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), NameCoder.encode("test.eth"), "eth");
         assertEq(
             address(LibRegistry.findCanonicalRegistry(rootRegistry, NameCoder.encode("test.eth"))),
             address(testRegistry),
@@ -327,11 +263,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
             "eth:test.xyz"
         );
         _register(rootRegistry, "xyz", ethRegistry, address(0));
-        assertEq(
-            LibRegistry.findCanonicalName(rootRegistry, testRegistry),
-            NameCoder.encode("test.xyz"),
-            "xyz"
-        );
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), NameCoder.encode("test.xyz"), "xyz");
         assertEq(
             address(LibRegistry.findCanonicalRegistry(rootRegistry, NameCoder.encode("test.xyz"))),
             address(testRegistry),

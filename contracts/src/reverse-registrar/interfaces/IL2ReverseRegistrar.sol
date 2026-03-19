@@ -22,20 +22,13 @@ interface IL2ReverseRegistrar {
     /// @notice Sets the `nameForAddr()` record for the addr provided account using a signature.
     /// @param claim The claim to set the name for.
     /// @param signature The signature from the addr.
-    function setNameForAddrWithSignature(
-        NameClaim calldata claim,
-        bytes calldata signature
-    ) external;
+    function setNameForAddrWithSignature(NameClaim calldata claim, bytes calldata signature) external;
 
     /// @notice Sets the `nameForAddr()` record for the contract provided that is owned with `Ownable`.
     /// @param claim The claim to set the name for.
     /// @param owner The owner of the contract (via Ownable).
     /// @param signature The signature of an address that will return true on isValidSignature for the owner.
-    function setNameForOwnableWithSignature(
-        NameClaim calldata claim,
-        address owner,
-        bytes calldata signature
-    ) external;
+    function setNameForOwnableWithSignature(NameClaim calldata claim, address owner, bytes calldata signature) external;
 
     /// @notice Set the `nameForAddr()` record for the contract provided using `IContractName`.
     /// Callable by anyone.

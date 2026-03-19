@@ -7,9 +7,7 @@ import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Hol
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 import {ENSRegistry, ENS} from "@ens/contracts/registry/ENSRegistry.sol";
-import {
-    BaseRegistrarImplementation
-} from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
+import {BaseRegistrarImplementation} from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
 import {NameWrapper, IMetadataService} from "@ens/contracts/wrapper/NameWrapper.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
@@ -53,19 +51,14 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         }
     }
 
-    function registerUnwrapped(
-        string memory label
-    ) public virtual returns (bytes memory name, uint256 tokenId) {
+    function registerUnwrapped(string memory label) public virtual returns (bytes memory name, uint256 tokenId) {
         name = NameCoder.ethName(label);
         tokenId = uint256(keccak256(bytes(label)));
         vm.prank(ensV1Controller);
         ethRegistrarV1.register(tokenId, user, 1 days); // test duration
     }
 
-    function registerWrappedETH2LD(
-        string memory label,
-        uint32 ownerFuses
-    ) public returns (bytes memory name) {
+    function registerWrappedETH2LD(string memory label, uint32 ownerFuses) public returns (bytes memory name) {
         uint256 tokenId;
         (name, tokenId) = registerUnwrapped(label);
         address owner = ethRegistrarV1.ownerOf(tokenId);
@@ -75,14 +68,12 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         nameWrapper.wrapETH2LD(label, owner, uint16(ownerFuses), address(0));
     }
 
-    function createWrappedChild(
-        bytes memory parentName,
-        string memory label,
-        address newOwner,
-        uint32 fuses
-    ) public returns (bytes memory name) {
+    function createWrappedChild(bytes memory parentName, string memory label, address newOwner, uint32 fuses)
+        public
+        returns (bytes memory name)
+    {
         bytes32 parentNode = NameCoder.namehash(parentName, 0);
-        (address owner, , uint64 expiry) = nameWrapper.getData(uint256(parentNode));
+        (address owner,, uint64 expiry) = nameWrapper.getData(uint256(parentNode));
         name = NameCoder.addLabel(parentName, label);
         if (newOwner == address(0)) {
             newOwner = owner;
@@ -91,10 +82,7 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         nameWrapper.setSubnodeOwner(parentNode, label, newOwner, fuses, expiry);
     }
 
-    function createWrappedName(
-        string memory domain,
-        uint32 fuses
-    ) public returns (bytes memory name) {
+    function createWrappedName(string memory domain, uint32 fuses) public returns (bytes memory name) {
         name = NameCoder.encode(domain);
         _claimNodes(name, 0, user);
         (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
@@ -110,6 +98,6 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     }
 
     function findResolverV1(bytes memory name) public view returns (address resolver) {
-        (resolver, , ) = RegistryUtils.findResolver(registryV1, name, 0);
+        (resolver,,) = RegistryUtils.findResolver(registryV1, name, 0);
     }
 }

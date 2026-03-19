@@ -28,11 +28,7 @@ interface IRegistryEvents {
     /// @param expiry The expiry of the label.
     /// @param sender The sender of the call to reserve.
     event LabelReserved(
-        uint256 indexed tokenId,
-        bytes32 indexed labelHash,
-        string label,
-        uint64 expiry,
-        address indexed sender
+        uint256 indexed tokenId, bytes32 indexed labelHash, string label, uint64 expiry, address indexed sender
     );
 
     /// @notice A label was unregistered.
@@ -50,21 +46,13 @@ interface IRegistryEvents {
     /// @param tokenId The token ID of the label.
     /// @param subregistry The new subregistry.
     /// @param sender The sender of the call to update the subregistry.
-    event SubregistryUpdated(
-        uint256 indexed tokenId,
-        IRegistry indexed subregistry,
-        address indexed sender
-    );
+    event SubregistryUpdated(uint256 indexed tokenId, IRegistry indexed subregistry, address indexed sender);
 
     /// @notice Resolver of label was changed.
     /// @param tokenId The token ID of the label.
     /// @param resolver The new resolver.
     /// @param sender The sender of the call to update the resolver.
-    event ResolverUpdated(
-        uint256 indexed tokenId,
-        address indexed resolver,
-        address indexed sender
-    );
+    event ResolverUpdated(uint256 indexed tokenId, address indexed resolver, address indexed sender);
 
     /// @notice Token was regenerated with a new token ID.
     ///         This occurs when roles are granted or revoked to maintain ERC1155 compliance.

@@ -33,8 +33,7 @@ contract L2ReverseRegistrarWithMigrationTest is Test {
     uint256 constant OPTIMISM_CHAIN_ID = 10;
     string constant COIN_TYPE_LABEL = "8000000a";
 
-    bytes32 constant REVERSE_NODE =
-        0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34;
+    bytes32 constant REVERSE_NODE = 0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34;
 
     L2ReverseRegistrarWithMigration registrar;
     MockOldL2ReverseRegistrar mockOldRegistrar;
@@ -58,10 +57,7 @@ contract L2ReverseRegistrarWithMigrationTest is Test {
 
         // Deploy the L2ReverseRegistrarWithMigration
         registrar = new L2ReverseRegistrarWithMigration(
-            OPTIMISM_CHAIN_ID,
-            COIN_TYPE_LABEL,
-            owner,
-            IL2ReverseRegistrarV1(address(mockOldRegistrar))
+            OPTIMISM_CHAIN_ID, COIN_TYPE_LABEL, owner, IL2ReverseRegistrarV1(address(mockOldRegistrar))
         );
     }
 
@@ -71,10 +67,7 @@ contract L2ReverseRegistrarWithMigrationTest is Test {
 
     function _getNode(address addr) internal view returns (bytes32) {
         string memory label = LibString.toAddressString(addr);
-        return
-            keccak256(
-                abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label)))
-            );
+        return keccak256(abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label))));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -98,23 +91,15 @@ contract L2ReverseRegistrarWithMigrationTest is Test {
     }
 
     function test_constructor_setsParentNode() public view {
-        bytes32 expectedParentNode = keccak256(
-            abi.encodePacked(REVERSE_NODE, keccak256(abi.encodePacked(COIN_TYPE_LABEL)))
-        );
-        assertEq(
-            registrar.PARENT_NODE(),
-            expectedParentNode,
-            "PARENT_NODE should be set correctly"
-        );
+        bytes32 expectedParentNode =
+            keccak256(abi.encodePacked(REVERSE_NODE, keccak256(abi.encodePacked(COIN_TYPE_LABEL))));
+        assertEq(registrar.PARENT_NODE(), expectedParentNode, "PARENT_NODE should be set correctly");
     }
 
     function test_constructor_differentOwner() public {
         address differentOwner = makeAddr("differentOwner");
         L2ReverseRegistrarWithMigration newRegistrar = new L2ReverseRegistrarWithMigration(
-            OPTIMISM_CHAIN_ID,
-            COIN_TYPE_LABEL,
-            differentOwner,
-            IL2ReverseRegistrarV1(address(mockOldRegistrar))
+            OPTIMISM_CHAIN_ID, COIN_TYPE_LABEL, differentOwner, IL2ReverseRegistrarV1(address(mockOldRegistrar))
         );
         assertEq(newRegistrar.owner(), differentOwner, "Different owner should be set");
     }
@@ -127,9 +112,7 @@ contract L2ReverseRegistrarWithMigrationTest is Test {
         address[] memory addresses = new address[](1);
         addresses[0] = user1;
 
-        vm.expectRevert(
-            abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner)
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
         vm.prank(nonOwner);
         registrar.batchSetName(addresses);
     }
@@ -350,21 +333,9 @@ contract L2ReverseRegistrarWithMigrationTest is Test {
         registrar.batchSetName(addresses);
 
         // Verify a few addresses
-        assertEq(
-            registrar.name(_getNode(address(1))),
-            "user0.eth",
-            "First address name should be migrated"
-        );
-        assertEq(
-            registrar.name(_getNode(address(50))),
-            "user49.eth",
-            "Middle address name should be migrated"
-        );
-        assertEq(
-            registrar.name(_getNode(address(100))),
-            "user99.eth",
-            "Last address name should be migrated"
-        );
+        assertEq(registrar.name(_getNode(address(1))), "user0.eth", "First address name should be migrated");
+        assertEq(registrar.name(_getNode(address(50))), "user49.eth", "Middle address name should be migrated");
+        assertEq(registrar.name(_getNode(address(100))), "user99.eth", "Last address name should be migrated");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -496,9 +467,7 @@ contract L2ReverseRegistrarWithMigrationTest is Test {
         addresses[0] = user1;
 
         vm.prank(caller);
-        vm.expectRevert(
-            abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, caller)
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, caller));
         registrar.batchSetName(addresses);
     }
 
@@ -559,11 +528,7 @@ contract L2ReverseRegistrarWithMigrationTest is Test {
         mockOldRegistrar.setMockName(user1, "changed.eth");
 
         // New registrar should still have original migrated name
-        assertEq(
-            registrar.name(node),
-            "initial.eth",
-            "New registrar should not reflect old registrar changes"
-        );
+        assertEq(registrar.name(node), "initial.eth", "New registrar should not reflect old registrar changes");
 
         // Re-migrate to get updated name
         vm.prank(owner);

@@ -21,10 +21,7 @@ contract UniversalResolverV2 is AbstractUniversalResolver {
     /// @notice Initializes the UniversalResolverV2 with the root registry and batch gateway provider.
     /// @param root The root registry.
     /// @param batchGatewayProvider The batch gateway provider.
-    constructor(
-        IRegistry root,
-        IGatewayProvider batchGatewayProvider
-    ) AbstractUniversalResolver(batchGatewayProvider) {
+    constructor(IRegistry root, IGatewayProvider batchGatewayProvider) AbstractUniversalResolver(batchGatewayProvider) {
         ROOT_REGISTRY = root;
     }
 
@@ -66,9 +63,12 @@ contract UniversalResolverV2 is AbstractUniversalResolver {
     }
 
     /// @inheritdoc AbstractUniversalResolver
-    function findResolver(
-        bytes memory name
-    ) public view override returns (address resolver, bytes32 node, uint256 offset) {
+    function findResolver(bytes memory name)
+        public
+        view
+        override
+        returns (address resolver, bytes32 node, uint256 offset)
+    {
         (, resolver, node, offset) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
     }
 }

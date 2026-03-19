@@ -22,10 +22,7 @@ interface IEnhancedAccessControl is IERC165 {
     /// @param oldRoleBitmap The old roles for the account.
     /// @param newRoleBitmap The new roles for the account.
     event EACRolesChanged(
-        uint256 indexed resource,
-        address indexed account,
-        uint256 oldRoleBitmap,
-        uint256 newRoleBitmap
+        uint256 indexed resource, address indexed account, uint256 oldRoleBitmap, uint256 newRoleBitmap
     );
 
     ////////////////////////////////////////////////////////////////////////
@@ -65,11 +62,7 @@ interface IEnhancedAccessControl is IERC165 {
     /// @param roleBitmap The roles bitmap to grant.
     /// @param account The account to grant roles to.
     /// @return `true` if the roles were granted, `false` otherwise.
-    function grantRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) external returns (bool);
+    function grantRoles(uint256 resource, uint256 roleBitmap, address account) external returns (bool);
 
     /// @notice Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE.
     /// @param roleBitmap The roles bitmap to grant.
@@ -82,11 +75,7 @@ interface IEnhancedAccessControl is IERC165 {
     /// @param roleBitmap The roles bitmap to revoke.
     /// @param account The account to revoke roles from.
     /// @return `true` if the roles were revoked, `false` otherwise.
-    function revokeRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) external returns (bool);
+    function revokeRoles(uint256 resource, uint256 roleBitmap, address account) external returns (bool);
 
     /// @notice Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE.
     /// @param roleBitmap The roles bitmap to revoke.
@@ -119,11 +108,7 @@ interface IEnhancedAccessControl is IERC165 {
     /// @param roleBitmap The roles bitmap to check.
     /// @param account The account to check.
     /// @return `true` if `account` has been granted all the given roles in the given resource or the `ROOT_RESOURCE`, `false` otherwise.
-    function hasRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) external view returns (bool);
+    function hasRoles(uint256 resource, uint256 roleBitmap, address account) external view returns (bool);
 
     /// @notice Checks if any of the roles in the given role bitmap has assignees.
     /// @param resource The resource to check.
@@ -136,8 +121,5 @@ interface IEnhancedAccessControl is IERC165 {
     /// @param roleBitmap The roles bitmap to check.
     /// @return counts The number of assignees for each of the roles in the given role bitmap, expressed as a packed array of 4-bit ints.
     /// @return mask The mask for the given role bitmap.
-    function getAssigneeCount(
-        uint256 resource,
-        uint256 roleBitmap
-    ) external view returns (uint256 counts, uint256 mask);
+    function getAssigneeCount(uint256 resource, uint256 roleBitmap) external view returns (uint256 counts, uint256 mask);
 }
