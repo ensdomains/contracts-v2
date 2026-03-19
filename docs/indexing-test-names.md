@@ -46,7 +46,7 @@ Each name registration triggers events on the **ETHRegistry** (a `PermissionedRe
 
 | Event | Source | Indexed Fields |
 |-------|--------|---------------|
-| `NameRegistered(tokenId, labelHash, label, owner, expiry, ...)` | `IRegistry` | tokenId, label, owner, expiry |
+| `LabelRegistered(tokenId, labelHash, label, owner, expiry, ...)` | `IRegistryEvents` | tokenId, label, owner, expiry |
 | `TransferSingle(operator, from=0x0, to, id, value)` | `ERC1155Singleton` | Mint event: `from=address(0)` |
 | `TokenResource(tokenId, resource)` | `IPermissionedRegistry` | Links tokenId to its resource/canonical ID |
 
@@ -86,7 +86,7 @@ Time-warps past expiry, then re-registers with a new expiry:
 
 | Event | Source | Indexed Fields |
 |-------|--------|---------------|
-| `NameRegistered(tokenId, labelHash, label, owner, expiry, ...)` | `IRegistry` | New tokenId (different from original) |
+| `LabelRegistered(tokenId, labelHash, label, owner, expiry, ...)` | `IRegistryEvents` | New tokenId (different from original) |
 | `TransferSingle(operator, from=0x0, to, id, value)` | `ERC1155Singleton` | New mint |
 | `TokenResource(tokenId, resource)` | `IPermissionedRegistry` | New tokenId-to-resource mapping |
 
@@ -120,7 +120,7 @@ For each level (sub2, sub1, wallet):
 
 | Event | Source | Indexed Fields |
 |-------|--------|---------------|
-| `NameRegistered(tokenId, labelHash, label, owner, expiry, ...)` | `IRegistry` (UserRegistry) | Subname registration |
+| `LabelRegistered(tokenId, labelHash, label, owner, expiry, ...)` | `IRegistryEvents` (UserRegistry) | Subname registration |
 | `TransferSingle(operator, from=0x0, to, id, value)` | `ERC1155Singleton` | Mint in UserRegistry |
 | `ResolverUpdated(tokenId, resolver, sender)` | `IRegistry` | Resolver set on subname |
 
@@ -132,7 +132,7 @@ Creating `linked.parent.eth` that shares the subregistry of `sub1.sub2.parent.et
 
 | Event | Source | Indexed Fields |
 |-------|--------|---------------|
-| `NameRegistered(tokenId, labelHash, "linked", owner, expiry, ...)` | Parent UserRegistry | New name in registry |
+| `LabelRegistered(tokenId, labelHash, "linked", owner, expiry, ...)` | Parent UserRegistry | New label in registry |
 | `TransferSingle(...)` | `ERC1155Singleton` | Mint |
 
 The key detail: `linked.parent.eth` points to the **same subregistry** as `sub1.sub2.parent.eth`. This means `wallet.linked.parent.eth` and `wallet.sub1.sub2.parent.eth` resolve to the same token in the same UserRegistry.
@@ -151,7 +151,7 @@ An alias is also set on the wallet resolver so that resolver records work correc
 
 | Event | Source | Indexed Fields |
 |-------|--------|---------------|
-| `NameRegistered(...)` | `IRegistry` | alias.eth registration |
+| `LabelRegistered(...)` | `IRegistryEvents` | alias.eth registration |
 | `AliasChanged(dnsEncode("alias.eth"), dnsEncode("test.eth"))` | `PermissionedResolver` | Alias mapping |
 
 `sub.alias.eth` has no direct registry entry. Records for `sub.test.eth` are set on test.eth's resolver, and the `UniversalResolverV2` follows the alias chain to resolve `sub.alias.eth` to `sub.test.eth`'s records.
@@ -176,7 +176,7 @@ Reserving `reserved.eth` with no owner:
 
 | Event | Source | Indexed Fields |
 |-------|--------|---------------|
-| `NameReserved(tokenId, labelHash, label, expiry, sender)` | `IRegistry` | tokenId, label, expiry |
+| `LabelReserved(tokenId, labelHash, label, expiry, sender)` | `IRegistryEvents` | tokenId, label, expiry |
 
 **Indexer action**: Create a domain entry with `RESERVED` status. No owner is set and no ERC1155 token is minted.
 
@@ -186,7 +186,7 @@ Registering then unregistering `unregistered.eth`:
 
 | Event | Source | Indexed Fields |
 |-------|--------|---------------|
-| `NameUnregistered(tokenId, sender)` | `IRegistry` | tokenId |
+| `LabelUnregistered(tokenId, sender)` | `IRegistryEvents` | tokenId |
 | `TransferSingle(operator, from=owner, to=0x0, id=tokenId, value=1)` | `ERC1155Singleton` | Burn event |
 
 **Indexer action**: Mark the domain as `AVAILABLE`. The ERC1155 token is burned.
