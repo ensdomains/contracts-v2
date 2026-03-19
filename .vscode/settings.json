@@ -1,7 +1,7 @@
 {
   "solidity.packageDefaultDependenciesContractsDirectory": "./contracts/src",
   "solidity.packageDefaultDependenciesDirectory": "./contracts/lib",
-  "solidity.compileUsingRemoteVersion": "v0.8.25+commit.b61c2a91",
+  "solidity.compileUsingRemoteVersion": "v0.8.27+commit.40a35a09",
   "solidity.solhintPackageDirectory": "./node_modules/solhint",
   "solidity.formatter": "prettier",
   "[solidity]": {

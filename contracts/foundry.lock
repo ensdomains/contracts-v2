@@ -1,9 +1,27 @@
 {
+  "contracts/lib/ExcessivelySafeCall": {
+    "rev": "81cd99ce3e69117d665d7601c330ea03b97acce0"
+  },
+  "contracts/lib/account-abstraction": {
+    "rev": "7af70c8993a6f42973f520ae0752386a5032abe7"
+  },
   "contracts/lib/buffer": {
     "rev": "82cc81935de1d1a82e021cf1030d902c5248982b"
   },
+  "contracts/lib/composability": {
+    "rev": "9e090c24b195822f668f96cb4ff518a9b7ff712d"
+  },
+  "contracts/lib/ens-contracts": {
+    "rev": "6d877523e11f647ed62e8ee159f48f288c9cd9e9"
+  },
+  "contracts/lib/erc7739Validator": {
+    "rev": "d1e38493f58f28e62e12e41773086a90e8f60840"
+  },
   "contracts/lib/forge-std": {
     "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
+  },
+  "contracts/lib/nexus": {
+    "rev": "8db1a6e41780dd0cc85298b0cbe6ab493adc6bb5"
   },
   "contracts/lib/openzeppelin-contracts": {
     "rev": "e4f70216d759d8e6a64144a9e1f7bbeed78e7079"
@@ -14,20 +32,53 @@
   "contracts/lib/openzeppelin-contracts-v4": {
     "rev": "54b3f14346da01ba0d159114b399197fea8b7cda"
   },
+  "contracts/lib/sentinellist": {
+    "rev": "6dff696f39fb55bfdde9581544d788932f145e47"
+  },
   "contracts/lib/solsha1": {
     "rev": "c4fbe97cf5e8c1b8d607001588fd23abb5bfb923"
+  },
+  "contracts/lib/unruggable-gateways": {
+    "rev": "3d68742832c68bf9a158c7bcd1aa47fad511b213"
   },
   "contracts/lib/verifiable-factory": {
     "rev": "c47c0e61ce03b3ab5891a3b743287b54aee9f021"
   },
+  "lib/ExcessivelySafeCall": {
+    "rev": "81cd99ce3e69117d665d7601c330ea03b97acce0"
+  },
+  "lib/account-abstraction": {
+    "tag": {
+      "name": "v0.7.0",
+      "rev": "7af70c8993a6f42973f520ae0752386a5032abe7"
+    }
+  },
   "lib/buffer": {
     "rev": "82cc81935de1d1a82e021cf1030d902c5248982b"
+  },
+  "lib/composability": {
+    "tag": {
+      "name": "v1.0.0",
+      "rev": "9e090c24b195822f668f96cb4ff518a9b7ff712d"
+    }
   },
   "lib/ens-contracts": {
     "rev": "6d877523e11f647ed62e8ee159f48f288c9cd9e9"
   },
+  "lib/erc7739Validator": {
+    "tag": {
+      "name": "v1.0.0",
+      "rev": "d1e38493f58f28e62e12e41773086a90e8f60840"
+    }
+  },
   "lib/forge-std": {
     "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
+  },
+  "lib/nexus": {
+    "tag": {
+      "name": "v1.2.0",
+      "rev": "8db1a6e41780dd0cc85298b0cbe6ab493adc6bb5"
+    }
   },
   "lib/openzeppelin-contracts": {
     "rev": "e4f70216d759d8e6a64144a9e1f7bbeed78e7079"
@@ -37,6 +88,18 @@
   },
   "lib/openzeppelin-contracts-v4": {
     "rev": "54b3f14346da01ba0d159114b399197fea8b7cda"
+  },
+  "lib/sentinellist": {
+    "tag": {
+      "name": "v1.0.0",
+      "rev": "6dff696f39fb55bfdde9581544d788932f145e47"
+    }
+  },
+  "lib/solady": {
+    "tag": {
+      "name": "v0.1.9",
+      "rev": "1eb89b9af0a09468c6ccff51ce8ed5eb520b4fb5"
+    }
   },
   "lib/solsha1": {
     "rev": "c4fbe97cf5e8c1b8d607001588fd23abb5bfb923"
