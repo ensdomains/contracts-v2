@@ -13,8 +13,7 @@ import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {
     PermissionedRegistry,
     IStandardRegistry,
-    IRegistry,
-    IRegistryMetadata
+    IRegistry
 } from "~src/registry/PermissionedRegistry.sol";
 import {LibRegistry, NameCoder} from "~src/universalResolver/libraries/LibRegistry.sol";
 
@@ -26,7 +25,6 @@ contract LibRegistryTest is Test, ERC1155Holder {
         return
             new PermissionedRegistry(
                 IHCAFactoryBasic(address(0)),
-                IRegistryMetadata(address(0)),
                 address(this),
                 EACBaseRolesLib.ALL_ROLES
             );

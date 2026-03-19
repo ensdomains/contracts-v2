@@ -25,7 +25,6 @@ import {
     IPermissionedRegistry,
     RegistryRolesLib,
     IRegistry,
-    IRegistryMetadata,
     LibLabel
 } from "~src/registry/PermissionedRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";

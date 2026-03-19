@@ -15,7 +15,6 @@ import {StandardPricing} from "./StandardPricing.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {PermissionedRegistry, IRegistry} from "~src/registry/PermissionedRegistry.sol";
-import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {LibHalving} from "~src/registrar/libraries/LibHalving.sol";
 import {
     StandardRentPriceOracle,
@@ -41,7 +40,6 @@ contract StandardRentPriceOracleTest is Test, ERC1155Holder {
         hcaFactory = new MockHCAFactoryBasic();
         ethRegistry = new PermissionedRegistry(
             hcaFactory,
-            new SimpleRegistryMetadata(hcaFactory),
             address(this),
             EACBaseRolesLib.ALL_ROLES
         );

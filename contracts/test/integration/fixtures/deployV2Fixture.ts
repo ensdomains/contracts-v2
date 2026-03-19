@@ -22,7 +22,6 @@ export async function deployV2Fixture(
     "PermissionedRegistry",
     [
       hcaFactory.address,
-      zeroAddress,
       walletClient.account.address,
       DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
     ],
@@ -31,7 +30,6 @@ export async function deployV2Fixture(
     "PermissionedRegistry",
     [
       hcaFactory.address,
-      zeroAddress,
       walletClient.account.address,
       DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
     ],
@@ -105,7 +103,6 @@ export async function deployV2Fixture(
     expiry = MAX_EXPIRY,
     roles = ROLES.ALL,
     resolverAddress,
-    metadataAddress = zeroAddress,
     exact,
   }: {
     name: string;
@@ -113,7 +110,6 @@ export async function deployV2Fixture(
     expiry?: bigint;
     roles?: bigint;
     resolverAddress?: Address;
-    metadataAddress?: Address;
     exact?: exact_;
   }) {
     const labels = splitName(name);
@@ -131,12 +127,7 @@ export async function deployV2Fixture(
           // registry does not exist, create it
           const registry = await network.viem.deployContract(
             "PermissionedRegistry",
-            [
-              hcaFactory.address,
-              metadataAddress,
-              walletClient.account.address,
-              roles,
-            ],
+            [hcaFactory.address, walletClient.account.address, roles],
           );
           registryAddress = registry.address;
           if (exists) {
