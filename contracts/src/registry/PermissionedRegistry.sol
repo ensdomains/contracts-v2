@@ -400,28 +400,28 @@ contract PermissionedRegistry is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Override the base registry _update function to transfer the roles to the new owner when the token is transferred.
+    /// @dev Override `ERC1155Singleton._update()` to transfer the roles to the new owner if the token is transferred.
     function _update(
         address from,
         address to,
         uint256[] memory tokenIds,
-        uint256[] memory values
+        uint256[] memory amounts
     ) internal virtual override {
-        // note: from is token owner
-        bool externalTransfer = to != address(0) && from != address(0);
+        bool externalTransfer = to != address(0) && from != address(0); // skip mint and burn
         if (externalTransfer) {
-            // Check ROLE_CAN_TRANSFER for actual transfers only
-            // Skip check for mints (from == address(0)) and burns (to == address(0))
+            // only check ROLE_CAN_TRANSFER_ADMIN on token owner (from)
             for (uint256 i; i < tokenIds.length; ++i) {
                 if (!hasRoles(tokenIds[i], RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
                     revert TransferDisallowed(tokenIds[i], from);
                 }
             }
         }
-        super._update(from, to, tokenIds, values);
+        super._update(from, to, tokenIds, amounts); // ensures amounts[i] is 0 or 1
         if (externalTransfer) {
             for (uint256 i; i < tokenIds.length; ++i) {
-                _transferRoles(getResource(tokenIds[i]), from, to, false);
+                if (amounts[i] > 0) {
+                    _transferRoles(getResource(tokenIds[i]), from, to, false);
+                }
             }
         }
     }
