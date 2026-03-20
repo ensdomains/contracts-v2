@@ -854,6 +854,13 @@ contract PermissionedResolverTest is Test {
         assertEq(resolver.addr(keccak256("dne"), COIN_TYPE_ETH), testAddress);
     }
 
+    function test_default_setData() external {
+        vm.prank(owner);
+        resolver.setData(EMPTY_NAME, testString, testAddress);
+
+        assertEq(resolver.data(keccak256("dne"), testString), testAddress);
+    }
+
     function test_default_setText() external {
         vm.prank(owner);
         resolver.setText(EMPTY_NAME, testString, testString);
@@ -865,7 +872,7 @@ contract PermissionedResolverTest is Test {
     // Fine-grained Permissions
     ////////////////////////////////////////////////////////////////////////
 
-    function test_setText_anyNode_onePart() external {
+    function test_setText_anyNode_onePart(string calldata key) external {
         vm.prank(owner);
         resolver.setName(name1, testString); // ensure record 1
         vm.prank(owner);
@@ -881,22 +888,22 @@ contract PermissionedResolverTest is Test {
             )
         );
         vm.prank(friend);
-        resolver.setText(name1, testString, "A");
+        resolver.setText(name1, key, "A");
 
         // give friend setText(testString) on any record
         vm.prank(owner);
         resolver.grantSetterRoles(
-            abi.encodeCall(PermissionedResolver.setText, (EMPTY_NAME, testString, "<ignored>")),
+            abi.encodeCall(PermissionedResolver.setText, (EMPTY_NAME, key, "<ignored>")),
             friend
         );
 
         // friend can change record1
         vm.prank(friend);
-        resolver.setText(name1, testString, "B");
+        resolver.setText(name1, key, "B");
 
         // friend can change record2
         vm.prank(friend);
-        resolver.setText(name2, testString, "C");
+        resolver.setText(name2, key, "C");
 
         // friend cannot change record1 with different key
         vm.expectRevert(
@@ -908,7 +915,7 @@ contract PermissionedResolverTest is Test {
             )
         );
         vm.prank(friend);
-        resolver.setText(name1, string.concat(testString, testString), "D");
+        resolver.setText(name1, string.concat("2", key), "D");
     }
 
     function test_setText_oneNode_onePart(string calldata key) external {
@@ -965,36 +972,6 @@ contract PermissionedResolverTest is Test {
         resolver.setText(name2, key, "E");
     }
 
-    // function test_setAddr_oneNode_onePart() external {
-    //     uint256 coinType = 0;
-    //     vm.expectRevert(
-    //         abi.encodeWithSelector(
-    //             IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-    //             PermissionedResolverLib.resource(testNode, 0),
-    //             PermissionedResolverLib.ROLE_SET_ADDR,
-    //             friend
-    //         )
-    //     );
-    //     vm.prank(friend);
-    //     resolver.setAddr(testNode, coinType, hex"01");
-
-    //     vm.prank(owner);
-    //     resolver.grantAddrRoles(testName, coinType, friend);
-
-    //     vm.prank(friend);
-    //     resolver.setAddr(testNode, coinType, hex"02");
-
-    //     vm.expectRevert(
-    //         abi.encodeWithSelector(
-    //             IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-    //             PermissionedResolverLib.resource(~testNode, 0),
-    //             PermissionedResolverLib.ROLE_SET_ADDR,
-    //             friend
-    //         )
-    //     );
-    //     vm.prank(friend);
-    //     resolver.setAddr(~testNode, coinType, hex"03");
-    // }
     function test_setaddr_anyNode_onePart(uint256 coinType) external {
         vm.prank(owner);
         resolver.setName(name1, testString); // ensure record 1
