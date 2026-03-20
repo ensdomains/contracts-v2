@@ -10,7 +10,7 @@ bytes4 constant PERMISSIONED_RESOLVER_INTERFACE_ID = type(IPermissionedResolver)
     type(IEnhancedAccessControl).interfaceId ^
     type(IRecordResolver).interfaceId;
 
-/// @dev Interface selector: `0xd2f09e94`
+/// @dev Interface selector: `0x899f136b`
 interface IPermissionedResolver is IEnhancedAccessControl, IRecordResolver {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -23,15 +23,20 @@ interface IPermissionedResolver is IEnhancedAccessControl, IRecordResolver {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Grant `roleBitmap` permissions to `account` for record of `name`.
+    /// @param name The DNS-encoded name.
+    /// @param roleBitmap The roles bitmap to grant.
+    /// @param account The account to be granted roles.
+    /// @return `true` if any roles are granted.
     function grantRecordRoles(
-        bytes calldata name_,
+        bytes calldata name,
         uint256 roleBitmap,
         address account
     ) external returns (bool);
 
-    function grantSetterRoles(
-        bytes calldata name_,
-        bytes calldata setterPrefix,
-        address account
-    ) external returns (bool);
+    /// @notice Grant `arg`-depenendant setter permission to `account` for record of `name`.
+    /// @param setterPrefix The ABI-encoded setter calldata (`f(name, <arg>, ...)`) with optional data.
+    /// @param account The account to be granted roles.
+    /// @return `true` if role is granted.
+    function grantSetterRoles(bytes calldata setterPrefix, address account) external returns (bool);
 }
