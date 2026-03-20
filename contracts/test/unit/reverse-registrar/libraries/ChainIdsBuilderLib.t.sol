@@ -12,10 +12,11 @@ import {ChainIdsBuilderLib} from "~src/reverse-registrar/libraries/ChainIdsBuild
 /// @dev Harness that exposes the internal library function via an external call.
 ///      Memory arrays in the test are ABI-encoded as calldata automatically.
 contract ChainIdsBuilderLibHarness {
-    function validateAndBuild(
-        uint256[] calldata chainIds,
-        uint256 currentChainId
-    ) external pure returns (string memory) {
+    function validateAndBuild(uint256[] calldata chainIds, uint256 currentChainId)
+        external
+        pure
+        returns (string memory)
+    {
         return ChainIdsBuilderLib.validateAndBuild(chainIds, currentChainId);
     }
 }
@@ -88,11 +89,7 @@ contract ChainIdsBuilderLibTest is Test {
         uint256[] memory ids = new uint256[](2);
         ids[0] = type(uint256).max - 1;
         ids[1] = type(uint256).max;
-        string memory expected = string.concat(
-            (type(uint256).max - 1).toString(),
-            ", ",
-            type(uint256).max.toString()
-        );
+        string memory expected = string.concat((type(uint256).max - 1).toString(), ", ", type(uint256).max.toString());
         assertEq(harness.validateAndBuild(ids, type(uint256).max), expected);
     }
 
@@ -217,17 +214,13 @@ contract ChainIdsBuilderLibTest is Test {
 
     function test_revert_emptyArray() public {
         uint256[] memory ids = new uint256[](0);
-        vm.expectRevert(
-            abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, 10)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, 10));
         harness.validateAndBuild(ids, 10);
     }
 
     function test_revert_emptyArray_chainIdZero() public {
         uint256[] memory ids = new uint256[](0);
-        vm.expectRevert(
-            abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, 0)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, 0));
         harness.validateAndBuild(ids, 0);
     }
 
@@ -238,9 +231,7 @@ contract ChainIdsBuilderLibTest is Test {
     function test_revert_currentChainNotFound_singleElement() public {
         uint256[] memory ids = new uint256[](1);
         ids[0] = 1;
-        vm.expectRevert(
-            abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, 10)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, 10));
         harness.validateAndBuild(ids, 10);
     }
 
@@ -249,9 +240,7 @@ contract ChainIdsBuilderLibTest is Test {
         ids[0] = 1;
         ids[1] = 8453;
         ids[2] = 42161;
-        vm.expectRevert(
-            abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, 10)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, 10));
         harness.validateAndBuild(ids, 10);
     }
 
@@ -259,9 +248,7 @@ contract ChainIdsBuilderLibTest is Test {
         uint256[] memory ids = new uint256[](2);
         ids[0] = 9;
         ids[1] = 11;
-        vm.expectRevert(
-            abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, 10)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, 10));
         harness.validateAndBuild(ids, 10);
     }
 
@@ -413,9 +400,7 @@ contract ChainIdsBuilderLibTest is Test {
         vm.assume(current != chainId);
         uint256[] memory ids = new uint256[](1);
         ids[0] = chainId;
-        vm.expectRevert(
-            abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, current)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ChainIdsBuilderLib.CurrentChainNotFound.selector, current));
         harness.validateAndBuild(ids, current);
     }
 
@@ -423,13 +408,10 @@ contract ChainIdsBuilderLibTest is Test {
     // Fuzz Test – Larger Array (matches reference, random ascending values)
     ////////////////////////////////////////////////////////////////////////
 
-    function testFuzz_fiveElements_matchesReference(
-        uint256 a,
-        uint256 g1,
-        uint256 g2,
-        uint256 g3,
-        uint256 g4
-    ) public view {
+    function testFuzz_fiveElements_matchesReference(uint256 a, uint256 g1, uint256 g2, uint256 g3, uint256 g4)
+        public
+        view
+    {
         vm.assume(a < type(uint256).max / 5);
         g1 = bound(g1, 1, type(uint256).max / 5);
         g2 = bound(g2, 1, type(uint256).max / 5);

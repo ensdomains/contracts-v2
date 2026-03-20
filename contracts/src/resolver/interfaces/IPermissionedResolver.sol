@@ -16,12 +16,7 @@ interface IPermissionedResolver is IExtendedResolver, IEnhancedAccessControl {
     /// @param indexedToName The destination DNS-encoded name. (indexed bytes, hashed)
     /// @param fromName The source DNS-encoded name.
     /// @param toName The destination DNS-encoded name.
-    event AliasChanged(
-        bytes indexed indexedFromName,
-        bytes indexed indexedToName,
-        bytes fromName,
-        bytes toName
-    );
+    event AliasChanged(bytes indexed indexedFromName, bytes indexed indexedToName, bytes fromName, bytes toName);
 
     ////////////////////////////////////////////////////////////////////////
     // Errors

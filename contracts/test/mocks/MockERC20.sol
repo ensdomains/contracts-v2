@@ -18,11 +18,10 @@ contract MockERC20 is ERC20, HCAContext {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor(
-        string memory symbol,
-        uint8 decimals_,
-        IHCAFactoryBasic factory
-    ) ERC20(symbol, symbol) HCAEquivalence(factory) {
+    constructor(string memory symbol, uint8 decimals_, IHCAFactoryBasic factory)
+        ERC20(symbol, symbol)
+        HCAEquivalence(factory)
+    {
         _decimals = decimals_;
     }
 
@@ -64,9 +63,7 @@ contract MockERC20Blacklist is MockERC20 {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor()
-        MockERC20("BLACK", 6, IHCAFactoryBasic(0x0000000000000000000000000000000000000000))
-    {}
+    constructor() MockERC20("BLACK", 6, IHCAFactoryBasic(0x0000000000000000000000000000000000000000)) {}
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
@@ -88,9 +85,7 @@ contract MockERC20VoidReturn is MockERC20 {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor()
-        MockERC20("VOID", 6, IHCAFactoryBasic(0x0000000000000000000000000000000000000000))
-    {}
+    constructor() MockERC20("VOID", 6, IHCAFactoryBasic(0x0000000000000000000000000000000000000000)) {}
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
@@ -115,9 +110,7 @@ contract MockERC20FalseReturn is MockERC20 {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor()
-        MockERC20("FALSE", 18, IHCAFactoryBasic(0x0000000000000000000000000000000000000000))
-    {}
+    constructor() MockERC20("FALSE", 18, IHCAFactoryBasic(0x0000000000000000000000000000000000000000)) {}
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation

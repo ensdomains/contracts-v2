@@ -27,22 +27,10 @@
 	url = https://github.com/unruggable-labs/unruggable-gateways
 [submodule "contracts/lib/nexus"]
 	path = contracts/lib/nexus
-	url = https://github.com/bcnmy/nexus
-[submodule "contracts/lib/sentinellist"]
-	path = contracts/lib/sentinellist
-	url = https://github.com/rhinestonewtf/sentinellist
-[submodule "contracts/lib/composability"]
-	path = contracts/lib/composability
-	url = https://github.com/bcnmy/composability
+	url = git@github.com:rhinestonewtf/rhinestone-nexus.git
 [submodule "contracts/lib/account-abstraction"]
 	path = contracts/lib/account-abstraction
 	url = https://github.com/eth-infinitism/account-abstraction
-[submodule "contracts/lib/ExcessivelySafeCall"]
-	path = contracts/lib/ExcessivelySafeCall
-	url = https://github.com/nomad-xyz/ExcessivelySafeCall
 [submodule "contracts/lib/solady"]
 	path = contracts/lib/solady
 	url = https://github.com/vectorized/solady
-[submodule "contracts/lib/erc7739Validator"]
-	path = contracts/lib/erc7739Validator
-	url = https://github.com/erc7579/erc7739Validator

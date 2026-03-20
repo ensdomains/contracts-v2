@@ -37,9 +37,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     }
 
     /// @dev Ensure premigration has occurred.
-    function registerUnwrapped(
-        string memory label
-    ) public override returns (bytes memory name, uint256 tokenId) {
+    function registerUnwrapped(string memory label) public override returns (bytes memory name, uint256 tokenId) {
         (name, tokenId) = super.registerUnwrapped(label);
         if (address(premigrationController) != address(0)) {
             vm.prank(premigrationController);
@@ -55,18 +53,14 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     }
 
     /// @dev Check resolver and fallback logic.
-    function checkResolution(
-        bytes memory name,
-        address resolverV1,
-        address resolverV2
-    ) public view {
+    function checkResolution(bytes memory name, address resolverV1, address resolverV2) public view {
         assertEq(findResolverV1(name), resolverV1, "findResolverV1");
         assertEq(findResolverV2(name), resolverV2, "findResolverV2");
         if (resolverV2 == address(ensV1Resolver)) {
-            (address r, ) = ensV1Resolver.getResolver(name);
+            (address r,) = ensV1Resolver.getResolver(name);
             assertEq(r, resolverV1, "compositeV1");
         } else if (resolverV1 == address(ensV2Resolver)) {
-            (address r, ) = ensV2Resolver.getResolver(name);
+            (address r,) = ensV2Resolver.getResolver(name);
             assertEq(r, resolverV2, "compositeV2");
             assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), "resolverV1");
         }
@@ -84,6 +78,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 contract MockERC1155 is ERC1155 {
     uint256 _id;
     constructor() ERC1155("") {}
+
     function mint(address to) external returns (uint256) {
         _mint(to, _id, 1, "");
         return _id++;

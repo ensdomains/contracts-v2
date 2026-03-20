@@ -30,14 +30,9 @@ abstract contract AbstractMirrorResolver is ICompositeResolver, IERC7996, Resolv
     }
 
     /// @inheritdoc ERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(ERC165) returns (bool) {
-        return
-            type(IExtendedResolver).interfaceId == interfaceId ||
-            type(ICompositeResolver).interfaceId == interfaceId ||
-            type(IERC7996).interfaceId == interfaceId ||
-            super.supportsInterface(interfaceId);
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165) returns (bool) {
+        return type(IExtendedResolver).interfaceId == interfaceId || type(ICompositeResolver).interfaceId == interfaceId
+            || type(IERC7996).interfaceId == interfaceId || super.supportsInterface(interfaceId);
     }
 
     /// @inheritdoc IERC7996
@@ -50,10 +45,7 @@ abstract contract AbstractMirrorResolver is ICompositeResolver, IERC7996, Resolv
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IExtendedResolver
-    function resolve(
-        bytes calldata name,
-        bytes calldata data
-    ) external view returns (bytes memory) {
+    function resolve(bytes calldata name, bytes calldata data) external view returns (bytes memory) {
         callResolver(_findResolver(name), name, data, false, "", BATCH_GATEWAY_PROVIDER.gateways());
     }
 

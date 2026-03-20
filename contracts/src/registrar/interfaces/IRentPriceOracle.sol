@@ -52,10 +52,8 @@ interface IRentPriceOracle {
     /// @param paymentToken The ERC-20 to use.
     /// @return base The base price, relative to `paymentToken`.
     /// @return premium The premium price, relative to `paymentToken`.
-    function rentPrice(
-        string memory label,
-        address owner,
-        uint64 duration,
-        IERC20 paymentToken
-    ) external view returns (uint256 base, uint256 premium);
+    function rentPrice(string memory label, address owner, uint64 duration, IERC20 paymentToken)
+        external
+        view
+        returns (uint256 base, uint256 premium);
 }

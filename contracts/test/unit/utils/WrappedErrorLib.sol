@@ -13,10 +13,7 @@ contract MigrationErrorsTest is Test {
     }
 
     function test_selector() external pure {
-        assertEq(
-            WrappedErrorLib.ERROR_STRING_SELECTOR,
-            bytes4(abi.encodeWithSignature("Error(string)"))
-        );
+        assertEq(WrappedErrorLib.ERROR_STRING_SELECTOR, bytes4(abi.encodeWithSignature("Error(string)")));
     }
 
     function test_prefix() external pure {
@@ -24,10 +21,7 @@ contract MigrationErrorsTest is Test {
         assembly {
             v := add(v, 4) // skip selector
         }
-        assertEq(
-            abi.decode(v, (bytes)),
-            abi.encodePacked(WrappedErrorLib.WRAPPED_ERROR_PREFIX, "12345678")
-        );
+        assertEq(abi.decode(v, (bytes)), abi.encodePacked(WrappedErrorLib.WRAPPED_ERROR_PREFIX, "12345678"));
     }
 
     function test_wrap(bytes calldata v) external pure {
@@ -45,15 +39,13 @@ contract MigrationErrorsTest is Test {
     function test_idempotent_typedError() external pure {
         bytes memory err = abi.encodeWithSelector(TypedError.selector, 123, "abc");
         assertEq(WrappedErrorLib.wrap(WrappedErrorLib.wrap(err)), WrappedErrorLib.wrap(err));
-        assertEq(
-            WrappedErrorLib.unwrap(WrappedErrorLib.wrap(err)),
-            WrappedErrorLib.unwrap(WrappedErrorLib.unwrap(err))
-        );
+        assertEq(WrappedErrorLib.unwrap(WrappedErrorLib.wrap(err)), WrappedErrorLib.unwrap(WrappedErrorLib.unwrap(err)));
     }
 
     function test_wrapAndRevert_alreadyError() external {
         bytes memory err = abi.encodeWithSignature("Error(string)", "abc");
-        try this.wrapAndRevert(err) {} catch (bytes memory v) {
+        try this.wrapAndRevert(err) {}
+        catch (bytes memory v) {
             assertEq(WrappedErrorLib.unwrap(v), err);
         }
         vm.expectRevert(err);
@@ -62,7 +54,8 @@ contract MigrationErrorsTest is Test {
 
     function test_wrapAndRevert_typedError() external {
         bytes memory err = abi.encodeWithSelector(TypedError.selector, 123, "abc");
-        try this.wrapAndRevert(err) {} catch (bytes memory v) {
+        try this.wrapAndRevert(err) {}
+        catch (bytes memory v) {
             assertEq(WrappedErrorLib.unwrap(v), err);
         }
         vm.expectRevert(WrappedErrorLib.wrap(err));

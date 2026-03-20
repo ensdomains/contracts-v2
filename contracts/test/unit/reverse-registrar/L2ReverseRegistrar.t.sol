@@ -35,8 +35,7 @@ contract L2ReverseRegistrarTest is Test {
     string constant COIN_TYPE_LABEL = "8000000a";
     string constant PARENT_NAMESPACE = "8000000a.reverse";
 
-    bytes32 constant REVERSE_NODE =
-        0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34;
+    bytes32 constant REVERSE_NODE = 0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34;
 
     L2ReverseRegistrar registrar;
     MockSmartContractWallet mockSca;
@@ -76,8 +75,8 @@ contract L2ReverseRegistrarTest is Test {
 
         // Use vm.etch with the runtime bytecode of the UniversalSigValidator
         // This bytecode is extracted from the deployment in the TypeScript fixture
-        bytes
-            memory runtimeCode = hex"608060405234801561001057600080fd5b50600436106100415760003560e01c806316d43401146100465780638f0684301461006d57806398ef1ed814610080575b600080fd5b61005961005436600461085e565b610093565b604051901515815260200160405180910390f35b61005961007b3660046108d2565b6105f8565b61005961008e3660046108d2565b61068e565b600073ffffffffffffffffffffffffffffffffffffffff86163b6060826020861080159061010157507f649264926492649264926492649264926492649264926492649264926492649287876100ea60208261092e565b6100f6928a929061096e565b6100ff91610998565b145b90508015610200576000606088828961011b60208261092e565b926101289392919061096e565b8101906101359190610acf565b9550909250905060008590036101f9576000808373ffffffffffffffffffffffffffffffffffffffff168360405161016d9190610b6e565b6000604051808303816000865af19150503d80600081146101aa576040519150601f19603f3d011682016040523d82523d6000602084013e6101af565b606091505b5091509150816101f657806040517f9d0d6e2d0000000000000000000000000000000000000000000000000000000081526004016101ed9190610bd4565b60405180910390fd5b50505b505061023a565b86868080601f0160208091040260200160405190810160405280939291908181526020018383808284376000920191909152509294505050505b80806102465750600083115b156103d3576040517f1626ba7e00000000000000000000000000000000000000000000000000000000815273ffffffffffffffffffffffffffffffffffffffff8a1690631626ba7e9061029f908b908690600401610bee565b602060405180830381865afa9250505080156102f6575060408051601f3d9081017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe01682019092526102f391810190610c07565b60015b61035e573d808015610324576040519150601f19603f3d011682016040523d82523d6000602084013e610329565b606091505b50806040517f6f2a95990000000000000000000000000000000000000000000000000000000081526004016101ed9190610bd4565b7fffffffff0000000000000000000000000000000000000000000000000000000081167f1626ba7e0000000000000000000000000000000000000000000000000000000014841580156103ae5750825b80156103b8575086155b156103c757806000526001601ffd5b94506105ef9350505050565b60418614610463576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152603a60248201527f5369676e617475726556616c696461746f72237265636f7665725369676e657260448201527f3a20696e76616c6964207369676e6174757265206c656e67746800000000000060648201526084016101ed565b6000610472602082898b61096e565b61047b91610998565b9050600061048d604060208a8c61096e565b61049691610998565b90506000898960408181106104ad576104ad610c49565b919091013560f81c915050601b81148015906104cd57508060ff16601c14155b1561055a576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152602d60248201527f5369676e617475726556616c696461746f723a20696e76616c6964207369676e60448201527f617475726520762076616c75650000000000000000000000000000000000000060648201526084016101ed565b6040805160008152602081018083528d905260ff831691810191909152606081018490526080810183905273ffffffffffffffffffffffffffffffffffffffff8d169060019060a0016020604051602081039080840390855afa1580156105c5573d6000803e3d6000fd5b5050506020604051035173ffffffffffffffffffffffffffffffffffffffff161496505050505050505b95945050505050565b6040517f16d4340100000000000000000000000000000000000000000000000000000000815260009030906316d4340190610640908890889088908890600190600401610c78565b6020604051808303816000875af115801561065f573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906106839190610cf5565b90505b949350505050565b6040517f16d4340100000000000000000000000000000000000000000000000000000000815260009030906316d43401906106d59088908890889088908890600401610c78565b6020604051808303816000875af192505050801561072e575060408051601f3d9081017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe016820190925261072b91810190610cf5565b60015b6107db573d80801561075c576040519150601f19603f3d011682016040523d82523d6000602084013e610761565b606091505b50805160018190036107d4578160008151811061078057610780610c49565b6020910101517fff00000000000000000000000000000000000000000000000000000000000000167f0100000000000000000000000000000000000000000000000000000000000000149250610686915050565b8060208301fd5b9050610686565b73ffffffffffffffffffffffffffffffffffffffff8116811461080457600080fd5b50565b60008083601f84011261081957600080fd5b50813567ffffffffffffffff81111561083157600080fd5b60208301915083602082850101111561084957600080fd5b9250929050565b801515811461080457600080fd5b60008060008060006080868803121561087657600080fd5b8535610881816107e2565b945060208601359350604086013567ffffffffffffffff8111156108a457600080fd5b6108b088828901610807565b90945092505060608601356108c481610850565b809150509295509295909350565b600080600080606085870312156108e857600080fd5b84356108f3816107e2565b935060208501359250604085013567ffffffffffffffff81111561091657600080fd5b61092287828801610807565b95989497509550505050565b81810381811115610968577f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b92915050565b6000808585111561097e57600080fd5b8386111561098b57600080fd5b5050820193919092039150565b80356020831015610968577fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff602084900360031b1b1692915050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052604160045260246000fd5b600082601f830112610a1457600080fd5b813567ffffffffffffffff811115610a2e57610a2e6109d4565b6040517fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0603f7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0601f8501160116810181811067ffffffffffffffff82111715610a9a57610a9a6109d4565b604052818152838201602001851015610ab257600080fd5b816020850160208301376000918101602001919091529392505050565b600080600060608486031215610ae457600080fd5b8335610aef816107e2565b9250602084013567ffffffffffffffff811115610b0b57600080fd5b610b1786828701610a03565b925050604084013567ffffffffffffffff811115610b3457600080fd5b610b4086828701610a03565b9150509250925092565b60005b83811015610b65578181015183820152602001610b4d565b50506000910152565b60008251610b80818460208701610b4a565b9190910192915050565b60008151808452610ba2816020860160208601610b4a565b601f017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0169290920160200192915050565b602081526000610be76020830184610b8a565b9392505050565b8281526040602082015260006106866040830184610b8a565b600060208284031215610c1957600080fd5b81517fffffffff0000000000000000000000000000000000000000000000000000000081168114610be757600080fd5b7f4e487b7100000000000000000000000000000000000000000000000000000000600052603260045260246000fd5b73ffffffffffffffffffffffffffffffffffffffff8616815284602082015260806040820152826080820152828460a0830137600060a08483010152600060a07fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0601f860116830101905082151560608301529695505050505050565b600060208284031215610d0757600080fd5b8151610be78161085056fea2646970667358221220fa1669652244780c8dcf7823a819ca1aa2abb64af0cf4d7adedb2339d4e907d964736f6c634300081a0033";
+        bytes memory runtimeCode =
+            hex"608060405234801561001057600080fd5b50600436106100415760003560e01c806316d43401146100465780638f0684301461006d57806398ef1ed814610080575b600080fd5b61005961005436600461085e565b610093565b604051901515815260200160405180910390f35b61005961007b3660046108d2565b6105f8565b61005961008e3660046108d2565b61068e565b600073ffffffffffffffffffffffffffffffffffffffff86163b6060826020861080159061010157507f649264926492649264926492649264926492649264926492649264926492649287876100ea60208261092e565b6100f6928a929061096e565b6100ff91610998565b145b90508015610200576000606088828961011b60208261092e565b926101289392919061096e565b8101906101359190610acf565b9550909250905060008590036101f9576000808373ffffffffffffffffffffffffffffffffffffffff168360405161016d9190610b6e565b6000604051808303816000865af19150503d80600081146101aa576040519150601f19603f3d011682016040523d82523d6000602084013e6101af565b606091505b5091509150816101f657806040517f9d0d6e2d0000000000000000000000000000000000000000000000000000000081526004016101ed9190610bd4565b60405180910390fd5b50505b505061023a565b86868080601f0160208091040260200160405190810160405280939291908181526020018383808284376000920191909152509294505050505b80806102465750600083115b156103d3576040517f1626ba7e00000000000000000000000000000000000000000000000000000000815273ffffffffffffffffffffffffffffffffffffffff8a1690631626ba7e9061029f908b908690600401610bee565b602060405180830381865afa9250505080156102f6575060408051601f3d9081017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe01682019092526102f391810190610c07565b60015b61035e573d808015610324576040519150601f19603f3d011682016040523d82523d6000602084013e610329565b606091505b50806040517f6f2a95990000000000000000000000000000000000000000000000000000000081526004016101ed9190610bd4565b7fffffffff0000000000000000000000000000000000000000000000000000000081167f1626ba7e0000000000000000000000000000000000000000000000000000000014841580156103ae5750825b80156103b8575086155b156103c757806000526001601ffd5b94506105ef9350505050565b60418614610463576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152603a60248201527f5369676e617475726556616c696461746f72237265636f7665725369676e657260448201527f3a20696e76616c6964207369676e6174757265206c656e67746800000000000060648201526084016101ed565b6000610472602082898b61096e565b61047b91610998565b9050600061048d604060208a8c61096e565b61049691610998565b90506000898960408181106104ad576104ad610c49565b919091013560f81c915050601b81148015906104cd57508060ff16601c14155b1561055a576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152602d60248201527f5369676e617475726556616c696461746f723a20696e76616c6964207369676e60448201527f617475726520762076616c75650000000000000000000000000000000000000060648201526084016101ed565b6040805160008152602081018083528d905260ff831691810191909152606081018490526080810183905273ffffffffffffffffffffffffffffffffffffffff8d169060019060a0016020604051602081039080840390855afa1580156105c5573d6000803e3d6000fd5b5050506020604051035173ffffffffffffffffffffffffffffffffffffffff161496505050505050505b95945050505050565b6040517f16d4340100000000000000000000000000000000000000000000000000000000815260009030906316d4340190610640908890889088908890600190600401610c78565b6020604051808303816000875af115801561065f573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906106839190610cf5565b90505b949350505050565b6040517f16d4340100000000000000000000000000000000000000000000000000000000815260009030906316d43401906106d59088908890889088908890600401610c78565b6020604051808303816000875af192505050801561072e575060408051601f3d9081017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe016820190925261072b91810190610cf5565b60015b6107db573d80801561075c576040519150601f19603f3d011682016040523d82523d6000602084013e610761565b606091505b50805160018190036107d4578160008151811061078057610780610c49565b6020910101517fff00000000000000000000000000000000000000000000000000000000000000167f0100000000000000000000000000000000000000000000000000000000000000149250610686915050565b8060208301fd5b9050610686565b73ffffffffffffffffffffffffffffffffffffffff8116811461080457600080fd5b50565b60008083601f84011261081957600080fd5b50813567ffffffffffffffff81111561083157600080fd5b60208301915083602082850101111561084957600080fd5b9250929050565b801515811461080457600080fd5b60008060008060006080868803121561087657600080fd5b8535610881816107e2565b945060208601359350604086013567ffffffffffffffff8111156108a457600080fd5b6108b088828901610807565b90945092505060608601356108c481610850565b809150509295509295909350565b600080600080606085870312156108e857600080fd5b84356108f3816107e2565b935060208501359250604085013567ffffffffffffffff81111561091657600080fd5b61092287828801610807565b95989497509550505050565b81810381811115610968577f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b92915050565b6000808585111561097e57600080fd5b8386111561098b57600080fd5b5050820193919092039150565b80356020831015610968577fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff602084900360031b1b1692915050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052604160045260246000fd5b600082601f830112610a1457600080fd5b813567ffffffffffffffff811115610a2e57610a2e6109d4565b6040517fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0603f7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0601f8501160116810181811067ffffffffffffffff82111715610a9a57610a9a6109d4565b604052818152838201602001851015610ab257600080fd5b816020850160208301376000918101602001919091529392505050565b600080600060608486031215610ae457600080fd5b8335610aef816107e2565b9250602084013567ffffffffffffffff811115610b0b57600080fd5b610b1786828701610a03565b925050604084013567ffffffffffffffff811115610b3457600080fd5b610b4086828701610a03565b9150509250925092565b60005b83811015610b65578181015183820152602001610b4d565b50506000910152565b60008251610b80818460208701610b4a565b9190910192915050565b60008151808452610ba2816020860160208601610b4a565b601f017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0169290920160200192915050565b602081526000610be76020830184610b8a565b9392505050565b8281526040602082015260006106866040830184610b8a565b600060208284031215610c1957600080fd5b81517fffffffff0000000000000000000000000000000000000000000000000000000081168114610be757600080fd5b7f4e487b7100000000000000000000000000000000000000000000000000000000600052603260045260246000fd5b73ffffffffffffffffffffffffffffffffffffffff8616815284602082015260806040820152826080820152828460a0830137600060a08483010152600060a07fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0601f860116830101905082151560608301529695505050505050565b600060208284031215610d0757600080fd5b8151610be78161085056fea2646970667358221220fa1669652244780c8dcf7823a819ca1aa2abb64af0cf4d7adedb2339d4e907d964736f6c634300081a0033";
         vm.etch(expectedAddress, runtimeCode);
     }
 
@@ -87,21 +86,13 @@ contract L2ReverseRegistrarTest is Test {
 
     function _getNode(address addr) internal view returns (bytes32) {
         string memory label = LibString.toAddressString(addr);
-        return
-            keccak256(
-                abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label)))
-            );
+        return keccak256(abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label))));
     }
 
     function _buildDnsEncodedName(address addr) internal pure returns (bytes memory) {
         string memory addrString = LibString.toAddressString(addr);
-        bytes memory parent = abi.encodePacked(
-            uint8(bytes(COIN_TYPE_LABEL).length),
-            COIN_TYPE_LABEL,
-            uint8(7),
-            "reverse",
-            uint8(0)
-        );
+        bytes memory parent =
+            abi.encodePacked(uint8(bytes(COIN_TYPE_LABEL).length), COIN_TYPE_LABEL, uint8(7), "reverse", uint8(0));
         return abi.encodePacked(uint8(40), addrString, parent);
     }
 
@@ -114,29 +105,25 @@ contract L2ReverseRegistrarTest is Test {
         return result;
     }
 
-    function _createNameForAddrMessage(
-        string memory name_,
-        address addr,
-        uint256[] memory chainIds,
-        uint256 signedAt
-    ) internal pure returns (bytes32) {
+    function _createNameForAddrMessage(string memory name_, address addr, uint256[] memory chainIds, uint256 signedAt)
+        internal
+        pure
+        returns (bytes32)
+    {
         string memory addrString = addr.toChecksumHexString();
         string memory chainIdsString = _chainIdsToString(chainIds);
         string memory signedAtString = LibISO8601.toISO8601(signedAt);
 
-        return
-            abi
-                .encodePacked(
-                    "You are setting your ENS primary name to:\n",
-                    name_,
-                    "\n\nAddress: ",
-                    addrString,
-                    "\nChains: ",
-                    chainIdsString,
-                    "\nSigned At: ",
-                    signedAtString
-                )
-                .toEthSignedMessageHash();
+        return abi.encodePacked(
+                "You are setting your ENS primary name to:\n",
+                name_,
+                "\n\nAddress: ",
+                addrString,
+                "\nChains: ",
+                chainIdsString,
+                "\nSigned At: ",
+                signedAtString
+            ).toEthSignedMessageHash();
     }
 
     function _createNameForOwnableMessage(
@@ -151,21 +138,18 @@ contract L2ReverseRegistrarTest is Test {
         string memory chainIdsString = _chainIdsToString(chainIds);
         string memory signedAtString = LibISO8601.toISO8601(signedAt);
 
-        return
-            abi
-                .encodePacked(
-                    "You are setting the ENS primary name for a contract you own to:\n",
-                    name_,
-                    "\n\nContract Address: ",
-                    addrString,
-                    "\nOwner: ",
-                    ownerString,
-                    "\nChains: ",
-                    chainIdsString,
-                    "\nSigned At: ",
-                    signedAtString
-                )
-                .toEthSignedMessageHash();
+        return abi.encodePacked(
+                "You are setting the ENS primary name for a contract you own to:\n",
+                name_,
+                "\n\nContract Address: ",
+                addrString,
+                "\nOwner: ",
+                ownerString,
+                "\nChains: ",
+                chainIdsString,
+                "\nSigned At: ",
+                signedAtString
+            ).toEthSignedMessageHash();
     }
 
     function _singleChainIdArray() internal pure returns (uint256[] memory) {
@@ -231,9 +215,8 @@ contract L2ReverseRegistrarTest is Test {
     }
 
     function test_constructor_setParentNode() public view {
-        bytes32 expectedParentNode = keccak256(
-            abi.encodePacked(REVERSE_NODE, keccak256(abi.encodePacked(COIN_TYPE_LABEL)))
-        );
+        bytes32 expectedParentNode =
+            keccak256(abi.encodePacked(REVERSE_NODE, keccak256(abi.encodePacked(COIN_TYPE_LABEL))));
         assertEq(registrar.PARENT_NODE(), expectedParentNode, "PARENT_NODE should match");
     }
 
@@ -246,38 +229,25 @@ contract L2ReverseRegistrarTest is Test {
     }
 
     function test_supportsInterface_extendedResolver() public view {
-        assertTrue(
-            registrar.supportsInterface(type(IExtendedResolver).interfaceId),
-            "Should support IExtendedResolver"
-        );
+        assertTrue(registrar.supportsInterface(type(IExtendedResolver).interfaceId), "Should support IExtendedResolver");
     }
 
     function test_supportsInterface_nameResolver() public view {
-        assertTrue(
-            registrar.supportsInterface(type(INameResolver).interfaceId),
-            "Should support INameResolver"
-        );
+        assertTrue(registrar.supportsInterface(type(INameResolver).interfaceId), "Should support INameResolver");
     }
 
     function test_supportsInterface_ierc165() public view {
-        assertTrue(
-            registrar.supportsInterface(type(IERC165).interfaceId),
-            "Should support IERC165"
-        );
+        assertTrue(registrar.supportsInterface(type(IERC165).interfaceId), "Should support IERC165");
     }
 
     function test_supportsInterface_il2ReverseRegistrar() public view {
         assertTrue(
-            registrar.supportsInterface(type(IL2ReverseRegistrar).interfaceId),
-            "Should support IL2ReverseRegistrar"
+            registrar.supportsInterface(type(IL2ReverseRegistrar).interfaceId), "Should support IL2ReverseRegistrar"
         );
     }
 
     function test_supportsInterface_invalidInterface() public view {
-        assertFalse(
-            registrar.supportsInterface(bytes4(0xdeadbeef)),
-            "Should not support random interface"
-        );
+        assertFalse(registrar.supportsInterface(bytes4(0xdeadbeef)), "Should not support random interface");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -415,12 +385,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         registrar.setNameForAddrWithSignature(claim, signature);
@@ -438,12 +404,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         bytes32 expectedNode = _getNode(user1);
 
@@ -463,10 +425,7 @@ contract L2ReverseRegistrarTest is Test {
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockSca),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockSca), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
@@ -485,10 +444,7 @@ contract L2ReverseRegistrarTest is Test {
 
         uint256[] memory chainIds = _singleChainIdArray();
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: predictedAddress,
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: predictedAddress, chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
@@ -498,11 +454,11 @@ contract L2ReverseRegistrarTest is Test {
         assertEq(registrar.name(node), name_, "Name should be set for undeployed SCA");
     }
 
-    function _createErc6492Signature(
-        string memory name_,
-        address predictedAddress,
-        uint256 signedAt
-    ) internal view returns (bytes memory) {
+    function _createErc6492Signature(string memory name_, address predictedAddress, uint256 signedAt)
+        internal
+        view
+        returns (bytes memory)
+    {
         uint256[] memory chainIds = _singleChainIdArray();
         bytes32 message = _createNameForAddrMessage(name_, predictedAddress, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
@@ -512,11 +468,9 @@ contract L2ReverseRegistrarTest is Test {
         bytes32 ERC6492_DETECTION_SUFFIX = 0x6492649264926492649264926492649264926492649264926492649264926492;
 
         // ERC6492 format: abi.encode(factory, factoryCallData, originalSignature) ++ suffix
-        return
-            abi.encodePacked(
-                abi.encode(address(mockErc6492Factory), factoryCallData, originalSignature),
-                ERC6492_DETECTION_SUFFIX
-            );
+        return abi.encodePacked(
+            abi.encode(address(mockErc6492Factory), factoryCallData, originalSignature), ERC6492_DETECTION_SUFFIX
+        );
     }
 
     function test_setNameForAddrWithSignature_revert_signatureParametersDoNotMatch() public {
@@ -529,12 +483,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         vm.expectRevert(L2ReverseRegistrar.InvalidSignature.selector);
@@ -550,20 +500,12 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                L2ReverseRegistrar.SignatureNotValidYet.selector,
-                signedAt,
-                block.timestamp
-            )
+            abi.encodeWithSelector(L2ReverseRegistrar.SignatureNotValidYet.selector, signedAt, block.timestamp)
         );
         registrar.setNameForAddrWithSignature(claim, signature);
     }
@@ -578,10 +520,7 @@ contract L2ReverseRegistrarTest is Test {
             (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
 
             IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-                name: "myname.eth",
-                addr: user1,
-                chainIds: chainIds,
-                signedAt: signedAt
+                name: "myname.eth", addr: user1, chainIds: chainIds, signedAt: signedAt
             });
 
             vm.prank(relayer);
@@ -594,20 +533,11 @@ contract L2ReverseRegistrarTest is Test {
             (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
 
             IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-                name: "newname.eth",
-                addr: user1,
-                chainIds: chainIds,
-                signedAt: signedAt
+                name: "newname.eth", addr: user1, chainIds: chainIds, signedAt: signedAt
             });
 
             vm.prank(relayer);
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    L2ReverseRegistrar.StaleSignature.selector,
-                    signedAt,
-                    signedAt
-                )
-            );
+            vm.expectRevert(abi.encodeWithSelector(L2ReverseRegistrar.StaleSignature.selector, signedAt, signedAt));
             registrar.setNameForAddrWithSignature(claim, abi.encodePacked(r, s, v));
         }
     }
@@ -621,12 +551,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         registrar.setNameForAddrWithSignature(claim, signature);
@@ -644,12 +570,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         registrar.setNameForAddrWithSignature(claim, signature);
@@ -667,12 +589,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         registrar.setNameForAddrWithSignature(claim, signature);
@@ -690,12 +608,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         registrar.setNameForAddrWithSignature(claim, signature);
@@ -713,12 +627,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         registrar.setNameForAddrWithSignature(claim, signature);
@@ -736,20 +646,11 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                L2ReverseRegistrar.CurrentChainNotFound.selector,
-                OPTIMISM_CHAIN_ID
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(L2ReverseRegistrar.CurrentChainNotFound.selector, OPTIMISM_CHAIN_ID));
         registrar.setNameForAddrWithSignature(claim, signature);
     }
 
@@ -762,20 +663,11 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                L2ReverseRegistrar.CurrentChainNotFound.selector,
-                OPTIMISM_CHAIN_ID
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(L2ReverseRegistrar.CurrentChainNotFound.selector, OPTIMISM_CHAIN_ID));
         registrar.setNameForAddrWithSignature(claim, signature);
     }
 
@@ -788,12 +680,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         vm.expectRevert(L2ReverseRegistrar.ChainIdsNotAscending.selector);
@@ -809,12 +697,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         vm.expectRevert(L2ReverseRegistrar.ChainIdsNotAscending.selector);
@@ -830,12 +714,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         // First call should succeed
         vm.prank(relayer);
@@ -843,9 +723,7 @@ contract L2ReverseRegistrarTest is Test {
 
         // Second call should fail (same signedAt is not after inception)
         vm.prank(relayer);
-        vm.expectRevert(
-            abi.encodeWithSelector(L2ReverseRegistrar.StaleSignature.selector, signedAt, signedAt)
-        );
+        vm.expectRevert(abi.encodeWithSelector(L2ReverseRegistrar.StaleSignature.selector, signedAt, signedAt));
         registrar.setNameForAddrWithSignature(claim, signature);
     }
 
@@ -859,10 +737,7 @@ contract L2ReverseRegistrarTest is Test {
             (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
 
             IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-                name: "first.eth",
-                addr: user1,
-                chainIds: chainIds,
-                signedAt: signedAt1
+                name: "first.eth", addr: user1, chainIds: chainIds, signedAt: signedAt1
             });
 
             vm.prank(relayer);
@@ -878,10 +753,7 @@ contract L2ReverseRegistrarTest is Test {
             (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
 
             IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-                name: "second.eth",
-                addr: user1,
-                chainIds: chainIds,
-                signedAt: signedAt2
+                name: "second.eth", addr: user1, chainIds: chainIds, signedAt: signedAt2
             });
 
             vm.prank(relayer);
@@ -904,10 +776,7 @@ contract L2ReverseRegistrarTest is Test {
             (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
 
             IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-                name: "first.eth",
-                addr: user1,
-                chainIds: chainIds,
-                signedAt: signedAt1
+                name: "first.eth", addr: user1, chainIds: chainIds, signedAt: signedAt1
             });
 
             vm.prank(relayer);
@@ -920,20 +789,11 @@ contract L2ReverseRegistrarTest is Test {
             (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
 
             IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-                name: "second.eth",
-                addr: user1,
-                chainIds: chainIds,
-                signedAt: signedAt2
+                name: "second.eth", addr: user1, chainIds: chainIds, signedAt: signedAt2
             });
 
             vm.prank(relayer);
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    L2ReverseRegistrar.StaleSignature.selector,
-                    signedAt2,
-                    signedAt1
-                )
-            );
+            vm.expectRevert(abi.encodeWithSelector(L2ReverseRegistrar.StaleSignature.selector, signedAt2, signedAt1));
             registrar.setNameForAddrWithSignature(claim, abi.encodePacked(r, s, v));
         }
     }
@@ -950,12 +810,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         registrar.setNameForAddrWithSignature(claim, signature);
@@ -974,12 +830,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user2Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user1,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user1, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         vm.expectRevert(L2ReverseRegistrar.InvalidSignature.selector);
@@ -995,21 +847,12 @@ contract L2ReverseRegistrarTest is Test {
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _singleChainIdArray();
 
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableEoa),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(mockOwnableEoa), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
@@ -1025,21 +868,13 @@ contract L2ReverseRegistrarTest is Test {
         uint256[] memory chainIds = _singleChainIdArray();
 
         // mockOwnableSca is owned by mockSca, which is owned by user1
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableSca),
-            address(mockSca),
-            chainIds,
-            signedAt
-        );
+        bytes32 message =
+            _createNameForOwnableMessage(name_, address(mockOwnableSca), address(mockSca), chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableSca),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableSca), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
@@ -1055,21 +890,12 @@ contract L2ReverseRegistrarTest is Test {
         uint256[] memory chainIds = _singleChainIdArray();
 
         // Sign with user2 and claim they own mockOwnableEoa (which is owned by user1)
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableEoa),
-            user2,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(mockOwnableEoa), user2, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user2Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
@@ -1087,12 +913,8 @@ contract L2ReverseRegistrarTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: user2,
-            chainIds: chainIds,
-            signedAt: signedAt
-        });
+        IL2ReverseRegistrar.NameClaim memory claim =
+            IL2ReverseRegistrar.NameClaim({name: name_, addr: user2, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
         vm.expectRevert(L2ReverseRegistrar.NotOwnerOfContract.selector);
@@ -1105,21 +927,12 @@ contract L2ReverseRegistrarTest is Test {
         uint256[] memory chainIds = _singleChainIdArray();
 
         // L2ReverseRegistrar itself does not implement Ownable
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(registrar),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(registrar), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(registrar),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(registrar), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
@@ -1133,21 +946,13 @@ contract L2ReverseRegistrarTest is Test {
         uint256[] memory chainIds = _singleChainIdArray();
 
         // Sign with different name to create invalid signature
-        bytes32 message = _createNameForOwnableMessage(
-            "different.eth",
-            address(mockOwnableEoa),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message =
+            _createNameForOwnableMessage("different.eth", address(mockOwnableEoa), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
@@ -1160,30 +965,17 @@ contract L2ReverseRegistrarTest is Test {
         uint256 signedAt = block.timestamp + 1; // In the future
         uint256[] memory chainIds = _singleChainIdArray();
 
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableEoa),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(mockOwnableEoa), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                L2ReverseRegistrar.SignatureNotValidYet.selector,
-                signedAt,
-                block.timestamp
-            )
+            abi.encodeWithSelector(L2ReverseRegistrar.SignatureNotValidYet.selector, signedAt, block.timestamp)
         );
         registrar.setNameForOwnableWithSignature(claim, user1, signature);
     }
@@ -1194,20 +986,12 @@ contract L2ReverseRegistrarTest is Test {
 
         // First, set a name to establish an inception
         {
-            bytes32 message = _createNameForOwnableMessage(
-                "ownable.eth",
-                address(mockOwnableEoa),
-                user1,
-                chainIds,
-                signedAt
-            );
+            bytes32 message =
+                _createNameForOwnableMessage("ownable.eth", address(mockOwnableEoa), user1, chainIds, signedAt);
             (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
 
             IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-                name: "ownable.eth",
-                addr: address(mockOwnableEoa),
-                chainIds: chainIds,
-                signedAt: signedAt
+                name: "ownable.eth", addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
             });
 
             vm.prank(relayer);
@@ -1216,30 +1000,16 @@ contract L2ReverseRegistrarTest is Test {
 
         // Now try to use a signature with signedAt equal to the inception (should fail)
         {
-            bytes32 message = _createNameForOwnableMessage(
-                "newname.eth",
-                address(mockOwnableEoa),
-                user1,
-                chainIds,
-                signedAt
-            );
+            bytes32 message =
+                _createNameForOwnableMessage("newname.eth", address(mockOwnableEoa), user1, chainIds, signedAt);
             (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
 
             IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-                name: "newname.eth",
-                addr: address(mockOwnableEoa),
-                chainIds: chainIds,
-                signedAt: signedAt
+                name: "newname.eth", addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
             });
 
             vm.prank(relayer);
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    L2ReverseRegistrar.StaleSignature.selector,
-                    signedAt,
-                    signedAt
-                )
-            );
+            vm.expectRevert(abi.encodeWithSelector(L2ReverseRegistrar.StaleSignature.selector, signedAt, signedAt));
             registrar.setNameForOwnableWithSignature(claim, user1, abi.encodePacked(r, s, v));
         }
     }
@@ -1249,21 +1019,12 @@ contract L2ReverseRegistrarTest is Test {
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _multipleChainIdArray();
 
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableEoa),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(mockOwnableEoa), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
@@ -1278,21 +1039,12 @@ contract L2ReverseRegistrarTest is Test {
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _largeChainIdArray(50);
 
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableEoa),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(mockOwnableEoa), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
@@ -1307,30 +1059,16 @@ contract L2ReverseRegistrarTest is Test {
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _chainIdArrayWithoutOptimism();
 
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableEoa),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(mockOwnableEoa), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                L2ReverseRegistrar.CurrentChainNotFound.selector,
-                OPTIMISM_CHAIN_ID
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(L2ReverseRegistrar.CurrentChainNotFound.selector, OPTIMISM_CHAIN_ID));
         registrar.setNameForOwnableWithSignature(claim, user1, signature);
     }
 
@@ -1339,30 +1077,16 @@ contract L2ReverseRegistrarTest is Test {
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _emptyChainIdArray();
 
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableEoa),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(mockOwnableEoa), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                L2ReverseRegistrar.CurrentChainNotFound.selector,
-                OPTIMISM_CHAIN_ID
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(L2ReverseRegistrar.CurrentChainNotFound.selector, OPTIMISM_CHAIN_ID));
         registrar.setNameForOwnableWithSignature(claim, user1, signature);
     }
 
@@ -1371,21 +1095,12 @@ contract L2ReverseRegistrarTest is Test {
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _unsortedChainIdArray();
 
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableEoa),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(mockOwnableEoa), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
@@ -1398,21 +1113,12 @@ contract L2ReverseRegistrarTest is Test {
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _duplicateChainIdArray();
 
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableEoa),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(mockOwnableEoa), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
@@ -1425,21 +1131,12 @@ contract L2ReverseRegistrarTest is Test {
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _singleChainIdArray();
 
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableEoa),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(mockOwnableEoa), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         // First call should succeed
@@ -1448,9 +1145,7 @@ contract L2ReverseRegistrarTest is Test {
 
         // Second call should fail (same signedAt is not after inception)
         vm.prank(relayer);
-        vm.expectRevert(
-            abi.encodeWithSelector(L2ReverseRegistrar.StaleSignature.selector, signedAt, signedAt)
-        );
+        vm.expectRevert(abi.encodeWithSelector(L2ReverseRegistrar.StaleSignature.selector, signedAt, signedAt));
         registrar.setNameForOwnableWithSignature(claim, user1, signature);
     }
 
@@ -1460,38 +1155,21 @@ contract L2ReverseRegistrarTest is Test {
         uint256[] memory chainIds = _singleChainIdArray();
 
         // Check initial inception is 0
-        assertEq(
-            registrar.inceptionOf(address(mockOwnableEoa)),
-            0,
-            "Initial inception should be 0"
-        );
+        assertEq(registrar.inceptionOf(address(mockOwnableEoa)), 0, "Initial inception should be 0");
 
-        bytes32 message = _createNameForOwnableMessage(
-            name_,
-            address(mockOwnableEoa),
-            user1,
-            chainIds,
-            signedAt
-        );
+        bytes32 message = _createNameForOwnableMessage(name_, address(mockOwnableEoa), user1, chainIds, signedAt);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
-            name: name_,
-            addr: address(mockOwnableEoa),
-            chainIds: chainIds,
-            signedAt: signedAt
+            name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt
         });
 
         vm.prank(relayer);
         registrar.setNameForOwnableWithSignature(claim, user1, signature);
 
         // Check inception is updated
-        assertEq(
-            registrar.inceptionOf(address(mockOwnableEoa)),
-            signedAt,
-            "Inception should be updated to signedAt"
-        );
+        assertEq(registrar.inceptionOf(address(mockOwnableEoa)), signedAt, "Inception should be updated to signedAt");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1630,6 +1308,7 @@ contract L2ReverseRegistrarTest is Test {
 
 contract MockContractName is IContractName {
     string public contractName;
+
     constructor(string memory name) {
         contractName = name;
     }

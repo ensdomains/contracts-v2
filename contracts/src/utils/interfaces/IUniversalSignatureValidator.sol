@@ -8,9 +8,5 @@ interface IUniversalSignatureValidator {
     /// @param hash The hash of the message that was signed.
     /// @param signature The signature to validate.
     /// @return isValid Whether the signature is valid.
-    function isValidSig(
-        address signer,
-        bytes32 hash,
-        bytes calldata signature
-    ) external returns (bool);
+    function isValidSig(address signer, bytes32 hash, bytes calldata signature) external returns (bool);
 }

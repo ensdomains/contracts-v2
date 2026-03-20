@@ -17,12 +17,9 @@ import {IETHRegistrar} from "./interfaces/IETHRegistrar.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
 /// @dev Composite role bitmap granted to name owners at registration — includes set-subregistry, set-resolver, and can-transfer (with admin variants).
-uint256 constant REGISTRATION_ROLE_BITMAP = 0 |
-    RegistryRolesLib.ROLE_SET_SUBREGISTRY |
-    RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN |
-    RegistryRolesLib.ROLE_SET_RESOLVER |
-    RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
-    RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+uint256 constant REGISTRATION_ROLE_BITMAP = 0 | RegistryRolesLib.ROLE_SET_SUBREGISTRY
+    | RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER
+    | RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN | RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
 
 /// @dev Root-level role authorizing oracle updates.
 uint256 constant ROLE_SET_ORACLE = 1 << 0;
@@ -116,13 +113,9 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     }
 
     /// @inheritdoc EnhancedAccessControl
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view override(EnhancedAccessControl) returns (bool) {
-        return
-            interfaceId == type(IETHRegistrar).interfaceId ||
-            interfaceId == type(IRentPriceOracle).interfaceId ||
-            super.supportsInterface(interfaceId);
+    function supportsInterface(bytes4 interfaceId) public view override(EnhancedAccessControl) returns (bool) {
+        return interfaceId == type(IETHRegistrar).interfaceId || interfaceId == type(IRentPriceOracle).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -165,46 +158,25 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         if (!isAvailable(label)) {
             revert NameNotAvailable(label); // otherwise register() reverts EACUnauthorizedAccountRoles
         }
-        _consumeCommitment(
-            makeCommitment(label, owner, secret, subregistry, resolver, duration, referrer)
-        ); // reverts if no commitment
+        _consumeCommitment(makeCommitment(label, owner, secret, subregistry, resolver, duration, referrer)); // reverts if no commitment
         (uint256 base, uint256 premium) = rentPrice(label, owner, duration, paymentToken); // reverts if !isValid or !isPaymentToken
         SafeERC20.safeTransferFrom(paymentToken, _msgSender(), BENEFICIARY, base + premium); // reverts if payment failed
         tokenId = REGISTRY.register(
-            label,
-            owner,
-            subregistry,
-            resolver,
-            REGISTRATION_ROLE_BITMAP,
-            uint64(block.timestamp) + duration
+            label, owner, subregistry, resolver, REGISTRATION_ROLE_BITMAP, uint64(block.timestamp) + duration
         ); // reverts if not available
         emit NameRegistered(
-            tokenId,
-            label,
-            owner,
-            subregistry,
-            resolver,
-            duration,
-            paymentToken,
-            referrer,
-            base,
-            premium
+            tokenId, label, owner, subregistry, resolver, duration, paymentToken, referrer, base, premium
         );
     }
 
     /// @inheritdoc IETHRegistrar
-    function renew(
-        string calldata label,
-        uint64 duration,
-        IERC20 paymentToken,
-        bytes32 referrer
-    ) external {
+    function renew(string calldata label, uint64 duration, IERC20 paymentToken, bytes32 referrer) external {
         IPermissionedRegistry.State memory state = REGISTRY.getState(LibLabel.id(label));
         if (state.status == IPermissionedRegistry.Status.AVAILABLE) {
             revert NameIsAvailable(label);
         }
         uint64 expiry = state.expiry + duration;
-        (uint256 base, ) = rentPrice(label, state.latestOwner, duration, paymentToken); // reverts if !isValid or !isPaymentToken or duration is 0
+        (uint256 base,) = rentPrice(label, state.latestOwner, duration, paymentToken); // reverts if !isValid or !isPaymentToken or duration is 0
         SafeERC20.safeTransferFrom(paymentToken, _msgSender(), BENEFICIARY, base); // reverts if payment failed
         REGISTRY.renew(state.tokenId, expiry);
         emit NameRenewed(state.tokenId, label, duration, expiry, paymentToken, referrer, base);
@@ -227,12 +199,11 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     }
 
     /// @inheritdoc IRentPriceOracle
-    function rentPrice(
-        string memory label,
-        address owner,
-        uint64 duration,
-        IERC20 paymentToken
-    ) public view returns (uint256 base, uint256 premium) {
+    function rentPrice(string memory label, address owner, uint64 duration, IERC20 paymentToken)
+        public
+        view
+        returns (uint256 base, uint256 premium)
+    {
         return rentPriceOracle.rentPrice(label, owner, duration, paymentToken);
     }
 
@@ -246,8 +217,7 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         uint64 duration,
         bytes32 referrer
     ) public pure override returns (bytes32) {
-        return
-            keccak256(abi.encode(label, owner, secret, subregistry, resolver, duration, referrer));
+        return keccak256(abi.encode(label, owner, secret, subregistry, resolver, duration, referrer));
     }
 
     ////////////////////////////////////////////////////////////////////////
