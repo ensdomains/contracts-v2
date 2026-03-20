@@ -1,16 +1,13 @@
 import {
   decodeFunctionResult,
   encodeFunctionData,
-  getContract,
   namehash,
   zeroAddress,
 } from "viem";
-import { artifacts } from "@rocketh";
 
 import type { DevnetEnvironment } from "../setup.js";
 import { MAX_EXPIRY, STATUS } from "../deploy-constants.js";
 import { dnsEncodeName } from "../../test/utils/utils.js";
-import { dnsDecodeName } from "../../lib/ens-contracts/test/fixtures/dnsDecodeName.js";
 import { getNameData } from "./registry.js";
 
 /**
@@ -95,44 +92,24 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
   console.table(nameData);
 }
 
-/**
- * Display alias information for a list of candidate names.
- * For each name, queries its resolver's getAlias() to check for alias mappings.
- * Wildcard aliases (e.g., sub.alias.eth → sub.test.eth) are discovered automatically.
- *
- * NOTE: This uses Approach 1 (known candidates). For dynamic discovery via
- * AliasChanged events, see Approach 2 (planned for the indexer script).
- */
-export async function showAlias(env: DevnetEnvironment, names: string[]) {
-  const aliasData = [];
-
-  for (const name of names) {
-    const [resolverAddress] = await env.v2.UniversalResolver.read.findResolver([
-      dnsEncodeName(name),
-    ]);
-    if (resolverAddress === zeroAddress) continue;
-    const resolver = env.castPermissionedResolver(resolverAddress);
-    try {
-      const aliasResult = await resolver.read.getAlias([dnsEncodeName(name)]);
-      if (aliasResult.length > 2) {
-        const aliasTarget = dnsDecodeName(aliasResult);
-        aliasData.push({
-          Name: name,
-          Resolver: truncateAddress(resolverAddress),
-          "Alias Target": aliasTarget,
-        });
+export async function compareLinks(env: DevnetEnvironment, names: string[]) {
+  if (names.length < 2) throw new Error("nothing to compare");
+  const links = await Promise.all(
+    names.map(async (name) => {
+      let recordId: bigint | undefined;
+      const [resolverAddress] =
+        await env.v2.UniversalResolver.read.findResolver([dnsEncodeName(name)]);
+      if (resolverAddress !== zeroAddress) {
+        const resolver = env.castPermissionedResolver(resolverAddress);
+        recordId = await resolver.read.getRecordId([namehash(name)]);
       }
-    } catch {
-      // getAlias may fail if resolver doesn't support it
-    }
-  }
-
-  if (aliasData.length > 0) {
-    console.log(`\nAlias Information:`);
-    console.table(aliasData);
-  } else {
-    console.log(`\nNo aliases found.`);
-  }
+      return { name, recordId };
+    }),
+  );
+  const recordIds = [...new Set(links.map((x) => x.recordId))];
+  const same = recordIds.length == 1 && typeof recordIds[0] === "bigint";
+  console.log(`Link Information: ${same ? "✅️" : "❌️"}`);
+  console.table(links);
 }
 
 export function truncateAddress(addr: string | undefined) {
