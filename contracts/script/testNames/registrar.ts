@@ -1,9 +1,10 @@
-import { type Hex, namehash, zeroAddress } from "viem";
+import { type Hex, zeroAddress } from "viem";
 
 import type { DevnetAccount, DevnetEnvironment } from "../setup.js";
-import { dnsEncodeName, idFromLabel } from "../../test/utils/utils.js";
+import { idFromLabel } from "../../test/utils/utils.js";
 import { formatExpiry } from "./display.js";
 import { trackGas } from "./gas.js";
+import { setupResolver } from "./resolver.js";
 
 const ONE_DAY_SECONDS = 86400;
 
@@ -107,15 +108,16 @@ export async function registerTestNames(
 
     // Set resolver records
     const name = `${labels[i]}.eth`;
-    const setAddrReceipt = await env.waitFor(
-      resolver.write.setAddress([dnsEncodeName(name), 60n, account.address]),
+    await setupResolver(
+      env,
+      account,
+      name,
+      {
+        address: account.address,
+        description: name,
+      },
+      shouldTrackGas,
     );
-    if (shouldTrackGas) trackGas(`setAddr(${name})`, setAddrReceipt);
-
-    const setTextReceipt = await env.waitFor(
-      resolver.write.setText([dnsEncodeName(name), "description", name]),
-    );
-    if (shouldTrackGas) trackGas(`setText(${name})`, setTextReceipt);
   }
 }
 
