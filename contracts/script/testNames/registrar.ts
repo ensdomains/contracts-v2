@@ -1,6 +1,6 @@
 import { type Hex, namehash, zeroAddress } from "viem";
 import type { DevnetAccount, DevnetEnvironment } from "../setup.js";
-import { idFromLabel } from "../../test/utils/utils.js";
+import { dnsEncodeName, idFromLabel } from "../../test/utils/utils.js";
 import { formatExpiry } from "./display.js";
 import { trackGas } from "./gas.js";
 import { MAX_EXPIRY } from "../deploy-constants.js";
@@ -107,16 +107,16 @@ export async function registerTestNames(
     if (shouldTrackGas) trackGas(`register(${labels[i]})`, receipt);
 
     // Set resolver records
-    const node = namehash(`${labels[i]}.eth`);
+    const name = `${labels[i]}.eth`;
     const setAddrReceipt = await env.waitFor(
-      resolver.write.setAddr([node, 60n, account.address]),
+      resolver.write.setAddress([dnsEncodeName(name), 60n, account.address]),
     );
-    if (shouldTrackGas) trackGas(`setAddr(${labels[i]})`, setAddrReceipt);
+    if (shouldTrackGas) trackGas(`setAddr(${name})`, setAddrReceipt);
 
     const setTextReceipt = await env.waitFor(
-      resolver.write.setText([node, "description", `${labels[i]}.eth`]),
+      resolver.write.setText([dnsEncodeName(name), "description", name]),
     );
-    if (shouldTrackGas) trackGas(`setText(${labels[i]})`, setTextReceipt);
+    if (shouldTrackGas) trackGas(`setText(${name})`, setTextReceipt);
   }
 }
 

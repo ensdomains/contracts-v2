@@ -24,6 +24,7 @@ import {
   getLabelAt,
   getParentName,
   idFromLabel,
+  COIN_TYPE_ETH,
 } from "../utils/utils.js";
 import {
   bundleCalls,
@@ -115,12 +116,8 @@ describe("Migration", () => {
     async setupPublicResolver() {
       await this.setResolver(env.v1.PublicResolver.address);
       await env.v1.PublicResolver.write.multicall(
-        [
-          makeResolutions({ name: this.name, ...defaultProfile }).map(
-            (x) => x.write,
-          ),
-        ],
-        { account: this.account },
+        [makeResolutions({ name, ...defaultProfile }).map((x) => x.writeV1)],
+        { account },
       );
     }
     async checkMigrated({
@@ -487,7 +484,7 @@ describe("Migration", () => {
       await unwrapped.checkMigrated();
       await resolver.write.multicall([
         makeResolutions({ name: unwrapped.name, ...defaultProfile }).map(
-          (x) => x.write,
+          (x) => x.writeV2,
         ),
       ]);
       await unwrapped.checkResolution();
