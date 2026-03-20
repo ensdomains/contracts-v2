@@ -11,5 +11,5 @@ export default execute(
       args: [hcaFactory.address],
     });
   },
-  { tags: ["RegistryMetadata", "l1"], dependencies: ["HCAFactory"] },
+  { tags: ["RegistryMetadata", "v2"], dependencies: ["HCAFactory"] },
 );

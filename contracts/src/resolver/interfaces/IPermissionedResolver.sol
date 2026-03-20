@@ -24,13 +24,13 @@ interface IPermissionedResolver is IEnhancedAccessControl, IRecordResolver {
     ////////////////////////////////////////////////////////////////////////
 
     function grantRecordRoles(
-        uint256 recordId,
+        bytes calldata name_,
         uint256 roleBitmap,
         address account
     ) external returns (bool);
 
     function grantSetterRoles(
-        uint256 recordId,
+        bytes calldata name_,
         bytes calldata setterPrefix,
         address account
     ) external returns (bool);

@@ -78,13 +78,17 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     function createWrappedChild(
         bytes memory parentName,
         string memory label,
+        address newOwner,
         uint32 fuses
     ) public returns (bytes memory name) {
         bytes32 parentNode = NameCoder.namehash(parentName, 0);
         (address owner, , uint64 expiry) = nameWrapper.getData(uint256(parentNode));
         name = NameCoder.addLabel(parentName, label);
+        if (newOwner == address(0)) {
+            newOwner = owner;
+        }
         vm.prank(owner);
-        nameWrapper.setSubnodeOwner(parentNode, label, owner, fuses, expiry);
+        nameWrapper.setSubnodeOwner(parentNode, label, newOwner, fuses, expiry);
     }
 
     function createWrappedName(

@@ -8,11 +8,11 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {
     PermissionedRegistry,
     RegistryRolesLib,
     IRegistryMetadata,
-    EACBaseRolesLib,
     IEnhancedAccessControl,
     LibLabel
 } from "~src/registry/PermissionedRegistry.sol";

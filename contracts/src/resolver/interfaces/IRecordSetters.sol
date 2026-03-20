@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-/// @dev Interface selector: `0xdd5036bf`
+/// @dev Interface selector: `0x8fbfdcd1`
 interface IRecordSetters {
     /// @notice Set address for `coinType`.
     /// @param coinType The coin type.
@@ -40,4 +40,7 @@ interface IRecordSetters {
     /// @param x The x coordinate of the public key.
     /// @param y The y coordinate of the public key.
     function setPubkey(bytes32 x, bytes32 y) external;
+
+    /// @notice Clear the record.
+    function clear() external;
 }

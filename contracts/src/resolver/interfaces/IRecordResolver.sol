@@ -5,13 +5,12 @@ import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
+import {IDataResolver} from "@ens/contracts/resolvers/profiles/IDataResolver.sol";
 import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
 import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
 import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
 import {IPubkeyResolver} from "@ens/contracts/resolvers/profiles/IPubkeyResolver.sol";
 import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
-
-import {IDataResolver} from "./IDataResolver.sol";
 
 /// @dev The complete interface selector: `0x604cb589`
 bytes4 constant RECORD_RESOLVER_INTERFACE_ID = type(IABIResolver).interfaceId ^
@@ -44,7 +43,13 @@ interface IRecordResolver is
 
     /// @notice Associate `recordId` with `name`.
     ///         If `recordId = 0`, the association is cleared.
-    event RecordName(uint256 indexed recordId, bytes32 indexed node, bytes name);
+    event RecordLinked(
+        bytes32 indexed node,
+        bytes name,
+        uint256 indexed recordId,
+        address indexed sender
+    );
+    event RecordCleared(uint256 indexed recordId, address indexed sender);
 
     event ABIUpdated(uint256 indexed recordId, uint256 indexed contentType, address indexed sender);
     event AddressUpdated(
@@ -101,37 +106,15 @@ interface IRecordResolver is
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Create a new record, bind it to `name, and update it.
-    /// @param name The DNS-encoded name.
+    /// @notice Update a record.
+    /// @param name The DNS-encoded name or `0x00` for default.
     /// @param setters The ABI-encoded `IRecordSetter` calldata.
-    /// @return recordId The new record ID.
-    function createRecord(
-        bytes calldata name,
-        bytes[] calldata setters
-    ) external returns (uint256 recordId);
+    function update(bytes calldata name, bytes[] calldata setters) external;
 
-    /// @notice Update an existing record by `name`.
-    /// @param name The DNS-encoded name.
-    /// @param setters The ABI-encoded `IRecordSetter` calldata.
-    function updateRecordByName(bytes calldata name, bytes[] calldata setters) external;
-
-    /// @notice Update an existing record by `recordId`.
-    /// @param recordId The record ID.
-    /// @param setters The ABI-encoded `IRecordSetter` calldata.
-    function updateRecordById(uint256 recordId, bytes[] calldata setters) external;
-
-    /// @notice Associate `name` with `recordId`.
-    function bindRecord(bytes calldata name, uint256 recordId) external;
-
-    // /// @notice Resolve `data` ignoring `node` and using `recordId` instead.
-    // /// @dev Supports `multicall(bytes[])`.
-    // /// @param recordId The record ID.
-    // /// @param data The ABI-encoded resolver calldata.
-    // /// @return The abi-encoded resolver response.
-    // function resolveRecord(
-    //     uint256 recordId,
-    //     bytes calldata data
-    // ) external view returns (bytes memory);
+    /// @notice Associate `name` with `targetName`.
+    /// @param name The DNS-encoded name to link.
+    /// @param targetNode The target namehash or null to unlink.
+    function link(bytes calldata name, bytes32 targetNode) external;
 
     /// @notice Get the record associated with `node`.
     function getRecordId(bytes32 node) external view returns (uint256);

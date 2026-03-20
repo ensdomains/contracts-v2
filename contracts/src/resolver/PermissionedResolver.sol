@@ -6,6 +6,7 @@ import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
+import {IDataResolver} from "@ens/contracts/resolvers/profiles/IDataResolver.sol";
 import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
 import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
 import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
@@ -27,7 +28,6 @@ import {HCAContextUpgradeable} from "../hca/HCAContextUpgradeable.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 
-import {IDataResolver} from "./interfaces/IDataResolver.sol";
 import {
     IPermissionedResolver,
     PERMISSIONED_RESOLVER_INTERFACE_ID
@@ -103,25 +103,28 @@ contract PermissionedResolver is
 
     uint256 _recordCount;
     mapping(bytes32 node => uint256 recordId) internal _recordIds;
-    mapping(uint256 recordId => Record record) internal _records;
-
-    ////////////////////////////////////////////////////////////////////////
-    // Modifiers
-    ////////////////////////////////////////////////////////////////////////
-
-    modifier validRecord(uint256 recordId) {
-        if (recordId > _recordCount) {
-            revert InvalidRecord();
-        }
-        _;
-    }
+    mapping(uint256 recordId => uint256 version) internal _versions;
+    mapping(uint256 recordId => mapping(uint256 version => Record record)) internal _records;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Creates the PermissionedResolver implementation.
+    /// @param hcaFactory The HCA factory.
     constructor(IHCAFactoryBasic hcaFactory) HCAEquivalence(hcaFactory) {
         _disableInitializers();
+    }
+
+    /// @notice Initialize the resolver.
+    /// @param initialAccount The initial account with root.
+    /// @param roleBitmap The roles granted to `admin`.
+    function initialize(address initialAccount, uint256 roleBitmap) external initializer {
+        if (initialAccount == address(0)) {
+            revert InvalidOwner();
+        }
+        __UUPSUpgradeable_init();
+        _grantRoles(ROOT_RESOURCE, roleBitmap, initialAccount, false);
     }
 
     /// @inheritdoc IERC165
@@ -152,71 +155,43 @@ contract PermissionedResolver is
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initialize the contract.
-    /// @param admin The resolver owner.
-    /// @param roleBitmap The roles granted to `admin`.
-    function initialize(address admin, uint256 roleBitmap) external initializer {
-        if (admin == address(0)) {
-            revert InvalidOwner();
-        }
-        __UUPSUpgradeable_init();
-        _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
-    }
-
-    // @inheritdoc IRecordResolver
-    function createRecord(
-        bytes calldata name_,
-        bytes[] calldata setters
-    ) external onlyRootRoles(PermissionedResolverLib.ROLE_RECORDS) returns (uint256 recordId) {
-        bytes32 node = NameCoder.namehash(name_, 0);
-        recordId = ++_recordCount;
-        _recordIds[node] = recordId;
-        emit RecordName(recordId, node, name_);
-        for (uint256 i; i < setters.length; ++i) {
-            _updateRecord(recordId, setters[i]);
-        }
-        return recordId;
-    }
-
-    // @inheritdoc IRecordResolver
-    function updateRecordByName(bytes calldata name_, bytes[] calldata setters) external {
-        uint256 recordId = _recordIds[NameCoder.namehash(name_, 0)];
-        if (recordId == 0) {
-            revert InvalidRecord();
-        }
-        for (uint256 i; i < setters.length; ++i) {
-            _updateRecord(recordId, setters[i]);
-        }
-    }
-
-    // @inheritdoc IRecordResolver
-    function updateRecordById(
-        uint256 recordId,
-        bytes[] calldata setters
-    ) external validRecord(recordId) {
+    /// @inheritdoc IRecordResolver
+    function update(bytes calldata name_, bytes[] calldata setters) external {
+        uint256 recordId = _ensureRecord(name_);
         for (uint256 i; i < setters.length; ++i) {
             _updateRecord(recordId, setters[i]);
         }
     }
 
     /// @inheritdoc IRecordResolver
-    /// @dev Use `recordId = 0` to remove an association.
-    ///      Reverts `InvalidRecord` if `recordId` has not yet been created.
-    function bindRecord(
-        bytes calldata name_,
-        uint256 recordId
-    ) external validRecord(recordId) onlyRootRoles(PermissionedResolverLib.ROLE_RECORDS) {
-        bytes32 node = NameCoder.namehash(name_, 0);
-        _recordIds[node] = recordId;
-        emit RecordName(recordId, node, name_);
+    /// @dev Reverts `InvalidRecord` if `recordId` does not exist.
+    function link(
+        bytes calldata sourceName,
+        bytes32 targetNode
+    ) external onlyRootRoles(PermissionedResolverLib.ROLE_LINK_RECORD) {
+        bytes32 sourceNode = NameCoder.namehash(sourceName, 0);
+        uint256 recordId;
+        if (targetNode == bytes32(0)) {
+            if (_recordIds[sourceNode] == 0) {
+                revert InvalidRecord(); // already unlinked
+            }
+        } else {
+            recordId = _recordIds[targetNode];
+            if (recordId == 0) {
+                revert InvalidRecord(); // // unknown target
+            }
+        }
+        _recordIds[sourceNode] = recordId;
+        emit RecordLinked(sourceNode, sourceName, recordId, _msgSender());
     }
 
     /// @notice Grant `roleBitmap` permissions to `account` for `recordId`.
     function grantRecordRoles(
-        uint256 recordId,
+        bytes calldata name_,
         uint256 roleBitmap,
         address account
-    ) external validRecord(recordId) returns (bool) {
+    ) external returns (bool) {
+        uint256 recordId = _ensureRecordWithoutDefault(name_);
         uint256 resource = PermissionedResolverLib.resource(
             recordId,
             PermissionedResolverLib.ANY_PART
@@ -230,14 +205,15 @@ contract PermissionedResolver is
 
     /// @notice Grant specific setter permissions to `account` for `recordId`.
     function grantSetterRoles(
-        uint256 recordId,
+        bytes calldata name_,
         bytes calldata setterPrefix,
         address account
-    ) external validRecord(recordId) returns (bool) {
+    ) external returns (bool) {
+        uint256 recordId = _ensureRecordWithoutDefault(name_);
         bytes32 part;
         uint256 roleBitmap;
-        bytes4 selector = bytes4(setterPrefix);
         bytes memory computedPrefix;
+        bytes4 selector = bytes4(setterPrefix);
         if (selector == IRecordSetters.setAddress.selector) {
             uint256 coinType = abi.decode(setterPrefix[4:], (uint256));
             part = PermissionedResolverLib.partHash(coinType);
@@ -281,15 +257,28 @@ contract PermissionedResolver is
     /// @notice Same as `multicall()`.
     /// @dev The node parameter is accepted for interface compatibility but is not used.
     ///      Permission checking is handled by individual function calls within the multicall.
+    /// @param {node} Ignored, for interface compatibility.
+    /// @param calls The calls to make.
+    /// @return results The results of the calls.
     function multicallWithNodeCheck(
-        bytes32,
+        bytes32 /* node */,
         bytes[] calldata calls
     ) external returns (bytes[] memory) {
         return multicall(calls);
     }
 
+    // function setAddress(
+    //     bytes calldata name_,
+    //     uint256 coinType,
+    //     bytes calldata addressBytes
+    // ) external {
+    //     _updateRecord(
+    //         _ensureRecord(name_),
+    //         abi.encodeCall(IRecordSetters.setAddress, (coinType, addressBytes))
+    //     );
+    // }
+
     /// @inheritdoc IABIResolver
-    // solhint-disable-next-line func-name-mixedcase
     function ABI(
         bytes32 node,
         uint256 contentTypes
@@ -422,6 +411,8 @@ contract PermissionedResolver is
 
     /// @notice Perform multiple write operations.
     /// @dev Reverts with first error.
+    /// @param calls The calls to make.
+    /// @return results The results of the calls.
     function multicall(bytes[] calldata calls) public returns (bytes[] memory results) {
         results = new bytes[](calls.length);
         for (uint256 i; i < calls.length; ++i) {
@@ -449,10 +440,31 @@ contract PermissionedResolver is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Find or create a record.
+    function _ensureRecord(bytes memory name_) internal returns (uint256 recordId) {
+        bytes32 node = NameCoder.namehash(name_, 0);
+        recordId = _recordIds[node];
+        if (recordId == 0) {
+            address sender = _msgSender();
+            _checkRoles(ROOT_RESOURCE, PermissionedResolverLib.ROLE_NEW_RECORD, sender);
+            recordId = ++_recordCount;
+            _recordIds[node] = recordId;
+            emit RecordLinked(node, name_, recordId, sender);
+        }
+    }
+
+    /// @dev Same as `_ensureRecord()` but doesn't create default record.
+    function _ensureRecordWithoutDefault(bytes memory name_) internal returns (uint256) {
+        if (name_.length == 1 && uint8(name_[0]) == 0) {
+            return 0; // use default
+        }
+        return _ensureRecord(name_);
+    }
+
     /// @dev Update a record according to `setter`.
     function _updateRecord(uint256 recordId, bytes calldata setter) internal {
         address sender = _msgSender();
-        Record storage record = _records[recordId];
+        Record storage record = _record(recordId);
         if (bytes4(setter) == IRecordSetters.setAddress.selector) {
             (uint256 coinType, bytes memory addressBytes) = abi.decode(
                 setter[4:],
@@ -546,6 +558,15 @@ contract PermissionedResolver is
             );
             record.pubkey = [x, y];
             emit PubkeyUpdated(recordId, x, y, sender);
+        } else if (bytes4(setter) == IRecordSetters.clear.selector) {
+            _checkRecordRoles(
+                recordId,
+                PermissionedResolverLib.ROLE_CLEAR_RECORD,
+                PermissionedResolverLib.ANY_PART,
+                sender
+            );
+            ++_versions[recordId];
+            emit RecordCleared(recordId, sender);
         } else {
             revert UnsupportedResolverProfile(bytes4(setter));
         }
@@ -584,6 +605,8 @@ contract PermissionedResolver is
         return HCAContextUpgradeable._msgSender();
     }
 
+    /// @dev Returns the original `msg.data`.
+    ///      Needed to resolve Context/ContextUpgradable inheritance.
     function _msgData()
         internal
         view
@@ -594,6 +617,8 @@ contract PermissionedResolver is
         return msg.data;
     }
 
+    /// @dev Returns 0.
+    ///      Needed to resolve Context/ContextUpgradable inheritance.
     function _contextSuffixLength()
         internal
         view
@@ -604,11 +629,21 @@ contract PermissionedResolver is
         return 0;
     }
 
-    /// @dev Shorthand to convert `node` to record.
-    function _record(bytes32 node) internal view returns (Record storage) {
-        return _records[_recordIds[node]];
+    /// @dev Get the active storage record.
+    function _record(uint256 recordId) internal view returns (Record storage) {
+        return _records[recordId][_versions[recordId]];
     }
 
+    /// @dev Determine the active storage record for `node`.
+    function _record(bytes32 node) internal view returns (Record storage) {
+        uint256 recordId = _recordIds[node];
+        if (recordId == 0) {
+            recordId = _recordIds[bytes32(0)]; // use default
+        }
+        return _record(recordId);
+    }
+
+    /// @dev Determine address according to ENSIP-19.
     function _getAddress(
         Record storage record,
         uint256 coinType
@@ -619,6 +654,7 @@ contract PermissionedResolver is
         }
     }
 
+    /// @dev Convenience for mainnet address.
     function _getAddr(Record storage record) internal view returns (address) {
         return address(bytes20(_getAddress(record, COIN_TYPE_ETH)));
     }

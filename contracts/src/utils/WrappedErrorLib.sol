@@ -7,12 +7,11 @@ import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 ///      Uses hex to embed arbitrary data and avoid invalid unicode.
 library WrappedErrorLib {
     /// @dev Error selector for `Error(string)`.
-    bytes4 public constant ERROR_STRING_SELECTOR = 0x08c379a0;
+    bytes4 internal constant ERROR_STRING_SELECTOR = 0x08c379a0;
 
     /// @dev The detectable human-readable error prefix.
-    bytes16 public constant WRAPPED_ERROR_PREFIX = "WrappedError:0x";
-    // Alternative: unicode"❌WrappedErr:0x";
-    // Alternative: unicode"❌WrappedError:";
+    ///      Must be exactly 16 bytes.
+    bytes16 internal constant WRAPPED_ERROR_PREFIX = "WrappedError::0x";
 
     /// @dev Wrap an error and then revert.
     function wrapAndRevert(bytes memory err) internal pure {
@@ -38,9 +37,7 @@ library WrappedErrorLib {
 
     /// @dev Unwrap a typed error from `Error(string)`.
     ///      Does nothing if detection and extracton fails.
-    ///
     /// @param err The error data to unwrap.
-    ///
     /// @return The unwrapped error data, or unmodified if not wrapped.
     function unwrap(bytes memory err) internal pure returns (bytes memory) {
         if (bytes4(err) == ERROR_STRING_SELECTOR) {
