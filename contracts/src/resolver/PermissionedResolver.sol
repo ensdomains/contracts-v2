@@ -33,6 +33,7 @@ import {
     PERMISSIONED_RESOLVER_INTERFACE_ID
 } from "./interfaces/IPermissionedResolver.sol";
 import {IRecordResolver, RECORD_RESOLVER_INTERFACE_ID} from "./interfaces/IRecordResolver.sol";
+import {IResolverSetters} from "./interfaces/IResolverSetters.sol";
 import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 
 /// @notice A resolver that supports many profiles, multiple names, internal aliasing, and fine-grained permissions.
@@ -157,6 +158,7 @@ contract PermissionedResolver is
             PERMISSIONED_RESOLVER_INTERFACE_ID == interfaceId ||
             RECORD_RESOLVER_INTERFACE_ID == interfaceId ||
             type(IRecordResolver).interfaceId == interfaceId ||
+            type(IResolverSetters).interfaceId == interfaceId ||
             type(IMulticallable).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
             // profiles
@@ -188,16 +190,7 @@ contract PermissionedResolver is
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc IRecordResolver
-    function clear(bytes calldata name_) external {
-        uint256 recordId = _ensureRecord(name_);
-        address sender = _msgSender();
-        _checkRecordRoles(recordId, PermissionedResolverLib.ROLE_CLEAR_RECORD, bytes32(0), sender);
-        ++_versions[recordId];
-        emit RecordCleared(recordId, sender);
-    }
-
-    /// @inheritdoc IRecordResolver
+    /// @inheritdoc IResolverSetters
     function setABI(bytes calldata name_, uint256 contentType, bytes calldata data_) external {
         if (!_isPowerOf2(contentType)) {
             revert InvalidContentType(contentType);
@@ -214,7 +207,7 @@ contract PermissionedResolver is
         emit ABIUpdated(recordId, contentType, sender);
     }
 
-    /// @inheritdoc IRecordResolver
+    /// @inheritdoc IResolverSetters
     function setAddress(
         bytes calldata name_,
         uint256 coinType,
@@ -237,7 +230,7 @@ contract PermissionedResolver is
         emit AddressUpdated(recordId, coinType, addressBytes, sender);
     }
 
-    /// @inheritdoc IRecordResolver
+    /// @inheritdoc IResolverSetters
     function setContentHash(bytes calldata name_, bytes calldata contentHash) external {
         uint256 recordId = _ensureRecord(name_);
         address sender = _msgSender();
@@ -251,7 +244,7 @@ contract PermissionedResolver is
         emit ContentHashUpdated(recordId, contentHash, sender);
     }
 
-    /// @inheritdoc IRecordResolver
+    /// @inheritdoc IResolverSetters
     function setData(bytes calldata name_, string calldata key, bytes calldata value) external {
         uint256 recordId = _ensureRecord(name_);
         address sender = _msgSender();
@@ -265,7 +258,7 @@ contract PermissionedResolver is
         emit DataUpdated(recordId, keccak256(bytes(key)), key, value, sender);
     }
 
-    /// @inheritdoc IRecordResolver
+    /// @inheritdoc IResolverSetters
     function setInterface(bytes calldata name_, bytes4 interfaceId, address implementer) external {
         uint256 recordId = _ensureRecord(name_);
         address sender = _msgSender();
@@ -279,7 +272,7 @@ contract PermissionedResolver is
         emit InterfaceUpdated(recordId, interfaceId, implementer, sender);
     }
 
-    /// @inheritdoc IRecordResolver
+    /// @inheritdoc IResolverSetters
     function setName(bytes calldata name_, string calldata primaryName) external {
         uint256 recordId = _ensureRecord(name_);
         address sender = _msgSender();
@@ -288,7 +281,7 @@ contract PermissionedResolver is
         emit NameUpdated(recordId, primaryName, sender);
     }
 
-    /// @inheritdoc IRecordResolver
+    /// @inheritdoc IResolverSetters
     function setPubkey(bytes calldata name_, bytes32 x, bytes32 y) external {
         uint256 recordId = _ensureRecord(name_);
         address sender = _msgSender();
@@ -297,7 +290,7 @@ contract PermissionedResolver is
         emit PubkeyUpdated(recordId, x, y, sender);
     }
 
-    /// @inheritdoc IRecordResolver
+    /// @inheritdoc IResolverSetters
     function setText(bytes calldata name_, string calldata key, string calldata value) external {
         uint256 recordId = _ensureRecord(name_);
         address sender = _msgSender();
@@ -309,6 +302,15 @@ contract PermissionedResolver is
         );
         _record(recordId).texts[key] = value;
         emit TextUpdated(recordId, key, key, value, sender);
+    }
+
+    /// @inheritdoc IRecordResolver
+    function clear(bytes calldata name_) external {
+        uint256 recordId = _ensureRecord(name_);
+        address sender = _msgSender();
+        _checkRecordRoles(recordId, PermissionedResolverLib.ROLE_CLEAR_RECORD, bytes32(0), sender);
+        ++_versions[recordId];
+        emit RecordCleared(recordId, sender);
     }
 
     /// @inheritdoc IRecordResolver
