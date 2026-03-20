@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "tsx": ["./contracts/script/tsx.ts"],
+      "@rocketh": ["./contracts/rocketh/deploy.ts"],
+      "generated/*": ["./contracts/generated/*"]
+    }
+  }
+}

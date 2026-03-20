@@ -1,17 +1,20 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_GatewayProvider } from "generated/abis/GatewayProvider.ts";
+import type { Abi_PermissionedRegistry } from "generated/abis/PermissionedRegistry.ts";
+import { Artifact_UniversalResolverV2 } from 'generated/artifacts/UniversalResolverV2.js';
 
 export default execute(
-  async ({ deploy, get, namedAccounts: { deployer } }) => {
+  async ({ deploy, get, getV1, namedAccounts: { deployer } }) => {
     const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
+      get<Abi_PermissionedRegistry>("RootRegistry");
 
-    const batchGatewayProvider = get<(typeof artifacts.GatewayProvider)["abi"]>(
+    const batchGatewayProvider = await getV1<Abi_GatewayProvider>(
       "BatchGatewayProvider",
     );
 
     await deploy("UniversalResolverV2", {
       account: deployer,
-      artifact: artifacts.UniversalResolverV2,
+      artifact: Artifact_UniversalResolverV2,
       args: [rootRegistry.address, batchGatewayProvider.address],
     });
   },

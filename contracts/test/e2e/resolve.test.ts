@@ -37,8 +37,9 @@ describe("Resolve", () => {
       });
     }
 
-    named("reverse", () => env.shared.DefaultReverseResolver.address);
-    named("addr.reverse", () => env.shared.ETHReverseResolver.address);
+    named("reverse", () => env.v2.ENSV1Resolver.address);
+    // TODO: re-enable when v2-native reverse namespace is enabled
+    // named("addr.reverse", () => env.shared.ETHReverseResolver.address);
   });
 
   describe("L1", () => {
@@ -65,7 +66,8 @@ describe("Resolve", () => {
       }));
   });
 
-  describe("Reverse", () => {
+  describe.skip("Reverse - v2 native", () => {
+    // TODO: re-enable when v2-native reverse namespace is enabled
     describe("addr.reverse", () => {
       const label = "user";
       const name = `${label}.eth`;
@@ -152,6 +154,98 @@ describe("Resolve", () => {
         expectVar({ primary }).toStrictEqual(name);
       });
     });
+  });
+
+  describe("Reverse - v1", () => {
+    const label = "user";
+    const name = `${label}.eth`;
+
+    it("addr.reverse", async () => {
+      const account = env.namedAccounts.owner;
+
+      // setup addr(ETH) on v2
+      const resolver = await env.deployPermissionedResolver({
+        account,
+      });
+      await resolver.write.setAddr([
+        namehash(name),
+        COIN_TYPE_ETH,
+        account.address,
+      ]);
+      await resolver.write.setName([
+        namehash(getReverseName(account.address)),
+        name,
+      ])
+      // register name in v2
+      await env.v2.ETHRegistry.write.register([
+        label,
+        account.address,
+        zeroAddress,
+        resolver.address,
+        0n,
+        MAX_EXPIRY,
+      ]);
+
+      // claim name in v1, set resolver to PermissionedResolver
+      await env.v1.ReverseRegistrar.write.claimWithResolver([account.address, resolver.address], { account });
+
+      // resolve reverse through v2 UniversalResolver
+      await expectResolve({
+        name: getReverseName(account.address),
+        primary: { value: name },
+      });
+      // resolve forward through v2 UniversalResolver
+      await expectResolve({
+        name,
+        addresses: [{ coinType: COIN_TYPE_ETH, value: account.address }],
+      });
+      const [primary] = await env.v2.UniversalResolver.read.reverse([
+        account.address,
+        COIN_TYPE_ETH,
+      ]);
+      expectVar({ primary }).toStrictEqual(name);
+    });
+
+    it("default.reverse", async () => {
+      const account = env.namedAccounts.owner;
+
+        // setup addr(default)
+        const resolver = await env.deployPermissionedResolver({
+          account,
+        });
+        await resolver.write.setAddr([
+          namehash(name),
+          COIN_TYPE_DEFAULT,
+          account.address,
+        ]);
+        // hack: create name
+        await env.v2.ETHRegistry.write.register([
+          label,
+          account.address,
+          zeroAddress,
+          resolver.address,
+          0n,
+          MAX_EXPIRY,
+        ]);
+        // setup name()
+        await env.shared.DefaultReverseRegistrar.write.setName([name], {
+          account,
+        });
+
+        await expectResolve({
+          name: getReverseName(account.address, COIN_TYPE_DEFAULT),
+          primary: { value: name },
+        });
+        await expectResolve({
+          name,
+          addresses: [{ coinType: COIN_TYPE_ETH, value: account.address }],
+        });
+        const [primary] = await env.v2.UniversalResolver.read.reverse([
+          account.address,
+          COIN_TYPE_ETH,
+        ]);
+        expectVar({ primary }).toStrictEqual(name);
+    })
   });
 
   describe("DNS", () => {

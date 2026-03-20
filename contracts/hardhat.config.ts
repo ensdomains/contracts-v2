@@ -1,11 +1,13 @@
-import type { HardhatUserConfig } from "hardhat/config";
+import { configVariable, type HardhatUserConfig } from "hardhat/config";
 
 import HardhatChaiMatchersViemPlugin from "@ensdomains/hardhat-chai-matchers-viem";
+import HardhatKeystore from "@nomicfoundation/hardhat-keystore";
 import HardhatNetworkHelpersPlugin from "@nomicfoundation/hardhat-network-helpers";
 import HardhatViem from "@nomicfoundation/hardhat-viem";
 import HardhatDeploy from "hardhat-deploy";
 
 import HardhatIgnoreWarningsPlugin from "./plugins/ignore-warnings/index.ts";
+import HardhatClearRemappingsPlugin from "./plugins/clear-remappings/index.ts";
 import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
 const config = {
@@ -28,6 +30,15 @@ const config = {
       },
     ],
     overrides: {
+      'lib/ens-contracts/contracts/wrapper/NameWrapper.sol': {
+        version: "0.8.17",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1200,
+          },
+        },
+      },
       'src/L2/reverse-registrar/L2ReverseRegistrar.sol': {
         version: "0.8.25",
         settings: {
@@ -45,6 +56,14 @@ const config = {
       }
     }
   },
+  networks: {
+    'sepolia-dev': {
+      type: 'http',
+      url: configVariable('SEPOLIA_RPC_URL'),
+      accounts: [configVariable('DEV_DEPLOYER_KEY')],
+      chainId: 11155111,
+    },
+  },
   paths: {
     sources: {
       solidity: [
@@ -60,6 +79,13 @@ const config = {
       ],
     },
   },
+  generateTypedArtifacts: {
+    destinations: [
+      {
+        mode: "typescript",
+      },
+    ],
+  },
   shouldIgnoreWarnings: (path) => {
     return (
       path.startsWith("./lib/ens-contracts/") ||
@@ -73,6 +99,8 @@ const config = {
     HardhatStorageLayoutPlugin,
     HardhatIgnoreWarningsPlugin,
     HardhatDeploy,
+    HardhatKeystore,
+    HardhatClearRemappingsPlugin,
   ],
 } satisfies HardhatUserConfig;
 

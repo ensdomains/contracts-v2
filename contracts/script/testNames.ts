@@ -8,7 +8,8 @@ import {
   zeroAddress,
 } from "viem";
 
-import { artifacts } from "@rocketh";
+import { Artifact_PermissionedResolver } from "generated/artifacts/PermissionedResolver.js";
+import { Artifact_UserRegistry } from "generated/artifacts/UserRegistry.js";
 import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
 import { dnsEncodeName, idFromLabel } from "../test/utils/utils.js";
 import type { DevnetEnvironment, DevnetAccount } from "./setup.js";
@@ -17,7 +18,7 @@ import type { DevnetEnvironment, DevnetAccount } from "./setup.js";
 
 const ONE_DAY_SECONDS = 86400;
 
-const PermissionedResolverAbi = artifacts.PermissionedResolver.abi;
+const PermissionedResolverAbi = Artifact_PermissionedResolver.abi;
 
 // ========== Gas Tracking ==========
 
@@ -144,7 +145,7 @@ function getRegistryContract(
 ) {
   return getContract({
     address: registryAddress,
-    abi: artifacts.UserRegistry.abi,
+    abi: Artifact_UserRegistry.abi,
     client: env.client,
   });
 }

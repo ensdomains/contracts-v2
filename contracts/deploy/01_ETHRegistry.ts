@@ -1,27 +1,31 @@
-import { artifacts, execute } from "@rocketh";
-import { zeroAddress } from "viem";
+import { execute } from "@rocketh";
+import type { Abi_MockHCAFactoryBasic } from "generated/abis/MockHCAFactoryBasic.ts";
+import type { Abi_PermissionedRegistry } from "generated/abis/PermissionedRegistry.ts";
+import type { Abi_SimpleRegistryMetadata } from "generated/abis/SimpleRegistryMetadata.ts";
+import { Artifact_PermissionedRegistry } from 'generated/artifacts/PermissionedRegistry.js';
+import { labelhash, zeroAddress } from "viem";
 import {
-  MAX_EXPIRY,
   DEPLOYMENT_ROLES,
+  MAX_EXPIRY,
 } from "../script/deploy-constants.js";
 
 // TODO: ownership
 export default execute(
-  async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
+  async ({ deploy, execute: write, read, get, namedAccounts: { deployer } }) => {
     const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
+      get<Abi_PermissionedRegistry>("RootRegistry");
 
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<Abi_MockHCAFactoryBasic>("HCAFactory");
 
     const registryMetadata = get<
-      (typeof artifacts.SimpleRegistryMetadata)["abi"]
+      Abi_SimpleRegistryMetadata
     >("SimpleRegistryMetadata");
 
     console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
       account: deployer,
-      artifact: artifacts.PermissionedRegistry,
+      artifact: Artifact_PermissionedRegistry,
       args: [
         hcaFactory.address,
         registryMetadata.address,
@@ -30,25 +34,28 @@ export default execute(
       ],
     });
 
-    console.log("  - Registering in parent");
-    await write(rootRegistry, {
-      account: deployer,
-      functionName: "register",
-      args: [
-        "eth",
-        deployer,
-        ethRegistry.address,
-        zeroAddress,
-        DEPLOYMENT_ROLES.ETH_TOKEN,
-        MAX_EXPIRY,
-      ],
-    });
+    const currentStatus = await read(rootRegistry, {
+      functionName: 'getStatus',
+      args: [BigInt(labelhash('eth'))],
+    })
 
-    await write(ethRegistry, {
-      account: deployer,
-      functionName: "setParent",
-      args: [rootRegistry.address, "eth"],
-    });
+    if (currentStatus === 0) {
+      console.log("  - Registering in parent");
+      await write(rootRegistry, {
+        account: deployer,
+        functionName: "register",
+        args: [
+          "eth",
+          deployer,
+          ethRegistry.address,
+          zeroAddress,
+          DEPLOYMENT_ROLES.ETH_TOKEN,
+          MAX_EXPIRY,
+        ],
+      });
+    }
+
+    if (!ethRegistry.newlyDeployed) return
 
     console.log("  - Setting canonical parent");
     await write(ethRegistry, {

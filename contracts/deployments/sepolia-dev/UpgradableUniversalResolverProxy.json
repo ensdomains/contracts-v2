@@ -1,0 +1,329 @@
+{
+  "address": "0x164cb269a0c69ac6f93f568ad1836f7a7d552b58",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "admin_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "implementation_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "CallerNotAdmin",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidImplementation",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        },
+        {
+          "internalType": "string[]",
+          "name": "urls",
+          "type": "string[]"
+        },
+        {
+          "internalType": "bytes",
+          "name": "callData",
+          "type": "bytes"
+        },
+        {
+          "internalType": "bytes4",
+          "name": "callbackFunction",
+          "type": "bytes4"
+        },
+        {
+          "internalType": "bytes",
+          "name": "extraData",
+          "type": "bytes"
+        }
+      ],
+      "name": "OffchainLookup",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "offset",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "length",
+          "type": "uint256"
+        }
+      ],
+      "name": "OffsetOutOfBoundsError",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "SameImplementation",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousAdmin",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newAdmin",
+          "type": "address"
+        }
+      ],
+      "name": "AdminChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "admin",
+          "type": "address"
+        }
+      ],
+      "name": "AdminRemoved",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ],
+      "name": "Upgraded",
+      "type": "event"
+    },
+    {
+      "stateMutability": "nonpayable",
+      "type": "fallback"
+    },
+    {
+      "inputs": [],
+      "name": "admin",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "implementation",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceAdmin",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newImplementation",
+          "type": "address"
+        }
+      ],
+      "name": "upgradeTo",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "contractName": "UpgradableUniversalResolverProxy",
+  "sourceName": "src/universalResolver/UpgradableUniversalResolverProxy.sol",
+  "bytecode": "0x608060405234801561000f575f80fd5b50604051610c26380380610c2683398101604081905261002e9161019b565b6100378161006e565b5f80516020610c0683398151915280546001600160a01b0319166001600160a01b038316179055610067826100e6565b50506101cc565b6001600160a01b038116158061008c57506001600160a01b0381163b155b156100aa5760405163340aafcd60e11b815260040160405180910390fd5b6001600160a01b0381166100bc61014d565b6001600160a01b0316036100e357604051634c3b76bf60e01b815260040160405180910390fd5b50565b5f6100ef61016c565b9050815f80516020610be683398151915280546001600160a01b0319166001600160a01b03928316179055604051838216918316907f7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f905f90a35050565b5f5f80516020610c068339815191525b546001600160a01b0316919050565b5f5f80516020610be683398151915261015d565b80516001600160a01b0381168114610196575f80fd5b919050565b5f80604083850312156101ac575f80fd5b6101b583610180565b91506101c360208401610180565b90509250929050565b610a0d806101d95f395ff3fe608060405234801561000f575f80fd5b506004361061004a575f3560e01c80633659cfe6146101765780635c60da1b146101895780638bad0c0a146101ad578063f851a440146101b5575b5f806100546101bd565b6001600160a01b03165f3660405161006d929190610639565b5f60405180830381855afa9150503d805f81146100a5576040519150601f19603f3d011682016040523d82523d5f602084013e6100aa565b606091505b5091509150811580156100d55750630556f18360e41b6100c982610648565b6001600160e01b031916145b1561015e575f6100fb6100f68360048086516100f19190610693565b6101ef565b61024b565b90506101056101bd565b6001600160a01b0316815f01516001600160a01b03160361015c57308160200151826040015183606001518460800151604051630556f18360e41b81526004016101539594939291906106da565b60405180910390fd5b505b811561016c57805160208201f35b805160208201fd5b005b61017461018436600461079a565b6102b6565b610191610375565b6040516001600160a01b03909116815260200160405180910390f35b610174610383565b610191610406565b5f7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc5b546001600160a01b0316919050565b60608167ffffffffffffffff81111561020a5761020a6107b5565b6040519080825280601f01601f191660200182016040528015610234576020820181803683370190505b5090506102448484835f8661040f565b9392505050565b6040805160a0810182525f808252606060208301819052928201839052828201526080810191909152818060200190518101906102889190610889565b60808601526001600160e01b0319166060850152604084015260208301526001600160a01b03168152919050565b6102be61044c565b6001600160a01b0316336001600160a01b0316146102ef5760405163036c8cf960e11b815260040160405180910390fd5b6102f881610473565b7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc805473ffffffffffffffffffffffffffffffffffffffff19166001600160a01b0383161790556040516001600160a01b038216907fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b905f90a250565b5f61037e6101bd565b905090565b61038b61044c565b6001600160a01b0316336001600160a01b0316146103bc5760405163036c8cf960e11b815260040160405180910390fd5b5f6103c561044c565b90506103d05f61051d565b6040516001600160a01b038216907fa3b62bc36326052d97ea62d63c3d60308ed4c3ea8ac079dd8499f1e9c4f80c0f905f90a250565b5f61037e61044c565b6104228561041d83876109c4565b6105a4565b6104308361041d83856109c4565b610445826020850101856020880101836105f0565b5050505050565b5f7fb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d61036101e0565b6001600160a01b038116158061049157506001600160a01b0381163b155b156104c8576040517f68155f9a00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b806001600160a01b03166104da6101bd565b6001600160a01b03160361051a576040517f4c3b76bf00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b50565b5f61052661044c565b9050817fb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103805473ffffffffffffffffffffffffffffffffffffffff19166001600160a01b03928316179055604051838216918316907f7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f905f90a35050565b81518111156105ec5781516040517f8a3c1cfb000000000000000000000000000000000000000000000000000000008152610153918391600401918252602082015260400190565b5050565b5b601f811115610611578151835260209283019290910190601f19016105f1565b801561063457815183516001602084900360031b1b5f1901801990921691161783525b505050565b818382375f9101908152919050565b5f815160208301516001600160e01b0319808216935060048310156106775780818460040360031b1b83161693505b505050919050565b634e487b7160e01b5f52601160045260245ffd5b818103818111156106a6576106a661067f565b92915050565b5f81518084528060208401602086015e5f602082860101526020601f19601f83011685010191505092915050565b5f60a082016001600160a01b0388168352602060a0602085015281885180845260c08601915060c08160051b870101935060208a015f5b8281101561073f5760bf1988870301845261072d8683516106ac565b95509284019290840190600101610711565b5050505050828103604084015261075681876106ac565b6001600160e01b0319861660608501529050828103608084015261077a81856106ac565b98975050505050505050565b6001600160a01b038116811461051a575f80fd5b5f602082840312156107aa575f80fd5b813561024481610786565b634e487b7160e01b5f52604160045260245ffd5b604051601f8201601f1916810167ffffffffffffffff811182821017156107f2576107f26107b5565b604052919050565b5f67ffffffffffffffff831115610813576108136107b5565b610826601f8401601f19166020016107c9565b9050828152838383011115610839575f80fd5b8282602083015e5f602084830101529392505050565b5f82601f83011261085e575f80fd5b610244838351602085016107fa565b80516001600160e01b031981168114610884575f80fd5b919050565b5f805f805f60a0868803121561089d575f80fd5b85516108a881610786565b8095505060208087015167ffffffffffffffff808211156108c7575f80fd5b818901915089601f8301126108da575f80fd5b8151818111156108ec576108ec6107b5565b8060051b6108fb8582016107c9565b918252838101850191858101908d841115610914575f80fd5b86860192505b8383101561096157825185811115610930575f80fd5b8601603f81018f13610940575f80fd5b6109518f89830151604084016107fa565b835250918601919086019061091a565b60408d0151909a5095505050508083111561097a575f80fd5b6109868a848b0161084f565b955061099460608a0161086d565b945060808901519250808311156109a9575f80fd5b50506109b78882890161084f565b9150509295509295909350565b808201808211156106a6576106a661067f56fea26469706673582212206bbdd1f4e58e75f66740ed817050741914360f72de4823d8d419e6416f0da95464736f6c63430008190033b53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+  "deployedBytecode": "0x608060405234801561000f575f80fd5b506004361061004a575f3560e01c80633659cfe6146101765780635c60da1b146101895780638bad0c0a146101ad578063f851a440146101b5575b5f806100546101bd565b6001600160a01b03165f3660405161006d929190610639565b5f60405180830381855afa9150503d805f81146100a5576040519150601f19603f3d011682016040523d82523d5f602084013e6100aa565b606091505b5091509150811580156100d55750630556f18360e41b6100c982610648565b6001600160e01b031916145b1561015e575f6100fb6100f68360048086516100f19190610693565b6101ef565b61024b565b90506101056101bd565b6001600160a01b0316815f01516001600160a01b03160361015c57308160200151826040015183606001518460800151604051630556f18360e41b81526004016101539594939291906106da565b60405180910390fd5b505b811561016c57805160208201f35b805160208201fd5b005b61017461018436600461079a565b6102b6565b610191610375565b6040516001600160a01b03909116815260200160405180910390f35b610174610383565b610191610406565b5f7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc5b546001600160a01b0316919050565b60608167ffffffffffffffff81111561020a5761020a6107b5565b6040519080825280601f01601f191660200182016040528015610234576020820181803683370190505b5090506102448484835f8661040f565b9392505050565b6040805160a0810182525f808252606060208301819052928201839052828201526080810191909152818060200190518101906102889190610889565b60808601526001600160e01b0319166060850152604084015260208301526001600160a01b03168152919050565b6102be61044c565b6001600160a01b0316336001600160a01b0316146102ef5760405163036c8cf960e11b815260040160405180910390fd5b6102f881610473565b7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc805473ffffffffffffffffffffffffffffffffffffffff19166001600160a01b0383161790556040516001600160a01b038216907fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b905f90a250565b5f61037e6101bd565b905090565b61038b61044c565b6001600160a01b0316336001600160a01b0316146103bc5760405163036c8cf960e11b815260040160405180910390fd5b5f6103c561044c565b90506103d05f61051d565b6040516001600160a01b038216907fa3b62bc36326052d97ea62d63c3d60308ed4c3ea8ac079dd8499f1e9c4f80c0f905f90a250565b5f61037e61044c565b6104228561041d83876109c4565b6105a4565b6104308361041d83856109c4565b610445826020850101856020880101836105f0565b5050505050565b5f7fb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d61036101e0565b6001600160a01b038116158061049157506001600160a01b0381163b155b156104c8576040517f68155f9a00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b806001600160a01b03166104da6101bd565b6001600160a01b03160361051a576040517f4c3b76bf00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b50565b5f61052661044c565b9050817fb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103805473ffffffffffffffffffffffffffffffffffffffff19166001600160a01b03928316179055604051838216918316907f7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f905f90a35050565b81518111156105ec5781516040517f8a3c1cfb000000000000000000000000000000000000000000000000000000008152610153918391600401918252602082015260400190565b5050565b5b601f811115610611578151835260209283019290910190601f19016105f1565b801561063457815183516001602084900360031b1b5f1901801990921691161783525b505050565b818382375f9101908152919050565b5f815160208301516001600160e01b0319808216935060048310156106775780818460040360031b1b83161693505b505050919050565b634e487b7160e01b5f52601160045260245ffd5b818103818111156106a6576106a661067f565b92915050565b5f81518084528060208401602086015e5f602082860101526020601f19601f83011685010191505092915050565b5f60a082016001600160a01b0388168352602060a0602085015281885180845260c08601915060c08160051b870101935060208a015f5b8281101561073f5760bf1988870301845261072d8683516106ac565b95509284019290840190600101610711565b5050505050828103604084015261075681876106ac565b6001600160e01b0319861660608501529050828103608084015261077a81856106ac565b98975050505050505050565b6001600160a01b038116811461051a575f80fd5b5f602082840312156107aa575f80fd5b813561024481610786565b634e487b7160e01b5f52604160045260245ffd5b604051601f8201601f1916810167ffffffffffffffff811182821017156107f2576107f26107b5565b604052919050565b5f67ffffffffffffffff831115610813576108136107b5565b610826601f8401601f19166020016107c9565b9050828152838383011115610839575f80fd5b8282602083015e5f602084830101529392505050565b5f82601f83011261085e575f80fd5b610244838351602085016107fa565b80516001600160e01b031981168114610884575f80fd5b919050565b5f805f805f60a0868803121561089d575f80fd5b85516108a881610786565b8095505060208087015167ffffffffffffffff808211156108c7575f80fd5b818901915089601f8301126108da575f80fd5b8151818111156108ec576108ec6107b5565b8060051b6108fb8582016107c9565b918252838101850191858101908d841115610914575f80fd5b86860192505b8383101561096157825185811115610930575f80fd5b8601603f81018f13610940575f80fd5b6109518f89830151604084016107fa565b835250918601919086019061091a565b60408d0151909a5095505050508083111561097a575f80fd5b6109868a848b0161084f565b955061099460608a0161086d565b945060808901519250808311156109a9575f80fd5b50506109b78882890161084f565b9150509295509295909350565b808201808211156106a6576106a661067f56fea26469706673582212206bbdd1f4e58e75f66740ed817050741914360f72de4823d8d419e6416f0da95464736f6c63430008190033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {},
+  "inputSourceName": "project/src/universalResolver/UpgradableUniversalResolverProxy.sol",
+  "devdoc": {
+    "errors": {
+      "CallerNotAdmin()": [
+        {
+          "details": "Error selector: `0x06d919f2`"
+        }
+      ],
+      "InvalidImplementation()": [
+        {
+          "details": "Error selector: `0x68155f9a`"
+        }
+      ],
+      "OffchainLookup(address,string[],bytes,bytes4,bytes)": [
+        {
+          "details": "https://eips.ethereum.org/EIPS/eip-3668 Error selector: `0x556f1830`"
+        }
+      ],
+      "OffsetOutOfBoundsError(uint256,uint256)": [
+        {
+          "details": "`offset` was beyond `length`.       Error selector: `0x8a3c1cfb`"
+        }
+      ],
+      "SameImplementation()": [
+        {
+          "details": "Error selector: `0x4c3b76bf`"
+        }
+      ]
+    },
+    "events": {
+      "AdminChanged(address,address)": {
+        "params": {
+          "newAdmin": "The new admin address",
+          "previousAdmin": "The previous admin address"
+        }
+      },
+      "AdminRemoved(address)": {
+        "params": {
+          "admin": "The admin address that was removed"
+        }
+      },
+      "Upgraded(address)": {
+        "params": {
+          "implementation": "The new implementation address"
+        }
+      }
+    },
+    "kind": "dev",
+    "methods": {
+      "constructor": {
+        "params": {
+          "admin_": "The address of the admin",
+          "implementation_": "The address of the implementation"
+        }
+      },
+      "upgradeTo(address)": {
+        "params": {
+          "newImplementation": "Address of the new implementation"
+        }
+      }
+    },
+    "stateVariables": {
+      "_ADMIN_SLOT": {
+        "details": "Storage slot for admin (EIP-1967 compatible)"
+      },
+      "_IMPLEMENTATION_SLOT": {
+        "details": "Storage slot for implementation address (EIP-1967 compatible)"
+      }
+    },
+    "title": "UpgradableUniversalResolverProxy",
+    "version": 1
+  },
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "514600",
+        "executionCost": "infinite",
+        "totalCost": "infinite"
+      },
+      "external": {
+        "": "infinite",
+        "admin()": "2430",
+        "implementation()": "2375",
+        "renounceAdmin()": "infinite",
+        "upgradeTo(address)": "infinite"
+      },
+      "internal": {
+        "_getAdmin()": "2152",
+        "_getImplementation()": "2141",
+        "_setAdmin(address)": "27982",
+        "_setImplementation(address)": "infinite",
+        "_validateImplementation(address)": "infinite"
+      }
+    }
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.25+commit.b61c2a91\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"admin_\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"implementation_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"CallerNotAdmin\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidImplementation\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"},{\"internalType\":\"string[]\",\"name\":\"urls\",\"type\":\"string[]\"},{\"internalType\":\"bytes\",\"name\":\"callData\",\"type\":\"bytes\"},{\"internalType\":\"bytes4\",\"name\":\"callbackFunction\",\"type\":\"bytes4\"},{\"internalType\":\"bytes\",\"name\":\"extraData\",\"type\":\"bytes\"}],\"name\":\"OffchainLookup\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"offset\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"length\",\"type\":\"uint256\"}],\"name\":\"OffsetOutOfBoundsError\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"SameImplementation\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousAdmin\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newAdmin\",\"type\":\"address\"}],\"name\":\"AdminChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"admin\",\"type\":\"address\"}],\"name\":\"AdminRemoved\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"}],\"name\":\"Upgraded\",\"type\":\"event\"},{\"stateMutability\":\"nonpayable\",\"type\":\"fallback\"},{\"inputs\":[],\"name\":\"admin\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"implementation\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceAdmin\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newImplementation\",\"type\":\"address\"}],\"name\":\"upgradeTo\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"errors\":{\"CallerNotAdmin()\":[{\"details\":\"Error selector: `0x06d919f2`\"}],\"InvalidImplementation()\":[{\"details\":\"Error selector: `0x68155f9a`\"}],\"OffchainLookup(address,string[],bytes,bytes4,bytes)\":[{\"details\":\"https://eips.ethereum.org/EIPS/eip-3668 Error selector: `0x556f1830`\"}],\"OffsetOutOfBoundsError(uint256,uint256)\":[{\"details\":\"`offset` was beyond `length`.       Error selector: `0x8a3c1cfb`\"}],\"SameImplementation()\":[{\"details\":\"Error selector: `0x4c3b76bf`\"}]},\"events\":{\"AdminChanged(address,address)\":{\"params\":{\"newAdmin\":\"The new admin address\",\"previousAdmin\":\"The previous admin address\"}},\"AdminRemoved(address)\":{\"params\":{\"admin\":\"The admin address that was removed\"}},\"Upgraded(address)\":{\"params\":{\"implementation\":\"The new implementation address\"}}},\"kind\":\"dev\",\"methods\":{\"constructor\":{\"params\":{\"admin_\":\"The address of the admin\",\"implementation_\":\"The address of the implementation\"}},\"upgradeTo(address)\":{\"params\":{\"newImplementation\":\"Address of the new implementation\"}}},\"stateVariables\":{\"_ADMIN_SLOT\":{\"details\":\"Storage slot for admin (EIP-1967 compatible)\"},\"_IMPLEMENTATION_SLOT\":{\"details\":\"Storage slot for implementation address (EIP-1967 compatible)\"}},\"title\":\"UpgradableUniversalResolverProxy\",\"version\":1},\"userdoc\":{\"events\":{\"AdminChanged(address,address)\":{\"notice\":\"Event emitted when the admin is changed.\"},\"AdminRemoved(address)\":{\"notice\":\"Event emitted when the admin is removed.\"},\"Upgraded(address)\":{\"notice\":\"Event emitted when the implementation is upgraded.\"}},\"kind\":\"user\",\"methods\":{\"admin()\":{\"notice\":\"Returns the current admin address.\"},\"constructor\":{\"notice\":\"Initializes the proxy with an implementation and admin.\"},\"implementation()\":{\"notice\":\"Returns the current implementation address.\"},\"renounceAdmin()\":{\"notice\":\"Allows admin to revoke their admin rights by setting admin to address(0).\"},\"upgradeTo(address)\":{\"notice\":\"Upgrades to a new implementation.\"}},\"notice\":\"A specialized proxy for UniversalResolver that forwards method calls         and properly handles CCIP-Read reverts. Admin can upgrade the implementation.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/src/universalResolver/UpgradableUniversalResolverProxy.sol\":\"UpgradableUniversalResolverProxy\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ens/contracts/=project/lib/ens-contracts/contracts/\",\"project/:@ensdomains/buffer/=project/lib/buffer/\",\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts-upgradeable/=project/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:forge-std/=project/lib/forge-std/src/\",\"project/:~src/=project/src/\",\"project/lib/ens-contracts/:@ensdomains/solsha1/contracts/=project/lib/solsha1/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts-v5/=project/lib/openzeppelin-contracts/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-v4/contracts/\",\"project/lib/ens-contracts/:@unruggable/gateways/=project/lib/unruggable-gateways/contracts/\",\"project/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"project/lib/ens-contracts/contracts/ccipRead/EIP3668.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.0;\\n\\n/// @dev https://eips.ethereum.org/EIPS/eip-3668\\n/// Error selector: `0x556f1830`\\nerror OffchainLookup(\\n    address sender,\\n    string[] urls,\\n    bytes callData,\\n    bytes4 callbackFunction,\\n    bytes extraData\\n);\\n\\n/// @dev Simple library for decoding `OffchainLookup` error data.\\n/// Avoids \\\"stack too deep\\\" issues as the natural decoding consumes 5 variables.\\nlibrary EIP3668 {\\n    /// @dev Struct with members matching `OffchainLookup`.\\n    struct Params {\\n        address sender;\\n        string[] urls;\\n        bytes callData;\\n        bytes4 callbackFunction;\\n        bytes extraData;\\n    }\\n\\n    /// @dev Decode an `OffchainLookup` into a struct from the data after the error selector.\\n    function decode(bytes memory v) internal pure returns (Params memory p) {\\n        (p.sender, p.urls, p.callData, p.callbackFunction, p.extraData) = abi\\n            .decode(v, (address, string[], bytes, bytes4, bytes));\\n    }\\n}\\n\",\"keccak256\":\"0x14619de0f3d9f085e6209767b35c2888b8d2af6d787af535f30db7b51e843bf8\",\"license\":\"MIT\"},\"project/lib/ens-contracts/contracts/utils/BytesUtils.sol\":{\"content\":\"//SPDX-License-Identifier: MIT\\npragma solidity ^0.8.4;\\n\\nimport {LibMem} from \\\"./LibMem/LibMem.sol\\\";\\n\\nlibrary BytesUtils {\\n    /// @dev `offset` was beyond `length`.\\n    ///       Error selector: `0x8a3c1cfb`\\n    error OffsetOutOfBoundsError(uint256 offset, uint256 length);\\n\\n    /// @dev Assert `end` is not beyond the length of `v`.\\n    function _checkBound(bytes memory v, uint256 end) internal pure {\\n        if (end > v.length) {\\n            revert OffsetOutOfBoundsError(end, v.length);\\n        }\\n    }\\n\\n    /// @dev Compute `keccak256(v[off:off+len])`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @param len The number of bytes to hash.\\n    /// @return ret The corresponding hash.\\n    function keccak(\\n        bytes memory v,\\n        uint256 off,\\n        uint256 len\\n    ) internal pure returns (bytes32 ret) {\\n        _checkBound(v, off + len);\\n        assembly (\\\"memory-safe\\\") {\\n            ret := keccak256(add(add(v, 32), off), len)\\n        }\\n    }\\n\\n    /// @dev Lexicographically compare two byte strings.\\n    /// @param vA The first bytes to compare.\\n    /// @param vB The second bytes to compare.\\n    /// @return Positive number if `A > B`, negative number if `A < B`, or zero if `A == B`.\\n    function compare(\\n        bytes memory vA,\\n        bytes memory vB\\n    ) internal pure returns (int256) {\\n        return compare(vA, 0, vA.length, vB, 0, vB.length);\\n    }\\n\\n    /// @dev Lexicographically compare two byte ranges: `A = vA[offA:offA+lenA]` and `B = vB[offB:offB+lenB]`.\\n    /// @param vA The first bytes.\\n    /// @param offA The offset of the first bytes.\\n    /// @param lenA The length of the first bytes.\\n    /// @param vB The second bytes.\\n    /// @param offB The offset of the second bytes.\\n    /// @param lenB The length of the second bytes.\\n    /// @return Positive number if `A > B`, negative number if `A < B`, or zero if `A == B`.\\n    function compare(\\n        bytes memory vA,\\n        uint256 offA,\\n        uint256 lenA,\\n        bytes memory vB,\\n        uint256 offB,\\n        uint256 lenB\\n    ) internal pure returns (int256) {\\n        _checkBound(vA, offA + lenA);\\n        _checkBound(vB, offB + lenB);\\n        unchecked {\\n            uint256 ptrA = LibMem.ptr(vA) + offA;\\n            uint256 ptrB = LibMem.ptr(vB) + offB;\\n            uint256 shortest = lenA < lenB ? lenA : lenB;\\n            for (uint256 i; i < shortest; i += 32) {\\n                uint256 a = LibMem.load(ptrA + i);\\n                uint256 b = LibMem.load(ptrB + i);\\n                if (a != b) {\\n                    uint256 rest = shortest - i;\\n                    if (rest < 32) {\\n                        rest = (32 - rest) << 3; // bits to drop\\n                        a >>= rest; // shift out the\\n                        b >>= rest; // irrelevant bits\\n                    }\\n                    if (a < b) {\\n                        return -1;\\n                    } else if (a > b) {\\n                        return 1;\\n                    }\\n                }\\n            }\\n        }\\n        return int256(lenA) - int256(lenB);\\n    }\\n\\n    /// @dev Determine if `a[offA:offA+len] == b[offB:offB+len]`.\\n    /// @param vA The first bytes.\\n    /// @param offA The offset into the first bytes.\\n    /// @param vB The second bytes.\\n    /// @param offB The offset into the second bytes.\\n    /// @param len The number of bytes to compare.\\n    /// @return True if the byte ranges are equal.\\n    function equals(\\n        bytes memory vA,\\n        uint256 offA,\\n        bytes memory vB,\\n        uint256 offB,\\n        uint256 len\\n    ) internal pure returns (bool) {\\n        return keccak(vA, offA, len) == keccak(vB, offB, len);\\n    }\\n\\n    /// @dev Determine if `a[offA:] == b[offB:]`.\\n    /// @param vA The first bytes.\\n    /// @param offA The offset into the first bytes.\\n    /// @param vB The second bytes.\\n    /// @param offB The offset into the second bytes.\\n    /// @return True if the byte ranges are equal.\\n    function equals(\\n        bytes memory vA,\\n        uint256 offA,\\n        bytes memory vB,\\n        uint256 offB\\n    ) internal pure returns (bool) {\\n        _checkBound(vA, offA);\\n        _checkBound(vB, offB);\\n        unchecked {\\n            return\\n                keccak(vA, offA, vA.length - offA) ==\\n                keccak(vB, offB, vB.length - offB);\\n        }\\n    }\\n\\n    /// @dev Determine if `a[offA:] == b`.\\n    /// @param vA The first bytes.\\n    /// @param offA The offset into the first bytes.\\n    /// @param vB The second bytes.\\n    /// @return True if the byte ranges are equal.\\n    function equals(\\n        bytes memory vA,\\n        uint256 offA,\\n        bytes memory vB\\n    ) internal pure returns (bool) {\\n        return\\n            vA.length == offA + vB.length &&\\n            keccak(vA, offA, vB.length) == keccak256(vB);\\n    }\\n\\n    /// @dev Determine if `a == b`.\\n    /// @param vA The first bytes.\\n    /// @param vB The second bytes.\\n    /// @return True if the bytes are equal.\\n    function equals(\\n        bytes memory vA,\\n        bytes memory vB\\n    ) internal pure returns (bool) {\\n        return vA.length == vB.length && keccak256(vA) == keccak256(vB);\\n    }\\n\\n    /// @dev Returns `uint8(v[off])`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @return The corresponding `uint8`.\\n    function readUint8(\\n        bytes memory v,\\n        uint256 off\\n    ) internal pure returns (uint8) {\\n        _checkBound(v, off + 1);\\n        unchecked {\\n            return uint8(v[off]);\\n        }\\n    }\\n\\n    /// @dev Returns `uint16(bytes2(v[off:off+2]))`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @return ret The corresponding `uint16`.\\n    function readUint16(\\n        bytes memory v,\\n        uint256 off\\n    ) internal pure returns (uint16 ret) {\\n        _checkBound(v, off + 2);\\n        assembly (\\\"memory-safe\\\") {\\n            ret := shr(240, mload(add(add(v, 32), off)))\\n        }\\n    }\\n\\n    /// @dev Returns `uint32(bytes4(v[off:off+4]))`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @return ret The corresponding `uint32`.\\n    function readUint32(\\n        bytes memory v,\\n        uint256 off\\n    ) internal pure returns (uint32 ret) {\\n        _checkBound(v, off + 4);\\n        assembly (\\\"memory-safe\\\") {\\n            ret := shr(224, mload(add(add(v, 32), off)))\\n        }\\n    }\\n\\n    /// @dev Returns `bytes20(v[off:off+20])`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @return ret The corresponding `bytes20`.\\n    function readBytes20(\\n        bytes memory v,\\n        uint256 off\\n    ) internal pure returns (bytes20 ret) {\\n        _checkBound(v, off + 20);\\n        assembly (\\\"memory-safe\\\") {\\n            ret := shl(96, mload(add(add(v, 20), off)))\\n        }\\n    }\\n\\n    /// @dev Returns `bytes32(v[off:off+32])`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @return ret The corresponding `bytes32`.\\n    function readBytes32(\\n        bytes memory v,\\n        uint256 off\\n    ) internal pure returns (bytes32 ret) {\\n        _checkBound(v, off + 32);\\n        assembly (\\\"memory-safe\\\") {\\n            ret := mload(add(add(v, 32), off))\\n        }\\n    }\\n\\n    /// @dev Returns `bytes32(bytesN(v[off:off+len]))`.\\n    ///      Accepts 0-32 bytes or reverts.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @param len The number of bytes.\\n    /// @return ret The corresponding N-bytes left-aligned in a `bytes32`.\\n    function readBytesN(\\n        bytes memory v,\\n        uint256 off,\\n        uint256 len\\n    ) internal pure returns (bytes32 ret) {\\n        assert(len <= 32);\\n        _checkBound(v, off + len);\\n        assembly (\\\"memory-safe\\\") {\\n            let mask := sub(shl(shl(3, sub(32, len)), 1), 1) // <(32-N)x00><NxFF>\\n            ret := and(mload(add(add(v, 32), off)), not(mask))\\n        }\\n    }\\n\\n    /// @dev Copy `vSrc[offSrc:offSrc+len]` to `vDst[offDst:offDst:len]`.\\n    /// @param vSrc The source bytes.\\n    /// @param offSrc The offset into the source to begin the copy.\\n    /// @param vDst The destination bytes.\\n    /// @param offDst The offset into the destination to place the copy.\\n    /// @param len The number of bytes to copy.\\n    function copyBytes(\\n        bytes memory vSrc,\\n        uint256 offSrc,\\n        bytes memory vDst,\\n        uint256 offDst,\\n        uint256 len\\n    ) internal pure {\\n        _checkBound(vSrc, offSrc + len);\\n        _checkBound(vDst, offDst + len);\\n        unchecked {\\n            LibMem.copy(\\n                LibMem.ptr(vDst) + offDst,\\n                LibMem.ptr(vSrc) + offSrc,\\n                len\\n            );\\n        }\\n    }\\n\\n    /// @dev Copies a substring into a new byte string.\\n    /// @param vSrc The byte string to copy from.\\n    /// @param off The offset to start copying at.\\n    /// @param len The number of bytes to copy.\\n    /// @return vDst The copied substring.\\n    function substring(\\n        bytes memory vSrc,\\n        uint256 off,\\n        uint256 len\\n    ) internal pure returns (bytes memory vDst) {\\n        vDst = new bytes(len);\\n        copyBytes(vSrc, off, vDst, 0, len);\\n    }\\n\\n    /// @dev Find the first occurrence of `needle`.\\n    /// @param v The bytes to search.\\n    /// @param off The offset to start searching.\\n    /// @param len The number of bytes to search.\\n    /// @param needle The byte to search for.\\n    /// @return The offset of `needle`, or `type(uint256).max` if not found.\\n    function find(\\n        bytes memory v,\\n        uint256 off,\\n        uint256 len,\\n        bytes1 needle\\n    ) internal pure returns (uint256) {\\n        for (uint256 end = off + len; off < end; off++) {\\n            if (v[off] == needle) {\\n                return off;\\n            }\\n        }\\n        return type(uint256).max;\\n    }\\n\\n    /// @dev Returns `true` if word contains a zero byte.\\n    function hasZeroByte(uint256 word) internal pure returns (bool) {\\n        unchecked {\\n            return\\n                ((~word &\\n                    (word -\\n                        0x0101010101010101010101010101010101010101010101010101010101010101)) &\\n                    0x8080808080808080808080808080808080808080808080808080808080808080) !=\\n                0;\\n        }\\n    }\\n\\n    /// @dev Efficiently check if `v[off:off+len]` contains `needle` byte.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @param len The number of bytes to search.\\n    /// @param needle The byte to search for.\\n    /// @return found `true` if `needle` was found.\\n    function includes(\\n        bytes memory v,\\n        uint256 off,\\n        uint256 len,\\n        bytes1 needle\\n    ) internal pure returns (bool found) {\\n        _checkBound(v, off + len);\\n        unchecked {\\n            uint256 wide = uint8(needle);\\n            wide |= wide << 8;\\n            wide |= wide << 16;\\n            wide |= wide << 32;\\n            wide |= wide << 64;\\n            wide |= wide << 128; // broadcast byte across word\\n            off += LibMem.ptr(v);\\n            len += off;\\n            while (off < len) {\\n                uint256 word = LibMem.load(off) ^ wide; // zero needle byte\\n                off += 32;\\n                if (hasZeroByte(word)) {\\n                    return\\n                        off <= len ||\\n                        hasZeroByte(\\n                            word | ((1 << ((off - len) << 3)) - 1) // recheck overflow by making it nonzero\\n                        );\\n                }\\n            }\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0xcda2585a719e1a8974b5b44357e5d21417e1308b1d1f4d26b244d4ff0bb5b02d\",\"license\":\"MIT\"},\"project/lib/ens-contracts/contracts/utils/LibMem/LibMem.sol\":{\"content\":\"//SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\nlibrary LibMem {\\n    /// @dev Copy `mem[src:src+len]` to `mem[dst:dst+len]`.\\n    ///      Equivalent to `mcopy()`.\\n    ///\\n    /// @param src The source memory offset.\\n    /// @param dst The destination memory offset.\\n    /// @param len The number of bytes to copy.\\n    function copy(uint256 dst, uint256 src, uint256 len) internal pure {\\n        assembly {\\n            // Copy word-length chunks while possible\\n            // prettier-ignore\\n            for {} gt(len, 31) {} {\\n                mstore(dst, mload(src))\\n                dst := add(dst, 32)\\n                src := add(src, 32)\\n                len := sub(len, 32)\\n            }\\n            // Copy remaining bytes\\n            if len {\\n                let mask := sub(shl(shl(3, sub(32, len)), 1), 1)\\n                let wSrc := and(mload(src), not(mask))\\n                let wDst := and(mload(dst), mask)\\n                mstore(dst, or(wSrc, wDst))\\n            }\\n        }\\n    }\\n\\n    /// @dev Convert bytes to a memory offset.\\n    ///\\n    /// @param v The bytes to convert.\\n    ///\\n    /// @return ret The corresponding memory offset.\\n    function ptr(bytes memory v) internal pure returns (uint256 ret) {\\n        assembly {\\n            ret := add(v, 32)\\n        }\\n    }\\n\\n    /// @dev Read word at memory offset.\\n    ///\\n    /// @param src The memory offset.\\n    ///\\n    /// @return ret The read word.\\n    function load(uint256 src) internal pure returns (uint256 ret) {\\n        assembly {\\n            ret := mload(src)\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0x066f29ad3a39392786ff3caf9ba120104ffaa55502f71158631411db46d1ec89\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/StorageSlot.sol)\\n// This file was procedurally generated from scripts/generate/templates/StorageSlot.js.\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Library for reading and writing primitive types to specific storage slots.\\n *\\n * Storage slots are often used to avoid storage conflict when dealing with upgradeable contracts.\\n * This library helps with reading and writing to such slots without the need for inline assembly.\\n *\\n * The functions in this library return Slot structs that contain a `value` member that can be used to read or write.\\n *\\n * Example usage to set ERC-1967 implementation slot:\\n * ```solidity\\n * contract ERC1967 {\\n *     // Define the slot. Alternatively, use the SlotDerivation library to derive the slot.\\n *     bytes32 internal constant _IMPLEMENTATION_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;\\n *\\n *     function _getImplementation() internal view returns (address) {\\n *         return StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value;\\n *     }\\n *\\n *     function _setImplementation(address newImplementation) internal {\\n *         require(newImplementation.code.length > 0);\\n *         StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value = newImplementation;\\n *     }\\n * }\\n * ```\\n *\\n * TIP: Consider using this library along with {SlotDerivation}.\\n */\\nlibrary StorageSlot {\\n    struct AddressSlot {\\n        address value;\\n    }\\n\\n    struct BooleanSlot {\\n        bool value;\\n    }\\n\\n    struct Bytes32Slot {\\n        bytes32 value;\\n    }\\n\\n    struct Uint256Slot {\\n        uint256 value;\\n    }\\n\\n    struct Int256Slot {\\n        int256 value;\\n    }\\n\\n    struct StringSlot {\\n        string value;\\n    }\\n\\n    struct BytesSlot {\\n        bytes value;\\n    }\\n\\n    /**\\n     * @dev Returns an `AddressSlot` with member `value` located at `slot`.\\n     */\\n    function getAddressSlot(bytes32 slot) internal pure returns (AddressSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `BooleanSlot` with member `value` located at `slot`.\\n     */\\n    function getBooleanSlot(bytes32 slot) internal pure returns (BooleanSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `Bytes32Slot` with member `value` located at `slot`.\\n     */\\n    function getBytes32Slot(bytes32 slot) internal pure returns (Bytes32Slot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `Uint256Slot` with member `value` located at `slot`.\\n     */\\n    function getUint256Slot(bytes32 slot) internal pure returns (Uint256Slot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `Int256Slot` with member `value` located at `slot`.\\n     */\\n    function getInt256Slot(bytes32 slot) internal pure returns (Int256Slot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `StringSlot` with member `value` located at `slot`.\\n     */\\n    function getStringSlot(bytes32 slot) internal pure returns (StringSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns an `StringSlot` representation of the string storage pointer `store`.\\n     */\\n    function getStringSlot(string storage store) internal pure returns (StringSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := store.slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `BytesSlot` with member `value` located at `slot`.\\n     */\\n    function getBytesSlot(bytes32 slot) internal pure returns (BytesSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns an `BytesSlot` representation of the bytes storage pointer `store`.\\n     */\\n    function getBytesSlot(bytes storage store) internal pure returns (BytesSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := store.slot\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0xcf74f855663ce2ae00ed8352666b7935f6cddea2932fdf2c3ecd30a9b1cd0e97\",\"license\":\"MIT\"},\"project/src/universalResolver/UpgradableUniversalResolverProxy.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.17;\\n\\nimport {EIP3668, OffchainLookup} from \\\"@ens/contracts/ccipRead/EIP3668.sol\\\";\\nimport {BytesUtils} from \\\"@ens/contracts/utils/BytesUtils.sol\\\";\\nimport {StorageSlot} from \\\"@openzeppelin/contracts/utils/StorageSlot.sol\\\";\\n\\n/// @title UpgradableUniversalResolverProxy\\n/// @notice A specialized proxy for UniversalResolver that forwards method calls\\n///         and properly handles CCIP-Read reverts. Admin can upgrade the implementation.\\ncontract UpgradableUniversalResolverProxy {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Constants\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Storage slot for implementation address (EIP-1967 compatible)\\n    bytes32 private constant _IMPLEMENTATION_SLOT =\\n        0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;\\n\\n    /// @dev Storage slot for admin (EIP-1967 compatible)\\n    bytes32 private constant _ADMIN_SLOT =\\n        0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Events\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Event emitted when the implementation is upgraded.\\n    /// @param implementation The new implementation address\\n    event Upgraded(address indexed implementation);\\n\\n    /// @notice Event emitted when the admin is changed.\\n    /// @param previousAdmin The previous admin address\\n    /// @param newAdmin The new admin address\\n    event AdminChanged(address indexed previousAdmin, address indexed newAdmin);\\n\\n    /// @notice Event emitted when the admin is removed.\\n    /// @param admin The admin address that was removed\\n    event AdminRemoved(address indexed admin);\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Errors\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Error selector: `0x06d919f2`\\n    error CallerNotAdmin();\\n\\n    /// @dev Error selector: `0x68155f9a`\\n    error InvalidImplementation();\\n\\n    /// @dev Error selector: `0x4c3b76bf`\\n    error SameImplementation();\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Modifiers\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Modifier restricting a function to the admin.\\n    modifier onlyAdmin() {\\n        if (msg.sender != _getAdmin()) revert CallerNotAdmin();\\n        _;\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Initializes the proxy with an implementation and admin.\\n    /// @param admin_ The address of the admin\\n    /// @param implementation_ The address of the implementation\\n    constructor(address admin_, address implementation_) {\\n        _validateImplementation(implementation_);\\n        _setImplementation(implementation_);\\n        _setAdmin(admin_);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Fallback function that handles forwarding calls to the implementation\\n    ///         and properly manages CCIP-Read reverts.\\n    fallback() external {\\n        (bool ok, bytes memory v) = _getImplementation().staticcall(msg.data);\\n        if (!ok && bytes4(v) == OffchainLookup.selector) {\\n            EIP3668.Params memory p = EIP3668.decode(BytesUtils.substring(v, 4, v.length - 4));\\n            if (p.sender == _getImplementation()) {\\n                revert OffchainLookup(\\n                    address(this),\\n                    p.urls,\\n                    p.callData,\\n                    p.callbackFunction,\\n                    p.extraData\\n                );\\n            }\\n        }\\n\\n        if (ok) {\\n            assembly {\\n                return(add(v, 32), mload(v))\\n            }\\n        } else {\\n            assembly {\\n                revert(add(v, 32), mload(v))\\n            }\\n        }\\n    }\\n\\n    /// @notice Upgrades to a new implementation.\\n    /// @param newImplementation Address of the new implementation\\n    function upgradeTo(address newImplementation) external onlyAdmin {\\n        _validateImplementation(newImplementation);\\n        _setImplementation(newImplementation);\\n        emit Upgraded(newImplementation);\\n    }\\n\\n    /// @notice Allows admin to revoke their admin rights by setting admin to address(0).\\n    function renounceAdmin() external onlyAdmin {\\n        address admin_ = _getAdmin();\\n        _setAdmin(address(0));\\n        emit AdminRemoved(admin_);\\n    }\\n\\n    /// @notice Returns the current implementation address.\\n    function implementation() external view returns (address) {\\n        return _getImplementation();\\n    }\\n\\n    /// @notice Returns the current admin address.\\n    function admin() external view returns (address) {\\n        return _getAdmin();\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Internal Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Validates if the implementation is valid.\\n    function _validateImplementation(address newImplementation) internal view {\\n        if (newImplementation == address(0) || newImplementation.code.length == 0) {\\n            revert InvalidImplementation();\\n        }\\n        if (_getImplementation() == newImplementation) {\\n            revert SameImplementation();\\n        }\\n    }\\n\\n    /// @dev Gets the current implementation address from storage.\\n    function _getImplementation() internal view returns (address) {\\n        return StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value;\\n    }\\n\\n    /// @dev Gets the current admin address from storage.\\n    function _getAdmin() internal view returns (address) {\\n        return StorageSlot.getAddressSlot(_ADMIN_SLOT).value;\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Private Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Sets the implementation address in storage.\\n    function _setImplementation(address newImplementation) private {\\n        StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value = newImplementation;\\n    }\\n\\n    /// @dev Sets the admin address in storage.\\n    function _setAdmin(address newAdmin) private {\\n        address previousAdmin = _getAdmin();\\n        StorageSlot.getAddressSlot(_ADMIN_SLOT).value = newAdmin;\\n        emit AdminChanged(previousAdmin, newAdmin);\\n    }\\n}\\n\",\"keccak256\":\"0x398f64a3bd60f6929caeae007e0beac6d78f9aa04640dbc9044cd97cb6cd71d5\",\"license\":\"MIT\"}},\"version\":1}",
+  "storageLayout": {
+    "storage": [],
+    "types": null
+  },
+  "userdoc": {
+    "events": {
+      "AdminChanged(address,address)": {
+        "notice": "Event emitted when the admin is changed."
+      },
+      "AdminRemoved(address)": {
+        "notice": "Event emitted when the admin is removed."
+      },
+      "Upgraded(address)": {
+        "notice": "Event emitted when the implementation is upgraded."
+      }
+    },
+    "kind": "user",
+    "methods": {
+      "admin()": {
+        "notice": "Returns the current admin address."
+      },
+      "constructor": {
+        "notice": "Initializes the proxy with an implementation and admin."
+      },
+      "implementation()": {
+        "notice": "Returns the current implementation address."
+      },
+      "renounceAdmin()": {
+        "notice": "Allows admin to revoke their admin rights by setting admin to address(0)."
+      },
+      "upgradeTo(address)": {
+        "notice": "Upgrades to a new implementation."
+      }
+    },
+    "notice": "A specialized proxy for UniversalResolver that forwards method calls         and properly handles CCIP-Read reverts. Admin can upgrade the implementation.",
+    "version": 1
+  },
+  "argsData": "0x000000000000000000000000ffffffffff52d316b7bd028358089bc8066b8f800000000000000000000000003c85752a5d47dd09d677c645ff2a938b38fbfeba",
+  "transaction": {
+    "hash": "0x9e601a10e2248a7571f426c341fae5e2087d705599593cf9c9298a0ab4051e5c",
+    "nonce": "0x1d4e",
+    "origin": "0xffffffffff52d316b7bd028358089bc8066b8f80"
+  },
+  "receipt": {
+    "blockHash": "0x94bed783d05583b3ef4bd863b3648e57ebc40858a7eba3e33fc76799acfb0fe2",
+    "blockNumber": "0x9fa6c5",
+    "transactionIndex": "0x14"
+  }
+}

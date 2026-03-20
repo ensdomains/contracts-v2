@@ -1,13 +1,15 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_MockHCAFactoryBasic } from "generated/abis/MockHCAFactoryBasic.ts";
+import { Artifact_SimpleRegistryMetadata } from 'generated/artifacts/SimpleRegistryMetadata.js';
 
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer } }) => {
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<Abi_MockHCAFactoryBasic>("HCAFactory");
 
     await deploy("SimpleRegistryMetadata", {
       account: deployer,
-      artifact: artifacts.SimpleRegistryMetadata,
+      artifact: Artifact_SimpleRegistryMetadata,
       args: [hcaFactory.address],
     });
   },

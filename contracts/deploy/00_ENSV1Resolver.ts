@@ -1,17 +1,20 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_ENSRegistry } from "generated/abis/ENSRegistry.ts";
+import type { Abi_GatewayProvider } from "generated/abis/GatewayProvider.ts";
+import { Artifact_ENSV1Resolver } from 'generated/artifacts/ENSV1Resolver.js';
 
 export default execute(
-  async ({ get, deploy, namedAccounts: { deployer } }) => {
+  async ({ get, getV1, deploy, namedAccounts: { deployer } }) => {
     const ensRegistryV1 =
-      get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
+      await getV1<Abi_ENSRegistry>("ENSRegistry");
 
-    const batchGatewayProvider = get<(typeof artifacts.GatewayProvider)["abi"]>(
+    const batchGatewayProvider = await getV1<Abi_GatewayProvider>(
       "BatchGatewayProvider",
     );
 
     await deploy("ENSV1Resolver", {
       account: deployer,
-      artifact: artifacts.ENSV1Resolver,
+      artifact: Artifact_ENSV1Resolver,
       args: [ensRegistryV1.address, batchGatewayProvider.address],
     });
   },

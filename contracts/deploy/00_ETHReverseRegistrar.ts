@@ -1,4 +1,5 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import { Artifact_L2ReverseRegistrar } from 'generated/artifacts/lib/ens-contracts/contracts/reverseRegistrar/L2ReverseRegistrar.sol/L2ReverseRegistrar.js';
 
 export default execute(
   async ({ deploy, namedAccounts: { deployer } }) => {
@@ -6,7 +7,7 @@ export default execute(
     // TODO: update to actual reverse registrar when we have it
     await deploy("ETHReverseRegistrar", {
       account: deployer,
-      artifact: artifacts['lib/ens-contracts/contracts/reverseRegistrar/L2ReverseRegistrar.sol/L2ReverseRegistrar'],
+      artifact: Artifact_L2ReverseRegistrar,
       args: [60n],
     });
   },

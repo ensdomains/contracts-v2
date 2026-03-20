@@ -24,7 +24,7 @@
     "rev": "82cc81935de1d1a82e021cf1030d902c5248982b"
   },
   "lib/ens-contracts": {
-    "rev": "6d877523e11f647ed62e8ee159f48f288c9cd9e9"
+    "rev": "d234b3734fb47d218182b231236e9c14ca522d77"
   },
   "lib/forge-std": {
     "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"

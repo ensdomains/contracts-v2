@@ -11,7 +11,9 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "paths": {
-      "@rocketh": ["./rocketh.ts"]
+      "@rocketh": ["./rocketh/deploy.ts"],
+      "generated/*": ["./generated/*"],
+      "tsx": ["./script/tsx.ts"]
     },
     "noEmit": true,
     "allowImportingTsExtensions": true
@@ -28,6 +30,6 @@
     "experimentalSpecifierResolution": "node",
     "files": true
   },
-  "files": ["hardhat.config.ts", "rocketh.ts", "vitest.config.ts"],
+  "files": ["hardhat.config.ts", "vitest.config.ts"],
   "exclude": ["lib"]
 }

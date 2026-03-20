@@ -1,7 +1,10 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
 import { readFile } from "fs/promises";
+import type { Abi_UniversalResolverV2 } from "generated/abis/UniversalResolverV2.ts";
+import { Artifact_UpgradableUniversalResolverProxy } from 'generated/artifacts/UpgradableUniversalResolverProxy.js';
 import { resolve } from "path";
-import type { Abi, Deployment } from "rocketh";
+import type { Deployment } from "rocketh/types";
+import type { Abi } from 'viem';
 
 const __dirname = new URL(".", import.meta.url).pathname;
 const deploymentsPath = resolve(
@@ -14,23 +17,23 @@ export default execute(
     deploy,
     get,
     namedAccounts: { deployer, owner },
-    network,
-    config,
+    tags,
+    name
   }) => {
-    if (network.tags.local) {
+    if (tags.local) {
       const universalResolver = get<
-        (typeof artifacts.UniversalResolverV2)["abi"]
+        Abi_UniversalResolverV2
       >("UniversalResolverV2");
       await deploy("UpgradableUniversalResolverProxy", {
         account: deployer,
-        artifact: artifacts.UpgradableUniversalResolverProxy,
+        artifact: Artifact_UpgradableUniversalResolverProxy,
         args: [owner, universalResolver.address],
       });
       return;
     }
 
     const v1UniversalResolverDeployment = await readFile(
-      resolve(deploymentsPath, `${config.network.name}/UniversalResolver.json`),
+      resolve(deploymentsPath, `${name}/UniversalResolver.json`),
       "utf-8",
     );
     const v1UniversalResolverDeploymentJson = JSON.parse(
@@ -39,7 +42,7 @@ export default execute(
 
     await deploy("UpgradableUniversalResolverProxy", {
       account: deployer,
-      artifact: artifacts.UpgradableUniversalResolverProxy,
+      artifact: Artifact_UpgradableUniversalResolverProxy,
       args: [owner, v1UniversalResolverDeploymentJson.address],
     });
   },

@@ -1,7 +1,10 @@
-import { artifacts } from "@rocketh";
 import { rm } from "node:fs/promises";
 import { anvil as createAnvil } from "prool/instances";
-import { executeDeployScripts, resolveConfig } from "rocketh";
+import type {
+  UnresolvedNetworkSpecificData,
+  UnresolvedUnknownNamedAccounts,
+  UserConfig,
+} from "rocketh/types";
 import {
   type Account,
   type Address,
@@ -25,6 +28,39 @@ import {
 import { mainnet } from "viem/chains";
 import { mnemonicToAccount } from "viem/accounts";
 
+import { Artifact_GatewayProvider } from "generated/artifacts/GatewayProvider.js";
+import { Artifact_DefaultReverseRegistrar } from "generated/artifacts/DefaultReverseRegistrar.js";
+import { Artifact_DefaultReverseResolver } from "generated/artifacts/DefaultReverseResolver.js";
+import { Artifact_L2ReverseRegistrar } from "generated/artifacts/lib/ens-contracts/contracts/reverseRegistrar/L2ReverseRegistrar.sol/L2ReverseRegistrar.js";
+import { Artifact_Root } from "generated/artifacts/Root.js";
+import { Artifact_ENSRegistry } from "generated/artifacts/ENSRegistry.js";
+import { Artifact_BaseRegistrarImplementation } from "generated/artifacts/BaseRegistrarImplementation.js";
+import { Artifact_ReverseRegistrar } from "generated/artifacts/ReverseRegistrar.js";
+import { Artifact_NameWrapper } from "generated/artifacts/NameWrapper.js";
+import { Artifact_RegistrarSecurityController } from "generated/artifacts/RegistrarSecurityController.js";
+import { Artifact_PublicResolver } from "generated/artifacts/PublicResolver.js";
+import { Artifact_UniversalResolver } from "generated/artifacts/UniversalResolver.js";
+import { Artifact_SimpleRegistryMetadata } from "generated/artifacts/SimpleRegistryMetadata.js";
+import { Artifact_MockHCAFactoryBasic } from "generated/artifacts/MockHCAFactoryBasic.js";
+import { Artifact_VerifiableFactory } from "generated/artifacts/VerifiableFactory.js";
+import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
+import { Artifact_ETHRegistrar } from "generated/artifacts/ETHRegistrar.js";
+import { Artifact_StandardRentPriceOracle } from "generated/artifacts/StandardRentPriceOracle.js";
+import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
+import { Artifact_PermissionedResolver } from "generated/artifacts/PermissionedResolver.js";
+import { Artifact_UserRegistry } from "generated/artifacts/UserRegistry.js";
+import { Artifact_WrapperRegistry } from "generated/artifacts/WrapperRegistry.js";
+import { Artifact_UnlockedMigrationController } from "generated/artifacts/UnlockedMigrationController.js";
+import { Artifact_LockedMigrationController } from "generated/artifacts/LockedMigrationController.js";
+import { Artifact_UniversalResolverV2 } from "generated/artifacts/UniversalResolverV2.js";
+import { Artifact_DNSTLDResolver } from "generated/artifacts/DNSTLDResolver.js";
+import { Artifact_DNSTXTResolver } from "generated/artifacts/DNSTXTResolver.js";
+import { Artifact_DNSAliasResolver } from "generated/artifacts/DNSAliasResolver.js";
+import { Artifact_ENSV1Resolver } from "generated/artifacts/ENSV1Resolver.js";
+import { Artifact_ENSV2Resolver } from "generated/artifacts/ENSV2Resolver.js";
+import { Artifact_UUPSProxy } from "generated/artifacts/UUPSProxy.js";
+
+import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
 import {
   computeVerifiableProxyAddress,
   deployVerifiableProxy,
@@ -189,208 +225,216 @@ export async function setupDevnet({
       });
     }
     process.env.BATCH_GATEWAY_URLS = JSON.stringify([LOCAL_BATCH_GATEWAY_URL]);
-    const rocketh = await executeDeployScripts(
-      resolveConfig({
-        network: {
-          nodeUrl: `http://${hostPort}`,
-          name: deploymentName,
-          tags: [
-            "v2",
-            "local",
-            "use_root", // deploy root contracts
-            "allow_unsafe", // state hacks
-            "legacy", // legacy registry
-          ],
-          fork: false,
-          scripts: ["lib/ens-contracts/deploy", "deploy"],
-          pollingInterval: 0.001, // cannot be zero
-        },
+    const rocketh = await loadAndExecuteDeploymentsFromFilesWithConfig(
+      {
+        environment: deploymentName,
         askBeforeProceeding: false,
         saveDeployments,
-        accounts: Object.fromEntries(accounts.map((x) => [x.name, x.address])),
-      }),
+        defaultPollingInterval: 0.001, // cannot be zero
+      },
+      {
+        accounts: Object.fromEntries(
+          accounts.map((x) => [x.name, x.address]),
+        ) as never,
+        chains: {
+          [mainnet.id]: {
+            rpcUrl: `http://${hostPort}`,
+            pollingInterval: 0.001,
+            tags: [
+              "v2",
+              "local",
+              "use_root", // deploy root contracts
+              "allow_unsafe", // state hacks
+              "legacy", // legacy registry
+              "tenderly", // allow ens-contracts deploy scripts to run full setup on chain id 1
+            ],
+          },
+        },
+        environments: {
+          [deploymentName]: {
+            chain: mainnet.id,
+            scripts: ["lib/ens-contracts/deploy", "deploy"],
+          },
+        },
+      } satisfies UserConfig<
+        UnresolvedUnknownNamedAccounts,
+        UnresolvedNetworkSpecificData
+      >,
     );
     console.log("Deployed contracts");
 
     // note: TypeScript is too slow when the following is generalized
     const shared = {
       BatchGatewayProvider: getContract({
-        abi: artifacts.GatewayProvider.abi,
-        address: rocketh.get("BatchGatewayProvider").address,
+        abi: Artifact_GatewayProvider.abi,
+        address: rocketh.deployments["BatchGatewayProvider"].address,
         client,
       }),
       DefaultReverseRegistrar: getContract({
-        abi: artifacts.DefaultReverseRegistrar.abi,
-        address: rocketh.get("DefaultReverseRegistrar").address,
+        abi: Artifact_DefaultReverseRegistrar.abi,
+        address: rocketh.deployments["DefaultReverseRegistrar"].address,
         client,
       }),
       DefaultReverseResolver: getContract({
-        abi: artifacts.DefaultReverseResolver.abi,
-        address: rocketh.get("DefaultReverseResolver").address,
+        abi: Artifact_DefaultReverseResolver.abi,
+        address: rocketh.deployments["DefaultReverseResolver"].address,
         client,
       }),
       ETHReverseRegistrar: getContract({
         // TODO: update to actual reverse registrar when we have it
-        abi: artifacts[
-          "lib/ens-contracts/contracts/reverseRegistrar/L2ReverseRegistrar.sol/L2ReverseRegistrar"
-        ].abi,
-        address: rocketh.get("ETHReverseRegistrar").address,
-        client,
-      }),
-      ETHReverseResolver: getContract({
-        abi: artifacts.ETHReverseResolver.abi,
-        address: rocketh.get("ETHReverseResolver").address,
+        abi: Artifact_L2ReverseRegistrar.abi,
+        address: rocketh.deployments["ETHReverseRegistrar"].address,
         client,
       }),
     };
 
     const v1 = {
       Root: getContract({
-        abi: artifacts.Root.abi,
-        address: rocketh.get("Root").address,
+        abi: Artifact_Root.abi,
+        address: rocketh.deployments["Root"].address,
         client,
       }),
       ENSRegistry: getContract({
-        abi: artifacts.ENSRegistry.abi,
-        address: rocketh.get("ENSRegistry").address,
+        abi: Artifact_ENSRegistry.abi,
+        address: rocketh.deployments["ENSRegistry"].address,
         client,
       }),
       BaseRegistrar: getContract({
-        abi: artifacts.BaseRegistrarImplementation.abi,
-        address: rocketh.get("BaseRegistrarImplementation").address,
+        abi: Artifact_BaseRegistrarImplementation.abi,
+        address: rocketh.deployments["BaseRegistrarImplementation"].address,
         client,
       }),
       ReverseRegistrar: getContract({
-        abi: artifacts.ReverseRegistrar.abi,
-        address: rocketh.get("ReverseRegistrar").address,
+        abi: Artifact_ReverseRegistrar.abi,
+        address: rocketh.deployments["ReverseRegistrar"].address,
         client,
       }),
       NameWrapper: getContract({
-        abi: artifacts.NameWrapper.abi,
-        address: rocketh.get("NameWrapper").address,
+        abi: Artifact_NameWrapper.abi,
+        address: rocketh.deployments["NameWrapper"].address,
         client,
       }),
       RegistrarSecurityController: getContract({
-        abi: artifacts.RegistrarSecurityController.abi,
-        address: rocketh.get("RegistrarSecurityController").address,
+        abi: Artifact_RegistrarSecurityController.abi,
+        address: rocketh.deployments["RegistrarSecurityController"].address,
         client,
       }),
       // resolvers
       PublicResolver: getContract({
-        abi: artifacts.PublicResolver.abi,
-        address: rocketh.get("PublicResolver").address,
+        abi: Artifact_PublicResolver.abi,
+        address: rocketh.deployments["PublicResolver"].address,
         client,
       }),
       UniversalResolver: getContract({
-        abi: artifacts.UniversalResolver.abi,
-        address: rocketh.get("UniversalResolver").address,
+        abi: Artifact_UniversalResolver.abi,
+        address: rocketh.deployments["UniversalResolver"].address,
         client,
       }),
     };
 
     const v2 = {
       SimpleRegistryMetadata: getContract({
-        abi: artifacts.SimpleRegistryMetadata.abi,
-        address: rocketh.get("SimpleRegistryMetadata").address,
+        abi: Artifact_SimpleRegistryMetadata.abi,
+        address: rocketh.deployments["SimpleRegistryMetadata"].address,
         client,
       }),
       HCAFactory: getContract({
-        abi: artifacts.MockHCAFactoryBasic.abi,
-        address: rocketh.get("HCAFactory").address,
+        abi: Artifact_MockHCAFactoryBasic.abi,
+        address: rocketh.deployments["HCAFactory"].address,
         client,
       }),
       VerifiableFactory: getContract({
-        abi: artifacts.VerifiableFactory.abi,
-        address: rocketh.get("VerifiableFactory").address,
+        abi: Artifact_VerifiableFactory.abi,
+        address: rocketh.deployments["VerifiableFactory"].address,
         client,
       }),
       RootRegistry: getContract({
-        abi: artifacts.PermissionedRegistry.abi,
-        address: rocketh.get("RootRegistry").address,
+        abi: Artifact_PermissionedRegistry.abi,
+        address: rocketh.deployments["RootRegistry"].address,
         client,
       }),
       ETHRegistry: getContract({
-        abi: artifacts.PermissionedRegistry.abi,
-        address: rocketh.get("ETHRegistry").address,
+        abi: Artifact_PermissionedRegistry.abi,
+        address: rocketh.deployments["ETHRegistry"].address,
         client,
       }),
       // eth registrar
       ETHRegistrar: getContract({
-        abi: artifacts.ETHRegistrar.abi,
-        address: rocketh.get("ETHRegistrar").address,
+        abi: Artifact_ETHRegistrar.abi,
+        address: rocketh.deployments["ETHRegistrar"].address,
         client,
       }),
       StandardRentPriceOracle: getContract({
-        abi: artifacts.StandardRentPriceOracle.abi,
-        address: rocketh.get("StandardRentPriceOracle").address,
+        abi: Artifact_StandardRentPriceOracle.abi,
+        address: rocketh.deployments["StandardRentPriceOracle"].address,
         client,
       }),
       MockUSDC: getContract({
-        abi: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
-        address: rocketh.get("MockUSDC").address,
+        abi: Artifact_MockERC20.abi,
+        address: rocketh.deployments["MockUSDC"].address,
         client,
       }),
       MockDAI: getContract({
-        abi: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
-        address: rocketh.get("MockDAI").address,
+        abi: Artifact_MockERC20.abi,
+        address: rocketh.deployments["MockDAI"].address,
         client,
       }),
       // VerifiableFactory implementations
       PermissionedResolverImpl: getContract({
-        abi: artifacts.PermissionedResolver.abi,
-        address: rocketh.get("PermissionedResolverImpl").address,
+        abi: Artifact_PermissionedResolver.abi,
+        address: rocketh.deployments["PermissionedResolverImpl"].address,
         client,
       }),
       UserRegistryImpl: getContract({
-        abi: artifacts.UserRegistry.abi,
-        address: rocketh.get("UserRegistryImpl").address,
+        abi: Artifact_UserRegistry.abi,
+        address: rocketh.deployments["UserRegistryImpl"].address,
         client,
       }),
       WrapperRegistryImpl: getContract({
-        abi: artifacts.WrapperRegistry.abi,
-        address: rocketh.get("WrapperRegistryImpl").address,
+        abi: Artifact_WrapperRegistry.abi,
+        address: rocketh.deployments["WrapperRegistryImpl"].address,
         client,
       }),
       // migration
       UnlockedMigrationController: getContract({
-        abi: artifacts.UnlockedMigrationController.abi,
-        address: rocketh.get("UnlockedMigrationController").address,
+        abi: Artifact_UnlockedMigrationController.abi,
+        address: rocketh.deployments["UnlockedMigrationController"].address,
         client,
       }),
       LockedMigrationController: getContract({
-        abi: artifacts.LockedMigrationController.abi,
-        address: rocketh.get("LockedMigrationController").address,
+        abi: Artifact_LockedMigrationController.abi,
+        address: rocketh.deployments["LockedMigrationController"].address,
         client,
       }),
       // resolvers
       UniversalResolver: getContract({
-        abi: artifacts.UniversalResolverV2.abi,
-        address: rocketh.get("UniversalResolverV2").address,
+        abi: Artifact_UniversalResolverV2.abi,
+        address: rocketh.deployments["UniversalResolverV2"].address,
         client,
       }),
       DNSTLDResolver: getContract({
-        abi: artifacts.DNSTLDResolver.abi,
-        address: rocketh.get("DNSTLDResolver").address,
+        abi: Artifact_DNSTLDResolver.abi,
+        address: rocketh.deployments["DNSTLDResolver"].address,
         client,
       }),
       DNSTXTResolver: getContract({
-        abi: artifacts.DNSTXTResolver.abi,
-        address: rocketh.get("DNSTXTResolver").address,
+        abi: Artifact_DNSTXTResolver.abi,
+        address: rocketh.deployments["DNSTXTResolver"].address,
         client,
       }),
       DNSAliasResolver: getContract({
-        abi: artifacts.DNSAliasResolver.abi,
-        address: rocketh.get("DNSAliasResolver").address,
+        abi: Artifact_DNSAliasResolver.abi,
+        address: rocketh.deployments["DNSAliasResolver"].address,
         client,
       }),
       ENSV1Resolver: getContract({
-        abi: artifacts.ENSV1Resolver.abi,
-        address: rocketh.get("ENSV1Resolver").address,
+        abi: Artifact_ENSV1Resolver.abi,
+        address: rocketh.deployments["ENSV1Resolver"].address,
         client,
       }),
       ENSV2Resolver: getContract({
-        abi: artifacts.ENSV2Resolver.abi,
-        address: rocketh.get("ENSV2Resolver").address,
+        abi: Artifact_ENSV2Resolver.abi,
+        address: rocketh.deployments["ENSV2Resolver"].address,
         client,
       }),
     };
@@ -520,7 +564,7 @@ export async function setupDevnet({
     }) {
       return computeVerifiableProxyAddress({
         factoryAddress: v2.VerifiableFactory.address,
-        bytecode: artifacts["UUPSProxy"].bytecode,
+        bytecode: Artifact_UUPSProxy.bytecode,
         ...args,
       });
     }
@@ -585,7 +629,7 @@ export async function setupDevnet({
       roles?: bigint;
     }) {
       const walletClient = createClient(account);
-      const { abi, bytecode } = artifacts.PermissionedRegistry;
+      const { abi, bytecode } = Artifact_PermissionedRegistry;
       const hash = await walletClient.deployContract({
         abi,
         bytecode,

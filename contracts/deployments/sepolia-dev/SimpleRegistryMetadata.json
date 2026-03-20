@@ -1,0 +1,880 @@
+{
+  "address": "0xf821ffd29058c4fb8e4d43b1a2a050af2c1f1ee0",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "contract IHCAFactoryBasic",
+          "name": "hcaFactory",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "EACCannotGrantRoles",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "EACCannotRevokeRoles",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EACInvalidAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        }
+      ],
+      "name": "EACInvalidRoleBitmap",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "role",
+          "type": "uint256"
+        }
+      ],
+      "name": "EACMaxAssignees",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "role",
+          "type": "uint256"
+        }
+      ],
+      "name": "EACMinAssignees",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EACRootResourceNotAllowed",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "EACUnauthorizedAccountRoles",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "oldRoleBitmap",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newRoleBitmap",
+          "type": "uint256"
+        }
+      ],
+      "name": "EACRolesChanged",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "HCA_FACTORY",
+      "outputs": [
+        {
+          "internalType": "contract IHCAFactoryBasic",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ROOT_RESOURCE",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        }
+      ],
+      "name": "getAssigneeCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "counts",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "mask",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "grantRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "grantRootRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        }
+      ],
+      "name": "hasAssignees",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "hasRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "hasRootRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "revokeRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "revokeRootRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        }
+      ],
+      "name": "roleCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "roles",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "uri",
+          "type": "string"
+        }
+      ],
+      "name": "setTokenUri",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes4",
+          "name": "interfaceId",
+          "type": "bytes4"
+        }
+      ],
+      "name": "supportsInterface",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        }
+      ],
+      "name": "tokenUri",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "contractName": "SimpleRegistryMetadata",
+  "sourceName": "src/registry/SimpleRegistryMetadata.sol",
+  "bytecode": "0x60a060405234801561000f575f80fd5b506040516114a43803806114a483398101604081905261002e916103c6565b6001600160a01b03811660805261006f5f7f1111111111111111111111111111111111111111111111111111111111111111610068610076565b6001610084565b5050610428565b5f61007f61017f565b905090565b5f835f0361009357505f610177565b61009c8461021c565b6001600160a01b0383166100c35760405163761fe2c960e11b815260040160405180910390fd5b5f858152602081815260408083206001600160a01b0387168452909152902054848117808214610171575f878152602081815260408083206001600160a01b038916845290915290208190558119861661011f88826001610268565b60408051848152602081018490526001600160a01b038816918a917f0d35bf721a39b614de00ca5038e1deb0cb0c69a278645e83405a7226cf80ba3c910160405180910390a360019350505050610177565b5f925050505b949350505050565b6080515f906001600160a01b031661019657503390565b60805160405163110ac5cb60e21b81523360048201525f916001600160a01b03169063442b172c90602401602060405180830381865afa1580156101dc573d5f803e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061020091906103c6565b90506001600160a01b038116610217573391505090565b919050565b7feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee81161561026557604051630153d96960e51b8152600481018290526024015b60405180910390fd5b50565b5f61027283610398565b90508115610308575f848152600160205260409020546102b89082161980195f8051602061148483398151915291909101165f8051602061146483398151915216151590565b156102e057604051631f22ca6960e31b8152600481018590526024810184905260440161025c565b5f84815260016020526040812080548592906102fd9084906103fc565b909155506103929050565b5f84815260016020526040902054610347901982161980195f8051602061148483398151915291909101165f8051602061146483398151915216151590565b1561036f57604051631f80c19b60e01b8152600481018590526024810184905260440161025c565b5f848152600160205260408120805485929061038c908490610415565b90915550505b50505050565b5f6103a28261021c565b50600181901b17600281901b1790565b6001600160a01b0381168114610265575f80fd5b5f602082840312156103d6575f80fd5b81516103e1816103b2565b9392505050565b634e487b7160e01b5f52601160045260245ffd5b8082018082111561040f5761040f6103e8565b92915050565b8181038181111561040f5761040f6103e8565b60805161101661044e5f395f818161019b015281816109d00152610a3101526110165ff3fe608060405234801561000f575f80fd5b50600436106100f0575f3560e01c80633634f911116100935780637c300586116100635780637c3005861461028f578063ce156e82146102a2578063d3bf89b1146102b5578063dfa70d8b14610316575f80fd5b80633634f911146101d557806357f7789e146101fd5780635adf472414610212578063781ef8db14610245575f80fd5b80631675f455116100ce5780631675f455146101425780631c3fc3eb146101625780632f27fa2414610177578063319c22bb14610196575f80fd5b806301ffc9a7146100f4578063072d5d771461011c57806311b8e00a1461012f575b5f80fd5b610107610102366004610cba565b610329565b60405190151581526020015b60405180910390f35b61010761012a366004610cfc565b61036c565b61010761013d366004610d2a565b610397565b610155610150366004610d4a565b6103ae565b6040516101139190610d61565b6101695f81565b604051908152602001610113565b610169610185366004610d4a565b5f9081526001602052604090205490565b6101bd7f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b039091168152602001610113565b6101e86101e3366004610d2a565b61044d565b60408051928352602083019190915201610113565b61021061020b366004610d96565b610470565b005b610169610220366004610cfc565b5f918252602082815260408084206001600160a01b0393909316845291905290205490565b610107610253366004610cfc565b6001600160a01b03165f9081527fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5602052604090205481161490565b61010761029d366004610e0b565b6104a5565b6101076102b0366004610cfc565b6104ea565b6101076102c3366004610e0b565b5f928352602083815260408085206001600160a01b03939093168552918152818420547fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb590915292205490911781161490565b610107610324366004610e0b565b61050c565b5f6001600160e01b031982167f1675f455000000000000000000000000000000000000000000000000000000001480610366575061036682610547565b92915050565b5f8083610381828261037c6105ad565b6105bb565b61038e5f868660016106ae565b95945050505050565b5f806103a3848461044d565b501515949350505050565b5f8181526002602052604090208054606091906103ca90610e41565b80601f01602080910402602001604051908101604052809291908181526020018280546103f690610e41565b80156104415780601f1061041857610100808354040283529160200191610441565b820191905f5260205f20905b81548152906001019060200180831161042457829003601f168201915b50505050509050919050565b5f80610458836107c2565b5f948552600160205260409094205484169492505050565b5f600161048582826104806105ad565b6107dc565b5f85815260026020526040902061049d848683610ed1565b505050505050565b5f83836104b5828261037c6105ad565b856104d357604051631850848b60e31b815260040160405180910390fd5b6104e086868660016106ae565b9695505050505050565b5f80836104ff82826104fa6105ad565b61087d565b61038e5f86866001610965565b5f838361051c82826104fa6105ad565b8561053a57604051631850848b60e31b815260040160405180910390fd5b6104e08686866001610965565b5f6001600160e01b031982167f8f452d6200000000000000000000000000000000000000000000000000000000148061036657507f01ffc9a7000000000000000000000000000000000000000000000000000000006001600160e01b0319831614610366565b5f6105b66109cd565b905090565b5f61064d84836001600160a01b03165f8181527fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5602090815260408083205494835282825280832093835292905220547f1111111111111111111111111111111100000000000000000000000000000000911790811660809190911c6f11111111111111111111111111111111161790565b905080198316156106a8576040517fd1a3b35500000000000000000000000000000000000000000000000000000000815260048101859052602481018490526001600160a01b03831660448201526064015b60405180910390fd5b50505050565b5f835f036106bd57505f6107ba565b6106c684610abe565b6001600160a01b038316610706576040517fec3fc59200000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b5f858152602081815260408083206001600160a01b03871684529091529020548481178082146107b4575f878152602081815260408083206001600160a01b038916845290915290208190558119861661076288826001610b1e565b60408051848152602081018490526001600160a01b038816918a917f0d35bf721a39b614de00ca5038e1deb0cb0c69a278645e83405a7226cf80ba3c910160405180910390a3600193505050506107ba565b5f925050505b949350505050565b5f6107cc82610abe565b50600181901b17600281901b1790565b5f838152602081815260408083206001600160a01b03851684528252808320547fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5909252909120541782168214610878576040517f4b27a13300000000000000000000000000000000000000000000000000000000815260048101849052602481018390526001600160a01b038216604482015260640161069f565b505050565b5f61090f84836001600160a01b03165f8181527fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5602090815260408083205494835282825280832093835292905220547f1111111111111111111111111111111100000000000000000000000000000000911790811660809190911c6f11111111111111111111111111111111161790565b905080198316156106a8576040517fa604e31800000000000000000000000000000000000000000000000000000000815260048101859052602481018490526001600160a01b038316604482015260640161069f565b5f61096f84610abe565b5f858152602081815260408083206001600160a01b0387168452909152902054841981168082146107b4575f878152602081815260408083206001600160a01b03891684529091528120829055868316906107629089908390610b1e565b5f7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316610a0157503390565b6040517f442b172c0000000000000000000000000000000000000000000000000000000081523360048201525f907f00000000000000000000000000000000000000000000000000000000000000006001600160a01b03169063442b172c90602401602060405180830381865afa158015610a7e573d5f803e3d5ffd5b505050506040513d601f19601f82011682018060405250810190610aa29190610f8b565b90506001600160a01b038116610ab9573391505090565b919050565b7feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee811615610b1b576040517f2a7b2d200000000000000000000000000000000000000000000000000000000081526004810182905260240161069f565b50565b5f610b28836107c2565b90508115610bf1575f848152600160205260409020547f888888888888888888888888888888888888888888888888888888888888888890821680197feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeef01161615610bc9576040517ff9165348000000000000000000000000000000000000000000000000000000008152600481018590526024810184905260440161069f565b5f8481526001602052604081208054859290610be6908490610fba565b909155506106a89050565b5f848152600160205260409020547f88888888888888888888888888888888888888888888888888888888888888889019821680197feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeef01161615610c8b576040517f1f80c19b000000000000000000000000000000000000000000000000000000008152600481018590526024810184905260440161069f565b5f8481526001602052604081208054859290610ca8908490610fcd565b909155505050505050565b5050505050565b5f60208284031215610cca575f80fd5b81356001600160e01b031981168114610ce1575f80fd5b9392505050565b6001600160a01b0381168114610b1b575f80fd5b5f8060408385031215610d0d575f80fd5b823591506020830135610d1f81610ce8565b809150509250929050565b5f8060408385031215610d3b575f80fd5b50508035926020909101359150565b5f60208284031215610d5a575f80fd5b5035919050565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f83011684010191505092915050565b5f805f60408486031215610da8575f80fd5b83359250602084013567ffffffffffffffff80821115610dc6575f80fd5b818601915086601f830112610dd9575f80fd5b813581811115610de7575f80fd5b876020828501011115610df8575f80fd5b6020830194508093505050509250925092565b5f805f60608486031215610e1d575f80fd5b83359250602084013591506040840135610e3681610ce8565b809150509250925092565b600181811c90821680610e5557607f821691505b602082108103610e7357634e487b7160e01b5f52602260045260245ffd5b50919050565b634e487b7160e01b5f52604160045260245ffd5b601f82111561087857805f5260205f20601f840160051c81016020851015610eb25750805b601f840160051c820191505b81811015610cb3575f8155600101610ebe565b67ffffffffffffffff831115610ee957610ee9610e79565b610efd83610ef78354610e41565b83610e8d565b5f601f841160018114610f2e575f8515610f175750838201355b5f19600387901b1c1916600186901b178355610cb3565b5f83815260208120601f198716915b82811015610f5d5786850135825560209485019460019092019101610f3d565b5086821015610f79575f1960f88860031b161c19848701351681555b505060018560011b0183555050505050565b5f60208284031215610f9b575f80fd5b8151610ce181610ce8565b634e487b7160e01b5f52601160045260245ffd5b8082018082111561036657610366610fa6565b8181038181111561036657610366610fa656fea26469706673582212206a58a4af535c271ac236036342ba0203e8af48a2bbb3bf534a4f672a10815be664736f6c634300081900338888888888888888888888888888888888888888888888888888888888888888eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeef",
+  "deployedBytecode": "0x608060405234801561000f575f80fd5b50600436106100f0575f3560e01c80633634f911116100935780637c300586116100635780637c3005861461028f578063ce156e82146102a2578063d3bf89b1146102b5578063dfa70d8b14610316575f80fd5b80633634f911146101d557806357f7789e146101fd5780635adf472414610212578063781ef8db14610245575f80fd5b80631675f455116100ce5780631675f455146101425780631c3fc3eb146101625780632f27fa2414610177578063319c22bb14610196575f80fd5b806301ffc9a7146100f4578063072d5d771461011c57806311b8e00a1461012f575b5f80fd5b610107610102366004610cba565b610329565b60405190151581526020015b60405180910390f35b61010761012a366004610cfc565b61036c565b61010761013d366004610d2a565b610397565b610155610150366004610d4a565b6103ae565b6040516101139190610d61565b6101695f81565b604051908152602001610113565b610169610185366004610d4a565b5f9081526001602052604090205490565b6101bd7f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b039091168152602001610113565b6101e86101e3366004610d2a565b61044d565b60408051928352602083019190915201610113565b61021061020b366004610d96565b610470565b005b610169610220366004610cfc565b5f918252602082815260408084206001600160a01b0393909316845291905290205490565b610107610253366004610cfc565b6001600160a01b03165f9081527fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5602052604090205481161490565b61010761029d366004610e0b565b6104a5565b6101076102b0366004610cfc565b6104ea565b6101076102c3366004610e0b565b5f928352602083815260408085206001600160a01b03939093168552918152818420547fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb590915292205490911781161490565b610107610324366004610e0b565b61050c565b5f6001600160e01b031982167f1675f455000000000000000000000000000000000000000000000000000000001480610366575061036682610547565b92915050565b5f8083610381828261037c6105ad565b6105bb565b61038e5f868660016106ae565b95945050505050565b5f806103a3848461044d565b501515949350505050565b5f8181526002602052604090208054606091906103ca90610e41565b80601f01602080910402602001604051908101604052809291908181526020018280546103f690610e41565b80156104415780601f1061041857610100808354040283529160200191610441565b820191905f5260205f20905b81548152906001019060200180831161042457829003601f168201915b50505050509050919050565b5f80610458836107c2565b5f948552600160205260409094205484169492505050565b5f600161048582826104806105ad565b6107dc565b5f85815260026020526040902061049d848683610ed1565b505050505050565b5f83836104b5828261037c6105ad565b856104d357604051631850848b60e31b815260040160405180910390fd5b6104e086868660016106ae565b9695505050505050565b5f80836104ff82826104fa6105ad565b61087d565b61038e5f86866001610965565b5f838361051c82826104fa6105ad565b8561053a57604051631850848b60e31b815260040160405180910390fd5b6104e08686866001610965565b5f6001600160e01b031982167f8f452d6200000000000000000000000000000000000000000000000000000000148061036657507f01ffc9a7000000000000000000000000000000000000000000000000000000006001600160e01b0319831614610366565b5f6105b66109cd565b905090565b5f61064d84836001600160a01b03165f8181527fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5602090815260408083205494835282825280832093835292905220547f1111111111111111111111111111111100000000000000000000000000000000911790811660809190911c6f11111111111111111111111111111111161790565b905080198316156106a8576040517fd1a3b35500000000000000000000000000000000000000000000000000000000815260048101859052602481018490526001600160a01b03831660448201526064015b60405180910390fd5b50505050565b5f835f036106bd57505f6107ba565b6106c684610abe565b6001600160a01b038316610706576040517fec3fc59200000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b5f858152602081815260408083206001600160a01b03871684529091529020548481178082146107b4575f878152602081815260408083206001600160a01b038916845290915290208190558119861661076288826001610b1e565b60408051848152602081018490526001600160a01b038816918a917f0d35bf721a39b614de00ca5038e1deb0cb0c69a278645e83405a7226cf80ba3c910160405180910390a3600193505050506107ba565b5f925050505b949350505050565b5f6107cc82610abe565b50600181901b17600281901b1790565b5f838152602081815260408083206001600160a01b03851684528252808320547fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5909252909120541782168214610878576040517f4b27a13300000000000000000000000000000000000000000000000000000000815260048101849052602481018390526001600160a01b038216604482015260640161069f565b505050565b5f61090f84836001600160a01b03165f8181527fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5602090815260408083205494835282825280832093835292905220547f1111111111111111111111111111111100000000000000000000000000000000911790811660809190911c6f11111111111111111111111111111111161790565b905080198316156106a8576040517fa604e31800000000000000000000000000000000000000000000000000000000815260048101859052602481018490526001600160a01b038316604482015260640161069f565b5f61096f84610abe565b5f858152602081815260408083206001600160a01b0387168452909152902054841981168082146107b4575f878152602081815260408083206001600160a01b03891684529091528120829055868316906107629089908390610b1e565b5f7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316610a0157503390565b6040517f442b172c0000000000000000000000000000000000000000000000000000000081523360048201525f907f00000000000000000000000000000000000000000000000000000000000000006001600160a01b03169063442b172c90602401602060405180830381865afa158015610a7e573d5f803e3d5ffd5b505050506040513d601f19601f82011682018060405250810190610aa29190610f8b565b90506001600160a01b038116610ab9573391505090565b919050565b7feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee811615610b1b576040517f2a7b2d200000000000000000000000000000000000000000000000000000000081526004810182905260240161069f565b50565b5f610b28836107c2565b90508115610bf1575f848152600160205260409020547f888888888888888888888888888888888888888888888888888888888888888890821680197feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeef01161615610bc9576040517ff9165348000000000000000000000000000000000000000000000000000000008152600481018590526024810184905260440161069f565b5f8481526001602052604081208054859290610be6908490610fba565b909155506106a89050565b5f848152600160205260409020547f88888888888888888888888888888888888888888888888888888888888888889019821680197feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeef01161615610c8b576040517f1f80c19b000000000000000000000000000000000000000000000000000000008152600481018590526024810184905260440161069f565b5f8481526001602052604081208054859290610ca8908490610fcd565b909155505050505050565b5050505050565b5f60208284031215610cca575f80fd5b81356001600160e01b031981168114610ce1575f80fd5b9392505050565b6001600160a01b0381168114610b1b575f80fd5b5f8060408385031215610d0d575f80fd5b823591506020830135610d1f81610ce8565b809150509250929050565b5f8060408385031215610d3b575f80fd5b50508035926020909101359150565b5f60208284031215610d5a575f80fd5b5035919050565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f83011684010191505092915050565b5f805f60408486031215610da8575f80fd5b83359250602084013567ffffffffffffffff80821115610dc6575f80fd5b818601915086601f830112610dd9575f80fd5b813581811115610de7575f80fd5b876020828501011115610df8575f80fd5b6020830194508093505050509250925092565b5f805f60608486031215610e1d575f80fd5b83359250602084013591506040840135610e3681610ce8565b809150509250925092565b600181811c90821680610e5557607f821691505b602082108103610e7357634e487b7160e01b5f52602260045260245ffd5b50919050565b634e487b7160e01b5f52604160045260245ffd5b601f82111561087857805f5260205f20601f840160051c81016020851015610eb25750805b601f840160051c820191505b81811015610cb3575f8155600101610ebe565b67ffffffffffffffff831115610ee957610ee9610e79565b610efd83610ef78354610e41565b83610e8d565b5f601f841160018114610f2e575f8515610f175750838201355b5f19600387901b1c1916600186901b178355610cb3565b5f83815260208120601f198716915b82811015610f5d5786850135825560209485019460019092019101610f3d565b5086821015610f79575f1960f88860031b161c19848701351681555b505060018560011b0183555050505050565b5f60208284031215610f9b575f80fd5b8151610ce181610ce8565b634e487b7160e01b5f52601160045260245ffd5b8082018082111561036657610366610fa6565b8181038181111561036657610366610fa656fea26469706673582212206a58a4af535c271ac236036342ba0203e8af48a2bbb3bf534a4f672a10815be664736f6c63430008190033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {
+    "69592": [
+      {
+        "length": 32,
+        "start": 411
+      },
+      {
+        "length": 32,
+        "start": 2512
+      },
+      {
+        "length": 32,
+        "start": 2609
+      }
+    ]
+  },
+  "inputSourceName": "project/src/registry/SimpleRegistryMetadata.sol",
+  "devdoc": {
+    "errors": {
+      "EACCannotGrantRoles(uint256,uint256,address)": [
+        {
+          "details": "Error selector: `0xd1a3b355`"
+        }
+      ],
+      "EACCannotRevokeRoles(uint256,uint256,address)": [
+        {
+          "details": "Error selector: `0xa604e318`"
+        }
+      ],
+      "EACInvalidAccount()": [
+        {
+          "details": "Error selector: `0xec3fc592`"
+        }
+      ],
+      "EACInvalidRoleBitmap(uint256)": [
+        {
+          "details": "Error selector: `0x2a7b2d20`"
+        }
+      ],
+      "EACMaxAssignees(uint256,uint256)": [
+        {
+          "details": "Error selector: `0xf9165348`"
+        }
+      ],
+      "EACMinAssignees(uint256,uint256)": [
+        {
+          "details": "Error selector: `0x1f80c19b`"
+        }
+      ],
+      "EACRootResourceNotAllowed()": [
+        {
+          "details": "Error selector: `0xc2842458`"
+        }
+      ],
+      "EACUnauthorizedAccountRoles(uint256,uint256,address)": [
+        {
+          "details": "Error selector: `0x4b27a133`"
+        }
+      ]
+    },
+    "events": {
+      "EACRolesChanged(uint256,address,uint256,uint256)": {
+        "params": {
+          "account": "The account that the roles were changed for.",
+          "newRoleBitmap": "The new roles for the account.",
+          "oldRoleBitmap": "The old roles for the account.",
+          "resource": "The resource that the roles were changed within."
+        }
+      }
+    },
+    "kind": "dev",
+    "methods": {
+      "constructor": {
+        "params": {
+          "hcaFactory": "The HCA factory."
+        }
+      },
+      "getAssigneeCount(uint256,uint256)": {
+        "params": {
+          "resource": "The resource to check.",
+          "roleBitmap": "The roles bitmap to check."
+        },
+        "returns": {
+          "counts": "The number of assignees for each of the roles in the given role bitmap, expressed as a packed array of 4-bit ints.",
+          "mask": "The mask for the given role bitmap."
+        }
+      },
+      "grantRoles(uint256,uint256,address)": {
+        "details": "The caller must have all the necessary admin roles for the roles being granted.      Cannot be used with ROOT_RESOURCE directly, use grantRootRoles instead.",
+        "params": {
+          "account": "The account to grant roles to.",
+          "resource": "The resource to grant roles within.",
+          "roleBitmap": "The roles bitmap to grant."
+        },
+        "returns": {
+          "_0": "`true` if the roles were granted, `false` otherwise."
+        }
+      },
+      "grantRootRoles(uint256,address)": {
+        "details": "The caller must have all the necessary admin roles for the roles being granted.",
+        "params": {
+          "account": "The account to grant roles to.",
+          "roleBitmap": "The roles bitmap to grant."
+        },
+        "returns": {
+          "_0": "`true` if the roles were granted, `false` otherwise."
+        }
+      },
+      "hasAssignees(uint256,uint256)": {
+        "params": {
+          "resource": "The resource to check.",
+          "roleBitmap": "The roles bitmap to check."
+        },
+        "returns": {
+          "_0": "`true` if any of the roles in the given role bitmap has assignees, `false` otherwise."
+        }
+      },
+      "hasRoles(uint256,uint256,address)": {
+        "params": {
+          "account": "The account to check.",
+          "resource": "The resource to check.",
+          "roleBitmap": "The roles bitmap to check."
+        },
+        "returns": {
+          "_0": "`true` if `account` has been granted all the given roles in the given resource or the `ROOT_RESOURCE`, `false` otherwise."
+        }
+      },
+      "hasRootRoles(uint256,address)": {
+        "params": {
+          "account": "The account to check.",
+          "roleBitmap": "The roles bitmap to check."
+        },
+        "returns": {
+          "_0": "`true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`, `false` otherwise."
+        }
+      },
+      "revokeRoles(uint256,uint256,address)": {
+        "details": "The caller must have all the necessary admin roles for the roles being revoked.      Cannot be used with ROOT_RESOURCE directly, use revokeRootRoles instead.",
+        "params": {
+          "account": "The account to revoke roles from.",
+          "resource": "The resource to revoke roles within.",
+          "roleBitmap": "The roles bitmap to revoke."
+        },
+        "returns": {
+          "_0": "`true` if the roles were revoked, `false` otherwise."
+        }
+      },
+      "revokeRootRoles(uint256,address)": {
+        "details": "The caller must have all the necessary admin roles for the roles being revoked.",
+        "params": {
+          "account": "The account to revoke roles from.",
+          "roleBitmap": "The roles bitmap to revoke."
+        },
+        "returns": {
+          "_0": "`true` if the roles were revoked, `false` otherwise."
+        }
+      },
+      "roleCount(uint256)": {
+        "params": {
+          "resource": "The resource to get the role count for."
+        },
+        "returns": {
+          "_0": "count The role count bitmap for the resource."
+        }
+      },
+      "roles(uint256,address)": {
+        "params": {
+          "account": "The account to get the roles for.",
+          "resource": "The resource to get the roles for."
+        },
+        "returns": {
+          "_0": "The roles bitmap for the account in the resource."
+        }
+      },
+      "setTokenUri(uint256,string)": {
+        "details": "Restricted to accounts holding the metadata update role on the root resource.",
+        "params": {
+          "tokenId": "The token identifier whose URI is being set.",
+          "uri": "The new metadata URI for the token."
+        }
+      },
+      "supportsInterface(bytes4)": {
+        "details": "Returns true if this contract implements the interface defined by `interfaceId`. See the corresponding https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[ERC section] to learn more about how these ids are created. This function call must use less than 30 000 gas."
+      },
+      "tokenUri(uint256)": {
+        "params": {
+          "tokenId": "The token identifier to look up."
+        },
+        "returns": {
+          "_0": "The stored URI for `tokenId`, or an empty string if none has been set."
+        }
+      }
+    },
+    "stateVariables": {
+      "_ROLE_UPDATE_METADATA": {
+        "details": "Role bit allowing an account to update individual token URIs."
+      },
+      "_ROLE_UPDATE_METADATA_ADMIN": {
+        "details": "Admin-tier counterpart of the metadata update role, shifted into the upper half of the bitmap."
+      },
+      "_tokenUris": {
+        "details": "Per-token mapping from token ID to its metadata URI."
+      }
+    },
+    "version": 1
+  },
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "823600",
+        "executionCost": "infinite",
+        "totalCost": "infinite"
+      },
+      "external": {
+        "HCA_FACTORY()": "infinite",
+        "ROOT_RESOURCE()": "238",
+        "getAssigneeCount(uint256,uint256)": "2659",
+        "grantRoles(uint256,uint256,address)": "infinite",
+        "grantRootRoles(uint256,address)": "infinite",
+        "hasAssignees(uint256,uint256)": "2732",
+        "hasRoles(uint256,uint256,address)": "4892",
+        "hasRootRoles(uint256,address)": "2652",
+        "revokeRoles(uint256,uint256,address)": "infinite",
+        "revokeRootRoles(uint256,address)": "infinite",
+        "roleCount(uint256)": "2502",
+        "roles(uint256,address)": "2701",
+        "setTokenUri(uint256,string)": "infinite",
+        "supportsInterface(bytes4)": "infinite",
+        "tokenUri(uint256)": "infinite"
+      }
+    }
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.25+commit.b61c2a91\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"contract IHCAFactoryBasic\",\"name\":\"hcaFactory\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"EACCannotGrantRoles\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"EACCannotRevokeRoles\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"EACInvalidAccount\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"}],\"name\":\"EACInvalidRoleBitmap\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"role\",\"type\":\"uint256\"}],\"name\":\"EACMaxAssignees\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"role\",\"type\":\"uint256\"}],\"name\":\"EACMinAssignees\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"EACRootResourceNotAllowed\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"EACUnauthorizedAccountRoles\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"oldRoleBitmap\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"newRoleBitmap\",\"type\":\"uint256\"}],\"name\":\"EACRolesChanged\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"HCA_FACTORY\",\"outputs\":[{\"internalType\":\"contract IHCAFactoryBasic\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"ROOT_RESOURCE\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"}],\"name\":\"getAssigneeCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"counts\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"mask\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"grantRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"grantRootRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"}],\"name\":\"hasAssignees\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"hasRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"hasRootRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"revokeRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"revokeRootRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"}],\"name\":\"roleCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"roles\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"tokenId\",\"type\":\"uint256\"},{\"internalType\":\"string\",\"name\":\"uri\",\"type\":\"string\"}],\"name\":\"setTokenUri\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes4\",\"name\":\"interfaceId\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"tokenId\",\"type\":\"uint256\"}],\"name\":\"tokenUri\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"errors\":{\"EACCannotGrantRoles(uint256,uint256,address)\":[{\"details\":\"Error selector: `0xd1a3b355`\"}],\"EACCannotRevokeRoles(uint256,uint256,address)\":[{\"details\":\"Error selector: `0xa604e318`\"}],\"EACInvalidAccount()\":[{\"details\":\"Error selector: `0xec3fc592`\"}],\"EACInvalidRoleBitmap(uint256)\":[{\"details\":\"Error selector: `0x2a7b2d20`\"}],\"EACMaxAssignees(uint256,uint256)\":[{\"details\":\"Error selector: `0xf9165348`\"}],\"EACMinAssignees(uint256,uint256)\":[{\"details\":\"Error selector: `0x1f80c19b`\"}],\"EACRootResourceNotAllowed()\":[{\"details\":\"Error selector: `0xc2842458`\"}],\"EACUnauthorizedAccountRoles(uint256,uint256,address)\":[{\"details\":\"Error selector: `0x4b27a133`\"}]},\"events\":{\"EACRolesChanged(uint256,address,uint256,uint256)\":{\"params\":{\"account\":\"The account that the roles were changed for.\",\"newRoleBitmap\":\"The new roles for the account.\",\"oldRoleBitmap\":\"The old roles for the account.\",\"resource\":\"The resource that the roles were changed within.\"}}},\"kind\":\"dev\",\"methods\":{\"constructor\":{\"params\":{\"hcaFactory\":\"The HCA factory.\"}},\"getAssigneeCount(uint256,uint256)\":{\"params\":{\"resource\":\"The resource to check.\",\"roleBitmap\":\"The roles bitmap to check.\"},\"returns\":{\"counts\":\"The number of assignees for each of the roles in the given role bitmap, expressed as a packed array of 4-bit ints.\",\"mask\":\"The mask for the given role bitmap.\"}},\"grantRoles(uint256,uint256,address)\":{\"details\":\"The caller must have all the necessary admin roles for the roles being granted.      Cannot be used with ROOT_RESOURCE directly, use grantRootRoles instead.\",\"params\":{\"account\":\"The account to grant roles to.\",\"resource\":\"The resource to grant roles within.\",\"roleBitmap\":\"The roles bitmap to grant.\"},\"returns\":{\"_0\":\"`true` if the roles were granted, `false` otherwise.\"}},\"grantRootRoles(uint256,address)\":{\"details\":\"The caller must have all the necessary admin roles for the roles being granted.\",\"params\":{\"account\":\"The account to grant roles to.\",\"roleBitmap\":\"The roles bitmap to grant.\"},\"returns\":{\"_0\":\"`true` if the roles were granted, `false` otherwise.\"}},\"hasAssignees(uint256,uint256)\":{\"params\":{\"resource\":\"The resource to check.\",\"roleBitmap\":\"The roles bitmap to check.\"},\"returns\":{\"_0\":\"`true` if any of the roles in the given role bitmap has assignees, `false` otherwise.\"}},\"hasRoles(uint256,uint256,address)\":{\"params\":{\"account\":\"The account to check.\",\"resource\":\"The resource to check.\",\"roleBitmap\":\"The roles bitmap to check.\"},\"returns\":{\"_0\":\"`true` if `account` has been granted all the given roles in the given resource or the `ROOT_RESOURCE`, `false` otherwise.\"}},\"hasRootRoles(uint256,address)\":{\"params\":{\"account\":\"The account to check.\",\"roleBitmap\":\"The roles bitmap to check.\"},\"returns\":{\"_0\":\"`true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`, `false` otherwise.\"}},\"revokeRoles(uint256,uint256,address)\":{\"details\":\"The caller must have all the necessary admin roles for the roles being revoked.      Cannot be used with ROOT_RESOURCE directly, use revokeRootRoles instead.\",\"params\":{\"account\":\"The account to revoke roles from.\",\"resource\":\"The resource to revoke roles within.\",\"roleBitmap\":\"The roles bitmap to revoke.\"},\"returns\":{\"_0\":\"`true` if the roles were revoked, `false` otherwise.\"}},\"revokeRootRoles(uint256,address)\":{\"details\":\"The caller must have all the necessary admin roles for the roles being revoked.\",\"params\":{\"account\":\"The account to revoke roles from.\",\"roleBitmap\":\"The roles bitmap to revoke.\"},\"returns\":{\"_0\":\"`true` if the roles were revoked, `false` otherwise.\"}},\"roleCount(uint256)\":{\"params\":{\"resource\":\"The resource to get the role count for.\"},\"returns\":{\"_0\":\"count The role count bitmap for the resource.\"}},\"roles(uint256,address)\":{\"params\":{\"account\":\"The account to get the roles for.\",\"resource\":\"The resource to get the roles for.\"},\"returns\":{\"_0\":\"The roles bitmap for the account in the resource.\"}},\"setTokenUri(uint256,string)\":{\"details\":\"Restricted to accounts holding the metadata update role on the root resource.\",\"params\":{\"tokenId\":\"The token identifier whose URI is being set.\",\"uri\":\"The new metadata URI for the token.\"}},\"supportsInterface(bytes4)\":{\"details\":\"Returns true if this contract implements the interface defined by `interfaceId`. See the corresponding https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[ERC section] to learn more about how these ids are created. This function call must use less than 30 000 gas.\"},\"tokenUri(uint256)\":{\"params\":{\"tokenId\":\"The token identifier to look up.\"},\"returns\":{\"_0\":\"The stored URI for `tokenId`, or an empty string if none has been set.\"}}},\"stateVariables\":{\"_ROLE_UPDATE_METADATA\":{\"details\":\"Role bit allowing an account to update individual token URIs.\"},\"_ROLE_UPDATE_METADATA_ADMIN\":{\"details\":\"Admin-tier counterpart of the metadata update role, shifted into the upper half of the bitmap.\"},\"_tokenUris\":{\"details\":\"Per-token mapping from token ID to its metadata URI.\"}},\"version\":1},\"userdoc\":{\"events\":{\"EACRolesChanged(uint256,address,uint256,uint256)\":{\"notice\":\"Emitted when roles are changed.\"}},\"kind\":\"user\",\"methods\":{\"HCA_FACTORY()\":{\"notice\":\"The HCA factory contract\"},\"ROOT_RESOURCE()\":{\"notice\":\"The `ROOT_RESOURCE`.\"},\"constructor\":{\"notice\":\"Initializes SimpleRegistryMetadata, granting all roles to the caller.\"},\"getAssigneeCount(uint256,uint256)\":{\"notice\":\"Returns the number of assignees for the roles in the given role bitmap.\"},\"grantRoles(uint256,uint256,address)\":{\"notice\":\"Grants all roles in the given role bitmap to `account`.\"},\"grantRootRoles(uint256,address)\":{\"notice\":\"Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE.\"},\"hasAssignees(uint256,uint256)\":{\"notice\":\"Checks if any of the roles in the given role bitmap has assignees.\"},\"hasRoles(uint256,uint256,address)\":{\"notice\":\"Checks if the given account has been granted all the given roles in the given resource or the `ROOT_RESOURCE`.\"},\"hasRootRoles(uint256,address)\":{\"notice\":\"Checks if the given account has been granted all the given roles in the `ROOT_RESOURCE`.\"},\"revokeRoles(uint256,uint256,address)\":{\"notice\":\"Revokes all roles in the given role bitmap from `account`.\"},\"revokeRootRoles(uint256,address)\":{\"notice\":\"Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE.\"},\"roleCount(uint256)\":{\"notice\":\"Returns the role count bitmap for a resource.\"},\"roles(uint256,address)\":{\"notice\":\"Returns the roles bitmap for an account in a resource.\"},\"setTokenUri(uint256,string)\":{\"notice\":\"Sets the metadata URI for a specific token.\"},\"tokenUri(uint256)\":{\"notice\":\"Returns the metadata URI for the given token.\"}},\"notice\":\"`IRegistryMetadata` implementation that stores a distinct URI per token ID. URIs can be         set by accounts holding the metadata update role in the root resource.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/src/registry/SimpleRegistryMetadata.sol\":\"SimpleRegistryMetadata\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ens/contracts/=project/lib/ens-contracts/contracts/\",\"project/:@ensdomains/buffer/=project/lib/buffer/\",\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts-upgradeable/=project/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:forge-std/=project/lib/forge-std/src/\",\"project/:~src/=project/src/\",\"project/lib/ens-contracts/:@ensdomains/solsha1/contracts/=project/lib/solsha1/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts-v5/=project/lib/openzeppelin-contracts/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-v4/contracts/\",\"project/lib/ens-contracts/:@unruggable/gateways/=project/lib/unruggable-gateways/contracts/\",\"project/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"project/lib/openzeppelin-contracts/contracts/utils/Context.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.1) (utils/Context.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Provides information about the current execution context, including the\\n * sender of the transaction and its data. While these are generally available\\n * via msg.sender and msg.data, they should not be accessed in such a direct\\n * manner, since when dealing with meta-transactions the account sending and\\n * paying for execution may not be the actual sender (as far as an application\\n * is concerned).\\n *\\n * This contract is only required for intermediate, library-like contracts.\\n */\\nabstract contract Context {\\n    function _msgSender() internal view virtual returns (address) {\\n        return msg.sender;\\n    }\\n\\n    function _msgData() internal view virtual returns (bytes calldata) {\\n        return msg.data;\\n    }\\n\\n    function _contextSuffixLength() internal view virtual returns (uint256) {\\n        return 0;\\n    }\\n}\\n\",\"keccak256\":\"0x493033a8d1b176a037b2cc6a04dad01a5c157722049bbecf632ca876224dd4b2\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/ERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/ERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {IERC165} from \\\"./IERC165.sol\\\";\\n\\n/**\\n * @dev Implementation of the {IERC165} interface.\\n *\\n * Contracts that want to implement ERC-165 should inherit from this contract and override {supportsInterface} to check\\n * for the additional interface id that will be supported. For example:\\n *\\n * ```solidity\\n * function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n *     return interfaceId == type(MyInterface).interfaceId || super.supportsInterface(interfaceId);\\n * }\\n * ```\\n */\\nabstract contract ERC165 is IERC165 {\\n    /**\\n     * @dev See {IERC165-supportsInterface}.\\n     */\\n    function supportsInterface(bytes4 interfaceId) public view virtual returns (bool) {\\n        return interfaceId == type(IERC165).interfaceId;\\n    }\\n}\\n\",\"keccak256\":\"0xddce8e17e3d3f9ed818b4f4c4478a8262aab8b11ed322f1bf5ed705bb4bd97fa\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/IERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/IERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Interface of the ERC-165 standard, as defined in the\\n * https://eips.ethereum.org/EIPS/eip-165[ERC].\\n *\\n * Implementers can declare support of contract interfaces, which can then be\\n * queried by others ({ERC165Checker}).\\n *\\n * For an implementation, see {ERC165}.\\n */\\ninterface IERC165 {\\n    /**\\n     * @dev Returns true if this contract implements the interface defined by\\n     * `interfaceId`. See the corresponding\\n     * https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[ERC section]\\n     * to learn more about how these ids are created.\\n     *\\n     * This function call must use less than 30 000 gas.\\n     */\\n    function supportsInterface(bytes4 interfaceId) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x79796192ec90263f21b464d5bc90b777a525971d3de8232be80d9c4f9fb353b8\",\"license\":\"MIT\"},\"project/src/access-control/EnhancedAccessControl.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (access/AccessControl.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {ERC165} from \\\"@openzeppelin/contracts/utils/introspection/ERC165.sol\\\";\\nimport {IERC165} from \\\"@openzeppelin/contracts/utils/introspection/IERC165.sol\\\";\\n\\nimport {HCAContext} from \\\"../hca/HCAContext.sol\\\";\\n\\nimport {IEnhancedAccessControl} from \\\"./interfaces/IEnhancedAccessControl.sol\\\";\\nimport {EACBaseRolesLib} from \\\"./libraries/EACBaseRolesLib.sol\\\";\\n\\n/// @dev Resource-scoped access control system with bitmap-packed roles.\\n///\\n/// Subclasses define custom roles as constants and assign them to accounts within specific\\n/// resources. A resource is an arbitrary uint256 identifier whose meaning is determined by\\n/// the subclass (e.g. a token ID, a name hash, etc.).\\n///\\n/// Features:\\n/// - Resource-based roles: each resource has independent role assignments.\\n/// - ROOT_RESOURCE fallback: roles granted in `ROOT_RESOURCE` (0x0) automatically apply\\n///   to all resources. Role checks OR the account's root roles with their resource-specific\\n///   roles, so holding a role in either scope satisfies the check.\\n/// - Admin roles: each regular role has a corresponding admin role. Holding an admin role\\n///   grants authority to grant and revoke both the regular role and the admin role itself.\\n/// - Assignee counting: per-role assignee counts are tracked, with a maximum of 15 per role.\\n/// - Callbacks: subclasses can override `_onRolesGranted` and `_onRolesRevoked` to react\\n///   to role changes (e.g. regenerating tokens, updating metadata).\\n/// - Separate root operations: `grantRoles`/`revokeRoles` reject `ROOT_RESOURCE` directly;\\n///   use `grantRootRoles`/`revokeRootRoles` for root-level assignments.\\n///\\n/// Bitmap layout (uint256, 64 nybbles):\\n///\\n///   255         128 127            0\\n///   \\u250c\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u252c\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2510\\n///   \\u2502 Admin Roles  \\u2502 Regular Roles \\u2502\\n///   \\u2514\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2534\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2518\\n///   63           32 31             0\\n///\\n/// Each role occupies one nybble (4 bits). A regular role at nybble index N occupies bits\\n/// N*4 to N*4+3, and its admin counterpart occupies the same relative position in the upper\\n/// half at bits N*4+128 to N*4+131.\\n///\\n/// Defining roles: `uint256 constant MY_ROLE = 1 << (N * 4)` where N is the nybble index\\n/// (0-31), and the admin role as `uint256 constant MY_ROLE_ADMIN = MY_ROLE << 128`.\\n///\\n/// The same nybble-per-role layout is used for assignee counting: each nybble in the count\\n/// bitmap tracks the number of accounts holding that role within a resource (4 bits = max 15).\\n///\\nabstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessControl {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Constants\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice The `ROOT_RESOURCE`.\\n    uint256 public constant ROOT_RESOURCE = 0;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Storage\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev user roles within a resource stored as a bitmap.\\n    ///      Resource -> User -> RoleBitmap\\n    mapping(uint256 resource => mapping(address account => uint256 roleBitmap)) private _roles;\\n\\n    /// @dev The number of assignees for a given role in a given resource.\\n    ///\\n    /// Each role's count is represented by 4 bits, in little-endian order.\\n    /// This results in max. 64 roles, and 15 assignees per role.\\n    ///\\n    mapping(uint256 resource => uint256 roleCount) private _roleCount;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Modifiers\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Modifier that checks that sender has the admin roles for all the given roles.\\n    modifier canGrantRoles(uint256 resource, uint256 roleBitmap) {\\n        _checkCanGrantRoles(resource, roleBitmap, _msgSender());\\n        _;\\n    }\\n\\n    /// @dev Modifier that checks that sender has the admin roles for all the given roles and can revoke them.\\n    modifier canRevokeRoles(uint256 resource, uint256 roleBitmap) {\\n        _checkCanRevokeRoles(resource, roleBitmap, _msgSender());\\n        _;\\n    }\\n\\n    /// @dev Modifier that checks that sender has all the given roles within the given resource or the ROOT_RESOURCE.\\n    modifier onlyRoles(uint256 resource, uint256 roleBitmap) {\\n        _checkRoles(resource, roleBitmap, _msgSender());\\n        _;\\n    }\\n\\n    /// @dev Modifier that checks that sender has all the given roles within the `ROOT_RESOURCE`.\\n    modifier onlyRootRoles(uint256 roleBitmap) {\\n        _checkRoles(ROOT_RESOURCE, roleBitmap, _msgSender());\\n        _;\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @inheritdoc IERC165\\n    function supportsInterface(\\n        bytes4 interfaceId\\n    ) public view virtual override(ERC165, IERC165) returns (bool) {\\n        return\\n            interfaceId == type(IEnhancedAccessControl).interfaceId ||\\n            super.supportsInterface(interfaceId);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    /// @dev The caller must have all the necessary admin roles for the roles being granted.\\n    ///      Cannot be used with ROOT_RESOURCE directly, use grantRootRoles instead.\\n    function grantRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account\\n    ) public virtual canGrantRoles(resource, roleBitmap) returns (bool) {\\n        if (resource == ROOT_RESOURCE) {\\n            revert EACRootResourceNotAllowed();\\n        }\\n        return _grantRoles(resource, roleBitmap, account, true);\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    /// @dev The caller must have all the necessary admin roles for the roles being granted.\\n    function grantRootRoles(\\n        uint256 roleBitmap,\\n        address account\\n    ) public virtual canGrantRoles(ROOT_RESOURCE, roleBitmap) returns (bool) {\\n        return _grantRoles(ROOT_RESOURCE, roleBitmap, account, true);\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    /// @dev The caller must have all the necessary admin roles for the roles being revoked.\\n    ///      Cannot be used with ROOT_RESOURCE directly, use revokeRootRoles instead.\\n    function revokeRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account\\n    ) public virtual canRevokeRoles(resource, roleBitmap) returns (bool) {\\n        if (resource == ROOT_RESOURCE) {\\n            revert EACRootResourceNotAllowed();\\n        }\\n        return _revokeRoles(resource, roleBitmap, account, true);\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    /// @dev The caller must have all the necessary admin roles for the roles being revoked.\\n    function revokeRootRoles(\\n        uint256 roleBitmap,\\n        address account\\n    ) public virtual canRevokeRoles(ROOT_RESOURCE, roleBitmap) returns (bool) {\\n        return _revokeRoles(ROOT_RESOURCE, roleBitmap, account, true);\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function roles(uint256 resource, address account) public view virtual returns (uint256) {\\n        return _roles[resource][account];\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function roleCount(uint256 resource) public view virtual returns (uint256) {\\n        return _roleCount[resource];\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function hasRootRoles(uint256 roleBitmap, address account) public view virtual returns (bool) {\\n        return _roles[ROOT_RESOURCE][account] & roleBitmap == roleBitmap;\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function hasRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account\\n    ) public view virtual returns (bool) {\\n        return\\n            (_roles[ROOT_RESOURCE][account] | _roles[resource][account]) & roleBitmap == roleBitmap;\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function hasAssignees(uint256 resource, uint256 roleBitmap) public view virtual returns (bool) {\\n        (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);\\n        return counts != 0;\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function getAssigneeCount(\\n        uint256 resource,\\n        uint256 roleBitmap\\n    ) public view virtual returns (uint256 counts, uint256 mask) {\\n        mask = _roleBitmapToMask(roleBitmap);\\n        counts = _roleCount[resource] & mask;\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Internal Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Transfers all roles from `srcAccount` to `dstAccount` within the same resource.\\n    ///\\n    /// This function first revokes all roles from the source account, then grants them to the\\n    /// destination account. This prevents exceeding max assignees limits during transfer.\\n    ///\\n    /// Does nothing if there are no roles to transfer.\\n    ///\\n    /// @param resource The resource to transfer roles within.\\n    /// @param srcAccount The account to transfer roles from.\\n    /// @param dstAccount The account to transfer roles to.\\n    /// @param executeCallbacks Whether to execute the callbacks.\\n    function _transferRoles(\\n        uint256 resource,\\n        address srcAccount,\\n        address dstAccount,\\n        bool executeCallbacks\\n    ) internal virtual {\\n        uint256 srcRoles = _roles[resource][srcAccount];\\n        if (srcRoles != 0) {\\n            // First revoke roles from source account to free up assignee slots\\n            _revokeRoles(resource, srcRoles, srcAccount, executeCallbacks);\\n            // Then grant roles to destination account\\n            _grantRoles(resource, srcRoles, dstAccount, executeCallbacks);\\n        }\\n    }\\n\\n    /// @dev Grants multiple roles to `account`.\\n    /// @param resource The resource to grant roles within.\\n    /// @param roleBitmap The roles bitmap to grant.\\n    /// @param account The account to grant roles to.\\n    /// @param executeCallbacks Whether to execute the callbacks.\\n    /// @return `true` if the roles were granted, `false` otherwise.\\n    function _grantRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account,\\n        bool executeCallbacks\\n    ) internal virtual returns (bool) {\\n        if (roleBitmap == 0) {\\n            return false;\\n        }\\n        _checkRoleBitmap(roleBitmap);\\n        if (account == address(0)) {\\n            revert EACInvalidAccount();\\n        }\\n        uint256 currentRoles = _roles[resource][account];\\n        uint256 updatedRoles = currentRoles | roleBitmap;\\n\\n        if (currentRoles != updatedRoles) {\\n            _roles[resource][account] = updatedRoles;\\n            uint256 newlyAddedRoles = roleBitmap & ~currentRoles;\\n            _updateRoleCounts(resource, newlyAddedRoles, true);\\n            if (executeCallbacks) {\\n                _onRolesGranted(resource, account, currentRoles, updatedRoles, roleBitmap);\\n            }\\n            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);\\n            return true;\\n        } else {\\n            return false;\\n        }\\n    }\\n\\n    /// @dev Attempts to revoke roles from `account` and returns a boolean indicating if roles were revoked.\\n    /// @param resource The resource to revoke roles within.\\n    /// @param roleBitmap The roles bitmap to revoke.\\n    /// @param account The account to revoke roles from.\\n    /// @param executeCallbacks Whether to execute the callbacks.\\n    /// @return `true` if the roles were revoked, `false` otherwise.\\n    function _revokeRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account,\\n        bool executeCallbacks\\n    ) internal virtual returns (bool) {\\n        _checkRoleBitmap(roleBitmap);\\n        uint256 currentRoles = _roles[resource][account];\\n        uint256 updatedRoles = currentRoles & ~roleBitmap;\\n\\n        if (currentRoles != updatedRoles) {\\n            _roles[resource][account] = updatedRoles;\\n            uint256 newlyRemovedRoles = roleBitmap & currentRoles;\\n            _updateRoleCounts(resource, newlyRemovedRoles, false);\\n            if (executeCallbacks) {\\n                _onRolesRevoked(resource, account, currentRoles, updatedRoles, roleBitmap);\\n            }\\n            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);\\n            return true;\\n        } else {\\n            return false;\\n        }\\n    }\\n\\n    /// @dev Revoke all roles for account within resource.\\n    function _revokeAllRoles(\\n        uint256 resource,\\n        address account,\\n        bool executeCallbacks\\n    ) internal virtual returns (bool) {\\n        return _revokeRoles(resource, EACBaseRolesLib.ALL_ROLES, account, executeCallbacks);\\n    }\\n\\n    /// @dev Updates role counts when roles are granted/revoked\\n    /// @param resource The resource to update counts for\\n    /// @param roleBitmap The roles being modified\\n    /// @param isGrant true for grant, false for revoke\\n    function _updateRoleCounts(uint256 resource, uint256 roleBitmap, bool isGrant) internal {\\n        uint256 roleMask = _roleBitmapToMask(roleBitmap);\\n\\n        if (isGrant) {\\n            // Check for overflow\\n            if (_hasZeroNybbles(~(roleMask & _roleCount[resource]))) {\\n                revert EACMaxAssignees(resource, roleBitmap);\\n            }\\n            _roleCount[resource] += roleBitmap;\\n        } else {\\n            // Check for underflow\\n            if (_hasZeroNybbles(~(roleMask & ~_roleCount[resource]))) {\\n                revert EACMinAssignees(resource, roleBitmap);\\n            }\\n            _roleCount[resource] -= roleBitmap;\\n        }\\n    }\\n\\n    /// @dev Callback for when roles are granted.\\n    /// @param resource The resource that the roles were granted within.\\n    /// @param account The account that the roles were granted to.\\n    /// @param oldRoles The old roles for the account.\\n    /// @param newRoles The new roles for the account.\\n    /// @param roleBitmap The roles that were granted.\\n    function _onRolesGranted(\\n        uint256 resource,\\n        address account,\\n        uint256 oldRoles,\\n        uint256 newRoles,\\n        uint256 roleBitmap\\n    ) internal virtual {\\n        // solhint-disable-previous-line no-empty-blocks\\n    }\\n\\n    /// @dev Callback for when roles are revoked.\\n    /// @param resource The resource that the roles were revoked within.\\n    /// @param account The account that the roles were revoked from.\\n    /// @param oldRoles The old roles for the account.\\n    /// @param newRoles The new roles for the account.\\n    /// @param roleBitmap The roles that were revoked.\\n    function _onRolesRevoked(\\n        uint256 resource,\\n        address account,\\n        uint256 oldRoles,\\n        uint256 newRoles,\\n        uint256 roleBitmap\\n    ) internal virtual {\\n        // solhint-disable-previous-line no-empty-blocks\\n    }\\n\\n    /// @dev Reverts if `account` does not have all the given roles.\\n    function _checkRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account\\n    ) internal view virtual {\\n        if (!hasRoles(resource, roleBitmap, account)) {\\n            revert EACUnauthorizedAccountRoles(resource, roleBitmap, account);\\n        }\\n    }\\n\\n    /// @dev Reverts if `account` does not have the admin roles for all the given roles.\\n    function _checkCanGrantRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account\\n    ) internal view virtual {\\n        uint256 settableRoles = _getSettableRoles(resource, account);\\n        if ((roleBitmap & ~settableRoles) != 0) {\\n            revert EACCannotGrantRoles(resource, roleBitmap, account);\\n        }\\n    }\\n\\n    /// @dev Reverts if `account` does not have the admin roles for all the given roles that are being revoked.\\n    function _checkCanRevokeRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account\\n    ) internal view virtual {\\n        uint256 revokableRoles = _getRevokableRoles(resource, account);\\n        if ((roleBitmap & ~revokableRoles) != 0) {\\n            revert EACCannotRevokeRoles(resource, roleBitmap, account);\\n        }\\n    }\\n\\n    /// @dev Returns the settable roles for `account` within `resource`.\\n    ///\\n    /// The settable roles are the roles (both regular and admin) that the account can grant.\\n    /// An account can grant a regular role if they have the corresponding admin role.\\n    /// An account can grant an admin role if they have that same admin role.\\n    ///\\n    /// @param resource The resource to get settable roles for.\\n    /// @param account The account to get settable roles for.\\n    /// @return The settable roles for `account` within `resource`.\\n    function _getSettableRoles(\\n        uint256 resource,\\n        address account\\n    ) internal view virtual returns (uint256) {\\n        uint256 adminRoleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) &\\n            EACBaseRolesLib.ADMIN_ROLES;\\n        return (adminRoleBitmap >> 128) | adminRoleBitmap;\\n    }\\n\\n    /// @dev Returns the revokable roles for `account` within `resource`.\\n    ///\\n    /// The revokable roles are the roles (including admin roles) that the account can revoke.\\n    ///\\n    /// @param resource The resource to get revokable roles for.\\n    /// @param account The account to get revokable roles for.\\n    /// @return The revokable roles for `account` within `resource`.\\n    function _getRevokableRoles(\\n        uint256 resource,\\n        address account\\n    ) internal view virtual returns (uint256) {\\n        uint256 adminRoleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) &\\n            EACBaseRolesLib.ADMIN_ROLES;\\n        uint256 regularRoles = adminRoleBitmap >> 128;\\n        return regularRoles | adminRoleBitmap;\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Private Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Checks if a role bitmap contains only valid role bits.\\n    /// @param roleBitmap The role bitmap to check.\\n    function _checkRoleBitmap(uint256 roleBitmap) private pure {\\n        if ((roleBitmap & ~EACBaseRolesLib.ALL_ROLES) != 0) {\\n            revert EACInvalidRoleBitmap(roleBitmap);\\n        }\\n    }\\n\\n    /// @dev Converts a role bitmap to a mask.\\n    ///\\n    /// The mask is a bitmap where each nybble is set if the corresponding role is in the role bitmap.\\n    ///\\n    /// @param roleBitmap The role bitmap to convert.\\n    /// @return roleMask The mask for the role bitmap.\\n    function _roleBitmapToMask(uint256 roleBitmap) private pure returns (uint256 roleMask) {\\n        _checkRoleBitmap(roleBitmap);\\n        roleMask = roleBitmap | (roleBitmap << 1);\\n        roleMask |= roleMask << 2;\\n    }\\n\\n    /// @dev Checks if the given value has any zero nybbles.\\n    /// @param value The value to check.\\n    /// @return `true` if the value has any zero nybbles, `false` otherwise.\\n    function _hasZeroNybbles(uint256 value) private pure returns (bool) {\\n        // Algorithm source: https://graphics.stanford.edu/~seander/bithacks.html#ZeroInWord\\n        uint256 hasZeroNybbles;\\n        unchecked {\\n            hasZeroNybbles =\\n                (value - 0x1111111111111111111111111111111111111111111111111111111111111111) &\\n                ~value &\\n                0x8888888888888888888888888888888888888888888888888888888888888888;\\n        }\\n        return hasZeroNybbles != 0;\\n    }\\n}\\n\",\"keccak256\":\"0xd1bcb98230ba02c9d92cd609cde4e1309f5fa06c419c46a205f4f0191f11f95b\",\"license\":\"MIT\"},\"project/src/access-control/interfaces/IEnhancedAccessControl.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.20;\\n\\nimport {IERC165} from \\\"@openzeppelin/contracts/utils/introspection/IERC165.sol\\\";\\n\\n/// @notice Interface for Enhanced Access Control system that allows for:\\n/// * Resource-based roles\\n/// * Obtaining assignee count for each role in each resource\\n/// * Root resource override\\n/// * Up to 32 roles and 32 corresponding admin roles\\n/// * Up to 15 assignees per role\\n///\\n/// @dev Interface selector: `0x8f452d62`\\ninterface IEnhancedAccessControl is IERC165 {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Events\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Emitted when roles are changed.\\n    /// @param resource The resource that the roles were changed within.\\n    /// @param account The account that the roles were changed for.\\n    /// @param oldRoleBitmap The old roles for the account.\\n    /// @param newRoleBitmap The new roles for the account.\\n    event EACRolesChanged(\\n        uint256 indexed resource,\\n        address indexed account,\\n        uint256 oldRoleBitmap,\\n        uint256 newRoleBitmap\\n    );\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Errors\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Error selector: `0x4b27a133`\\n    error EACUnauthorizedAccountRoles(uint256 resource, uint256 roleBitmap, address account);\\n\\n    /// @dev Error selector: `0xd1a3b355`\\n    error EACCannotGrantRoles(uint256 resource, uint256 roleBitmap, address account);\\n\\n    /// @dev Error selector: `0xa604e318`\\n    error EACCannotRevokeRoles(uint256 resource, uint256 roleBitmap, address account);\\n\\n    /// @dev Error selector: `0xc2842458`\\n    error EACRootResourceNotAllowed();\\n\\n    /// @dev Error selector: `0xf9165348`\\n    error EACMaxAssignees(uint256 resource, uint256 role);\\n\\n    /// @dev Error selector: `0x1f80c19b`\\n    error EACMinAssignees(uint256 resource, uint256 role);\\n\\n    /// @dev Error selector: `0x2a7b2d20`\\n    error EACInvalidRoleBitmap(uint256 roleBitmap);\\n\\n    /// @dev Error selector: `0xec3fc592`\\n    error EACInvalidAccount();\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Grants all roles in the given role bitmap to `account`.\\n    /// @param resource The resource to grant roles within.\\n    /// @param roleBitmap The roles bitmap to grant.\\n    /// @param account The account to grant roles to.\\n    /// @return `true` if the roles were granted, `false` otherwise.\\n    function grantRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account\\n    ) external returns (bool);\\n\\n    /// @notice Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE.\\n    /// @param roleBitmap The roles bitmap to grant.\\n    /// @param account The account to grant roles to.\\n    /// @return `true` if the roles were granted, `false` otherwise.\\n    function grantRootRoles(uint256 roleBitmap, address account) external returns (bool);\\n\\n    /// @notice Revokes all roles in the given role bitmap from `account`.\\n    /// @param resource The resource to revoke roles within.\\n    /// @param roleBitmap The roles bitmap to revoke.\\n    /// @param account The account to revoke roles from.\\n    /// @return `true` if the roles were revoked, `false` otherwise.\\n    function revokeRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account\\n    ) external returns (bool);\\n\\n    /// @notice Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE.\\n    /// @param roleBitmap The roles bitmap to revoke.\\n    /// @param account The account to revoke roles from.\\n    /// @return `true` if the roles were revoked, `false` otherwise.\\n    function revokeRootRoles(uint256 roleBitmap, address account) external returns (bool);\\n\\n    /// @notice Returns the `ROOT_RESOURCE` constant.\\n    function ROOT_RESOURCE() external view returns (uint256);\\n\\n    /// @notice Returns the roles bitmap for an account in a resource.\\n    /// @param resource The resource to get the roles for.\\n    /// @param account The account to get the roles for.\\n    /// @return The roles bitmap for the account in the resource.\\n    function roles(uint256 resource, address account) external view returns (uint256);\\n\\n    /// @notice Returns the role count bitmap for a resource.\\n    /// @param resource The resource to get the role count for.\\n    /// @return count The role count bitmap for the resource.\\n    function roleCount(uint256 resource) external view returns (uint256);\\n\\n    /// @notice Checks if the given account has been granted all the given roles in the `ROOT_RESOURCE`.\\n    /// @param roleBitmap The roles bitmap to check.\\n    /// @param account The account to check.\\n    /// @return `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`, `false` otherwise.\\n    function hasRootRoles(uint256 roleBitmap, address account) external view returns (bool);\\n\\n    /// @notice Checks if the given account has been granted all the given roles in the given resource or the `ROOT_RESOURCE`.\\n    /// @param resource The resource to check.\\n    /// @param roleBitmap The roles bitmap to check.\\n    /// @param account The account to check.\\n    /// @return `true` if `account` has been granted all the given roles in the given resource or the `ROOT_RESOURCE`, `false` otherwise.\\n    function hasRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account\\n    ) external view returns (bool);\\n\\n    /// @notice Checks if any of the roles in the given role bitmap has assignees.\\n    /// @param resource The resource to check.\\n    /// @param roleBitmap The roles bitmap to check.\\n    /// @return `true` if any of the roles in the given role bitmap has assignees, `false` otherwise.\\n    function hasAssignees(uint256 resource, uint256 roleBitmap) external view returns (bool);\\n\\n    /// @notice Returns the number of assignees for the roles in the given role bitmap.\\n    /// @param resource The resource to check.\\n    /// @param roleBitmap The roles bitmap to check.\\n    /// @return counts The number of assignees for each of the roles in the given role bitmap, expressed as a packed array of 4-bit ints.\\n    /// @return mask The mask for the given role bitmap.\\n    function getAssigneeCount(\\n        uint256 resource,\\n        uint256 roleBitmap\\n    ) external view returns (uint256 counts, uint256 mask);\\n}\\n\",\"keccak256\":\"0x8df53895527096e8c76ef18444eb1950758d17060d7567d1276031d8733dd819\",\"license\":\"MIT\"},\"project/src/access-control/libraries/EACBaseRolesLib.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.20;\\n\\n/// @dev Defines the two fundamental bitmasks used by `EnhancedAccessControl`'s nybble-packed role system.\\n///\\n/// `ALL_ROLES`: a mask with bit 0 of every nybble set (`0x1111...`), representing one unit in\\n/// each of the 64 role slots (32 regular + 32 admin). Used for validation (checking no bits\\n/// outside valid positions are set) and for revoking all roles.\\n///\\n/// `ADMIN_ROLES`: same pattern but only in the upper 128 bits (`0x1111...0000...`), masking\\n/// just the 32 admin role slots. Used to extract which admin roles an account holds.\\n///\\nlibrary EACBaseRolesLib {\\n    /// @dev Mask with bit 0 set in every nybble \\u2014 represents one unit per role slot across all 64 slots.\\n    uint256 internal constant ALL_ROLES =\\n        0x1111111111111111111111111111111111111111111111111111111111111111;\\n\\n    /// @dev Mask selecting only the 32 admin role nybbles (upper 128 bits).\\n    uint256 internal constant ADMIN_ROLES =\\n        0x1111111111111111111111111111111100000000000000000000000000000000;\\n}\\n\",\"keccak256\":\"0x9f29748b40665df976c08cdaf434b469dc73ef50e938c36be6773dc7b6a6f014\",\"license\":\"MIT\"},\"project/src/hca/HCAContext.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.25;\\n\\nimport {Context} from \\\"@openzeppelin/contracts/utils/Context.sol\\\";\\n\\nimport {HCAEquivalence} from \\\"./HCAEquivalence.sol\\\";\\n\\n/// @dev Drop-in replacement for OpenZeppelin's `Context` that overrides `_msgSender()` with\\n///      HCA-aware sender resolution. Inherit this instead of `Context` to make all `_msgSender()`\\n///      calls in the contract (including inherited modifiers and access control) automatically\\n///      resolve HCA proxy accounts to their owners.\\nabstract contract HCAContext is Context, HCAEquivalence {\\n    /// @dev Returns either the account owner of an HCA or the original sender\\n    function _msgSender() internal view virtual override returns (address) {\\n        return _msgSenderWithHcaEquivalence();\\n    }\\n}\\n\",\"keccak256\":\"0x2930f06107db09e566044cca950dbbd6f913fdf4effda1b5630b5a51cd28c232\",\"license\":\"MIT\"},\"project/src/hca/HCAEquivalence.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.25;\\n\\nimport {IHCAFactoryBasic} from \\\"./interfaces/IHCAFactoryBasic.sol\\\";\\n\\n/// @dev Provides sender-identity resolution for Hidden Contract Accounts (HCAs). An HCA is a\\n/// contract-based account whose actions should be attributed to its registered owner rather\\n/// than to the contract address itself.\\n///\\n/// Queries the HCA factory to resolve `msg.sender` to the real owner. If the factory is not\\n/// configured (address zero), or the caller is not a registered HCA (returns address zero),\\n/// `msg.sender` is returned unchanged.\\n///\\n/// This enables transparent proxy wallet support: contracts using HCA-aware `_msgSender()`\\n/// automatically attribute actions to the account owner regardless of whether the caller is\\n/// an EOA or an HCA proxy.\\n///\\nabstract contract HCAEquivalence {\\n    /// @notice The HCA factory contract\\n    IHCAFactoryBasic public immutable HCA_FACTORY;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Initializes HCAEquivalence.\\n    /// @param hcaFactory The HCA factory contract.\\n    constructor(IHCAFactoryBasic hcaFactory) {\\n        HCA_FACTORY = hcaFactory;\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Internal Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Returns the HCA owner if `msg.sender` is a registered HCA, otherwise returns `msg.sender`.\\n    function _msgSenderWithHcaEquivalence() internal view returns (address) {\\n        if (address(HCA_FACTORY) == address(0)) return msg.sender;\\n        address accountOwner = HCA_FACTORY.getAccountOwner(msg.sender);\\n        if (accountOwner == address(0)) return msg.sender;\\n        return accountOwner;\\n    }\\n}\\n\",\"keccak256\":\"0xb6105d4d39c1421cd5b683739dba99960468c73811d193fd23962094ea89ad1e\",\"license\":\"MIT\"},\"project/src/hca/interfaces/IHCAFactoryBasic.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.25;\\n\\n/// @notice Basic interface for the HCA factory.\\n/// @dev Interface selector: `0x442b172c`\\ninterface IHCAFactoryBasic {\\n    /// @notice Returns the account owner of the given HCA\\n    /// @param hca The HCA to get the account owner of\\n    /// @return The account owner of the given HCA\\n    function getAccountOwner(address hca) external view returns (address);\\n}\\n\",\"keccak256\":\"0x02da90ce21d414944e22b757076f88e8a9339e3cfa8038343f973d7351013aab\",\"license\":\"MIT\"},\"project/src/registry/SimpleRegistryMetadata.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity >=0.8.13;\\n\\nimport {IERC165} from \\\"@openzeppelin/contracts/utils/introspection/IERC165.sol\\\";\\n\\nimport {EnhancedAccessControl} from \\\"../access-control/EnhancedAccessControl.sol\\\";\\nimport {EACBaseRolesLib} from \\\"../access-control/libraries/EACBaseRolesLib.sol\\\";\\nimport {HCAEquivalence} from \\\"../hca/HCAEquivalence.sol\\\";\\nimport {IHCAFactoryBasic} from \\\"../hca/interfaces/IHCAFactoryBasic.sol\\\";\\n\\nimport {IRegistryMetadata} from \\\"./interfaces/IRegistryMetadata.sol\\\";\\n\\n/// @notice `IRegistryMetadata` implementation that stores a distinct URI per token ID. URIs can be\\n///         set by accounts holding the metadata update role in the root resource.\\ncontract SimpleRegistryMetadata is EnhancedAccessControl, IRegistryMetadata {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Constants\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Role bit allowing an account to update individual token URIs.\\n    uint256 private constant _ROLE_UPDATE_METADATA = 1 << 0;\\n\\n    /// @dev Admin-tier counterpart of the metadata update role, shifted into the upper half of the bitmap.\\n    uint256 private constant _ROLE_UPDATE_METADATA_ADMIN = _ROLE_UPDATE_METADATA << 128;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Storage\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Per-token mapping from token ID to its metadata URI.\\n    mapping(uint256 id => string uri) private _tokenUris;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Initializes SimpleRegistryMetadata, granting all roles to the caller.\\n    /// @param hcaFactory The HCA factory.\\n    constructor(IHCAFactoryBasic hcaFactory) HCAEquivalence(hcaFactory) {\\n        _grantRoles(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, _msgSender(), true);\\n    }\\n\\n    /// @inheritdoc IERC165\\n    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {\\n        return\\n            interfaceId == type(IRegistryMetadata).interfaceId ||\\n            super.supportsInterface(interfaceId);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Sets the metadata URI for a specific token.\\n    /// @dev Restricted to accounts holding the metadata update role on the root resource.\\n    /// @param tokenId The token identifier whose URI is being set.\\n    /// @param uri The new metadata URI for the token.\\n    function setTokenUri(\\n        uint256 tokenId,\\n        string calldata uri\\n    ) external onlyRoles(ROOT_RESOURCE, _ROLE_UPDATE_METADATA) {\\n        _tokenUris[tokenId] = uri;\\n    }\\n\\n    /// @notice Returns the metadata URI for the given token.\\n    /// @param tokenId The token identifier to look up.\\n    /// @return The stored URI for `tokenId`, or an empty string if none has been set.\\n    function tokenUri(uint256 tokenId) external view override returns (string memory) {\\n        return _tokenUris[tokenId];\\n    }\\n}\\n\",\"keccak256\":\"0x079ff82cd3af396f52d771e23e960bfa3c5c94dac4ba91eadb2ceaf5034c24d1\",\"license\":\"MIT\"},\"project/src/registry/interfaces/IRegistryMetadata.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity >=0.8.13;\\n\\n/// @notice Metadata URI generator for registries.\\n/// @dev Interface selector: `0x1675f455`\\ninterface IRegistryMetadata {\\n    /// @notice Fetches the token URI for a token ID.\\n    /// @param tokenId The ID of the token to fetch a URI for.\\n    /// @return The token URI for the token.\\n    function tokenUri(uint256 tokenId) external view returns (string calldata);\\n}\\n\",\"keccak256\":\"0xa50b25c0d8271efac995436339e0f6f9278054f15f9668094b7e10c0592ca66d\",\"license\":\"MIT\"}},\"version\":1}",
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 65208,
+        "contract": "project/src/registry/SimpleRegistryMetadata.sol:SimpleRegistryMetadata",
+        "label": "_roles",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_mapping(t_uint256,t_mapping(t_address,t_uint256))"
+      },
+      {
+        "astId": 65213,
+        "contract": "project/src/registry/SimpleRegistryMetadata.sol:SimpleRegistryMetadata",
+        "label": "_roleCount",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_mapping(t_uint256,t_uint256)"
+      },
+      {
+        "astId": 74990,
+        "contract": "project/src/registry/SimpleRegistryMetadata.sol:SimpleRegistryMetadata",
+        "label": "_tokenUris",
+        "offset": 0,
+        "slot": "2",
+        "type": "t_mapping(t_uint256,t_string_storage)"
+      }
+    ],
+    "types": {
+      "t_address": {
+        "encoding": "inplace",
+        "label": "address",
+        "numberOfBytes": "20"
+      },
+      "t_mapping(t_address,t_uint256)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => uint256)",
+        "numberOfBytes": "32",
+        "value": "t_uint256"
+      },
+      "t_mapping(t_uint256,t_mapping(t_address,t_uint256))": {
+        "encoding": "mapping",
+        "key": "t_uint256",
+        "label": "mapping(uint256 => mapping(address => uint256))",
+        "numberOfBytes": "32",
+        "value": "t_mapping(t_address,t_uint256)"
+      },
+      "t_mapping(t_uint256,t_string_storage)": {
+        "encoding": "mapping",
+        "key": "t_uint256",
+        "label": "mapping(uint256 => string)",
+        "numberOfBytes": "32",
+        "value": "t_string_storage"
+      },
+      "t_mapping(t_uint256,t_uint256)": {
+        "encoding": "mapping",
+        "key": "t_uint256",
+        "label": "mapping(uint256 => uint256)",
+        "numberOfBytes": "32",
+        "value": "t_uint256"
+      },
+      "t_string_storage": {
+        "encoding": "bytes",
+        "label": "string",
+        "numberOfBytes": "32"
+      },
+      "t_uint256": {
+        "encoding": "inplace",
+        "label": "uint256",
+        "numberOfBytes": "32"
+      }
+    }
+  },
+  "userdoc": {
+    "events": {
+      "EACRolesChanged(uint256,address,uint256,uint256)": {
+        "notice": "Emitted when roles are changed."
+      }
+    },
+    "kind": "user",
+    "methods": {
+      "HCA_FACTORY()": {
+        "notice": "The HCA factory contract"
+      },
+      "ROOT_RESOURCE()": {
+        "notice": "The `ROOT_RESOURCE`."
+      },
+      "constructor": {
+        "notice": "Initializes SimpleRegistryMetadata, granting all roles to the caller."
+      },
+      "getAssigneeCount(uint256,uint256)": {
+        "notice": "Returns the number of assignees for the roles in the given role bitmap."
+      },
+      "grantRoles(uint256,uint256,address)": {
+        "notice": "Grants all roles in the given role bitmap to `account`."
+      },
+      "grantRootRoles(uint256,address)": {
+        "notice": "Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE."
+      },
+      "hasAssignees(uint256,uint256)": {
+        "notice": "Checks if any of the roles in the given role bitmap has assignees."
+      },
+      "hasRoles(uint256,uint256,address)": {
+        "notice": "Checks if the given account has been granted all the given roles in the given resource or the `ROOT_RESOURCE`."
+      },
+      "hasRootRoles(uint256,address)": {
+        "notice": "Checks if the given account has been granted all the given roles in the `ROOT_RESOURCE`."
+      },
+      "revokeRoles(uint256,uint256,address)": {
+        "notice": "Revokes all roles in the given role bitmap from `account`."
+      },
+      "revokeRootRoles(uint256,address)": {
+        "notice": "Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE."
+      },
+      "roleCount(uint256)": {
+        "notice": "Returns the role count bitmap for a resource."
+      },
+      "roles(uint256,address)": {
+        "notice": "Returns the roles bitmap for an account in a resource."
+      },
+      "setTokenUri(uint256,string)": {
+        "notice": "Sets the metadata URI for a specific token."
+      },
+      "tokenUri(uint256)": {
+        "notice": "Returns the metadata URI for the given token."
+      }
+    },
+    "notice": "`IRegistryMetadata` implementation that stores a distinct URI per token ID. URIs can be         set by accounts holding the metadata update role in the root resource.",
+    "version": 1
+  },
+  "argsData": "0x00000000000000000000000012919bd18e9eb9f004e2faf78709d0319747d761",
+  "transaction": {
+    "hash": "0x9985d0e5bb10a59b7d7020587609c5620e3e6c401d7e7a00418512ebcd757d9a",
+    "nonce": "0x1d2d",
+    "origin": "0xffffffffff52d316b7bd028358089bc8066b8f80"
+  },
+  "receipt": {
+    "blockHash": "0xbb671fdd7e726267306816554ce839d39b8ef0ae24d9acaa920cadfaefb306ee",
+    "blockNumber": "0x9fa6a0",
+    "transactionIndex": "0x26"
+  }
+}

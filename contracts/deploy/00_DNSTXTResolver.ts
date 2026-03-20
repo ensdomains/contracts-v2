@@ -1,10 +1,11 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import { Artifact_DNSTXTResolver } from 'generated/artifacts/DNSTXTResolver.js';
 
 export default execute(
   async ({ deploy, namedAccounts: { deployer } }) => {
     await deploy("DNSTXTResolver", {
       account: deployer,
-      artifact: artifacts.DNSTXTResolver,
+      artifact: Artifact_DNSTXTResolver,
     });
   },
   {

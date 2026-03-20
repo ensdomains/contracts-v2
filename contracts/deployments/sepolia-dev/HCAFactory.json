@@ -1,0 +1,124 @@
+{
+  "address": "0x12919bd18e9eb9f004e2faf78709d0319747d761",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "hca",
+          "type": "address"
+        }
+      ],
+      "name": "getAccountOwner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "hca",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "setAccountOwner",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "contractName": "MockHCAFactoryBasic",
+  "sourceName": "test/mocks/MockHCAFactoryBasic.sol",
+  "bytecode": "0x6080604052348015600e575f80fd5b506101aa8061001c5f395ff3fe608060405234801561000f575f80fd5b5060043610610034575f3560e01c80632dbe182114610038578063442b172c1461009a575b5f80fd5b610098610046366004610123565b73ffffffffffffffffffffffffffffffffffffffff9182165f90815260208190526040902080547fffffffffffffffffffffffff00000000000000000000000000000000000000001691909216179055565b005b6100d26100a8366004610154565b73ffffffffffffffffffffffffffffffffffffffff9081165f908152602081905260409020541690565b60405173ffffffffffffffffffffffffffffffffffffffff909116815260200160405180910390f35b803573ffffffffffffffffffffffffffffffffffffffff8116811461011e575f80fd5b919050565b5f8060408385031215610134575f80fd5b61013d836100fb565b915061014b602084016100fb565b90509250929050565b5f60208284031215610164575f80fd5b61016d826100fb565b939250505056fea26469706673582212206bb8c707be8efcf168679fc7b388fa9148cf401e1f3f95fd5b8e565ccfd63e0264736f6c63430008190033",
+  "deployedBytecode": "0x608060405234801561000f575f80fd5b5060043610610034575f3560e01c80632dbe182114610038578063442b172c1461009a575b5f80fd5b610098610046366004610123565b73ffffffffffffffffffffffffffffffffffffffff9182165f90815260208190526040902080547fffffffffffffffffffffffff00000000000000000000000000000000000000001691909216179055565b005b6100d26100a8366004610154565b73ffffffffffffffffffffffffffffffffffffffff9081165f908152602081905260409020541690565b60405173ffffffffffffffffffffffffffffffffffffffff909116815260200160405180910390f35b803573ffffffffffffffffffffffffffffffffffffffff8116811461011e575f80fd5b919050565b5f8060408385031215610134575f80fd5b61013d836100fb565b915061014b602084016100fb565b90509250929050565b5f60208284031215610164575f80fd5b61016d826100fb565b939250505056fea26469706673582212206bb8c707be8efcf168679fc7b388fa9148cf401e1f3f95fd5b8e565ccfd63e0264736f6c63430008190033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {},
+  "inputSourceName": "project/test/mocks/MockHCAFactoryBasic.sol",
+  "devdoc": {
+    "kind": "dev",
+    "methods": {
+      "getAccountOwner(address)": {
+        "params": {
+          "hca": "The HCA to get the account owner of"
+        },
+        "returns": {
+          "_0": "The account owner of the given HCA"
+        }
+      }
+    },
+    "version": 1
+  },
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "85200",
+        "executionCost": "133",
+        "totalCost": "85333"
+      },
+      "external": {
+        "getAccountOwner(address)": "2519",
+        "setAccountOwner(address,address)": "infinite"
+      }
+    }
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.25+commit.b61c2a91\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"hca\",\"type\":\"address\"}],\"name\":\"getAccountOwner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"hca\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"setAccountOwner\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{\"getAccountOwner(address)\":{\"params\":{\"hca\":\"The HCA to get the account owner of\"},\"returns\":{\"_0\":\"The account owner of the given HCA\"}}},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"getAccountOwner(address)\":{\"notice\":\"Returns the account owner of the given HCA\"}},\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/test/mocks/MockHCAFactoryBasic.sol\":\"MockHCAFactoryBasic\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ens/contracts/=project/lib/ens-contracts/contracts/\",\"project/:@ensdomains/buffer/=project/lib/buffer/\",\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts-upgradeable/=project/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:forge-std/=project/lib/forge-std/src/\",\"project/:~src/=project/src/\",\"project/lib/ens-contracts/:@ensdomains/solsha1/contracts/=project/lib/solsha1/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts-v5/=project/lib/openzeppelin-contracts/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-v4/contracts/\",\"project/lib/ens-contracts/:@unruggable/gateways/=project/lib/unruggable-gateways/contracts/\",\"project/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"project/src/hca/interfaces/IHCAFactoryBasic.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.25;\\n\\n/// @notice Basic interface for the HCA factory.\\n/// @dev Interface selector: `0x442b172c`\\ninterface IHCAFactoryBasic {\\n    /// @notice Returns the account owner of the given HCA\\n    /// @param hca The HCA to get the account owner of\\n    /// @return The account owner of the given HCA\\n    function getAccountOwner(address hca) external view returns (address);\\n}\\n\",\"keccak256\":\"0x02da90ce21d414944e22b757076f88e8a9339e3cfa8038343f973d7351013aab\",\"license\":\"MIT\"},\"project/test/mocks/MockHCAFactoryBasic.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.25;\\n\\nimport {IHCAFactoryBasic} from \\\"~src/hca/interfaces/IHCAFactoryBasic.sol\\\";\\n\\ncontract MockHCAFactoryBasic is IHCAFactoryBasic {\\n    mapping(address hca => address owner) internal _ownerOf;\\n\\n    function setAccountOwner(address hca, address owner) external {\\n        _ownerOf[hca] = owner;\\n    }\\n\\n    function getAccountOwner(address hca) external view returns (address) {\\n        return _ownerOf[hca];\\n    }\\n}\\n\",\"keccak256\":\"0x7b0037a183aa87273e2471348779ee3773436cf05d6bd65d9f633a1052dc5ab3\",\"license\":\"MIT\"}},\"version\":1}",
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 80758,
+        "contract": "project/test/mocks/MockHCAFactoryBasic.sol:MockHCAFactoryBasic",
+        "label": "_ownerOf",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_mapping(t_address,t_address)"
+      }
+    ],
+    "types": {
+      "t_address": {
+        "encoding": "inplace",
+        "label": "address",
+        "numberOfBytes": "20"
+      },
+      "t_mapping(t_address,t_address)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => address)",
+        "numberOfBytes": "32",
+        "value": "t_address"
+      }
+    }
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {
+      "getAccountOwner(address)": {
+        "notice": "Returns the account owner of the given HCA"
+      }
+    },
+    "version": 1
+  },
+  "argsData": "0x",
+  "transaction": {
+    "hash": "0xb0cd0774c2898a39f7e255df7eabcfe80bb96f82239eba23a51bd2737ef147dd",
+    "nonce": "0x1d2c",
+    "origin": "0xffffffffff52d316b7bd028358089bc8066b8f80"
+  },
+  "receipt": {
+    "blockHash": "0x51670bf6407a5f8c0fffb8eaf0f93e52abd24f37549ed30a2c81fe9b7a2e004b",
+    "blockNumber": "0x9fa69f",
+    "transactionIndex": "0x29"
+  }
+}

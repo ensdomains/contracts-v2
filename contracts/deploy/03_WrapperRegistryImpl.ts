@@ -1,26 +1,32 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_ENSV1Resolver } from "generated/abis/ENSV1Resolver.ts";
+import type { Abi_MockHCAFactoryBasic } from "generated/abis/MockHCAFactoryBasic.ts";
+import type { Abi_NameWrapper } from "generated/abis/NameWrapper.ts";
+import type { Abi_SimpleRegistryMetadata } from "generated/abis/SimpleRegistryMetadata.ts";
+import type { Abi_VerifiableFactory } from "generated/abis/VerifiableFactory.ts";
+import { Artifact_WrapperRegistry } from 'generated/artifacts/WrapperRegistry.js';
 
 export default execute(
-  async ({ deploy, get, namedAccounts: { deployer } }) => {
+  async ({ deploy, get, getV1, namedAccounts: { deployer } }) => {
     const nameWrapper =
-      get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
+      await getV1<Abi_NameWrapper>("NameWrapper");
 
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<Abi_MockHCAFactoryBasic>("HCAFactory");
 
     const registryMetadata = get<
-      (typeof artifacts.SimpleRegistryMetadata)["abi"]
+      Abi_SimpleRegistryMetadata
     >("SimpleRegistryMetadata");
 
     const verifiableFactory =
-      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
+      get<Abi_VerifiableFactory>("VerifiableFactory");
 
     const ensV1Resolver =
-      get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
+      get<Abi_ENSV1Resolver>("ENSV1Resolver");
 
     await deploy("WrapperRegistryImpl", {
       account: deployer,
-      artifact: artifacts.WrapperRegistry,
+      artifact: Artifact_WrapperRegistry,
       args: [
         nameWrapper.address,
         verifiableFactory.address,

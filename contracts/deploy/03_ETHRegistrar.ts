@@ -1,4 +1,8 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_IRentPriceOracle } from "generated/abis/IRentPriceOracle.ts";
+import type { Abi_MockHCAFactoryBasic } from "generated/abis/MockHCAFactoryBasic.ts";
+import type { Abi_PermissionedRegistry } from "generated/abis/PermissionedRegistry.ts";
+import { Artifact_ETHRegistrar } from 'generated/artifacts/ETHRegistrar.js';
 import { ROLES } from "../script/deploy-constants.js";
 
 export default execute(
@@ -9,12 +13,12 @@ export default execute(
     namedAccounts: { deployer, owner },
   }) => {
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<Abi_MockHCAFactoryBasic>("HCAFactory");
 
     const ethRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
+      get<Abi_PermissionedRegistry>("ETHRegistry");
 
-    const rentPriceOracle = get<(typeof artifacts.IRentPriceOracle)["abi"]>(
+    const rentPriceOracle = get<Abi_IRentPriceOracle>(
       "StandardRentPriceOracle",
     );
 
@@ -23,7 +27,7 @@ export default execute(
     const SEC_PER_DAY = 86400n;
     const ethRegistrar = await deploy("ETHRegistrar", {
       account: deployer,
-      artifact: artifacts.ETHRegistrar,
+      artifact: Artifact_ETHRegistrar,
       args: [
         ethRegistry.address,
         hcaFactory.address,

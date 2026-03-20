@@ -1,12 +1,14 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_PermissionedRegistry } from "generated/abis/PermissionedRegistry.ts";
+import { Artifact_MockERC20 } from 'generated/artifacts/lib/ens-contracts/contracts/test/mocks/MockERC20.sol/MockERC20.js';
+import { Artifact_StandardRentPriceOracle } from 'generated/artifacts/StandardRentPriceOracle.js';
 
 export default execute(
   async ({ deploy, read, get, namedAccounts: { deployer, owner } }) => {
     const ethRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
+      get<Abi_PermissionedRegistry>("ETHRegistry");
 
-    type MockERC20 =
-      (typeof artifacts)["test/mocks/MockERC20.sol/MockERC20"]["abi"];
+    type MockERC20 = (typeof Artifact_MockERC20)["abi"];
     const mockUSDC = get<MockERC20>("MockUSDC");
     const mockDAI = get<MockERC20>("MockDAI");
     const paymentTokens = [mockUSDC, mockDAI];
@@ -32,14 +34,23 @@ export default execute(
     function discountRatio(numer: bigint, denom: bigint) {
       return (DISCOUNT_SCALE * numer + denom - 1n) / denom;
     }
+    // const discountPoints: [bigint, bigint][] = [
+    //   [SEC_PER_YEAR, 0n],
+    //   [SEC_PER_YEAR, discountRatio(1n, 10n)], // 10%
+    //   [SEC_PER_YEAR, discountRatio(2n, 10n)],
+    //   [SEC_PER_YEAR * 2n, discountRatio(2875n, 10000n)],
+    //   [SEC_PER_YEAR * 5n, discountRatio(325n, 1000n)],
+    //   [SEC_PER_YEAR * 15n, discountRatio(1n, 3n)],
+    // ];
+    // TODO: re-add eventually
     const discountPoints: [bigint, bigint][] = [
       [SEC_PER_YEAR, 0n],
-      [SEC_PER_YEAR, discountRatio(1n, 10n)], // 10%
-      [SEC_PER_YEAR, discountRatio(2n, 10n)],
-      [SEC_PER_YEAR * 2n, discountRatio(2875n, 10000n)],
-      [SEC_PER_YEAR * 5n, discountRatio(325n, 1000n)],
-      [SEC_PER_YEAR * 15n, discountRatio(1n, 3n)],
-    ];
+      [SEC_PER_YEAR, 0n],
+      [SEC_PER_YEAR, 0n],
+      [SEC_PER_YEAR, 0n],
+      [SEC_PER_YEAR, 0n],
+      [SEC_PER_YEAR, 0n],
+    ]
 
     const paymentFactors = await Promise.all(
       paymentTokens.map(async (x) => {
@@ -81,7 +92,7 @@ export default execute(
 
     await deploy("StandardRentPriceOracle", {
       account: deployer,
-      artifact: artifacts.StandardRentPriceOracle,
+      artifact: Artifact_StandardRentPriceOracle,
       args: [
         owner,
         ethRegistry.address,
