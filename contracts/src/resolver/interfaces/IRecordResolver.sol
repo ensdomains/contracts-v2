@@ -24,7 +24,7 @@ bytes4 constant RECORD_RESOLVER_INTERFACE_ID = type(IABIResolver).interfaceId ^
     type(IPubkeyResolver).interfaceId ^
     type(ITextResolver).interfaceId;
 
-/// @dev Interface selector: `0x042c07b4`
+/// @dev Interface selector: `0x0c57c3bc`
 interface IRecordResolver is
     IABIResolver,
     IAddrResolver,
@@ -41,39 +41,93 @@ interface IRecordResolver is
     // Events
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Associate `recordId` with `name`.
-    ///         If `recordId = 0`, the association is cleared.
+    /// @notice `name` was associateed with a record.
+    ///         If `recordId = 0`, the `name` was unassociated.
+    /// @param node The namehash of name.
+    /// @param name The DNS-encoded name.
+    /// @param recordId The record ID.
+    /// @param sender The caller address.
     event RecordLinked(
         bytes32 indexed node,
         bytes name,
         uint256 indexed recordId,
         address indexed sender
     );
+
+    /// @notice All values of a record were cleared.
+    /// @param recordId The new record ID.
+    /// @param sender The caller address.
     event RecordCleared(uint256 indexed recordId, address indexed sender);
 
+    /// @notice ABI data of a record was updated.
+    /// @param recordId The record ID that was updated.
+    /// @param contentType The content type bit.
+    /// @param sender The caller address.
     event ABIUpdated(uint256 indexed recordId, uint256 indexed contentType, address indexed sender);
+
+    /// @notice Address of a record was updated.
+    /// @param recordId The record ID that was updated.
+    /// @param coinType The coin type.
+    /// @param addressBytes The new encoded address.
+    /// @param sender The caller address.
     event AddressUpdated(
         uint256 indexed recordId,
         uint256 indexed coinType,
         bytes addressBytes,
         address indexed sender
     );
-    event ContentHashUpdated(uint256 indexed recordId, bytes data, address indexed sender);
+
+    /// @notice Content hash of a record was updated.
+    /// @param recordId The record ID that was updated.
+    /// @param contentHash The content hash.
+    /// @param sender The caller address.
+    event ContentHashUpdated(uint256 indexed recordId, bytes contentHash, address indexed sender);
+
+    /// @notice Data for `key` of a record was updated.
+    /// @param recordId The record ID that was updated.
+    /// @param keyHash The hashed data key.
+    /// @param key The data key.
+    /// @param value The new data value.
+    /// @param sender The caller address.
     event DataUpdated(
         uint256 indexed recordId,
         bytes32 indexed keyHash,
         string key,
-        bytes data,
+        bytes value,
         address indexed sender
     );
+
+    /// @notice Interface implementer for `interfaceId` of a record was updated.
+    /// @param recordId The record ID that was updated.
+    /// @param interfaceId The interface ID.
+    /// @param implementer The new implementer address.
+    /// @param sender The caller address.
     event InterfaceUpdated(
         uint256 indexed recordId,
         bytes4 indexed interfaceId,
-        address implementor,
+        address implementer,
         address indexed sender
     );
+
+    /// @notice Primary name of a record was updated.
+    /// @param recordId The record ID that was updated.
+    /// @param name The primary name.
+    /// @param sender The new caller address.
     event NameUpdated(uint256 indexed recordId, string name, address indexed sender);
+
+    /// @notice Pubkey of a record was updated.
+    /// @param recordId The record ID that was updated.
+    /// @param x The new x-coordinate.
+    /// @param y The new y-coordinate.
+    /// @param sender The new caller address.
     event PubkeyUpdated(uint256 indexed recordId, bytes32 x, bytes32 y, address indexed sender);
+
+    /// @notice Text for `key` of a record was updated.
+    /// @param recordId The record ID that was updated.
+    /// @param keyHash The hashed data key.
+    /// @param key The data key.
+    /// @param value The new text value.
+    /// @param sender The caller address.
     event TextUpdated(
         uint256 indexed recordId,
         string indexed keyHash,
@@ -128,7 +182,7 @@ interface IRecordResolver is
     /// @param value The text value.
     function setText(bytes calldata name, string calldata key, string calldata value) external;
 
-    /// @notice Set the contenthash.
+    /// @notice Set contenthash.
     /// @param name The DNS-encoded name.
     /// @param contentHash The content hash.
     function setContentHash(bytes calldata name, bytes calldata contentHash) external;
@@ -139,10 +193,10 @@ interface IRecordResolver is
     /// @param data The encoded ABI data.
     function setABI(bytes calldata name, uint256 contentType, bytes calldata data) external;
 
-    /// @notice Set the primary name.
+    /// @notice Set primary name.
     /// @param name The DNS-encoded name.
-    /// @param fqdn The name.
-    function setName(bytes calldata name, string calldata fqdn) external;
+    /// @param primaryName The name.
+    function setName(bytes calldata name, string calldata primaryName) external;
 
     /// @notice Set implementer for `interfaceId`.
     /// @param name The DNS-encoded name.
@@ -150,13 +204,13 @@ interface IRecordResolver is
     /// @param implementer The address of the contract that implements this interface.
     function setInterface(bytes calldata name, bytes4 interfaceId, address implementer) external;
 
-    /// @notice Set the SECP256k1 public key associated with an ENS node.
+    /// @notice Set SECP256k1 public key associated with an ENS node.
     /// @param name The DNS-encoded name.
     /// @param x The x coordinate of the public key.
     /// @param y The y coordinate of the public key.
     function setPubkey(bytes calldata name, bytes32 x, bytes32 y) external;
 
-    /// @notice Clears a record.
+    /// @notice Clear record.
     /// @param name The DNS-encoded name.
     function clear(bytes calldata name) external;
 
@@ -165,6 +219,8 @@ interface IRecordResolver is
     /// @param targetNode The target namehash or null to unlink.
     function link(bytes calldata name, bytes32 targetNode) external;
 
-    /// @notice Get the record associated with `node`.
+    /// @notice Find the record linked to `node`.
+    /// @param node The namehash to find.
+    /// @return The record ID or 0 if not linked.
     function getRecordId(bytes32 node) external view returns (uint256);
 }

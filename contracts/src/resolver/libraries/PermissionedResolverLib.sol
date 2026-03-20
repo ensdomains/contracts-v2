@@ -63,19 +63,20 @@ library PermissionedResolverLib {
     /// @dev Nybble 63: authorizes setting ROLE_UPGRADE.
     uint256 internal constant ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
 
-    bytes32 internal constant ANY_PART = bytes32(0);
-
     /// @dev Compute unique EAC resource ID.
     /// @param recordId The resource ID.
     /// @param part The part hash.
     /// @return The computed resource ID.
     function resource(uint256 recordId, bytes32 part) internal pure returns (uint256) {
+        if (recordId == 0 && part == bytes32(0)) {
+            return 0;
+        }
         return uint256(keccak256(abi.encodePacked(bytes2(0x1900), recordId, part)));
     }
 
-    /// @dev Convience for resource with `ANY_PART`.
+    /// @dev Convience for resource with any part.
     function resource(uint256 recordId) internal pure returns (uint256) {
-        return resource(recordId, ANY_PART);
+        return resource(recordId, bytes32(0));
     }
 
     /// @dev Compute `part` from `string` key.
@@ -84,10 +85,10 @@ library PermissionedResolverLib {
     }
 
     /// @dev Compute `part` from `uint256` key.
-    function partHash(uint256 x) internal pure returns (bytes32 ret) {
+    function partHash(uint256 x) internal pure returns (bytes32 part) {
         assembly {
             mstore(0, x)
-            ret := keccak256(0, 32)
+            part := keccak256(0, 32)
         }
     }
 }

@@ -690,6 +690,12 @@ export async function setupDevnet({
     async function setupEnsDotEth() {
       const { resolver } = namedAccounts.owner;
 
+      // create registry for "ens.eth"
+      const registry = await deployUserRegistry({
+        account: namedAccounts.owner,
+        salt: { name: "ens.eth" },
+      });
+
       // temporary registration of "ens.eth" by deployer
       // (normally would be migrated by current ens.eth owner)
       // Deployer has REGISTRAR_ADMIN but not REGISTRAR; grant self REGISTRAR for setup
@@ -701,7 +707,7 @@ export async function setupDevnet({
       await v2.ETHRegistry.write.register([
         "ens",
         namedAccounts.owner.address,
-        zeroAddress,
+        registry.address,
         resolver.address,
         ROLES.ALL,
         MAX_EXPIRY,
@@ -725,9 +731,17 @@ export async function setupDevnet({
       // create "dnsalias.ens.eth"
       await setupNamedResolver("dnsalias", v2.DNSAliasResolver.address);
 
-      function setupNamedResolver(label: string, address: Address) {
-        return resolver.write.setAddr([
-          namehash(`${label}.ens.eth`),
+      async function setupNamedResolver(label: string, address: Address) {
+        await registry.write.register([
+          label,
+          zeroAddress, // => RESERVED
+          zeroAddress, // registry
+          resolver.address,
+          0n,
+          MAX_EXPIRY,
+        ]);
+        await resolver.write.setAddress([
+          dnsEncodeName(`${label}.ens.eth`),
           60n,
           address,
         ]);

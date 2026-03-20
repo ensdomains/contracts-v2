@@ -5,7 +5,6 @@ import {
   concat,
   encodeErrorResult,
   getAddress,
-  namehash,
   stringToHex,
   zeroAddress,
 } from "viem";
@@ -13,14 +12,16 @@ import { describe, expect, it } from "vitest";
 
 import { expectVar } from "../../utils/expectVar.js";
 import {
-  type KnownProfile,
   bundleCalls,
+  type KnownProfile,
+  makeResolutions,
+} from "../../utils/resolutions.js";
+import { shouldSupportFeatures } from "../../utils/supportsFeatures.js";
+import {
+  dnsEncodeName,
   COIN_TYPE_DEFAULT,
   COIN_TYPE_ETH,
-  makeResolutions,
-} from "../../utils/resolutions.ts";
-import { shouldSupportFeatures } from "../../utils/supportsFeatures.js";
-import { dnsEncodeName } from "../../utils/utils.js";
+} from "../../utils/utils.js";
 import { deployV1Fixture } from "../fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "../fixtures/deployV2Fixture.js";
 import { deployArtifact } from "../fixtures/deployArtifact.js";
@@ -33,6 +34,7 @@ const dnsTXTResolverName = "dnstxt.ens.eth";
 const extendedDNSResolverName = "dnsname.ens.eth";
 const dummyBytes4 = "0x12345678";
 const testAddress = "0x8000000000000000000000000000000000000001";
+const testData = "0xabcdef";
 const testURL = "https://ens.domains";
 const basicProfile: KnownProfile = {
   name: "test.com",
@@ -140,7 +142,11 @@ async function fixture() {
       name,
       resolverAddress: myResolver.address,
     });
-    await myResolver.write.setAddr([namehash(name), COIN_TYPE_ETH, resolver]);
+    await myResolver.write.setAddress([
+      dnsEncodeName(name),
+      COIN_TYPE_ETH,
+      resolver,
+    ]);
   }
 }
 
@@ -244,7 +250,7 @@ describe("DNSTLDResolver", () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.v1.setupName(kp);
       for (const res of makeResolutions(kp)) {
-        await F.v1.publicResolver.write.multicall([[res.write]]);
+        await F.v1.publicResolver.write.multicall([[res.writeV1]]);
       }
       await F.expectResolution(kp, F.v1.publicResolver.address);
     });
@@ -285,7 +291,7 @@ describe("DNSTLDResolver", () => {
       resolverAddress: F.myResolver.address,
     });
     await F.myResolver.write.multicall([
-      bundle.resolutions.map((x) => x.write),
+      bundle.resolutions.map((x) => x.writeV2),
     ]);
     const [answer, resolverAddress] = await F.v2.universalResolver.read.resolve(
       [dnsEncodeName(basicProfile.name), bundle.call],
@@ -347,7 +353,7 @@ describe("DNSTLDResolver", () => {
           encodeRRs([makeTXT(kp.name, `ENS1 ${F.myResolver.address}`)]),
         ]);
         await F.myResolver.write.multicall([
-          makeResolutions(kp).map((x) => x.write),
+          makeResolutions(kp).map((x) => x.writeV2),
         ]);
         await F.expectGasless(kp, F.myResolver.address);
       });
@@ -389,7 +395,7 @@ describe("DNSTLDResolver", () => {
     const anotherAddress = "0x1234567812345678123456781234567812345678";
     const x = `0x${"a".repeat(64)}` as const;
     const y = `0x${"b".repeat(64)}` as const;
-    const context = `a[60]=${testAddress} a[e0]=${anotherAddress} t[url]='${testURL}' c=${contenthash} xy=${concat([x, y])}`;
+    const context = `a[60]=${testAddress} a[e0]=${anotherAddress} t[url]='${testURL}' d[abc]=${testData} c=${contenthash} xy=${concat([x, y])}`;
     const encodedRRs = encodeRRs([
       makeTXT(basicProfile.name, `ENS1 ${dnsTXTResolverName} ${context}`),
     ]);
@@ -528,12 +534,21 @@ describe("DNSTLDResolver", () => {
       });
     });
 
-    it("text(url)", async () => {
+    it("text()", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.mockDNSSEC.write.setResponse([encodedRRs]);
       await F.expectTXT({
         name: basicProfile.name,
         texts: [{ key: "url", value: testURL }],
+      });
+    });
+
+    it("data()", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      await F.mockDNSSEC.write.setResponse([encodedRRs]);
+      await F.expectTXT({
+        name: basicProfile.name,
+        datas: [{ key: "abc", value: testData }],
       });
     });
 
@@ -613,6 +628,7 @@ describe("DNSTLDResolver", () => {
             name: newName,
             addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
             texts: [{ key: "url", value: testURL }],
+            datas: [{ key: "abc", value: testData }],
           } as const satisfies KnownProfile;
           await F.v2.setupName({
             name: newName,
