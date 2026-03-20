@@ -71,7 +71,7 @@ interface IRecordResolver is
     event PubkeyUpdated(uint256 indexed recordId, bytes32 x, bytes32 y, address indexed sender);
     event TextUpdated(
         uint256 indexed recordId,
-        bytes32 indexed keyHash,
+        string indexed keyHash,
         string key,
         string value,
         address indexed sender
@@ -101,37 +101,64 @@ interface IRecordResolver is
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Create a new record, bind it to `name, and update it.
+    /// @notice Set address for `coinType`.
     /// @param name The DNS-encoded name.
-    /// @param setters The ABI-encoded `IRecordSetter` calldata.
-    /// @return recordId The new record ID.
-    function createRecord(
+    /// @param coinType The coin type.
+    /// @param addressBytes The encoded address.
+    function setAddress(
         bytes calldata name,
-        bytes[] calldata setters
-    ) external returns (uint256 recordId);
+        uint256 coinType,
+        bytes calldata addressBytes
+    ) external;
 
-    /// @notice Update an existing record by `name`.
+    /// @notice Set data for `key`.
     /// @param name The DNS-encoded name.
-    /// @param setters The ABI-encoded `IRecordSetter` calldata.
-    function updateRecordByName(bytes calldata name, bytes[] calldata setters) external;
+    /// @param key The data key.
+    /// @param data The data.
+    function setData(bytes calldata name, string calldata key, bytes calldata data) external;
 
-    /// @notice Update an existing record by `recordId`.
-    /// @param recordId The record ID.
-    /// @param setters The ABI-encoded `IRecordSetter` calldata.
-    function updateRecordById(uint256 recordId, bytes[] calldata setters) external;
+    /// @notice Set text for `key`.
+    /// @param name The DNS-encoded name.
+    /// @param key The text key.
+    /// @param value The text value.
+    function setText(bytes calldata name, string calldata key, string calldata value) external;
 
-    /// @notice Associate `name` with `recordId`.
-    function bindRecord(bytes calldata name, uint256 recordId) external;
+    /// @notice Set the contenthash.
+    /// @param name The DNS-encoded name.
+    /// @param contentHash The content hash.
+    function setContentHash(bytes calldata name, bytes calldata contentHash) external;
 
-    // /// @notice Resolve `data` ignoring `node` and using `recordId` instead.
-    // /// @dev Supports `multicall(bytes[])`.
-    // /// @param recordId The record ID.
-    // /// @param data The ABI-encoded resolver calldata.
-    // /// @return The abi-encoded resolver response.
-    // function resolveRecord(
-    //     uint256 recordId,
-    //     bytes calldata data
-    // ) external view returns (bytes memory);
+    /// @notice Set ABI data for `contentType`.
+    /// @param name The DNS-encoded name.
+    /// @param contentType The content type bit of the ABI encoding.
+    /// @param data The encoded ABI data.
+    function setABI(bytes calldata name, uint256 contentType, bytes calldata data) external;
+
+    /// @notice Set the primary name.
+    /// @param name The DNS-encoded name.
+    /// @param fqdn The name.
+    function setName(bytes calldata name, string calldata fqdn) external;
+
+    /// @notice Set implementer for `interfaceId`.
+    /// @param name The DNS-encoded name.
+    /// @param interfaceId The EIP-165 interface ID.
+    /// @param implementer The address of the contract that implements this interface.
+    function setInterface(bytes calldata name, bytes4 interfaceId, address implementer) external;
+
+    /// @notice Set the SECP256k1 public key associated with an ENS node.
+    /// @param name The DNS-encoded name.
+    /// @param x The x coordinate of the public key.
+    /// @param y The y coordinate of the public key.
+    function setPubkey(bytes calldata name, bytes32 x, bytes32 y) external;
+
+    /// @notice Clears a record.
+    /// @param name The DNS-encoded name.
+    function clear(bytes calldata name) external;
+
+    /// @notice Associate `name` with `targetNode`.
+    /// @param name The DNS-encoded name to link.
+    /// @param targetNode The target namehash or null to unlink.
+    function link(bytes calldata name, bytes32 targetNode) external;
 
     /// @notice Get the record associated with `node`.
     function getRecordId(bytes32 node) external view returns (uint256);
