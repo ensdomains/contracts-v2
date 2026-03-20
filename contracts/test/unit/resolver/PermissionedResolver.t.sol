@@ -28,6 +28,7 @@ import {
     PermissionedResolver,
     PERMISSIONED_RESOLVER_INTERFACE_ID,
     IRecordResolver,
+    IResolverSetters,
     PermissionedResolverLib,
     IMulticallable,
     NameCoder,
@@ -126,6 +127,10 @@ contract PermissionedResolverTest is Test {
         assertTrue(
             resolver.supportsInterface(type(IRecordResolver).interfaceId),
             "IRecordResolver"
+        );
+        assertTrue(
+            resolver.supportsInterface(type(IResolverSetters).interfaceId),
+            "IResolverSetters"
         );
         assertTrue(resolver.supportsInterface(type(IMulticallable).interfaceId), "IMulticallable");
         assertTrue(
@@ -748,8 +753,8 @@ contract PermissionedResolverTest is Test {
 
     function test_multicall_setters(bool checked) external {
         bytes[] memory m = new bytes[](2);
-        m[0] = abi.encodeCall(PermissionedResolver.setName, (name1, TEST_STRING));
-        m[1] = abi.encodeCall(PermissionedResolver.setContentHash, (name2, testAddress));
+        m[0] = abi.encodeCall(IResolverSetters.setName, (name1, TEST_STRING));
+        m[1] = abi.encodeCall(IResolverSetters.setContentHash, (name2, testAddress));
 
         vm.prank(owner);
         if (checked) {
@@ -767,7 +772,7 @@ contract PermissionedResolverTest is Test {
         resolver.setName(name1, TEST_STRING); // ensure record
 
         bytes[] memory m = new bytes[](1);
-        m[0] = abi.encodeCall(PermissionedResolver.setName, (name1, TEST_STRING));
+        m[0] = abi.encodeCall(IResolverSetters.setName, (name1, TEST_STRING));
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -782,10 +787,10 @@ contract PermissionedResolverTest is Test {
 
     function test_multicall_getters() external {
         bytes[] memory m = new bytes[](4);
-        m[0] = abi.encodeCall(PermissionedResolver.setAddress, (name1, COIN_TYPE_ETH, testAddress));
-        m[1] = abi.encodeCall(PermissionedResolver.setText, (name1, TEST_STRING, TEST_STRING));
-        m[2] = abi.encodeCall(PermissionedResolver.setName, (name1, TEST_STRING));
-        m[3] = abi.encodeCall(PermissionedResolver.setContentHash, (name1, testAddress));
+        m[0] = abi.encodeCall(IResolverSetters.setAddress, (name1, COIN_TYPE_ETH, testAddress));
+        m[1] = abi.encodeCall(IResolverSetters.setText, (name1, TEST_STRING, TEST_STRING));
+        m[2] = abi.encodeCall(IResolverSetters.setName, (name1, TEST_STRING));
+        m[3] = abi.encodeCall(IResolverSetters.setContentHash, (name1, testAddress));
         vm.prank(owner);
         resolver.multicall(m);
 
@@ -945,7 +950,7 @@ contract PermissionedResolverTest is Test {
         // give friend setText(TEST_STRING) on any record
         vm.prank(owner);
         resolver.grantSetterRoles(
-            abi.encodeCall(PermissionedResolver.setText, (EMPTY_NAME, key, "<ignored>")),
+            abi.encodeCall(IResolverSetters.setText, (EMPTY_NAME, key, "<ignored>")),
             friend
         );
 
@@ -991,7 +996,7 @@ contract PermissionedResolverTest is Test {
         // give friend setText(key) on name1
         vm.prank(owner);
         resolver.grantSetterRoles(
-            abi.encodeCall(PermissionedResolver.setText, (name1, key, "")),
+            abi.encodeCall(IResolverSetters.setText, (name1, key, "")),
             friend
         );
 
@@ -1045,7 +1050,7 @@ contract PermissionedResolverTest is Test {
         // give friend setAddr(coinType) on any record
         vm.prank(owner);
         resolver.grantSetterRoles(
-            abi.encodeCall(PermissionedResolver.setAddress, (EMPTY_NAME, coinType, "<ignored>")),
+            abi.encodeCall(IResolverSetters.setAddress, (EMPTY_NAME, coinType, "<ignored>")),
             friend
         );
 
@@ -1091,7 +1096,7 @@ contract PermissionedResolverTest is Test {
         // give friend setAddr(coinType) on any name
         vm.prank(owner);
         resolver.grantSetterRoles(
-            abi.encodeCall(PermissionedResolver.setAddress, (name1, coinType, "")),
+            abi.encodeCall(IResolverSetters.setAddress, (name1, coinType, "")),
             friend
         );
 
