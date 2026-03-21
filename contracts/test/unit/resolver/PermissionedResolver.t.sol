@@ -381,14 +381,21 @@ contract PermissionedResolverTest is Test {
 
     function test_clear() external {
         vm.prank(owner);
-        resolver.setName(name1, TEST_STRING);
+        resolver.setName(name1, TEST_STRING); // ensure record
 
-        assertEq(resolver.name(node1), TEST_STRING, "before");
+        assertEq(resolver.name(node1), TEST_STRING);
 
         vm.prank(owner);
         resolver.clear(name1);
 
-        assertEq(resolver.name(node1), "", "after");
+        assertEq(resolver.name(node1), "");
+    }
+
+    function test_clear_dne() external {
+        vm.prank(owner);
+        resolver.clear(name1);
+
+        assertEq(resolver.getRecordId(node1), 0);
     }
 
     function test_clear_notAuthorized() external {
@@ -408,7 +415,7 @@ contract PermissionedResolverTest is Test {
 
     function test_link() external {
         vm.prank(owner);
-        resolver.setName(name1, TEST_STRING);
+        resolver.setName(name1, TEST_STRING); // ensure record
 
         vm.expectEmit();
         emit IRecordResolver.RecordLinked(node2, name2, 1, owner);
@@ -416,6 +423,14 @@ contract PermissionedResolverTest is Test {
         resolver.link(name2, node1);
 
         assertEq(resolver.name(node2), TEST_STRING);
+    }
+
+    function test_link_default() external {
+        vm.prank(owner);
+        resolver.setName(name1, TEST_STRING); // ensure record
+
+        vm.prank(owner);
+        resolver.link(EMPTY_NAME, node1);
     }
 
     function test_link_notAuthorized() external {
@@ -446,15 +461,27 @@ contract PermissionedResolverTest is Test {
         vm.expectEmit();
         emit IRecordResolver.RecordLinked(node1, name1, 0, owner);
         vm.prank(owner);
-        resolver.link(name1, 0);
+        resolver.link(name1, bytes32(0));
 
         assertEq(resolver.name(node2), "");
+    }
+
+    function test_unlink_default() external {
+        vm.prank(owner);
+        resolver.setName(EMPTY_NAME, TEST_STRING);
+
+        assertEq(resolver.name(node1), TEST_STRING);
+
+        vm.prank(owner);
+        resolver.link(EMPTY_NAME, bytes32(0));
+
+        assertEq(resolver.name(node1), "");
     }
 
     function test_unlink_alreadyUnlinked() external {
         vm.expectRevert(abi.encodeWithSelector(IRecordResolver.InvalidRecord.selector));
         vm.prank(owner);
-        resolver.link(name1, 0);
+        resolver.link(name1, bytes32(0));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -515,7 +542,7 @@ contract PermissionedResolverTest is Test {
     function test_setAddress(uint256 coinType) external {
         bytes memory a = vm.randomBytes(20);
 
-        assertFalse(resolver.hasAddr(node1, coinType), "before");
+        assertFalse(resolver.hasAddr(node1, coinType));
 
         vm.expectEmit();
         emit IRecordResolver.AddressUpdated(1, coinType, a, owner);
@@ -523,7 +550,7 @@ contract PermissionedResolverTest is Test {
         resolver.setAddress(name1, coinType, a);
 
         assertEq(resolver.addr(node1, coinType), a);
-        assertTrue(resolver.hasAddr(node1, coinType), "after");
+        assertTrue(resolver.hasAddr(node1, coinType));
     }
 
     function test_setAddress_fallback(uint32 chain) external {
