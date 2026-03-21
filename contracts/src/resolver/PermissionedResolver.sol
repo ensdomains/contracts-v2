@@ -50,40 +50,45 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// - ENSIP-9 / EIP-2304: addr(coinType)
 /// - ENSIP-19: addr(default)
 /// - ENSIP-24: data(key)
-/// - IERC7996: supportsFeature()
 /// - IHasAddressResolver: hasAddr()
 ///
-/// Every record setter has the form: `f(name, ...)` and corresponds to a role:
-/// * `setAddress()` <=> `ROLE_SET_ADDRESS`
-/// * `setText()` <=> `ROLE_SET_TEXT`
-/// * `setName()` <=> `ROLE_SET_NAME`
+/// Every record setter has the form: `f(name, ...)`
 ///
-/// Coarse-grained record setters are applied to a role bitmap and annotated
+/// Every record setter has a corresponding role:
+/// | Function           | Role                   |
+/// | ------------------ | ---------------------- |
+/// | `setABI()`         | `ROLE_SET_ABI`         |
+/// | `setAddress()`     | `ROLE_SET_ADDRESS`     |
+/// | `setContentHash()` | `ROLE_SET_CONTENTHASH` |
+/// | `setData()`        | `ROLE_SET_DATA`        |
+/// | `setInterface()`   | `ROLE_SET_INTERFACE`   |
+/// | `setName()`        | `ROLE_SET_NAME`        |
+/// | `setText()`        | `ROLE_SET_TEXT`        |
+///
+/// Record setters can be granted with `getRecordRoles()` and are annotated
 /// using ABI-encoded calldata: `abi.encodeWithSelector(bytes4(0), name)`.
 ///
-/// The following setters are coarse-grained and granted with `getRecordRoles()`.
-/// * `setContentHash(name, ...)`
-/// * `setName(name, ...)`
-/// * `setPubkey(name, ...)`
-///
-/// Fine-grained record setters have the form: `g(name, <arg>, ...)`
-/// and annotated using truncated ABI-encoded calldata:
-/// * w/data: `abi.encodeCall(setAddr, ("nick.eth", 60, "..."))`
-/// * w/o data: `abi.encodeCall(setAddr, ("nick.eth", 60, ""))`
-/// * truncated: `abi.encodeWithSelector(setAddr.selector, ("nick.eth", 60))`
+/// Fine-grained record setters have the form: `f(name, <arg>, ...)`
+/// They can be granted with `grantSetterRoles()` and are annotated
+/// using truncated ABI-encoded calldata:
+/// * w/data: `abi.encodeCall(setAddr, (name, coinType, "..."))`
+/// * w/o data: `abi.encodeCall(setAddr, (name coinType, ""))`
+/// * truncated: `abi.encodeWithSelector(setAddr.selector, (name, coinType))`
 /// The `roleBitmap` can be derived from the setter selector.
 ///
-/// The following setters are fine-grained and granted with `grantSetterRoles()`:
+/// The following setters are fine-grained:
 /// * `setAddress(name, coinType, ...)`
 /// * `setData(name, key, ...)`
 /// * `setText(name, key, ...)`
 /// * `setABI(name, contentType, ...)`
 /// * `setInterface(name, interfaceId, ...)`
 ///
-/// The fine-grained `arg` is hashed with the following logic:
-/// * `uint256 arg` => `PermissionedResolverLib.partHash(arg)`
-/// * `string arg` => `PermissionedResolverLib.partHash(arg)`
-/// * `bytes4 arg` => `PermissionedResolverLib.partHash(uint256(uint32(arg)))`
+/// The argument is hashed accordingly:
+/// | Argument      | Part                                            |
+/// | ------------- | ----------------------------------------------- |
+/// | `uint256 arg` | `PermissionedResolverLib.partHash(arg)``        |
+/// | `string arg`  | `PermissionedResolverLib.partHash(arg)`         |
+/// | `bytes4 arg`  | `PermissionedResolverLib.partHash(uint32(arg))` |
 ///
 /// Record setters check (4) EAC resources:
 ///                                                      Part Hash
@@ -95,11 +100,11 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 ///             | Specific (1) |   resource(<recordId>, 0)   | resource(<recordId>, <partHash>) |
 ///             +--------------+-----------------------------+----------------------------------+
 ///
-/// eg. `setText(name, "abc", ...)` with `recordId = getRecordId(namehash(name))`
+/// eg. `setText(name, "key", ...)` with `recordId = getRecordId(namehash(name))`
 ///      will check the following resources for `ROLE_SET_TEXT` permission:
-/// * `resource(recordId, partHash("abc"))` => `arg="abc"` for that record
+/// * `resource(recordId, partHash("akeybc"))` => `arg="key"` for that record
 /// * `resource(recordId, 0)` => ANY part of that record
-/// * `resource(0, partHash("abc"))` => `arg="abc"` for ANY record
+/// * `resource(0, partHash("key"))` => `arg="key"` for ANY record
 /// * `resource(0, 0)` => ANY part of ANY record
 ///
 contract PermissionedResolver is
@@ -344,7 +349,7 @@ contract PermissionedResolver is
         uint256 resource = PermissionedResolverLib.resource(recordId, bytes32(0));
         _checkCanGrantRoles(resource, roleBitmap, _msgSender());
         if (roleCount(resource) == 0) {
-            emit RecordResource(recordId, resource, abi.encodeWithSelector(bytes4(0), name_));
+            emit RecordResource(recordId, resource, PermissionedResolverLib.anySetter(name_));
         }
         return _grantRoles(resource, roleBitmap, account, true);
     }

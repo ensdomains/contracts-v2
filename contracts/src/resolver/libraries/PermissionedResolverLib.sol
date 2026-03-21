@@ -63,6 +63,11 @@ library PermissionedResolverLib {
     /// @dev Nybble 63: authorizes setting ROLE_UPGRADE.
     uint256 internal constant ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
 
+    /// @dev Generate generic record setter calldata.
+    function anySetter(bytes memory name) internal pure returns (bytes memory) {
+        return abi.encodeWithSelector(bytes4(0), name);
+    }
+
     /// @dev Compute unique EAC resource ID.
     /// @param recordId The resource ID.
     /// @param part The part hash.
