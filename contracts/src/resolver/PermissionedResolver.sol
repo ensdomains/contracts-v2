@@ -40,17 +40,17 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 ///
 /// Supported profiles and standards:
 ///
-/// - ENSIP-1 / EIP-137: addr()
-/// - ENSIP-3 / EIP-181: name()
-/// - ENSIP-4 / EIP-205: ABI()
-/// - EIP-619: pubkey()
-/// - ENSIP-5 / EIP-634: text(key)
-/// - ENSIP-7 / EIP-1577: contenthash()
-/// - ENSIP-8: interfaceImplementer()
-/// - ENSIP-9 / EIP-2304: addr(coinType)
-/// - ENSIP-19: addr(default)
-/// - ENSIP-24: data(key)
-/// - IHasAddressResolver: hasAddr()
+/// * ENSIP-1 / EIP-137: addr()
+/// * ENSIP-3 / EIP-181: name()
+/// * ENSIP-4 / EIP-205: ABI()
+/// * EIP-619: pubkey()
+/// * ENSIP-5 / EIP-634: text(key)
+/// * ENSIP-7 / EIP-1577: contenthash()
+/// * ENSIP-8: interfaceImplementer()
+/// * ENSIP-9 / EIP-2304: addr(coinType)
+/// * ENSIP-19: addr(default)
+/// * ENSIP-24: data(key)
+/// * IHasAddressResolver: hasAddr()
 ///
 /// Every record setter has the form: `f(name, ...)`
 ///
@@ -73,7 +73,7 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// using truncated ABI-encoded calldata:
 /// * w/data: `abi.encodeCall(setAddr, (name, coinType, "..."))`
 /// * w/o data: `abi.encodeCall(setAddr, (name coinType, ""))`
-/// * truncated: `abi.encodeWithSelector(setAddr.selector, (name, coinType))`
+/// * truncated: `abi.encodeWithSelector(setAddr.selector, name, coinType)`
 /// The `roleBitmap` can be derived from the setter selector.
 ///
 /// The following setters are fine-grained:
@@ -86,7 +86,7 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// The argument is hashed accordingly:
 /// | Argument      | Part                                            |
 /// | ------------- | ----------------------------------------------- |
-/// | `uint256 arg` | `PermissionedResolverLib.partHash(arg)``        |
+/// | `uint256 arg` | `PermissionedResolverLib.partHash(arg)`         |
 /// | `string arg`  | `PermissionedResolverLib.partHash(arg)`         |
 /// | `bytes4 arg`  | `PermissionedResolverLib.partHash(uint32(arg))` |
 ///
@@ -102,10 +102,10 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 ///
 /// eg. `setText(name, "key", ...)` with `recordId = getRecordId(namehash(name))`
 ///      will check the following resources for `ROLE_SET_TEXT` permission:
-/// * `resource(recordId, partHash("akeybc"))` => `arg="key"` for that record
-/// * `resource(recordId, 0)` => ANY part of that record
-/// * `resource(0, partHash("key"))` => `arg="key"` for ANY record
-/// * `resource(0, 0)` => ANY part of ANY record
+/// 1. `resource(recordId, partHash("akeybc"))` => `arg="key"` for that record
+/// 2. `resource(recordId, 0)` => ANY part of that record
+/// 3. `resource(0, partHash("key"))` => `arg="key"` for ANY record
+/// 4. `resource(0, 0)` => ANY part of ANY record
 ///
 contract PermissionedResolver is
     EnhancedAccessControl,
@@ -346,7 +346,7 @@ contract PermissionedResolver is
         address account
     ) external returns (bool) {
         uint256 recordId = _ensureRecordWithoutDefault(name_);
-        uint256 resource = PermissionedResolverLib.resource(recordId, bytes32(0));
+        uint256 resource = PermissionedResolverLib.resource(recordId);
         _checkCanGrantRoles(resource, roleBitmap, _msgSender());
         if (roleCount(resource) == 0) {
             emit RecordResource(recordId, resource, PermissionedResolverLib.anySetter(name_));
@@ -396,11 +396,7 @@ contract PermissionedResolver is
         }
         uint256 recordId = _ensureRecordWithoutDefault(name_);
         uint256 resource = PermissionedResolverLib.resource(recordId, part);
-        _checkCanGrantRoles(
-            PermissionedResolverLib.resource(recordId, bytes32(0)),
-            roleBitmap,
-            _msgSender()
-        );
+        _checkCanGrantRoles(PermissionedResolverLib.resource(recordId), roleBitmap, _msgSender());
         if (roleCount(resource) == 0) {
             emit RecordResource(recordId, resource, compactSetter);
         }
@@ -409,7 +405,7 @@ contract PermissionedResolver is
 
     /// @notice Same as `multicall()`.
     /// @dev The node parameter is accepted for interface compatibility but is not used.
-    ///      Permission checking is handled by individual function calls within the multicall.
+    ///      Permission are checked by individual function calls within the multicall.
     /// @param {node} Ignored, for interface compatibility.
     /// @param calls The calls to make.
     /// @return results The results of the calls.
@@ -486,8 +482,8 @@ contract PermissionedResolver is
 
     /// @inheritdoc IPubkeyResolver
     function pubkey(bytes32 node) external view returns (bytes32, bytes32) {
-        bytes32[2] storage v = _record(node).pubkey;
-        return (v[0], v[1]);
+        bytes32[2] storage xy = _record(node).pubkey;
+        return (xy[0], xy[1]);
     }
 
     /// @inheritdoc ITextResolver
@@ -524,7 +520,7 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc EnhancedAccessControl
-    /// @notice Function is disabled.  Use `grant{Record|Setter}Roles` instead.
+    /// @notice Function is disabled.  Use `grant{Record|Setter}Roles()` instead.
     function grantRoles(
         uint256 resource,
         uint256 roleBitmap,
@@ -577,7 +573,7 @@ contract PermissionedResolver is
             (!hasRoles(PermissionedResolverLib.resource(recordId, part), roleBitmap, sender) &&
                 !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, sender))
         ) {
-            _checkRoles(PermissionedResolverLib.resource(recordId, bytes32(0)), roleBitmap, sender); // reverts with "widest" resource
+            _checkRoles(PermissionedResolverLib.resource(recordId), roleBitmap, sender); // reverts with "widest" resource
         }
     }
 
