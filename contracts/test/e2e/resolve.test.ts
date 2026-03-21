@@ -5,13 +5,15 @@ import { MAX_EXPIRY } from "../../script/deploy-constants.js";
 import { expectVar } from "../utils/expectVar.js";
 import {
   bundleCalls,
-  COIN_TYPE_DEFAULT,
-  COIN_TYPE_ETH,
-  getReverseName,
   type KnownProfile,
   makeResolutions,
 } from "../utils/resolutions.js";
-import { dnsEncodeName } from "../utils/utils.js";
+import {
+  dnsEncodeName,
+  getReverseName,
+  COIN_TYPE_ETH,
+  COIN_TYPE_DEFAULT,
+} from "../utils/utils.js";
 
 describe("Resolve", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
@@ -41,7 +43,7 @@ describe("Resolve", () => {
     named("addr.reverse", () => env.shared.ETHReverseResolver.address);
   });
 
-  describe("L1", () => {
+  describe("Pointers", () => {
     it("dnstxt.ens.eth + addr() => DNSTXTResolver", () =>
       expectResolve({
         name: "dnstxt.ens.eth",
@@ -77,8 +79,8 @@ describe("Resolve", () => {
         const resolver = await env.deployPermissionedResolver({
           account,
         });
-        await resolver.write.setAddr([
-          namehash(name),
+        await resolver.write.setAddress([
+          dnsEncodeName(name),
           COIN_TYPE_ETH,
           account.address,
         ]);
@@ -118,8 +120,8 @@ describe("Resolve", () => {
         const resolver = await env.deployPermissionedResolver({
           account,
         });
-        await resolver.write.setAddr([
-          namehash(name),
+        await resolver.write.setAddress([
+          dnsEncodeName(name),
           COIN_TYPE_DEFAULT,
           account.address,
         ]);
