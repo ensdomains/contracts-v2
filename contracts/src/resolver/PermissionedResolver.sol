@@ -52,6 +52,20 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// * ENSIP-24: data(key)
 /// * IHasAddressResolver: hasAddr()
 ///
+/// Records are created automatically by setters and assigned internal ID numbers (starting at 1).
+/// To create a new record, `ROLE_NEW_RECORD` is required on root.
+/// `getRecordId(node)` reveals the internal record ID.
+///
+/// `link(name, node)` makes `name` use the record currently used by `node`.
+/// To link an existing record, `ROLE_LINK_RECORD` is required on root.
+///
+/// `link(name, bytes32(0))` unlinks `name` from the record.
+/// Once a record is no longer referenced, it becomes unreachable and is effectively deleted.
+///
+/// `clear(name)` reset the record and requires `ROLE_CLEAR_RECORD` on the name or root.
+///
+/// Names without a record fall back to the default record, which can be updated using the empty name (`0x00`).
+///
 /// Every record setter has the form: `f(name, ...)`
 ///
 /// Every record setter has a corresponding role:
@@ -311,11 +325,18 @@ contract PermissionedResolver is
 
     /// @inheritdoc IRecordResolver
     function clear(bytes calldata name_) external {
-        uint256 recordId = _ensureRecord(name_);
-        address sender = _msgSender();
-        _checkRecordRoles(recordId, PermissionedResolverLib.ROLE_CLEAR_RECORD, bytes32(0), sender);
-        ++_versions[recordId];
-        emit RecordCleared(recordId, sender);
+        uint256 recordId = _recordIds[NameCoder.namehash(name_, 0)];
+        if (recordId > 0) {
+            address sender = _msgSender();
+            _checkRecordRoles(
+                recordId,
+                PermissionedResolverLib.ROLE_CLEAR_RECORD,
+                bytes32(0),
+                sender
+            );
+            ++_versions[recordId];
+            emit RecordCleared(recordId, sender);
+        }
     }
 
     /// @inheritdoc IRecordResolver
