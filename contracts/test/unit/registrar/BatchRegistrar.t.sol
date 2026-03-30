@@ -37,12 +37,7 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         metadata = new MockRegistryMetadata();
         hcaFactory = new MockHCAFactoryBasic();
 
-        registry = new PermissionedRegistry(
-            hcaFactory,
-            metadata,
-            owner,
-            EACBaseRolesLib.ALL_ROLES
-        );
+        registry = new PermissionedRegistry(hcaFactory, metadata, owner, EACBaseRolesLib.ALL_ROLES);
 
         batchRegistrar = new BatchRegistrar(registry, owner);
 
@@ -69,7 +64,11 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
 
         for (uint256 i = 0; i < labels.length; i++) {
             IPermissionedRegistry.State memory state = registry.getState(LibLabel.id(labels[i]));
-            assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Status should be RESERVED");
+            assertEq(
+                uint256(state.status),
+                uint256(IPermissionedRegistry.Status.RESERVED),
+                "Status should be RESERVED"
+            );
             assertEq(state.expiry, expires[i], "Expiry should match");
             assertEq(registry.getResolver(labels[i]), resolver, "Resolver should match");
         }
@@ -137,14 +136,24 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         batchRegistrar.batchRegister(IRegistry(address(0)), resolver, mixedLabels, mixedExpires);
 
         IPermissionedRegistry.State memory state1 = registry.getState(LibLabel.id("new1"));
-        assertEq(uint256(state1.status), uint256(IPermissionedRegistry.Status.RESERVED), "new1 should be RESERVED");
+        assertEq(
+            uint256(state1.status),
+            uint256(IPermissionedRegistry.Status.RESERVED),
+            "new1 should be RESERVED"
+        );
         assertEq(state1.expiry, newExpiry, "new1 expiry should match");
 
         IPermissionedRegistry.State memory state2 = registry.getState(LibLabel.id("new2"));
-        assertEq(uint256(state2.status), uint256(IPermissionedRegistry.Status.RESERVED), "new2 should be RESERVED");
+        assertEq(
+            uint256(state2.status),
+            uint256(IPermissionedRegistry.Status.RESERVED),
+            "new2 should be RESERVED"
+        );
         assertEq(state2.expiry, newExpiry, "new2 expiry should match");
 
-        IPermissionedRegistry.State memory existingState = registry.getState(LibLabel.id("existing"));
+        IPermissionedRegistry.State memory existingState = registry.getState(
+            LibLabel.id("existing")
+        );
         assertEq(existingState.expiry, newExpiry, "existing expiry should be renewed");
     }
 
@@ -163,7 +172,11 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         batchRegistrar.batchRegister(IRegistry(address(0)), resolver, labels, expires);
 
         IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("expiring"));
-        assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Should be re-reserved");
+        assertEq(
+            uint256(state.status),
+            uint256(IPermissionedRegistry.Status.RESERVED),
+            "Should be re-reserved"
+        );
         assertEq(state.expiry, newExpiry, "Expiry should match new expiry");
     }
 
@@ -182,7 +195,11 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         batchRegistrar.batchRegister(IRegistry(address(0)), resolver, labels, expires);
 
         IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("single"));
-        assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Status should be RESERVED");
+        assertEq(
+            uint256(state.status),
+            uint256(IPermissionedRegistry.Status.RESERVED),
+            "Status should be RESERVED"
+        );
         assertEq(state.expiry, expires[0], "Expiry should match");
     }
 
@@ -193,7 +210,9 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         expires[0] = uint64(block.timestamp + 86400);
 
         address unauthorized = address(0xBEEF);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, unauthorized));
+        vm.expectRevert(
+            abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, unauthorized)
+        );
         vm.prank(unauthorized);
         batchRegistrar.batchRegister(IRegistry(address(0)), resolver, labels, expires);
     }
@@ -212,7 +231,11 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         batchRegistrar.batchRegister(IRegistry(address(0)), resolver, labels, expires);
 
         IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("duplicate"));
-        assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Status should be RESERVED");
+        assertEq(
+            uint256(state.status),
+            uint256(IPermissionedRegistry.Status.RESERVED),
+            "Status should be RESERVED"
+        );
         assertEq(state.expiry, expiry2, "Expiry should be the renewed (second) value");
     }
 
@@ -227,14 +250,20 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         batchRegistrar.batchRegister(IRegistry(address(0)), resolver, labels, expires);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        bytes32 labelReservedSig = keccak256("LabelReserved(uint256,bytes32,string,uint64,address)");
+        bytes32 labelReservedSig = keccak256(
+            "LabelReserved(uint256,bytes32,string,uint64,address)"
+        );
         bool foundLabelReserved = false;
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == labelReservedSig) {
                 foundLabelReserved = true;
                 bytes32 labelHash = keccak256(bytes("eventtest"));
                 assertEq(logs[i].topics[2], labelHash, "labelHash topic should match");
-                assertEq(logs[i].topics[3], bytes32(uint256(uint160(address(batchRegistrar)))), "sender topic should match");
+                assertEq(
+                    logs[i].topics[3],
+                    bytes32(uint256(uint160(address(batchRegistrar)))),
+                    "sender topic should match"
+                );
                 break;
             }
         }
@@ -277,7 +306,9 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
             expiry
         );
 
-        IPermissionedRegistry.State memory stateBefore = registry.getState(LibLabel.id("registered"));
+        IPermissionedRegistry.State memory stateBefore = registry.getState(
+            LibLabel.id("registered")
+        );
         assertEq(uint256(stateBefore.status), uint256(IPermissionedRegistry.Status.REGISTERED));
 
         uint64 newExpiry = uint64(block.timestamp + 86400 * 730);
@@ -292,7 +323,9 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
 
         batchRegistrar.batchRegister(IRegistry(address(0)), resolver, mixedLabels, mixedExpires);
 
-        IPermissionedRegistry.State memory stateAfter = registry.getState(LibLabel.id("registered"));
+        IPermissionedRegistry.State memory stateAfter = registry.getState(
+            LibLabel.id("registered")
+        );
         assertEq(uint256(stateAfter.status), uint256(IPermissionedRegistry.Status.REGISTERED));
         assertEq(registry.ownerOf(stateAfter.tokenId), realOwner, "Owner should remain unchanged");
         assertEq(stateAfter.expiry, expiry, "Expiry should remain unchanged");
@@ -315,12 +348,13 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         batchRegistrar.batchRegister(IRegistry(address(0)), resolver, labels, expires);
 
         IPermissionedRegistry.State memory state = registry.getState(LibLabel.id("migratable"));
-        assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.RESERVED), "Should be RESERVED");
-
-        registry.grantRootRoles(
-            RegistryRolesLib.ROLE_REGISTER_RESERVED,
-            address(this)
+        assertEq(
+            uint256(state.status),
+            uint256(IPermissionedRegistry.Status.RESERVED),
+            "Should be RESERVED"
         );
+
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTER_RESERVED, address(this));
 
         address realOwner = address(0x1234);
         registry.register(
@@ -333,7 +367,11 @@ contract BatchRegistrarTest is Test, ERC1155Holder {
         );
 
         state = registry.getState(LibLabel.id("migratable"));
-        assertEq(uint256(state.status), uint256(IPermissionedRegistry.Status.REGISTERED), "Should be REGISTERED");
+        assertEq(
+            uint256(state.status),
+            uint256(IPermissionedRegistry.Status.REGISTERED),
+            "Should be REGISTERED"
+        );
         assertEq(registry.ownerOf(state.tokenId), realOwner, "Owner should be realOwner");
     }
 }

@@ -403,7 +403,8 @@ contract PermissionedResolver is
     /// @param calls The calls to make.
     /// @return results The results of the calls.
     function multicallWithNodeCheck(
-        bytes32 /* node */,
+        bytes32,
+        /* node */
         bytes[] calldata calls
     ) external returns (bytes[] memory) {
         return multicall(calls);

@@ -8,9 +8,7 @@ import {Test} from "forge-std/Test.sol";
 import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 
-import {
-    ResolverProfileRewriterLib
-} from "~src/resolver/libraries/ResolverProfileRewriterLib.sol";
+import {ResolverProfileRewriterLib} from "~src/resolver/libraries/ResolverProfileRewriterLib.sol";
 
 contract ResolverProfileRewriterLibTest is Test {
     function replaceNode(bytes calldata call, bytes32 node) public pure returns (bytes memory) {

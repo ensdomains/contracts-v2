@@ -93,10 +93,13 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     /// @param id The NameWrapper token ID (namehash) of the name being migrated.
     /// @param data ABI-encoded `LibMigration.Data` struct containing migration parameters.
     function onERC1155Received(
-        address /*operator*/,
-        address /*from*/,
+        address,
+        /*operator*/
+        address,
+        /*from*/
         uint256 id,
-        uint256 /*amount*/,
+        uint256,
+        /*amount*/
         bytes calldata data
     ) external onlyWrapper withData(data, LibMigration.MIN_DATA_SIZE) returns (bytes4) {
         // if (amount != 1) { ... } => never happens :: caught by ERC1155Fuse
@@ -119,10 +122,13 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     /// @param ids The NameWrapper token IDs (namehashes) of the names being migrated.
     /// @param data ABI-encoded `LibMigration.Data[]` array containing migration parameters for each name.
     function onERC1155BatchReceived(
-        address /*operator*/,
-        address /*from*/,
+        address,
+        /*operator*/
+        address,
+        /*from*/
         uint256[] calldata ids,
-        uint256[] calldata /*amounts*/,
+        uint256[] calldata,
+        /*amounts*/
         bytes calldata data
     )
         external

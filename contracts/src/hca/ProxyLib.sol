@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {NexusProxy} from "nexus/utils/NexusProxy.sol";
 import {INexus} from "nexus/interfaces/INexus.sol";
+import {NexusProxy} from "nexus/utils/NexusProxy.sol";
 import {CREATE3} from "solady/utils/CREATE3.sol";
 
 /// @title ProxyLib
 /// @notice A library for deploying NexusProxy contracts
 library ProxyLib {
     /// @notice Error thrown when ETH transfer fails.
+    /// @dev Error selector: `0x6d963f88`
     error EthTransferFailed();
 
     function deployProxy(
@@ -26,10 +27,7 @@ library ProxyLib {
                 msg.value,
                 abi.encodePacked(
                     type(NexusProxy).creationCode,
-                    abi.encode(
-                        implementation,
-                        abi.encodeCall(INexus.initializeAccount, initData)
-                    )
+                    abi.encode(implementation, abi.encodeCall(INexus.initializeAccount, initData))
                 ),
                 _getSalt(owner_)
             );

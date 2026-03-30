@@ -95,7 +95,8 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
     ///        `DNSTXTParserLib`.
     /// @return result The ABI-encoded response matching the requested resolver profile.
     function resolve(
-        bytes calldata /* name */,
+        bytes calldata,
+        /* name */
         bytes calldata data,
         bytes calldata context
     ) external view returns (bytes memory result) {

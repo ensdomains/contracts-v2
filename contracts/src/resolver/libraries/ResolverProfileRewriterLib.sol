@@ -30,7 +30,7 @@ library ResolverProfileRewriterLib {
                     off := add(off, mload(off))
                     let size := shl(5, mload(off))
                     // prettier-ignore
-                    for { } size { size := sub(size, 32) } {
+                    for {} size { size := sub(size, 32) } {
                         replace(add(add(off, 32), mload(add(off, size))), node)
                     }
                 }

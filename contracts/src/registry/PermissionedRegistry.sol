@@ -429,9 +429,12 @@ contract PermissionedRegistry is
     /// @dev Override the base registry _onRolesGranted function to regenerate the token when the roles are granted.
     function _onRolesGranted(
         uint256 resource,
-        address /*account*/,
-        uint256 /*oldRoles*/,
-        uint256 /*newRoles*/,
+        address,
+        /*account*/
+        uint256,
+        /*oldRoles*/
+        uint256,
+        /*newRoles*/
         uint256 /*roleBitmap*/
     ) internal virtual override {
         _regenerateToken(resource);
@@ -440,9 +443,12 @@ contract PermissionedRegistry is
     /// @dev Override the base registry _onRolesRevoked function to regenerate the token when the roles are revoked.
     function _onRolesRevoked(
         uint256 resource,
-        address /*account*/,
-        uint256 /*oldRoles*/,
-        uint256 /*newRoles*/,
+        address,
+        /*account*/
+        uint256,
+        /*oldRoles*/
+        uint256,
+        /*newRoles*/
         uint256 /*roleBitmap*/
     ) internal virtual override {
         _regenerateToken(resource);

@@ -28,9 +28,11 @@ contract MockDNS is DNSTLDResolver {
             new GatewayProvider(address(1), new string[](0))
         )
     {}
+
     function readTXT(bytes memory v) external pure returns (bytes memory) {
         return _readTXT(v, 0, v.length);
     }
+
     function readTXT(
         bytes memory v,
         uint256 pos,
@@ -38,6 +40,7 @@ contract MockDNS is DNSTLDResolver {
     ) external pure returns (bytes memory) {
         return _readTXT(v, pos, end);
     }
+
     // function trim(bytes memory v) external pure returns (bytes memory) {
     //     return _trim(abi.encodePacked(v));
     // }

@@ -74,8 +74,10 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     /// @param data ABI-encoded `LibMigration.Data` struct containing migration parameters.
     /// @return The selector of the `onERC721Received` function.
     function onERC721Received(
-        address /*operator*/,
-        address /*from*/,
+        address,
+        /*operator*/
+        address,
+        /*from*/
         uint256 tokenId,
         bytes calldata data
     ) external returns (bytes4) {
