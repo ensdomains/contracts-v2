@@ -342,8 +342,11 @@ contract PermissionedResolverTest is Test {
     ////////////////////////////////////////////////////////////////////////
 
     function test_new() external {
+        uint256 recordId = 1;
         vm.expectEmit();
-        emit IRecordResolver.RecordLinked(node1, name1, 1, owner);
+        emit IRecordResolver.RecordLinked(node1, name1, recordId, owner);
+        vm.expectEmit();
+        emit IRecordResolver.NameUpdated(recordId, TEST_STRING, owner);
         vm.prank(owner);
         resolver.setName(name1, TEST_STRING);
     }
@@ -357,13 +360,6 @@ contract PermissionedResolverTest is Test {
                 address(this)
             )
         );
-        resolver.setName(name1, TEST_STRING);
-    }
-
-    function test_new_withSetters() external {
-        vm.expectEmit();
-        emit IRecordResolver.NameUpdated(1, TEST_STRING, owner);
-        vm.prank(owner);
         resolver.setName(name1, TEST_STRING);
     }
 
