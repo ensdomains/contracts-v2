@@ -45,7 +45,11 @@ library LibHalving {
     /// @param initial The initial value.
     /// @param half The halving period.
     /// @param elapsed The elapsed duration.
-    function halving(uint256 initial, uint256 half, uint256 elapsed) internal pure returns (uint256) {
+    function halving(
+        uint256 initial,
+        uint256 half,
+        uint256 elapsed
+    ) internal pure returns (uint256) {
         if (initial == 0 || half == 0) return 0;
         if (elapsed == 0) return initial;
         uint256 x = (elapsed * PRECISION) / half;

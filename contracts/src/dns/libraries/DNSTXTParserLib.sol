@@ -67,7 +67,7 @@ library DNSTXTParserLib {
         // through the outer loop and switch statement for every character.
         State state = State.START;
         uint256 len = data.length;
-        for (uint256 i; i < len;) {
+        for (uint256 i; i < len; ) {
             if (state == State.START) {
                 // look for the start of a key
                 while (i < len && data[i] == CH_SPACE) {

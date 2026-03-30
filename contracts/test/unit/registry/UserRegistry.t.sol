@@ -48,7 +48,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
         implementation = new UserRegistry(hcaFactory, metadata);
 
         // Create initialization data
-        bytes memory initData = abi.encodeCall(UserRegistry.initialize, (admin, EACBaseRolesLib.ALL_ROLES));
+        bytes memory initData = abi.encodeCall(
+            UserRegistry.initialize,
+            (admin, EACBaseRolesLib.ALL_ROLES)
+        );
 
         // Deploy the proxy using the factory
         vm.prank(admin);
@@ -63,18 +66,34 @@ contract UserRegistryTest is Test, ERC1155Holder {
         assertTrue(factory.verifyContract(address(proxy)), "Proxy should be verified");
 
         // Verify admin has the expected roles
-        assertTrue(proxy.hasRootRoles(RegistryRolesLib.ROLE_UPGRADE, admin), "Admin should have upgrade role");
         assertTrue(
-            proxy.hasRootRoles(RegistryRolesLib.ROLE_UPGRADE_ADMIN, admin), "Admin should have upgrade admin role"
+            proxy.hasRootRoles(RegistryRolesLib.ROLE_UPGRADE, admin),
+            "Admin should have upgrade role"
         );
-        assertTrue(proxy.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, admin), "Admin should have registrar role");
+        assertTrue(
+            proxy.hasRootRoles(RegistryRolesLib.ROLE_UPGRADE_ADMIN, admin),
+            "Admin should have upgrade admin role"
+        );
+        assertTrue(
+            proxy.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, admin),
+            "Admin should have registrar role"
+        );
 
         // Verify other users don't have roles
-        assertFalse(proxy.hasRootRoles(RegistryRolesLib.ROLE_UPGRADE, user1), "User1 should not have upgrade role");
-        assertFalse(proxy.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, user1), "User1 should not have registrar role");
+        assertFalse(
+            proxy.hasRootRoles(RegistryRolesLib.ROLE_UPGRADE, user1),
+            "User1 should not have upgrade role"
+        );
+        assertFalse(
+            proxy.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, user1),
+            "User1 should not have registrar role"
+        );
 
         // Verify proxy supports required interfaces
-        assertTrue(proxy.supportsInterface(type(IRegistry).interfaceId), "Should support IRegistry");
+        assertTrue(
+            proxy.supportsInterface(type(IRegistry).interfaceId),
+            "Should support IRegistry"
+        );
         // UUPSUpgradeable doesn't have an interface ID, so we check for ERC1155 interface
         assertTrue(proxy.supportsInterface(0xd9b67a26), "Should support ERC1155");
     }
@@ -103,11 +122,16 @@ contract UserRegistryTest is Test, ERC1155Holder {
             "User1 should have SET_SUBREGISTRY role"
         );
         assertTrue(
-            proxy.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user1), "User1 should have SET_RESOLVER role"
+            proxy.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user1),
+            "User1 should have SET_RESOLVER role"
         );
 
         // Verify the domain resolves correctly
-        assertEq(address(proxy.getSubregistry(label)), address(0), "Subregistry should be zero address");
+        assertEq(
+            address(proxy.getSubregistry(label)),
+            address(0),
+            "Subregistry should be zero address"
+        );
         assertEq(proxy.getResolver(label), address(0), "Resolver should be zero address");
     }
 
@@ -136,7 +160,11 @@ contract UserRegistryTest is Test, ERC1155Holder {
         proxy.setSubregistry(tokenId, IRegistry(address(0x456)));
 
         // Verify subregistry was set
-        assertEq(address(proxy.getSubregistry("mdtdomain")), address(0x456), "Subregistry should be set");
+        assertEq(
+            address(proxy.getSubregistry("mdtdomain")),
+            address(0x456),
+            "Subregistry should be set"
+        );
     }
 
     function test_role_management() public {
@@ -145,7 +173,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
         proxy.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, user1);
 
         // Verify user1 has ROLE_REGISTRAR
-        assertTrue(proxy.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, user1), "User1 should have registrar role");
+        assertTrue(
+            proxy.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, user1),
+            "User1 should have registrar role"
+        );
 
         // User1 should be able to register domains now
         vm.prank(user1);
@@ -271,7 +302,11 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Verify domain is expired
         assertEq(proxy.ownerOf(tokenId), address(0), "Expired domain should have no owner");
-        assertEq(address(proxy.getSubregistry("expiredomain")), address(0), "Expired domain should have no subregistry");
+        assertEq(
+            address(proxy.getSubregistry("expiredomain")),
+            address(0),
+            "Expired domain should have no subregistry"
+        );
 
         // Should be able to register it again
         vm.prank(admin);
@@ -291,9 +326,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
 // Mock V2 contract for testing upgrades
 contract UserRegistryV2Mock is UserRegistry {
-    constructor(IHCAFactoryBasic _hcaFactory, IRegistryMetadata _metadataProvider)
-        UserRegistry(_hcaFactory, _metadataProvider)
-    {}
+    constructor(
+        IHCAFactoryBasic _hcaFactory,
+        IRegistryMetadata _metadataProvider
+    ) UserRegistry(_hcaFactory, _metadataProvider) {}
 
     function version() public pure returns (uint256) {
         return 2;

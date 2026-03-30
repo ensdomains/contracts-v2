@@ -32,10 +32,12 @@ contract L2ReverseRegistrarWithMigration is L2ReverseRegistrar, Ownable {
     /// @param label The hex string label for the coin type (used in reverse node computation).
     /// @param owner The owner of the contract.
     /// @param oldL2ReverseRegistrar The v1 reverse registrar to migrate from.
-    constructor(uint256 chainId, string memory label, address owner, IL2ReverseRegistrarV1 oldL2ReverseRegistrar)
-        L2ReverseRegistrar(chainId, label)
-        Ownable(owner)
-    {
+    constructor(
+        uint256 chainId,
+        string memory label,
+        address owner,
+        IL2ReverseRegistrarV1 oldL2ReverseRegistrar
+    ) L2ReverseRegistrar(chainId, label) Ownable(owner) {
         OLD_L2_REVERSE_REGISTRAR = oldL2ReverseRegistrar;
     }
 

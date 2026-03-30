@@ -100,13 +100,12 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     }
 
     /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceID)
-        public
-        view
-        override(ERC165, StandaloneReverseRegistrar)
-        returns (bool)
-    {
-        return interfaceID == type(IL2ReverseRegistrar).interfaceId || super.supportsInterface(interfaceID);
+    function supportsInterface(
+        bytes4 interfaceID
+    ) public view override(ERC165, StandaloneReverseRegistrar) returns (bool) {
+        return
+            interfaceID == type(IL2ReverseRegistrar).interfaceId ||
+            super.supportsInterface(interfaceID);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -124,8 +123,14 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     }
 
     /// @inheritdoc IL2ReverseRegistrar
-    function setNameForAddrWithSignature(NameClaim calldata claim, bytes calldata signature) external {
-        string memory chainIdsString = ChainIdsBuilderLib.validateAndBuild(claim.chainIds, CHAIN_ID);
+    function setNameForAddrWithSignature(
+        NameClaim calldata claim,
+        bytes calldata signature
+    ) external {
+        string memory chainIdsString = ChainIdsBuilderLib.validateAndBuild(
+            claim.chainIds,
+            CHAIN_ID
+        );
 
         bytes32 message = _createClaimMessageHash(claim, chainIdsString, address(0));
         _validateSignature(signature, claim.addr, message);
@@ -135,10 +140,15 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     }
 
     /// @inheritdoc IL2ReverseRegistrar
-    function setNameForOwnableWithSignature(NameClaim calldata claim, address owner, bytes calldata signature)
-        external
-    {
-        string memory chainIdsString = ChainIdsBuilderLib.validateAndBuild(claim.chainIds, CHAIN_ID);
+    function setNameForOwnableWithSignature(
+        NameClaim calldata claim,
+        address owner,
+        bytes calldata signature
+    ) external {
+        string memory chainIdsString = ChainIdsBuilderLib.validateAndBuild(
+            claim.chainIds,
+            CHAIN_ID
+        );
 
         if (!_ownsContract(claim.addr, owner)) revert NotOwnerOfContract();
 
@@ -166,7 +176,9 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     function _validateSignature(bytes calldata signature, address addr, bytes32 message) internal {
         // ERC6492 check is done internally because UniversalSigValidator is not gas efficient.
         // We only want to use UniversalSigValidator for ERC6492 signatures.
-        if (bytes32(signature[signature.length - 32:signature.length]) == _ERC6492_DETECTION_SUFFIX) {
+        if (
+            bytes32(signature[signature.length - 32:signature.length]) == _ERC6492_DETECTION_SUFFIX
+        ) {
             if (!_UNIVERSAL_SIG_VALIDATOR.isValidSig(addr, message, signature)) {
                 revert InvalidSignature();
             }
@@ -235,11 +247,11 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     /// @param chainIdsString The pre-validated chain IDs as a display string.
     /// @param owner The owner address for ownable claims, or address(0) for address claims.
     /// @return digest The EIP-191 signed message hash.
-    function _createClaimMessageHash(NameClaim calldata claim, string memory chainIdsString, address owner)
-        internal
-        pure
-        returns (bytes32 digest)
-    {
+    function _createClaimMessageHash(
+        NameClaim calldata claim,
+        string memory chainIdsString,
+        address owner
+    ) internal pure returns (bytes32 digest) {
         string memory name = claim.name;
         string memory addrString = LibString.toChecksumHexString(claim.addr);
         string memory signedAtString = LibISO8601.toISO8601(claim.signedAt);
@@ -275,14 +287,20 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
                 // "You are setting your ENS primary" (32 bytes)
                 mstore(ptr, 0x596f75206172652073657474696e6720796f757220454e53207072696d617279)
                 // " name to:\n" (10 bytes)
-                mstore(add(ptr, 32), 0x206e616d6520746f3a0a00000000000000000000000000000000000000000000)
+                mstore(
+                    add(ptr, 32),
+                    0x206e616d6520746f3a0a00000000000000000000000000000000000000000000
+                )
                 ptr := add(ptr, 42)
             }
             default {
                 // "You are setting the ENS primary " (32 bytes)
                 mstore(ptr, 0x596f75206172652073657474696e672074686520454e53207072696d61727920)
                 // "name for a contract you own to:\n" (32 bytes)
-                mstore(add(ptr, 32), 0x6e616d6520666f72206120636f6e747261637420796f75206f776e20746f3a0a)
+                mstore(
+                    add(ptr, 32),
+                    0x6e616d6520666f72206120636f6e747261637420796f75206f776e20746f3a0a
+                )
                 ptr := add(ptr, 64)
             }
             // Copy name (variable length)

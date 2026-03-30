@@ -28,7 +28,8 @@ library WrappedErrorLib {
         if (err.length > 0 && bytes4(err) != ERROR_STRING_SELECTOR) {
             // assert((err.length & 31) == 4);
             err = abi.encodeWithSelector(
-                ERROR_STRING_SELECTOR, abi.encodePacked(WRAPPED_ERROR_PREFIX, HexUtils.bytesToHex(err))
+                ERROR_STRING_SELECTOR,
+                abi.encodePacked(WRAPPED_ERROR_PREFIX, HexUtils.bytesToHex(err))
             );
         }
         return err;

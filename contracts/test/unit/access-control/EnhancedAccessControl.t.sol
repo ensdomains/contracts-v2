@@ -26,8 +26,14 @@ uint256 constant ADMIN_ROLE_B = ROLE_B << 128; // Second admin nybble (bits 132-
 uint256 constant ADMIN_ROLE_C = ROLE_C << 128; // Third admin nybble (bits 136-139)
 uint256 constant ADMIN_ROLE_D = ROLE_D << 128; // Fourth admin nybble (bits 140-143)
 
-uint256 constant ALL_ROLES =
-    ROLE_A | ROLE_B | ROLE_C | ROLE_D | ADMIN_ROLE_A | ADMIN_ROLE_B | ADMIN_ROLE_C | ADMIN_ROLE_D;
+uint256 constant ALL_ROLES = ROLE_A |
+    ROLE_B |
+    ROLE_C |
+    ROLE_D |
+    ADMIN_ROLE_A |
+    ADMIN_ROLE_B |
+    ADMIN_ROLE_C |
+    ADMIN_ROLE_D;
 
 contract MockEnhancedAccessControl is EnhancedAccessControl {
     uint256 public lastGrantedCount;
@@ -64,10 +70,13 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
         return _revokeAllRoles(resource, account, true);
     }
 
-    function _onRolesGranted(uint256 resource, address account, uint256 oldRoles, uint256 newRoles, uint256 roleBitmap)
-        internal
-        override
-    {
+    function _onRolesGranted(
+        uint256 resource,
+        address account,
+        uint256 oldRoles,
+        uint256 newRoles,
+        uint256 roleBitmap
+    ) internal override {
         ++lastGrantedCount;
         lastGrantedResource = resource;
         lastGrantedRoleBitmap = roleBitmap;
@@ -77,10 +86,13 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
         lastGrantedAccount = account;
     }
 
-    function _onRolesRevoked(uint256 resource, address account, uint256 oldRoles, uint256 newRoles, uint256 roleBitmap)
-        internal
-        override
-    {
+    function _onRolesRevoked(
+        uint256 resource,
+        address account,
+        uint256 oldRoles,
+        uint256 newRoles,
+        uint256 roleBitmap
+    ) internal override {
         ++lastRevokedCount;
         lastRevokedResource = resource;
         lastRevokedRoleBitmap = roleBitmap;
@@ -90,33 +102,40 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
         lastRevokedAccount = account;
     }
 
-    function grantRolesWithoutCallback(uint256 resource, uint256 roleBitmap, address account)
-        external
-        canGrantRoles(resource, roleBitmap)
-        returns (bool)
-    {
+    function grantRolesWithoutCallback(
+        uint256 resource,
+        uint256 roleBitmap,
+        address account
+    ) external canGrantRoles(resource, roleBitmap) returns (bool) {
         if (resource == ROOT_RESOURCE) {
             revert EACRootResourceNotAllowed();
         }
         return _grantRoles(resource, roleBitmap, account, false);
     }
 
-    function revokeRolesWithoutCallback(uint256 resource, uint256 roleBitmap, address account)
-        external
-        canRevokeRoles(resource, roleBitmap)
-        returns (bool)
-    {
+    function revokeRolesWithoutCallback(
+        uint256 resource,
+        uint256 roleBitmap,
+        address account
+    ) external canRevokeRoles(resource, roleBitmap) returns (bool) {
         if (resource == ROOT_RESOURCE) {
             revert EACRootResourceNotAllowed();
         }
         return _revokeRoles(resource, roleBitmap, account, false);
     }
 
-    function transferRolesWithoutCallback(uint256 resource, address srcAccount, address dstAccount) external {
+    function transferRolesWithoutCallback(
+        uint256 resource,
+        address srcAccount,
+        address dstAccount
+    ) external {
         _transferRoles(resource, srcAccount, dstAccount, false);
     }
 
-    function revokeAllRolesWithoutCallback(uint256 resource, address account) external returns (bool) {
+    function revokeAllRolesWithoutCallback(
+        uint256 resource,
+        address account
+    ) external returns (bool) {
         return _revokeAllRoles(resource, account, false);
     }
 }
@@ -210,7 +229,12 @@ contract EnhancedAccessControlTest is Test {
 
         // user1 attempts to grant ROLE_A which requires ADMIN_ROLE_A admin
         vm.expectRevert(
-            abi.encodeWithSelector(IEnhancedAccessControl.EACCannotGrantRoles.selector, RESOURCE_1, ROLE_A, user1)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                RESOURCE_1,
+                ROLE_A,
+                user1
+            )
         );
         vm.prank(user1);
         access.grantRoles(RESOURCE_1, ROLE_A, user2);
@@ -248,7 +272,9 @@ contract EnhancedAccessControlTest is Test {
 
     // Test that grantRoles cannot be called with ROOT_RESOURCE
     function test_grant_roles_with_root_resource_not_allowed() external {
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACRootResourceNotAllowed.selector));
+        vm.expectRevert(
+            abi.encodeWithSelector(IEnhancedAccessControl.EACRootResourceNotAllowed.selector)
+        );
         access.grantRoles(ROOT_RESOURCE, ROLE_A, user1);
     }
 
@@ -290,7 +316,10 @@ contract EnhancedAccessControlTest is Test {
         // User2 doesn't have the role, should revert
         vm.expectRevert(
             abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector, ROOT_RESOURCE, ROLE_A, user2
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                ROOT_RESOURCE,
+                ROLE_A,
+                user2
             )
         );
         vm.prank(user2);
@@ -301,7 +330,10 @@ contract EnhancedAccessControlTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector, ROOT_RESOURCE, ROLE_A, user2
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                ROOT_RESOURCE,
+                ROLE_A,
+                user2
             )
         );
         vm.prank(user2);
@@ -399,7 +431,12 @@ contract EnhancedAccessControlTest is Test {
         // user1 attempts to revoke ROLE_A from user2, but doesn't have ADMIN_ROLE_A admin
         vm.startPrank(user1);
         vm.expectRevert(
-            abi.encodeWithSelector(IEnhancedAccessControl.EACCannotRevokeRoles.selector, RESOURCE_1, ROLE_A, user1)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                RESOURCE_1,
+                ROLE_A,
+                user1
+            )
         );
         access.revokeRoles(RESOURCE_1, ROLE_A, user2);
         vm.stopPrank();
@@ -428,7 +465,9 @@ contract EnhancedAccessControlTest is Test {
 
     // Test that revokeRoles cannot be called with ROOT_RESOURCE
     function test_revoke_roles_with_root_resource_not_allowed() external {
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACRootResourceNotAllowed.selector));
+        vm.expectRevert(
+            abi.encodeWithSelector(IEnhancedAccessControl.EACRootResourceNotAllowed.selector)
+        );
         access.revokeRoles(ROOT_RESOURCE, ROLE_A, user1);
     }
 
@@ -462,7 +501,12 @@ contract EnhancedAccessControlTest is Test {
         // user1 attempts to revoke ROLE_A from user2, but doesn't have ADMIN_ROLE_A admin
         vm.startPrank(user1);
         vm.expectRevert(
-            abi.encodeWithSelector(IEnhancedAccessControl.EACCannotRevokeRoles.selector, ROOT_RESOURCE, ROLE_A, user1)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                ROOT_RESOURCE,
+                ROLE_A,
+                user1
+            )
         );
         access.revokeRoles(ROOT_RESOURCE, ROLE_A, user2);
         vm.stopPrank();
@@ -558,7 +602,10 @@ contract EnhancedAccessControlTest is Test {
         emit IEnhancedAccessControl.EACRolesChanged(RESOURCE_1, user1, ROLE_A | ROLE_B, 0);
         vm.expectEmit(true, true, false, true);
         emit IEnhancedAccessControl.EACRolesChanged(
-            RESOURCE_1, user2, ROLE_C | ROLE_D, ROLE_A | ROLE_B | ROLE_C | ROLE_D
+            RESOURCE_1,
+            user2,
+            ROLE_C | ROLE_D,
+            ROLE_A | ROLE_B | ROLE_C | ROLE_D
         );
         access.transferRoles(RESOURCE_1, user1, user2);
 
@@ -582,10 +629,18 @@ contract EnhancedAccessControlTest is Test {
         // This should transfer all roles that user1 has directly in RESOURCE_1
         // (but not the root resource roles)
         vm.expectEmit(true, true, false, true);
-        emit IEnhancedAccessControl.EACRolesChanged(RESOURCE_1, user1, ROLE_A | ROLE_B | ADMIN_ROLE_C, 0);
+        emit IEnhancedAccessControl.EACRolesChanged(
+            RESOURCE_1,
+            user1,
+            ROLE_A | ROLE_B | ADMIN_ROLE_C,
+            0
+        );
         vm.expectEmit(true, true, false, true);
         emit IEnhancedAccessControl.EACRolesChanged(
-            RESOURCE_1, user2, ROLE_C | ADMIN_ROLE_D, ROLE_A | ROLE_B | ROLE_C | ADMIN_ROLE_C | ADMIN_ROLE_D
+            RESOURCE_1,
+            user2,
+            ROLE_C | ADMIN_ROLE_D,
+            ROLE_A | ROLE_B | ROLE_C | ADMIN_ROLE_C | ADMIN_ROLE_D
         );
         access.transferRoles(RESOURCE_1, user1, user2);
 
@@ -803,7 +858,8 @@ contract EnhancedAccessControlTest is Test {
         access.grantRootRoles(ROLE_D, user1);
 
         // Verify consistency for normal resource
-        bool directCheck = (access.roles(RESOURCE_1, user1) & (ROLE_A | ROLE_B)) == (ROLE_A | ROLE_B);
+        bool directCheck = (access.roles(RESOURCE_1, user1) & (ROLE_A | ROLE_B)) ==
+            (ROLE_A | ROLE_B);
         bool helperCheck = access.hasRoles(RESOURCE_1, ROLE_A | ROLE_B, user1);
         assertEq(directCheck, helperCheck);
 
@@ -928,7 +984,13 @@ contract EnhancedAccessControlTest is Test {
 
         // Try to grant ROLE_A to a 16th user - should revert with EACMaxAssignees
         address user16 = makeAddr("maxUser16");
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACMaxAssignees.selector, RESOURCE_1, ROLE_A));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACMaxAssignees.selector,
+                RESOURCE_1,
+                ROLE_A
+            )
+        );
         access.grantRoles(RESOURCE_1, ROLE_A, user16);
 
         // Verify the 16th user didn't get the role
@@ -936,7 +998,13 @@ contract EnhancedAccessControlTest is Test {
 
         // Grant to 16th user should still fail even with admin role
         _grant(ROOT_RESOURCE, ADMIN_ROLE_A, user16);
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACMaxAssignees.selector, RESOURCE_1, ROLE_A));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACMaxAssignees.selector,
+                RESOURCE_1,
+                ROLE_A
+            )
+        );
         vm.prank(user16);
         access.grantRoles(RESOURCE_1, ROLE_A, makeAddr("maxUser17"));
     }
@@ -964,16 +1032,32 @@ contract EnhancedAccessControlTest is Test {
         assertTrue(access.hasAssignees(RESOURCE_1, ROLE_A | ROLE_D));
 
         // Try to grant ROLE_A to another user - should fail
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACMaxAssignees.selector, RESOURCE_1, ROLE_A));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACMaxAssignees.selector,
+                RESOURCE_1,
+                ROLE_A
+            )
+        );
         access.grantRoles(RESOURCE_1, ROLE_A, users[15]);
 
         // Try to grant ROLE_D to another user - should fail
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACMaxAssignees.selector, RESOURCE_1, ROLE_D));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACMaxAssignees.selector,
+                RESOURCE_1,
+                ROLE_D
+            )
+        );
         access.grantRoles(RESOURCE_1, ROLE_D, users[15]);
 
         // Try to grant both roles together to another user - should fail
         vm.expectRevert(
-            abi.encodeWithSelector(IEnhancedAccessControl.EACMaxAssignees.selector, RESOURCE_1, ROLE_A | ROLE_D)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACMaxAssignees.selector,
+                RESOURCE_1,
+                ROLE_A | ROLE_D
+            )
         );
         access.grantRoles(RESOURCE_1, ROLE_A | ROLE_D, users[15]);
 
@@ -985,7 +1069,13 @@ contract EnhancedAccessControlTest is Test {
         assertTrue(access.hasRoles(RESOURCE_1, ROLE_A, users[15]));
 
         // But ROLE_D should still be maxed out
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACMaxAssignees.selector, RESOURCE_1, ROLE_D));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACMaxAssignees.selector,
+                RESOURCE_1,
+                ROLE_D
+            )
+        );
         access.grantRoles(RESOURCE_1, ROLE_D, makeAddr("extraUser"));
     }
 
@@ -1080,7 +1170,13 @@ contract EnhancedAccessControlTest is Test {
 
         // RESOURCE_1 should be maxed out, but we should still be able to grant in RESOURCE_2
         assertTrue(access.hasAssignees(RESOURCE_1, ROLE_A));
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACMaxAssignees.selector, RESOURCE_1, ROLE_A));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACMaxAssignees.selector,
+                RESOURCE_1,
+                ROLE_A
+            )
+        );
         access.grantRoles(RESOURCE_1, ROLE_A, makeAddr("extraUser"));
 
         // But RESOURCE_2 should still accept new assignees
@@ -1123,10 +1219,20 @@ contract EnhancedAccessControlTest is Test {
         uint256 invalidRoleB = ROLE_B | (1 << 5) | (1 << 6); // extra bits in second nybble
 
         // Test that hasAssignees rejects invalid bitmaps (this bypasses authorization)
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACInvalidRoleBitmap.selector, invalidRoleA));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACInvalidRoleBitmap.selector,
+                invalidRoleA
+            )
+        );
         access.hasAssignees(RESOURCE_1, invalidRoleA);
 
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACInvalidRoleBitmap.selector, invalidRoleB));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACInvalidRoleBitmap.selector,
+                invalidRoleB
+            )
+        );
         access.hasAssignees(RESOURCE_1, invalidRoleB);
 
         // Grant valid roles to verify the system still works correctly
@@ -1159,28 +1265,45 @@ contract EnhancedAccessControlTest is Test {
 
         // All invalid bitmaps should be rejected
         vm.expectRevert(
-            abi.encodeWithSelector(IEnhancedAccessControl.EACInvalidRoleBitmap.selector, invalidFromNybble1)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACInvalidRoleBitmap.selector,
+                invalidFromNybble1
+            )
         );
         access.hasAssignees(RESOURCE_1, invalidFromNybble1);
 
         vm.expectRevert(
-            abi.encodeWithSelector(IEnhancedAccessControl.EACInvalidRoleBitmap.selector, invalidFromNybble2)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACInvalidRoleBitmap.selector,
+                invalidFromNybble2
+            )
         );
         access.hasAssignees(RESOURCE_1, invalidFromNybble2);
 
         vm.expectRevert(
-            abi.encodeWithSelector(IEnhancedAccessControl.EACInvalidRoleBitmap.selector, invalidFromNybble3)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACInvalidRoleBitmap.selector,
+                invalidFromNybble3
+            )
         );
         access.hasAssignees(RESOURCE_1, invalidFromNybble3);
 
         vm.expectRevert(
-            abi.encodeWithSelector(IEnhancedAccessControl.EACInvalidRoleBitmap.selector, invalidFromNybble4)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACInvalidRoleBitmap.selector,
+                invalidFromNybble4
+            )
         );
         access.hasAssignees(RESOURCE_1, invalidFromNybble4);
 
         // Combined invalid bitmap should also be rejected
         uint256 combinedInvalid = invalidFromNybble1 | invalidFromNybble3;
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACInvalidRoleBitmap.selector, combinedInvalid));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACInvalidRoleBitmap.selector,
+                combinedInvalid
+            )
+        );
         access.hasAssignees(RESOURCE_1, combinedInvalid);
     }
 
@@ -1347,7 +1470,7 @@ contract EnhancedAccessControlTest is Test {
         uint256 roleBitmap = ROLE_A | ROLE_C;
 
         // Initially, no assignees
-        (uint256 counts,) = access.getAssigneeCount(RESOURCE_1, roleBitmap);
+        (uint256 counts, ) = access.getAssigneeCount(RESOURCE_1, roleBitmap);
         bool hasAny = access.hasAssignees(RESOURCE_1, roleBitmap);
 
         assertEq(counts, 0);
@@ -1356,7 +1479,7 @@ contract EnhancedAccessControlTest is Test {
         // Grant ROLE_A only
         access.grantRoles(RESOURCE_1, ROLE_A, user1);
 
-        (counts,) = access.getAssigneeCount(RESOURCE_1, roleBitmap);
+        (counts, ) = access.getAssigneeCount(RESOURCE_1, roleBitmap);
         hasAny = access.hasAssignees(RESOURCE_1, roleBitmap);
 
         assertEq(counts, 1); // Only ROLE_A has assignees
@@ -1365,7 +1488,7 @@ contract EnhancedAccessControlTest is Test {
         // Grant ROLE_C as well
         access.grantRoles(RESOURCE_1, ROLE_C, user2);
 
-        (counts,) = access.getAssigneeCount(RESOURCE_1, roleBitmap);
+        (counts, ) = access.getAssigneeCount(RESOURCE_1, roleBitmap);
         hasAny = access.hasAssignees(RESOURCE_1, roleBitmap);
 
         assertEq(counts, 0x101); // ROLE_A=1, ROLE_C=1
@@ -1374,7 +1497,7 @@ contract EnhancedAccessControlTest is Test {
         // Revoke ROLE_A
         access.revokeRoles(RESOURCE_1, ROLE_A, user1);
 
-        (counts,) = access.getAssigneeCount(RESOURCE_1, roleBitmap);
+        (counts, ) = access.getAssigneeCount(RESOURCE_1, roleBitmap);
         hasAny = access.hasAssignees(RESOURCE_1, roleBitmap);
 
         assertEq(counts, 0x100); // ROLE_A=0, ROLE_C=1
@@ -1383,7 +1506,7 @@ contract EnhancedAccessControlTest is Test {
         // Revoke ROLE_C
         access.revokeRoles(RESOURCE_1, ROLE_C, user2);
 
-        (counts,) = access.getAssigneeCount(RESOURCE_1, roleBitmap);
+        (counts, ) = access.getAssigneeCount(RESOURCE_1, roleBitmap);
         hasAny = access.hasAssignees(RESOURCE_1, roleBitmap);
 
         assertEq(counts, 0);
@@ -1429,10 +1552,20 @@ contract EnhancedAccessControlTest is Test {
         uint256 invalidRoleA = ROLE_A | (1 << 1) | (1 << 2); // 0x7 = 0111 in first nybble
         uint256 invalidRoleB = ROLE_B | (1 << 5) | (1 << 6); // extra bits in second nybble
 
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACInvalidRoleBitmap.selector, invalidRoleA));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACInvalidRoleBitmap.selector,
+                invalidRoleA
+            )
+        );
         access.getAssigneeCount(RESOURCE_1, invalidRoleA);
 
-        vm.expectRevert(abi.encodeWithSelector(IEnhancedAccessControl.EACInvalidRoleBitmap.selector, invalidRoleB));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACInvalidRoleBitmap.selector,
+                invalidRoleB
+            )
+        );
         access.getAssigneeCount(RESOURCE_1, invalidRoleB);
 
         // Valid bitmaps should still work
@@ -1461,7 +1594,10 @@ contract EnhancedAccessControlTest is Test {
         (, uint256 maskCD) = access.getAssigneeCount(RESOURCE_1, ROLE_C | ROLE_D);
         (, uint256 maskAC) = access.getAssigneeCount(RESOURCE_1, ROLE_A | ROLE_C);
         (, uint256 maskBD) = access.getAssigneeCount(RESOURCE_1, ROLE_B | ROLE_D);
-        (, uint256 maskAll) = access.getAssigneeCount(RESOURCE_1, ROLE_A | ROLE_B | ROLE_C | ROLE_D);
+        (, uint256 maskAll) = access.getAssigneeCount(
+            RESOURCE_1,
+            ROLE_A | ROLE_B | ROLE_C | ROLE_D
+        );
 
         assertEq(maskAB, 0xff); // First two nybbles
         assertEq(maskCD, 0xff00); // Last two nybbles
@@ -1493,14 +1629,24 @@ contract EnhancedAccessControlTest is Test {
 
         // user1 has no admin roles, so should not be able to grant admin roles
         vm.expectRevert(
-            abi.encodeWithSelector(IEnhancedAccessControl.EACCannotGrantRoles.selector, RESOURCE_1, ADMIN_ROLE_A, user1)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                RESOURCE_1,
+                ADMIN_ROLE_A,
+                user1
+            )
         );
         access.grantRoles(RESOURCE_1, ADMIN_ROLE_A, user2);
 
         // Same for mixed roles
         uint256 mixedRoles = ROLE_A | ADMIN_ROLE_B;
         vm.expectRevert(
-            abi.encodeWithSelector(IEnhancedAccessControl.EACCannotGrantRoles.selector, RESOURCE_1, mixedRoles, user1)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                RESOURCE_1,
+                mixedRoles,
+                user1
+            )
         );
         access.grantRoles(RESOURCE_1, mixedRoles, user2);
 
@@ -1537,14 +1683,20 @@ contract EnhancedAccessControlTest is Test {
         // user1 has no admin roles in ROOT_RESOURCE, so should not be able to grant admin roles
         vm.expectRevert(
             abi.encodeWithSelector(
-                IEnhancedAccessControl.EACCannotGrantRoles.selector, ROOT_RESOURCE, ADMIN_ROLE_A, user1
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                ROOT_RESOURCE,
+                ADMIN_ROLE_A,
+                user1
             )
         );
         access.grantRootRoles(ADMIN_ROLE_A, user2);
         // Test with multiple admin roles
         vm.expectRevert(
             abi.encodeWithSelector(
-                IEnhancedAccessControl.EACCannotGrantRoles.selector, ROOT_RESOURCE, ADMIN_ROLE_A | ADMIN_ROLE_B, user1
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                ROOT_RESOURCE,
+                ADMIN_ROLE_A | ADMIN_ROLE_B,
+                user1
             )
         );
         access.grantRootRoles(ADMIN_ROLE_A | ADMIN_ROLE_B, user2);
@@ -1566,7 +1718,12 @@ contract EnhancedAccessControlTest is Test {
         _grant(RESOURCE_1, ROLE_A, user2);
         vm.startPrank(user1);
         vm.expectRevert(
-            abi.encodeWithSelector(IEnhancedAccessControl.EACCannotRevokeRoles.selector, RESOURCE_1, ROLE_A, user1)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                RESOURCE_1,
+                ROLE_A,
+                user1
+            )
         );
         access.revokeRoles(RESOURCE_1, ROLE_A, user2);
     }
@@ -1576,7 +1733,10 @@ contract EnhancedAccessControlTest is Test {
         vm.prank(user1);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IEnhancedAccessControl.EACCannotRevokeRoles.selector, RESOURCE_1, ADMIN_ROLE_A, user1
+                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                RESOURCE_1,
+                ADMIN_ROLE_A,
+                user1
             )
         );
         access.revokeRoles(RESOURCE_1, ADMIN_ROLE_A, user2);

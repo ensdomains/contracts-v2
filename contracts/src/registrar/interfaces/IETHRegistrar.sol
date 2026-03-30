@@ -129,7 +129,12 @@ interface IETHRegistrar is IRentPriceOracle {
     /// @param duration The registration extension, in seconds.
     /// @param paymentToken The ERC-20 to use for payment.
     /// @param referrer The referrer hash.
-    function renew(string memory label, uint64 duration, IERC20 paymentToken, bytes32 referrer) external;
+    function renew(
+        string memory label,
+        uint64 duration,
+        IERC20 paymentToken,
+        bytes32 referrer
+    ) external;
 
     /// @notice Check if `label` is available for registration.
     /// @param label The name to check.

@@ -16,7 +16,10 @@ library ResolverProfileRewriterLib {
     /// @param call The calldata for a resolver.
     /// @param newNode The replacement node.
     /// @return copy A copy of the calldata with node replaced.
-    function replaceNode(bytes calldata call, bytes32 newNode) internal pure returns (bytes memory copy) {
+    function replaceNode(
+        bytes calldata call,
+        bytes32 newNode
+    ) internal pure returns (bytes memory copy) {
         copy = call; // make a copy
         assembly {
             function replace(ptr, node) {

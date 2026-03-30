@@ -20,11 +20,16 @@ contract MockDNSSEC is DNSSEC {
         _rrs = rrs_;
     }
 
-    function verifyRRSet(RRSetWithSignature[] memory input) external view override returns (bytes memory, uint32) {
+    function verifyRRSet(
+        RRSetWithSignature[] memory input
+    ) external view override returns (bytes memory, uint32) {
         return verifyRRSet(input, block.timestamp);
     }
 
-    function verifyRRSet(RRSetWithSignature[] memory, uint256) public view override returns (bytes memory, uint32) {
+    function verifyRRSet(
+        RRSetWithSignature[] memory,
+        uint256
+    ) public view override returns (bytes memory, uint32) {
         return (_rrs, 0);
     }
 }

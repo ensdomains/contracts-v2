@@ -67,15 +67,19 @@ contract WrapperRegistry is
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(bytes4 interfaceId)
+    function supportsInterface(
+        bytes4 interfaceId
+    )
         public
         view
         virtual
         override(IERC165, AbstractWrapperReceiver, PermissionedRegistry)
         returns (bool)
     {
-        return type(IWrapperRegistry).interfaceId == interfaceId || type(UUPSUpgradeable).interfaceId == interfaceId
-            || super.supportsInterface(interfaceId);
+        return
+            type(IWrapperRegistry).interfaceId == interfaceId ||
+            type(UUPSUpgradeable).interfaceId == interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     /// @inheritdoc IWrapperRegistry
@@ -120,22 +124,29 @@ contract WrapperRegistry is
 
     /// @inheritdoc PermissionedRegistry
     /// @dev Return `V1_RESOLVER` upon visiting migratable children.
-    function getResolver(string calldata label)
-        public
-        view
-        override(IRegistry, PermissionedRegistry)
-        returns (address)
-    {
+    function getResolver(
+        string calldata label
+    ) public view override(IRegistry, PermissionedRegistry) returns (address) {
         return _isMigratableChild(label) ? V1_RESOLVER : super.getResolver(label);
     }
 
     /// @inheritdoc IWrapperRegistry
-    function getWrappedName() public view override(LockedWrapperReceiver, IWrapperRegistry) returns (bytes memory) {
+    function getWrappedName()
+        public
+        view
+        override(LockedWrapperReceiver, IWrapperRegistry)
+        returns (bytes memory)
+    {
         return super.getWrappedName();
     }
 
     /// @inheritdoc IWrapperRegistry
-    function getWrappedNode() public view override(LockedWrapperReceiver, IWrapperRegistry) returns (bytes32) {
+    function getWrappedNode()
+        public
+        view
+        override(LockedWrapperReceiver, IWrapperRegistry)
+        returns (bytes32)
+    {
         return _node;
     }
 
@@ -157,7 +168,9 @@ contract WrapperRegistry is
     }
 
     /// @dev Requires `ROLE_UPGRADE` to upgrade.
-    function _authorizeUpgrade(address) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {
+    function _authorizeUpgrade(
+        address
+    ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {
         //
     }
 

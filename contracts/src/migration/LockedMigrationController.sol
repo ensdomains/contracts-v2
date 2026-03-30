@@ -63,14 +63,15 @@ contract LockedMigrationController is LockedWrapperReceiver {
         uint256 roleBitmap,
         uint64 /*expiry*/
     ) internal override returns (uint256 tokenId) {
-        return ETH_REGISTRY.register(
-            label,
-            owner,
-            subregistry,
-            resolver,
-            roleBitmap,
-            0 // use reserved expiry
-        ); // reverts if not RESERVED
+        return
+            ETH_REGISTRY.register(
+                label,
+                owner,
+                subregistry,
+                resolver,
+                roleBitmap,
+                0 // use reserved expiry
+            ); // reverts if not RESERVED
     }
 
     /// @inheritdoc LockedWrapperReceiver

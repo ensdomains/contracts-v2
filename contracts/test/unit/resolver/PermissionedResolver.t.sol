@@ -59,9 +59,13 @@ contract PermissionedResolverTest is Test {
         testName = NameCoder.encode("test.eth");
         testNode = NameCoder.namehash(testName, 0);
 
-        bytes memory initData = abi.encodeCall(PermissionedResolver.initialize, (owner, DEFAULT_ROLES));
-        resolver =
-            PermissionedResolver(factory.deployProxy(address(resolverImpl), uint256(keccak256(initData)), initData));
+        bytes memory initData = abi.encodeCall(
+            PermissionedResolver.initialize,
+            (owner, DEFAULT_ROLES)
+        );
+        resolver = PermissionedResolver(
+            factory.deployProxy(address(resolverImpl), uint256(keccak256(initData)), initData)
+        );
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -99,27 +103,57 @@ contract PermissionedResolverTest is Test {
 
     function test_supportsInterface() external view {
         assertTrue(ERC165Checker.supportsERC165(address(resolver)));
-        assertTrue(resolver.supportsInterface(type(IPermissionedResolver).interfaceId), "IPermissionedResolver");
-        assertTrue(resolver.supportsInterface(type(IEnhancedAccessControl).interfaceId), "IEnhancedAccessControl");
+        assertTrue(
+            resolver.supportsInterface(type(IPermissionedResolver).interfaceId),
+            "IPermissionedResolver"
+        );
+        assertTrue(
+            resolver.supportsInterface(type(IEnhancedAccessControl).interfaceId),
+            "IEnhancedAccessControl"
+        );
         assertTrue(resolver.supportsInterface(type(IMulticallable).interfaceId), "IMulticallable");
         assertTrue(resolver.supportsInterface(type(IERC7996).interfaceId), "IERC7996");
-        assertTrue(resolver.supportsInterface(type(UUPSUpgradeable).interfaceId), "UUPSUpgradeable");
+        assertTrue(
+            resolver.supportsInterface(type(UUPSUpgradeable).interfaceId),
+            "UUPSUpgradeable"
+        );
 
         // profiles
         assertTrue(resolver.supportsInterface(type(IABIResolver).interfaceId), "IABIResolver");
         assertTrue(resolver.supportsInterface(type(IAddrResolver).interfaceId), "IAddrResolver");
-        assertTrue(resolver.supportsInterface(type(IAddressResolver).interfaceId), "IAddressResolver");
-        assertTrue(resolver.supportsInterface(type(IContentHashResolver).interfaceId), "IContentHashResolver");
-        assertTrue(resolver.supportsInterface(type(IHasAddressResolver).interfaceId), "IHasAddressResolver");
-        assertTrue(resolver.supportsInterface(type(IInterfaceResolver).interfaceId), "IInterfaceResolver");
+        assertTrue(
+            resolver.supportsInterface(type(IAddressResolver).interfaceId),
+            "IAddressResolver"
+        );
+        assertTrue(
+            resolver.supportsInterface(type(IContentHashResolver).interfaceId),
+            "IContentHashResolver"
+        );
+        assertTrue(
+            resolver.supportsInterface(type(IHasAddressResolver).interfaceId),
+            "IHasAddressResolver"
+        );
+        assertTrue(
+            resolver.supportsInterface(type(IInterfaceResolver).interfaceId),
+            "IInterfaceResolver"
+        );
         assertTrue(resolver.supportsInterface(type(INameResolver).interfaceId), "INameResolver");
-        assertTrue(resolver.supportsInterface(type(IPubkeyResolver).interfaceId), "IPubkeyResolver");
+        assertTrue(
+            resolver.supportsInterface(type(IPubkeyResolver).interfaceId),
+            "IPubkeyResolver"
+        );
         assertTrue(resolver.supportsInterface(type(ITextResolver).interfaceId), "ITextResolver");
-        assertTrue(resolver.supportsInterface(type(IVersionableResolver).interfaceId), "IVersionableResolver");
+        assertTrue(
+            resolver.supportsInterface(type(IVersionableResolver).interfaceId),
+            "IVersionableResolver"
+        );
     }
 
     function test_supportsFeature() external view {
-        assertTrue(resolver.supportsFeature(ResolverFeatures.RESOLVE_MULTICALL), "RESOLVE_MULTICALL");
+        assertTrue(
+            resolver.supportsFeature(ResolverFeatures.RESOLVE_MULTICALL),
+            "RESOLVE_MULTICALL"
+        );
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -135,20 +169,31 @@ contract PermissionedResolverTest is Test {
     function test_alias_root() external {
         vm.expectEmit();
         emit IPermissionedResolver.AliasChanged(
-            NameCoder.encode(""), NameCoder.encode("test.eth"), NameCoder.encode(""), NameCoder.encode("test.eth")
+            NameCoder.encode(""),
+            NameCoder.encode("test.eth"),
+            NameCoder.encode(""),
+            NameCoder.encode("test.eth")
         );
         vm.prank(owner);
         resolver.setAlias(NameCoder.encode(""), NameCoder.encode("test.eth"));
 
         assertEq(resolver.getAlias(NameCoder.encode("")), NameCoder.encode("test.eth"), "root");
-        assertEq(resolver.getAlias(NameCoder.encode("sub")), NameCoder.encode("sub.test.eth"), "sub");
+        assertEq(
+            resolver.getAlias(NameCoder.encode("sub")),
+            NameCoder.encode("sub.test.eth"),
+            "sub"
+        );
     }
 
     function test_alias_exact() external {
         vm.prank(owner);
         resolver.setAlias(NameCoder.encode("other.eth"), NameCoder.encode("test.eth"));
 
-        assertEq(resolver.getAlias(NameCoder.encode("other.eth")), NameCoder.encode("test.eth"), "exact");
+        assertEq(
+            resolver.getAlias(NameCoder.encode("other.eth")),
+            NameCoder.encode("test.eth"),
+            "exact"
+        );
     }
 
     function test_alias_subdomain() external {
@@ -156,7 +201,11 @@ contract PermissionedResolverTest is Test {
         resolver.setAlias(NameCoder.encode("com"), NameCoder.encode("eth"));
 
         assertEq(resolver.getAlias(NameCoder.encode("com")), NameCoder.encode("eth"), "exact");
-        assertEq(resolver.getAlias(NameCoder.encode("test.com")), NameCoder.encode("test.eth"), "alias");
+        assertEq(
+            resolver.getAlias(NameCoder.encode("test.com")),
+            NameCoder.encode("test.eth"),
+            "alias"
+        );
     }
 
     function test_alias_recursive() external {
@@ -165,7 +214,11 @@ contract PermissionedResolverTest is Test {
         resolver.setAlias(NameCoder.encode("com"), NameCoder.encode("eth"));
         vm.stopPrank();
 
-        assertEq(resolver.getAlias(NameCoder.encode("test.ens.xyz")), NameCoder.encode("test.eth"), "alias");
+        assertEq(
+            resolver.getAlias(NameCoder.encode("test.ens.xyz")),
+            NameCoder.encode("test.eth"),
+            "alias"
+        );
     }
 
     function test_alias_notAuthorized() external {
@@ -210,10 +263,16 @@ contract PermissionedResolverTest is Test {
 
     function test_grantTextRoles() external {
         uint256 resource = PermissionedResolverLib.resource(
-            NameCoder.namehash(testName, 0), PermissionedResolverLib.textPart(testString)
+            NameCoder.namehash(testName, 0),
+            PermissionedResolverLib.textPart(testString)
         );
         vm.expectEmit();
-        emit PermissionedResolver.NamedTextResource(resource, testName, keccak256(bytes(testString)), testString);
+        emit PermissionedResolver.NamedTextResource(
+            resource,
+            testName,
+            keccak256(bytes(testString)),
+            testString
+        );
         vm.prank(owner);
         resolver.grantTextRoles(testName, testString, friend);
         assertTrue(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_TEXT, friend));
@@ -234,7 +293,8 @@ contract PermissionedResolverTest is Test {
 
     function test_grantAddrRoles(uint256 coinType) external {
         uint256 resource = PermissionedResolverLib.resource(
-            NameCoder.namehash(testName, 0), PermissionedResolverLib.addrPart(coinType)
+            NameCoder.namehash(testName, 0),
+            PermissionedResolverLib.addrPart(coinType)
         );
         vm.expectEmit();
         emit PermissionedResolver.NamedAddrResource(resource, testName, coinType);
@@ -267,7 +327,9 @@ contract PermissionedResolverTest is Test {
         vm.prank(owner);
         assertTrue(
             resolver.revokeRoles(
-                PermissionedResolverLib.resource(NameCoder.namehash(testName, 0), 0), roleBitmap, friend
+                PermissionedResolverLib.resource(NameCoder.namehash(testName, 0), 0),
+                roleBitmap,
+                friend
             )
         );
     }
@@ -279,7 +341,8 @@ contract PermissionedResolverTest is Test {
         assertTrue(
             resolver.revokeRoles(
                 PermissionedResolverLib.resource(
-                    NameCoder.namehash(testName, 0), PermissionedResolverLib.textPart(testString)
+                    NameCoder.namehash(testName, 0),
+                    PermissionedResolverLib.textPart(testString)
                 ),
                 PermissionedResolverLib.ROLE_SET_TEXT,
                 friend
@@ -295,7 +358,8 @@ contract PermissionedResolverTest is Test {
         assertTrue(
             resolver.revokeRoles(
                 PermissionedResolverLib.resource(
-                    NameCoder.namehash(testName, 0), PermissionedResolverLib.addrPart(coinType)
+                    NameCoder.namehash(testName, 0),
+                    PermissionedResolverLib.addrPart(coinType)
                 ),
                 PermissionedResolverLib.ROLE_SET_ADDR,
                 friend
@@ -328,7 +392,10 @@ contract PermissionedResolverTest is Test {
 
         assertEq(resolver.addr(testNode), a, "immediate");
 
-        bytes memory result = resolver.resolve(testName, abi.encodeCall(IAddrResolver.addr, (bytes32(0))));
+        bytes memory result = resolver.resolve(
+            testName,
+            abi.encodeCall(IAddrResolver.addr, (bytes32(0)))
+        );
         assertEq(result, abi.encode(a), "extended");
     }
 
@@ -343,7 +410,10 @@ contract PermissionedResolverTest is Test {
 
         assertEq(resolver.addr(testNode, coinType), a, "immediate");
 
-        bytes memory result = resolver.resolve(testName, abi.encodeCall(IAddressResolver.addr, (bytes32(0), coinType)));
+        bytes memory result = resolver.resolve(
+            testName,
+            abi.encodeCall(IAddressResolver.addr, (bytes32(0), coinType))
+        );
         assertEq(result, abi.encode(a), "extended");
     }
 
@@ -365,8 +435,10 @@ contract PermissionedResolverTest is Test {
         assertTrue(resolver.hasAddr(testNode, COIN_TYPE_ETH), "null");
         assertFalse(resolver.hasAddr(testNode, COIN_TYPE_DEFAULT), "unset");
 
-        bytes memory result =
-            resolver.resolve(testName, abi.encodeCall(IHasAddressResolver.hasAddr, (bytes32(0), COIN_TYPE_ETH)));
+        bytes memory result = resolver.resolve(
+            testName,
+            abi.encodeCall(IHasAddressResolver.hasAddr, (bytes32(0), COIN_TYPE_ETH))
+        );
         assertEq(result, abi.encode(true), "extended");
     }
 
@@ -377,21 +449,37 @@ contract PermissionedResolverTest is Test {
         resolver.setAddr(testNode, COIN_TYPE_DEFAULT | 2, abi.encodePacked(address(2)));
         vm.stopPrank();
 
-        assertEq(resolver.addr(testNode, COIN_TYPE_DEFAULT | 1), abi.encodePacked(address(0)), "block");
-        assertEq(resolver.addr(testNode, COIN_TYPE_DEFAULT | 2), abi.encodePacked(address(2)), "override");
-        assertEq(resolver.addr(testNode, COIN_TYPE_DEFAULT | 3), abi.encodePacked(address(1)), "fallback");
+        assertEq(
+            resolver.addr(testNode, COIN_TYPE_DEFAULT | 1),
+            abi.encodePacked(address(0)),
+            "block"
+        );
+        assertEq(
+            resolver.addr(testNode, COIN_TYPE_DEFAULT | 2),
+            abi.encodePacked(address(2)),
+            "override"
+        );
+        assertEq(
+            resolver.addr(testNode, COIN_TYPE_DEFAULT | 3),
+            abi.encodePacked(address(1)),
+            "fallback"
+        );
     }
 
     function test_setAddr_invalidEVM_tooShort() external {
         bytes memory v = new bytes(19);
-        vm.expectRevert(abi.encodeWithSelector(IPermissionedResolver.InvalidEVMAddress.selector, v));
+        vm.expectRevert(
+            abi.encodeWithSelector(IPermissionedResolver.InvalidEVMAddress.selector, v)
+        );
         vm.prank(owner);
         resolver.setAddr(testNode, COIN_TYPE_ETH, v);
     }
 
     function test_setAddr_invalidEVM_tooLong() external {
         bytes memory v = new bytes(21);
-        vm.expectRevert(abi.encodeWithSelector(IPermissionedResolver.InvalidEVMAddress.selector, v));
+        vm.expectRevert(
+            abi.encodeWithSelector(IPermissionedResolver.InvalidEVMAddress.selector, v)
+        );
         vm.prank(owner);
         resolver.setAddr(testNode, COIN_TYPE_ETH, v);
     }
@@ -416,7 +504,10 @@ contract PermissionedResolverTest is Test {
 
         assertEq(resolver.text(testNode, key), value, "immediate");
 
-        bytes memory result = resolver.resolve(testName, abi.encodeCall(ITextResolver.text, (bytes32(0), key)));
+        bytes memory result = resolver.resolve(
+            testName,
+            abi.encodeCall(ITextResolver.text, (bytes32(0), key))
+        );
         assertEq(result, abi.encode(value), "extended");
     }
 
@@ -440,7 +531,10 @@ contract PermissionedResolverTest is Test {
 
         assertEq(resolver.name(testNode), name, "immediate");
 
-        bytes memory result = resolver.resolve(testName, abi.encodeCall(INameResolver.name, (bytes32(0))));
+        bytes memory result = resolver.resolve(
+            testName,
+            abi.encodeCall(INameResolver.name, (bytes32(0)))
+        );
         assertEq(result, abi.encode(name), "extended");
     }
 
@@ -464,7 +558,10 @@ contract PermissionedResolverTest is Test {
 
         assertEq(resolver.contenthash(testNode), v, "immediate");
 
-        bytes memory result = resolver.resolve(testName, abi.encodeCall(IContentHashResolver.contenthash, (bytes32(0))));
+        bytes memory result = resolver.resolve(
+            testName,
+            abi.encodeCall(IContentHashResolver.contenthash, (bytes32(0)))
+        );
         assertEq(result, abi.encode(v), "extended");
     }
 
@@ -489,7 +586,10 @@ contract PermissionedResolverTest is Test {
         (bytes32 x_, bytes32 y_) = resolver.pubkey(testNode);
         assertEq(abi.encode(x_, y_), abi.encode(x, y), "immediate");
 
-        bytes memory result = resolver.resolve(testName, abi.encodeCall(IPubkeyResolver.pubkey, (bytes32(0))));
+        bytes memory result = resolver.resolve(
+            testName,
+            abi.encodeCall(IPubkeyResolver.pubkey, (bytes32(0)))
+        );
         assertEq(result, abi.encode(x, y), "extended");
     }
 
@@ -518,18 +618,25 @@ contract PermissionedResolverTest is Test {
         bytes memory expect = data.length > 0 ? abi.encode(contentType, data) : abi.encode(0, "");
         assertEq(abi.encode(contentType_, data_), expect, "immediate");
 
-        bytes memory result = resolver.resolve(testName, abi.encodeCall(IABIResolver.ABI, (bytes32(0), contentTypes)));
+        bytes memory result = resolver.resolve(
+            testName,
+            abi.encodeCall(IABIResolver.ABI, (bytes32(0), contentTypes))
+        );
         assertEq(result, expect, "extended");
     }
 
     function test_setABI_invalidContentType_noBits() external {
-        vm.expectRevert(abi.encodeWithSelector(IPermissionedResolver.InvalidContentType.selector, 0));
+        vm.expectRevert(
+            abi.encodeWithSelector(IPermissionedResolver.InvalidContentType.selector, 0)
+        );
         vm.prank(owner);
         resolver.setABI(testNode, 0, "");
     }
 
     function test_setABI_invalidContentType_manyBits() external {
-        vm.expectRevert(abi.encodeWithSelector(IPermissionedResolver.InvalidContentType.selector, 3));
+        vm.expectRevert(
+            abi.encodeWithSelector(IPermissionedResolver.InvalidContentType.selector, 3)
+        );
         vm.prank(owner);
         resolver.setABI(testNode, 3, "");
     }
@@ -557,7 +664,8 @@ contract PermissionedResolverTest is Test {
         assertEq(resolver.interfaceImplementer(testNode, interfaceId), impl, "immediate");
 
         bytes memory result = resolver.resolve(
-            testName, abi.encodeCall(IInterfaceResolver.interfaceImplementer, (bytes32(0), interfaceId))
+            testName,
+            abi.encodeCall(IInterfaceResolver.interfaceImplementer, (bytes32(0), interfaceId))
         );
         assertEq(result, abi.encode(impl), "extended");
     }
@@ -572,7 +680,8 @@ contract PermissionedResolverTest is Test {
         assertEq(resolver.interfaceImplementer(testNode, TEST_SELECTOR), address(c), "immediate");
 
         bytes memory result = resolver.resolve(
-            testName, abi.encodeCall(IInterfaceResolver.interfaceImplementer, (bytes32(0), TEST_SELECTOR))
+            testName,
+            abi.encodeCall(IInterfaceResolver.interfaceImplementer, (bytes32(0), TEST_SELECTOR))
         );
         assertEq(result, abi.encode(c), "extended");
     }
@@ -645,7 +754,10 @@ contract PermissionedResolverTest is Test {
         answers[2] = abi.encode(testString);
         answers[3] = abi.encode(testAddress);
 
-        bytes memory result = resolver.resolve(testName, abi.encodeCall(PermissionedResolver.multicall, (calls)));
+        bytes memory result = resolver.resolve(
+            testName,
+            abi.encodeCall(PermissionedResolver.multicall, (calls))
+        );
         assertEq(result, abi.encode(answers));
     }
 
@@ -659,9 +771,15 @@ contract PermissionedResolverTest is Test {
 
         bytes[] memory answers = new bytes[](calls.length);
         answers[0] = abi.encode(testString);
-        answers[1] = abi.encodeWithSelector(IPermissionedResolver.UnsupportedResolverProfile.selector, TEST_SELECTOR);
+        answers[1] = abi.encodeWithSelector(
+            IPermissionedResolver.UnsupportedResolverProfile.selector,
+            TEST_SELECTOR
+        );
 
-        bytes memory result = resolver.resolve(testName, abi.encodeCall(PermissionedResolver.multicall, (calls)));
+        bytes memory result = resolver.resolve(
+            testName,
+            abi.encodeCall(PermissionedResolver.multicall, (calls))
+        );
         assertEq(result, abi.encode(answers));
     }
 

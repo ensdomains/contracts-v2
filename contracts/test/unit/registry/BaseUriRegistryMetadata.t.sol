@@ -24,7 +24,8 @@ contract BaseUriRegistryMetadataTest is Test, ERC1155Holder {
 
     uint256 constant ROLE_UPDATE_METADATA = 1 << 0;
 
-    uint256 constant DEFAULT_ROLE_BITMAP = RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER;
+    uint256 constant DEFAULT_ROLE_BITMAP =
+        RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER;
 
     uint256 constant ROOT_RESOURCE = 0;
 
@@ -41,7 +42,12 @@ contract BaseUriRegistryMetadataTest is Test, ERC1155Holder {
         uint256 tokenId = uint256(keccak256(bytes("sub")));
 
         registry.register(
-            "sub", address(this), registry, address(0), DEFAULT_ROLE_BITMAP, uint64(block.timestamp + 1000)
+            "sub",
+            address(this),
+            registry,
+            address(0),
+            DEFAULT_ROLE_BITMAP,
+            uint64(block.timestamp + 1000)
         );
 
         assertEq(registry.uri(tokenId), "");
@@ -58,10 +64,20 @@ contract BaseUriRegistryMetadataTest is Test, ERC1155Holder {
         uint256 tokenId2 = uint256(keccak256(bytes("sub2")));
 
         registry.register(
-            "sub1", address(this), registry, address(0), DEFAULT_ROLE_BITMAP, uint64(block.timestamp + 1000)
+            "sub1",
+            address(this),
+            registry,
+            address(0),
+            DEFAULT_ROLE_BITMAP,
+            uint64(block.timestamp + 1000)
         );
         registry.register(
-            "sub2", address(this), registry, address(0), DEFAULT_ROLE_BITMAP, uint64(block.timestamp + 1000)
+            "sub2",
+            address(this),
+            registry,
+            address(0),
+            DEFAULT_ROLE_BITMAP,
+            uint64(block.timestamp + 1000)
         );
 
         metadata.setTokenBaseUri(expectedUri);
@@ -78,7 +94,12 @@ contract BaseUriRegistryMetadataTest is Test, ERC1155Holder {
         uint256 tokenId = uint256(keccak256(bytes("sub")));
 
         registry.register(
-            "sub", address(this), registry, address(0), DEFAULT_ROLE_BITMAP, uint64(block.timestamp + 1000)
+            "sub",
+            address(this),
+            registry,
+            address(0),
+            DEFAULT_ROLE_BITMAP,
+            uint64(block.timestamp + 1000)
         );
 
         metadata.setTokenBaseUri(initialUri);

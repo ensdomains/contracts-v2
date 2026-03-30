@@ -38,7 +38,10 @@ contract HCAContextTest is Test {
 
     function test_msgSender_calls_HCAEquivalence() public {
         vm.prank(user);
-        vm.expectCall(address(factory), abi.encodeWithSelector(factory.getAccountOwner.selector, user));
+        vm.expectCall(
+            address(factory),
+            abi.encodeWithSelector(factory.getAccountOwner.selector, user)
+        );
         address sender = harness.exposedMsgSender();
         assertEq(sender, user);
     }

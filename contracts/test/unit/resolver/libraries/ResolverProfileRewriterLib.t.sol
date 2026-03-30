@@ -21,7 +21,12 @@ contract ResolverProfileRewriterLibTest is Test {
 
     function testFuzz_replaceNode_call(bytes32 node, uint256 coinType) external view {
         (bytes32 x, uint256 c) = abi.decode(
-            this.drop4(this.replaceNode(abi.encodeCall(IAddressResolver.addr, (keccak256("a"), coinType)), node)),
+            this.drop4(
+                this.replaceNode(
+                    abi.encodeCall(IAddressResolver.addr, (keccak256("a"), coinType)),
+                    node
+                )
+            ),
             (bytes32, uint256)
         );
         assertEq(x, node, "node");
@@ -33,7 +38,10 @@ contract ResolverProfileRewriterLibTest is Test {
         for (uint256 i; i < calls; i++) {
             m[i] = abi.encodeCall(IAddressResolver.addr, (keccak256("a"), i));
         }
-        m = abi.decode(this.drop4(this.replaceNode(abi.encodeCall(IMulticallable.multicall, (m)), node)), (bytes[]));
+        m = abi.decode(
+            this.drop4(this.replaceNode(abi.encodeCall(IMulticallable.multicall, (m)), node)),
+            (bytes[])
+        );
         assertEq(m.length, calls, "count");
         for (uint256 i; i < calls; i++) {
             (bytes32 x, uint256 c) = abi.decode(this.drop4(m[i]), (bytes32, uint256));

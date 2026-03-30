@@ -47,14 +47,19 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     /// @notice Initializes UnlockedMigrationController.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
-    constructor(INameWrapper nameWrapper, IPermissionedRegistry ethRegistry) AbstractWrapperReceiver(nameWrapper) {
+    constructor(
+        INameWrapper nameWrapper,
+        IPermissionedRegistry ethRegistry
+    ) AbstractWrapperReceiver(nameWrapper) {
         ETH_REGISTRY = ethRegistry;
         _REGISTRAR_V1 = nameWrapper.registrar();
     }
 
     /// @inheritdoc IERC165
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return interfaceId == type(IERC721Receiver).interfaceId || super.supportsInterface(interfaceId);
+        return
+            interfaceId == type(IERC721Receiver).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -75,10 +80,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         /*from*/
         uint256 tokenId,
         bytes calldata data
-    )
-        external
-        returns (bytes4)
-    {
+    ) external returns (bytes4) {
         if (msg.sender != address(_REGISTRAR_V1)) {
             revert UnauthorizedCaller(msg.sender);
         }
@@ -91,7 +93,10 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         }
         // clear ENSv1 resolver
         _REGISTRAR_V1.reclaim(tokenId, address(this));
-        _REGISTRY_V1.setResolver(NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenId)), address(0));
+        _REGISTRY_V1.setResolver(
+            NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenId)),
+            address(0)
+        );
         _inject(md);
         return this.onERC721Received.selector;
     }
@@ -105,10 +110,13 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     ///      Reverts `NameDataMismatch` if any token is mislabeled.
     /// @param ids The NameWrapper token IDs (namehash) of the names to migrate.
     /// @param mds The migration parameters for each name, indexed in parallel with `ids`.
-    function _migrateWrapped(uint256[] calldata ids, LibMigration.Data[] calldata mds) internal override {
+    function _migrateWrapped(
+        uint256[] calldata ids,
+        LibMigration.Data[] calldata mds
+    ) internal override {
         for (uint256 i; i < ids.length; ++i) {
             uint256 id = ids[i];
-            (, uint32 fuses,) = NAME_WRAPPER.getData(id);
+            (, uint32 fuses, ) = NAME_WRAPPER.getData(id);
             if (_isLocked(fuses)) {
                 revert LibMigration.NameIsLocked(id);
             }

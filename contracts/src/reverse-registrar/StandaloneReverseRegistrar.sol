@@ -3,7 +3,9 @@ pragma solidity >=0.8.13;
 
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
-import {IStandaloneReverseRegistrar} from "@ens/contracts/reverseRegistrar/IStandaloneReverseRegistrar.sol";
+import {
+    IStandaloneReverseRegistrar
+} from "@ens/contracts/reverseRegistrar/IStandaloneReverseRegistrar.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
@@ -26,7 +28,8 @@ abstract contract StandaloneReverseRegistrar is
 
     /// @notice The namehash of the `reverse` TLD node.
     /// @dev Pre-computed: namehash("reverse") = keccak256(abi.encodePacked(bytes32(0), keccak256("reverse")))
-    bytes32 internal constant _REVERSE_NODE = 0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34;
+    bytes32 internal constant _REVERSE_NODE =
+        0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34;
 
     /// @notice The keccak256 hash of the DNS-encoded parent name.
     /// @dev Used for efficient validation in `resolve()` to verify the queried name
@@ -76,15 +79,26 @@ abstract contract StandaloneReverseRegistrar is
         PARENT_NODE = NameCoder.namehash(_REVERSE_NODE, keccak256(bytes(label)));
 
         // Build the DNS-encoded parent name: {labelLength}{label}{7}reverse{0}
-        bytes memory parent = abi.encodePacked(NameCoder.assertLabelSize(label), label, uint8(7), "reverse", uint8(0));
+        bytes memory parent = abi.encodePacked(
+            NameCoder.assertLabelSize(label),
+            label,
+            uint8(7),
+            "reverse",
+            uint8(0)
+        );
         _SIMPLE_HASHED_PARENT = keccak256(parent);
         _PARENT_LENGTH = parent.length;
     }
 
     /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceID) public view virtual override(ERC165) returns (bool) {
-        return interfaceID == type(IExtendedResolver).interfaceId || interfaceID == type(INameResolver).interfaceId
-            || interfaceID == type(IStandaloneReverseRegistrar).interfaceId || super.supportsInterface(interfaceID);
+    function supportsInterface(
+        bytes4 interfaceID
+    ) public view virtual override(ERC165) returns (bool) {
+        return
+            interfaceID == type(IExtendedResolver).interfaceId ||
+            interfaceID == type(INameResolver).interfaceId ||
+            interfaceID == type(IStandaloneReverseRegistrar).interfaceId ||
+            super.supportsInterface(interfaceID);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -101,7 +115,10 @@ abstract contract StandaloneReverseRegistrar is
 
     /// @inheritdoc IStandaloneReverseRegistrar
     function nameForAddr(address addr) external view returns (string memory) {
-        return _names[NameCoder.namehash(PARENT_NODE, keccak256(bytes(LibString.toAddressString(addr))))];
+        return
+            _names[
+                NameCoder.namehash(PARENT_NODE, keccak256(bytes(LibString.toAddressString(addr))))
+            ];
     }
 
     /// @notice Resolves a DNS-encoded reverse name to its primary ENS name.
@@ -114,7 +131,10 @@ abstract contract StandaloneReverseRegistrar is
     /// @param name_ The DNS-encoded reverse name to resolve.
     /// @param data The ABI-encoded function call (must be `name(bytes32)`).
     /// @return The ABI-encoded primary ENS name.
-    function resolve(bytes calldata name_, bytes calldata data) external view override returns (bytes memory) {
+    function resolve(
+        bytes calldata name_,
+        bytes calldata data
+    ) external view override returns (bytes memory) {
         bytes4 selector = bytes4(data);
 
         // Only support the name(bytes32) resolver profile

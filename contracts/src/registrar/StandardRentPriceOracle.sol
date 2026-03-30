@@ -99,7 +99,11 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @param initialPrice The new initial price.
     /// @param halvingPeriod The new halving period.
     /// @param period The new period.
-    event PremiumPricingChanged(uint256 indexed initialPrice, uint64 indexed halvingPeriod, uint64 indexed period);
+    event PremiumPricingChanged(
+        uint256 indexed initialPrice,
+        uint64 indexed halvingPeriod,
+        uint64 indexed period
+    );
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -160,7 +164,9 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
 
     /// @inheritdoc ERC165
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
-        return interfaceId == type(IRentPriceOracle).interfaceId || super.supportsInterface(interfaceId);
+        return
+            interfaceId == type(IRentPriceOracle).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -209,7 +215,11 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @param initialPrice The initial price, in base units.
     /// @param halvingPeriod Duration until the price is reduced in half.
     /// @param period Number of seconds until the price is reduced to 0.
-    function updatePremiumPricing(uint256 initialPrice, uint64 halvingPeriod, uint64 period) external onlyOwner {
+    function updatePremiumPricing(
+        uint256 initialPrice,
+        uint64 halvingPeriod,
+        uint64 period
+    ) external onlyOwner {
         premiumPriceInitial = initialPrice;
         premiumHalvingPeriod = halvingPeriod;
         premiumPeriod = period;
@@ -226,7 +236,11 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @param paymentToken The payment token.
     /// @param numer The numerator of the exchange rate.
     /// @param denom The denominator of the exchange rate.
-    function updatePaymentToken(IERC20 paymentToken, uint128 numer, uint128 denom) external onlyOwner {
+    function updatePaymentToken(
+        IERC20 paymentToken,
+        uint128 numer,
+        uint128 denom
+    ) external onlyOwner {
         bool active = isPaymentToken(paymentToken);
         if (denom > 0) {
             if (numer == 0) {
@@ -310,16 +324,18 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @return The premium price, in base units.
     function premiumPriceAfter(uint64 duration) public view returns (uint256) {
         if (duration >= premiumPeriod) return 0;
-        return LibHalving.halving(premiumPriceInitial, premiumHalvingPeriod, duration)
-            - LibHalving.halving(premiumPriceInitial, premiumHalvingPeriod, premiumPeriod);
+        return
+            LibHalving.halving(premiumPriceInitial, premiumHalvingPeriod, duration) -
+            LibHalving.halving(premiumPriceInitial, premiumHalvingPeriod, premiumPeriod);
     }
 
     /// @inheritdoc IRentPriceOracle
-    function rentPrice(string memory label, address owner, uint64 duration, IERC20 paymentToken)
-        public
-        view
-        returns (uint256 base, uint256 premium)
-    {
+    function rentPrice(
+        string memory label,
+        address owner,
+        uint64 duration,
+        IERC20 paymentToken
+    ) public view returns (uint256 base, uint256 premium) {
         Ratio memory ratio = _paymentRatios[paymentToken];
         if (ratio.denom == 0) {
             revert PaymentTokenNotSupported(paymentToken);
@@ -331,7 +347,9 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         IPermissionedRegistry.State memory state = REGISTRY.getState(LibLabel.id(label));
         uint64 t = state.expiry > block.timestamp ? state.expiry - uint64(block.timestamp) : 0;
         baseUnits -= Math.mulDiv(
-            baseUnits, integratedDiscount(t + duration) - integratedDiscount(t), uint256(type(uint128).max) * duration
+            baseUnits,
+            integratedDiscount(t + duration) - integratedDiscount(t),
+            uint256(type(uint128).max) * duration
         );
         uint256 premiumUnits;
         // prior owner pays no premium
@@ -341,7 +359,9 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         }
         // reverts on overflow
         premium = Math.mulDiv(premiumUnits, ratio.numer, ratio.denom);
-        base = Math.mulDiv(baseUnits + premiumUnits, ratio.numer, ratio.denom, Math.Rounding.Ceil) - premium; // ensure: f(a+b) - f(a) == f(b)
+        base =
+            Math.mulDiv(baseUnits + premiumUnits, ratio.numer, ratio.denom, Math.Rounding.Ceil) -
+            premium; // ensure: f(a+b) - f(a) == f(b)
     }
 
     ////////////////////////////////////////////////////////////////////////

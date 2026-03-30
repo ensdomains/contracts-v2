@@ -58,9 +58,11 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
-    constructor(INameWrapper nameWrapper, VerifiableFactory verifiableFactory, address wrapperRegistryImpl)
-        AbstractWrapperReceiver(nameWrapper)
-    {
+    constructor(
+        INameWrapper nameWrapper,
+        VerifiableFactory verifiableFactory,
+        address wrapperRegistryImpl
+    ) AbstractWrapperReceiver(nameWrapper) {
         VERIFIABLE_FACTORY = verifiableFactory;
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
     }
@@ -82,7 +84,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractWrapperReceiver
-    function _migrateWrapped(uint256[] calldata ids, LibMigration.Data[] calldata mds) internal override {
+    function _migrateWrapped(
+        uint256[] calldata ids,
+        LibMigration.Data[] calldata mds
+    ) internal override {
         IRegistry parentRegistry = _getRegistry();
         bytes32 parentNode = getWrappedNode();
         for (uint256 i; i < ids.length; ++i) {
@@ -121,7 +126,13 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                     uint256(node),
                     abi.encodeCall(
                         IWrapperRegistry.initialize,
-                        (node, parentRegistry, md.label, md.owner, _subregistryRoleBitmapFromFuses(fuses))
+                        (
+                            node,
+                            parentRegistry,
+                            md.label,
+                            md.owner,
+                            _subregistryRoleBitmapFromFuses(fuses)
+                        )
                     )
                 )
             );
@@ -130,7 +141,14 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             // PermissionedRegistry._register() => CannotSetPastExpiry :: see expiry check
             // PermissionedRegistry._register() => LabelAlreadyRegistered :: only have ROLE_REGISTER_RESERVED
             // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver :: see owner check
-            _inject(md.label, md.owner, subregistry, md.resolver, _tokenRoleBitmapFromFuses(fuses), expiry);
+            _inject(
+                md.label,
+                md.owner,
+                subregistry,
+                md.resolver,
+                _tokenRoleBitmapFromFuses(fuses),
+                expiry
+            );
         }
     }
 
@@ -150,7 +168,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @dev Determine if `label` is emancipated but not-yet migrated.
     function _isMigratableChild(string memory label) internal view returns (bool) {
         bytes32 node = NameCoder.namehash(getWrappedNode(), keccak256(bytes(label)));
-        (address ownerV1, uint32 fuses,) = NAME_WRAPPER.getData(uint256(node));
+        (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
         return ownerV1 != address(this) && _isLocked(fuses);
     }
 
@@ -160,7 +178,9 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     }
 
     /// @dev Convert fuses to equivalent subregistry root roles.
-    function _subregistryRoleBitmapFromFuses(uint32 fuses) internal pure returns (uint256 roleBitmap) {
+    function _subregistryRoleBitmapFromFuses(
+        uint32 fuses
+    ) internal pure returns (uint256 roleBitmap) {
         if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR;
         }

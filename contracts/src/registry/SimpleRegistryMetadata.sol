@@ -42,7 +42,9 @@ contract SimpleRegistryMetadata is EnhancedAccessControl, IRegistryMetadata {
 
     /// @inheritdoc IERC165
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
-        return interfaceId == type(IRegistryMetadata).interfaceId || super.supportsInterface(interfaceId);
+        return
+            interfaceId == type(IRegistryMetadata).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -53,10 +55,10 @@ contract SimpleRegistryMetadata is EnhancedAccessControl, IRegistryMetadata {
     /// @dev Restricted to accounts holding the metadata update role on the root resource.
     /// @param tokenId The token identifier whose URI is being set.
     /// @param uri The new metadata URI for the token.
-    function setTokenUri(uint256 tokenId, string calldata uri)
-        external
-        onlyRoles(ROOT_RESOURCE, _ROLE_UPDATE_METADATA)
-    {
+    function setTokenUri(
+        uint256 tokenId,
+        string calldata uri
+    ) external onlyRoles(ROOT_RESOURCE, _ROLE_UPDATE_METADATA) {
         _tokenUris[tokenId] = uri;
     }
 

@@ -28,7 +28,8 @@ contract SimpleRegistryMetadataTest is Test, ERC1155Holder {
     uint256 constant ROLE_UPDATE_METADATA = 1 << 0;
     uint256 constant ROLE_UPDATE_METADATA_ADMIN = ROLE_UPDATE_METADATA << 128;
 
-    uint256 constant DEFAULT_ROLE_BITMAP = RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER;
+    uint256 constant DEFAULT_ROLE_BITMAP =
+        RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER;
 
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
@@ -40,7 +41,12 @@ contract SimpleRegistryMetadataTest is Test, ERC1155Holder {
 
     function test_registry_metadata_token_uri() public {
         uint256 tokenId = registry.register(
-            "test", address(this), registry, address(0), DEFAULT_ROLE_BITMAP, uint64(block.timestamp + 1000)
+            "test",
+            address(this),
+            registry,
+            address(0),
+            DEFAULT_ROLE_BITMAP,
+            uint64(block.timestamp + 1000)
         );
 
         assertEq(registry.uri(tokenId), "");

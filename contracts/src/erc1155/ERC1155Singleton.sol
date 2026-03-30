@@ -2,7 +2,9 @@
 pragma solidity >=0.8.13;
 
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
-import {IERC1155MetadataURI} from "@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol";
+import {
+    IERC1155MetadataURI
+} from "@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {ERC1155Utils} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Utils.sol";
 import {Arrays} from "@openzeppelin/contracts/utils/Arrays.sol";
@@ -27,7 +29,13 @@ import {IERC1155Singleton} from "./interfaces/IERC1155Singleton.sol";
 ///
 /// @author OpenZeppelin (https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/token/ERC1155/ERC1155.sol)
 /// @dev This contract has been modified from the implementation at the above link.
-abstract contract ERC1155Singleton is HCAContext, ERC165, IERC1155Singleton, IERC1155Errors, IERC1155MetadataURI {
+abstract contract ERC1155Singleton is
+    HCAContext,
+    ERC165,
+    IERC1155Singleton,
+    IERC1155Errors,
+    IERC1155MetadataURI
+{
     using Arrays for uint256[];
     using Arrays for address[];
 
@@ -56,9 +64,14 @@ abstract contract ERC1155Singleton is HCAContext, ERC165, IERC1155Singleton, IER
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IERC165
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165, IERC165) returns (bool) {
-        return interfaceId == type(IERC1155).interfaceId || interfaceId == type(IERC1155Singleton).interfaceId
-            || interfaceId == type(IERC1155MetadataURI).interfaceId || super.supportsInterface(interfaceId);
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(ERC165, IERC165) returns (bool) {
+        return
+            interfaceId == type(IERC1155).interfaceId ||
+            interfaceId == type(IERC1155Singleton).interfaceId ||
+            interfaceId == type(IERC1155MetadataURI).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -83,7 +96,13 @@ abstract contract ERC1155Singleton is HCAContext, ERC165, IERC1155Singleton, IER
     /// @dev `from` must have a balance of tokens of type `id` of at least `value` amount.
     /// @dev If `to` refers to a smart contract, it must implement IERC1155Receiver.onERC1155Received and return the
     ///      acceptance magic value.
-    function safeTransferFrom(address from, address to, uint256 id, uint256 value, bytes memory data) public virtual {
+    function safeTransferFrom(
+        address from,
+        address to,
+        uint256 id,
+        uint256 value,
+        bytes memory data
+    ) public virtual {
         address sender = _msgSender();
         if (from != sender && !isApprovedForAll(from, sender)) {
             revert ERC1155MissingApprovalForAll(sender, from);
@@ -137,12 +156,10 @@ abstract contract ERC1155Singleton is HCAContext, ERC165, IERC1155Singleton, IER
     /// @param ids The token IDs.
     /// @return batchBalances The balances of the tokens for the accounts. These will only ever be 1 or 0.
     /// @dev `accounts` and `ids` must have the same length.
-    function balanceOfBatch(address[] memory accounts, uint256[] memory ids)
-        public
-        view
-        virtual
-        returns (uint256[] memory)
-    {
+    function balanceOfBatch(
+        address[] memory accounts,
+        uint256[] memory ids
+    ) public view virtual returns (uint256[] memory) {
         if (accounts.length != ids.length) {
             revert ERC1155InvalidArrayLength(ids.length, accounts.length);
         }
@@ -160,7 +177,10 @@ abstract contract ERC1155Singleton is HCAContext, ERC165, IERC1155Singleton, IER
     /// @param account The account to get the approval for.
     /// @param operator The operator to get the approval for.
     /// @return approved The approval status.
-    function isApprovedForAll(address account, address operator) public view virtual returns (bool) {
+    function isApprovedForAll(
+        address account,
+        address operator
+    ) public view virtual returns (bool) {
         return _operatorApprovals[account][operator];
     }
 
@@ -177,7 +197,12 @@ abstract contract ERC1155Singleton is HCAContext, ERC165, IERC1155Singleton, IER
     /// @dev Reverts with `ERC1155InsufficientBalance` if `from` is not the current owner or `value > 1`.
     /// @dev This function does not perform ERC-1155 receiver acceptance checks.
     /// @dev Emits `TransferSingle` when one token ID is updated, otherwise emits `TransferBatch`.
-    function _update(address from, address to, uint256[] memory ids, uint256[] memory values) internal virtual {
+    function _update(
+        address from,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory values
+    ) internal virtual {
         if (ids.length != values.length) {
             revert ERC1155InvalidArrayLength(ids.length, values.length);
         }
@@ -247,7 +272,13 @@ abstract contract ERC1155Singleton is HCAContext, ERC165, IERC1155Singleton, IER
     /// @dev Reverts with `ERC1155InvalidReceiver` if `to` is the zero address.
     /// @dev If `to` is a contract, it must return the ERC-1155 acceptance magic value.
     /// @dev Emits `TransferSingle`.
-    function _safeTransferFrom(address from, address to, uint256 id, uint256 value, bytes memory data) internal {
+    function _safeTransferFrom(
+        address from,
+        address to,
+        uint256 id,
+        uint256 value,
+        bytes memory data
+    ) internal {
         if (to == address(0)) {
             revert ERC1155InvalidReceiver(address(0));
         }
@@ -310,7 +341,12 @@ abstract contract ERC1155Singleton is HCAContext, ERC165, IERC1155Singleton, IER
     /// @dev Reverts with `ERC1155InvalidArrayLength` if `ids.length != values.length`.
     /// @dev If `to` is a contract, it must return the ERC-1155 acceptance magic value.
     /// @dev Emits `TransferBatch`.
-    function _mintBatch(address to, uint256[] memory ids, uint256[] memory values, bytes memory data) internal {
+    function _mintBatch(
+        address to,
+        uint256[] memory ids,
+        uint256[] memory values,
+        bytes memory data
+    ) internal {
         if (to == address(0)) {
             revert ERC1155InvalidReceiver(address(0));
         }
@@ -368,11 +404,10 @@ abstract contract ERC1155Singleton is HCAContext, ERC165, IERC1155Singleton, IER
     /// @dev Gas-optimized assembly helper that creates two length-1 memory arrays without Solidity's
     ///      default zero-initialization overhead. Used to adapt single-token operations (`_mint`,
     ///      `_burn`, `_safeTransferFrom`) to the array-based `_update` function.
-    function _asSingletonArrays(uint256 element1, uint256 element2)
-        private
-        pure
-        returns (uint256[] memory array1, uint256[] memory array2)
-    {
+    function _asSingletonArrays(
+        uint256 element1,
+        uint256 element2
+    ) private pure returns (uint256[] memory array1, uint256[] memory array2) {
         /// @solidity memory-safe-assembly
         assembly {
             // Load the free memory pointer

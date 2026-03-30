@@ -11,7 +11,10 @@ import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeRe
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {IVerifiableResolver} from "@ens/contracts/resolvers/profiles/IVerifiableResolver.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
-import {RegistryUtils as RegistryUtilsV1, ENS} from "@ens/contracts/universalResolver/RegistryUtils.sol";
+import {
+    RegistryUtils as RegistryUtilsV1,
+    ENS
+} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.sol";
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
@@ -43,7 +46,13 @@ bytes constant TXT_PREFIX = "ENS1 ";
 /// Implements `IVerifiableResolver` to expose the DNSSEC oracle address and gateways for
 /// verification.
 ///
-contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, ResolverCaller, ERC165 {
+contract DNSTLDResolver is
+    IERC7996,
+    ICompositeResolver,
+    IVerifiableResolver,
+    ResolverCaller,
+    ERC165
+{
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
@@ -105,10 +114,15 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
     }
 
     /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165) returns (bool) {
-        return type(IExtendedResolver).interfaceId == interfaceId || type(ICompositeResolver).interfaceId == interfaceId
-            || type(IVerifiableResolver).interfaceId == interfaceId || type(IERC7996).interfaceId == interfaceId
-            || super.supportsInterface(interfaceId);
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(ERC165) returns (bool) {
+        return
+            type(IExtendedResolver).interfaceId == interfaceId ||
+            type(ICompositeResolver).interfaceId == interfaceId ||
+            type(IVerifiableResolver).interfaceId == interfaceId ||
+            type(IERC7996).interfaceId == interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     /// @inheritdoc IERC7996
@@ -143,22 +157,32 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
     /// @param response The response data.
     /// @param name The DNS-encoded name.
     /// @return txts The verified DNSSEC TXT records.
-    function getDNSSECRecordsCallback(bytes calldata response, bytes calldata name)
-        external
-        view
-        returns (bytes[] memory txts)
-    {
-        DNSSEC.RRSetWithSignature[] memory rrsets = abi.decode(response, (DNSSEC.RRSetWithSignature[]));
-        (bytes memory data,) = DNSSEC_ORACLE.verifyRRSet(rrsets);
+    function getDNSSECRecordsCallback(
+        bytes calldata response,
+        bytes calldata name
+    ) external view returns (bytes[] memory txts) {
+        DNSSEC.RRSetWithSignature[] memory rrsets = abi.decode(
+            response,
+            (DNSSEC.RRSetWithSignature[])
+        );
+        (bytes memory data, ) = DNSSEC_ORACLE.verifyRRSet(rrsets);
         uint256 i;
-        for (RRUtils.RRIterator memory iter = RRUtils.iterateRRs(data, 0); !RRUtils.done(iter); RRUtils.next(iter)) {
+        for (
+            RRUtils.RRIterator memory iter = RRUtils.iterateRRs(data, 0);
+            !RRUtils.done(iter);
+            RRUtils.next(iter)
+        ) {
             if (_isTXTForName(iter, name)) {
                 ++i;
             }
         }
         txts = new bytes[](i);
         i = 0;
-        for (RRUtils.RRIterator memory iter = RRUtils.iterateRRs(data, 0); !RRUtils.done(iter); RRUtils.next(iter)) {
+        for (
+            RRUtils.RRIterator memory iter = RRUtils.iterateRRs(data, 0);
+            !RRUtils.done(iter);
+            RRUtils.next(iter)
+        ) {
             if (_isTXTForName(iter, name)) {
                 txts[i++] = _readTXT(iter.data, iter.rdataOffset, iter.nextOffset);
             }
@@ -166,7 +190,9 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
     }
 
     /// @inheritdoc IVerifiableResolver
-    function verifierMetadata(bytes calldata name) external view returns (address verifier, string[] memory gateways) {
+    function verifierMetadata(
+        bytes calldata name
+    ) external view returns (address verifier, string[] memory gateways) {
         if (_determineMainnetResolver(name) == address(0)) {
             verifier = address(DNSSEC_ORACLE);
             gateways = ORACLE_GATEWAY_PROVIDER.gateways();
@@ -199,8 +225,11 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
     /// @param name The DNS-encoded name.
     /// @return resolver The underlying resolver address.
     /// @return offchain `true` if `resolver` is offchain.
-    function getResolverCallback(bytes calldata response, bytes calldata name) external view returns (address, bool) {
-        (address resolver,) = _verifyDNSSEC(name, response);
+    function getResolverCallback(
+        bytes calldata response,
+        bytes calldata name
+    ) external view returns (address, bool) {
+        (address resolver, ) = _verifyDNSSEC(name, response);
         return (resolver, true);
     }
 
@@ -210,7 +239,10 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
     /// @param name The DNS-encoded name.
     /// @param data The data to resolve.
     /// @return The abi-encoded result from the resolver.
-    function resolve(bytes calldata name, bytes calldata data) external view returns (bytes memory) {
+    function resolve(
+        bytes calldata name,
+        bytes calldata data
+    ) external view returns (bytes memory) {
         address resolver = _determineMainnetResolver(name);
         if (resolver != address(0)) {
             return callResolver(resolver, name, data, false, "", BATCH_GATEWAY_PROVIDER.gateways()); // ==> step 2
@@ -229,11 +261,10 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
     /// @param response The response data.
     /// @param extraData The contextual data passed from `resolve()`.
     /// @return The abi-encoded result from the resolver.
-    function resolveOracleCallback(bytes calldata response, bytes calldata extraData)
-        external
-        view
-        returns (bytes memory)
-    {
+    function resolveOracleCallback(
+        bytes calldata response,
+        bytes calldata extraData
+    ) external view returns (bytes memory) {
         (bytes memory name, bytes memory call) = abi.decode(extraData, (bytes, bytes));
         (address resolver, bytes memory context) = _verifyDNSSEC(name, response);
         if (resolver == address(0)) {
@@ -247,7 +278,9 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
     /// @param txt The DNSSEC TXT record.
     /// @return resolver The resolver address or null if wrong format or name didn't resolve.
     /// @return context The context data.
-    function parseDNSSECRecord(bytes memory txt) public view returns (address resolver, bytes memory context) {
+    function parseDNSSECRecord(
+        bytes memory txt
+    ) public view returns (address resolver, bytes memory context) {
         uint256 p = TXT_PREFIX.length;
         uint256 n = txt.length;
         if (n > p && BytesUtils.equals(txt, 0, TXT_PREFIX, 0, p)) {
@@ -271,7 +304,7 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
     /// @param name The DNS-encoded name to look up.
     /// @return resolver The v1 resolver address, or `address(0)` if none is applicable.
     function _determineMainnetResolver(bytes memory name) internal view returns (address resolver) {
-        (resolver,,) = RegistryUtilsV1.findResolver(ENS_REGISTRY_V1, name, 0);
+        (resolver, , ) = RegistryUtilsV1.findResolver(ENS_REGISTRY_V1, name, 0);
         if (resolver == DNS_TLD_RESOLVER_V1 || resolver == address(this)) {
             resolver = address(0);
         }
@@ -284,16 +317,24 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
     /// @param oracleWitness The ABI-encoded `DNSSEC.RRSetWithSignature[]` proof from the gateway.
     /// @return resolver The resolver address parsed from the first valid `ENS1` TXT record.
     /// @return context The context bytes following the resolver in the TXT record.
-    function _verifyDNSSEC(bytes memory name, bytes calldata oracleWitness)
-        internal
-        view
-        returns (address resolver, bytes memory context)
-    {
-        DNSSEC.RRSetWithSignature[] memory rrsets = abi.decode(oracleWitness, (DNSSEC.RRSetWithSignature[]));
-        (bytes memory data,) = DNSSEC_ORACLE.verifyRRSet(rrsets);
-        for (RRUtils.RRIterator memory iter = RRUtils.iterateRRs(data, 0); !RRUtils.done(iter); RRUtils.next(iter)) {
+    function _verifyDNSSEC(
+        bytes memory name,
+        bytes calldata oracleWitness
+    ) internal view returns (address resolver, bytes memory context) {
+        DNSSEC.RRSetWithSignature[] memory rrsets = abi.decode(
+            oracleWitness,
+            (DNSSEC.RRSetWithSignature[])
+        );
+        (bytes memory data, ) = DNSSEC_ORACLE.verifyRRSet(rrsets);
+        for (
+            RRUtils.RRIterator memory iter = RRUtils.iterateRRs(data, 0);
+            !RRUtils.done(iter);
+            RRUtils.next(iter)
+        ) {
             if (_isTXTForName(iter, name)) {
-                (resolver, context) = parseDNSSECRecord(_readTXT(iter.data, iter.rdataOffset, iter.nextOffset));
+                (resolver, context) = parseDNSSECRecord(
+                    _readTXT(iter.data, iter.rdataOffset, iter.nextOffset)
+                );
                 if (resolver != address(0)) {
                     break; // https://github.com/ensdomains/ens-contracts/blob/289913d7e3923228675add09498d66920216fe9b/contracts/dnsregistrar/OffchainDNSResolver.sol#L111
                 }
@@ -316,7 +357,7 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
             }
         }
         bytes memory name = NameCoder.encode(string(v));
-        (, address r,,) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
+        (, address r, , ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
         if (r != address(0)) {
             // according to ENSv1, this must be immediate onchain
             try IAddrResolver(r).addr(NameCoder.namehash(name, 0)) returns (address payable a) {
@@ -330,9 +371,14 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
     /// @param iter The current position in the resource-record iteration.
     /// @param name The DNS-encoded name to match against the record's owner name.
     /// @return `true` if the record is a matching Internet-class TXT record.
-    function _isTXTForName(RRUtils.RRIterator memory iter, bytes memory name) internal pure returns (bool) {
-        return iter.class == CLASS_INET && iter.dnstype == QTYPE_TXT
-            && BytesUtils.equals(iter.data, iter.offset, name, 0, name.length);
+    function _isTXTForName(
+        RRUtils.RRIterator memory iter,
+        bytes memory name
+    ) internal pure returns (bool) {
+        return
+            iter.class == CLASS_INET &&
+            iter.dnstype == QTYPE_TXT &&
+            BytesUtils.equals(iter.data, iter.offset, name, 0, name.length);
     }
 
     /// @dev Decode `v[off:end]` as raw TXT chunks.
@@ -342,7 +388,11 @@ contract DNSTLDResolver is IERC7996, ICompositeResolver, IVerifiableResolver, Re
     /// @param off The offset of the record data.
     /// @param end The upper bound of the record data.
     /// @return txt The decoded TXT value.
-    function _readTXT(bytes memory v, uint256 off, uint256 end) internal pure returns (bytes memory txt) {
+    function _readTXT(
+        bytes memory v,
+        uint256 off,
+        uint256 end
+    ) internal pure returns (bytes memory txt) {
         if (end > v.length) revert InvalidTXT();
         txt = new bytes(end - off);
         assembly {

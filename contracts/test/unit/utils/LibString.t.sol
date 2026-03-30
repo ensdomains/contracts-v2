@@ -262,7 +262,10 @@ contract LibStringTest is Test {
 
     function test_toString_maxUint256() external pure {
         string memory result = LibString.toString(type(uint256).max);
-        assertEq(result, "115792089237316195423570985008687907853269984665640564039457584007913129639935");
+        assertEq(
+            result,
+            "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+        );
     }
 
     function test_toString_powersOfTen() external pure {

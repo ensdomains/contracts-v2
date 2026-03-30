@@ -16,7 +16,9 @@ import {DNSTLDResolver, ENS, IRegistry, DNSSEC, HexUtils} from "~src/dns/DNSTLDR
 
 // coverage:ignore-next-line
 contract MockDNS is DNSTLDResolver {
-    constructor(IRegistry rootRegistry)
+    constructor(
+        IRegistry rootRegistry
+    )
         DNSTLDResolver(
             ENS(address(0)),
             address(0),
@@ -31,7 +33,11 @@ contract MockDNS is DNSTLDResolver {
         return _readTXT(v, 0, v.length);
     }
 
-    function readTXT(bytes memory v, uint256 pos, uint256 end) external pure returns (bytes memory) {
+    function readTXT(
+        bytes memory v,
+        uint256 pos,
+        uint256 end
+    ) external pure returns (bytes memory) {
         return _readTXT(v, pos, end);
     }
 
@@ -49,7 +55,10 @@ contract DNSTLDResolverTest is Test, ERC1155Holder, IAddrResolver {
 
     function setUp() external {
         rootRegistry = new PermissionedRegistry(
-            IHCAFactoryBasic(address(0)), IRegistryMetadata(address(0)), address(this), EACBaseRolesLib.ALL_ROLES
+            IHCAFactoryBasic(address(0)),
+            IRegistryMetadata(address(0)),
+            address(this),
+            EACBaseRolesLib.ALL_ROLES
         );
         dns = new MockDNS(rootRegistry);
     }
@@ -100,7 +109,8 @@ contract DNSTLDResolverTest is Test, ERC1155Holder, IAddrResolver {
 
     function test_parseResolver_address() external view {
         assertEq(
-            dns.parseResolver("0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"), 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e
+            dns.parseResolver("0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"),
+            0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e
         );
     }
 

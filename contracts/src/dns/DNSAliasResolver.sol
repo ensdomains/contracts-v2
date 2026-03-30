@@ -56,15 +56,22 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
     /// @notice Initializes DNSAliasResolver.
     /// @param rootRegistry The ENSv2 root registry.
     /// @param batchGatewayProvider The batch gateway provider.
-    constructor(IRegistry rootRegistry, IGatewayProvider batchGatewayProvider) CCIPReader(DEFAULT_UNSAFE_CALL_GAS) {
+    constructor(
+        IRegistry rootRegistry,
+        IGatewayProvider batchGatewayProvider
+    ) CCIPReader(DEFAULT_UNSAFE_CALL_GAS) {
         ROOT_REGISTRY = rootRegistry;
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
     }
 
     /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165) returns (bool) {
-        return type(IExtendedDNSResolver).interfaceId == interfaceId || type(IERC7996).interfaceId == interfaceId
-            || super.supportsInterface(interfaceId);
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(ERC165) returns (bool) {
+        return
+            type(IExtendedDNSResolver).interfaceId == interfaceId ||
+            type(IERC7996).interfaceId == interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     /// @inheritdoc IERC7996
@@ -83,13 +90,13 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
     /// @param data The data to resolve.
     /// @param context The TXT record context.
     /// @return The abi-encoded result from the resolver.
-    function resolve(bytes calldata name, bytes calldata data, bytes calldata context)
-        external
-        view
-        returns (bytes memory)
-    {
+    function resolve(
+        bytes calldata name,
+        bytes calldata data,
+        bytes calldata context
+    ) external view returns (bytes memory) {
         bytes memory newName = rewriteNameWithContext(name, context);
-        (, address resolver, bytes32 node,) = LibRegistry.findResolver(ROOT_REGISTRY, newName, 0);
+        (, address resolver, bytes32 node, ) = LibRegistry.findResolver(ROOT_REGISTRY, newName, 0);
         callResolver(
             resolver,
             newName,
@@ -107,11 +114,18 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
     /// @param name The DNS-encoded name to rewrite.
     /// @param context The rewrite rule — either `<oldSuffix> <newSuffix>` or `<newName>`.
     /// @return The rewritten DNS-encoded name.
-    function rewriteNameWithContext(bytes calldata name, bytes calldata context) public pure returns (bytes memory) {
+    function rewriteNameWithContext(
+        bytes calldata name,
+        bytes calldata context
+    ) public pure returns (bytes memory) {
         uint256 sep = BytesUtils.find(context, 0, context.length, " ");
         if (sep < context.length) {
             bytes memory oldSuffix = NameCoder.encode(string(context[:sep]));
-            (bool matched,,, uint256 offset) = NameCoder.matchSuffix(name, 0, NameCoder.namehash(oldSuffix, 0));
+            (bool matched, , , uint256 offset) = NameCoder.matchSuffix(
+                name,
+                0,
+                NameCoder.namehash(oldSuffix, 0)
+            );
             if (!matched) {
                 revert NoSuffixMatch(name, oldSuffix);
             }

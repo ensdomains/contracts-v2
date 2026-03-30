@@ -62,9 +62,13 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165) returns (bool) {
-        return type(IExtendedDNSResolver).interfaceId == interfaceId || type(IERC7996).interfaceId == interfaceId
-            || super.supportsInterface(interfaceId);
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(ERC165) returns (bool) {
+        return
+            type(IExtendedDNSResolver).interfaceId == interfaceId ||
+            type(IERC7996).interfaceId == interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     /// @inheritdoc IERC7996
@@ -95,16 +99,14 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
         /* name */
         bytes calldata data,
         bytes calldata context
-    )
-        external
-        view
-        returns (bytes memory result)
-    {
+    ) external view returns (bytes memory result) {
         bytes4 selector = bytes4(data);
         if (selector == IMulticallable.multicall.selector) {
             bytes[] memory m = abi.decode(data[4:], (bytes[]));
             for (uint256 i; i < m.length; ++i) {
-                (bool ok, bytes memory v) = address(this).staticcall(abi.encodeCall(this.resolve, ("", m[i], context)));
+                (bool ok, bytes memory v) = address(this).staticcall(
+                    abi.encodeCall(this.resolve, ("", m[i], context))
+                );
                 if (ok) {
                     v = abi.decode(v, (bytes)); // unwrap resolve()
                 }
@@ -151,17 +153,21 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
     /// @param coinType The coin type.
     /// @param useDefault If true and address is null and coin type is EVM, use default EVM coin type.
     /// @return v The address or null if not found.
-    function _extractAddress(bytes memory context, uint256 coinType, bool useDefault)
-        internal
-        pure
-        returns (bytes memory v)
-    {
+    function _extractAddress(
+        bytes memory context,
+        uint256 coinType,
+        bool useDefault
+    ) internal pure returns (bytes memory v) {
         if (ENSIP19.isEVMCoinType(coinType)) {
             v = DNSTXTParserLib.find(
                 context,
                 coinType == COIN_TYPE_ETH
                     ? bytes("a[60]=")
-                    : abi.encodePacked("a[e", Strings.toString(ENSIP19.chainFromCoinType(coinType)), "]=")
+                    : abi.encodePacked(
+                        "a[e",
+                        Strings.toString(ENSIP19.chainFromCoinType(coinType)),
+                        "]="
+                    )
             );
             if (useDefault && v.length == 0) {
                 v = DNSTXTParserLib.find(context, "a[e0]=");
@@ -171,7 +177,12 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
                 revert InvalidDataLength(v, 20);
             }
         } else {
-            v = _parse0xString(DNSTXTParserLib.find(context, abi.encodePacked("a[", Strings.toString(coinType), "]=")));
+            v = _parse0xString(
+                DNSTXTParserLib.find(
+                    context,
+                    abi.encodePacked("a[", Strings.toString(coinType), "]=")
+                )
+            );
         }
     }
 

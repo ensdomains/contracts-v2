@@ -53,7 +53,7 @@ contract V1FixtureTest is V1Fixture {
     }
 
     function test_findResolverV1_unwrapped() external {
-        (bytes memory name,) = registerUnwrapped("test");
+        (bytes memory name, ) = registerUnwrapped("test");
         assertEq(findResolverV1(name), address(0), "before");
         vm.prank(user);
         registryV1.setResolver(NameCoder.namehash(name, 0), address(1));
@@ -81,7 +81,13 @@ contract V1FixtureTest is V1Fixture {
         bytes memory name = registerWrappedETH2LD("test", 0);
         vm.expectRevert(abi.encodeWithSelector(LabelTooShort.selector));
         vm.prank(user);
-        nameWrapper.setSubnodeOwner(NameCoder.namehash(name, 0), "", user, 0, uint64(block.timestamp + 1 days));
+        nameWrapper.setSubnodeOwner(
+            NameCoder.namehash(name, 0),
+            "",
+            user,
+            0,
+            uint64(block.timestamp + 1 days)
+        );
     }
 
     function test_nameWraper_labelTooLong() external {
@@ -89,13 +95,21 @@ contract V1FixtureTest is V1Fixture {
         string memory label = new string(256);
         vm.expectRevert(abi.encodeWithSelector(LabelTooLong.selector, label));
         vm.prank(user);
-        nameWrapper.setSubnodeOwner(NameCoder.namehash(name, 0), label, user, 0, uint64(block.timestamp + 1 days));
+        nameWrapper.setSubnodeOwner(
+            NameCoder.namehash(name, 0),
+            label,
+            user,
+            0,
+            uint64(block.timestamp + 1 days)
+        );
     }
 
     function test_nameWrapper_expiryForETH2LDIncludesGrace() external {
         bytes memory name = registerWrappedETH2LD("test", 0);
-        uint256 unwrappedExpiry = ethRegistrarV1.nameExpires(uint256(keccak256(bytes(NameCoder.firstLabel(name)))));
-        (,, uint256 wrappedExpiry) = nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));
+        uint256 unwrappedExpiry = ethRegistrarV1.nameExpires(
+            uint256(keccak256(bytes(NameCoder.firstLabel(name))))
+        );
+        (, , uint256 wrappedExpiry) = nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));
         assertEq(unwrappedExpiry + ethRegistrarV1.GRACE_PERIOD(), wrappedExpiry);
     }
 
@@ -109,7 +123,7 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_setFuses() external {
         bytes memory name = registerWrappedETH2LD("test", 0);
-        (bytes32 labelhash,) = NameCoder.readLabel(name, 0);
+        (bytes32 labelhash, ) = NameCoder.readLabel(name, 0);
         vm.startPrank(user);
         nameWrapper.setFuses(NameCoder.namehash(name, 0), uint16(PARENT_CANNOT_CONTROL));
         nameWrapper.unwrapETH2LD(labelhash, user, user);
@@ -118,8 +132,13 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_wrap() external {
         bytes memory parentName = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        bytes memory name = createWrappedChild(parentName, "sub", address(0), PARENT_CANNOT_CONTROL);
-        (bytes32 labelhash,) = NameCoder.readLabel(name, 0);
+        bytes memory name = createWrappedChild(
+            parentName,
+            "sub",
+            address(0),
+            PARENT_CANNOT_CONTROL
+        );
+        (bytes32 labelhash, ) = NameCoder.readLabel(name, 0);
         vm.startPrank(user);
         nameWrapper.setFuses(NameCoder.namehash(name, 0), uint16(PARENT_CANNOT_CONTROL));
         nameWrapper.unwrap(NameCoder.namehash(parentName, 0), labelhash, user);
@@ -138,7 +157,12 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_CANNOT_BURN_FUSES_via_setChildFuses() external {
         bytes memory parentName = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        bytes memory name = createWrappedChild(parentName, "sub", address(0), CANNOT_UNWRAP | PARENT_CANNOT_CONTROL);
+        bytes memory name = createWrappedChild(
+            parentName,
+            "sub",
+            address(0),
+            CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
+        );
         // setChildFuses() does not allow fuse changes if PCC
         // _setFuses() requires CU + PCC if child fuses as burned
         vm.expectRevert();
@@ -170,7 +194,9 @@ contract V1FixtureTest is V1Fixture {
         nameWrapper.approve(friend, uint256(node));
         // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L146-L149
         vm.prank(friend);
-        vm.expectRevert(abi.encodeWithSignature("Error(string)", "ERC1155: caller is not owner nor approved"));
+        vm.expectRevert(
+            abi.encodeWithSignature("Error(string)", "ERC1155: caller is not owner nor approved")
+        );
         nameWrapper.safeTransferFrom(user, friend, uint256(node), 1, "");
     }
 
