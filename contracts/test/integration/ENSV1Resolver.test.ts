@@ -3,13 +3,12 @@ import hre from "hardhat";
 import { describe, expect, it } from "vitest";
 
 import {
-  COIN_TYPE_ETH,
-  type KnownProfile,
   bundleCalls,
+  type KnownProfile,
   makeResolutions,
 } from "../utils/resolutions.js";
 import { shouldSupportFeatures } from "../utils/supportsFeatures.js";
-import { dnsEncodeName } from "../utils/utils.js";
+import { dnsEncodeName, COIN_TYPE_ETH } from "../utils/utils.js";
 import { deployV1Fixture } from "./fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "./fixtures/deployV2Fixture.js";
 import { expectVar } from "../utils/expectVar.js";
@@ -79,7 +78,7 @@ describe("ENSV1Resolver", () => {
         resolverAddress: F.ensV1Resolver.address,
       });
       await F.v1.publicResolver.write.multicall([
-        res.resolutions.map((x) => x.write),
+        res.resolutions.map((x) => x.writeV1),
       ]);
       {
         const [answer, resolver] = await F.v2.universalResolver.read.resolve([

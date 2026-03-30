@@ -9,12 +9,7 @@ import {
 } from "viem";
 import { expect } from "vitest";
 
-import {
-  COIN_TYPE_ETH,
-  shortCoin,
-} from "../../lib/ens-contracts/test/fixtures/ensip19.js";
-
-export * from "../../lib/ens-contracts/test/fixtures/ensip19.js";
+import { dnsEncodeName, shortCoin, COIN_TYPE_ETH } from "./utils.js";
 
 export const MULTICALL_ABI = parseAbi([
   "function multicall(bytes[] calls) external view returns (bytes[])",
@@ -26,28 +21,37 @@ export const ADDR_ABI = parseAbi([
 ]);
 
 export const PROFILE_ABI = parseAbi([
-  "function hasAddr(bytes32, uint256 coinType) external view returns (bool)",
-
-  "function addr(bytes32, uint256 coinType) external view returns (bytes)",
-  "function setAddr(bytes32, uint256 coinType, bytes value) external",
-
-  "function text(bytes32, string key) external view returns (string)",
-  "function setText(bytes32, string key, string value) external",
-
-  "function contenthash(bytes32) external view returns (bytes)",
-  "function setContenthash(bytes32, bytes value) external",
-
-  "function pubkey(bytes32) external view returns (bytes32, bytes32)",
-  "function setPubkey(bytes32, bytes32 x, bytes32 y) external",
-
-  "function name(bytes32) external view returns (string)",
-  "function setName(bytes32, string name) external",
-
   "function ABI(bytes32, uint256 contentTypes) external view returns (uint256, bytes memory)",
-  "function setABI(bytes32, uint256 contentType, bytes data) external",
-
+  "function addr(bytes32, uint256 coinType) external view returns (bytes)",
+  "function contenthash(bytes32) external view returns (bytes)",
+  "function data(bytes32, string key) external view returns (bytes)",
+  "function hasAddr(bytes32, uint256 coinType) external view returns (bool)",
   "function interfaceImplementer(bytes32, bytes4 interfaceID) external view returns (address)",
+  "function name(bytes32) external view returns (string)",
+  "function pubkey(bytes32) external view returns (bytes32, bytes32)",
+  "function text(bytes32, string key) external view returns (string)",
+]);
+
+export const V1_SETTER_ABI = parseAbi([
+  "function setABI(bytes32, uint256 contentType, bytes data) external",
+  "function setAddr(bytes32, uint256 coinType, bytes value) external",
+  "function setContenthash(bytes32, bytes value) external",
+  "function setData(bytes32, string key, bytes value) external",
   "function setInterface(bytes32, bytes4 interfaceID, address implementer) external",
+  "function setName(bytes32, string name) external",
+  "function setPubkey(bytes32, bytes32 x, bytes32 y) external",
+  "function setText(bytes32, string key, string value) external",
+]);
+
+export const V2_SETTER_ABI = parseAbi([
+  "function setABI(bytes, uint256 contentType, bytes data) external",
+  "function setAddress(bytes, uint256 coinType, bytes value) external",
+  "function setContentHash(bytes, bytes value) external",
+  "function setData(bytes, string key, bytes value) external",
+  "function setInterface(bytes, bytes4 interfaceID, address implementer) external",
+  "function setName(bytes, string name) external",
+  "function setPubkey(bytes, bytes32 x, bytes32 y) external",
+  "function setText(bytes, string key, string value) external",
 ]);
 
 type StringRecord = { value: string };
@@ -56,6 +60,7 @@ export type HasAddressRecord = { coinType: bigint; exists: boolean };
 export type PubkeyRecord = { x: Hex; y: Hex };
 export type ErrorRecord = { call: Hex; answer: Hex };
 export type TextRecord = StringRecord & { key: string };
+export type DataRecord = BytesRecord & { key: string };
 export type AddressRecord = BytesRecord & { coinType: bigint };
 export type ABIRecord = BytesRecord & { contentType: bigint };
 export type InterfaceRecord = BytesRecord & { selector: Hex };
@@ -67,6 +72,7 @@ export type KnownProfile = {
   addresses?: AddressRecord[];
   hasAddresses?: HasAddressRecord[];
   texts?: TextRecord[];
+  datas?: DataRecord[];
   contenthash?: BytesRecord;
   primary?: StringRecord;
   pubkey?: PubkeyRecord;
@@ -87,7 +93,8 @@ type Expected = {
   call: Hex;
   answer: Hex;
   expect(data: Hex): void;
-  write: Hex;
+  writeV1: Hex;
+  writeV2: Hex;
 };
 
 export type KnownResolution = Expected & {
@@ -107,35 +114,37 @@ export function bundleCalls(resolutions: KnownResolution[]): KnownBundle {
       unbundleAnswers: (x) => [x],
     };
   }
+  const abi = MULTICALL_ABI;
   return {
     call: encodeFunctionData({
-      abi: MULTICALL_ABI,
+      abi,
       args: [resolutions.map((x) => x.call)],
     }),
     answer: encodeFunctionResult({
-      abi: MULTICALL_ABI,
+      abi,
       result: resolutions.map((x) => x.answer),
     }),
     resolutions,
-    unbundleAnswers: (data) =>
-      decodeFunctionResult({
-        abi: MULTICALL_ABI,
-        data,
-      }),
+    unbundleAnswers: (data) => decodeFunctionResult({ abi, data }),
     expect(answer) {
       const answers = this.unbundleAnswers(answer);
       expect(answers).toHaveLength(resolutions.length);
       resolutions.forEach((x, i) => x.expect(answers[i]));
     },
-    write: encodeFunctionData({
-      abi: MULTICALL_ABI,
-      args: [resolutions.map((x) => x.write).filter((x) => x.length > 2)],
+    writeV1: encodeFunctionData({
+      abi,
+      args: [resolutions.map((x) => x.writeV1).filter((x) => x.length > 2)],
+    }),
+    writeV2: encodeFunctionData({
+      abi,
+      args: [resolutions.map((x) => x.writeV2).filter((x) => x.length > 2)],
     }),
   };
 }
 
 export function makeResolutions(p: KnownProfile): KnownResolution[] {
   const resolutions: KnownResolution[] = [];
+  const name = dnsEncodeName(p.name);
   const node = namehash(p.name);
   if (p.addresses) {
     const functionName = "addr";
@@ -150,176 +159,325 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
             const actual = decodeFunctionResult({ abi, functionName, data });
             expect(actual, this.desc).toStrictEqual(getAddress(value));
           },
-          write: encodeFunctionData({
+          writeV1: encodeFunctionData({
             abi,
             functionName: "setAddr",
             args: [node, value],
           }),
+          writeV2: encodeFunctionData({
+            abi: V2_SETTER_ABI,
+            functionName: "setAddress",
+            args: [name, coinType, value],
+          }),
         });
       } else {
-        const abi = PROFILE_ABI;
         resolutions.push({
           desc: `${functionName}(${shortCoin(coinType)})`,
           call: encodeFunctionData({
-            abi,
+            abi: PROFILE_ABI,
             functionName,
             args: [node, coinType],
           }),
-          answer: encodeFunctionResult({ abi, functionName, result: value }),
+          answer: encodeFunctionResult({
+            abi: PROFILE_ABI,
+            functionName,
+            result: value,
+          }),
           expect(data) {
-            const actual = decodeFunctionResult({ abi, functionName, data });
+            const actual = decodeFunctionResult({
+              abi: PROFILE_ABI,
+              functionName,
+              data,
+            });
             expect(actual, this.desc).toStrictEqual(value.toLowerCase());
           },
-          write: encodeFunctionData({
-            abi,
+          writeV1: encodeFunctionData({
+            abi: V1_SETTER_ABI,
             functionName: "setAddr",
             args: [node, coinType, value],
+          }),
+          writeV2: encodeFunctionData({
+            abi: V2_SETTER_ABI,
+            functionName: "setAddress",
+            args: [name, coinType, value],
           }),
         });
       }
     }
   }
   if (p.hasAddresses) {
-    const abi = PROFILE_ABI;
     const functionName = "hasAddr";
     for (const { coinType, exists } of p.hasAddresses) {
       resolutions.push({
         desc: `${functionName}(${shortCoin(coinType)})`,
         call: encodeFunctionData({
-          abi,
+          abi: PROFILE_ABI,
           functionName,
           args: [node, coinType],
         }),
-        answer: encodeFunctionResult({ abi, functionName, result: exists }),
+        answer: encodeFunctionResult({
+          abi: PROFILE_ABI,
+          functionName,
+          result: exists,
+        }),
         expect(data) {
-          const actual = decodeFunctionResult({ abi, functionName, data });
+          const actual = decodeFunctionResult({
+            abi: PROFILE_ABI,
+            functionName,
+            data,
+          });
           expect(actual, this.desc).toStrictEqual(exists);
         },
-        write: "0x",
+        writeV1: "0x",
+        writeV2: "0x",
       });
     }
   }
   if (p.texts) {
-    const abi = PROFILE_ABI;
     const functionName = "text";
     for (const { key, value } of p.texts) {
       resolutions.push({
         desc: `${functionName}(${key})`,
-        call: encodeFunctionData({ abi, functionName, args: [node, key] }),
-        answer: encodeFunctionResult({ abi, functionName, result: value }),
+        call: encodeFunctionData({
+          abi: PROFILE_ABI,
+          functionName,
+          args: [node, key],
+        }),
+        answer: encodeFunctionResult({
+          abi: PROFILE_ABI,
+          functionName,
+          result: value,
+        }),
         expect(data) {
-          const actual = decodeFunctionResult({ abi, functionName, data });
+          const actual = decodeFunctionResult({
+            abi: PROFILE_ABI,
+            functionName,
+            data,
+          });
           expect(actual, this.desc).toStrictEqual(value);
         },
-        write: encodeFunctionData({
-          abi,
+        writeV1: encodeFunctionData({
+          abi: V1_SETTER_ABI,
           functionName: "setText",
           args: [node, key, value],
+        }),
+        writeV2: encodeFunctionData({
+          abi: V2_SETTER_ABI,
+          functionName: "setText",
+          args: [name, key, value],
+        }),
+      });
+    }
+  }
+  if (p.datas) {
+    const functionName = "data";
+    for (const { key, value } of p.datas) {
+      resolutions.push({
+        desc: `${functionName}(${key})`,
+        call: encodeFunctionData({
+          abi: PROFILE_ABI,
+          functionName,
+          args: [node, key],
+        }),
+        answer: encodeFunctionResult({
+          abi: PROFILE_ABI,
+          functionName,
+          result: value,
+        }),
+        expect(data) {
+          const actual = decodeFunctionResult({
+            abi: PROFILE_ABI,
+            functionName,
+            data,
+          });
+          expect(actual, this.desc).toStrictEqual(value);
+        },
+        writeV1: encodeFunctionData({
+          abi: V1_SETTER_ABI,
+          functionName: "setData",
+          args: [node, key, value],
+        }),
+        writeV2: encodeFunctionData({
+          abi: V2_SETTER_ABI,
+          functionName: "setData",
+          args: [name, key, value],
         }),
       });
     }
   }
   if (p.contenthash) {
-    const abi = PROFILE_ABI;
     const functionName = "contenthash";
     const { value } = p.contenthash;
     resolutions.push({
       desc: `${functionName}()`,
-      call: encodeFunctionData({ abi, functionName, args: [node] }),
-      answer: encodeFunctionResult({ abi, functionName, result: value }),
+      call: encodeFunctionData({
+        abi: PROFILE_ABI,
+        functionName,
+        args: [node],
+      }),
+      answer: encodeFunctionResult({
+        abi: PROFILE_ABI,
+        functionName,
+        result: value,
+      }),
       expect(data) {
-        const actual = decodeFunctionResult({ abi, functionName, data });
+        const actual = decodeFunctionResult({
+          abi: PROFILE_ABI,
+          functionName,
+          data,
+        });
         expect(actual, this.desc).toStrictEqual(value);
       },
-      write: encodeFunctionData({
-        abi,
+      writeV1: encodeFunctionData({
+        abi: V1_SETTER_ABI,
         functionName: "setContenthash",
         args: [node, value],
+      }),
+      writeV2: encodeFunctionData({
+        abi: V2_SETTER_ABI,
+        functionName: "setContentHash",
+        args: [name, value],
       }),
     });
   }
   if (p.pubkey) {
-    const abi = PROFILE_ABI;
     const functionName = "pubkey";
     const { x, y } = p.pubkey;
     resolutions.push({
       desc: `${functionName}()`,
-      call: encodeFunctionData({ abi, functionName, args: [node] }),
-      answer: encodeFunctionResult({ abi, functionName, result: [x, y] }),
+      call: encodeFunctionData({
+        abi: PROFILE_ABI,
+        functionName,
+        args: [node],
+      }),
+      answer: encodeFunctionResult({
+        abi: PROFILE_ABI,
+        functionName,
+        result: [x, y],
+      }),
       expect(data) {
-        const actual = decodeFunctionResult({ abi, functionName, data });
+        const actual = decodeFunctionResult({
+          abi: PROFILE_ABI,
+          functionName,
+          data,
+        });
         expect(actual, this.desc).toStrictEqual([x, y]);
       },
-      write: encodeFunctionData({
-        abi,
+      writeV1: encodeFunctionData({
+        abi: V1_SETTER_ABI,
         functionName: "setPubkey",
         args: [node, x, y],
+      }),
+      writeV2: encodeFunctionData({
+        abi: V2_SETTER_ABI,
+        functionName: "setPubkey",
+        args: [name, x, y],
       }),
     });
   }
   if (p.primary) {
-    const abi = PROFILE_ABI;
     const functionName = "name";
     const { value } = p.primary;
     resolutions.push({
       desc: `${functionName}()`,
-      call: encodeFunctionData({ abi, functionName, args: [node] }),
-      answer: encodeFunctionResult({ abi, functionName, result: value }),
+      call: encodeFunctionData({
+        abi: PROFILE_ABI,
+        functionName,
+        args: [node],
+      }),
+      answer: encodeFunctionResult({
+        abi: PROFILE_ABI,
+        functionName,
+        result: value,
+      }),
       expect(data) {
-        const actual = decodeFunctionResult({ abi, functionName, data });
+        const actual = decodeFunctionResult({
+          abi: PROFILE_ABI,
+          functionName,
+          data,
+        });
         expect(actual, this.desc).toStrictEqual(value);
       },
-      write: encodeFunctionData({
-        abi,
+      writeV1: encodeFunctionData({
+        abi: V1_SETTER_ABI,
         functionName: "setName",
         args: [node, value],
+      }),
+      writeV2: encodeFunctionData({
+        abi: V2_SETTER_ABI,
+        functionName: "setName",
+        args: [name, value],
       }),
     });
   }
   if (p.abis) {
-    const abi = PROFILE_ABI;
     const functionName = "ABI";
     for (const { contentType, value } of p.abis) {
       resolutions.push({
         desc: `${functionName}(${contentType})`,
         call: encodeFunctionData({
-          abi,
+          abi: PROFILE_ABI,
           functionName,
           args: [node, contentType],
         }),
         answer: encodeFunctionResult({
-          abi,
+          abi: PROFILE_ABI,
           functionName,
           result: [contentType, value],
         }),
         expect(data) {
-          const actual = decodeFunctionResult({ abi, functionName, data });
+          const actual = decodeFunctionResult({
+            abi: PROFILE_ABI,
+            functionName,
+            data,
+          });
           expect(actual, this.desc).toStrictEqual([contentType, value]);
         },
-        write: encodeFunctionData({
-          abi,
+        writeV1: encodeFunctionData({
+          abi: V1_SETTER_ABI,
           functionName: "setABI",
           args: [node, contentType, value],
+        }),
+        writeV2: encodeFunctionData({
+          abi: V2_SETTER_ABI,
+          functionName: "setABI",
+          args: [name, contentType, value],
         }),
       });
     }
   }
   if (p.interfaces) {
-    const abi = PROFILE_ABI;
     const functionName = "interfaceImplementer";
     for (const { selector, value } of p.interfaces) {
       resolutions.push({
         desc: `${functionName}(${selector})`,
-        call: encodeFunctionData({ abi, functionName, args: [node, selector] }),
-        answer: encodeFunctionResult({ abi, functionName, result: value }),
+        call: encodeFunctionData({
+          abi: PROFILE_ABI,
+          functionName,
+          args: [node, selector],
+        }),
+        answer: encodeFunctionResult({
+          abi: PROFILE_ABI,
+          functionName,
+          result: value,
+        }),
         expect(data) {
-          const actual = decodeFunctionResult({ abi, functionName, data });
+          const actual = decodeFunctionResult({
+            abi: PROFILE_ABI,
+            functionName,
+            data,
+          });
           expect(actual, this.desc).toStrictEqual(value);
         },
-        write: encodeFunctionData({
-          abi,
+        writeV1: encodeFunctionData({
+          abi: V1_SETTER_ABI,
           functionName: "setInterface",
           args: [node, selector, value],
+        }),
+        writeV2: encodeFunctionData({
+          abi: V2_SETTER_ABI,
+          functionName: "setInterface",
+          args: [name, selector, value],
         }),
       });
     }
@@ -333,7 +491,8 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
         expect(data) {
           expect(data, this.desc).toStrictEqual(this.answer);
         },
-        write: "0x",
+        writeV1: "0x",
+        writeV2: "0x",
       });
     }
   }
