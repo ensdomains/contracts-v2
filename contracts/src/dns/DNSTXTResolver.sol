@@ -198,7 +198,7 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
     function _parse0xString(bytes memory s) internal pure returns (bytes memory v) {
         if (s.length > 0) {
             bool valid;
-            if (bytes2(s) == "0x") {
+            if ((s.length & 1) == 0 && bytes2(s) == "0x") {
                 (v, valid) = HexUtils.hexToBytes(s, 2, s.length);
             }
             if (!valid) {

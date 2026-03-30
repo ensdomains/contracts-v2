@@ -36,21 +36,21 @@ import {IRecordResolver, RECORD_RESOLVER_INTERFACE_ID} from "./interfaces/IRecor
 import {IResolverSetters} from "./interfaces/IResolverSetters.sol";
 import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 
-/// @notice A resolver that supports many profiles, multiple names, internal aliasing, and fine-grained permissions.
+/// @notice A resolver that supports many profiles, multiple names, linked records, and fine-grained permissions.
 ///
 /// Supported profiles and standards:
 ///
 /// * ENSIP-1 / EIP-137: addr()
 /// * ENSIP-3 / EIP-181: name()
-/// * ENSIP-4 / EIP-205: ABI()
+/// * ENSIP-4 / EIP-205: ABI(contentTypes)
 /// * EIP-619: pubkey()
 /// * ENSIP-5 / EIP-634: text(key)
 /// * ENSIP-7 / EIP-1577: contenthash()
-/// * ENSIP-8: interfaceImplementer()
+/// * ENSIP-8: interfaceImplementer(interfaceId)
 /// * ENSIP-9 / EIP-2304: addr(coinType)
 /// * ENSIP-19: addr(default)
 /// * ENSIP-24: data(key)
-/// * IHasAddressResolver: hasAddr()
+/// * IHasAddressResolver: hasAddr(coinType)
 ///
 /// Records are created automatically by setters and assigned internal ID numbers (starting at 1).
 /// To create a new record, `ROLE_NEW_RECORD` is required on root.
@@ -98,11 +98,11 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// * `setInterface(name, interfaceId, ...)`
 ///
 /// The argument is hashed accordingly:
-/// | Argument      | Part                                            |
-/// | ------------- | ----------------------------------------------- |
-/// | `uint256 arg` | `PermissionedResolverLib.partHash(arg)`         |
-/// | `string arg`  | `PermissionedResolverLib.partHash(arg)`         |
-/// | `bytes4 arg`  | `PermissionedResolverLib.partHash(uint32(arg))` |
+/// | Argument      | Part                                    |
+/// | ------------- | --------------------------------------- |
+/// | `uint256 arg` | `PermissionedResolverLib.partHash(arg)` |
+/// | `string arg`  | `PermissionedResolverLib.partHash(arg)` |
+/// | `bytes4 arg`  | `PermissionedResolverLib.partHash(arg)` |
 ///
 /// Record setters check (4) EAC resources:
 ///                                                      Part Hash
@@ -116,7 +116,7 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 ///
 /// eg. `setText(name, "key", ...)` with `recordId = getRecordId(namehash(name))`
 ///      will check the following resources for `ROLE_SET_TEXT` permission:
-/// 1. `resource(recordId, partHash("akeybc"))` => `arg="key"` for that record
+/// 1. `resource(recordId, partHash("key"))` => `arg="key"` for that record
 /// 2. `resource(recordId, 0)` => ANY part of that record
 /// 3. `resource(0, partHash("key"))` => `arg="key"` for ANY record
 /// 4. `resource(0, 0)` => ANY part of ANY record
@@ -195,8 +195,8 @@ contract PermissionedResolver is
     }
 
     /// @notice Initialize the resolver.
-    /// @param initialAccount The initial account with root.
-    /// @param roleBitmap The roles granted to `admin`.
+    /// @param initialAccount The account granted roles.
+    /// @param roleBitmap The roles granted to `initialAccount` on root.
     function initialize(address initialAccount, uint256 roleBitmap) external initializer {
         if (initialAccount == address(0)) {
             revert InvalidOwner();
@@ -274,7 +274,7 @@ contract PermissionedResolver is
             sender
         );
         _record(recordId).datas[key] = value;
-        emit DataUpdated(recordId, keccak256(bytes(key)), key, value, sender);
+        emit DataUpdated(recordId, key, key, value, sender);
     }
 
     /// @inheritdoc IResolverSetters
@@ -284,7 +284,7 @@ contract PermissionedResolver is
         _checkRecordRoles(
             recordId,
             PermissionedResolverLib.ROLE_SET_INTERFACE,
-            PermissionedResolverLib.partHash(uint32(interfaceId)),
+            PermissionedResolverLib.partHash(interfaceId),
             sender
         );
         _record(recordId).interfaces[interfaceId] = implementer;
@@ -366,7 +366,7 @@ contract PermissionedResolver is
         uint256 roleBitmap,
         address account
     ) external returns (bool) {
-        uint256 recordId = _ensureRecordWithoutDefault(name_);
+        uint256 recordId = _ensureRecordExceptDefault(name_);
         uint256 resource = PermissionedResolverLib.resource(recordId);
         _checkCanGrantRoles(resource, roleBitmap, _msgSender());
         if (roleCount(resource) == 0) {
@@ -409,13 +409,14 @@ contract PermissionedResolver is
         } else if (selector == this.setInterface.selector) {
             bytes4 interfaceId;
             (name_, interfaceId) = abi.decode(setter[4:], (bytes, bytes4));
-            part = PermissionedResolverLib.partHash(uint32(interfaceId));
+            part = PermissionedResolverLib.partHash(interfaceId);
             roleBitmap = PermissionedResolverLib.ROLE_SET_INTERFACE;
             compactSetter = abi.encodeWithSelector(selector, name_, interfaceId);
         } else {
             revert UnsupportedResolverProfile(selector);
         }
-        uint256 recordId = _ensureRecordWithoutDefault(name_);
+        assert(part != bytes32(0));
+        uint256 recordId = _ensureRecordExceptDefault(name_);
         uint256 resource = PermissionedResolverLib.resource(recordId, part);
         _checkCanGrantRoles(PermissionedResolverLib.resource(recordId), roleBitmap, _msgSender());
         if (roleCount(resource) == 0) {
@@ -567,9 +568,10 @@ contract PermissionedResolver is
         }
     }
 
-    /// @dev Same as `_ensureRecord()` but doesn't create default record.
-    function _ensureRecordWithoutDefault(bytes memory name_) internal returns (uint256) {
-        if (name_.length == 1 && uint8(name_[0]) == 0) {
+    /// @dev Same as `_ensureRecord()` but doesn't create the default record.
+    function _ensureRecordExceptDefault(bytes memory name_) internal returns (uint256) {
+        (uint8 size, ) = NameCoder.nextLabel(name_, 0);
+        if (size == 0) {
             return 0; // empty name => use default
         }
         return _ensureRecord(name_);

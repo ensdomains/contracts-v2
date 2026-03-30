@@ -95,7 +95,7 @@ interface IRecordResolver is
     /// @param sender The caller address.
     event DataUpdated(
         uint256 indexed recordId,
-        bytes32 indexed keyHash,
+        string indexed keyHash,
         string key,
         bytes value,
         address indexed sender

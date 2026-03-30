@@ -96,4 +96,9 @@ library PermissionedResolverLib {
             part := keccak256(0, 32)
         }
     }
+
+    /// @dev Compute `part` from `bytes4` key.
+    function partHash(bytes4 x) internal pure returns (bytes32) {
+        return partHash(uint32(x));
+    }
 }

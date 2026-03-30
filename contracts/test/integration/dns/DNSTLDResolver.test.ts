@@ -413,36 +413,37 @@ describe("DNSTLDResolver", () => {
         .withArgs([dummyBytes4]);
     });
 
-    it("invalid hex", async () => {
-      const F = await network.networkHelpers.loadFixture(fixture);
-      const invalidHex = "!@#$";
-      await F.mockDNSSEC.write.setResponse([
-        encodeRRs([
-          makeTXT(
-            basicProfile.name,
-            `ENS1 ${dnsTXTResolverName} a[60]=${invalidHex}`,
-          ),
-        ]),
-      ]);
-      const [res] = makeResolutions({
-        name: basicProfile.name,
-        addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
-      });
-      await expect(
-        F.v2.universalResolver.read.resolve([
-          dnsEncodeName(basicProfile.name),
-          res.call,
-        ]),
-      )
-        .toBeRevertedWithCustomError("ResolverError")
-        .withArgs([
-          encodeErrorResult({
-            abi: F.dnsTXTResolver.abi,
-            errorName: "InvalidHexData",
-            args: [stringToHex(invalidHex)],
-          }),
+    for (const invalidHex of ["0", "00", "0x0", "!@#$"]) {
+      it(`invalid hex: ${invalidHex}`, async () => {
+        const F = await network.networkHelpers.loadFixture(fixture);
+        await F.mockDNSSEC.write.setResponse([
+          encodeRRs([
+            makeTXT(
+              basicProfile.name,
+              `ENS1 ${dnsTXTResolverName} a[60]=${invalidHex}`,
+            ),
+          ]),
         ]);
-    });
+        const [res] = makeResolutions({
+          name: basicProfile.name,
+          addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
+        });
+        await expect(
+          F.v2.universalResolver.read.resolve([
+            dnsEncodeName(basicProfile.name),
+            res.call,
+          ]),
+        )
+          .toBeRevertedWithCustomError("ResolverError")
+          .withArgs([
+            encodeErrorResult({
+              abi: F.dnsTXTResolver.abi,
+              errorName: "InvalidHexData",
+              args: [stringToHex(invalidHex)],
+            }),
+          ]);
+      });
+    }
 
     it("invalid length: address", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
@@ -540,6 +541,24 @@ describe("DNSTLDResolver", () => {
       await F.expectTXT({
         name: basicProfile.name,
         texts: [{ key: "url", value: testURL }],
+      });
+    });
+
+    it("text() w/[-key", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      const key = "a[b[c]]";
+      const value = "123";
+      await F.mockDNSSEC.write.setResponse([
+        encodeRRs([
+          makeTXT(
+            basicProfile.name,
+            `ENS1 ${dnsTXTResolverName} t[${key}]=${value}`,
+          ),
+        ]),
+      ]);
+      await F.expectTXT({
+        name: basicProfile.name,
+        texts: [{ key, value }],
       });
     });
 
