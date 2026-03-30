@@ -94,6 +94,7 @@ contract WrapperRegistry is
         // setup canonical parent (ROLE_SET_PARENT is not granted)
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
+        emit RegistryCreated();
         _grantRoles(
             ROOT_RESOURCE,
             RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | roleBitmap,
