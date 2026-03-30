@@ -180,7 +180,7 @@ contract PermissionedResolverTest is Test {
         resolver.grantRoles(resource, roleBitmap, friend);
     }
 
-    function test_grantRecordRoles_anyNode() external {
+    function test_grantRecordRoles_anyName() external {
         uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
         uint256 resource = PermissionedResolverLib.resource(0);
         assertEq(resolver.ROOT_RESOURCE(), resource);
@@ -196,7 +196,7 @@ contract PermissionedResolverTest is Test {
         assertFalse(resolver.hasRoles(resource, roleBitmap, friend), "revoked");
     }
 
-    function test_grantRecordRoles_oneNode() external {
+    function test_grantRecordRoles_oneName() external {
         uint256 recordId = 1;
         uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
         uint256 resource = PermissionedResolverLib.resource(recordId);
@@ -252,7 +252,7 @@ contract PermissionedResolverTest is Test {
     // grantSetterRoles()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_grantSetterRoles_anyNode(string calldata key) external {
+    function test_grantSetterRoles_anyName(string calldata key) external {
         uint256 recordId = 0;
         uint256 resource = PermissionedResolverLib.resource(
             recordId,
@@ -281,7 +281,7 @@ contract PermissionedResolverTest is Test {
         assertFalse(resolver.hasRoles(resource, roleBitmap, friend), "revoked");
     }
 
-    function test_grantSetterRoles_oneNode(string calldata key) external {
+    function test_grantSetterRoles_oneName(string calldata key) external {
         uint256 recordId = 1;
         uint256 resource = PermissionedResolverLib.resource(
             recordId,
@@ -307,7 +307,7 @@ contract PermissionedResolverTest is Test {
         );
         assertFalse(
             resolver.hasRoles(PermissionedResolverLib.resource(0), roleBitmap, friend),
-            "not granted: other nodes"
+            "not granted: other names"
         );
 
         vm.prank(owner);
@@ -379,6 +379,8 @@ contract PermissionedResolverTest is Test {
 
         assertEq(resolver.name(node1), TEST_STRING);
 
+        vm.expectEmit();
+        emit IRecordResolver.RecordCleared(1, owner);
         vm.prank(owner);
         resolver.clear(name1);
 
@@ -387,6 +389,9 @@ contract PermissionedResolverTest is Test {
 
     function test_clear_dne() external {
         vm.prank(owner);
+        resolver.clear(name1);
+
+        vm.prank(friend); // noop => callable by anyone
         resolver.clear(name1);
 
         assertEq(resolver.getRecordId(node1), 0);
@@ -934,7 +939,7 @@ contract PermissionedResolverTest is Test {
     // Coarse-grained Permissions
     ////////////////////////////////////////////////////////////////////////
 
-    function test_setContentHash_anyNode() external {
+    function test_setContentHash_anyName() external {
         vm.prank(owner);
         resolver.setName(name1, TEST_STRING); // ensure record
 
@@ -979,7 +984,7 @@ contract PermissionedResolverTest is Test {
     // Fine-grained Permissions
     ////////////////////////////////////////////////////////////////////////
 
-    function test_setText_anyNode_onePart(string calldata key) external {
+    function test_setText_anyName_anyPart(string calldata key) external {
         vm.prank(owner);
         resolver.setName(name1, TEST_STRING); // ensure record 1
         vm.prank(owner);
@@ -997,7 +1002,81 @@ contract PermissionedResolverTest is Test {
         vm.prank(friend);
         resolver.setText(name1, key, "A");
 
-        // give friend setText(TEST_STRING) on any record
+        // give friend setText(*) on any record
+        vm.prank(owner);
+        resolver.grantRecordRoles(EMPTY_NAME, PermissionedResolverLib.ROLE_SET_TEXT, friend);
+
+        // friend can change same setter of name1
+        vm.prank(friend);
+        resolver.setText(name1, key, "B");
+
+        // friend can change same setter of name2
+        vm.prank(friend);
+        resolver.setText(name2, key, "C");
+
+        // friend can change diff setter of name2
+        vm.prank(friend);
+        resolver.setText(name2, string.concat("2", key), "D");
+    }
+
+    function test_setText_oneName_anyPart(string calldata key) external {
+        vm.prank(owner);
+        resolver.setName(name1, TEST_STRING); // ensure record 1
+        vm.prank(owner);
+        resolver.setName(name2, TEST_STRING); // ensure record 2
+
+        // friend cannot change name1
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                PermissionedResolverLib.resource(1),
+                PermissionedResolverLib.ROLE_SET_TEXT,
+                friend
+            )
+        );
+        vm.prank(friend);
+        resolver.setText(name1, key, "A");
+
+        // give friend setText(*) on name1
+        vm.prank(owner);
+        resolver.grantRecordRoles(name1, PermissionedResolverLib.ROLE_SET_TEXT, friend);
+
+        // friend can change diff setter of name1
+        vm.prank(friend);
+        resolver.setText(name1, string.concat("2", key), "B");
+
+        // friend cannot change same setter of name2
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                PermissionedResolverLib.resource(2),
+                PermissionedResolverLib.ROLE_SET_TEXT,
+                friend
+            )
+        );
+        vm.prank(friend);
+        resolver.setText(name2, key, "C");
+    }
+
+    function test_setText_anyName_onePart(string calldata key) external {
+        vm.prank(owner);
+        resolver.setName(name1, TEST_STRING); // ensure record 1
+        vm.prank(owner);
+        resolver.setName(name2, TEST_STRING); // ensure record 2
+
+        // friend cannot change name1
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                PermissionedResolverLib.resource(1),
+                PermissionedResolverLib.ROLE_SET_TEXT,
+                friend
+            )
+        );
+        vm.prank(friend);
+        resolver.setText(name1, key, "A");
+
+        // give friend setText(key) on any record
         vm.prank(owner);
         resolver.grantSetterRoles(
             abi.encodeCall(IResolverSetters.setText, (EMPTY_NAME, key, "<ignored>")),
@@ -1025,7 +1104,7 @@ contract PermissionedResolverTest is Test {
         resolver.setText(name1, string.concat("2", key), "D");
     }
 
-    function test_setText_oneNode_onePart(string calldata key) external {
+    function test_setText_oneName_onePart(string calldata key) external {
         vm.prank(owner);
         resolver.setName(name1, TEST_STRING); // ensure record 1
         vm.prank(owner);
@@ -1079,7 +1158,7 @@ contract PermissionedResolverTest is Test {
         resolver.setText(name2, key, "E");
     }
 
-    function test_setaddr_anyNode_onePart(uint256 coinType) external {
+    function test_setAddr_anyName_onePart(uint256 coinType) external {
         vm.prank(owner);
         resolver.setName(name1, TEST_STRING); // ensure record 1
         vm.prank(owner);
@@ -1125,7 +1204,7 @@ contract PermissionedResolverTest is Test {
         resolver.setAddress(name1, ~coinType, hex"4444444444444444444444444444444444444444");
     }
 
-    function test_setAddr_oneNode_onePart(uint256 coinType) external {
+    function test_setAddr_oneName_onePart(uint256 coinType) external {
         vm.prank(owner);
         resolver.setName(name1, TEST_STRING); // ensure record 1
         vm.prank(owner);

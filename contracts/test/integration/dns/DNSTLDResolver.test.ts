@@ -544,6 +544,24 @@ describe("DNSTLDResolver", () => {
       });
     });
 
+    it("text() w/[-key", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      const key = "a[b[c]]";
+      const value = "123";
+      await F.mockDNSSEC.write.setResponse([
+        encodeRRs([
+          makeTXT(
+            basicProfile.name,
+            `ENS1 ${dnsTXTResolverName} t[${key}]=${value}`,
+          ),
+        ]),
+      ]);
+      await F.expectTXT({
+        name: basicProfile.name,
+        texts: [{ key, value }],
+      });
+    });
+
     it("data()", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.mockDNSSEC.write.setResponse([encodedRRs]);
