@@ -414,6 +414,7 @@ interface MigrationClients {
   mainnetClient: any;
   registry: any;
   batchRegistrar: any;
+  registryAbi: any[];
 }
 
 async function createMigrationClients(config: PreMigrationConfig): Promise<MigrationClients> {
@@ -456,14 +457,19 @@ async function createMigrationClients(config: PreMigrationConfig): Promise<Migra
     client,
   });
 
-  return { client, mainnetClient, registry, batchRegistrar };
+  return { client, mainnetClient, registry, batchRegistrar, registryAbi: registryArtifact.abi };
 }
 
 async function fetchAndReserveInBatches(
   config: PreMigrationConfig,
   checkpoint: Checkpoint,
 ): Promise<void> {
-  const { client, mainnetClient, registry, batchRegistrar } = await createMigrationClients(config);
+  const { client, mainnetClient, registry, batchRegistrar, registryAbi } = await createMigrationClients(config);
+
+  const block = await client.getBlock();
+  const maxGas = BigInt(Math.floor(Number(block.gasLimit) * GAS_LIMIT_SAFETY_FACTOR));
+  logger.config('Block Gas Limit', block.gasLimit.toString());
+  logger.config('Max Gas Per Batch', maxGas.toString());
 
   logger.info(`\nReading CSV file and reserving in batches of ${config.batchSize}...`);
   logger.info(`CSV file: ${config.csvFilePath}`);
@@ -513,7 +519,9 @@ async function fetchAndReserveInBatches(
           mainnetClient,
           registry,
           batchRegistrar,
-          checkpoint
+          checkpoint,
+          registryAbi,
+          maxGas,
         );
       }
 
@@ -537,6 +545,164 @@ async function fetchAndReserveInBatches(
   printFinalSummary(checkpoint);
 }
 
+export interface VerificationResult {
+  registration: ENSRegistration;
+  v2Status: number;
+  v2LatestOwner: string;
+  v1IsRegistered: boolean;
+  v1Expiry: bigint;
+  error?: string;
+}
+
+export async function batchVerifyRegistrations(
+  registrations: ENSRegistration[],
+  client: any,
+  mainnetClient: any,
+  registryAddress: Address,
+  registryAbi: any[],
+  v1BaseRegistrarAddress: Address,
+): Promise<VerificationResult[]> {
+  const v2Contracts = registrations.map(r => ({
+    address: registryAddress,
+    abi: registryAbi,
+    functionName: 'getState' as const,
+    args: [BigInt(keccak256(toHex(r.labelName)))],
+  }));
+
+  const v1Contracts = registrations.map(r => ({
+    address: v1BaseRegistrarAddress,
+    abi: BASE_REGISTRAR_ABI,
+    functionName: 'nameExpires' as const,
+    args: [keccak256(toHex(r.labelName))],
+  }));
+
+  const [v2Results, v1Results] = await Promise.all([
+    client.multicall({ contracts: v2Contracts }),
+    mainnetClient.multicall({ contracts: v1Contracts }),
+  ]);
+
+  const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
+
+  return registrations.map((reg, i) => {
+    const v2 = (v2Results as any[])[i];
+    const v1 = (v1Results as any[])[i];
+
+    if (v2.status === 'failure' || v1.status === 'failure') {
+      return {
+        registration: reg,
+        v2Status: -1,
+        v2LatestOwner: zeroAddress,
+        v1IsRegistered: false,
+        v1Expiry: 0n,
+        error: v2.status === 'failure' ? String(v2.error) : String(v1.error),
+      };
+    }
+
+    const expiry = v1.result as bigint;
+    return {
+      registration: reg,
+      v2Status: (v2.result as any).status,
+      v2LatestOwner: (v2.result as any).latestOwner,
+      v1IsRegistered: expiry > 0n && expiry > currentTimestamp,
+      v1Expiry: expiry,
+    };
+  });
+}
+
+interface BatchSubmitResult {
+  succeeded: { label: string; txHash: string }[];
+  failed: { label: string; error: string }[];
+}
+
+async function submitBatchWithBinaryFallback(
+  batchRegistrar: any,
+  client: any,
+  resolver: Address,
+  labels: string[],
+  expires: bigint[],
+): Promise<BatchSubmitResult> {
+  try {
+    const hash = await batchRegistrar.write.batchRegister([
+      zeroAddress, resolver, labels, expires,
+    ]);
+    await waitForSuccessfulTransactionReceipt(client, { hash });
+    return {
+      succeeded: labels.map(l => ({ label: l, txHash: hash })),
+      failed: [],
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (labels.length <= 1) {
+      return {
+        succeeded: [],
+        failed: [{ label: labels[0], error: errorMsg }],
+      };
+    }
+
+    const mid = Math.ceil(labels.length / 2);
+    logger.warning(`Batch of ${labels.length} failed: ${errorMsg}. Splitting into ${mid} + ${labels.length - mid}...`);
+
+    const leftResult = await submitBatchWithBinaryFallback(
+      batchRegistrar, client, resolver,
+      labels.slice(0, mid), expires.slice(0, mid),
+    );
+    const rightResult = await submitBatchWithBinaryFallback(
+      batchRegistrar, client, resolver,
+      labels.slice(mid), expires.slice(mid),
+    );
+
+    return {
+      succeeded: [...leftResult.succeeded, ...rightResult.succeeded],
+      failed: [...leftResult.failed, ...rightResult.failed],
+    };
+  }
+}
+
+const GAS_LIMIT_SAFETY_FACTOR = 0.8;
+
+async function estimateAndSplitBatch(
+  batchRegistrar: any,
+  client: any,
+  resolver: Address,
+  labels: string[],
+  expires: bigint[],
+  maxGas: bigint,
+): Promise<BatchSubmitResult> {
+  try {
+    const estimatedGas = await batchRegistrar.estimateGas.batchRegister([
+      zeroAddress, resolver, labels, expires,
+    ]);
+
+    if (estimatedGas <= maxGas) {
+      return await submitBatchWithBinaryFallback(
+        batchRegistrar, client, resolver, labels, expires,
+      );
+    }
+
+    logger.warning(
+      `Batch of ${labels.length} estimated at ${estimatedGas} gas (limit: ${maxGas}). Splitting...`
+    );
+    const mid = Math.ceil(labels.length / 2);
+    const leftResult = await estimateAndSplitBatch(
+      batchRegistrar, client, resolver,
+      labels.slice(0, mid), expires.slice(0, mid), maxGas,
+    );
+    const rightResult = await estimateAndSplitBatch(
+      batchRegistrar, client, resolver,
+      labels.slice(mid), expires.slice(mid), maxGas,
+    );
+    return {
+      succeeded: [...leftResult.succeeded, ...rightResult.succeeded],
+      failed: [...leftResult.failed, ...rightResult.failed],
+    };
+  } catch (estimateError) {
+    logger.warning(`Gas estimation failed for batch of ${labels.length}, using binary-search fallback`);
+    return await submitBatchWithBinaryFallback(
+      batchRegistrar, client, resolver, labels, expires,
+    );
+  }
+}
+
 async function processBatch(
   config: PreMigrationConfig,
   registrations: ENSRegistration[],
@@ -544,7 +710,9 @@ async function processBatch(
   mainnetClient: any,
   registry: any,
   batchRegistrar: any,
-  checkpoint: Checkpoint
+  checkpoint: Checkpoint,
+  registryAbi: any[],
+  maxGas: bigint,
 ): Promise<Checkpoint> {
   const batchLabels: string[] = [];
   const batchExpires: bigint[] = [];
@@ -553,120 +721,91 @@ async function processBatch(
 
   const minExpiryThreshold = BigInt(Math.floor(Date.now() / 1000) + config.minExpiryDays * 86400);
 
-  for (let i = 0; i < registrations.length; i++) {
-    const registration = registrations[i];
+  const verificationResults = await batchVerifyRegistrations(
+    registrations, client, mainnetClient,
+    config.registryAddress, registryAbi, config.v1BaseRegistrarAddress,
+  );
+
+  for (let i = 0; i < verificationResults.length; i++) {
+    const result = verificationResults[i];
+    const registration = result.registration;
     const globalIndex = checkpoint.totalProcessed + i + 1;
     lastLineNumber = registration.lineNumber;
 
     logger.processingName(registration.labelName, globalIndex, checkpoint.totalExpected);
 
-    try {
-      let isAlreadyReserved = false;
-      const labelId = BigInt(keccak256(toHex(registration.labelName)));
-      const v2State = await registry.read.getState([labelId]);
-      // Status enum: 0=AVAILABLE, 1=RESERVED, 2=REGISTERED
-      if (v2State.status === 2) {
-        logger.error(`Name ${registration.labelName}.eth is already registered with owner: ${v2State.latestOwner}`);
-        checkpoint.failureCount++;
-        checkpoint.totalProcessed++;
-        logger.finishedName(registration.labelName, 'failed');
-        continue;
-      }
-      if (v2State.status === 1) {
-        isAlreadyReserved = true;
-        alreadyReservedNames.add(registration.labelName);
-      }
-
-      logger.verifyingV1(registration.labelName);
-      const v1Result = await verifyNameOnV1(
-        registration.labelName,
-        mainnetClient,
-        config.v1BaseRegistrarAddress
-      );
-
-      if (!v1Result.isRegistered) {
-        const reason = v1Result.expiry === 0n
-          ? "never registered or fully expired"
-          : "expired";
-        logger.v1NotRegistered(registration.labelName, reason);
-        checkpoint.skippedCount++;
-        checkpoint.totalProcessed++;
-        logger.finishedName(registration.labelName, 'skipped');
-        continue;
-      }
-
-      if (v1Result.expiry <= minExpiryThreshold) {
-        const daysUntilExpiry = Number((v1Result.expiry - BigInt(Math.floor(Date.now() / 1000))) / 86400n);
-        logger.skippingExpiringSoon(registration.labelName, daysUntilExpiry);
-        checkpoint.skippedCount++;
-        checkpoint.totalProcessed++;
-        logger.finishedName(registration.labelName, 'skipped');
-        continue;
-      }
-
-      const expiryDateFormatted = new Date(Number(v1Result.expiry) * 1000).toISOString().split('T')[0];
-      logger.v1Verified(registration.labelName, expiryDateFormatted);
-
-      batchLabels.push(registration.labelName);
-      batchExpires.push(v1Result.expiry);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.failed(registration.labelName, errorMessage);
+    if (result.error) {
+      logger.failed(registration.labelName, result.error);
       checkpoint.failureCount++;
       checkpoint.totalProcessed++;
       logger.finishedName(registration.labelName, 'failed');
+      continue;
     }
+
+    if (result.v2Status === 2) {
+      logger.error(`Name ${registration.labelName}.eth is already registered with owner: ${result.v2LatestOwner}`);
+      checkpoint.failureCount++;
+      checkpoint.totalProcessed++;
+      logger.finishedName(registration.labelName, 'failed');
+      continue;
+    }
+    if (result.v2Status === 1) {
+      alreadyReservedNames.add(registration.labelName);
+    }
+
+    if (!result.v1IsRegistered) {
+      const reason = result.v1Expiry === 0n
+        ? "never registered or fully expired"
+        : "expired";
+      logger.v1NotRegistered(registration.labelName, reason);
+      checkpoint.skippedCount++;
+      checkpoint.totalProcessed++;
+      logger.finishedName(registration.labelName, 'skipped');
+      continue;
+    }
+
+    if (result.v1Expiry <= minExpiryThreshold) {
+      const daysUntilExpiry = Number((result.v1Expiry - BigInt(Math.floor(Date.now() / 1000))) / 86400n);
+      logger.skippingExpiringSoon(registration.labelName, daysUntilExpiry);
+      checkpoint.skippedCount++;
+      checkpoint.totalProcessed++;
+      logger.finishedName(registration.labelName, 'skipped');
+      continue;
+    }
+
+    const expiryDateFormatted = new Date(Number(result.v1Expiry) * 1000).toISOString().split('T')[0];
+    logger.v1Verified(registration.labelName, expiryDateFormatted);
+
+    batchLabels.push(registration.labelName);
+    batchExpires.push(result.v1Expiry);
   }
 
   if (batchLabels.length > 0 && !config.dryRun) {
     logger.info(`\nBatch reserving ${batchLabels.length} names...`);
 
-    try {
-      const hash = await batchRegistrar.write.batchRegister([zeroAddress, config.v1ResolverAddress, batchLabels, batchExpires]);
-      await waitForSuccessfulTransactionReceipt(client, { hash });
+    const result = await estimateAndSplitBatch(
+      batchRegistrar, client, config.v1ResolverAddress,
+      batchLabels, batchExpires, maxGas,
+    );
 
-      logger.success(`Batch reservation successful (tx: ${hash})`);
-
-      for (const label of batchLabels) {
-        checkpoint.totalProcessed++;
-        if (alreadyReservedNames.has(label)) {
-          checkpoint.renewedCount++;
-          logger.renewed(hash);
-          logger.finishedName(label, 'renewed');
-        } else {
-          checkpoint.successCount++;
-          logger.reserved(hash);
-          logger.finishedName(label, 'reserved');
-        }
+    for (const { label, txHash } of result.succeeded) {
+      checkpoint.totalProcessed++;
+      if (alreadyReservedNames.has(label)) {
+        checkpoint.renewedCount++;
+        logger.renewed(txHash);
+        logger.finishedName(label, 'renewed');
+      } else {
+        checkpoint.successCount++;
+        logger.reserved(txHash);
+        logger.finishedName(label, 'reserved');
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`Batch reservation failed: ${errorMessage}. Falling back to individual reservations...`);
+    }
 
-      for (let i = 0; i < batchLabels.length; i++) {
-        const label = batchLabels[i];
-        try {
-          const hash = await batchRegistrar.write.batchRegister([zeroAddress, config.v1ResolverAddress, [label], [batchExpires[i]]]);
-          await waitForSuccessfulTransactionReceipt(client, { hash });
-
-          checkpoint.totalProcessed++;
-          if (alreadyReservedNames.has(label)) {
-            checkpoint.renewedCount++;
-            logger.renewed(hash);
-            logger.finishedName(label, 'renewed');
-          } else {
-            checkpoint.successCount++;
-            logger.reserved(hash);
-            logger.finishedName(label, 'reserved');
-          }
-        } catch (individualError) {
-          const individualMsg = individualError instanceof Error ? individualError.message : String(individualError);
-          logger.failed(label, individualMsg);
-          checkpoint.totalProcessed++;
-          checkpoint.failureCount++;
-          logger.finishedName(label, 'failed');
-        }
-      }
+    for (const { label, error } of result.failed) {
+      logger.failed(label, error);
+      checkpoint.totalProcessed++;
+      checkpoint.failureCount++;
+      logger.finishedName(label, 'failed');
     }
   } else if (batchLabels.length > 0 && config.dryRun) {
     logger.info(`\nDry run: Would batch reserve ${batchLabels.length} names`);
@@ -733,7 +872,7 @@ export async function main(argv = process.argv): Promise<void> {
     .requiredOption("--rpc-url <url>", "Ethereum mainnet RPC endpoint")
     .requiredOption("--registry <address>", "v2 ETH Registry contract address")
     .requiredOption("--batch-registrar <address>", "Pre-deployed BatchRegistrar contract address")
-    .requiredOption("--private-key <key>", "Deployer private key")
+    .option("--private-key <key>", "Deployer private key (default: PREMIGRATION_PRIVATE_KEY env var)")
     .requiredOption("--csv-file <path>", "Path to CSV file containing ENS registrations")
     .option("--mainnet-rpc-url <url>", "Mainnet RPC endpoint for v1 verification (default: public endpoint)", "https://eth.drpc.org")
     .option("--batch-size <number>", "Number of names to process per batch", "50")
@@ -748,12 +887,18 @@ export async function main(argv = process.argv): Promise<void> {
   program.parse(argv);
   const opts = program.opts();
 
+  const privateKey = (opts.privateKey ?? process.env.PREMIGRATION_PRIVATE_KEY) as `0x${string}` | undefined;
+  if (!privateKey) {
+    console.error("Error: private key must be provided via --private-key or PREMIGRATION_PRIVATE_KEY env var");
+    process.exit(1);
+  }
+
   const config: PreMigrationConfig = {
     rpcUrl: opts.rpcUrl,
     mainnetRpcUrl: opts.mainnetRpcUrl,
     registryAddress: opts.registry as Address,
     batchRegistrarAddress: opts.batchRegistrar as Address,
-    privateKey: opts.privateKey as `0x${string}`,
+    privateKey,
     csvFilePath: opts.csvFile,
     batchSize: parseInt(opts.batchSize) || 100,
     startIndex: parseInt(opts.startIndex) || 0,
@@ -773,6 +918,7 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config('RPC URL', config.rpcUrl);
     logger.config('Registry', config.registryAddress);
     logger.config('BatchRegistrar', config.batchRegistrarAddress);
+    logger.config('Private Key Source', opts.privateKey ? 'CLI argument' : 'env var');
     logger.config('Mainnet RPC (v1)', config.mainnetRpcUrl);
     logger.config('CSV File', config.csvFilePath);
     logger.config('Batch Size', config.batchSize);
