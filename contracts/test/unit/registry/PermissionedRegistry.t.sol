@@ -594,8 +594,35 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function test_safeTransferFrom() external {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
+        StrictERC1155Holder r = new StrictERC1155Holder(false);
         vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+        registry.safeTransferFrom(user1, address(r), tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_noop() external {
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256 tokenId = this._register();
+        vm.recordLogs();
+        vm.prank(user1);
+        registry.safeTransferFrom(user1, user2, tokenId, 0, "");
+        _expectNoEmit(vm.getRecordedLogs(), IEnhancedAccessControl.EACRolesChanged.selector);
+    }
+
+    function test_safeTransferFrom_multiple(uint256 amount) external {
+        vm.assume(amount >= 2);
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256 tokenId = this._register();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC1155Errors.ERC1155InsufficientBalance.selector,
+                user1,
+                1,
+                amount,
+                tokenId
+            )
+        );
+        vm.prank(user1);
+        registry.safeTransferFrom(user1, user2, tokenId, amount, "");
     }
 
     function test_safeTransferFrom_notAuthorized() external {
@@ -650,8 +677,9 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1;
         amounts[1] = 1;
+        StrictERC1155Holder r = new StrictERC1155Holder(true);
         vm.prank(user1);
-        registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
+        registry.safeBatchTransferFrom(user1, address(r), tokenIds, amounts, "");
     }
 
     function test_safeBatchTransferFrom_oneError() external {
@@ -1243,5 +1271,32 @@ contract MockPermissionedRegistry is PermissionedRegistry {
     ) PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles) {}
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
+    }
+}
+
+contract StrictERC1155Holder is ERC1155Holder {
+    bool immutable BATCH;
+    constructor(bool batch) {
+        BATCH = batch;
+    }
+    function onERC1155Received(
+        address operator,
+        address from,
+        uint256 id,
+        uint256 value,
+        bytes memory data
+    ) public override returns (bytes4) {
+        require(!BATCH);
+        return super.onERC1155Received(operator, from, id, value, data);
+    }
+    function onERC1155BatchReceived(
+        address operator,
+        address from,
+        uint256[] memory ids,
+        uint256[] memory values,
+        bytes memory data
+    ) public override returns (bytes4) {
+        require(BATCH);
+        return super.onERC1155BatchReceived(operator, from, ids, values, data);
     }
 }
