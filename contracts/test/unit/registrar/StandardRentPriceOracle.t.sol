@@ -98,6 +98,19 @@ contract StandardRentPriceOracleTest is Test, ERC1155Holder {
         assertFalse(rentPriceOracle.isPaymentToken(IERC20(address(0))));
     }
 
+    function test_getPaymentTokenRatio() external view {
+        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(tokenUSDC);
+        PaymentRatio memory ratio = StandardPricing.ratioFromStable(tokenUSDC);
+        assertEq(numer, ratio.numer, "numer");
+        assertEq(denom, ratio.denom, "denom");
+    }
+
+    function test_getPaymentTokenRatio_unknown() external view {
+        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(IERC20(address(123)));
+        assertEq(numer, 0, "numer");
+        assertEq(denom, 0, "denom");
+    }
+
     function test_updatePaymentToken_remove() external {
         IERC20 paymentToken = tokenUSDC;
         assertTrue(rentPriceOracle.isPaymentToken(paymentToken), "before");
