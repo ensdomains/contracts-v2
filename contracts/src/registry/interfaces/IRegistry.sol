@@ -5,6 +5,17 @@ import {IRegistryEvents} from "./IRegistryEvents.sol";
 
 /// @dev Interface selector: `0x51f67f40`
 interface IRegistry is IRegistryEvents {
+    ////////////////////////////////////////////////////////////////////////
+    // Events
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice A registry was created/initialized.
+    event RegistryCreated();
+
+    ////////////////////////////////////////////////////////////////////////
+    // Functions
+    ////////////////////////////////////////////////////////////////////////
+
     /// @notice Fetches the registry for a label.
     /// @param label The label to resolve.
     /// @return The address of the registry for this label, or `address(0)` if none exists.

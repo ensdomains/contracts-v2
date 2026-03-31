@@ -104,7 +104,10 @@ contract PermissionedRegistry is
         address ownerAddress,
         uint256 ownerRoles
     ) HCAEquivalence(hcaFactory) MetadataMixin(metadata) {
-        _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
+        if (ownerRoles > 0) {
+            emit RegistryCreated();
+            _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
+        }
     }
 
     /// @inheritdoc IERC165
@@ -209,7 +212,6 @@ contract PermissionedRegistry is
         entry.expiry = expiry;
         entry.subregistry = registry;
         entry.resolver = resolver;
-        // emit LabelRegistered before mint so we can determine this is a registry (in an indexer)
         if (owner == address(0)) {
             emit LabelReserved(tokenId, bytes32(labelId), label, expiry, sender);
         } else {

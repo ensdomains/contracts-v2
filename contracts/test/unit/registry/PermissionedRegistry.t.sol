@@ -47,7 +47,16 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new SimpleRegistryMetadata(hcaFactory);
+
+        vm.expectEmit();
+        emit IRegistry.RegistryCreated();
         registry = new MockPermissionedRegistry(hcaFactory, metadata, address(this), ROOT_ROLES);
+    }
+
+    function test_init_noRoles() external {
+        vm.recordLogs();
+        new PermissionedRegistry(hcaFactory, metadata, address(this), 0);
+        _expectNoEmit(vm.getRecordedLogs(), IRegistry.RegistryCreated.selector);
     }
 
     function test_constructor() external view {
