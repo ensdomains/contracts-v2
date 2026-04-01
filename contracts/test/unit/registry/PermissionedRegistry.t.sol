@@ -88,6 +88,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256 labelId = LibLabel.id(testLabel);
         uint256 expectedTokenId = LibLabel.withVersion(labelId, 0);
         vm.expectEmit();
+        emit ILabelStore.Label(bytes32(labelId), testLabel);
+        vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
             expectedTokenId,
             bytes32(labelId),
@@ -110,6 +112,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
         assertEq(address(registry.getSubregistry(testLabel)), address(testRegistry), "registry");
         assertTrue(registry.hasRoles(tokenId, testRoles, testOwner), "roles");
+        assertEq(labelStore.getLabel(tokenId), testLabel, "label");
     }
 
     function test_register_expired() external {
@@ -189,10 +192,13 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
 
     function test_reserve() external {
+        uint256 labelId = LibLabel.id(testLabel);
+        vm.expectEmit();
+        emit ILabelStore.Label(bytes32(labelId), testLabel);
         vm.expectEmit();
         emit IRegistryEvents.LabelReserved(
-            LibLabel.withVersion(LibLabel.id(testLabel), 0),
-            bytes32(LibLabel.id(testLabel)),
+            LibLabel.withVersion(labelId, 0),
+            bytes32(labelId),
             testLabel,
             testExpiry,
             address(this)
@@ -204,6 +210,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(state.expiry, testExpiry, "expiry");
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
         assertEq(address(registry.getSubregistry(testLabel)), address(0), "registry");
+        assertEq(labelStore.getLabel(tokenId), testLabel, "label");
     }
 
     function test_reserve_alreadyReserved() external {
@@ -212,6 +219,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         vm.expectRevert(
             abi.encodeWithSelector(IPermissionedRegistry.LabelAlreadyReserved.selector, testLabel)
         );
+        vm.prank(actor);
         this._reserve();
     }
 
