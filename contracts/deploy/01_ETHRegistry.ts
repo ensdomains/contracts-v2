@@ -1,9 +1,6 @@
 import { artifacts, execute } from "@rocketh";
 import { zeroAddress } from "viem";
-import {
-  MAX_EXPIRY,
-  DEPLOYMENT_ROLES,
-} from "../script/deploy-constants.js";
+import { MAX_EXPIRY, DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
 
 // TODO: ownership
 export default execute(
@@ -18,6 +15,8 @@ export default execute(
       (typeof artifacts.SimpleRegistryMetadata)["abi"]
     >("SimpleRegistryMetadata");
 
+    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+
     console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
       account: deployer,
@@ -25,6 +24,7 @@ export default execute(
       args: [
         hcaFactory.address,
         registryMetadata.address,
+        labelStore.address,
         deployer,
         DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
       ],
@@ -59,6 +59,11 @@ export default execute(
   },
   {
     tags: ["ETHRegistry", "v2"],
-    dependencies: ["RootRegistry", "HCAFactory", "RegistryMetadata"],
+    dependencies: [
+      "RootRegistry",
+      "HCAFactory",
+      "RegistryMetadata",
+      "LabelStore",
+    ],
   },
 );
