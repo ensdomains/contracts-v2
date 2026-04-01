@@ -3,7 +3,9 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Vm, Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
+
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
@@ -19,11 +21,11 @@ import {
     IRegistryMetadata,
     IHCAFactoryBasic,
     RegistryRolesLib,
-    NameCoder,
     LibLabel
 } from "~src/registry/PermissionedRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
+import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 uint256 constant ROOT_ROLES = EACBaseRolesLib.ALL_ROLES;
@@ -32,6 +34,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     MockPermissionedRegistry registry;
     MockHCAFactoryBasic hcaFactory;
     IRegistryMetadata metadata;
+    LabelStore labelStore;
 
     address user1 = makeAddr("user1");
     address user2 = makeAddr("user2");
@@ -47,10 +50,17 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new SimpleRegistryMetadata(hcaFactory);
-
+        labelStore = new LabelStore();
+        
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        registry = new MockPermissionedRegistry(hcaFactory, metadata, address(this), ROOT_ROLES);
+        registry = new MockPermissionedRegistry(
+            hcaFactory,
+            metadata,
+            labelStore,
+            address(this),
+            ROOT_ROLES
+        );
     }
 
     function test_initForProxyImplementation() external {
@@ -60,6 +70,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_constructor() external view {
+        assertEq(address(registry.HCA_FACTORY()), address(hcaFactory), "HCA_FACTORY");
+        assertEq(address(registry.METADATA_PROVIDER()), address(metadata), "METADATA_PROVIDER");
+        assertEq(address(registry.LABEL_STORE()), address(labelStore), "LABEL_STORE");
+
         assertTrue(registry.hasRootRoles(ROOT_ROLES, address(this)));
     }
 
@@ -1420,12 +1434,10 @@ contract MockPermissionedRegistry is PermissionedRegistry {
     constructor(
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadata,
-        address ownerAddress,
-        uint256 ownerRoles
-    )
-        PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles)
-    {}
-
+        ILabelStore labelStore,
+        address rootAccount,
+        uint256 roleBitmap
+    ) PermissionedRegistry(hcaFactory, metadata, labelStore, rootAccount, roleBitmap) {}
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
     }

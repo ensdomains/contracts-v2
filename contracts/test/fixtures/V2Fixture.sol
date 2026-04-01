@@ -12,6 +12,7 @@ import {BaseUriRegistryMetadata} from "~src/registry/BaseUriRegistryMetadata.sol
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
+import {LabelStore} from "~src/utils/LabelStore.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
@@ -20,6 +21,7 @@ contract V2Fixture is Test, ERC1155Holder {
     VerifiableFactory verifiableFactory;
     MockHCAFactoryBasic hcaFactory;
     BaseUriRegistryMetadata metadata;
+    LabelStore labelStore;
     UserRegistry userRegistryImpl;
     PermissionedRegistry rootRegistry;
     PermissionedRegistry ethRegistry;
@@ -60,16 +62,19 @@ contract V2Fixture is Test, ERC1155Holder {
         verifiableFactory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new BaseUriRegistryMetadata(hcaFactory);
-        userRegistryImpl = new UserRegistry(hcaFactory, metadata);
+        labelStore = new LabelStore();
+        userRegistryImpl = new UserRegistry(hcaFactory, metadata, labelStore);
         rootRegistry = new PermissionedRegistry(
             hcaFactory,
             metadata,
+            labelStore,
             address(this),
             _rootRegistryRootRoles()
         );
         ethRegistry = new PermissionedRegistry(
             hcaFactory,
             metadata,
+            labelStore,
             address(this),
             _ethRegistryRootRoles()
         );

@@ -13,6 +13,7 @@ import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol"
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
+import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {ApprovedUpgradeGate} from "./ApprovedUpgradeGate.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
@@ -67,6 +68,7 @@ contract WrapperRegistry is
     /// @param hcaFactory The HCA factory.
     /// @param metadataProvider The metadata provider.
     /// @param upgradeGate The upgrade target allowlist.
+    /// @param labelStore The shared label database.
     constructor(
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
@@ -74,8 +76,9 @@ contract WrapperRegistry is
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider,
         ApprovedUpgradeGate upgradeGate
+        ILabelStore labelStore
     )
-        PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) // no roles are granted
+        PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0) // no roles are granted
         LockedWrapperReceiver(nameWrapper, verifiableFactory, address(this))
     {
         V1_RESOLVER = ensV1Resolver;

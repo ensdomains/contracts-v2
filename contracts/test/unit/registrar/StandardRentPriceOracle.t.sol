@@ -13,9 +13,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {StandardPricing} from "./StandardPricing.sol";
 
-import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
-import {PermissionedRegistry, IRegistry} from "~src/registry/PermissionedRegistry.sol";
-import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {LibHalving} from "~src/registrar/libraries/LibHalving.sol";
 import {
     StandardRentPriceOracle,
@@ -24,12 +22,9 @@ import {
     DiscountPoint
 } from "~src/registrar/StandardRentPriceOracle.sol";
 import {MockERC20} from "~test/mocks/MockERC20.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
+import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
-contract StandardRentPriceOracleTest is Test, ERC1155Holder {
-    PermissionedRegistry ethRegistry;
-    MockHCAFactoryBasic hcaFactory;
-
+contract StandardRentPriceOracleTest is V2Fixture {
     StandardRentPriceOracle rentPriceOracle;
 
     MockERC20 tokenUSDC;
@@ -38,13 +33,7 @@ contract StandardRentPriceOracleTest is Test, ERC1155Holder {
     address user = makeAddr("user");
 
     function setUp() external {
-        hcaFactory = new MockHCAFactoryBasic();
-        ethRegistry = new PermissionedRegistry(
-            hcaFactory,
-            new SimpleRegistryMetadata(hcaFactory),
-            address(this),
-            EACBaseRolesLib.ALL_ROLES
-        );
+        deployV2Fixture();
 
         tokenUSDC = new MockERC20("USDC", 6, hcaFactory);
         tokenIdentity = new MockERC20("ID", StandardPricing.PRICE_DECIMALS, hcaFactory);
