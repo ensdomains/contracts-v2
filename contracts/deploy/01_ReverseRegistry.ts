@@ -18,6 +18,8 @@ export default execute(
       (typeof artifacts.SimpleRegistryMetadata)["abi"]
     >("SimpleRegistryMetadata");
 
+    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+
     // ReverseRegistry root and .reverse/.addr tokens use full role bitmap
     const reverseRoles = DEPLOYMENT_ROLES.REVERSE_AND_ADDR;
 
@@ -27,6 +29,7 @@ export default execute(
       args: [
         hcaFactory.address,
         registryMetadata.address,
+        labelStore.address,
         deployer,
         reverseRoles,
       ],
@@ -58,6 +61,7 @@ export default execute(
       "RootRegistry",
       "HCAFactory",
       "SimpleRegistryMetadata",
+      "LabelStore",
     ],
   },
 );
