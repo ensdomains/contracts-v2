@@ -27,6 +27,13 @@ export const config = {
       chain: 11155111,
       scripts: ["deploy"],
     },
+    'sepolia-dev': {
+      chain: 11155111,
+      scripts: ["deploy"],
+      overrides: {
+        tags: ['dev'],
+      }
+    },
     'sepolia-v1-dev': {
       chain: 11155111,
       scripts: ["lib/ens-contracts/deploy"],
