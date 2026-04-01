@@ -36,12 +36,9 @@ import {
     MockERC20VoidReturn,
     MockERC20FalseReturn
 } from "~test/mocks/MockERC20.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
+import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
-contract ETHRegistrarTest is Test {
-    PermissionedRegistry ethRegistry;
-    MockHCAFactoryBasic hcaFactory;
-
+contract ETHRegistrarTest is V2Fixture {
     StandardRentPriceOracle rentPriceOracle;
     ETHRegistrar ethRegistrar;
 
@@ -66,13 +63,7 @@ contract ETHRegistrarTest is Test {
     uint256 testCommitDelay; ///|
 
     function setUp() external {
-        hcaFactory = new MockHCAFactoryBasic();
-        ethRegistry = new PermissionedRegistry(
-            hcaFactory,
-            new SimpleRegistryMetadata(hcaFactory),
-            address(this),
-            EACBaseRolesLib.ALL_ROLES
-        );
+        deployV2Fixture();
 
         tokenUSDC = new MockERC20("USDC", 6, hcaFactory);
         tokenDAI = new MockERC20("DAI", 18, hcaFactory);

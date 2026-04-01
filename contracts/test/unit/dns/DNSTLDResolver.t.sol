@@ -13,6 +13,7 @@ import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {PermissionedRegistry, IRegistryMetadata} from "~src/registry/PermissionedRegistry.sol";
 import {DNSTLDResolver, ENS, IRegistry, DNSSEC, HexUtils} from "~src/dns/DNSTLDResolver.sol";
+import {LabelStore} from "~src/utils/LabelStore.sol";
 
 // coverage:ignore-next-line
 contract MockDNS is DNSTLDResolver {
@@ -54,6 +55,7 @@ contract DNSTLDResolverTest is Test, ERC1155Holder, IAddrResolver {
         rootRegistry = new PermissionedRegistry(
             IHCAFactoryBasic(address(0)),
             IRegistryMetadata(address(0)),
+            new LabelStore(),
             address(this),
             EACBaseRolesLib.ALL_ROLES
         );

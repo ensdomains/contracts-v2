@@ -289,6 +289,11 @@ export async function setupDevnet({
     };
 
     const v2 = {
+      LabelStore: getContract({
+        abi: artifacts.LabelStore.abi,
+        address: rocketh.get("LabelStore").address,
+        client,
+      }),
       SimpleRegistryMetadata: getContract({
         abi: artifacts.SimpleRegistryMetadata.abi,
         address: rocketh.get("SimpleRegistryMetadata").address,

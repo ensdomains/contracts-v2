@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
@@ -10,6 +9,7 @@ import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
@@ -79,6 +79,13 @@ contract PermissionedRegistry is
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // Constants
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice The shared label database.
+    ILabelStore public immutable LABEL_STORE;
+
+    ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
@@ -96,14 +103,17 @@ contract PermissionedRegistry is
     /// @notice Initializes the PermissionedRegistry.
     /// @param hcaFactory The HCA factory to use.
     /// @param metadata The metadata provider to use.
+    /// @param labelStore The shared label database.
     /// @param ownerAddress The address that will receive the specified roles.
     /// @param ownerRoles The roles to grant to `ownerAddress`.
     constructor(
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadata,
+        ILabelStore labelStore,
         address ownerAddress,
         uint256 ownerRoles
     ) HCAEquivalence(hcaFactory) MetadataMixin(metadata) {
+        LABEL_STORE = labelStore;
         _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
     }
 
@@ -171,7 +181,7 @@ contract PermissionedRegistry is
         uint256 roleBitmap,
         uint64 expiry
     ) public virtual override returns (uint256 tokenId) {
-        NameCoder.assertLabelSize(label);
+        LABEL_STORE.setLabel(label);
         uint256 labelId = LibLabel.id(label);
         Entry storage entry = _entry(labelId);
         tokenId = _constructTokenId(labelId, entry);
