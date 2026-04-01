@@ -288,6 +288,9 @@ export async function setupDevnet({
       }),
     };
 
+    const NameCoderErrors = artifacts.NameCoder.abi.filter(
+      (x) => x.type === "error",
+    );
     const v2 = {
       LabelStore: getContract({
         abi: artifacts.LabelStore.abi,
@@ -310,12 +313,12 @@ export async function setupDevnet({
         client,
       }),
       RootRegistry: getContract({
-        abi: artifacts.PermissionedRegistry.abi,
+        abi: [...artifacts.PermissionedRegistry.abi, ...NameCoderErrors],
         address: rocketh.get("RootRegistry").address,
         client,
       }),
       ETHRegistry: getContract({
-        abi: artifacts.PermissionedRegistry.abi,
+        abi: [...artifacts.PermissionedRegistry.abi, ...NameCoderErrors],
         address: rocketh.get("ETHRegistry").address,
         client,
       }),
@@ -337,7 +340,7 @@ export async function setupDevnet({
         client,
       }),
       UserRegistryImpl: getContract({
-        abi: artifacts.UserRegistry.abi,
+        abi: [...artifacts.UserRegistry.abi, ...NameCoderErrors],
         address: rocketh.get("UserRegistryImpl").address,
         client,
       }),
@@ -348,12 +351,12 @@ export async function setupDevnet({
       }),
       // migration
       UnlockedMigrationController: getContract({
-        abi: artifacts.UnlockedMigrationController.abi,
+        abi: [...artifacts.UnlockedMigrationController.abi, ...NameCoderErrors],
         address: rocketh.get("UnlockedMigrationController").address,
         client,
       }),
       LockedMigrationController: getContract({
-        abi: artifacts.LockedMigrationController.abi,
+        abi: [...artifacts.LockedMigrationController.abi, ...NameCoderErrors],
         address: rocketh.get("LockedMigrationController").address,
         client,
       }),
