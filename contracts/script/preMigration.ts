@@ -1089,7 +1089,9 @@ export async function main(argv = process.argv): Promise<void> {
     limit: opts.limit ? parseInt(opts.limit) : null,
     dryRun: opts.dryRun,
     continue: opts.continue,
-    minExpiryDays: parseInt(opts.minExpiryDays) || 7,
+    minExpiryDays: Number.isNaN(parseInt(opts.minExpiryDays))
+      ? 7
+      : parseInt(opts.minExpiryDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
   };

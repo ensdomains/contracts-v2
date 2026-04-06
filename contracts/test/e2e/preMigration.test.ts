@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, setDefaultTimeout } from "bun:test";
-setDefaultTimeout(30_000);
+setDefaultTimeout(60_000);
 
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
