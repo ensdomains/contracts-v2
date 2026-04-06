@@ -726,10 +726,11 @@ async function processBatch(
     config.registryAddress, registryAbi, config.v1BaseRegistrarAddress,
   );
 
+  const baseProcessed = checkpoint.totalProcessed;
   for (let i = 0; i < verificationResults.length; i++) {
     const result = verificationResults[i];
     const registration = result.registration;
-    const globalIndex = checkpoint.totalProcessed + i + 1;
+    const globalIndex = baseProcessed + i + 1;
     lastLineNumber = registration.lineNumber;
 
     logger.processingName(registration.labelName, globalIndex, checkpoint.totalExpected);
