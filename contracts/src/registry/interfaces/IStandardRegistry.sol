@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {IERC1155Singleton} from "../../erc1155/interfaces/IERC1155Singleton.sol";
-
 import {IRegistry} from "./IRegistry.sol";
+import {ITemporalRegistry} from "./ITemporalRegistry.sol";
+import {ITokenizedRegistry} from "./ITokenizedRegistry.sol";
 
 /// @title IStandardRegistry
-/// @notice A tokenized registry.
+/// @notice A tokenized registry with registrations that expire.
 /// @dev Interface selector: `0xb844ab6c`
-interface IStandardRegistry is IRegistry, IERC1155Singleton {
+interface IStandardRegistry is ITemporalRegistry, ITokenizedRegistry {
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
