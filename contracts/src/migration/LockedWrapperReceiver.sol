@@ -17,6 +17,7 @@ import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
@@ -51,6 +52,12 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @notice The `WrapperRegistry` implementation contract.
     address public immutable WRAPPER_REGISTRY_IMPL;
 
+    /// @notice The approved list of `PublicResolver` contracts.
+    IAddressSet public immutable PUBLIC_RESOLVER_SET;
+
+    /// @notice The replacement `PublicResolver`.
+    address public immutable PUBLIC_RESOLVER;
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -59,16 +66,20 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
+    /// @param publicResolverSet The approved list of `PublicResolver` contracts.
+    /// @param publicResolver The replacement `PublicResolver`.
     constructor(
         INameWrapper nameWrapper,
         address graveyard,
-        IVerifiableFactory verifiableFactory,
-        address wrapperRegistryImpl
-    )
-        AbstractWrapperReceiver(nameWrapper, graveyard)
-    {
+        VerifiableFactory verifiableFactory,
+        address wrapperRegistryImpl,
+        IAddressSet publicResolverSet,
+        address publicResolver
+    ) AbstractWrapperReceiver(nameWrapper, graveyard) {
         VERIFIABLE_FACTORY = verifiableFactory;
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
+        PUBLIC_RESOLVER_SET = publicResolverSet;
+        PUBLIC_RESOLVER = publicResolver;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -174,6 +185,54 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             } else {
                 revert LibMigration.NameNotLocked(uint256(node));
             }
+<<<<<<< HEAD
+=======
+
+            if (NAME_WRAPPER.getApproved(uint256(node)) != address(0)) {
+                revert LibMigration.FrozenTokenApproval(uint256(node));
+            }
+
+            address resolver = md.resolver;
+            if ((fuses & CANNOT_SET_RESOLVER) == 0) {
+                NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
+            } else {
+                resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
+                if (PUBLIC_RESOLVER_SET.includes(resolver)) {
+                    resolver = PUBLIC_RESOLVER; // replace with new PublicResolver
+                }
+            }
+
+            // create subregistry
+            IRegistry subregistry = IRegistry(
+                VERIFIABLE_FACTORY.deployProxy(
+                    WRAPPER_REGISTRY_IMPL,
+                    uint256(node),
+                    abi.encodeCall(
+                        IWrapperRegistry.initialize,
+                        (
+                            node,
+                            parentRegistry,
+                            md.label,
+                            md.owner,
+                            _subregistryRoleBitmapFromFuses(fuses)
+                        )
+                    )
+                )
+            );
+
+            // add name to ENSv2
+            // PermissionedRegistry._register() => CannotSetPastExpiry :: see expiry check
+            // PermissionedRegistry._register() => LabelAlreadyRegistered :: only have ROLE_REGISTER_RESERVED
+            // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver :: see owner check
+            _inject(
+                md.label,
+                md.owner,
+                subregistry,
+                resolver,
+                _tokenRoleBitmapFromFuses(fuses),
+                expiry
+            );
+>>>>>>> 33a2ff1c (wip)
         }
     }
 
