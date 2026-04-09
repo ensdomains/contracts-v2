@@ -78,6 +78,18 @@ export class InvalidLabelNameError extends Error {
   }
 }
 
+const ENCODED_LABELHASH_RE = /^\[[0-9a-fA-F]{64}\]$/;
+
+export function isValidLabel(label: any): label is string {
+  return (
+    !!label &&
+    typeof label === "string" &&
+    label.trim() !== "" &&
+    Buffer.from(label).length <= 255 &&
+    !ENCODED_LABELHASH_RE.test(label)
+  );
+}
+
 // Types
 export interface ENSRegistration {
   labelName: string;
@@ -329,7 +341,7 @@ export async function verifyNameOnV1(
   client: any,
   baseRegistrarAddress: Address = BASE_REGISTRAR_ADDRESS,
 ): Promise<V1VerificationResult> {
-  if (!labelName || typeof labelName !== "string" || labelName.trim() === "") {
+  if (!isValidLabel(labelName)) {
     throw new InvalidLabelNameError(labelName);
   }
 
@@ -542,11 +554,7 @@ async function fetchAndReserveInBatches(
       let invalidLabelsInBatch = 0;
       let lastInvalidLineNumber = checkpoint.lastProcessedLineNumber;
       const validBatch = batch.filter((reg) => {
-        if (
-          !reg.labelName ||
-          typeof reg.labelName !== "string" ||
-          reg.labelName.trim() === ""
-        ) {
+        if (!isValidLabel(reg.labelName)) {
           logger.skippingInvalidName(reg.labelName || "unknown");
           invalidLabelsInBatch++;
           checkpoint!.invalidLabelCount++;

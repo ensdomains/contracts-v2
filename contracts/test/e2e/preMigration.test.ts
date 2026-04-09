@@ -19,6 +19,7 @@ import {
   verifyNameOnV1,
   batchVerifyRegistrations,
   InvalidLabelNameError,
+  isValidLabel,
 } from "../../script/preMigration.js";
 import {
   setupBaseRegistrarController,
@@ -642,6 +643,34 @@ describe("PreMigration", () => {
     expect(checkpoint!.successCount).toBe(1);
   });
 
+  it("skips labels exceeding 255 bytes and encoded labelhashes in CSV", async () => {
+    const validLabel = "validlabel2";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, validLabel, user.address, ONE_YEAR_SECONDS);
+
+    const longLabel = "a".repeat(256);
+    const encodedLabel = `[${"a".repeat(64)}]`;
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,${validLabel},,`,
+      `,,,,,,${longLabel},,`,
+      `,,,,,,${encodedLabel},,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    const state = await verifyV2State(env, validLabel);
+    expect(state.status).toBe(STATUS.RESERVED);
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint).not.toBeNull();
+    expect(checkpoint!.successCount).toBe(1);
+    expect(checkpoint!.invalidLabelCount).toBe(2);
+  });
+
   // ─── Edge cases ────────────────────────────────────────────────────
 
   it("handles empty CSV file gracefully", async () => {
@@ -851,6 +880,26 @@ describe("PreMigration - Live Mainnet v1 Verification", () => {
   it("throws InvalidLabelNameError for whitespace-only label", async () => {
     try {
       await verifyNameOnV1("   ", mainnetClient);
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(InvalidLabelNameError);
+    }
+  });
+
+  it("throws InvalidLabelNameError for label exceeding 255 bytes", async () => {
+    const longLabel = "a".repeat(256);
+    try {
+      await verifyNameOnV1(longLabel, mainnetClient);
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(InvalidLabelNameError);
+    }
+  });
+
+  it("throws InvalidLabelNameError for encoded labelhash", async () => {
+    const encodedLabel = `[${"a".repeat(64)}]`;
+    try {
+      await verifyNameOnV1(encodedLabel, mainnetClient);
       expect.unreachable("should have thrown");
     } catch (e) {
       expect(e).toBeInstanceOf(InvalidLabelNameError);
