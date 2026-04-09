@@ -1,5 +1,5 @@
 import type { NetworkConnection } from "hardhat/types/network";
-import { type Address, zeroAddress } from "viem";
+import { type Address, type Hex, zeroAddress } from "viem";
 import {
   DEPLOYMENT_ROLES,
   LOCAL_BATCH_GATEWAY_URL,
@@ -82,10 +82,12 @@ export async function deployV2Fixture(
     owner = walletClient.account.address,
     roles = ROLES.ALL,
     salt = idFromLabel(new Date().toISOString()),
+    setters = [],
   }: {
     owner?: Address;
     roles?: bigint;
     salt?: bigint;
+    setters?: Hex[];
   } = {}) {
     return deployVerifiableProxy({
       walletClient: await network.viem.getWalletClient(owner),
@@ -93,7 +95,7 @@ export async function deployV2Fixture(
       implAddress: PermissionedResolverImpl.address,
       abi: PermissionedResolverImpl.abi,
       functionName: "initialize",
-      args: [walletClient.account.address, roles],
+      args: [walletClient.account.address, roles, setters],
       salt,
     });
   }

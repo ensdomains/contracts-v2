@@ -22,7 +22,6 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
-import {InvalidOwner} from "../CommonErrors.sol";
 import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAContextUpgradeable} from "../hca/HCAContextUpgradeable.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
@@ -197,12 +196,15 @@ contract PermissionedResolver is
     /// @notice Initialize the resolver.
     /// @param initialAccount The account granted roles.
     /// @param roleBitmap The roles granted to `initialAccount` on root.
-    function initialize(address initialAccount, uint256 roleBitmap) external initializer {
-        if (initialAccount == address(0)) {
-            revert InvalidOwner();
-        }
+    /// @param setters The setter calldata that avoids permission checks.
+    function initialize(
+        address initialAccount,
+        uint256 roleBitmap,
+        bytes[] calldata setters
+    ) external initializer {
         __UUPSUpgradeable_init();
         _grantRoles(ROOT_RESOURCE, roleBitmap, initialAccount, false);
+        multicall(setters);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -597,6 +599,17 @@ contract PermissionedResolver is
                 !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, sender))
         ) {
             _checkRoles(PermissionedResolverLib.resource(recordId), roleBitmap, sender); // reverts with "widest" resource
+        }
+    }
+
+    /// @dev Avoid permission checks during initialization.
+    function _checkRoles(
+        uint256 resource,
+        uint256 roleBitmap,
+        address account
+    ) internal view override {
+        if (!_isInitializing()) {
+            super._checkRoles(resource, roleBitmap, account);
         }
     }
 
