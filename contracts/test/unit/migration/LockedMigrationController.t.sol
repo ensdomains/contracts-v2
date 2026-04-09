@@ -603,7 +603,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         registry2.renew(tokenId, expiry + 1);
     }
 
-    function test_migrate_emancipatedChildren() external {
+    function test_migrate_emancipatedLockedChildren() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes memory name3 = createWrappedChild(
             name2,
@@ -661,6 +661,87 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         IRegistry registry3 = registry2.getSubregistry(data3.label);
         assertTrue(
             ERC165Checker.supportsInterface(address(registry3), type(IWrapperRegistry).interfaceId),
+            "registry3"
+        );
+
+        // check migrated 3LD child
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.LabelAlreadyRegistered.selector, data3.label)
+        );
+        vm.prank(friend);
+        registry2.register(data3.label, user, IRegistry(address(0)), address(0), 0, _soon());
+
+        // check unmigrated 3LD child
+        vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));
+        vm.prank(friend);
+        registry2.register(
+            NameCoder.firstLabel(name3unmigrated),
+            friend,
+            IRegistry(address(0)),
+            address(0),
+            0,
+            _soon()
+        );
+
+        vm.prank(friend);
+        nameWrapper.setResolver(NameCoder.namehash(name3unmigrated, 0), testResolver);
+        checkResolution(name3unmigrated, testResolver, address(ensV1Resolver));
+    }
+
+    function test_migrate_emancipatedUnlockedChildren() external {
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes memory name3 = createWrappedChild(name2, "sub", friend, PARENT_CANNOT_CONTROL);
+        bytes memory name3unmigrated = createWrappedChild(
+            name2,
+            "unmigrated",
+            friend,
+            PARENT_CANNOT_CONTROL
+        );
+
+        // migrate 2LD
+        LibMigration.Data memory data2 = _makeData(name2);
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(NameCoder.namehash(name2, 0)),
+            1,
+            abi.encode(data2)
+        );
+        assertEq(
+            ethRegistry.ownerOf(ethRegistry.getTokenId(LibLabel.id(data2.label))),
+            data2.owner,
+            "owner2"
+        );
+        IWrapperRegistry registry2 = IWrapperRegistry(
+            address(ethRegistry.getSubregistry(data2.label))
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(registry2), type(IWrapperRegistry).interfaceId),
+            "registry2"
+        );
+
+        // migrate 3LD
+        LibMigration.Data memory data3 = _makeData(name3);
+        data3.subregistry = testRegistry; // override
+        vm.prank(friend);
+        nameWrapper.safeTransferFrom(
+            friend,
+            address(registry2),
+            uint256(NameCoder.namehash(name3, 0)),
+            1,
+            abi.encode(data3)
+        );
+        assertEq(registry2.getResolver(data3.label), data3.resolver, "resolver3");
+        checkResolution(name3, address(ensV2Resolver), data3.resolver);
+        assertEq(
+            registry2.ownerOf(registry2.getTokenId(LibLabel.id(data3.label))),
+            data3.owner,
+            "owner3"
+        );
+        assertEq(
+            address(registry2.getSubregistry(data3.label)),
+            address(testRegistry),
             "registry3"
         );
 
