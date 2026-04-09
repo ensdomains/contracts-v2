@@ -33,6 +33,9 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     /// @notice The ENSv1 `NameWrapper` contract that holds wrapped names as ERC1155 tokens.
     INameWrapper public immutable NAME_WRAPPER;
 
+    /// @notice The ENSv1 `BaseRegistrar` token graveyard.
+    address public immutable GRAVEYARD;
+
     /// @dev The ENSv1 `ENSRegistry` contract.
     ENS internal immutable _REGISTRY_V1;
 
@@ -68,8 +71,10 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
 
     /// @notice Initializes AbstractWrapperReceiver.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
-    constructor(INameWrapper nameWrapper) {
+    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
+    constructor(INameWrapper nameWrapper, address graveyard) {
         NAME_WRAPPER = nameWrapper;
+        GRAVEYARD = graveyard;
         _REGISTRY_V1 = nameWrapper.ens();
     }
 

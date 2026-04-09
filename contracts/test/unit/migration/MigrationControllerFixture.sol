@@ -5,6 +5,7 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
+import {Graveyard} from "~src/migration/Graveyard.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
@@ -19,6 +20,7 @@ import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;
     ENSV2Resolver ensV2Resolver;
+    Graveyard graveyard;
     MockERC1155 dummy1155;
 
     string testLabel = "test";
@@ -30,6 +32,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     function setUp() public virtual {
         deployV1Fixture();
         deployV2Fixture();
+        graveyard = new Graveyard(registryV1);
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
         dummy1155 = new MockERC1155();

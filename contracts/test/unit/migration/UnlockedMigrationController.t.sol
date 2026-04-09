@@ -40,15 +40,17 @@ import {
     ERC165Checker,
     NameCoder
 } from "./MigrationControllerFixture.sol";
-import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
-import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
 contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     UnlockedMigrationController migrationController;
 
     function setUp() public override {
         super.setUp();
-        migrationController = new UnlockedMigrationController(nameWrapper, ethRegistry);
+        migrationController = new UnlockedMigrationController(
+            nameWrapper,
+            address(graveyard),
+            ethRegistry
+        );
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
@@ -57,8 +59,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     }
 
     function test_constructor() external view {
-        assertEq(address(migrationController.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
         assertEq(address(migrationController.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
+        assertEq(address(migrationController.GRAVEYARD()), address(graveyard), "GRAVEYARD");
+        assertEq(address(migrationController.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
     }
 
     function test_supportsInterface() external view {
@@ -353,6 +356,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             "subregistry"
         );
         assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), "resolverV1");
+        assertEq(registryV1.owner(NameCoder.namehash(name, 0)), address(graveyard), "graveyard");
     }
 
     function test_wrapped_migrate() external {
@@ -416,6 +420,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             address(md.subregistry),
             "subregistry"
         );
+        assertEq(registryV1.owner(NameCoder.namehash(name, 0)), address(graveyard), "graveyard");
     }
 
     function test_unwrapped_migrateViaApproval(bool all) external {

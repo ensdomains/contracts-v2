@@ -29,15 +29,17 @@ contract LockedMigrationController is LockedWrapperReceiver {
 
     /// @notice Initializes LockedMigrationController.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
     constructor(
         INameWrapper nameWrapper,
+        address graveyard,
         IPermissionedRegistry ethRegistry,
         VerifiableFactory verifiableFactory,
         address wrapperRegistryImpl
-    ) LockedWrapperReceiver(nameWrapper, verifiableFactory, wrapperRegistryImpl) {
+    ) LockedWrapperReceiver(nameWrapper, graveyard, verifiableFactory, wrapperRegistryImpl) {
         ETH_REGISTRY = ethRegistry;
     }
 
