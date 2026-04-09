@@ -12,7 +12,9 @@ import {
     IS_DOT_ETH,
     PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
-import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+import {
+    IVerifiableFactory
+} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
@@ -64,9 +66,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         INameWrapper nameWrapper,
         IVerifiableFactory verifiableFactory,
         address wrapperRegistryImpl
-    )
-        AbstractWrapperReceiver(nameWrapper)
-    {
+    ) AbstractWrapperReceiver(nameWrapper) {
         VERIFIABLE_FACTORY = verifiableFactory;
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
     }
@@ -88,10 +88,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractWrapperReceiver
-    function _migrateWrapped(uint256[] calldata ids, LibMigration.Data[] calldata mds)
-        internal
-        override
-    {
+    function _migrateWrapped(
+        uint256[] calldata ids,
+        LibMigration.Data[] calldata mds
+    ) internal override {
         IRegistry parentRegistry = _getRegistry();
         bytes32 parentNode = getWrappedNode();
         for (uint256 i; i < ids.length; ++i) {
@@ -109,7 +109,9 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             // same as NameCoder.assertLabelSize()
             // see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort()` and `test_nameWrapper_labelTooLong()`.
 
-            (, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
+            (, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(
+                uint256(node)
+            );
             if (_isLocked(fuses)) {
                 if (NAME_WRAPPER.getApproved(uint256(node)) != address(0)) {
                     revert LibMigration.FrozenTokenApproval(uint256(node));
@@ -122,23 +124,22 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 }
 
                 // create subregistry
-                IRegistry subregistry =
-                    IRegistry(
-                        VERIFIABLE_FACTORY.deployProxy(
-                            WRAPPER_REGISTRY_IMPL,
-                            uint256(node),
-                            abi.encodeCall(
-                                IWrapperRegistry.initialize,
-                                (
-                                    node,
-                                    parentRegistry,
-                                    md.label,
-                                    md.owner,
-                                    _subregistryRoleBitmapFromFuses(fuses)
-                                )
+                IRegistry subregistry = IRegistry(
+                    VERIFIABLE_FACTORY.deployProxy(
+                        WRAPPER_REGISTRY_IMPL,
+                        uint256(node),
+                        abi.encodeCall(
+                            IWrapperRegistry.initialize,
+                            (
+                                node,
+                                parentRegistry,
+                                md.label,
+                                md.owner,
+                                _subregistryRoleBitmapFromFuses(fuses)
                             )
                         )
-                    );
+                    )
+                );
 
                 // add name to ENSv2
                 // PermissionedRegistry._register() => CannotSetPastExpiry :: see expiry check
@@ -180,19 +181,24 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    )
-        internal
-        virtual
-        returns (uint256 tokenId);
+    ) internal virtual returns (uint256 tokenId);
 
     /// @dev The ENSv2 registry being migrated to.
     function _getRegistry() internal view virtual returns (IRegistry);
 
     /// @dev Determine if `label` is emancipated but not-yet migrated.
-    function _isMigratableChild(string memory label) internal view returns (bool) {
-        bytes32 node = NameCoder.namehash(getWrappedNode(), keccak256(bytes(label)));
+    function _isMigratableChild(
+        string memory label
+    ) internal view returns (bool) {
+        bytes32 node = NameCoder.namehash(
+            getWrappedNode(),
+            keccak256(bytes(label))
+        );
         (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
-        return ownerV1 != address(0) && ownerV1 != address(this) && _isEmancipatedChild(fuses);
+        return
+            ownerV1 != address(0) &&
+            ownerV1 != address(this) &&
+            _isEmancipatedChild(fuses);
     }
 
     /// @dev Returns `true` if the NameWrapper token fuses are not frozen.
@@ -204,15 +210,15 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     function _isEmancipatedChild(uint32 fuses) internal pure returns (bool) {
         // PARENT_CANNOT_CONTROL must be set for the entire ancestory.
         // see: V1Fixture.t.sol: `test_nameWrapper_PARENT_CANNOT_CONTROL_withoutParent()`
-        return (fuses & (IS_DOT_ETH | PARENT_CANNOT_CONTROL)) == PARENT_CANNOT_CONTROL;
+        return
+            (fuses & (IS_DOT_ETH | PARENT_CANNOT_CONTROL)) ==
+            PARENT_CANNOT_CONTROL;
     }
 
     /// @dev Convert fuses to equivalent subregistry root roles.
-    function _subregistryRoleBitmapFromFuses(uint32 fuses)
-        internal
-        pure
-        returns (uint256 roleBitmap)
-    {
+    function _subregistryRoleBitmapFromFuses(
+        uint32 fuses
+    ) internal pure returns (uint256 roleBitmap) {
         if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR;
         }
@@ -227,7 +233,9 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     }
 
     /// @dev Convert fuses to equivalent token roles.
-    function _tokenRoleBitmapFromFuses(uint32 fuses) internal pure returns (uint256 roleBitmap) {
+    function _tokenRoleBitmapFromFuses(
+        uint32 fuses
+    ) internal pure returns (uint256 roleBitmap) {
         if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
             roleBitmap |= RegistryRolesLib.ROLE_RENEW;
         }
