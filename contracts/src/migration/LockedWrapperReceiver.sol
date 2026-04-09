@@ -60,13 +60,15 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
     constructor(
         INameWrapper nameWrapper,
-        IVerifiableFactory verifiableFactory,
+        address graveyard,
+        VerifiableFactory verifiableFactory,
         address wrapperRegistryImpl
-    ) AbstractWrapperReceiver(nameWrapper) {
+    ) AbstractWrapperReceiver(nameWrapper, graveyard) {
         VERIFIABLE_FACTORY = verifiableFactory;
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
     }
@@ -154,11 +156,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                     expiry
                 );
             } else if (_isEmancipatedChild(fuses)) {
-                NAME_WRAPPER.unwrap(parentNode, labelHash, address(this));
+                NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
+                NAME_WRAPPER.unwrap(parentNode, labelHash, GRAVEYARD); // unwrap and transfer to graveyard
 
-                _REGISTRY_V1.setResolver(node, address(0)); // clear ENSv1 resolver
-
-                // same as UnlockedMigrationController
+                // add name to ENSv2 (same as UnlockedMigrationController)
                 _inject(
                     md.label,
                     md.owner,

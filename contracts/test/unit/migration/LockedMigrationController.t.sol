@@ -80,6 +80,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         emit IRegistryEvents.RegistryCreated();
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
+            address(graveyard),
             verifiableFactory,
             address(ensV1Resolver),
             hcaFactory,
@@ -89,6 +90,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         migrationController = new LockedMigrationController(
             nameWrapper,
+            address(graveyard),
             ethRegistry,
             verifiableFactory,
             address(wrapperRegistryImpl)
@@ -104,16 +106,21 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         ethRegistrarV1.setResolver(address(ensV2Resolver));
     }
 
-    function test_constructor() external view {
+    function test_constructor_controller() external view {
         assertEq(
-            address(migrationController.ETH_REGISTRY()),
-            address(ethRegistry),
-            "ETH_REGISTRY"
+            address(migrationController.GRAVEYARD()),
+            address(graveyard),
+            "GRAVEYARD"
         );
         assertEq(
             address(migrationController.NAME_WRAPPER()),
             address(nameWrapper),
             "NAME_WRAPPER"
+        );
+        assertEq(
+            address(migrationController.ETH_REGISTRY()),
+            address(ethRegistry),
+            "ETH_REGISTRY"
         );
         assertEq(
             address(migrationController.VERIFIABLE_FACTORY()),
@@ -125,6 +132,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             "WRAPPER_REGISTRY_IMPL"
         );
+
         assertEq(
             migrationController.getWrappedName(),
             NameCoder.encode("eth"),
@@ -137,13 +145,53 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_supportsInterface() external view {
+    function test_constructor_registry() external view {
+        assertEq(
+            address(wrapperRegistryImpl.GRAVEYARD()),
+            address(graveyard),
+            "GRAVEYARD"
+        );
+        assertEq(
+            address(wrapperRegistryImpl.NAME_WRAPPER()),
+            address(nameWrapper),
+            "NAME_WRAPPER"
+        );
+        assertEq(
+            address(wrapperRegistryImpl.VERIFIABLE_FACTORY()),
+            address(verifiableFactory),
+            "VERIFIABLE_FACTORY"
+        );
+        assertEq(
+            wrapperRegistryImpl.V1_RESOLVER(),
+            address(ensV1Resolver),
+            "V1_RESOLVER"
+        );
+    }
+
+    function test_supportsInterface_controller() external view {
         assertTrue(
             ERC165Checker.supportsInterface(
                 address(migrationController),
                 type(IERC1155Receiver).interfaceId
             ),
             "IERC1155Receiver"
+        );
+    }
+
+    function test_supportsInterface_registry() external view {
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(migrationController),
+                type(IERC1155Receiver).interfaceId
+            ),
+            "IERC1155Receiver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(wrapperRegistryImpl),
+                type(IWrapperRegistry).interfaceId
+            ),
+            "IWrapperRegistry"
         );
     }
 
@@ -193,6 +241,12 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 RegistryRolesLib.ROLE_UPGRADE,
                 user
             )
+        );
+    }
+
+    function test_finishERC1155Migration_unauthorizedCaller() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(UnauthorizedCaller.selector, user)
         );
         vm.prank(user);
         registry.upgradeToAndCall(address(newImplementation), "");
@@ -994,6 +1048,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(registry2.getSubregistry(data3.label)),
             address(testRegistry),
             "registry3"
+        );
+        assertEq(
+            registryV1.owner(NameCoder.namehash(name3, 0)),
+            address(graveyard),
+            "graveyard3"
         );
 
         // check migrated 3LD child
