@@ -59,7 +59,7 @@ contract GraveyardTest is MigrationControllerFixture {
             name = NameCoder.addLabel(name, testLabel);
         }
 
-        _simulateMigration(name);
+        _simulateMigration(name0);
 
         graveyard.clear(_oneName(name));
 
@@ -248,40 +248,34 @@ contract GraveyardTest is MigrationControllerFixture {
 
     /// @dev Clear resolver if possible and transfer to graveyard.
     function _simulateMigration(bytes memory name) internal {
-        uint256 offset;
-        bytes32 labelHash;
-        while (true) {
-            bytes32 node = NameCoder.namehash(name, offset);
-            (labelHash, offset) = NameCoder.readLabel(name, offset);
-            bytes32 parentNode = NameCoder.namehash(name, offset);
-            address owner = registryV1.owner(node);
-            if (owner == address(nameWrapper)) {
-                uint32 fuses;
-                (owner, fuses, ) = nameWrapper.getData(uint256(node));
-                if ((fuses & CANNOT_SET_RESOLVER) == 0) {
-                    vm.prank(owner);
-                    nameWrapper.setResolver(node, address(0));
-                }
-                if ((fuses & CANNOT_UNWRAP) == 0) {
-                    vm.prank(owner);
-                    nameWrapper.unwrap(parentNode, labelHash, address(graveyard));
-                } else {
-                    vm.prank(owner);
-                    nameWrapper.safeTransferFrom(owner, address(graveyard), uint256(node), 1, "");
-                }
-                return;
-            } else if (parentNode == NameCoder.ETH_NODE) {
+        bytes32 node = NameCoder.namehash(name, 0);
+        (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
+        bytes32 parentNode = NameCoder.namehash(name, offset);
+        address owner = registryV1.owner(node);
+        if (owner == address(nameWrapper)) {
+            uint32 fuses;
+            (owner, fuses, ) = nameWrapper.getData(uint256(node));
+            if ((fuses & CANNOT_SET_RESOLVER) == 0) {
                 vm.prank(owner);
-                registryV1.setRecord(
-                    node,
-                    address(graveyard), // owner
-                    address(0), // resolver
-                    0 // ttl
-                );
-                vm.prank(owner);
-                ethRegistrarV1.safeTransferFrom(owner, address(graveyard), uint256(labelHash));
-                return;
+                nameWrapper.setResolver(node, address(0));
             }
+            if ((fuses & CANNOT_UNWRAP) == 0) {
+                vm.prank(owner);
+                nameWrapper.unwrap(parentNode, labelHash, address(graveyard));
+            } else {
+                vm.prank(owner);
+                nameWrapper.safeTransferFrom(owner, address(graveyard), uint256(node), 1, "");
+            }
+        } else if (parentNode == NameCoder.ETH_NODE) {
+            vm.prank(owner);
+            registryV1.setRecord(
+                node,
+                address(graveyard), // owner
+                address(0), // resolver
+                0 // ttl
+            );
+            vm.prank(owner);
+            ethRegistrarV1.safeTransferFrom(owner, address(graveyard), uint256(labelHash));
         }
     }
 
