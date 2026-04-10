@@ -33,7 +33,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     function setUp() public virtual {
         deployV1Fixture();
         deployV2Fixture();
-        graveyard = new Graveyard(registryV1);
+        graveyard = new Graveyard(nameWrapper);
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         ensV2Resolver = new ENSV2Resolver(
             rootRegistry,

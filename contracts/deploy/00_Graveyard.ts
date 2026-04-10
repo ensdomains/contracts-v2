@@ -2,17 +2,17 @@ import { artifacts, execute } from "@rocketh";
 
 export default execute(
   async ({ get, deploy, namedAccounts: { deployer } }) => {
-    const ensRegistryV1 =
-      get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
+    const nameWrapper =
+      get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
     await deploy("Graveyard", {
       account: deployer,
       artifact: artifacts.Graveyard,
-      args: [ensRegistryV1.address],
+      args: [nameWrapper.address],
     });
   },
   {
     tags: ["Graveyard", "v2"],
-    dependencies: ["ENSRegistry"],
+    dependencies: ["NameWrapper"],
   },
 );
