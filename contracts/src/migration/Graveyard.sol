@@ -126,17 +126,18 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
                 } else if (LibMigration.isEmancipatedChild(fuses)) {
                     return (node, State.OWNED);
                 }
+            } else if (owner != address(0)) {
+                NAME_WRAPPER.setSubnodeRecord(
+                    parentNode,
+                    string(name[offset + 1:nextOffset]),
+                    address(this), // owner
+                    address(0), // resolver
+                    0, // ttl
+                    0, // fuses
+                    0 // expiry (uses min)
+                ); // reverts if not migrated
+                NAME_WRAPPER.unwrap(parentNode, labelHash, address(this));
             }
-            NAME_WRAPPER.setSubnodeRecord(
-                parentNode,
-                string(name[offset + 1:nextOffset]),
-                address(this), // owner
-                address(0), // resolver
-                0, // ttl
-                0, // fuses
-                0 // expiry (uses min)
-            ); // reverts if not migrated
-            NAME_WRAPPER.unwrap(parentNode, labelHash, address(this));
             return (node, State.OWNED);
         }
     }
