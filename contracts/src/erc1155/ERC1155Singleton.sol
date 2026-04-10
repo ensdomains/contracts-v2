@@ -239,6 +239,7 @@ abstract contract ERC1155Singleton is
     /// @param ids Token IDs to update.
     /// @param values Amounts for each token ID.
     /// @param data Additional calldata passed to receiver hooks.
+    /// @param batch `true` if a batch operation.
     /// @dev Calls `_update` before external receiver callbacks.
     /// @dev If `to` is a contract, this calls `onERC1155Received` or `onERC1155BatchReceived`.
     /// @dev Overriding is discouraged because post-callback state writes can introduce reentrancy bugs.
@@ -247,17 +248,18 @@ abstract contract ERC1155Singleton is
         address to,
         uint256[] memory ids,
         uint256[] memory values,
-        bytes memory data
+        bytes memory data,
+        bool batch
     ) internal virtual {
         _update(from, to, ids, values);
         if (to != address(0)) {
             address operator = _msgSender();
-            if (ids.length == 1) {
+            if (batch) {
+                ERC1155Utils.checkOnERC1155BatchReceived(operator, from, to, ids, values, data);
+            } else {
                 uint256 id = ids.unsafeMemoryAccess(0);
                 uint256 value = values.unsafeMemoryAccess(0);
                 ERC1155Utils.checkOnERC1155Received(operator, from, to, id, value, data);
-            } else {
-                ERC1155Utils.checkOnERC1155BatchReceived(operator, from, to, ids, values, data);
             }
         }
     }
@@ -286,7 +288,7 @@ abstract contract ERC1155Singleton is
             revert ERC1155InvalidSender(address(0));
         }
         (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(id, value);
-        _updateWithAcceptanceCheck(from, to, ids, values, data);
+        _updateWithAcceptanceCheck(from, to, ids, values, data, false);
     }
 
     /// @notice Safely transfer multiple token IDs from `from` to `to`.
@@ -313,7 +315,7 @@ abstract contract ERC1155Singleton is
         if (from == address(0)) {
             revert ERC1155InvalidSender(address(0));
         }
-        _updateWithAcceptanceCheck(from, to, ids, values, data);
+        _updateWithAcceptanceCheck(from, to, ids, values, data, true);
     }
 
     /// @notice Mint `value` tokens of token ID `id` to `to`.
@@ -329,7 +331,7 @@ abstract contract ERC1155Singleton is
             revert ERC1155InvalidReceiver(address(0));
         }
         (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(id, value);
-        _updateWithAcceptanceCheck(address(0), to, ids, values, data);
+        _updateWithAcceptanceCheck(address(0), to, ids, values, data, false);
     }
 
     /// @notice Mint multiple token IDs to `to`.
@@ -350,7 +352,7 @@ abstract contract ERC1155Singleton is
         if (to == address(0)) {
             revert ERC1155InvalidReceiver(address(0));
         }
-        _updateWithAcceptanceCheck(address(0), to, ids, values, data);
+        _updateWithAcceptanceCheck(address(0), to, ids, values, data, true);
     }
 
     /// @notice Burn `value` tokens of token ID `id` from `from`.
@@ -365,7 +367,7 @@ abstract contract ERC1155Singleton is
             revert ERC1155InvalidSender(address(0));
         }
         (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(id, value);
-        _updateWithAcceptanceCheck(from, address(0), ids, values, "");
+        _updateWithAcceptanceCheck(from, address(0), ids, values, "", false);
     }
 
     /// @notice Burn multiple token IDs from `from`.
@@ -380,7 +382,7 @@ abstract contract ERC1155Singleton is
         if (from == address(0)) {
             revert ERC1155InvalidSender(address(0));
         }
-        _updateWithAcceptanceCheck(from, address(0), ids, values, "");
+        _updateWithAcceptanceCheck(from, address(0), ids, values, "", true);
     }
 
     /// @notice Set or clear approval for `operator` to manage all tokens owned by `owner`.
