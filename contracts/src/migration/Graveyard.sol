@@ -4,16 +4,19 @@ pragma solidity >=0.8.13;
 import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {ENS} from "@ens/contracts/registry/ENS.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 
-import {UnauthorizedCaller} from "../CommonErrors.sol";
-
-/// @notice The ENSv1 ETHRegistrarController for ENSv2 launch which becomes the burn address for migrated ERC-721 tokens.
+/// @notice The ENSv1 ETHRegistrarController for ENSv2 launch which becomes the burn address for migrated tokens.
 ///
 /// 1. Claim any expired ENSv1 name and assign ownership to this contract.
 /// 2. Clear the registry for any owned token.
 ///
-contract Graveyard is IERC721Receiver {
+contract Graveyard is ERC721Holder, ERC1155Holder {
+    /// @notice The ENSv1 `NameWrapper` contract.
+    INameWrapper public immutable NAME_WRAPPER;
+
     /// @dev The ENSv1 `ENSRegistry` contract.
     ENS internal immutable _REGISTRY_V1;
 
@@ -25,20 +28,24 @@ contract Graveyard is IERC721Receiver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Create a graveyard.
-    /// @param ens The ENSv1 `ENSRegistry` contract.
-    constructor(ENS ens) {
-        _REGISTRY_V1 = ens;
-        _REGISTRAR_V1 = IBaseRegistrar(ens.owner(NameCoder.ETH_NODE));
+    /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    constructor(INameWrapper nameWrapper) {
+        NAME_WRAPPER = nameWrapper;
+        _REGISTRY_V1 = nameWrapper.ens();
+        _REGISTRAR_V1 = nameWrapper.registrar();
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Clear registry resolvers with automatic temporary registration.
-    /// @param parentNodes The array of parent nodes.
+    /// @notice Clear registry for unwrapped names with automatic temporary registration.
+    /// @param parentNodes The array of unwrapped parent nodes.
     /// @param labelHashes The array of child labelhashes.
-    function clear(bytes32[] calldata parentNodes, bytes32[] calldata labelHashes) external {
+    function clearUnwrapped(
+        bytes32[] calldata parentNodes,
+        bytes32[] calldata labelHashes
+    ) external {
         for (uint256 i; i < parentNodes.length; ++i) {
             bytes32 parentNode = parentNodes[i];
             bytes32 labelHash = labelHashes[i];
@@ -54,17 +61,29 @@ contract Graveyard is IERC721Receiver {
         }
     }
 
-    /// @inheritdoc IERC721Receiver
-    /// @notice Accept any ENSv1 `BaseRegistrar` token.
-    function onERC721Received(
-        address /*operator*/,
-        address /*from*/,
-        uint256 /*tokenId*/,
-        bytes calldata /*data*/
-    ) external view returns (bytes4) {
-        if (msg.sender != address(_REGISTRAR_V1)) {
-            revert UnauthorizedCaller(msg.sender);
+    /// @notice Clear registry for wrapped children with automatic unwrap.
+    /// @param parentNodes The array of wrapped parent nodes.
+    /// @param labels The array of child labels.
+    function clearWrappedChildren(
+        bytes32[] calldata parentNodes,
+        string[] calldata labels
+    ) external {
+        for (uint256 i; i < parentNodes.length; ++i) {
+            bytes32 parentNode = parentNodes[i];
+            string calldata label = labels[i];
+            //bytes32 node = NAME_WRAPPER.setSubnodeRecord(
+            NAME_WRAPPER.setSubnodeRecord(
+                parentNode,
+                label,
+                address(this), // owner
+                address(0), // resolver
+                0, // ttl
+                0, // fuses
+                0 // expiry
+            );
+            //(, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
+            //if (!LibMigration.isLocked(fuses)) {
+            NAME_WRAPPER.unwrap(parentNode, keccak256(bytes(label)), address(this));
         }
-        return this.onERC721Received.selector;
     }
 }

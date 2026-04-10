@@ -22,7 +22,7 @@ import {LibMigration} from "./libraries/LibMigration.sol";
 ///
 /// Supports (2) token sources:
 /// 1. NameWrapper (ERC-1155) but unlocked only.
-///    Reverts with `NameIsWrapped` if `_isLocked()` => use LockedMigrationController instead.
+///    Reverts with `NameIsWrapped` if `LibMigration.isLocked()` => use LockedMigrationController instead.
 /// 2. BaseRegistrar (ERC-721)
 ///
 /// Unlike locked migration, no subregistry is deployed and no fuse-to-role translation is
@@ -119,7 +119,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         for (uint256 i; i < ids.length; ++i) {
             uint256 id = ids[i];
             (, uint32 fuses, ) = NAME_WRAPPER.getData(id);
-            if (_isLocked(fuses)) {
+            if (LibMigration.isLocked(fuses)) {
                 revert LibMigration.NameIsLocked(id);
             }
             bytes32 labelHash = keccak256(bytes(mds[i].label));
