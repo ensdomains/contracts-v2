@@ -65,9 +65,16 @@ contract PublicResolverV2 is
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice An operator is added or removed.
+    /// @param owner The node owner.
+    /// @param operator The approved account.
+    /// @param approved If `true`, approved, otherwise revoked.
     event ApprovalForAll(address indexed owner, address indexed operator, bool approved);
 
     /// @notice A delegate is approved or an approval is revoked.
+    /// @param owner The node owner.
+    /// @param node The namehash.
+    /// @param delegate The approved account.
+    /// @param approved If `true`, approved, otherwise revoked.
     event Approved(
         address owner,
         bytes32 indexed node,
@@ -92,6 +99,7 @@ contract PublicResolverV2 is
         ROOT_REGISTRY = rootRegistry;
     }
 
+    /// @inheritdoc AddrResolver
     function supportsInterface(
         bytes4 interfaceId
     )
@@ -194,6 +202,7 @@ contract PublicResolverV2 is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
+    // solhint-disable private-vars-leading-underscore
     /// @dev Determine if the caller is authorized for `node`.
     function isAuthorised(bytes32 node) internal view override returns (bool) {
         return canModifyName(node, _msgSender());

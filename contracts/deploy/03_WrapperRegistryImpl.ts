@@ -26,6 +26,12 @@ export default execute(
       (typeof artifacts.ApprovedUpgradeGate)["abi"]
     >("ApprovedUpgradeGate");
 
+    const publicResolverSet =
+      get<(typeof artifacts.IAddressSet)["abi"]>("PublicResolverSet");
+
+    const publicResolverV2 =
+      get<(typeof artifacts.PublicResolverV2)["abi"]>("PublicResolverV2");
+
     await deploy("WrapperRegistryImpl", {
       account: deployer,
       artifact: artifacts.WrapperRegistry,
@@ -38,6 +44,8 @@ export default execute(
         registryMetadata.address,
         approvedUpgradeGate.address,
         labelStore.address,
+        publicResolverSet.address,
+        publicResolverV2.address,
       ],
     });
   },
@@ -52,6 +60,8 @@ export default execute(
       "RegistryMetadata",
       "ApprovedUpgradeGate",
       "LabelStore",
+      "PublicResolverSet",
+      "PublicResolverV2",
     ],
   },
 );
