@@ -531,7 +531,7 @@ describe("Migration", () => {
       await locked.checkResolution();
     });
 
-    it("locked resolver", async () => {
+    async function testLockedResolver(whitelisted: boolean) {
       const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
       await locked.setupPublicResolver();
       await locked.burnFuses(FUSES.CANNOT_SET_RESOLVER);
@@ -543,7 +543,23 @@ describe("Migration", () => {
       const resolver = await env.v2.ETHRegistry.read.getResolver([
         locked.label,
       ]);
-      expectVar({ resolver }).toEqualAddress(env.v1.PublicResolver.address);
+      expectVar({ resolver }).toEqualAddress(
+        whitelisted
+          ? env.v2.PublicResolver.address
+          : env.v1.PublicResolver.address,
+      );
+    }
+
+    it("locked resolver", async () => {
+      await env.v2.PublicResolverSet.write.approve([
+        env.v1.PublicResolver.address,
+        false,
+      ]); // remove from set
+      await testLockedResolver(false);
+    });
+
+    it("locked resolver (wrapper-aware)", async () => {
+      await testLockedResolver(true);
     });
 
     it("locked transfer", async () => {

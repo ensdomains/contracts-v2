@@ -8,7 +8,7 @@ import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
-contract PublicResolverV2V2Test is V1Fixture, V2Fixture {
+contract PublicResolverV2Test is V1Fixture, V2Fixture {
     PublicResolverV2 publicResolver;
 
     address friend = makeAddr("friend");
