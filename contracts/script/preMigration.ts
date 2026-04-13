@@ -642,10 +642,33 @@ export async function batchVerifyRegistrations(
     args: [keccak256(toHex(r.labelName))],
   }));
 
-  const [v2Results, v1Results] = await Promise.all([
+  const [v2Settled, v1Settled] = await Promise.allSettled([
     client.multicall({ contracts: v2Contracts }),
     mainnetClient.multicall({ contracts: v1Contracts }),
   ]);
+
+  const buildFallback = (reason: unknown) =>
+    registrations.map(() => ({ status: "failure" as const, error: reason }));
+
+  if (v2Settled.status === "rejected") {
+    logger.warning(
+      `v2 multicall failed for batch of ${registrations.length}: ${v2Settled.reason}`,
+    );
+  }
+  if (v1Settled.status === "rejected") {
+    logger.warning(
+      `v1 multicall failed for batch of ${registrations.length}: ${v1Settled.reason}`,
+    );
+  }
+
+  const v2Results =
+    v2Settled.status === "fulfilled"
+      ? v2Settled.value
+      : buildFallback(v2Settled.reason);
+  const v1Results =
+    v1Settled.status === "fulfilled"
+      ? v1Settled.value
+      : buildFallback(v1Settled.reason);
 
   const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
 
@@ -761,6 +784,15 @@ async function estimateAndSplitBatch(
         labels,
         expires,
       );
+    }
+
+    if (labels.length <= 1) {
+      const msg = `single registration exceeds gas limit (${estimatedGas} > ${maxGas})`;
+      logger.warning(`Label ${labels[0]}: ${msg}`);
+      return {
+        succeeded: [],
+        failed: [{ label: labels[0], error: msg }],
+      };
     }
 
     logger.warning(
