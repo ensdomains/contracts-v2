@@ -217,6 +217,7 @@ contract PermissionedRegistry is
             _mint(owner, tokenId, 1, "");
             uint256 resource = _constructResource(tokenId, entry);
             emit TokenResource(tokenId, resource);
+            assert(resource != 0);
             _grantRoles(resource, roleBitmap, owner, false);
         }
         if (address(registry) != address(0)) {
