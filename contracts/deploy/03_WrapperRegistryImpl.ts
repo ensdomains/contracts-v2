@@ -8,10 +8,6 @@ export default execute(
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
-    const registryMetadata = get<
-      (typeof artifacts.SimpleRegistryMetadata)["abi"]
-    >("SimpleRegistryMetadata");
-
     const verifiableFactory =
       get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
 
@@ -26,7 +22,6 @@ export default execute(
         verifiableFactory.address,
         ensV1Resolver.address,
         hcaFactory.address,
-        registryMetadata.address,
       ],
     });
   },
@@ -35,7 +30,6 @@ export default execute(
     dependencies: [
       "NameWrapper",
       "HCAFactory",
-      "SimpleRegistryMetadata",
       "VerifiableFactory",
       "ENSV1Resolver",
     ],

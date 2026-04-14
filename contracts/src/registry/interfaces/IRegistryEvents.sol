@@ -66,6 +66,12 @@ interface IRegistryEvents {
         address indexed sender
     );
 
+    /// @notice URI was changed.
+    /// @param tokenId The token ID of the label.
+    /// @param uriData The new URI data or renderer address.
+    /// @param sender The sender of the call to update the URI.
+    event URIUpdated(uint256 indexed tokenId, bytes uriData, address indexed sender);
+
     /// @notice Token was regenerated with a new token ID.
     ///         This occurs when roles are granted or revoked to maintain ERC1155 compliance.
     /// @param oldTokenId The old token ID.

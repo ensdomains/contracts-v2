@@ -16,22 +16,20 @@ import {
     IEnhancedAccessControl,
     IRegistry,
     IStandardRegistry,
-    IRegistryMetadata,
+    IRegistryURIRenderer,
     IHCAFactoryBasic,
     RegistryRolesLib,
     NameCoder,
     LibLabel
 } from "~src/registry/PermissionedRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
-import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 uint256 constant ROOT_ROLES = EACBaseRolesLib.ALL_ROLES;
 
-contract PermissionedRegistryTest is Test, ERC1155Holder {
+contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     MockPermissionedRegistry registry;
     MockHCAFactoryBasic hcaFactory;
-    IRegistryMetadata metadata;
 
     address user1 = makeAddr("user1");
     address user2 = makeAddr("user2");
@@ -46,8 +44,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
-        metadata = new SimpleRegistryMetadata(hcaFactory);
-        registry = new MockPermissionedRegistry(hcaFactory, metadata, address(this), ROOT_ROLES);
+        registry = new MockPermissionedRegistry(hcaFactory, address(this), ROOT_ROLES);
     }
 
     function test_constructor() external view {
@@ -1097,6 +1094,81 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // setDefaultURI(), setURI(), and uri()
+    ////////////////////////////////////////////////////////////////////////
+
+    // IRegistryURIRenderer
+    function renderURI(IRegistry, uint256 tokenId) external pure returns (string memory) {
+        return vm.toString(tokenId);
+    }
+
+    function test_setDefaultURI_string() external {
+        string memory uri = "ipfs://base/{id}";
+        registry.setDefaultURI(bytes(uri));
+
+        uint256 tokenId = this._register();
+        assertEq(registry.uri(0), uri);
+        assertEq(registry.uri(tokenId), uri);
+    }
+
+    function test_setDefaultURI_renderer() external {
+        registry.setDefaultURI(abi.encodePacked(uint8(1), address(this)));
+
+        uint256 tokenId = this._register();
+        assertEq(registry.uri(0), vm.toString(uint256(0)));
+        assertEq(registry.uri(tokenId), vm.toString(tokenId));
+    }
+
+    function test_setDefaultURI_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_SET_URI,
+                actor
+            )
+        );
+        vm.prank(actor);
+        registry.setDefaultURI("");
+    }
+
+    function test_setURI_string() external {
+        string memory uri = "ipfs://base/123";
+
+        testRoles = RegistryRolesLib.ROLE_SET_URI;
+        uint256 tokenId = this._register();
+        vm.prank(testOwner);
+        registry.setURI(tokenId, bytes(uri));
+
+        assertEq(registry.uri(0), "");
+        assertEq(registry.uri(tokenId), uri);
+    }
+
+    function test_setURI_renderer() external {
+        testRoles = RegistryRolesLib.ROLE_SET_URI;
+        uint256 tokenId = this._register();
+        vm.prank(testOwner);
+        registry.setURI(tokenId, abi.encodePacked(uint8(1), address(this)));
+
+        assertEq(registry.uri(0), "");
+        assertEq(registry.uri(tokenId), vm.toString(tokenId));
+    }
+
+    function test_setURI_notAuthorized() external {
+        uint256 tokenId = this._register();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                tokenId,
+                RegistryRolesLib.ROLE_SET_URI,
+                actor
+            )
+        );
+        vm.prank(actor);
+        registry.setURI(tokenId, "");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // Specific Cases
     ////////////////////////////////////////////////////////////////////////
 
@@ -1265,10 +1337,9 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 contract MockPermissionedRegistry is PermissionedRegistry {
     constructor(
         IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadata,
         address ownerAddress,
         uint256 ownerRoles
-    ) PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles) {}
+    ) PermissionedRegistry(hcaFactory, ownerAddress, ownerRoles) {}
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
     }

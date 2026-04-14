@@ -14,7 +14,6 @@ import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 
 import {IRegistry} from "./interfaces/IRegistry.sol";
-import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
@@ -51,15 +50,13 @@ contract WrapperRegistry is
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.
     /// @param hcaFactory The HCA factory.
-    /// @param metadataProvider The metadata provider.
     constructor(
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
         address ensV1Resolver,
-        IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadataProvider
+        IHCAFactoryBasic hcaFactory
     )
-        PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) // no roles are granted
+        PermissionedRegistry(hcaFactory, address(0), 0) // no roles are granted
         LockedWrapperReceiver(nameWrapper, verifiableFactory, address(this))
     {
         V1_RESOLVER = ensV1Resolver;
