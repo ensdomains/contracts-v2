@@ -77,4 +77,10 @@ interface IRegistryEvents {
     /// @param label The new label.
     /// @param sender The sender of the call to update the parent.
     event ParentUpdated(IRegistry indexed parent, string label, address indexed sender);
+
+    /// @notice Transfer lock state changed for a name.
+    /// @param tokenId The current token ID of the name.
+    /// @param locked Whether transfers are now locked or unlocked.
+    /// @param sender The sender of the call.
+    event TransferLockChanged(uint256 indexed tokenId, bool indexed locked, address indexed sender);
 }
