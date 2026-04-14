@@ -12,7 +12,7 @@ export default execute(
     const paymentTokens = [mockUSDC, mockDAI];
 
     // see: StandardPricing.sol
-    const SEC_PER_YEAR = 31_557_600n;
+    const SEC_PER_YEAR = 31_557_600n; // 365.25
     const SEC_PER_DAY = 86400n;
     const PRICE_DECIMALS = 12;
     const PRICE_SCALE = 10n ** BigInt(PRICE_DECIMALS);
@@ -34,11 +34,10 @@ export default execute(
     }
     const discountPoints: [bigint, bigint][] = [
       [SEC_PER_YEAR, 0n],
-      [SEC_PER_YEAR, discountRatio(1n, 10n)], // 10%
-      [SEC_PER_YEAR, discountRatio(2n, 10n)],
-      [SEC_PER_YEAR * 2n, discountRatio(2875n, 10000n)],
-      [SEC_PER_YEAR * 5n, discountRatio(325n, 1000n)],
-      [SEC_PER_YEAR * 15n, discountRatio(1n, 3n)],
+      [SEC_PER_YEAR, discountRatio(1n, 5n)], //      20.00%
+      [SEC_PER_YEAR, discountRatio(11n, 20n)], //    55.00%
+      [SEC_PER_YEAR * 2n, discountRatio(5n, 8n)], // 62.50%
+      [SEC_PER_YEAR * 5n, discountRatio(3n, 5n)], // 60.00%
     ];
 
     const paymentFactors = await Promise.all(
@@ -68,18 +67,7 @@ export default execute(
       }),
     );
 
-    console.table(
-      discountPoints.map((_, i, v) => {
-        const sum = v.slice(0, i + 1).reduce((a, x) => a + x[0], 0n);
-        const acc = v.slice(0, i + 1).reduce((a, x) => a + x[0] * x[1], 0n);
-        return {
-          years: (Number(sum) / Number(SEC_PER_YEAR)).toFixed(2),
-          discount: `${((100 * Number(acc / sum)) / Number(DISCOUNT_SCALE)).toFixed(2)}%`,
-        };
-      }),
-    );
-
-    await deploy("StandardRentPriceOracle", {
+    const standardRentPriceOracle = await deploy("StandardRentPriceOracle", {
       account: deployer,
       artifact: artifacts.StandardRentPriceOracle,
       args: [
@@ -93,6 +81,24 @@ export default execute(
         paymentFactors,
       ],
     });
+
+    console.table(
+      await Promise.all(
+        discountPoints.map(async (_, i, v) => {
+          const sum = v.slice(0, i + 1).reduce((a, x) => a + x[0], 0n);
+          const acc = v.slice(0, i + 1).reduce((a, x) => a + x[0] * x[1], 0n);
+          const ref = await read(standardRentPriceOracle, {
+            functionName: "integratedDiscount",
+            args: [sum],
+          });
+          return {
+            years: (Number(sum) / Number(SEC_PER_YEAR)).toFixed(2),
+            discount: `${((100 * Number(acc / sum)) / Number(DISCOUNT_SCALE)).toFixed(2)}%`,
+            diff: acc - ref,
+          };
+        }),
+      ),
+    );
   },
   {
     tags: ["StandardRentPriceOracle", "v2"],

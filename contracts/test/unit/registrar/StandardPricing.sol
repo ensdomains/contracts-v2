@@ -44,19 +44,19 @@ library StandardPricing {
     }
 
     function getDiscountPoints() internal pure returns (DiscountPoint[] memory points) {
-        // see: StandardRentPriceOracle.updateDiscountFunction()
-        // *  2yr @  5.00% ==  1yr @  0.00% +  1yr @ x =>  +1yr @ x = 10.00%
-        // *  3yr @ 10.00% ==  2yr @  5.00% +  1yr @ x =>  +1yr @ x = 20.00%
-        // *  5yr @ 17.50% ==  3yr @ 10.00% +  2yr @ x =>  +2yr @ x = 28.75%
-        // * 10yr @ 25.00% ==  5yr @ 17.50% +  5yr @ x =>  +5yr @ x = 32.50%
-        // * 25yr @ 30.00% == 10yr @ 25.00% + 15yr @ x => +15yr @ x = 33.33%
-        points = new DiscountPoint[](6);
+        // https://discuss.ens.domains/t/temp-check-ens-v2-pricing-5-character-name-price-adjustment-multi-year-discounts/22038/9
+        // see: src/registrar/StandardRentPriceOracle.updateDiscountFunction()
+        // see: deploy/StandardRentPriceOracle.ts
+        // *  2yr @ 10.00% ==  1yr @  0.00% +  1yr @ x =>  +1yr @ x = 20.00%
+        // *  3yr @ 25.00% ==  2yr @ 10.00% +  1yr @ x =>  +1yr @ x = 55.00%
+        // *  5yr @ 40.00% ==  3yr @ 25.00% +  2yr @ x =>  +2yr @ x = 62.50%
+        // * 10yr @ 50.00% ==  5yr @ 40.00% +  5yr @ x =>  +5yr @ x = 60.00%
+        points = new DiscountPoint[](5);
         points[0] = DiscountPoint(SEC_PER_YEAR, 0);
-        points[1] = DiscountPoint(SEC_PER_YEAR, discountRatio(1, 10)); // 10%
-        points[2] = DiscountPoint(SEC_PER_YEAR, discountRatio(2, 10));
-        points[3] = DiscountPoint(SEC_PER_YEAR * 2, discountRatio(2875, 10000));
-        points[4] = DiscountPoint(SEC_PER_YEAR * 5, discountRatio(325, 1000));
-        points[5] = DiscountPoint(SEC_PER_YEAR * 15, discountRatio(1, 3)); // 33.3%
+        points[1] = DiscountPoint(SEC_PER_YEAR, discountRatio(1, 5)); //      20.00%
+        points[2] = DiscountPoint(SEC_PER_YEAR, discountRatio(11, 20)); //    55.00%
+        points[3] = DiscountPoint(SEC_PER_YEAR * 2, discountRatio(5, 8)); //  62.50%
+        points[4] = DiscountPoint(SEC_PER_YEAR * 5, discountRatio(3, 5)); //  60.00%
     }
 
     function ratioFromStable(MockERC20 token) internal view returns (PaymentRatio memory) {
