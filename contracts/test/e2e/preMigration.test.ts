@@ -39,7 +39,11 @@ const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 describe("PreMigration", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
 
-  const csvFilePath = join(process.cwd(), "test-premigration.csv");
+  const csvFilePath = join(
+    process.cwd(),
+    "test/data",
+    "test-premigration.csv",
+  );
   const cleanupFiles = [
     csvFilePath,
     "preMigration-checkpoint.json",
@@ -194,7 +198,7 @@ describe("PreMigration", () => {
     expect(state3.status).toBe(STATUS.AVAILABLE);
   });
 
-  it("skips names expiring soon with minExpiryDays", async () => {
+  it("pads expiries shorter than minExpiryDays", async () => {
     const label = "soonexpire";
     const { user } = env.namedAccounts;
 
@@ -202,13 +206,40 @@ describe("PreMigration", () => {
     await registerV1Name(env, label, user.address, fiveDays);
 
     createCSVFile(csvFilePath, [label]);
-    const args = buildMainArgs(env, csvFilePath, {
-      minExpiryDays: 7,
-    });
+    const minExpiryDays = 7;
+    const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
+    const args = buildMainArgs(env, csvFilePath, { minExpiryDays });
     await main(args);
 
     const state = await verifyV2State(env, label);
-    expect(state.status).toBe(STATUS.AVAILABLE);
+    expect(state.status).toBe(STATUS.RESERVED);
+
+    const expectedMin =
+      nowSeconds + BigInt(minExpiryDays) * 86400n - 120n;
+    const expectedMax =
+      BigInt(Math.floor(Date.now() / 1000)) +
+      BigInt(minExpiryDays) * 86400n +
+      120n;
+    expect(state.expiry).toBeGreaterThanOrEqual(expectedMin);
+    expect(state.expiry).toBeLessThanOrEqual(expectedMax);
+  });
+
+  it("preserves v1 expiry when above minExpiryDays threshold", async () => {
+    const label = "longexpire";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    createCSVFile(csvFilePath, [label]);
+    const args = buildMainArgs(env, csvFilePath, { minExpiryDays: 7 });
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+
+    const paddedCeiling =
+      BigInt(Math.floor(Date.now() / 1000)) + 30n * 86400n;
+    expect(state.expiry).toBeGreaterThan(paddedCeiling);
   });
 
   it("handles checkpoint resumption", async () => {

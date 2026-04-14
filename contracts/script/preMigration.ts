@@ -296,11 +296,15 @@ class PreMigrationLogger extends Logger {
     );
   }
 
-  skippingExpiringSoon(name: string, daysUntilExpiry: number): void {
+  paddingExpiry(
+    name: string,
+    originalDays: number,
+    paddedDays: number,
+  ): void {
     this.raw(
-      yellow(`  → ⊘ Skipping: ${bold(name)}.eth`) +
-        dim(` (expires in ${daysUntilExpiry} days)`),
-      `  → ⊘ Skipping: ${name}.eth (expires in ${daysUntilExpiry} days)`,
+      cyan(`  → ⇪ Padding expiry: ${bold(name)}.eth`) +
+        dim(` (${originalDays}d → ${paddedDays}d)`),
+      `  → ⇪ Padding expiry: ${name}.eth (${originalDays}d → ${paddedDays}d)`,
     );
   }
 }
@@ -908,24 +912,25 @@ async function processBatch(
       continue;
     }
 
+    let effectiveExpiry = result.v1Expiry;
     if (result.v1Expiry <= minExpiryThreshold) {
-      const daysUntilExpiry = Number(
-        (result.v1Expiry - BigInt(Math.floor(Date.now() / 1000))) / 86400n,
+      const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
+      const originalDays = Number((result.v1Expiry - nowSeconds) / 86400n);
+      effectiveExpiry = minExpiryThreshold;
+      logger.paddingExpiry(
+        registration.labelName,
+        originalDays,
+        config.minExpiryDays,
       );
-      logger.skippingExpiringSoon(registration.labelName, daysUntilExpiry);
-      checkpoint.skippedCount++;
-      checkpoint.totalProcessed++;
-      logger.finishedName(registration.labelName, "skipped");
-      continue;
     }
 
-    const expiryDateFormatted = new Date(Number(result.v1Expiry) * 1000)
+    const expiryDateFormatted = new Date(Number(effectiveExpiry) * 1000)
       .toISOString()
       .split("T")[0];
     logger.v1Verified(registration.labelName, expiryDateFormatted);
 
     batchLabels.push(registration.labelName);
-    batchExpires.push(result.v1Expiry);
+    batchExpires.push(effectiveExpiry);
   }
 
   if (batchLabels.length > 0 && !config.dryRun) {
@@ -1013,7 +1018,7 @@ function printFinalSummary(checkpoint: Checkpoint): void {
     cyan(checkpoint.renewedCount.toString()),
   );
   logger.config(
-    "Skipped (expiring soon/already up-to-date/expired)",
+    "Skipped (already up-to-date/expired)",
     yellow(checkpoint.skippedCount.toString()),
   );
   logger.config(
@@ -1092,7 +1097,7 @@ export async function main(argv = process.argv): Promise<void> {
     )
     .option(
       "--min-expiry-days <days>",
-      "Skip names expiring within this many days",
+      "Pad v2 expiry so no reserved name expires within this many days",
       "7",
     )
     .requiredOption(

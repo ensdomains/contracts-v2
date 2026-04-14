@@ -28,3 +28,4 @@ preMigration.log
 preMigration-checkpoint.json
 
 csv-data/
+test/data/
