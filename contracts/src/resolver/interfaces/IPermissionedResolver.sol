@@ -1,60 +1,45 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
-
 import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedAccessControl.sol";
 
-/// @dev Interface selector: `0x2c7442c9`
-interface IPermissionedResolver is IExtendedResolver, IEnhancedAccessControl {
+import {IRecordResolver, RECORD_RESOLVER_INTERFACE_ID} from "./IRecordResolver.sol";
+
+/// @dev The complete interface selector: `0xf9e2cc41`
+bytes4 constant PERMISSIONED_RESOLVER_INTERFACE_ID = RECORD_RESOLVER_INTERFACE_ID ^
+    type(IPermissionedResolver).interfaceId ^
+    type(IEnhancedAccessControl).interfaceId;
+
+/// @dev Interface selector: `0x899f136b`
+interface IPermissionedResolver is IEnhancedAccessControl, IRecordResolver {
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice An alias was changed.
-    /// @param indexedFromName The source DNS-encoded name. (indexed bytes, hashed)
-    /// @param indexedToName The destination DNS-encoded name. (indexed bytes, hashed)
-    /// @param fromName The source DNS-encoded name.
-    /// @param toName The destination DNS-encoded name.
-    event AliasChanged(
-        bytes indexed indexedFromName,
-        bytes indexed indexedToName,
-        bytes fromName,
-        bytes toName
-    );
-
-    ////////////////////////////////////////////////////////////////////////
-    // Errors
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice The resolver profile cannot be answered.
-    /// @dev Error selector: `0x7b1c461b`
-    error UnsupportedResolverProfile(bytes4 selector);
-
-    /// @notice The address could not be converted to `address`.
-    /// @dev Error selector: `0x8d666f60`
-    error InvalidEVMAddress(bytes addressBytes);
-
-    /// @notice The coin type is not a power of 2.
-    /// @dev Error selector: `0x5742bb26`
-    error InvalidContentType(uint256 contentType);
+    /// @notice Associate `recordId` with an EAC resource.
+    /// @param recordId The record ID.
+    /// @param resource The resource to associate.
+    /// @param setter The ABI-encoded setter calldata.
+    event RecordResource(uint256 indexed recordId, uint256 indexed resource, bytes setter);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initialize the contract.
-    /// @param admin The resolver owner.
-    /// @param roleBitmap The roles granted to `admin`.
-    function initialize(address admin, uint256 roleBitmap) external;
+    /// @notice Grant `roleBitmap` permissions to `account` for record of `name`.
+    /// @param name The DNS-encoded name.
+    /// @param roleBitmap The roles bitmap to grant.
+    /// @param account The account to be granted roles.
+    /// @return `true` if any roles are granted.
+    function grantRecordRoles(
+        bytes calldata name,
+        uint256 roleBitmap,
+        address account
+    ) external returns (bool);
 
-    /// @notice Create an alias from `fromName` to `toName`.
-    /// @param fromName The source DNS-encoded name.
-    /// @param toName The destination DNS-encoded name.
-    function setAlias(bytes calldata fromName, bytes calldata toName) external;
-
-    /// @notice Determine which name is queried when `fromName` is resolved.
-    /// @param fromName The source DNS-encoded name.
-    /// @return toName The destination DNS-encoded name or empty if not aliased.
-    function getAlias(bytes memory fromName) external view returns (bytes memory toName);
+    /// @notice Grant fine-grained permission to `account` for record of `name`.
+    /// @param setter The ABI-encoded setter calldata.
+    /// @param account The account to be granted a role.
+    /// @return `true` if a role is granted.
+    function grantSetterRoles(bytes calldata setter, address account) external returns (bool);
 }
