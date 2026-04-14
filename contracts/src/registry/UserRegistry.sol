@@ -37,6 +37,7 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
         if (admin == address(0)) {
             revert InvalidOwner();
         }
+        emit RegistryCreated();
         _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
     }
 

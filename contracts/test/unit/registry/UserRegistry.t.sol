@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
@@ -39,7 +39,9 @@ contract UserRegistryTest is Test, ERC1155Holder {
         hcaFactory = new MockHCAFactoryBasic();
 
         // Deploy the implementation
+        vm.recordLogs();
         implementation = new UserRegistry(hcaFactory);
+        _expectNoEmit(vm.getRecordedLogs(), IRegistry.RegistryCreated.selector);
 
         // Create initialization data
         bytes memory initData = abi.encodeCall(
@@ -48,6 +50,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
         );
 
         // Deploy the proxy using the factory
+        vm.expectEmit();
+        emit IRegistry.RegistryCreated();
         vm.prank(admin);
         address proxyAddress = factory.deployProxy(address(implementation), SALT, initData);
 
@@ -315,6 +319,14 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Verify new registration
         assertEq(proxy.ownerOf(newTokenId), user2, "Domain should be owned by user2");
+    }
+
+    function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics[0] == topic0) {
+                revert(string.concat("found unexpected event: ", vm.toString(topic0)));
+            }
+        }
     }
 }
 
