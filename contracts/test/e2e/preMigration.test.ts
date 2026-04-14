@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, setDefaultTimeout } from "bun:test";
 setDefaultTimeout(60_000);
 
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import {
@@ -39,11 +40,7 @@ const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 describe("PreMigration", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
 
-  const csvFilePath = join(
-    process.cwd(),
-    "test/data",
-    "test-premigration.csv",
-  );
+  const csvFilePath = join(tmpdir(), "test-premigration.csv");
   const cleanupFiles = [
     csvFilePath,
     "preMigration-checkpoint.json",

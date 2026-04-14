@@ -24,8 +24,8 @@ generated/
 
 deployments/devnet-local/
 
+# pre-migration
 preMigration.log
 preMigration-checkpoint.json
-
+preMigration-errors.log
 csv-data/
-test/data/
