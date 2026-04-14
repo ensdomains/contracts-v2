@@ -17,6 +17,8 @@ import {
     IPermissionedRegistry,
     IEnhancedAccessControl,
     IRegistry,
+    ITokenizedRegistry,
+    ITemporalRegistry,
     IStandardRegistry,
     IRegistryMetadata,
     IHCAFactoryBasic,
@@ -73,6 +75,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(
             registry.supportsInterface(type(IStandardRegistry).interfaceId),
             "IStandardRegistry"
+        );
+        assertTrue(
+            registry.supportsInterface(type(ITokenizedRegistry).interfaceId),
+            "ITokenizedRegistry"
+        );
+        assertTrue(
+            registry.supportsInterface(type(ITemporalRegistry).interfaceId),
+            "ITemporalRegistry"
         );
         assertTrue(
             registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
@@ -905,6 +915,30 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             testRoles
         );
         assertEq(counts, testRoles);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Low-level Interfaces
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_findExpiry() external {
+        assertEq(registry.findExpiry(testLabel), 0);
+        uint256 tokenId = this._register();
+        assertEq(registry.findExpiry(testLabel), testExpiry);
+        registry.unregister(tokenId);
+        assertEq(registry.findExpiry(testLabel), block.timestamp, "burn");
+        this._register();
+        assertEq(registry.findExpiry(testLabel), testExpiry, "again");
+    }
+
+    function test_findTokenId() external {
+        assertEq(registry.findTokenId(testLabel), LibLabel.withVersion(LibLabel.id(testLabel), 0));
+        uint256 tokenId = this._register();
+        assertEq(registry.findTokenId(testLabel), tokenId);
+        registry.unregister(tokenId);
+        assertEq(registry.findTokenId(testLabel), tokenId + 1, "burn");
+        tokenId = this._register();
+        assertEq(registry.findTokenId(testLabel), tokenId, "again");
     }
 
     ////////////////////////////////////////////////////////////////////////
