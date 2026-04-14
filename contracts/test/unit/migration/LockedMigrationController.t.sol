@@ -49,28 +49,37 @@ import {
     ERC165Checker,
     NameCoder
 } from "./MigrationControllerFixture.sol";
+import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
+import {PermissionedAddresses} from "~src/utils/PermissionedAddresses.sol";
 import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture, VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
     WrapperRegistry wrapperRegistryImpl;
+    PermissionedAddresses publicResolverSet;
+    PublicResolverV2 publicResolver;
 
     function setUp() public override {
         super.setUp();
+        publicResolverSet = new PermissionedAddresses(hcaFactory, address(this));
+        publicResolver = new PublicResolverV2(hcaFactory, nameWrapper, rootRegistry);
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
             verifiableFactory,
             address(ensV1Resolver),
             hcaFactory,
             metadata,
-            labelStore
+            publicResolverSet,
+            address(publicResolver)
         );
         migrationController = new LockedMigrationController(
             nameWrapper,
             ethRegistry,
             verifiableFactory,
-            address(wrapperRegistryImpl)
+            address(wrapperRegistryImpl),
+            publicResolverSet,
+            address(publicResolver)
         );
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         ethRegistry.grantRootRoles(
@@ -479,6 +488,38 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         vm.prank(user);
         ethRegistry.setResolver(tokenId, testResolver);
+    }
+
+    function test_migrate_lockedResolver_publicResolver() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        bytes32 node = NameCoder.namehash(name, 0);
+        LibMigration.Data memory md = _makeData(name);
+
+        address oldPublicResolver = makeAddr("oldPublicResolver");
+        vm.prank(user);
+        nameWrapper.setResolver(node, oldPublicResolver);
+        vm.prank(user);
+        nameWrapper.setFuses(node, uint16(CANNOT_UNWRAP | CANNOT_SET_RESOLVER));
+        assertNotEq(md.resolver, oldPublicResolver, "diff");
+
+        // add as approved PublicResolver
+        publicResolverSet.approve(oldPublicResolver, true);
+
+        assertFalse(publicResolver.canModifyName(node, user), "before");
+
+        vm.prank(user);
+        nameWrapper.safeTransferFrom(
+            user,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
+        );
+
+        assertTrue(publicResolver.canModifyName(node, user), "after");
+
+        assertEq(ethRegistry.getResolver(md.label), address(publicResolver), "prV2");
+        checkResolution(name, address(oldPublicResolver), address(publicResolver));
     }
 
     function test_migrate_lockedTransfer() external {

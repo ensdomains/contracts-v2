@@ -5,12 +5,6 @@ export default execute(
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
-    const verifiableFactory =
-      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
-
-    const ensV1Resolver =
-      get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
-
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
@@ -18,7 +12,17 @@ export default execute(
       (typeof artifacts.SimpleRegistryMetadata)["abi"]
     >("SimpleRegistryMetadata");
 
-    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+    const verifiableFactory =
+      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
+
+    const ensV1Resolver =
+      get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
+
+    const publicResolverSet =
+      get<(typeof artifacts.IAddressSet)["abi"]>("PublicResolverSet");
+
+    const publicResolverV2 =
+      get<(typeof artifacts.PublicResolverV2)["abi"]>("PublicResolverV2");
 
     await deploy("WrapperRegistryImpl", {
       account: deployer,
@@ -29,7 +33,8 @@ export default execute(
         ensV1Resolver.address,
         hcaFactory.address,
         registryMetadata.address,
-        labelStore.address,
+        publicResolverSet.address,
+        publicResolverV2.address,
       ],
     });
   },
@@ -37,11 +42,12 @@ export default execute(
     tags: ["WrapperRegistryImpl", "v2"],
     dependencies: [
       "NameWrapper",
+      "HCAFactory",
+      "SimpleRegistryMetadata",
       "VerifiableFactory",
       "ENSV1Resolver",
-      "HCAFactory",
-      "RegistryMetadata",
-      "LabelStore",
+      "PublicResolverSet",
+      "PublicResolverV2",
     ],
   },
 );
