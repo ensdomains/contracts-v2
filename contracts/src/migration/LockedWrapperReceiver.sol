@@ -8,15 +8,17 @@ import {
     CANNOT_BURN_FUSES,
     CANNOT_TRANSFER,
     CANNOT_SET_RESOLVER,
-    CANNOT_CREATE_SUBDOMAIN
+    CANNOT_CREATE_SUBDOMAIN,
+    IS_DOT_ETH,
+    PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
+import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
-import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
@@ -51,12 +53,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @notice The `WrapperRegistry` implementation contract.
     address public immutable WRAPPER_REGISTRY_IMPL;
 
-    /// @notice The approved list of `PublicResolver` contracts.
-    IAddressSet public immutable PUBLIC_RESOLVER_SET;
-
-    /// @notice The replacement `PublicResolver`.
-    address public immutable PUBLIC_RESOLVER;
-
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -65,19 +61,13 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
-    /// @param publicResolverSet The approved list of `PublicResolver` contracts.
-    /// @param publicResolver The replacement `PublicResolver`.
     constructor(
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
-        address wrapperRegistryImpl,
-        IAddressSet publicResolverSet,
-        address publicResolver
+        address wrapperRegistryImpl
     ) AbstractWrapperReceiver(nameWrapper) {
         VERIFIABLE_FACTORY = verifiableFactory;
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
-        PUBLIC_RESOLVER_SET = publicResolverSet;
-        PUBLIC_RESOLVER = publicResolver;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -118,54 +108,64 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             // see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort()` and `test_nameWrapper_labelTooLong()`.
 
             (, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
-            if (!_isLocked(fuses)) {
-                revert LibMigration.NameNotLocked(uint256(node));
-            }
-
-            if (NAME_WRAPPER.getApproved(uint256(node)) != address(0)) {
-                revert LibMigration.FrozenTokenApproval(uint256(node));
-            }
-
-            address resolver = md.resolver;
-            if ((fuses & CANNOT_SET_RESOLVER) == 0) {
-                NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
-            } else {
-                resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
-                if (PUBLIC_RESOLVER_SET.includes(resolver)) {
-                    resolver = PUBLIC_RESOLVER; // replace with new PublicResolver
+            if (_isLocked(fuses)) {
+                if (NAME_WRAPPER.getApproved(uint256(node)) != address(0)) {
+                    revert LibMigration.FrozenTokenApproval(uint256(node));
                 }
-            }
 
-            // create subregistry
-            IRegistry subregistry = IRegistry(
-                VERIFIABLE_FACTORY.deployProxy(
-                    WRAPPER_REGISTRY_IMPL,
-                    uint256(node),
-                    abi.encodeCall(
-                        IWrapperRegistry.initialize,
-                        (
-                            node,
-                            parentRegistry,
-                            md.label,
-                            md.owner,
-                            _subregistryRoleBitmapFromFuses(fuses)
+                if ((fuses & CANNOT_SET_RESOLVER) == 0) {
+                    NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
+                } else {
+                    md.resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
+                }
+
+                // create subregistry
+                IRegistry subregistry = IRegistry(
+                    VERIFIABLE_FACTORY.deployProxy(
+                        WRAPPER_REGISTRY_IMPL,
+                        uint256(node),
+                        abi.encodeCall(
+                            IWrapperRegistry.initialize,
+                            (
+                                node,
+                                parentRegistry,
+                                md.label,
+                                md.owner,
+                                _subregistryRoleBitmapFromFuses(fuses)
+                            )
                         )
                     )
-                )
-            );
+                );
 
-            // add name to ENSv2
-            // PermissionedRegistry._register() => CannotSetPastExpiry :: see expiry check
-            // PermissionedRegistry._register() => LabelAlreadyRegistered :: only have ROLE_REGISTER_RESERVED
-            // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver :: see owner check
-            _inject(
-                md.label,
-                md.owner,
-                subregistry,
-                resolver,
-                _tokenRoleBitmapFromFuses(fuses),
-                expiry
-            );
+                // add name to ENSv2
+                // PermissionedRegistry._register() => CannotSetPastExpiry :: see expiry check
+                // PermissionedRegistry._register() => LabelAlreadyRegistered :: only have ROLE_REGISTER_RESERVED
+                // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver :: see owner check
+                _inject(
+                    md.label,
+                    md.owner,
+                    subregistry,
+                    md.resolver,
+                    _tokenRoleBitmapFromFuses(fuses),
+                    expiry
+                );
+            } else if (_isEmancipatedChild(fuses)) {
+                NAME_WRAPPER.unwrap(parentNode, labelHash, address(this));
+
+                _REGISTRY_V1.setResolver(node, address(0)); // clear ENSv1 resolver
+
+                // same as UnlockedMigrationController
+                _inject(
+                    md.label,
+                    md.owner,
+                    md.subregistry,
+                    md.resolver,
+                    REGISTRATION_ROLE_BITMAP,
+                    expiry
+                );
+            } else {
+                revert LibMigration.NameNotLocked(uint256(node));
+            }
         }
     }
 
@@ -186,12 +186,19 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     function _isMigratableChild(string memory label) internal view returns (bool) {
         bytes32 node = NameCoder.namehash(getWrappedNode(), keccak256(bytes(label)));
         (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
-        return ownerV1 != address(this) && _isLocked(fuses);
+        return ownerV1 != address(0) && ownerV1 != address(this) && _isEmancipatedChild(fuses);
     }
 
     /// @dev Returns `true` if the NameWrapper token fuses are not frozen.
     function _notFrozen(uint32 fuses) internal pure returns (bool) {
         return (fuses & CANNOT_BURN_FUSES) == 0;
+    }
+
+    /// @dev Returns `true` if the NameWrapper token is emancipated and not 2LD .eth.
+    function _isEmancipatedChild(uint32 fuses) internal pure returns (bool) {
+        // PARENT_CANNOT_CONTROL must be set for the entire ancestory.
+        // see: V1Fixture.t.sol: `test_nameWrapper_PARENT_CANNOT_CONTROL_withoutParent()`
+        return (fuses & (IS_DOT_ETH | PARENT_CANNOT_CONTROL)) == PARENT_CANNOT_CONTROL;
     }
 
     /// @dev Convert fuses to equivalent subregistry root roles.
