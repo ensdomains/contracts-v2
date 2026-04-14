@@ -288,7 +288,20 @@ export async function setupDevnet({
       }),
     };
 
+    const NameCoderErrors = artifacts.NameCoder.abi.filter(
+      (x) => x.type === "error",
+    );
     const v2 = {
+      LabelStore: getContract({
+        abi: artifacts.LabelStore.abi,
+        address: rocketh.get("LabelStore").address,
+        client,
+      }),
+      SimpleRegistryMetadata: getContract({
+        abi: artifacts.SimpleRegistryMetadata.abi,
+        address: rocketh.get("SimpleRegistryMetadata").address,
+        client,
+      }),
       HCAFactory: getContract({
         abi: artifacts.MockHCAFactoryBasic.abi,
         address: rocketh.get("HCAFactory").address,
@@ -300,12 +313,12 @@ export async function setupDevnet({
         client,
       }),
       RootRegistry: getContract({
-        abi: artifacts.PermissionedRegistry.abi,
+        abi: [...artifacts.PermissionedRegistry.abi, ...NameCoderErrors],
         address: rocketh.get("RootRegistry").address,
         client,
       }),
       ETHRegistry: getContract({
-        abi: artifacts.PermissionedRegistry.abi,
+        abi: [...artifacts.PermissionedRegistry.abi, ...NameCoderErrors],
         address: rocketh.get("ETHRegistry").address,
         client,
       }),
@@ -327,7 +340,7 @@ export async function setupDevnet({
         client,
       }),
       UserRegistryImpl: getContract({
-        abi: artifacts.UserRegistry.abi,
+        abi: [...artifacts.UserRegistry.abi, ...NameCoderErrors],
         address: rocketh.get("UserRegistryImpl").address,
         client,
       }),
@@ -338,12 +351,12 @@ export async function setupDevnet({
       }),
       // migration
       UnlockedMigrationController: getContract({
-        abi: artifacts.UnlockedMigrationController.abi,
+        abi: [...artifacts.UnlockedMigrationController.abi, ...NameCoderErrors],
         address: rocketh.get("UnlockedMigrationController").address,
         client,
       }),
       LockedMigrationController: getContract({
-        abi: artifacts.LockedMigrationController.abi,
+        abi: [...artifacts.LockedMigrationController.abi, ...NameCoderErrors],
         address: rocketh.get("LockedMigrationController").address,
         client,
       }),
@@ -685,12 +698,6 @@ export async function setupDevnet({
     async function setupEnsDotEth() {
       const { resolver } = namedAccounts.owner;
 
-      // create registry for "ens.eth"
-      const registry = await deployUserRegistry({
-        account: namedAccounts.owner,
-        salt: { name: "ens.eth" },
-      });
-
       // temporary registration of "ens.eth" by deployer
       // (normally would be migrated by current ens.eth owner)
       // Deployer has REGISTRAR_ADMIN but not REGISTRAR; grant self REGISTRAR for setup
@@ -702,7 +709,7 @@ export async function setupDevnet({
       await v2.ETHRegistry.write.register([
         "ens",
         namedAccounts.owner.address,
-        registry.address,
+        zeroAddress,
         resolver.address,
         ROLES.ALL,
         MAX_EXPIRY,
@@ -726,17 +733,9 @@ export async function setupDevnet({
       // create "dnsalias.ens.eth"
       await setupNamedResolver("dnsalias", v2.DNSAliasResolver.address);
 
-      async function setupNamedResolver(label: string, address: Address) {
-        await registry.write.register([
-          label,
-          zeroAddress, // => RESERVED
-          zeroAddress, // registry
-          resolver.address,
-          0n,
-          MAX_EXPIRY,
-        ]);
-        await resolver.write.setAddress([
-          dnsEncodeName(`${label}.ens.eth`),
+      function setupNamedResolver(label: string, address: Address) {
+        return resolver.write.setAddr([
+          namehash(`${label}.ens.eth`),
           60n,
           address,
         ]);

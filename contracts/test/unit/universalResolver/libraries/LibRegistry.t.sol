@@ -13,18 +13,23 @@ import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {
     PermissionedRegistry,
     IStandardRegistry,
-    IRegistry
+    IRegistry,
+    IRegistryMetadata
 } from "~src/registry/PermissionedRegistry.sol";
 import {LibRegistry, NameCoder} from "~src/universalResolver/libraries/LibRegistry.sol";
+import {LabelStore} from "~src/utils/LabelStore.sol";
 
 contract LibRegistryTest is Test, ERC1155Holder {
     PermissionedRegistry rootRegistry;
+    LabelStore labelStore;
     address resolverAddress = makeAddr("resolver");
 
     function _createRegistry() internal returns (PermissionedRegistry) {
         return
             new PermissionedRegistry(
                 IHCAFactoryBasic(address(0)),
+                IRegistryMetadata(address(0)),
+                labelStore,
                 address(this),
                 EACBaseRolesLib.ALL_ROLES
             );
@@ -51,6 +56,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
     }
 
     function setUp() external {
+        labelStore = new LabelStore();
         rootRegistry = _createRegistry();
     }
 

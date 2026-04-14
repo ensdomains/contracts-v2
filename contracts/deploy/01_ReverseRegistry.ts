@@ -14,13 +14,25 @@ export default execute(
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
+    const registryMetadata = get<
+      (typeof artifacts.SimpleRegistryMetadata)["abi"]
+    >("SimpleRegistryMetadata");
+
+    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+
     // ReverseRegistry root and .reverse/.addr tokens use full role bitmap
     const reverseRoles = DEPLOYMENT_ROLES.REVERSE_AND_ADDR;
 
     const reverseRegistry = await deploy("ReverseRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
-      args: [hcaFactory.address, deployer, reverseRoles],
+      args: [
+        hcaFactory.address,
+        registryMetadata.address,
+        labelStore.address,
+        deployer,
+        reverseRoles,
+      ],
     });
 
     await write(rootRegistry, {
@@ -44,6 +56,12 @@ export default execute(
   },
   {
     tags: ["ReverseRegistry", "v2"],
-    dependencies: ["DefaultReverseResolver", "RootRegistry", "HCAFactory"],
+    dependencies: [
+      "DefaultReverseResolver",
+      "RootRegistry",
+      "HCAFactory",
+      "SimpleRegistryMetadata",
+      "LabelStore",
+    ],
   },
 );

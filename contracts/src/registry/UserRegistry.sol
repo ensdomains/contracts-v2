@@ -7,7 +7,9 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
+import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
@@ -23,7 +25,13 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
 
     /// @notice Creates the UserRegistry implementation.
     /// @param hcaFactory The HCA factory.
-    constructor(IHCAFactoryBasic hcaFactory) PermissionedRegistry(hcaFactory, address(0), 0) {
+    /// @param metadataProvider The metadata provider.
+    /// @param labelStore The shared label database.
+    constructor(
+        IHCAFactoryBasic hcaFactory,
+        IRegistryMetadata metadataProvider,
+        ILabelStore labelStore
+    ) PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0) {
         // This disables initialization for the implementation contract
         _disableInitializers();
     }
@@ -37,7 +45,6 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable {
         if (admin == address(0)) {
             revert InvalidOwner();
         }
-        emit RegistryCreated();
         _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
     }
 

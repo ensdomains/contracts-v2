@@ -5,14 +5,20 @@ export default execute(
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
-    const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
-
     const verifiableFactory =
       get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
 
     const ensV1Resolver =
       get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
+
+    const hcaFactory =
+      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+
+    const registryMetadata = get<
+      (typeof artifacts.SimpleRegistryMetadata)["abi"]
+    >("SimpleRegistryMetadata");
+
+    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
     await deploy("WrapperRegistryImpl", {
       account: deployer,
@@ -22,6 +28,8 @@ export default execute(
         verifiableFactory.address,
         ensV1Resolver.address,
         hcaFactory.address,
+        registryMetadata.address,
+        labelStore.address,
       ],
     });
   },
@@ -29,9 +37,11 @@ export default execute(
     tags: ["WrapperRegistryImpl", "v2"],
     dependencies: [
       "NameWrapper",
-      "HCAFactory",
       "VerifiableFactory",
       "ENSV1Resolver",
+      "HCAFactory",
+      "RegistryMetadata",
+      "LabelStore",
     ],
   },
 );

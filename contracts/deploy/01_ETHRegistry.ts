@@ -11,11 +11,23 @@ export default execute(
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
+    const registryMetadata = get<
+      (typeof artifacts.SimpleRegistryMetadata)["abi"]
+    >("SimpleRegistryMetadata");
+
+    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+
     console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
-      args: [hcaFactory.address, deployer, DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT],
+      args: [
+        hcaFactory.address,
+        registryMetadata.address,
+        labelStore.address,
+        deployer,
+        DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+      ],
     });
 
     console.log("  - Registering in parent");
@@ -47,6 +59,11 @@ export default execute(
   },
   {
     tags: ["ETHRegistry", "v2"],
-    dependencies: ["RootRegistry", "HCAFactory"],
+    dependencies: [
+      "RootRegistry",
+      "HCAFactory",
+      "RegistryMetadata",
+      "LabelStore",
+    ],
   },
 );

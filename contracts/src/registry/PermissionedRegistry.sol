@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
@@ -10,13 +9,15 @@ import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
-import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
+import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
+import {MetadataMixin} from "./MetadataMixin.sol";
 
 /// @notice A tokenized (ERC1155) registry with resource-scoped access control for subdomain management.
 ///
@@ -32,8 +33,6 @@ import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 ///     changes to roles create new tokens and prevent frontrunning a transfer with a role revocation.
 ///
 /// Names are treated as `AVAILABLE` once `block.timestamp >= expiry`.
-///
-/// URI renderer address is embedded into URI data as `abi.encodePacked(uint8(1), address)`.
 ///
 /// State diagram:
 ///
@@ -59,7 +58,8 @@ contract PermissionedRegistry is
     IRegistry,
     ERC1155Singleton,
     EnhancedAccessControl,
-    IPermissionedRegistry
+    IPermissionedRegistry,
+    MetadataMixin
 {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -76,9 +76,14 @@ contract PermissionedRegistry is
         uint64 expiry;
         /// @dev Resolver address for this name.
         address resolver;
-        /// @dev URI or embedded renderer address.
-        bytes uriData;
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Constants
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice The shared label database.
+    ILabelStore public immutable LABEL_STORE;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
@@ -88,9 +93,6 @@ contract PermissionedRegistry is
     IRegistry internal _parentRegistry;
     /// @dev The child label of this registry.
     string internal _childLabel;
-    /// @dev The default URI or embedded renderer address.
-    bytes internal _uriData;
-
     /// @dev The entries of this registry.
     mapping(uint256 storageId => Entry entry) internal _entries;
 
@@ -100,17 +102,19 @@ contract PermissionedRegistry is
 
     /// @notice Initializes the PermissionedRegistry.
     /// @param hcaFactory The HCA factory to use.
+    /// @param metadata The metadata provider to use.
+    /// @param labelStore The shared label database.
     /// @param ownerAddress The address that will receive the specified roles.
     /// @param ownerRoles The roles to grant to `ownerAddress`.
     constructor(
         IHCAFactoryBasic hcaFactory,
+        IRegistryMetadata metadata,
+        ILabelStore labelStore,
         address ownerAddress,
         uint256 ownerRoles
-    ) HCAEquivalence(hcaFactory) {
-        if (ownerRoles > 0) {
-            emit RegistryCreated();
-            _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
-        }
+    ) HCAEquivalence(hcaFactory) MetadataMixin(metadata) {
+        LABEL_STORE = labelStore;
+        _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
     }
 
     /// @inheritdoc IERC165
@@ -154,27 +158,6 @@ contract PermissionedRegistry is
         emit ResolverUpdated(tokenId, resolver, _msgSender());
     }
 
-    /// @notice Set the metadata URI for the registry.
-    /// @param uriData The URI string or embedded renderer address.
-    function setDefaultURI(
-        bytes memory uriData
-    ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_SET_URI) {
-        _uriData = uriData;
-        emit URIUpdated(0, uriData, _msgSender());
-    }
-
-    /// @notice Set the metadata URI for a token.
-    /// @param anyId The labelhash, token ID, or resource.
-    /// @param uriData The URI string or embedded renderer address.
-    function setURI(uint256 anyId, bytes memory uriData) public virtual {
-        (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
-            anyId,
-            RegistryRolesLib.ROLE_SET_URI
-        );
-        entry.uriData = uriData;
-        emit URIUpdated(tokenId, uriData, _msgSender());
-    }
-
     /// @inheritdoc IStandardRegistry
     function setParent(
         IRegistry parent,
@@ -198,7 +181,7 @@ contract PermissionedRegistry is
         uint256 roleBitmap,
         uint64 expiry
     ) public virtual override returns (uint256 tokenId) {
-        NameCoder.assertLabelSize(label);
+        LABEL_STORE.setLabel(label);
         uint256 labelId = LibLabel.id(label);
         Entry storage entry = _entry(labelId);
         tokenId = _constructTokenId(labelId, entry);
@@ -236,6 +219,7 @@ contract PermissionedRegistry is
         entry.expiry = expiry;
         entry.subregistry = registry;
         entry.resolver = resolver;
+        // emit LabelRegistered before mint so we can determine this is a registry (in an indexer)
         if (owner == address(0)) {
             emit LabelReserved(tokenId, bytes32(labelId), label, expiry, sender);
         } else {
@@ -320,14 +304,8 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc ERC1155Singleton
-    function uri(uint256 tokenId) public view override returns (string memory uri_) {
-        Entry storage entry = _entry(tokenId);
-        if (tokenId == _constructTokenId(tokenId, entry)) {
-            uri_ = _toURI(entry.uriData, tokenId);
-            if (bytes(uri_).length == 0) {
-                uri_ = _toURI(_uriData, tokenId);
-            }
-        }
+    function uri(uint256 tokenId) public view override returns (string memory) {
+        return _tokenURI(tokenId);
     }
 
     /// @inheritdoc IStandardRegistry
@@ -563,18 +541,6 @@ contract PermissionedRegistry is
     /// @dev Internal logic for expired status.
     function _isExpired(uint64 expiry) internal view returns (bool) {
         return block.timestamp >= expiry;
-    }
-
-    /// @dev Convert URI data into URI string.
-    /// @param uriData The URI data or embedded renderer address.
-    /// @param tokenId The token ID.
-    /// @return The URI string.
-    function _toURI(bytes memory uriData, uint256 tokenId) internal view returns (string memory) {
-        if (uriData.length == 21 && uint8(uriData[0]) == 1) {
-            address a = address(bytes20(bytes32(uriData) << 8));
-            return IRegistryURIRenderer(a).renderURI(this, tokenId);
-        }
-        return string(uriData);
     }
 
     /// @dev Create `resource` from parts.

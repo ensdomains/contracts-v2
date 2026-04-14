@@ -3,7 +3,9 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Vm, Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
+
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
@@ -16,20 +18,23 @@ import {
     IEnhancedAccessControl,
     IRegistry,
     IStandardRegistry,
-    IRegistryURIRenderer,
+    IRegistryMetadata,
     IHCAFactoryBasic,
     RegistryRolesLib,
-    NameCoder,
     LibLabel
 } from "~src/registry/PermissionedRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
+import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
+import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 uint256 constant ROOT_ROLES = EACBaseRolesLib.ALL_ROLES;
 
-contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
+contract PermissionedRegistryTest is Test, ERC1155Holder {
     MockPermissionedRegistry registry;
     MockHCAFactoryBasic hcaFactory;
+    IRegistryMetadata metadata;
+    LabelStore labelStore;
 
     address user1 = makeAddr("user1");
     address user2 = makeAddr("user2");
@@ -44,18 +49,22 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
-        vm.expectEmit();
-        emit IRegistry.RegistryCreated();
-        registry = new MockPermissionedRegistry(hcaFactory, address(this), ROOT_ROLES);
-    }
-
-    function test_init_noRoles() external {
-        vm.recordLogs();
-        new PermissionedRegistry(hcaFactory, metadata, address(this), 0);
-        _expectNoEmit(vm.getRecordedLogs(), IRegistry.RegistryCreated.selector);
+        metadata = new SimpleRegistryMetadata(hcaFactory);
+        labelStore = new LabelStore();
+        registry = new MockPermissionedRegistry(
+            hcaFactory,
+            metadata,
+            labelStore,
+            address(this),
+            ROOT_ROLES
+        );
     }
 
     function test_constructor() external view {
+        assertEq(address(registry.HCA_FACTORY()), address(hcaFactory), "HCA_FACTORY");
+        assertEq(address(registry.METADATA_PROVIDER()), address(metadata), "METADATA_PROVIDER");
+        assertEq(address(registry.LABEL_STORE()), address(labelStore), "LABEL_STORE");
+
         assertTrue(registry.hasRootRoles(ROOT_ROLES, address(this)));
     }
 
@@ -79,6 +88,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256 labelId = LibLabel.id(testLabel);
         uint256 expectedTokenId = LibLabel.withVersion(labelId, 0);
         vm.expectEmit();
+        emit ILabelStore.Label(bytes32(labelId), testLabel);
+        vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
             expectedTokenId,
             bytes32(labelId),
@@ -101,6 +112,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
         assertEq(address(registry.getSubregistry(testLabel)), address(testRegistry), "registry");
         assertTrue(registry.hasRoles(tokenId, testRoles, testOwner), "roles");
+        assertEq(labelStore.getLabel(tokenId), testLabel, "label");
     }
 
     function test_register_expired() external {
@@ -180,10 +192,13 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     ////////////////////////////////////////////////////////////////////////
 
     function test_reserve() external {
+        uint256 labelId = LibLabel.id(testLabel);
+        vm.expectEmit();
+        emit ILabelStore.Label(bytes32(labelId), testLabel);
         vm.expectEmit();
         emit IRegistryEvents.LabelReserved(
-            LibLabel.withVersion(LibLabel.id(testLabel), 0),
-            bytes32(LibLabel.id(testLabel)),
+            LibLabel.withVersion(labelId, 0),
+            bytes32(labelId),
             testLabel,
             testExpiry,
             address(this)
@@ -195,6 +210,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(state.expiry, testExpiry, "expiry");
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
         assertEq(address(registry.getSubregistry(testLabel)), address(0), "registry");
+        assertEq(labelStore.getLabel(tokenId), testLabel, "label");
     }
 
     function test_reserve_alreadyReserved() external {
@@ -203,6 +219,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         vm.expectRevert(
             abi.encodeWithSelector(IPermissionedRegistry.LabelAlreadyReserved.selector, testLabel)
         );
+        vm.prank(actor);
         this._reserve();
     }
 
@@ -1102,81 +1119,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // setDefaultURI(), setURI(), and uri()
-    ////////////////////////////////////////////////////////////////////////
-
-    // IRegistryURIRenderer
-    function renderURI(IRegistry, uint256 tokenId) external pure returns (string memory) {
-        return vm.toString(tokenId);
-    }
-
-    function test_setDefaultURI_string() external {
-        string memory uri = "ipfs://base/{id}";
-        registry.setDefaultURI(bytes(uri));
-
-        uint256 tokenId = this._register();
-        assertEq(registry.uri(0), uri);
-        assertEq(registry.uri(tokenId), uri);
-    }
-
-    function test_setDefaultURI_renderer() external {
-        registry.setDefaultURI(abi.encodePacked(uint8(1), address(this)));
-
-        uint256 tokenId = this._register();
-        assertEq(registry.uri(0), vm.toString(uint256(0)));
-        assertEq(registry.uri(tokenId), vm.toString(tokenId));
-    }
-
-    function test_setDefaultURI_notAuthorized() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                registry.ROOT_RESOURCE(),
-                RegistryRolesLib.ROLE_SET_URI,
-                actor
-            )
-        );
-        vm.prank(actor);
-        registry.setDefaultURI("");
-    }
-
-    function test_setURI_string() external {
-        string memory uri = "ipfs://base/123";
-
-        testRoles = RegistryRolesLib.ROLE_SET_URI;
-        uint256 tokenId = this._register();
-        vm.prank(testOwner);
-        registry.setURI(tokenId, bytes(uri));
-
-        assertEq(registry.uri(0), "");
-        assertEq(registry.uri(tokenId), uri);
-    }
-
-    function test_setURI_renderer() external {
-        testRoles = RegistryRolesLib.ROLE_SET_URI;
-        uint256 tokenId = this._register();
-        vm.prank(testOwner);
-        registry.setURI(tokenId, abi.encodePacked(uint8(1), address(this)));
-
-        assertEq(registry.uri(0), "");
-        assertEq(registry.uri(tokenId), vm.toString(tokenId));
-    }
-
-    function test_setURI_notAuthorized() external {
-        uint256 tokenId = this._register();
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                tokenId,
-                RegistryRolesLib.ROLE_SET_URI,
-                actor
-            )
-        );
-        vm.prank(actor);
-        registry.setURI(tokenId, "");
-    }
-
-    ////////////////////////////////////////////////////////////////////////
     // Specific Cases
     ////////////////////////////////////////////////////////////////////////
 
@@ -1345,9 +1287,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 contract MockPermissionedRegistry is PermissionedRegistry {
     constructor(
         IHCAFactoryBasic hcaFactory,
+        IRegistryMetadata metadata,
+        ILabelStore labelStore,
         address ownerAddress,
         uint256 ownerRoles
-    ) PermissionedRegistry(hcaFactory, ownerAddress, ownerRoles) {}
+    ) PermissionedRegistry(hcaFactory, metadata, labelStore, ownerAddress, ownerRoles) {}
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
     }

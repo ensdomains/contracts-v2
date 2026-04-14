@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {Vm, console} from "forge-std/Test.sol";
+import {console} from "forge-std/console.sol";
 import {
     INameWrapper,
     OperationProhibited,
@@ -58,14 +58,14 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
     function setUp() public override {
         super.setUp();
-        vm.recordLogs();
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
             verifiableFactory,
             address(ensV1Resolver),
-            hcaFactory
+            hcaFactory,
+            metadata,
+            labelStore
         );
-        _expectNoEmit(vm.getRecordedLogs(), IRegistry.RegistryCreated.selector);
         migrationController = new LockedMigrationController(
             nameWrapper,
             ethRegistry,
@@ -281,8 +281,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit ENS.NewResolver(node, address(0));
         // emit IERC1967.Upgraded()
-        vm.expectEmit();
-        emit IRegistry.RegistryCreated();
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
             0 /*ROOT_RESOURCE*/,
@@ -728,13 +726,5 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 subregistry: IRegistry(address(0)), // ignored by LockedMigrationController
                 resolver: testResolver
             });
-    }
-
-    function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {
-        for (uint256 i; i < logs.length; ++i) {
-            if (logs[i].topics[0] == topic0) {
-                revert(string.concat("found unexpected event: ", vm.toString(topic0)));
-            }
-        }
     }
 }

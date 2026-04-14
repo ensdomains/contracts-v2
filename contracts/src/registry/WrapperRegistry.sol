@@ -12,8 +12,10 @@ import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol"
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
+import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {IRegistry} from "./interfaces/IRegistry.sol";
+import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
@@ -50,13 +52,17 @@ contract WrapperRegistry is
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.
     /// @param hcaFactory The HCA factory.
+    /// @param metadataProvider The metadata provider.
+    /// @param labelStore The shared label database.
     constructor(
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
         address ensV1Resolver,
-        IHCAFactoryBasic hcaFactory
+        IHCAFactoryBasic hcaFactory,
+        IRegistryMetadata metadataProvider,
+        ILabelStore labelStore
     )
-        PermissionedRegistry(hcaFactory, address(0), 0) // no roles are granted
+        PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0) // no roles are granted
         LockedWrapperReceiver(nameWrapper, verifiableFactory, address(this))
     {
         V1_RESOLVER = ensV1Resolver;
@@ -91,7 +97,6 @@ contract WrapperRegistry is
         // setup canonical parent (ROLE_SET_PARENT is not granted)
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
-        emit RegistryCreated();
         _grantRoles(
             ROOT_RESOURCE,
             RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | roleBitmap,
