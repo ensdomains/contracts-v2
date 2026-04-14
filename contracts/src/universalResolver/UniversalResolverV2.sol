@@ -1,16 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {
-    AbstractUniversalResolver,
-    IGatewayProvider
+    AbstractUniversalResolver
 } from "@ens/contracts/universalResolver/AbstractUniversalResolver.sol";
 
-import {LibRegistry, IRegistry} from "./libraries/LibRegistry.sol";
+import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+
+import {IUniversalResolverV2} from "./interfaces/IUniversalResolverV2.sol";
+import {LibRegistry} from "./libraries/LibRegistry.sol";
 
 /// @notice ENS Universal Resolver that traverses the namechain registry hierarchy to locate
 ///         resolvers and registries for any DNS-encoded name.
-contract UniversalResolverV2 is AbstractUniversalResolver {
+contract UniversalResolverV2 is AbstractUniversalResolver, IUniversalResolverV2 {
+    ////////////////////////////////////////////////////////////////////////
+    // Constants
+    ////////////////////////////////////////////////////////////////////////
+
     /// @notice The ENSv2 root registry.
     IRegistry public immutable ROOT_REGISTRY;
 
@@ -28,39 +35,40 @@ contract UniversalResolverV2 is AbstractUniversalResolver {
         ROOT_REGISTRY = root;
     }
 
+    /// @inheritdoc AbstractUniversalResolver
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(AbstractUniversalResolver) returns (bool) {
+        return
+            type(IUniversalResolverV2).interfaceId == interfaceId ||
+            super.supportsInterface(interfaceId);
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Construct the canonical name for `registry`.
-    /// @param registry The registry to name.
-    /// @return The DNS-encoded name or empty if not canonical.
+    /// @inheritdoc IUniversalResolverV2
     function findCanonicalName(IRegistry registry) external view returns (bytes memory) {
         return LibRegistry.findCanonicalName(ROOT_REGISTRY, registry);
     }
 
-    /// @notice Find the canonical registry for `name`.
-    /// @param name The DNS-encoded name.
-    /// @return The canonical registry or null if not canonical.
+    /// @inheritdoc IUniversalResolverV2
     function findCanonicalRegistry(bytes calldata name) external view returns (IRegistry) {
         return LibRegistry.findCanonicalRegistry(ROOT_REGISTRY, name);
     }
 
-    /// @notice Find the exact registry for `name`.
-    /// @param name The DNS-encoded name.
-    /// @return The canonical registry or null if not found.
+    /// @inheritdoc IUniversalResolverV2
     function findExactRegistry(bytes calldata name) external view returns (IRegistry) {
         return LibRegistry.findExactRegistry(ROOT_REGISTRY, name, 0);
     }
 
-    /// @notice Find all registries in the ancestry of `name`.
-    /// * `findRegistries("") = [<root>]`
-    /// * `findRegistries("eth") = [<eth>, <root>]`
-    /// * `findRegistries("nick.eth") = [<nick>, <eth>, <root>]`
-    /// * `findRegistries("sub.nick.eth") = [null, <nick>, <eth>, <root>]`
-    ///
-    /// @param name The DNS-encoded name.
-    /// @return Array of registries in label-order.
+    /// @inheritdoc IUniversalResolverV2
+    function findParentRegistry(bytes calldata name) external view returns (IRegistry) {
+        return LibRegistry.findParentRegistry(ROOT_REGISTRY, name, 0);
+    }
+
+    /// @inheritdoc IUniversalResolverV2
     function findRegistries(bytes calldata name) external view returns (IRegistry[] memory) {
         return LibRegistry.findRegistries(ROOT_REGISTRY, name, 0);
     }
