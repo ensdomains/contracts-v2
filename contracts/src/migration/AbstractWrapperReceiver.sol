@@ -2,7 +2,7 @@
 pragma solidity >=0.8.13;
 
 import {ENS} from "@ens/contracts/registry/ENS.sol";
-import {INameWrapper, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {ERC165, IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
@@ -23,7 +23,7 @@ import {LibMigration} from "./libraries/LibMigration.sol";
 /// 1. UnlockedMigrationController accepts unlocked tokens.
 /// 2. LockedWrapperReceiver accepts locked tokens.
 ///
-/// `_isLocked()` determines lock status.
+/// `LibMigration.isLocked()` determines lock status.
 ///
 abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     ////////////////////////////////////////////////////////////////////////
@@ -32,6 +32,9 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
 
     /// @notice The ENSv1 `NameWrapper` contract that holds wrapped names as ERC1155 tokens.
     INameWrapper public immutable NAME_WRAPPER;
+
+    /// @notice The ENSv1 `BaseRegistrar` token graveyard.
+    address public immutable GRAVEYARD;
 
     /// @dev The ENSv1 `ENSRegistry` contract.
     ENS internal immutable _REGISTRY_V1;
@@ -68,8 +71,10 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
 
     /// @notice Initializes AbstractWrapperReceiver.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
-    constructor(INameWrapper nameWrapper) {
+    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
+    constructor(INameWrapper nameWrapper, address graveyard) {
         NAME_WRAPPER = nameWrapper;
+        GRAVEYARD = graveyard;
         _REGISTRY_V1 = nameWrapper.ens();
     }
 
@@ -174,11 +179,4 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
         uint256[] calldata ids,
         LibMigration.Data[] calldata mds
     ) internal virtual;
-
-    /// @dev Returns `true` if the NameWrapper token is locked.
-    function _isLocked(uint32 fuses) internal pure returns (bool) {
-        // PARENT_CANNOT_CONTROL is required to set CANNOT_UNWRAP, so CANNOT_UNWRAP is sufficient
-        // see: V1Fixture.t.sol: `test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL()`
-        return (fuses & CANNOT_UNWRAP) != 0;
-    }
 }

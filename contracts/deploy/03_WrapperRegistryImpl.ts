@@ -5,6 +5,8 @@ export default execute(
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
+    const graveyard = get<(typeof artifacts.Graveyard)["abi"]>("Graveyard");
+
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
@@ -29,6 +31,7 @@ export default execute(
       artifact: artifacts.WrapperRegistry,
       args: [
         nameWrapper.address,
+        graveyard.address,
         verifiableFactory.address,
         ensV1Resolver.address,
         hcaFactory.address,
@@ -42,6 +45,7 @@ export default execute(
     tags: ["WrapperRegistryImpl", "v2"],
     dependencies: [
       "NameWrapper",
+      "Graveyard",
       "HCAFactory",
       "SimpleRegistryMetadata",
       "VerifiableFactory",

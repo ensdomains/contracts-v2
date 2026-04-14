@@ -12,7 +12,6 @@ import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol"
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
-import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
@@ -49,29 +48,21 @@ contract WrapperRegistry is
 
     /// @notice Creates the WrapperRegistry implementation.
     /// @param nameWrapper The ENSv1 NameWrapper.
+    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.
     /// @param hcaFactory The HCA factory.
     /// @param metadataProvider The metadata provider.
-    /// @param publicResolverSet The approved list of `PublicResolver` contracts.
-    /// @param publicResolver The replacement `PublicResolver`.
     constructor(
         INameWrapper nameWrapper,
+        address graveyard,
         VerifiableFactory verifiableFactory,
         address ensV1Resolver,
         IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadataProvider,
-        IAddressSet publicResolverSet,
-        address publicResolver
+        IRegistryMetadata metadataProvider
     )
         PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) // no roles are granted
-        LockedWrapperReceiver(
-            nameWrapper,
-            verifiableFactory,
-            address(this),
-            publicResolverSet,
-            publicResolver
-        )
+        LockedWrapperReceiver(nameWrapper, graveyard, verifiableFactory, address(this))
     {
         V1_RESOLVER = ensV1Resolver;
         _disableInitializers();

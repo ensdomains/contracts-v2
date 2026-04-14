@@ -22,7 +22,7 @@ import {LibMigration} from "./libraries/LibMigration.sol";
 ///
 /// Supports (2) token sources:
 /// 1. NameWrapper (ERC-1155) but unlocked only.
-///    Reverts with `NameIsWrapped` if `_isLocked()` => use LockedMigrationController instead.
+///    Reverts with `NameIsWrapped` if `LibMigration.isLocked()` => use LockedMigrationController instead.
 /// 2. BaseRegistrar (ERC-721)
 ///
 /// Unlike locked migration, no subregistry is deployed and no fuse-to-role translation is
@@ -46,11 +46,13 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
 
     /// @notice Initializes UnlockedMigrationController.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @param burnAddress The burn address.
     /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     constructor(
         INameWrapper nameWrapper,
+        address burnAddress,
         IPermissionedRegistry ethRegistry
-    ) AbstractWrapperReceiver(nameWrapper) {
+    ) AbstractWrapperReceiver(nameWrapper, burnAddress) {
         ETH_REGISTRY = ethRegistry;
         _REGISTRAR_V1 = nameWrapper.registrar();
     }
@@ -89,12 +91,14 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         if (tokenId != uint256(keccak256(bytes(md.label)))) {
             revert LibMigration.NameDataMismatch(tokenId);
         }
-        // clear ENSv1 resolver
         _REGISTRAR_V1.reclaim(tokenId, address(this));
-        _REGISTRY_V1.setResolver(
+        _REGISTRY_V1.setRecord(
             NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenId)),
-            address(0)
+            GRAVEYARD, // transfer ownership to graveyard
+            address(0), // clear ENSv1 resolver
+            0
         );
+        _REGISTRAR_V1.safeTransferFrom(address(this), GRAVEYARD, tokenId); // transfer token to graveyard
         _inject(md);
         return this.onERC721Received.selector;
     }
@@ -115,15 +119,15 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         for (uint256 i; i < ids.length; ++i) {
             uint256 id = ids[i];
             (, uint32 fuses, ) = NAME_WRAPPER.getData(id);
-            if (_isLocked(fuses)) {
+            if (LibMigration.isLocked(fuses)) {
                 revert LibMigration.NameIsLocked(id);
             }
             bytes32 labelHash = keccak256(bytes(mds[i].label));
             if (bytes32(id) != NameCoder.namehash(NameCoder.ETH_NODE, labelHash)) {
                 revert LibMigration.NameDataMismatch(id);
             }
-            // clear ENSv1 resolver
-            NAME_WRAPPER.setResolver(bytes32(id), address(0));
+            NAME_WRAPPER.setResolver(bytes32(id), address(0)); // clear ENSv1 resolver
+            NAME_WRAPPER.unwrapETH2LD(labelHash, GRAVEYARD, GRAVEYARD); // unwrap and transfer to graveyard
             _inject(mds[i]);
         }
     }

@@ -7,7 +7,6 @@ import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactor
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
-import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 
@@ -30,27 +29,17 @@ contract LockedMigrationController is LockedWrapperReceiver {
 
     /// @notice Initializes LockedMigrationController.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
-    /// @param publicResolverSet The approved list of `PublicResolver` contracts.
-    /// @param publicResolver The replacement `PublicResolver`.
     constructor(
         INameWrapper nameWrapper,
+        address graveyard,
         IPermissionedRegistry ethRegistry,
         VerifiableFactory verifiableFactory,
-        address wrapperRegistryImpl,
-        IAddressSet publicResolverSet,
-        address publicResolver
-    )
-        LockedWrapperReceiver(
-            nameWrapper,
-            verifiableFactory,
-            wrapperRegistryImpl,
-            publicResolverSet,
-            publicResolver
-        )
-    {
+        address wrapperRegistryImpl
+    ) LockedWrapperReceiver(nameWrapper, graveyard, verifiableFactory, wrapperRegistryImpl) {
         ETH_REGISTRY = ethRegistry;
     }
 
