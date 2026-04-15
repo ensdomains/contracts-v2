@@ -33,7 +33,7 @@ contract LockedMigrationController is LockedWrapperReceiver {
     /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
-    /// @param publicResolverSet The approved list of `PublicResolver` contracts.
+    /// @param publicResolverSet The list of `PublicResolver` contracts that require replacement.
     /// @param publicResolver The replacement `PublicResolver`.
     constructor(
         INameWrapper nameWrapper,
