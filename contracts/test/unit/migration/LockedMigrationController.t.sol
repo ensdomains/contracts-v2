@@ -50,19 +50,19 @@ import {
     NameCoder
 } from "./MigrationControllerFixture.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
-import {PermissionedAddresses} from "~src/utils/PermissionedAddresses.sol";
+import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture, VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
     WrapperRegistry wrapperRegistryImpl;
-    PermissionedAddresses publicResolverSet;
+    PermissionedAddressSet publicResolverSet;
     PublicResolverV2 publicResolver;
 
     function setUp() public override {
         super.setUp();
-        publicResolverSet = new PermissionedAddresses(hcaFactory, address(this));
+        publicResolverSet = new PermissionedAddressSet(hcaFactory, address(this));
         publicResolver = new PublicResolverV2(hcaFactory, nameWrapper, rootRegistry);
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,

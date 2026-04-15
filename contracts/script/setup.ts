@@ -353,7 +353,7 @@ export async function setupDevnet({
         client,
       }),
       PublicResolverSet: getContract({
-        abi: artifacts.PermissionedAddresses.abi,
+        abi: artifacts.PermissionedAddressSet.abi,
         address: rocketh.get("PublicResolverSet").address,
         client,
       }),
