@@ -1,5 +1,5 @@
 import { describe, it } from "bun:test";
-import type { AbiParameter, AbiParameterToPrimitiveType } from "abitype";
+import type { AbiParameter, AbiParameterToPrimitiveType } from "viem";
 import {
   type Account,
   type Address,
@@ -157,7 +157,7 @@ describe("Migration", () => {
             args.target ?? env.v2.UnlockedMigrationController.address,
             this.tokenId,
             typeof args.data === "string"
-              ? args.data
+              ? (args.data as `0x${string}`)
               : encodeMigrationData(await this.makeData(args.data)),
           ],
           { account: args.sender ?? this.account },
@@ -229,7 +229,7 @@ describe("Migration", () => {
             this.tokenId,
             1n,
             typeof args.data === "string"
-              ? args.data
+              ? (args.data as `0x${string}`)
               : encodeMigrationData(await this.makeData(args.data)),
           ],
           { account: args.sender ?? this.account },
