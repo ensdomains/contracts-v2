@@ -41,13 +41,15 @@ import {WrapperRegistry, IWrapperRegistry} from "~src/registry/WrapperRegistry.s
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
 import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
+import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
+import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
     ApprovedUpgradeGate approvedUpgradeGate;
     WrapperRegistry wrapperRegistryImpl;
-    PermissionedAddresses publicResolverSet;
+    PermissionedAddressSet publicResolverSet;
     PublicResolverV2 publicResolver;
 
     function setUp() external {

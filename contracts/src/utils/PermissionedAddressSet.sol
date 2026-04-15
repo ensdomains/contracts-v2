@@ -7,17 +7,27 @@ import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 
 import {IAddressSet} from "./interfaces/IAddressSet.sol";
 
-uint256 constant ROLE_APPROVE = 0;
+uint256 constant ROLE_APPROVE = 1 << 0;
 uint256 constant ROLE_APPROVE_ADMIN = ROLE_APPROVE << 128;
 
 /// @notice An arbitrary set of addresses managed by EAC.
-contract PermissionedAddresses is EnhancedAccessControl, IAddressSet {
+contract PermissionedAddressSet is EnhancedAccessControl, IAddressSet {
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev TODO
+    /// @dev Mapping that determines members of the set.
     mapping(address addr => bool approved) internal _approved;
+
+    ////////////////////////////////////////////////////////////////////////
+    // Events
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Inclusion of a member of the set has changed.
+    /// @param addr The address.
+    /// @param approved If `true`, added, otherwise removed.
+    /// @param sender The sender of the change.
+    event ApprovalChanged(address indexed addr, bool approved, address indexed sender);
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -41,11 +51,13 @@ contract PermissionedAddresses is EnhancedAccessControl, IAddressSet {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Add or remove `addr` from the set.
+    /// @notice Add or remove a member from the set.
     /// @param addr The address to approve.
     /// @param approved If `true`, added, otherwise removed.
     function approve(address addr, bool approved) external onlyRootRoles(ROLE_APPROVE) {
+        require(_approved[addr] != approved);
         _approved[addr] = approved;
+        emit ApprovalChanged(addr, approved, _msgSender());
     }
 
     /// @inheritdoc IAddressSet
