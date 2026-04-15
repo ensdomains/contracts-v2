@@ -109,7 +109,7 @@ export interface PreMigrationConfig {
   dryRun: boolean;
   continue?: boolean;
   disableCheckpoint?: boolean;
-  minExpiryDays: number;
+  gracePeriodDays: number;
   v1ResolverAddress: Address;
   v1BaseRegistrarAddress: Address;
 }
@@ -296,13 +296,6 @@ class PreMigrationLogger extends Logger {
     );
   }
 
-  skippingExpiringSoon(name: string, daysUntilExpiry: number): void {
-    this.raw(
-      yellow(`  → ⊘ Skipping: ${bold(name)}.eth`) +
-        dim(` (expires in ${daysUntilExpiry} days)`),
-      `  → ⊘ Skipping: ${name}.eth (expires in ${daysUntilExpiry} days)`,
-    );
-  }
 }
 
 const logger = new PreMigrationLogger();
@@ -849,9 +842,7 @@ async function processBatch(
   const alreadyReservedNames = new Set<string>();
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
 
-  const minExpiryThreshold = BigInt(
-    Math.floor(Date.now() / 1000) + config.minExpiryDays * 86400,
-  );
+  const gracePeriodSeconds = BigInt(config.gracePeriodDays) * 86400n;
 
   const verificationResults = await batchVerifyRegistrations(
     registrations,
@@ -908,24 +899,15 @@ async function processBatch(
       continue;
     }
 
-    if (result.v1Expiry <= minExpiryThreshold) {
-      const daysUntilExpiry = Number(
-        (result.v1Expiry - BigInt(Math.floor(Date.now() / 1000))) / 86400n,
-      );
-      logger.skippingExpiringSoon(registration.labelName, daysUntilExpiry);
-      checkpoint.skippedCount++;
-      checkpoint.totalProcessed++;
-      logger.finishedName(registration.labelName, "skipped");
-      continue;
-    }
+    const effectiveExpiry = result.v1Expiry + gracePeriodSeconds;
 
-    const expiryDateFormatted = new Date(Number(result.v1Expiry) * 1000)
+    const expiryDateFormatted = new Date(Number(effectiveExpiry) * 1000)
       .toISOString()
       .split("T")[0];
     logger.v1Verified(registration.labelName, expiryDateFormatted);
 
     batchLabels.push(registration.labelName);
-    batchExpires.push(result.v1Expiry);
+    batchExpires.push(effectiveExpiry);
   }
 
   if (batchLabels.length > 0 && !config.dryRun) {
@@ -1013,7 +995,7 @@ function printFinalSummary(checkpoint: Checkpoint): void {
     cyan(checkpoint.renewedCount.toString()),
   );
   logger.config(
-    "Skipped (expiring soon/already up-to-date/expired)",
+    "Skipped (already up-to-date/expired)",
     yellow(checkpoint.skippedCount.toString()),
   );
   logger.config(
@@ -1091,9 +1073,9 @@ export async function main(argv = process.argv): Promise<void> {
       false,
     )
     .option(
-      "--min-expiry-days <days>",
-      "Skip names expiring within this many days",
-      "7",
+      "--grace-period-days <days>",
+      "Days of grace period to add on top of each name's v1 expiry",
+      "90",
     )
     .requiredOption(
       "--v1-resolver <address>",
@@ -1129,9 +1111,9 @@ export async function main(argv = process.argv): Promise<void> {
     limit: opts.limit ? parseInt(opts.limit) : null,
     dryRun: opts.dryRun,
     continue: opts.continue,
-    minExpiryDays: Number.isNaN(parseInt(opts.minExpiryDays))
-      ? 7
-      : parseInt(opts.minExpiryDays),
+    gracePeriodDays: Number.isNaN(parseInt(opts.gracePeriodDays))
+      ? 90
+      : parseInt(opts.gracePeriodDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
   };
@@ -1151,7 +1133,7 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config("Mainnet RPC (v1)", config.mainnetRpcUrl);
     logger.config("CSV File", config.csvFilePath);
     logger.config("Batch Size", config.batchSize);
-    logger.config("Min Expiry Days", config.minExpiryDays);
+    logger.config("Grace Period Days", config.gracePeriodDays);
     logger.config("V1 Resolver", config.v1ResolverAddress);
     logger.config("Limit", config.limit ?? "none");
     logger.config("Dry Run", config.dryRun);
