@@ -51,7 +51,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @notice The `WrapperRegistry` implementation contract.
     address public immutable WRAPPER_REGISTRY_IMPL;
 
-    /// @notice The approved list of `PublicResolver` contracts.
+    /// @notice The list of `PublicResolver` contracts that require replacement.
     IAddressSet public immutable PUBLIC_RESOLVER_SET;
 
     /// @notice The replacement `PublicResolver`.
