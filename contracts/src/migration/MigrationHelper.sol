@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {INameWrapper, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
@@ -146,7 +146,7 @@ contract MigrationHelper is HCAEquivalence {
     function _checkOperatorApproval(address nft, address owner, address operator) internal view {
         if (operator != owner) {
             // transfer() will check if from is approved by this contract
-            // both IBaseRegistrar and INameWrapper implement isApprovedForAll()
+            // note: both IBaseRegistrar and INameWrapper implement isApprovedForAll()
             if (!INameWrapper(nft).isApprovedForAll(owner, operator)) {
                 revert InvalidOwner();
             }
