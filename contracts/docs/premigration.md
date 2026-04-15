@@ -48,7 +48,7 @@ bun run script/preMigration.ts [options]
 | `--limit <number>` | none | Maximum total names to process |
 | `--dry-run` | `false` | Simulate without sending transactions |
 | `--continue` | `false` | Resume from the last checkpoint |
-| `--min-expiry-days <days>` | `7` | Pad v2 expiry so no reserved name expires within this many days. Names whose v1 expiry falls within the window are reserved on v2 with the expiry extended up to `now + minExpiryDays`. |
+| `--grace-period-days <days>` | `90` | Days of grace period added on top of each name's v1 expiry. Every reserved name gets `v1Expiry + gracePeriodDays` as its v2 expiry. Set to `0` to preserve v1 expiries exactly. |
 | `--v1-base-registrar <address>` | `0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85` | v1 BaseRegistrar address for expiry lookups |
 
 ## CSV Format
@@ -85,8 +85,7 @@ The script handles quoted fields and escaped quotes within CSV values.
    - If already **registered** (status 2): fail — name is fully owned on v2
    - If already **reserved** (status 1): mark for potential renewal
    - If not registered or expired on v1: skip
-   - If v1 expiry is within `--min-expiry-days`: pad the v2 expiry up to `now + min-expiry-days` and add to the batch
-   - Otherwise: add to the batch reservation list with the v1 expiry
+   - Add to the batch reservation list with v2 expiry = `v1Expiry + --grace-period-days`
 9. **Estimate gas** for the batch and preemptively split if estimated gas exceeds 80% of the block gas limit
 10. **Submit batch transaction** via `BatchRegistrar.batchRegister()`. If a batch reverts, recursively split it in half (binary-search fallback) until individual failing names are isolated.
 11. **Save checkpoint** after each batch
@@ -101,7 +100,6 @@ The script handles quoted fields and escaped quotes within CSV values.
 | Reserved (1) | Registered with same expiry | **Skip** (already up-to-date) |
 | Registered (2) | Any | **Fail** (already fully registered) |
 | Any | Expired or never registered | **Skip** |
-| Available (0) | Expiring within `min-expiry-days` | **Reserve** on v2 with padded expiry (`now + min-expiry-days`) |
 
 ### On-Chain Registration Parameters
 
@@ -110,7 +108,7 @@ Each name is reserved with:
 - **registry**: `address(0)`
 - **resolver**: The ENSV1Resolver address (for fallback resolution to v1 records)
 - **roleBitmap**: `0`
-- **expires**: The v1 expiry timestamp
+- **expires**: The v1 expiry timestamp plus `--grace-period-days`
 
 ## Batch Processing
 
@@ -173,7 +171,7 @@ Dry run still:
 - Reads and parses the CSV
 - Checks v2 state for each name
 - Verifies v1 registration and expiry
-- Applies `--min-expiry-days` padding
+- Applies `--grace-period-days` to each expiry
 - Logs what would happen
 - Saves checkpoints
 
@@ -218,7 +216,6 @@ Success rate:                   99%
 |---|---|
 | Invalid/empty label in CSV | Filtered out before processing, counted as `invalidLabelCount` |
 | Name not registered on v1 | Skipped, counted as `skippedCount` |
-| Name expiring within `min-expiry-days` | Reserved on v2 with expiry padded to `now + min-expiry-days` |
 | Name already fully registered on v2 | Counted as failure |
 | Batch transaction reverts | Binary-search split: recursively halves the batch until individual failures are isolated |
 | Batch gas estimate exceeds 80% of block limit | Preemptively splits the batch before submitting |
@@ -277,13 +274,13 @@ bun run script/preMigration.ts \
 bun run script/preMigration.ts --continue [same options]
 ```
 
-### Pad short expiries to at least 30 days
+### Custom grace period
 
 ```bash
-bun run script/preMigration.ts --min-expiry-days 30 [other options]
+bun run script/preMigration.ts --grace-period-days 180 [other options]
 ```
 
-Any name whose v1 expiry is within 30 days of now is still reserved on v2, but with its v2 expiry extended to `now + 30 days`.
+Every reserved name's v2 expiry is set to `v1Expiry + 180 days`. Pass `0` to preserve v1 expiries exactly.
 
 ### Custom v1 BaseRegistrar (for testing)
 

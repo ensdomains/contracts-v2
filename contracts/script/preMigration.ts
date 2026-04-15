@@ -109,7 +109,7 @@ export interface PreMigrationConfig {
   dryRun: boolean;
   continue?: boolean;
   disableCheckpoint?: boolean;
-  minExpiryDays: number;
+  gracePeriodDays: number;
   v1ResolverAddress: Address;
   v1BaseRegistrarAddress: Address;
 }
@@ -296,17 +296,6 @@ class PreMigrationLogger extends Logger {
     );
   }
 
-  paddingExpiry(
-    name: string,
-    originalDays: number,
-    paddedDays: number,
-  ): void {
-    this.raw(
-      cyan(`  → ⇪ Padding expiry: ${bold(name)}.eth`) +
-        dim(` (${originalDays}d → ${paddedDays}d)`),
-      `  → ⇪ Padding expiry: ${name}.eth (${originalDays}d → ${paddedDays}d)`,
-    );
-  }
 }
 
 const logger = new PreMigrationLogger();
@@ -853,9 +842,7 @@ async function processBatch(
   const alreadyReservedNames = new Set<string>();
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
 
-  const minExpiryThreshold = BigInt(
-    Math.floor(Date.now() / 1000) + config.minExpiryDays * 86400,
-  );
+  const gracePeriodSeconds = BigInt(config.gracePeriodDays) * 86400n;
 
   const verificationResults = await batchVerifyRegistrations(
     registrations,
@@ -912,17 +899,7 @@ async function processBatch(
       continue;
     }
 
-    let effectiveExpiry = result.v1Expiry;
-    if (result.v1Expiry <= minExpiryThreshold) {
-      const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
-      const originalDays = Number((result.v1Expiry - nowSeconds) / 86400n);
-      effectiveExpiry = minExpiryThreshold;
-      logger.paddingExpiry(
-        registration.labelName,
-        originalDays,
-        config.minExpiryDays,
-      );
-    }
+    const effectiveExpiry = result.v1Expiry + gracePeriodSeconds;
 
     const expiryDateFormatted = new Date(Number(effectiveExpiry) * 1000)
       .toISOString()
@@ -1096,9 +1073,9 @@ export async function main(argv = process.argv): Promise<void> {
       false,
     )
     .option(
-      "--min-expiry-days <days>",
-      "Pad v2 expiry so no reserved name expires within this many days",
-      "7",
+      "--grace-period-days <days>",
+      "Days of grace period to add on top of each name's v1 expiry",
+      "90",
     )
     .requiredOption(
       "--v1-resolver <address>",
@@ -1134,9 +1111,9 @@ export async function main(argv = process.argv): Promise<void> {
     limit: opts.limit ? parseInt(opts.limit) : null,
     dryRun: opts.dryRun,
     continue: opts.continue,
-    minExpiryDays: Number.isNaN(parseInt(opts.minExpiryDays))
-      ? 7
-      : parseInt(opts.minExpiryDays),
+    gracePeriodDays: Number.isNaN(parseInt(opts.gracePeriodDays))
+      ? 90
+      : parseInt(opts.gracePeriodDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
   };
@@ -1156,7 +1133,7 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config("Mainnet RPC (v1)", config.mainnetRpcUrl);
     logger.config("CSV File", config.csvFilePath);
     logger.config("Batch Size", config.batchSize);
-    logger.config("Min Expiry Days", config.minExpiryDays);
+    logger.config("Grace Period Days", config.gracePeriodDays);
     logger.config("V1 Resolver", config.v1ResolverAddress);
     logger.config("Limit", config.limit ?? "none");
     logger.config("Dry Run", config.dryRun);

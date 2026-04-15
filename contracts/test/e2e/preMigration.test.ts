@@ -195,48 +195,47 @@ describe("PreMigration", () => {
     expect(state3.status).toBe(STATUS.AVAILABLE);
   });
 
-  it("pads expiries shorter than minExpiryDays", async () => {
+  it("adds grace period to short v1 expiries", async () => {
     const label = "soonexpire";
     const { user } = env.namedAccounts;
 
     const fiveDays = 5 * 24 * 60 * 60;
-    await registerV1Name(env, label, user.address, fiveDays);
+    const v1Expiry = await registerV1Name(
+      env,
+      label,
+      user.address,
+      fiveDays,
+    );
 
     createCSVFile(csvFilePath, [label]);
-    const minExpiryDays = 7;
-    const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
-    const args = buildMainArgs(env, csvFilePath, { minExpiryDays });
+    const gracePeriodDays = 90;
+    const args = buildMainArgs(env, csvFilePath, { gracePeriodDays });
     await main(args);
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-
-    const expectedMin =
-      nowSeconds + BigInt(minExpiryDays) * 86400n - 120n;
-    const expectedMax =
-      BigInt(Math.floor(Date.now() / 1000)) +
-      BigInt(minExpiryDays) * 86400n +
-      120n;
-    expect(state.expiry).toBeGreaterThanOrEqual(expectedMin);
-    expect(state.expiry).toBeLessThanOrEqual(expectedMax);
+    expect(state.expiry).toBe(v1Expiry + BigInt(gracePeriodDays) * 86400n);
   });
 
-  it("preserves v1 expiry when above minExpiryDays threshold", async () => {
+  it("adds grace period to long v1 expiries", async () => {
     const label = "longexpire";
     const { user } = env.namedAccounts;
 
-    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    const v1Expiry = await registerV1Name(
+      env,
+      label,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
 
     createCSVFile(csvFilePath, [label]);
-    const args = buildMainArgs(env, csvFilePath, { minExpiryDays: 7 });
+    const gracePeriodDays = 90;
+    const args = buildMainArgs(env, csvFilePath, { gracePeriodDays });
     await main(args);
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-
-    const paddedCeiling =
-      BigInt(Math.floor(Date.now() / 1000)) + 30n * 86400n;
-    expect(state.expiry).toBeGreaterThan(paddedCeiling);
+    expect(state.expiry).toBe(v1Expiry + BigInt(gracePeriodDays) * 86400n);
   });
 
   it("handles checkpoint resumption", async () => {
