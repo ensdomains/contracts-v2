@@ -188,15 +188,13 @@ contract V1FixtureTest is V1Fixture {
     }
 
     function test_nameWrapper_approveBug() external {
-        bytes memory name = this.registerWrappedETH2LD("test", 0);
+        bytes memory name = registerWrappedETH2LD("test", 0);
         bytes32 node = NameCoder.namehash(name, 0);
         vm.prank(user);
         nameWrapper.approve(friend, uint256(node));
         // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L146-L149
         vm.prank(friend);
-        vm.expectRevert(
-            abi.encodeWithSignature("Error(string)", "ERC1155: caller is not owner nor approved")
-        );
+        vm.expectRevert("ERC1155: caller is not owner nor approved");
         nameWrapper.safeTransferFrom(user, friend, uint256(node), 1, "");
     }
 

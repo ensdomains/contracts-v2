@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 
 import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
@@ -57,22 +57,32 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         string memory label
     ) public virtual returns (bytes memory name, uint256 tokenId) {
         name = NameCoder.ethName(label);
+        address registrant = _determineRegistrant();
         tokenId = uint256(keccak256(bytes(label)));
         vm.prank(ensV1Controller);
-        ethRegistrarV1.register(tokenId, user, 1 days); // test duration
+        ethRegistrarV1.register(tokenId, registrant, 1 days); // test duration
     }
 
     function registerWrappedETH2LD(
         string memory label,
         uint32 ownerFuses
     ) public returns (bytes memory name) {
+        address wrappedOwner = _determineRegistrant();
         uint256 tokenId;
         (name, tokenId) = registerUnwrapped(label);
         address owner = ethRegistrarV1.ownerOf(tokenId);
         vm.prank(owner);
-        ethRegistrarV1.setApprovalForAll(address(nameWrapper), true);
-        vm.prank(owner);
-        nameWrapper.wrapETH2LD(label, owner, uint16(ownerFuses), address(0));
+        ethRegistrarV1.safeTransferFrom(
+            owner,
+            address(nameWrapper),
+            tokenId,
+            abi.encode(
+                label, // label
+                wrappedOwner,
+                uint16(ownerFuses), // fuses
+                address(0) // resolver
+            )
+        );
     }
 
     function createWrappedChild(
@@ -96,20 +106,28 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         uint32 fuses
     ) public returns (bytes memory name) {
         name = NameCoder.encode(domain);
-        _claimNodes(name, 0, user);
+        address registrant = _determineRegistrant();
+        _claimNodes(name, 0, registrant);
         (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
         bytes32 parentNode = NameCoder.namehash(name, offset);
-        vm.prank(user);
+        vm.prank(registrant);
         registryV1.setApprovalForAll(address(nameWrapper), true);
-        vm.prank(user);
-        nameWrapper.wrap(name, user, address(0));
+        vm.prank(registrant);
+        nameWrapper.wrap(name, registrant, address(0));
         if (fuses != 0) {
-            vm.prank(user);
+            vm.prank(registrant);
             nameWrapper.setFuses(NameCoder.namehash(parentNode, labelHash), uint16(fuses));
         }
     }
 
     function findResolverV1(bytes memory name) public view returns (address resolver) {
         (resolver, , ) = RegistryUtils.findResolver(registryV1, name, 0);
+    }
+
+    function _determineRegistrant() internal view returns (address registrant) {
+        registrant = msg.sender;
+        if (registrant == DEFAULT_SENDER) {
+            registrant = user;
+        }
     }
 }
