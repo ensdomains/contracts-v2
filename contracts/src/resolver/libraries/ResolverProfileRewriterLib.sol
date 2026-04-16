@@ -10,8 +10,6 @@ pragma solidity >=0.8.13;
 /// the original calldata must be updated with the new node before forwarding to the actual
 /// resolver logic.
 ///
-/// Reverts `Panic(0x32)` if write is out of bounds.
-///
 library ResolverProfileRewriterLib {
     /// @dev Replace the node in the calldata with a new node.
     ///      Supports `multicall()` to arbitrary depth.
@@ -54,9 +52,10 @@ library ResolverProfileRewriterLib {
                 default {
                     // only bound checks on write
                     if lt(bound, ptr) {
-                        mstore(0, 0x4e487b71) // error Panic(uint256)
-                        mstore(32, 0x32) // code
-                        revert(28, 36) // 32-4, 4+32
+                        // mstore(0, 0x4e487b71) // error Panic(uint256)
+                        // mstore(32, 0x32) // code
+                        // revert(28, 36) // 32-4, 4+32
+                        leave
                     }
                     mstore(ptr, node) // replace node
                 }

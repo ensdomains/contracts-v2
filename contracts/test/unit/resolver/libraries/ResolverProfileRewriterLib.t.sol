@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-// solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
-
 import {Test, stdError} from "forge-std/Test.sol";
 
 import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
-import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 
 import {ResolverProfileRewriterLib} from "~src/resolver/libraries/ResolverProfileRewriterLib.sol";
 
 contract ResolverProfileRewriterLibTest is Test {
+    bytes vMin = abi.encodeCall(this.resolverProfile, bytes32(0)); // 36 bytes
+    bytes vBad = new bytes(vMin.length - 1);
+
+    function resolverProfile(bytes32) external {}
+
     function replaceNode(bytes calldata call, bytes32 node) external pure returns (bytes memory) {
         return ResolverProfileRewriterLib.replaceNode(call, node);
     }
@@ -19,16 +21,24 @@ contract ResolverProfileRewriterLibTest is Test {
         return v[4:];
     }
 
-    function resolverProfile(bytes32) external {}
-
     function testFuzz_replaceNode_call(bytes32 node) external view {
-        bytes32 x = abi.decode(
-            this.drop4(
-                this.replaceNode(abi.encodeCall(this.resolverProfile, (keccak256("a"))), node)
+        assertEq(
+            abi.decode(
+                this.drop4(
+                    this.replaceNode(abi.encodeCall(this.resolverProfile, (keccak256("a"))), node)
+                ),
+                (bytes32)
             ),
-            (bytes32)
+            node
         );
-        assertEq(x, node, "node");
+    }
+
+    function test_replaceNode_call_smallestWrite(bytes32 node) external view {
+        assertEq(bytes32(this.drop4(this.replaceNode(vMin, node))), node);
+    }
+
+    function test_replaceNode_call_outOfBounds(bytes32 node) external view {
+        assertEq(this.replaceNode(vBad, node), vBad); // unchanged
     }
 
     function testFuzz_replaceNode_multicall(bytes32 node, uint8 calls) external view {
@@ -40,11 +50,46 @@ contract ResolverProfileRewriterLibTest is Test {
             this.drop4(this.replaceNode(abi.encodeCall(IMulticallable.multicall, (m)), node)),
             (bytes[])
         );
-        assertEq(m.length, calls, "count");
+        assertEq(m.length, calls);
         for (uint256 i; i < calls; i++) {
-            bytes32 x = abi.decode(this.drop4(m[i]), (bytes32));
-            assertEq(x, node, "node");
+            assertEq(abi.decode(this.drop4(m[i]), (bytes32)), node);
         }
+    }
+
+    function test_replaceNode_multicall_smallestWrite(bytes32 node) external view {
+        bytes[] memory m = new bytes[](1);
+        m[0] = vMin;
+        m = abi.decode(
+            this.drop4(this.replaceNode(abi.encodeCall(IMulticallable.multicall, (m)), node)),
+            (bytes[])
+        );
+        assertEq(bytes32(this.drop4(m[0])), node);
+    }
+
+    function test_replaceNode_multicall_outOfBounds(bytes32 node) external view {
+        bytes[] memory m = new bytes[](1);
+        m[0] = vBad;
+        bytes memory v0 = abi.encodeCall(IMulticallable.multicall, (m));
+        bytes memory v = this.replaceNode(v0, node);
+        assertEq(v0, v); // unchanged
+    }
+
+    function test_replaceNode_multicall_outOfBounds_arrayStart(bytes32 node) external view {
+        bytes[] memory m = new bytes[](1);
+        m[0] = vMin;
+        bytes memory v0 = abi.encodeCall(IMulticallable.multicall, (m));
+        uint256 offset = 100; // offset of first element
+        uint256 save;
+        bytes memory v = abi.encodePacked(v0);
+        assembly {
+            save := mload(add(v, offset))
+            mstore(add(v, offset), mload(v)) // mangle
+        }
+        v = this.replaceNode(v, node);
+        assembly {
+            mstore(add(v, offset), save) // unmangle
+        }
+        assertEq(v0, v); // unchanged
     }
 
     function testFuzz_replaceNode_nestedMulticall(bytes32 node, uint8 depth) external view {
@@ -60,32 +105,6 @@ contract ResolverProfileRewriterLibTest is Test {
             m = abi.decode(this.drop4(v), (bytes[]));
             v = m[0];
         }
-        bytes32 x = abi.decode(this.drop4(v), (bytes32));
-        assertEq(x, node, "node");
-    }
-
-    function test_replaceNode_call_outOfBounds() external {
-        this.replaceNode(new bytes(36), bytes32(0)); // min
-        vm.expectRevert(stdError.indexOOBError);
-        this.replaceNode(new bytes(35), bytes32(0)); // min-1
-    }
-
-    function test_replaceNode_multicall_outOfBounds() external {
-        bytes[] memory m = new bytes[](1);
-        m[0] = new bytes(36); // min from above
-        this.replaceNode(abi.encodeCall(IMulticallable.multicall, (m)), bytes32(0));
-
-        // malicious array[0] start
-        bytes memory v = abi.encodeCall(IMulticallable.multicall, (m));
-        assembly {
-            mstore(add(v, 100), mload(v))
-        }
-        vm.expectRevert(stdError.indexOOBError);
-        this.replaceNode(v, bytes32(0));
-
-        // malicious array[0] size
-        m[0] = new bytes(35); // min-1 from above
-        vm.expectRevert(stdError.indexOOBError);
-        this.replaceNode(abi.encodeCall(IMulticallable.multicall, (m)), bytes32(0));
+        assertEq(abi.decode(this.drop4(v), (bytes32)), node);
     }
 }
