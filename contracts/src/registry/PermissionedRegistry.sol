@@ -457,8 +457,8 @@ contract PermissionedRegistry is
             _burn(owner, tokenId, 1);
             ++entry.tokenVersionId;
             uint256 newTokenId = _constructTokenId(tokenId, entry);
-            _mint(owner, newTokenId, 1, "");
             emit TokenRegenerated(tokenId, newTokenId); // resource is unchanged
+            _mint(owner, newTokenId, 1, "");
         }
     }
 

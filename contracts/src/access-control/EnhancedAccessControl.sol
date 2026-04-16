@@ -258,10 +258,10 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
             _roles[resource][account] = updatedRoles;
             uint256 newlyAddedRoles = roleBitmap & ~currentRoles;
             _updateRoleCounts(resource, newlyAddedRoles, true);
+            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             if (executeCallbacks) {
                 _onRolesGranted(resource, account, currentRoles, updatedRoles, roleBitmap);
             }
-            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             return true;
         } else {
             return false;
@@ -288,10 +288,10 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
             _roles[resource][account] = updatedRoles;
             uint256 newlyRemovedRoles = roleBitmap & currentRoles;
             _updateRoleCounts(resource, newlyRemovedRoles, false);
+            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             if (executeCallbacks) {
                 _onRolesRevoked(resource, account, currentRoles, updatedRoles, roleBitmap);
             }
-            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             return true;
         } else {
             return false;
