@@ -1180,7 +1180,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     // scenerio: BET-594
     // if EACRolesChanged is emit after callback execution, it is out of order
-    // 1. role A  is granted => regenerate
+    // 1. role A is granted => regenerate
     // 2. callback triggers another action
     // 3. role B is granted => regenerate (during callback)
     // 4. EACRolesChanged is emit for B
