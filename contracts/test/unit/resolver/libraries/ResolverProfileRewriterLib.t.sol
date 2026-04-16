@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Test, console, stdError} from "forge-std/Test.sol";
+import {Test, stdError} from "forge-std/Test.sol";
 
 import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
