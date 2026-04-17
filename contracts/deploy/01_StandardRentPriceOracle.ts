@@ -2,9 +2,6 @@ import { artifacts, execute } from "@rocketh";
 
 export default execute(
   async ({ deploy, read, get, namedAccounts: { deployer, owner } }) => {
-    const ethRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
-
     type MockERC20 =
       (typeof artifacts)["test/mocks/MockERC20.sol/MockERC20"]["abi"];
     const mockUSDC = get<MockERC20>("MockUSDC");
@@ -84,7 +81,6 @@ export default execute(
       artifact: artifacts.StandardRentPriceOracle,
       args: [
         owner,
-        ethRegistry.address,
         baseRatePerCp,
         discountPoints.map(([t, value]) => ({ t, value })),
         PREMIUM_PRICE_INITIAL,
@@ -96,6 +92,6 @@ export default execute(
   },
   {
     tags: ["StandardRentPriceOracle", "v2"],
-    dependencies: ["MockTokens", "ETHRegistry"],
+    dependencies: ["MockTokens"],
   },
 );

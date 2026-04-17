@@ -2,12 +2,8 @@
 pragma solidity ^0.8.13;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 
-import {HCAContext, HCAEquivalence} from "~src/hca/HCAContext.sol";
-import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
-
-contract MockERC20 is ERC20, HCAContext {
+contract MockERC20 is ERC20 {
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
@@ -18,11 +14,7 @@ contract MockERC20 is ERC20, HCAContext {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor(
-        string memory symbol,
-        uint8 decimals_,
-        IHCAFactoryBasic factory
-    ) ERC20(symbol, symbol) HCAEquivalence(factory) {
+    constructor(string memory symbol, uint8 decimals_) ERC20(symbol, symbol) {
         _decimals = decimals_;
     }
 
@@ -40,10 +32,6 @@ contract MockERC20 is ERC20, HCAContext {
 
     function decimals() public view virtual override returns (uint8) {
         return _decimals;
-    }
-
-    function _msgSender() internal view virtual override(Context, HCAContext) returns (address) {
-        return HCAContext._msgSender();
     }
 }
 
@@ -64,9 +52,7 @@ contract MockERC20Blacklist is MockERC20 {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor()
-        MockERC20("BLACK", 6, IHCAFactoryBasic(0x0000000000000000000000000000000000000000))
-    {}
+    constructor() MockERC20("BLACK", 6) {}
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
@@ -88,9 +74,7 @@ contract MockERC20VoidReturn is MockERC20 {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor()
-        MockERC20("VOID", 6, IHCAFactoryBasic(0x0000000000000000000000000000000000000000))
-    {}
+    constructor() MockERC20("VOID", 6) {}
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
@@ -106,18 +90,10 @@ contract MockERC20VoidReturn is MockERC20 {
 
 contract MockERC20FalseReturn is MockERC20 {
     ////////////////////////////////////////////////////////////////////////
-    // Storage
-    ////////////////////////////////////////////////////////////////////////
-
-    bool public shouldFail;
-
-    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor()
-        MockERC20("FALSE", 18, IHCAFactoryBasic(0x0000000000000000000000000000000000000000))
-    {}
+    constructor() MockERC20("FALSE", 18) {}
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation

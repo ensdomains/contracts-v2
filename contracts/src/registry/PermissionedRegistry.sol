@@ -245,17 +245,24 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
-    /// @dev Requires `REGISTERED | RESERVED` and `ROLE_RENEW`.
+    /// @dev Requires active or (ROOT and expired) `REGISTERED | RESERVED` and `ROLE_RENEW`.
     function renew(uint256 anyId, uint64 newExpiry) public override {
-        (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
-            anyId,
-            RegistryRolesLib.ROLE_RENEW
-        );
-        if (newExpiry < entry.expiry) {
-            revert CannotReduceExpiry(entry.expiry, newExpiry);
+        Entry storage entry = _entry(anyId);
+        uint256 tokenId = _constructTokenId(anyId, entry);
+        address sender = _msgSender();
+        uint64 expiry = entry.expiry;
+        if (_isExpired(expiry)) {
+            if (expiry == 0 || !hasRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_RENEW, sender)) {
+                revert LabelExpired(tokenId);
+            }
+        } else {
+            _checkRoles(_constructResource(anyId, entry), RegistryRolesLib.ROLE_RENEW, sender);
+        }
+        if (newExpiry < expiry) {
+            revert CannotReduceExpiry(expiry, newExpiry);
         }
         entry.expiry = newExpiry;
-        emit ExpiryUpdated(tokenId, newExpiry, _msgSender());
+        emit ExpiryUpdated(tokenId, newExpiry, sender);
     }
 
     /// @inheritdoc IEnhancedAccessControl
