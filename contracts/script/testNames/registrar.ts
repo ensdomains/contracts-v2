@@ -67,7 +67,6 @@ export async function registerTestNames(
   for (const label of labels) {
     const [base, premium] = await env.v2.ETHRegistrar.read.rentPrice([
       label,
-      account.address,
       duration,
       paymentToken,
     ]);
@@ -205,7 +204,6 @@ export async function renewName(
 
   const [price] = await env.v2.ETHRegistrar.read.rentPrice([
     label,
-    account.address,
     duration,
     paymentToken,
   ]);
