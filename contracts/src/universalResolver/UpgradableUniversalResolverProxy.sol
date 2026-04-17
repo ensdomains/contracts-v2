@@ -57,7 +57,8 @@ contract UpgradableUniversalResolverProxy {
 
     /// @dev Modifier restricting a function to the admin.
     modifier onlyAdmin() {
-        if (msg.sender != _getAdmin()) revert CallerNotAdmin();
+        if (msg.sender != _getAdmin())
+            revert CallerNotAdmin();
         _;
     }
 

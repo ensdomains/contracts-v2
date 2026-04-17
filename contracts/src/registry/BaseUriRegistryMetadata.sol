@@ -54,9 +54,10 @@ contract BaseUriRegistryMetadata is EnhancedAccessControl, IRegistryMetadata {
     /// @notice Replaces the shared base URI for all tokens.
     /// @dev Restricted to accounts holding the metadata update role on the root resource.
     /// @param uri The new base URI to store.
-    function setTokenBaseUri(
-        string calldata uri
-    ) external onlyRoles(ROOT_RESOURCE, _ROLE_UPDATE_METADATA) {
+    function setTokenBaseUri(string calldata uri)
+        external
+        onlyRoles(ROOT_RESOURCE, _ROLE_UPDATE_METADATA)
+    {
         _tokenBaseUri = uri;
     }
 
@@ -64,7 +65,13 @@ contract BaseUriRegistryMetadata is EnhancedAccessControl, IRegistryMetadata {
     /// @dev Because this implementation uses a single shared URI, the token ID parameter is ignored.
     /// @param {tokenId} Ignored.
     /// @return The shared base URI.
-    function tokenUri(uint256 /* tokenId */) external view returns (string memory) {
+    function tokenUri(
+        uint256 /* tokenId */
+    )
+        external
+        view
+        returns (string memory)
+    {
         return _tokenBaseUri;
     }
 }

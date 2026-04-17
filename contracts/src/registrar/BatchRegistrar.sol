@@ -11,6 +11,10 @@ import {LibLabel} from "../utils/LibLabel.sol";
 /// @notice Simple batch registration contract for pre-migration of ENS names.
 ///         Only the owner can invoke batch registration.
 contract BatchRegistrar is Ownable {
+    ////////////////////////////////////////////////////////////////////////
+    // Immutables
+    ////////////////////////////////////////////////////////////////////////
+
     /// @notice The ETH registry to use for batch registration.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
@@ -39,13 +43,14 @@ contract BatchRegistrar is Ownable {
         address resolver,
         string[] calldata labels,
         uint64[] calldata expires
-    ) external onlyOwner {
+    )
+        external
+        onlyOwner
+    {
         require(labels.length == expires.length);
 
         for (uint256 i = 0; i < labels.length; i++) {
-            IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(
-                LibLabel.id(labels[i])
-            );
+            IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(labels[i]));
 
             if (state.status == IPermissionedRegistry.Status.AVAILABLE) {
                 ETH_REGISTRY.register(labels[i], address(0), registry, resolver, 0, expires[i]);
