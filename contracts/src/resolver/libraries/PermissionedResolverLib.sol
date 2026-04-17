@@ -53,7 +53,7 @@ library PermissionedResolverLib {
     /// @dev Nybble 41: authorizes setting ROLE_LINK_RECORD.
     uint256 internal constant ROLE_LINK_RECORD_ADMIN = ROLE_LINK_RECORD << 128;
 
-    /// @dev Nybble 10: authorizes creating records.  Root only.
+    /// @dev Nybble 10: authorizes clearing records.  Root only.
     uint256 internal constant ROLE_CLEAR_RECORD = 1 << 40;
     /// @dev Nybble 42: authorizes setting ROLE_CLEAR_RECORD.
     uint256 internal constant ROLE_CLEAR_RECORD_ADMIN = ROLE_CLEAR_RECORD << 128;
