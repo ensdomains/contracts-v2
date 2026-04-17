@@ -46,10 +46,15 @@ library PermissionedResolverLib {
     uint256 internal constant ROLE_RECORDS = 1 << 32;
     uint256 internal constant ROLE_RECORDS_ADMIN = ROLE_RECORDS << 128;
 
-    /// @dev Nybble 9: authorizes setting data records. Root or name.
-    uint256 internal constant ROLE_SET_DATA = 1 << 36;
-    /// @dev Nybble 41: authorizes setting ROLE_SET_DATA.
-    uint256 internal constant ROLE_SET_DATA_ADMIN = ROLE_SET_DATA << 128;
+    /// @dev Nybble 9: authorizes creating records.  Root only.
+    uint256 internal constant ROLE_LINK_RECORD = 1 << 36;
+    /// @dev Nybble 41: authorizes setting ROLE_LINK_RECORD.
+    uint256 internal constant ROLE_LINK_RECORD_ADMIN = ROLE_LINK_RECORD << 128;
+
+    /// @dev Nybble 10: authorizes clearing records.  Root only.
+    uint256 internal constant ROLE_CLEAR_RECORD = 1 << 40;
+    /// @dev Nybble 42: authorizes setting ROLE_CLEAR_RECORD.
+    uint256 internal constant ROLE_CLEAR_RECORD_ADMIN = ROLE_CLEAR_RECORD << 128;
 
     /// @dev Nybble 31: authorizes UUPS proxy upgrades. Root-only.
     uint256 internal constant ROLE_UPGRADE = 1 << 124;
