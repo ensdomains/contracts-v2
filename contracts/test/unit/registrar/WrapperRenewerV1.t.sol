@@ -18,6 +18,7 @@ import {
     LibLabel,
     LibMigration
 } from "~src/registrar/WrapperRenewerV1.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 
 contract WrapperRenewerV1Test is MigrationControllerFixture {
     MockWrappedETHRegistrarController wrappedController;
@@ -56,17 +57,23 @@ contract WrapperRenewerV1Test is MigrationControllerFixture {
             nameWrapper.setFuses(node, uint16(CANNOT_APPROVE));
         }
 
-        // remove wrapper controller
-        nameWrapper.setController(ensV1Controller, false);
-        // add wrapper controller
-        nameWrapper.setController(address(wrappedController), true);
-        // lock it
-        nameWrapper.renounceOwnership();
+        // configure v1
+        {
+            // remove wrapper controller
+            nameWrapper.setController(ensV1Controller, false);
+            // add wrapper controller
+            nameWrapper.setController(address(wrappedController), true);
+            // lock it
+            nameWrapper.renounceOwnership();
 
-        // remove eth controller
-        ethRegistrarV1.removeController(ensV1Controller);
-        // transfer to renewer
-        ethRegistrarV1.transferOwnership(address(renewer));
+            // remove eth controller
+            ethRegistrarV1.removeController(ensV1Controller);
+            // transfer to renewer
+            ethRegistrarV1.transferOwnership(address(renewer));
+        }
+
+        // configure v2
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_RENEW, address(renewer));
 
         // check state
         assertEq(nameWrapper.owner(), address(0), "NameWrapper locked");
@@ -100,13 +107,19 @@ contract WrapperRenewerV1Test is MigrationControllerFixture {
         string memory label = NameCoder.firstLabel(name);
         uint64 duration = 1;
         assertEq(renewer.canRenew(label), expect, "canRenew");
-        (, , uint64 expiry0) = nameWrapper.getData(uint256(node));
+        (, , uint64 expiryV1before) = nameWrapper.getData(uint256(node));
+        uint64 expiryV2before = ethRegistry.getExpiry(LibLabel.id(label));
         if (!expect) {
             vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));
         }
         renewer.renew{value: address(this).balance}(label, duration);
-        (, , uint64 expiry1) = nameWrapper.getData(uint256(node));
-        assertEq(expiry0 + (expect ? duration : 0), expiry1, "expiry");
+        if (!expect) {
+            duration = 0;
+        }
+        (, , uint64 expiryV1after) = nameWrapper.getData(uint256(node));
+        uint64 expiryV2after = ethRegistry.getExpiry(LibLabel.id(label));
+        assertEq(expiryV1before + duration, expiryV1after, "expiryV1");
+        assertEq(expiryV2before + duration, expiryV2after, "expiryV2");
     }
 }
 

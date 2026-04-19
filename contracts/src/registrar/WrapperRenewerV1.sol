@@ -79,21 +79,25 @@ contract WrapperRenewerV1 {
     function renew(string calldata label, uint64 duration) external payable {
         uint256 labelId = LibLabel.id(label);
 
-        // ensure RESERVED
-        IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(labelId);
-        require(state.status == IPermissionedRegistry.Status.RESERVED);
-
         // ensure unmigratable
         if (_isMigratable(bytes32(labelId))) {
             revert LibMigration.NameRequiresMigration();
         }
 
-        // TODO: v2 pricing logic
+        // ensure RESERVED
+        IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(labelId);
+        require(state.status == IPermissionedRegistry.Status.RESERVED);
+
+        // TODO: v2 pricing logic in eth
         uint256 over = 0;
 
+        // renew v1
         _REGISTRAR_V1.addController(address(WRAPPED_CONTROLLER));
         WRAPPED_CONTROLLER.renew{value: msg.value}(label, duration);
         _REGISTRAR_V1.removeController(address(WRAPPED_CONTROLLER));
+
+        // renew v2
+        ETH_REGISTRY.renew(labelId, state.expiry + duration);
 
         // refund
         if (over > 0) {
