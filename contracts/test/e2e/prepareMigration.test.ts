@@ -3,18 +3,19 @@ setDefaultTimeout(60_000);
 
 import type { Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { ROLES } from "../../script/deploy-constants.js";
 import { main } from "../../script/prepareMigration.js";
 import { revertPrePrepareMigrationRoles } from "../utils/mockPrepareMigration.js";
 
 const DEPLOYER_PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
 
-const ROLE_REGISTRAR = 1n << 0n;
-const ROLE_REGISTRAR_ADMIN = 1n << 128n;
-const ROLE_REGISTER_RESERVED = 1n << 4n;
-const ROLE_REGISTER_RESERVED_ADMIN = 1n << 132n;
-const ROLE_RENEW = 1n << 16n;
-const ROLE_RENEW_ADMIN = 1n << 144n;
+const ROLE_REGISTRAR = ROLES.REGISTRY.REGISTRAR;
+const ROLE_REGISTRAR_ADMIN = ROLES.ADMIN.REGISTRY.REGISTRAR;
+const ROLE_REGISTER_RESERVED = ROLES.REGISTRY.REGISTER_RESERVED;
+const ROLE_REGISTER_RESERVED_ADMIN = ROLES.ADMIN.REGISTRY.REGISTER_RESERVED;
+const ROLE_RENEW = ROLES.REGISTRY.RENEW;
+const ROLE_RENEW_ADMIN = ROLES.ADMIN.REGISTRY.RENEW;
 
 describe("PrepareMigration", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;

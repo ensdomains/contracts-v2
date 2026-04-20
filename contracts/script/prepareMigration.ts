@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { getContract, isAddress, type Address, type Hex } from "viem";
 import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
+import { DEPLOYMENT_ROLES, ROLES } from "./deploy-constants.js";
 import { bold, cyan, dim, green, Logger, red, yellow } from "./logger.js";
 import { createV2Clients, loadArtifact } from "./scriptUtils.js";
 
@@ -12,20 +13,13 @@ class PrepareLogger extends Logger {
   }
 }
 
-const ROLE_REGISTRAR = 1n << 0n;
-const ROLE_REGISTRAR_ADMIN = 1n << 128n;
-const ROLE_REGISTER_RESERVED = 1n << 4n;
-const ROLE_REGISTER_RESERVED_ADMIN = 1n << 132n;
-const ROLE_RENEW = 1n << 16n;
-const ROLE_RENEW_ADMIN = 1n << 144n;
-
 const ROLE_NAMES: Array<[bigint, string]> = [
-  [ROLE_REGISTRAR, "ROLE_REGISTRAR"],
-  [ROLE_REGISTRAR_ADMIN, "ROLE_REGISTRAR_ADMIN"],
-  [ROLE_REGISTER_RESERVED, "ROLE_REGISTER_RESERVED"],
-  [ROLE_REGISTER_RESERVED_ADMIN, "ROLE_REGISTER_RESERVED_ADMIN"],
-  [ROLE_RENEW, "ROLE_RENEW"],
-  [ROLE_RENEW_ADMIN, "ROLE_RENEW_ADMIN"],
+  [ROLES.REGISTRY.REGISTRAR, "ROLE_REGISTRAR"],
+  [ROLES.ADMIN.REGISTRY.REGISTRAR, "ROLE_REGISTRAR_ADMIN"],
+  [ROLES.REGISTRY.REGISTER_RESERVED, "ROLE_REGISTER_RESERVED"],
+  [ROLES.ADMIN.REGISTRY.REGISTER_RESERVED, "ROLE_REGISTER_RESERVED_ADMIN"],
+  [ROLES.REGISTRY.RENEW, "ROLE_RENEW"],
+  [ROLES.ADMIN.REGISTRY.RENEW, "ROLE_RENEW_ADMIN"],
 ];
 
 function describeRoles(bitmap: bigint): string {
@@ -114,31 +108,32 @@ function buildOps(cfg: Config): Op[] {
       kind: "revoke",
       label: "BatchRegistrar",
       account: cfg.batchRegistrarAddress,
+      // Revoke every bit granted at static deploy plus admin counterparts and
+      // REGISTER_RESERVED pair so the post-state is unambiguously empty.
       roles:
-        ROLE_REGISTRAR |
-        ROLE_REGISTRAR_ADMIN |
-        ROLE_REGISTER_RESERVED |
-        ROLE_REGISTER_RESERVED_ADMIN |
-        ROLE_RENEW |
-        ROLE_RENEW_ADMIN,
+        DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT |
+        ROLES.ADMIN.REGISTRY.REGISTRAR |
+        ROLES.ADMIN.REGISTRY.RENEW |
+        DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT |
+        ROLES.ADMIN.REGISTRY.REGISTER_RESERVED,
     },
     {
       kind: "grant",
       label: "ETHRegistrar",
       account: cfg.ethRegistrarAddress,
-      roles: ROLE_REGISTRAR | ROLE_RENEW,
+      roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
     },
     {
       kind: "grant",
       label: "UnlockedMigrationController",
       account: cfg.unlockedMigrationControllerAddress,
-      roles: ROLE_REGISTER_RESERVED,
+      roles: DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
     },
     {
       kind: "grant",
       label: "LockedMigrationController",
       account: cfg.lockedMigrationControllerAddress,
-      roles: ROLE_REGISTER_RESERVED,
+      roles: DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
     },
   ];
 }

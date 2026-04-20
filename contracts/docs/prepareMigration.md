@@ -37,7 +37,7 @@ For background on these roles and the EAC admin/base pairing used by registry co
   - `ETHRegistrar` — will receive `ROLE_REGISTRAR`
   - `UnlockedMigrationController` — will receive `ROLE_REGISTER_RESERVED`
   - `LockedMigrationController` — will receive `ROLE_REGISTER_RESERVED`
-- **Signer** holding the admin-role counterparts for every role being moved. In practice this means holding `ROLE_REGISTRAR_ADMIN` and `ROLE_REGISTER_RESERVED_ADMIN` at the registry root. The script runs a pre-flight check against the signer's root roles and aborts with a clear error if any required admin bits are missing — no transactions are broadcast.
+- **Signer** holding the admin-role counterparts for every role being moved. In practice this means holding `ROLE_REGISTRAR_ADMIN`, `ROLE_REGISTER_RESERVED_ADMIN`, and `ROLE_RENEW_ADMIN` at the registry root. The script runs a pre-flight check against the signer's root roles and aborts with a clear error if any required admin bits are missing — no transactions are broadcast.
 - **RPC endpoint** for the chain the registry is deployed on. The chain ID is auto-detected from the RPC.
 
 `--execute` additionally requires `--private-key`; without it the script stays in dry-run mode.
