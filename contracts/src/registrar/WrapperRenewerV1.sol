@@ -85,6 +85,7 @@ contract WrapperRenewerV1 {
         }
 
         // ensure RESERVED
+        // TODO: use v2 grace logic
         IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(labelId);
         require(state.status == IPermissionedRegistry.Status.RESERVED);
 

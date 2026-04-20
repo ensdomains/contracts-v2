@@ -36,7 +36,7 @@ contract WrapperRenewerV1Test is MigrationControllerFixture {
         wrappedController = new MockWrappedETHRegistrarController(nameWrapper);
         renewer = new WrapperRenewerV1(nameWrapper, address(wrappedController), ethRegistry);
 
-        // register migration cases before registrar is disabled
+        // register migration cases Before registrar is disabled
         {
             (nameUnwrapped, ) = registerUnwrapped("unwrapped");
 
@@ -59,9 +59,9 @@ contract WrapperRenewerV1Test is MigrationControllerFixture {
 
         // configure v1
         {
-            // remove wrapper controller
+            // remove default controller
             nameWrapper.setController(ensV1Controller, false);
-            // add wrapper controller
+            // add mock wrapped controller
             nameWrapper.setController(address(wrappedController), true);
             // lock it
             nameWrapper.renounceOwnership();
@@ -80,6 +80,9 @@ contract WrapperRenewerV1Test is MigrationControllerFixture {
         assertFalse(nameWrapper.controllers(ensV1Controller), "NameWrapper og controller");
         assertFalse(ethRegistrarV1.controllers(ensV1Controller), "BaseRegistrar og controller");
         assertEq(ethRegistrarV1.owner(), address(renewer), "Renewer owns BaseRegistrar");
+
+        // BaseRegistrar.controllers = []
+        // NameWrapper.controllers = [wrappedController]
     }
 
     function test_renew_unwrapped() external {
@@ -103,12 +106,13 @@ contract WrapperRenewerV1Test is MigrationControllerFixture {
     }
 
     function _testRenew(bytes memory name, bool expect) internal {
-        bytes32 node = NameCoder.namehash(name, 0);
         string memory label = NameCoder.firstLabel(name);
+        uint256 labelId = LibLabel.id(label);
         uint64 duration = 1;
         assertEq(renewer.canRenew(label), expect, "canRenew");
-        (, , uint64 expiryV1before) = nameWrapper.getData(uint256(node));
-        uint64 expiryV2before = ethRegistry.getExpiry(LibLabel.id(label));
+        uint64 expiryV1Before = uint64(ethRegistrarV1.nameExpires(labelId));
+        uint64 expiryV2Before = ethRegistry.getExpiry(labelId);
+        assertEq(expiryV1Before, expiryV2Before, "before");
         if (!expect) {
             vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));
         }
@@ -116,10 +120,17 @@ contract WrapperRenewerV1Test is MigrationControllerFixture {
         if (!expect) {
             duration = 0;
         }
-        (, , uint64 expiryV1after) = nameWrapper.getData(uint256(node));
-        uint64 expiryV2after = ethRegistry.getExpiry(LibLabel.id(label));
-        assertEq(expiryV1before + duration, expiryV1after, "expiryV1");
-        assertEq(expiryV2before + duration, expiryV2after, "expiryV2");
+        uint64 expiryV1After = uint64(ethRegistrarV1.nameExpires(labelId));
+        uint64 expiryV2After = ethRegistry.getExpiry(LibLabel.id(label));
+        assertEq(expiryV1Before + duration, expiryV1After, "expiryV1");
+        assertEq(expiryV2Before + duration, expiryV2After, "expiryV2");
+        assertEq(expiryV1After, expiryV2After, "after");
+        (address owner, , uint64 wrappedExpiry) = nameWrapper.getData(
+            uint256(NameCoder.namehash(name, 0))
+        );
+        if (owner != address(0)) {
+            assertEq(wrappedExpiry, expiryV1After + ethRegistrarV1.GRACE_PERIOD(), "sync");
+        }
     }
 }
 
@@ -132,9 +143,7 @@ contract MockWrappedETHRegistrarController {
     function renew(string calldata label, uint256 duration) external payable {
         IPriceOracle.Price memory price = rentPrice(label, duration);
         uint256 over = msg.value - price.base; // reverts on underflow
-
         NAME_WRAPPER.renew(LibLabel.id(label), duration);
-
         if (over > 0) {
             (bool ok, ) = msg.sender.call{value: over}("");
             require(ok);
