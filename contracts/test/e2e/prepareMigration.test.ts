@@ -13,6 +13,8 @@ const ROLE_REGISTRAR = 1n << 0n;
 const ROLE_REGISTRAR_ADMIN = 1n << 128n;
 const ROLE_REGISTER_RESERVED = 1n << 4n;
 const ROLE_REGISTER_RESERVED_ADMIN = 1n << 132n;
+const ROLE_RENEW = 1n << 16n;
+const ROLE_RENEW_ADMIN = 1n << 144n;
 
 describe("PrepareMigration", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
@@ -97,11 +99,12 @@ describe("PrepareMigration", () => {
     expect(await readRoles(addrs.locked)).toBe(before.locked);
   });
 
-  it("execute revokes BatchRegistrar registrar roles and grants controller roles", async () => {
+  it("execute strips all migration-relevant roles from BatchRegistrar and hands them to the live targets", async () => {
     const addrs = getAddresses();
 
     const batchBefore = await readRoles(addrs.batchRegistrar);
     expect(batchBefore & ROLE_REGISTRAR).toBe(ROLE_REGISTRAR);
+    expect(batchBefore & ROLE_RENEW).toBe(ROLE_RENEW);
 
     await main(buildArgs(addrs, { execute: true }));
 
@@ -110,10 +113,12 @@ describe("PrepareMigration", () => {
     expect(batchAfter & ROLE_REGISTRAR_ADMIN).toBe(0n);
     expect(batchAfter & ROLE_REGISTER_RESERVED).toBe(0n);
     expect(batchAfter & ROLE_REGISTER_RESERVED_ADMIN).toBe(0n);
+    expect(batchAfter & ROLE_RENEW).toBe(0n);
+    expect(batchAfter & ROLE_RENEW_ADMIN).toBe(0n);
 
-    expect((await readRoles(addrs.ethRegistrar)) & ROLE_REGISTRAR).toBe(
-      ROLE_REGISTRAR,
-    );
+    const ethAfter = await readRoles(addrs.ethRegistrar);
+    expect(ethAfter & ROLE_REGISTRAR).toBe(ROLE_REGISTRAR);
+    expect(ethAfter & ROLE_RENEW).toBe(ROLE_RENEW);
     expect((await readRoles(addrs.unlocked)) & ROLE_REGISTER_RESERVED).toBe(
       ROLE_REGISTER_RESERVED,
     );
@@ -122,16 +127,14 @@ describe("PrepareMigration", () => {
     );
   });
 
-  it("execute preserves unrelated roles on BatchRegistrar", async () => {
+  it("execute fully decommissions BatchRegistrar (no roles remain)", async () => {
     const addrs = getAddresses();
     const batchBefore = await readRoles(addrs.batchRegistrar);
-    const ROLE_RENEW = 1n << 16n;
     expect(batchBefore & ROLE_RENEW).toBe(ROLE_RENEW);
 
     await main(buildArgs(addrs, { execute: true }));
 
-    const batchAfter = await readRoles(addrs.batchRegistrar);
-    expect(batchAfter & ROLE_RENEW).toBe(ROLE_RENEW);
+    expect(await readRoles(addrs.batchRegistrar)).toBe(0n);
   });
 
   it("is idempotent on repeated execute", async () => {

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The prepare-migration script (`contracts/script/prepareMigration.ts`) rewires role grants on the `.eth` `PermissionedRegistry` to flip the registry from its **seeding** configuration (only `BatchRegistrar` can register names) to its **live** configuration (`ETHRegistrar` handles new registrations; `UnlockedMigrationController` and `LockedMigrationController` promote reserved names to registered as ENSv1 owners migrate in).
+The prepare-migration script (`contracts/script/prepareMigration.ts`) rewires role grants on the `.eth` `PermissionedRegistry` to flip the registry from its **seeding** configuration (only `BatchRegistrar` can register names) to its **live** configuration (`ETHRegistrar` handles new registrations and renewals; `UnlockedMigrationController` and `LockedMigrationController` promote reserved names to registered as ENSv1 owners migrate in). `BatchRegistrar` retains no roles after this script runs — it is fully decommissioned on hand-off.
 
 Run this once, after all pre-migration seeding via [`preMigration.ts`](./premigration.md) has completed and before opening registration traffic to users. The script is idempotent at the role level — re-running it against a registry that is already in the live configuration will show every planned op as already satisfied and simply broadcast the same grants/revokes again.
 
@@ -10,14 +10,22 @@ Run this once, after all pre-migration seeding via [`preMigration.ts`](./premigr
 
 The script performs exactly four root-level role operations on the target registry:
 
-| Target | Op | Roles |
-|---|---|---|
-| `BatchRegistrar` | **REVOKE** | `ROLE_REGISTRAR` · `ROLE_REGISTRAR_ADMIN` · `ROLE_REGISTER_RESERVED` · `ROLE_REGISTER_RESERVED_ADMIN` |
-| `ETHRegistrar` | **GRANT** | `ROLE_REGISTRAR` |
-| `UnlockedMigrationController` | **GRANT** | `ROLE_REGISTER_RESERVED` |
-| `LockedMigrationController` | **GRANT** | `ROLE_REGISTER_RESERVED` |
+| Target | Op | Roles | Expected prior state |
+|---|---|---|---|
+| `BatchRegistrar` | **REVOKE** | `ROLE_REGISTRAR` · `ROLE_REGISTRAR_ADMIN` · `ROLE_REGISTER_RESERVED` · `ROLE_REGISTER_RESERVED_ADMIN` · `ROLE_RENEW` · `ROLE_RENEW_ADMIN` | Holds `ROLE_REGISTRAR \| ROLE_RENEW` on a canonically-deployed registry. The four admin bits and `ROLE_REGISTER_RESERVED` are revoked defensively and are no-ops on a canonical deploy — they exist in the bitmap to guarantee the post-state is unambiguously "no roles" regardless of what the registry looked like going in. |
+| `ETHRegistrar` | **GRANT** | `ROLE_REGISTRAR` · `ROLE_RENEW` | None of the granted bits. |
+| `UnlockedMigrationController` | **GRANT** | `ROLE_REGISTER_RESERVED` | None of the granted bit. |
+| `LockedMigrationController` | **GRANT** | `ROLE_REGISTER_RESERVED` | None of the granted bit. |
+
+> **Note for devnet users.** The canonical devnet deploy scripts (`deploy/03_ETHRegistrar.ts`, `deploy/02_UnlockedMigrationController.ts`, `deploy/04_LockedMigrationController.ts`) *already* pre-grant the roles this script would otherwise grant, as a convenience for local dev. That means running this script against a fresh devnet will show every GRANT op as already satisfied and only the `BatchRegistrar` revoke will produce observable state change. The test fixture `revertPrePrepareMigrationRoles` in `test/utils/mockPrepareMigration.ts` undoes those pre-grants so the grant paths can be exercised end-to-end in the e2e tests.
 
 For background on these roles and the EAC admin/base pairing used by registry contracts, see the [EAC section of the contracts README](../README.md#access-control) and [`RegistryRolesLib.sol`](../src/registry/libraries/RegistryRolesLib.sol).
+
+### Why these specific roles
+
+- `ROLE_REGISTRAR` is checked by `PermissionedRegistry.register()` when the entry is expired or never existed. `BatchRegistrar` seeds names via this path (`owner = address(0)`, entering the expired branch), so it holds the role during pre-migration. After hand-off, `ETHRegistrar` holds it to handle live new registrations.
+- `ROLE_REGISTER_RESERVED` is checked by the same `register()` entry point when the entry is currently **reserved** (owner zero, not expired) and an actual owner is being set. This is the promotion path the migration controllers use to flip a pre-seeded reserved name into a registered name owned by its ENSv1 claimant — hence both controllers receive it here.
+- `ROLE_RENEW` gates `PermissionedRegistry.renew()`. During pre-migration `BatchRegistrar` uses it to bump expiries on reserved names; afterwards the live renewal path runs through `ETHRegistrar.renew()` (see `src/registrar/ETHRegistrar.sol`), so the role moves from `BatchRegistrar` to `ETHRegistrar`.
 
 ## Prerequisites
 

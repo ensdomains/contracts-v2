@@ -16,12 +16,16 @@ const ROLE_REGISTRAR = 1n << 0n;
 const ROLE_REGISTRAR_ADMIN = 1n << 128n;
 const ROLE_REGISTER_RESERVED = 1n << 4n;
 const ROLE_REGISTER_RESERVED_ADMIN = 1n << 132n;
+const ROLE_RENEW = 1n << 16n;
+const ROLE_RENEW_ADMIN = 1n << 144n;
 
 const ROLE_NAMES: Array<[bigint, string]> = [
   [ROLE_REGISTRAR, "ROLE_REGISTRAR"],
   [ROLE_REGISTRAR_ADMIN, "ROLE_REGISTRAR_ADMIN"],
   [ROLE_REGISTER_RESERVED, "ROLE_REGISTER_RESERVED"],
   [ROLE_REGISTER_RESERVED_ADMIN, "ROLE_REGISTER_RESERVED_ADMIN"],
+  [ROLE_RENEW, "ROLE_RENEW"],
+  [ROLE_RENEW_ADMIN, "ROLE_RENEW_ADMIN"],
 ];
 
 function describeRoles(bitmap: bigint): string {
@@ -57,7 +61,7 @@ function parseArgs(argv: string[]): Config {
   const program = new Command()
     .name("prepareMigration")
     .description(
-      "Prepare .eth PermissionedRegistry for live migration: revoke BatchRegistrar's seeding roles and grant registration roles to ETHRegistrar and both migration controllers.",
+      "Prepare .eth PermissionedRegistry for live migration: fully decommission BatchRegistrar (revoke all its roles) and grant registration and renewal roles to ETHRegistrar plus the reservation-promotion role to both migration controllers.",
     )
     .requiredOption("--rpc-url <url>", "JSON-RPC endpoint")
     .requiredOption("--registry <address>", ".eth PermissionedRegistry address")
@@ -114,13 +118,15 @@ function buildOps(cfg: Config): Op[] {
         ROLE_REGISTRAR |
         ROLE_REGISTRAR_ADMIN |
         ROLE_REGISTER_RESERVED |
-        ROLE_REGISTER_RESERVED_ADMIN,
+        ROLE_REGISTER_RESERVED_ADMIN |
+        ROLE_RENEW |
+        ROLE_RENEW_ADMIN,
     },
     {
       kind: "grant",
       label: "ETHRegistrar",
       account: cfg.ethRegistrarAddress,
-      roles: ROLE_REGISTRAR,
+      roles: ROLE_REGISTRAR | ROLE_RENEW,
     },
     {
       kind: "grant",
