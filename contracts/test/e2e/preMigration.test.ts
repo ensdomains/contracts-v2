@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, setDefaultTimeout } from "bun:test";
 setDefaultTimeout(60_000);
 
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import {
@@ -39,7 +40,7 @@ const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 describe("PreMigration", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
 
-  const csvFilePath = join(process.cwd(), "test-premigration.csv");
+  const csvFilePath = join(tmpdir(), "test-premigration.csv");
   const cleanupFiles = [
     csvFilePath,
     "preMigration-checkpoint.json",
@@ -194,21 +195,47 @@ describe("PreMigration", () => {
     expect(state3.status).toBe(STATUS.AVAILABLE);
   });
 
-  it("skips names expiring soon with minExpiryDays", async () => {
+  it("adds grace period to short v1 expiries", async () => {
     const label = "soonexpire";
     const { user } = env.namedAccounts;
 
     const fiveDays = 5 * 24 * 60 * 60;
-    await registerV1Name(env, label, user.address, fiveDays);
+    const v1Expiry = await registerV1Name(
+      env,
+      label,
+      user.address,
+      fiveDays,
+    );
 
     createCSVFile(csvFilePath, [label]);
-    const args = buildMainArgs(env, csvFilePath, {
-      minExpiryDays: 7,
-    });
+    const gracePeriodDays = 90;
+    const args = buildMainArgs(env, csvFilePath, { gracePeriodDays });
     await main(args);
 
     const state = await verifyV2State(env, label);
-    expect(state.status).toBe(STATUS.AVAILABLE);
+    expect(state.status).toBe(STATUS.RESERVED);
+    expect(state.expiry).toBe(v1Expiry + BigInt(gracePeriodDays) * 86400n);
+  });
+
+  it("adds grace period to long v1 expiries", async () => {
+    const label = "longexpire";
+    const { user } = env.namedAccounts;
+
+    const v1Expiry = await registerV1Name(
+      env,
+      label,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+
+    createCSVFile(csvFilePath, [label]);
+    const gracePeriodDays = 90;
+    const args = buildMainArgs(env, csvFilePath, { gracePeriodDays });
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+    expect(state.expiry).toBe(v1Expiry + BigInt(gracePeriodDays) * 86400n);
   });
 
   it("handles checkpoint resumption", async () => {
