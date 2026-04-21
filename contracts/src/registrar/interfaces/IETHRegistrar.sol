@@ -155,7 +155,7 @@ interface IETHRegistrar is IPaymentTokenOracle {
     /// @param duration The duration to register or renew, in seconds.
     /// @param paymentToken The ERC-20 to use for payment.
     /// @return tokenId The token ID or 0 if available.
-    /// @return expiry The new expiry, in seconds, or 0 if not valid.
+    /// @return expiry The new expiry, in seconds.
     /// @return base The base price, relative to `paymentToken`.
     /// @return premium The premium price, relative to `paymentToken`.
     function rentPrice(

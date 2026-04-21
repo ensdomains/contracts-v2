@@ -181,7 +181,7 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
             paymentToken
         );
         if (tokenId > 0 || base == 0) {
-            revert CannotRegister();
+            revert CannotRegister(); // registered/reserved OR no price
         }
         SafeERC20.safeTransferFrom(paymentToken, _msgSender(), BENEFICIARY, base + premium); // reverts if payment failed
         tokenId = REGISTRY.register(
@@ -215,8 +215,8 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         bytes32 referrer
     ) external {
         (uint256 tokenId, uint64 expiry, uint256 base, ) = rentPrice(label, duration, paymentToken);
-        if (tokenId == 0 || base == 0) {
-            revert CannotRenew();
+        if (tokenId == 0 || expiry == 0) {
+            revert CannotRenew(); // expired + grace OR no price
         }
         SafeERC20.safeTransferFrom(paymentToken, _msgSender(), BENEFICIARY, base); // reverts if payment failed
         REGISTRY.renew(tokenId, expiry);
@@ -259,6 +259,9 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         uint64 duration,
         IERC20 paymentToken
     ) public view returns (uint256 tokenId, uint64 expiry, uint256 base, uint256 premium) {
+        if (!rentPriceOracle.isPaymentToken(paymentToken)) {
+            revert PaymentTokenNotSupported(paymentToken);
+        }
         uint64 t = uint64(block.timestamp);
         IPermissionedRegistry.State memory state = REGISTRY.getState(LibLabel.id(label));
         if (_isAvailable(state)) {
@@ -270,8 +273,8 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
             (base, premium) = rentPriceOracle.registerPrice(label, since, duration, paymentToken);
             expiry = t + duration;
         } else {
-            if (duration == 0) {
-                revert DurationTooShort(duration, 1);
+            if (duration < MIN_RENEW_DURATION) {
+                revert DurationTooShort(duration, MIN_RENEW_DURATION);
             }
             expiry = state.expiry;
             uint64 remaining;
@@ -291,9 +294,6 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
                 paymentToken
             );
             tokenId = state.tokenId;
-        }
-        if (base == 0 && !rentPriceOracle.isPaymentToken(paymentToken)) {
-            revert PaymentTokenNotSupported(paymentToken);
         }
     }
 
