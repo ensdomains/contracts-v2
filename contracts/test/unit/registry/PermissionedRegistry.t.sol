@@ -294,11 +294,29 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.renew(tokenId, testExpiry);
     }
 
-    function test_renew_expired() external {
+    function test_renew_expiredReservation_asRoot() external {
+        uint256 tokenId = this._reserve();
+        vm.warp(testExpiry);
+        testExpiry += testExpiry;
+        registry.renew(tokenId, testExpiry);
+        assertEq(registry.getExpiry(tokenId), testExpiry);
+    }
+
+    function test_renew_expiredRegistration_asRoot() external {
+        uint256 tokenId = this._register();
+        vm.warp(testExpiry);
+        testExpiry += testExpiry;
+        registry.renew(tokenId, testExpiry);
+        assertEq(registry.getExpiry(tokenId), testExpiry);
+    }
+
+    function test_renew_expiredRegistration_asOwner() external {
+        testRoles = RegistryRolesLib.ROLE_RENEW;
         uint256 tokenId = this._register();
         vm.warp(testExpiry);
         testExpiry += testExpiry;
         vm.expectRevert(abi.encodeWithSelector(IStandardRegistry.LabelExpired.selector, tokenId));
+        vm.prank(testOwner);
         registry.renew(tokenId, testExpiry);
     }
 
@@ -937,7 +955,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     // EAC Override: grantRoles() and revokeRoles()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_grantRolesAsOwner(uint256) external {
+    function test_grantRoles_asOwner(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(false, true);
 
         testRoles = roleBitmap << 128; // admin
@@ -947,7 +965,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.grantRoles(tokenId, roleBitmap, user2));
     }
 
-    function test_grantRolesAsRoot(uint256) external {
+    function test_grantRoles_asRoot(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(false, true);
 
         uint256 tokenId = this._register();
@@ -955,7 +973,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.grantRoles(tokenId, roleBitmap, testOwner));
     }
 
-    function test_grantRolesWithAdminAsOwner(uint256) external {
+    function test_grantRoles_withAdminAsOwner(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, false);
 
         uint256 tokenId = this._register();
@@ -972,7 +990,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWithAdminAsOwnerAndRoot(uint256) external {
+    function test_grantRoles_withAdminAsOwnerAndRoot(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, false);
 
         testOwner = address(this); // mint to account with root
@@ -989,7 +1007,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWhileExpired(uint256) external {
+    function test_grantRoles_whileExpired(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._register();
@@ -1006,7 +1024,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWhileReserved(uint256) external {
+    function test_grantRoles_whileReserved(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._reserve();
@@ -1022,7 +1040,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_revokeRolesAsOwnerHavingAdmin(uint256) external {
+    function test_revokeRoles_asOwnerHavingAdmin(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(false, true);
         uint256 adminRoleBitmap = roleBitmap << 128;
 
@@ -1038,7 +1056,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.revokeRoles(tokenId, adminRoleBitmap, testOwner));
     }
 
-    function test_revokeRolesAsOwnerLackingAdmin(uint256) external {
+    function test_revokeRoles_asOwnerLackingAdmin(uint256) external {
         testRoles = _randomRoleBitmap(false, true);
 
         uint256 tokenId = this._register();
@@ -1055,7 +1073,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.revokeRoles(tokenId, testRoles, testOwner);
     }
 
-    function test_revokeRolesAsRoot(uint256) external {
+    function test_revokeRoles_asRoot(uint256) external {
         testRoles = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._register();
@@ -1063,7 +1081,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
     }
 
-    function test_revokeRolesWhileExpired(uint256) external {
+    function test_revokeRoles_whileExpired(uint256) external {
         testRoles = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._register();
@@ -1080,7 +1098,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.revokeRoles(tokenId, testRoles, testOwner);
     }
 
-    function test_revokeRolesWhileReserved(uint256) external {
+    function test_revokeRoles_whileReserved(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._reserve();
