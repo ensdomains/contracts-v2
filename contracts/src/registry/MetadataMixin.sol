@@ -7,6 +7,10 @@ import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 /// @notice Mixin contract for Registry implementations to delegate metadata to an external provider
 /// @dev Inherit this contract to add metadata functionality to Registry contracts
 abstract contract MetadataMixin {
+    ////////////////////////////////////////////////////////////////////////
+    // Immutables
+    ////////////////////////////////////////////////////////////////////////
+
     /// @notice The metadata provider contract
     IRegistryMetadata public immutable METADATA_PROVIDER;
 

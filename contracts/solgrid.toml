@@ -1,0 +1,102 @@
+# Closest built-in solgrid mapping of the previous Solidity lint ruleset.
+# solgrid 0.0.14 adds the rule-level configuration needed to match the repo's
+# NatSpec/category-header policy closely enough for migration.
+
+[lint]
+preset = "recommended"
+
+[lint.rules]
+"best-practices/code-complexity" = "off"
+"best-practices/duplicated-imports" = "error"
+"best-practices/function-max-lines" = "warn"
+"best-practices/imports-on-top" = "error"
+"best-practices/max-states-count" = "off"
+"best-practices/no-empty-blocks" = "off"
+"best-practices/no-floating-pragma" = "off"
+"best-practices/no-global-import" = "error"
+"best-practices/no-unused-error" = "off"
+"best-practices/no-unused-event" = "off"
+"best-practices/no-unused-imports" = "error"
+"best-practices/no-unused-state" = "off"
+"best-practices/one-contract-per-file" = "off"
+"best-practices/reason-string" = "warn"
+"best-practices/visibility-modifier-order" = "error"
+"docs/natspec" = "error"
+"docs/selector-tags" = "error"
+"naming/const-name-snakecase" = "error"
+"naming/contract-name-capwords" = "error"
+"naming/func-name-mixedcase" = "warn"
+"naming/immutable-name-snakecase" = "error"
+"naming/modifier-name-mixedcase" = "error"
+"naming/named-parameters-mapping" = "error"
+"naming/param-name-mixedcase" = "off"
+"naming/private-vars-underscore" = "error"
+"naming/var-name-mixedcase" = "warn"
+"security/compiler-version" = "error"
+"security/low-level-calls" = "off"
+"security/no-delegatecall-in-loop" = "off"
+"security/no-inline-assembly" = "off"
+"security/not-rely-on-time" = "off"
+"security/payable-fallback" = "off"
+"style/category-headers" = "error"
+"style/imports-ordering" = "error"
+"style/ordering" = "error"
+
+[lint.settings."security/compiler-version"]
+allowed = [">=0.8.13"]
+
+[lint.settings."best-practices/function-max-lines"]
+max_lines = 150
+
+[lint.settings."style/imports-ordering"]
+import_order = ["^forge-std/", "^@?\\w", "^\\.\\./", "^\\./"]
+
+[lint.settings."docs/natspec"]
+comment_style = "triple_slash"
+continuation_indent = "padded"
+
+[lint.settings."docs/natspec".tags.title]
+enabled = false
+
+[lint.settings."docs/natspec".tags.author]
+enabled = false
+
+[lint.settings."docs/natspec".tags.notice]
+enabled = true
+exclude = [
+    "function:internal",
+    "function:private",
+    "contract:abstract",
+    "contract:interface",
+    "library",
+    "variable:internal",
+    "variable:private",
+]
+
+[lint.settings."docs/natspec".tags.dev]
+enabled = true
+include = [
+    "function:internal",
+    "function:private",
+    "contract:abstract",
+    "library",
+    "variable:internal",
+    "variable:private",
+]
+
+[lint.settings."docs/natspec".tags.param]
+enabled = true
+exclude = ["function:internal", "function:private", "library"]
+
+[lint.settings."docs/natspec".tags.return]
+enabled = true
+exclude = ["function:internal", "function:private", "library"]
+
+[lint.settings."style/category-headers"]
+min_categories = 3
+initialization_functions = ["constructor", "supportsInterface", "supportsFeature", "initialize"]
+
+[format]
+line_length = 100
+operator_line_break = "trailing"
+tab_width = 4

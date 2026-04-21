@@ -42,7 +42,7 @@ import {LibMigration} from "./libraries/LibMigration.sol";
 ///
 abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The shared factory for verifiable deployments.
@@ -73,7 +73,9 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         address wrapperRegistryImpl,
         IAddressSet publicResolverSet,
         address publicResolver
-    ) AbstractWrapperReceiver(nameWrapper) {
+    )
+        AbstractWrapperReceiver(nameWrapper)
+    {
         VERIFIABLE_FACTORY = verifiableFactory;
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
         PUBLIC_RESOLVER_SET = publicResolverSet;
@@ -97,10 +99,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractWrapperReceiver
-    function _migrateWrapped(
-        uint256[] calldata ids,
-        LibMigration.Data[] calldata mds
-    ) internal override {
+    function _migrateWrapped(uint256[] calldata ids, LibMigration.Data[] calldata mds)
+        internal
+        override
+    {
         IRegistry parentRegistry = _getRegistry();
         bytes32 parentNode = getWrappedNode();
         for (uint256 i; i < ids.length; ++i) {
@@ -113,6 +115,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             if (node != NameCoder.namehash(parentNode, labelHash)) {
                 revert LibMigration.NameDataMismatch(uint256(node));
             }
+
             // by construction: 1 <= length(label) <= 255
             // same as NameCoder.assertLabelSize()
             // see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort()` and `test_nameWrapper_labelTooLong()`.
@@ -137,22 +140,23 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             }
 
             // create subregistry
-            IRegistry subregistry = IRegistry(
-                VERIFIABLE_FACTORY.deployProxy(
-                    WRAPPER_REGISTRY_IMPL,
-                    uint256(node),
-                    abi.encodeCall(
-                        IWrapperRegistry.initialize,
-                        (
-                            node,
-                            parentRegistry,
-                            md.label,
-                            md.owner,
-                            _subregistryRoleBitmapFromFuses(fuses)
+            IRegistry subregistry =
+                IRegistry(
+                    VERIFIABLE_FACTORY.deployProxy(
+                        WRAPPER_REGISTRY_IMPL,
+                        uint256(node),
+                        abi.encodeCall(
+                            IWrapperRegistry.initialize,
+                            (
+                                node,
+                                parentRegistry,
+                                md.label,
+                                md.owner,
+                                _subregistryRoleBitmapFromFuses(fuses)
+                            )
                         )
                     )
-                )
-            );
+                );
 
             // add name to ENSv2
             // PermissionedRegistry._register() => CannotSetPastExpiry :: see expiry check
@@ -177,7 +181,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    ) internal virtual returns (uint256 tokenId);
+    )
+        internal
+        virtual
+        returns (uint256 tokenId);
 
     /// @dev The ENSv2 registry being migrated to.
     function _getRegistry() internal view virtual returns (IRegistry);
@@ -195,9 +202,11 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     }
 
     /// @dev Convert fuses to equivalent subregistry root roles.
-    function _subregistryRoleBitmapFromFuses(
-        uint32 fuses
-    ) internal pure returns (uint256 roleBitmap) {
+    function _subregistryRoleBitmapFromFuses(uint32 fuses)
+        internal
+        pure
+        returns (uint256 roleBitmap)
+    {
         if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR;
         }

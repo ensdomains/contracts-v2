@@ -18,7 +18,7 @@ import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 ///
 contract LockedMigrationController is LockedWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
@@ -75,7 +75,11 @@ contract LockedMigrationController is LockedWrapperReceiver {
         address resolver,
         uint256 roleBitmap,
         uint64 /*expiry*/
-    ) internal override returns (uint256 tokenId) {
+    )
+        internal
+        override
+        returns (uint256 tokenId)
+    {
         return
             ETH_REGISTRY.register(
                 label,

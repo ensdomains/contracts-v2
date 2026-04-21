@@ -59,6 +59,7 @@ contract PublicResolverV2Test is V1Fixture, V2Fixture {
 
         // call a setter
         vm.expectRevert();
+        vm.prank(user);
         publicResolver.setAddr(node, user);
     }
 

@@ -2,6 +2,7 @@
 .env
 
 node_modules/
+.solgrid_cache/
 
 .DS_Store
 

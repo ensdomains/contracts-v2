@@ -56,9 +56,9 @@ export const ROLES = {
   ADMIN,
 } as const;
 
-/** Role bitmaps for static deployment per README Static Deployment Permissions. */
+// Role bitmaps for static deployment per README Static Deployment Permissions.
 export const DEPLOYMENT_ROLES = {
-  /** RootRegistry root: REGISTRAR✓✓, REGISTER_RESERVED✓✓, SET_PARENT✓✓, RENEW✓✓ */
+  // RootRegistry root: REGISTRAR✓✓, REGISTER_RESERVED✓✓, SET_PARENT✓✓, RENEW✓✓
   ROOT_REGISTRY_ROOT:
     ROLES.REGISTRY.REGISTRAR |
     ROLES.ADMIN.REGISTRY.REGISTRAR |
@@ -68,24 +68,25 @@ export const DEPLOYMENT_ROLES = {
     ROLES.ADMIN.REGISTRY.SET_PARENT |
     ROLES.REGISTRY.RENEW |
     ROLES.ADMIN.REGISTRY.RENEW,
-  /** .eth token: SET_SUBREGISTRY AR, SET_RESOLVER AR */
+  // .eth token: SET_SUBREGISTRY AR, SET_RESOLVER AR
   ETH_TOKEN:
     ROLES.REGISTRY.SET_SUBREGISTRY |
     ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
     ROLES.REGISTRY.SET_RESOLVER |
     ROLES.ADMIN.REGISTRY.SET_RESOLVER,
-  /**
-   * Full registry role bitmap for ReverseRegistry root, .reverse token, and .addr token.
-   * Granting all roles is harmless; some (e.g. REGISTRAR) are root-only and don't apply to tokens.
-   */
+  // Full registry role bitmap for ReverseRegistry root, .reverse token, and .addr token.
+  // Granting all roles is harmless; some (e.g. REGISTRAR) are root-only and don't apply to tokens.
   REVERSE_AND_ADDR: FLAGS.ALL,
-  /** ETHRegistry root deployer: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓, RENEW✓ */
+  // ETHRegistry root deployer: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓, RENEW✓
   ETH_REGISTRY_ROOT:
     ROLES.ADMIN.REGISTRY.REGISTRAR |
     ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
     ROLES.REGISTRY.SET_PARENT |
     ROLES.ADMIN.REGISTRY.SET_PARENT |
     ROLES.ADMIN.REGISTRY.RENEW,
+  // UnlockedMigrationController and LockedMigrationController
+  // only need to register() pre-migrated reservations on ETHRegistry (see: "ENSv2 Migration Case Study")
+  MIGRATION_CONTROLLER_ROOT: ROLES.REGISTRY.REGISTER_RESERVED,
 } as const;
 
 // see: IPermissionedRegistry.sol

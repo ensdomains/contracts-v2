@@ -55,7 +55,7 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The permissioned registry used to look up name state (expiry, latest owner) for premium and discount calculations.
@@ -139,7 +139,9 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         uint64 premiumHalvingPeriod_,
         uint64 premiumPeriod_,
         PaymentRatio[] memory paymentRatios
-    ) Ownable(owner_) {
+    )
+        Ownable(owner_)
+    {
         REGISTRY = registry;
 
         _baseRatePerCp = baseRatePerCp;
@@ -215,11 +217,10 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @param initialPrice The initial price, in base units.
     /// @param halvingPeriod Duration until the price is reduced in half.
     /// @param period Number of seconds until the price is reduced to 0.
-    function updatePremiumPricing(
-        uint256 initialPrice,
-        uint64 halvingPeriod,
-        uint64 period
-    ) external onlyOwner {
+    function updatePremiumPricing(uint256 initialPrice, uint64 halvingPeriod, uint64 period)
+        external
+        onlyOwner
+    {
         premiumPriceInitial = initialPrice;
         premiumHalvingPeriod = halvingPeriod;
         premiumPeriod = period;
@@ -236,11 +237,10 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @param paymentToken The payment token.
     /// @param numer The numerator of the exchange rate.
     /// @param denom The denominator of the exchange rate.
-    function updatePaymentToken(
-        IERC20 paymentToken,
-        uint128 numer,
-        uint128 denom
-    ) external onlyOwner {
+    function updatePaymentToken(IERC20 paymentToken, uint128 numer, uint128 denom)
+        external
+        onlyOwner
+    {
         bool active = isPaymentToken(paymentToken);
         if (denom > 0) {
             if (numer == 0) {
@@ -282,9 +282,11 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @return The base rate or 0 if not valid, in base units.
     function baseRate(string memory label) public view returns (uint256) {
         uint256 len = bytes(label).length;
-        if (len == 0 || len > 255) return 0; // too long or too short
+        if (len == 0 || len > 255)
+            return 0; // too long or too short
         uint256 nbr = _baseRatePerCp.length;
-        if (nbr == 0) return 0; // no base rates
+        if (nbr == 0)
+            return 0; // no base rates
         uint256 ncp = StringUtils.strlen(label);
         return _baseRatePerCp[(ncp > nbr ? nbr : ncp) - 1];
     }
@@ -295,7 +297,8 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @return Integral of discount function over `[0, duration)`.
     function integratedDiscount(uint64 duration) public view returns (uint256) {
         uint256 n = _discountPoints.length;
-        if (n == 0) return 0;
+        if (n == 0)
+            return 0;
         uint256 acc;
         uint256 sum;
         for (uint256 i; i < n; ++i) {
@@ -323,19 +326,19 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @param duration The time after expiration, in seconds.
     /// @return The premium price, in base units.
     function premiumPriceAfter(uint64 duration) public view returns (uint256) {
-        if (duration >= premiumPeriod) return 0;
+        if (duration >= premiumPeriod)
+            return 0;
         return
             LibHalving.halving(premiumPriceInitial, premiumHalvingPeriod, duration) -
             LibHalving.halving(premiumPriceInitial, premiumHalvingPeriod, premiumPeriod);
     }
 
     /// @inheritdoc IRentPriceOracle
-    function rentPrice(
-        string memory label,
-        address owner,
-        uint64 duration,
-        IERC20 paymentToken
-    ) public view returns (uint256 base, uint256 premium) {
+    function rentPrice(string memory label, address owner, uint64 duration, IERC20 paymentToken)
+        public
+        view
+        returns (uint256 base, uint256 premium)
+    {
         Ratio memory ratio = _paymentRatios[paymentToken];
         if (ratio.denom == 0) {
             revert PaymentTokenNotSupported(paymentToken);
