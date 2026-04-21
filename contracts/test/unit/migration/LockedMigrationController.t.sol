@@ -63,7 +63,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             verifiableFactory,
             address(ensV1Resolver),
             hcaFactory,
-            metadata
+            metadata,
+            labelStore
         );
         migrationController = new LockedMigrationController(
             nameWrapper,
