@@ -215,7 +215,7 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         bytes32 referrer
     ) external {
         (uint256 tokenId, uint64 expiry, uint256 base, ) = rentPrice(label, duration, paymentToken);
-        if (tokenId == 0 || expiry == 0) {
+        if (tokenId == 0 || base == 0) {
             revert CannotRenew(); // expired + grace OR no price
         }
         SafeERC20.safeTransferFrom(paymentToken, _msgSender(), BENEFICIARY, base); // reverts if payment failed
