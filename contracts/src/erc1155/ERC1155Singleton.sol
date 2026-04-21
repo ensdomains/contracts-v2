@@ -324,27 +324,6 @@ abstract contract ERC1155Singleton is
         _updateWithAcceptanceCheck(address(0), to, ids, values, data, false);
     }
 
-    /// @notice Mint multiple token IDs to `to`.
-    /// @param to Address receiving the minted tokens.
-    /// @param ids Token IDs to mint.
-    /// @param values Amounts to mint for each token ID.
-    /// @param data Additional calldata passed to receiver hooks.
-    /// @dev Reverts with `ERC1155InvalidReceiver` if `to` is the zero address.
-    /// @dev Reverts with `ERC1155InvalidArrayLength` if `ids.length != values.length`.
-    /// @dev If `to` is a contract, it must return the ERC-1155 acceptance magic value.
-    /// @dev Emits `TransferBatch`.
-    function _mintBatch(
-        address to,
-        uint256[] memory ids,
-        uint256[] memory values,
-        bytes memory data
-    ) internal {
-        if (to == address(0)) {
-            revert ERC1155InvalidReceiver(address(0));
-        }
-        _updateWithAcceptanceCheck(address(0), to, ids, values, data, true);
-    }
-
     /// @notice Burn `value` tokens of token ID `id` from `from`.
     /// @param from Address to burn from.
     /// @param id Token ID to burn.
@@ -358,21 +337,6 @@ abstract contract ERC1155Singleton is
         }
         (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(id, value);
         _updateWithAcceptanceCheck(from, address(0), ids, values, "", false);
-    }
-
-    /// @notice Burn multiple token IDs from `from`.
-    /// @param from Address to burn from.
-    /// @param ids Token IDs to burn.
-    /// @param values Amounts to burn for each token ID.
-    /// @dev Reverts with `ERC1155InvalidSender` if `from` is the zero address.
-    /// @dev Reverts with `ERC1155InvalidArrayLength` if `ids.length != values.length`.
-    /// @dev Reverts with `ERC1155InsufficientBalance` if `from` is not current owner or `value > 1`.
-    /// @dev Emits `TransferBatch`.
-    function _burnBatch(address from, uint256[] memory ids, uint256[] memory values) internal {
-        if (from == address(0)) {
-            revert ERC1155InvalidSender(address(0));
-        }
-        _updateWithAcceptanceCheck(from, address(0), ids, values, "", true);
     }
 
     /// @notice Set or clear approval for `operator` to manage all tokens owned by `owner`.
