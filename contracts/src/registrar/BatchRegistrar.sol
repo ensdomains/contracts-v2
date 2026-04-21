@@ -19,6 +19,14 @@ contract BatchRegistrar is Ownable {
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
     ////////////////////////////////////////////////////////////////////////
+    // Errors
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Thrown when batch registration inputs have different lengths.
+    /// @dev Error selector: `0xaaad13f7`
+    error InputLengthMismatch();
+
+    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
@@ -47,7 +55,9 @@ contract BatchRegistrar is Ownable {
         external
         onlyOwner
     {
-        require(labels.length == expires.length);
+        if (labels.length != expires.length) {
+            revert InputLengthMismatch();
+        }
 
         for (uint256 i = 0; i < labels.length; i++) {
             IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(labels[i]));

@@ -117,9 +117,9 @@ contract UpgradableUniversalResolverProxy {
 
     /// @notice Allows admin to revoke their admin rights by setting admin to address(0).
     function renounceAdmin() external onlyAdmin {
-        address admin_ = _getAdmin();
+        address currentAdmin = _getAdmin();
         _setAdmin(address(0));
-        emit AdminRemoved(admin_);
+        emit AdminRemoved(currentAdmin);
     }
 
     /// @notice Returns the current implementation address.
