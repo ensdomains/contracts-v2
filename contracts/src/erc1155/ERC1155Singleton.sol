@@ -50,16 +50,6 @@ abstract contract ERC1155Singleton is
     mapping(address account => mapping(address operator => bool)) private _operatorApprovals;
 
     ////////////////////////////////////////////////////////////////////////
-    // Events
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice An approval for all operator was set.
-    /// @param owner The owner of the token.
-    /// @param approved The approved address.
-    /// @param tokenId The token ID.
-    event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
-
-    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
