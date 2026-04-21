@@ -5,11 +5,11 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
-import {IRentPriceOracle} from "./IRentPriceOracle.sol";
+import {IPaymentTokenOracle} from "./IPaymentTokenOracle.sol";
 
 /// @notice Interface for the ".eth" registrar which manages the ".eth" registry.
-/// @dev Interface selector: `0x29071951`
-interface IETHRegistrar is IRentPriceOracle {
+/// @dev Interface selector: `0xd790e8f5`
+interface IETHRegistrar is IPaymentTokenOracle {
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
@@ -64,13 +64,17 @@ interface IETHRegistrar is IRentPriceOracle {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice `label` is AVAILABLE.
-    /// @dev Error selector: `0xf7681f14`
-    error NameIsAvailable(string label);
+    /// @notice `paymentToken` is not supported for payment.
+    /// @dev Error selector: `0x02e2ae9e`
+    error PaymentTokenNotSupported(IERC20 paymentToken);
 
-    /// @notice `label` is not AVAILABLE.
-    /// @dev Error selector: `0x477707e8`
-    error NameNotAvailable(string label);
+    /// @notice `label` is not available
+    /// @dev Error selector: `0xeb160ce0`
+    error CannotRegister();
+
+    /// @notice `label` is not available for.
+    /// @dev Error selector: `0xd1fe65f8`
+    error CannotRenew();
 
     /// @notice `duration` less than `minDuration`.
     /// @dev Error selector: `0xa096b844`
@@ -136,10 +140,29 @@ interface IETHRegistrar is IRentPriceOracle {
         bytes32 referrer
     ) external;
 
+    /// @notice Check if a `label` is valid for registration.
+    /// @param label The name to check.
+    /// @return `true` if the `label` is valid.
+    function isValid(string memory label) external view returns (bool);
+
     /// @notice Check if `label` is available for registration.
     /// @param label The name to check.
-    /// @return `true` if the `label` is available.
+    /// @return available `true` if `label` is available.
     function isAvailable(string memory label) external view returns (bool);
+
+    /// @notice Price of registering or renewing `label`.
+    /// @param label The name to price.
+    /// @param duration The duration to register or renew, in seconds.
+    /// @param paymentToken The ERC-20 to use for payment.
+    /// @return tokenId The token ID or 0 if available.
+    /// @return expiry The new expiry, in seconds.
+    /// @return base The base price, relative to `paymentToken`.
+    /// @return premium The premium price, relative to `paymentToken`.
+    function rentPrice(
+        string memory label,
+        uint64 duration,
+        IERC20 paymentToken
+    ) external view returns (uint256 tokenId, uint64 expiry, uint256 base, uint256 premium);
 
     /// @notice Get timestamp of `commitment`.
     /// @param commitment The commitment hash.

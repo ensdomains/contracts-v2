@@ -13,6 +13,8 @@ library StandardPricing {
     uint64 constant MIN_COMMITMENT_AGE = 1 minutes;
     uint64 constant MAX_COMMITMENT_AGE = 1 days;
     uint64 constant MIN_REGISTER_DURATION = 28 days;
+    uint64 constant MIN_RENEW_DURATION = 1;
+    uint64 constant GRACE_PERIOD = 30 days;
 
     uint8 constant PRICE_DECIMALS = 12;
 

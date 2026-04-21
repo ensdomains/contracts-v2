@@ -31,6 +31,8 @@ export default execute(
         60n, // minCommitmentAge
         SEC_PER_DAY, // maxCommitmentAge
         28n * SEC_PER_DAY, // minRegistrationDuration
+        1n, // minRenewDuration,
+        30n * SEC_PER_DAY, // gracePeriod
         rentPriceOracle.address,
       ],
     });

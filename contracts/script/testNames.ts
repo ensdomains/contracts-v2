@@ -125,7 +125,6 @@ export async function testNames(env: DevnetEnvironment) {
 
   const [aliasBase, aliasPremium] = await env.v2.ETHRegistrar.read.rentPrice([
     "alias",
-    env.namedAccounts.owner.address,
     aliasDuration,
     aliasPaymentToken,
   ]);
