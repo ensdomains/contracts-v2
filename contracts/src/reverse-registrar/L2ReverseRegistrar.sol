@@ -66,14 +66,6 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     /// @dev Error selector: `0x8baa579f`
     error InvalidSignature();
 
-    /// @notice Thrown when the chain ID array is not in strictly ascending order.
-    /// @dev Error selector: `0xea0b14e2`
-    error ChainIdsNotAscending();
-
-    /// @notice Thrown when the current chain ID is not included in the claim's chain ID array.
-    /// @dev Error selector: `0x756925c8`
-    error CurrentChainNotFound(uint256 chainId);
-
     ////////////////////////////////////////////////////////////////////////
     // Modifiers
     ////////////////////////////////////////////////////////////////////////
