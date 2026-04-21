@@ -26,7 +26,6 @@ contract SimpleRegistryMetadataTest is Test, ERC1155Holder {
 
     // Hardcoded role constants
     uint256 constant ROLE_UPDATE_METADATA = 1 << 0;
-    uint256 constant ROLE_UPDATE_METADATA_ADMIN = ROLE_UPDATE_METADATA << 128;
 
     uint256 constant DEFAULT_ROLE_BITMAP =
         RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER;
