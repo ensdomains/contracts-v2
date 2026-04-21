@@ -58,7 +58,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
     function setUp() public override {
         super.setUp();
-        vm.recordLogs();
+        vm.expectEmit();
+        emit IRegistry.RegistryCreated();
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
             verifiableFactory,
@@ -66,7 +67,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             hcaFactory,
             metadata
         );
-        _expectNoEmit(vm.getRecordedLogs(), IRegistry.RegistryCreated.selector);
         migrationController = new LockedMigrationController(
             nameWrapper,
             ethRegistry,
@@ -729,13 +729,5 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 subregistry: IRegistry(address(0)), // ignored by LockedMigrationController
                 resolver: testResolver
             });
-    }
-
-    function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {
-        for (uint256 i; i < logs.length; ++i) {
-            if (logs[i].topics[0] == topic0) {
-                revert(string.concat("found unexpected event: ", vm.toString(topic0)));
-            }
-        }
     }
 }

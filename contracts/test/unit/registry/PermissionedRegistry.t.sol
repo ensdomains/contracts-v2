@@ -53,10 +53,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry = new MockPermissionedRegistry(hcaFactory, metadata, address(this), ROOT_ROLES);
     }
 
-    function test_init_noRoles() external {
-        vm.recordLogs();
-        new PermissionedRegistry(hcaFactory, metadata, address(this), 0);
-        _expectNoEmit(vm.getRecordedLogs(), IRegistry.RegistryCreated.selector);
+    function test_initForProxyImplementation() external {
+        vm.expectEmit();
+        emit IRegistry.RegistryCreated();
+        new PermissionedRegistry(hcaFactory, metadata, address(0), 0);
     }
 
     function test_constructor() external view {

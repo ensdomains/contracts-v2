@@ -100,9 +100,12 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     }
 
     /// @inheritdoc ERC165
-    function supportsInterface(
-        bytes4 interfaceID
-    ) public view override(ERC165, StandaloneReverseRegistrar) returns (bool) {
+    function supportsInterface(bytes4 interfaceID)
+        public
+        view
+        override(ERC165, StandaloneReverseRegistrar)
+        returns (bool)
+    {
         return
             interfaceID == type(IL2ReverseRegistrar).interfaceId ||
             super.supportsInterface(interfaceID);
@@ -123,14 +126,10 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     }
 
     /// @inheritdoc IL2ReverseRegistrar
-    function setNameForAddrWithSignature(
-        NameClaim calldata claim,
-        bytes calldata signature
-    ) external {
-        string memory chainIdsString = ChainIdsBuilderLib.validateAndBuild(
-            claim.chainIds,
-            CHAIN_ID
-        );
+    function setNameForAddrWithSignature(NameClaim calldata claim, bytes calldata signature)
+        external
+    {
+        string memory chainIdsString = ChainIdsBuilderLib.validateAndBuild(claim.chainIds, CHAIN_ID);
 
         bytes32 message = _createClaimMessageHash(claim, chainIdsString, address(0));
         _validateSignature(signature, claim.addr, message);
@@ -144,13 +143,13 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
         NameClaim calldata claim,
         address owner,
         bytes calldata signature
-    ) external {
-        string memory chainIdsString = ChainIdsBuilderLib.validateAndBuild(
-            claim.chainIds,
-            CHAIN_ID
-        );
+    )
+        external
+    {
+        string memory chainIdsString = ChainIdsBuilderLib.validateAndBuild(claim.chainIds, CHAIN_ID);
 
-        if (!_ownsContract(claim.addr, owner)) revert NotOwnerOfContract();
+        if (!_ownsContract(claim.addr, owner))
+            revert NotOwnerOfContract();
 
         bytes32 message = _createClaimMessageHash(claim, chainIdsString, owner);
         _validateSignature(signature, owner, message);
@@ -176,9 +175,7 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     function _validateSignature(bytes calldata signature, address addr, bytes32 message) internal {
         // ERC6492 check is done internally because UniversalSigValidator is not gas efficient.
         // We only want to use UniversalSigValidator for ERC6492 signatures.
-        if (
-            bytes32(signature[signature.length - 32:signature.length]) == _ERC6492_DETECTION_SUFFIX
-        ) {
+        if (bytes32(signature[signature.length - 32:signature.length]) == _ERC6492_DETECTION_SUFFIX) {
             if (!_UNIVERSAL_SIG_VALIDATOR.isValidSig(addr, message, signature))
                 revert InvalidSignature();
         } else {
@@ -195,10 +192,12 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
         uint256 currentInception = inceptionOf[addr];
 
         // signedAt must be strictly greater than the current inception
-        if (signedAt <= currentInception) revert StaleSignature(signedAt, currentInception);
+        if (signedAt <= currentInception)
+            revert StaleSignature(signedAt, currentInception);
 
         // signedAt cannot be in the future
-        if (signedAt > block.timestamp) revert SignatureNotValidYet(signedAt, block.timestamp);
+        if (signedAt > block.timestamp)
+            revert SignatureNotValidYet(signedAt, block.timestamp);
 
         // Update the inception to the new signedAt
         inceptionOf[addr] = signedAt;
@@ -210,7 +209,8 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     /// @param addr The address to check ownership against.
     /// @return True if addr is the owner of contractAddr, false otherwise.
     function _ownsContract(address contractAddr, address addr) internal view returns (bool) {
-        if (contractAddr.code.length == 0) return false;
+        if (contractAddr.code.length == 0)
+            return false;
         try Ownable(contractAddr).owner() returns (address owner) {
             return owner == addr;
         } catch {
@@ -249,7 +249,11 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
         NameClaim calldata claim,
         string memory chainIdsString,
         address owner
-    ) internal pure returns (bytes32 digest) {
+    )
+        internal
+        pure
+        returns (bytes32 digest)
+    {
         string memory name = claim.name;
         string memory addrString = LibString.toChecksumHexString(claim.addr);
         string memory signedAtString = LibISO8601.toISO8601(claim.signedAt);

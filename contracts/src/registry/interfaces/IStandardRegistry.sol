@@ -52,7 +52,9 @@ interface IStandardRegistry is IRegistry, IERC1155Singleton {
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    ) external returns (uint256 tokenId);
+    )
+        external
+        returns (uint256 tokenId);
 
     /// @notice Renew a label.
     /// @param anyId The labelhash, token ID, or resource.

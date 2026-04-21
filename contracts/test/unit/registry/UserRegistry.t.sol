@@ -45,9 +45,9 @@ contract UserRegistryTest is Test, ERC1155Holder {
         metadata = new SimpleRegistryMetadata(hcaFactory);
 
         // Deploy the implementation
-        vm.recordLogs();
+        vm.expectEmit();
+        emit IRegistry.RegistryCreated();
         implementation = new UserRegistry(hcaFactory, metadata);
-        _expectNoEmit(vm.getRecordedLogs(), IRegistry.RegistryCreated.selector);
 
         // Create initialization data
         bytes memory initData = abi.encodeCall(
@@ -325,14 +325,6 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Verify new registration
         assertEq(proxy.ownerOf(newTokenId), user2, "Domain should be owned by user2");
-    }
-
-    function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {
-        for (uint256 i; i < logs.length; ++i) {
-            if (logs[i].topics[0] == topic0) {
-                revert(string.concat("found unexpected event: ", vm.toString(topic0)));
-            }
-        }
     }
 }
 

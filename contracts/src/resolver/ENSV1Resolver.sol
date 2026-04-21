@@ -9,7 +9,7 @@ import {AbstractMirrorResolver} from "./AbstractMirrorResolver.sol";
 /// @notice Resolver that performs resolutions using ENSv1.
 contract ENSV1Resolver is AbstractMirrorResolver {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv1 registry used to look up resolvers for names.
@@ -22,10 +22,9 @@ contract ENSV1Resolver is AbstractMirrorResolver {
     /// @notice Initializes the ENSV1Resolver with the ENSv1 registry and batch gateway provider.
     /// @param registryV1 The ENSv1 registry.
     /// @param batchGatewayProvider The batch gateway provider.
-    constructor(
-        ENS registryV1,
-        IGatewayProvider batchGatewayProvider
-    ) AbstractMirrorResolver(batchGatewayProvider) {
+    constructor(ENS registryV1, IGatewayProvider batchGatewayProvider)
+        AbstractMirrorResolver(batchGatewayProvider)
+    {
         REGISTRY_V1 = registryV1;
     }
 

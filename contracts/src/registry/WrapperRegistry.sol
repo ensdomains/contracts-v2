@@ -29,7 +29,7 @@ contract WrapperRegistry is
     UUPSUpgradeable
 {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Fallback resolver for ENSv1 resolution.
@@ -67,9 +67,7 @@ contract WrapperRegistry is
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    )
+    function supportsInterface(bytes4 interfaceId)
         public
         view
         virtual
@@ -89,7 +87,10 @@ contract WrapperRegistry is
         string calldata childLabel,
         address admin,
         uint256 roleBitmap
-    ) public initializer {
+    )
+        public
+        initializer
+    {
         _node = node;
         // setup canonical parent (ROLE_SET_PARENT is not granted)
         _parentRegistry = parentRegistry;
@@ -116,7 +117,11 @@ contract WrapperRegistry is
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    ) public override(IStandardRegistry, PermissionedRegistry) returns (uint256 tokenId) {
+    )
+        public
+        override(IStandardRegistry, PermissionedRegistry)
+        returns (uint256 tokenId)
+    {
         if (_isMigratableChild(label)) {
             revert LibMigration.NameRequiresMigration();
         }
@@ -125,9 +130,12 @@ contract WrapperRegistry is
 
     /// @inheritdoc PermissionedRegistry
     /// @dev Return `V1_RESOLVER` upon visiting migratable children.
-    function getResolver(
-        string calldata label
-    ) public view override(IRegistry, PermissionedRegistry) returns (address) {
+    function getResolver(string calldata label)
+        public
+        view
+        override(IRegistry, PermissionedRegistry)
+        returns (address)
+    {
         return _isMigratableChild(label) ? V1_RESOLVER : super.getResolver(label);
     }
 
@@ -164,14 +172,20 @@ contract WrapperRegistry is
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    ) internal override returns (uint256 tokenId) {
+    )
+        internal
+        override
+        returns (uint256 tokenId)
+    {
         return super.register(label, owner, subregistry, resolver, roleBitmap, expiry);
     }
 
     /// @dev Requires `ROLE_UPGRADE` to upgrade.
-    function _authorizeUpgrade(
-        address
-    ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {
+    function _authorizeUpgrade(address)
+        internal
+        override
+        onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE)
+    {
         //
     }
 

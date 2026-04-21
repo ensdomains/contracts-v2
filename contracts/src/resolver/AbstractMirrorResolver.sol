@@ -13,7 +13,7 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 /// @dev Resolver that mirrors resolution of the same name to a different registry.
 abstract contract AbstractMirrorResolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Shared batch gateway provider.
@@ -30,9 +30,13 @@ abstract contract AbstractMirrorResolver is ICompositeResolver, IERC7996, Resolv
     }
 
     /// @inheritdoc ERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(ERC165) returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(ERC165)
+        returns (bool)
+    {
         return
             type(IExtendedResolver).interfaceId == interfaceId ||
             type(ICompositeResolver).interfaceId == interfaceId ||
@@ -50,10 +54,7 @@ abstract contract AbstractMirrorResolver is ICompositeResolver, IERC7996, Resolv
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IExtendedResolver
-    function resolve(
-        bytes calldata name,
-        bytes calldata data
-    ) external view returns (bytes memory) {
+    function resolve(bytes calldata name, bytes calldata data) external view returns (bytes memory) {
         callResolver(_findResolver(name), name, data, false, "", BATCH_GATEWAY_PROVIDER.gateways());
     }
 
