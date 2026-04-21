@@ -1,5 +1,0 @@
-{
-  "name": "solhint-plugin-contracts-v2",
-  "type": "commonjs",
-  "main": "index.js"
-}

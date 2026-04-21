@@ -17,7 +17,8 @@ import {IETHRegistrar} from "./interfaces/IETHRegistrar.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
 /// @dev Composite role bitmap granted to name owners at registration — includes set-subregistry, set-resolver, and can-transfer (with admin variants).
-uint256 constant REGISTRATION_ROLE_BITMAP = 0 |
+uint256 constant REGISTRATION_ROLE_BITMAP =
+    0 |
     RegistryRolesLib.ROLE_SET_SUBREGISTRY |
     RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN |
     RegistryRolesLib.ROLE_SET_RESOLVER |
@@ -43,7 +44,7 @@ uint256 constant ROLE_SET_ORACLE = 1 << 0;
 ///
 contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The permissioned registry where .eth names are stored and managed.
@@ -99,7 +100,9 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         uint64 maxCommitmentAge,
         uint64 minRegisterDuration,
         IRentPriceOracle rentPriceOracle_
-    ) HCAEquivalence(hcaFactory) {
+    )
+        HCAEquivalence(hcaFactory)
+    {
         if (maxCommitmentAge <= minCommitmentAge) {
             revert MaxCommitmentAgeTooLow();
         }
@@ -116,9 +119,12 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     }
 
     /// @inheritdoc EnhancedAccessControl
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view override(EnhancedAccessControl) returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(EnhancedAccessControl)
+        returns (bool)
+    {
         return
             interfaceId == type(IETHRegistrar).interfaceId ||
             interfaceId == type(IRentPriceOracle).interfaceId ||
@@ -155,7 +161,10 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         uint64 duration,
         IERC20 paymentToken,
         bytes32 referrer
-    ) external returns (uint256 tokenId) {
+    )
+        external
+        returns (uint256 tokenId)
+    {
         if (duration < MIN_REGISTER_DURATION) {
             revert DurationTooShort(duration, MIN_REGISTER_DURATION);
         }
@@ -193,12 +202,9 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     }
 
     /// @inheritdoc IETHRegistrar
-    function renew(
-        string calldata label,
-        uint64 duration,
-        IERC20 paymentToken,
-        bytes32 referrer
-    ) external {
+    function renew(string calldata label, uint64 duration, IERC20 paymentToken, bytes32 referrer)
+        external
+    {
         IPermissionedRegistry.State memory state = REGISTRY.getState(LibLabel.id(label));
         if (state.status == IPermissionedRegistry.Status.AVAILABLE) {
             revert NameIsAvailable(label);
@@ -227,12 +233,11 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     }
 
     /// @inheritdoc IRentPriceOracle
-    function rentPrice(
-        string memory label,
-        address owner,
-        uint64 duration,
-        IERC20 paymentToken
-    ) public view returns (uint256 base, uint256 premium) {
+    function rentPrice(string memory label, address owner, uint64 duration, IERC20 paymentToken)
+        public
+        view
+        returns (uint256 base, uint256 premium)
+    {
         return rentPriceOracle.rentPrice(label, owner, duration, paymentToken);
     }
 
@@ -245,7 +250,12 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         address resolver,
         uint64 duration,
         bytes32 referrer
-    ) public pure override returns (bytes32) {
+    )
+        public
+        pure
+        override
+        returns (bytes32)
+    {
         return
             keccak256(abi.encode(label, owner, secret, subregistry, resolver, duration, referrer));
     }

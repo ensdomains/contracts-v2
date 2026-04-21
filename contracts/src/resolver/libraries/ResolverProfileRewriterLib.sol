@@ -16,10 +16,11 @@ library ResolverProfileRewriterLib {
     /// @param call The calldata for a resolver.
     /// @param newNode The replacement node.
     /// @return copy A copy of the calldata with node replaced.
-    function replaceNode(
-        bytes calldata call,
-        bytes32 newNode
-    ) internal pure returns (bytes memory copy) {
+    function replaceNode(bytes calldata call, bytes32 newNode)
+        internal
+        pure
+        returns (bytes memory copy)
+    {
         // 0xac9650d8                                                       // selector
         // 0000000000000000000000000000000000000000000000000000000000000020 // jump
         // 0000000000000000000000000000000000000000000000000000000000000002 // .length @ jump
