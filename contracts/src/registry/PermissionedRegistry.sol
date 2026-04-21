@@ -84,8 +84,10 @@ contract PermissionedRegistry is
 
     /// @dev The parent registry of this registry.
     IRegistry internal _parentRegistry;
+
     /// @dev The child label of this registry.
     string internal _childLabel;
+
     /// @dev The entries of this registry.
     mapping(uint256 storageId => Entry entry) internal _entries;
 
@@ -103,14 +105,15 @@ contract PermissionedRegistry is
         IRegistryMetadata metadata,
         address ownerAddress,
         uint256 ownerRoles
-    ) HCAEquivalence(hcaFactory) MetadataMixin(metadata) {
+    )
+        HCAEquivalence(hcaFactory)
+        MetadataMixin(metadata)
+    {
         _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    )
+    function supportsInterface(bytes4 interfaceId)
         public
         view
         virtual
@@ -130,29 +133,26 @@ contract PermissionedRegistry is
 
     /// @inheritdoc IStandardRegistry
     function setSubregistry(uint256 anyId, IRegistry registry) public virtual {
-        (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
-            anyId,
-            RegistryRolesLib.ROLE_SET_SUBREGISTRY
-        );
+        (uint256 tokenId, Entry storage entry) =
+            _checkExpiryAndTokenRoles(anyId, RegistryRolesLib.ROLE_SET_SUBREGISTRY);
         entry.subregistry = registry;
         emit SubregistryUpdated(tokenId, registry, _msgSender());
     }
 
     /// @inheritdoc IStandardRegistry
     function setResolver(uint256 anyId, address resolver) public virtual {
-        (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
-            anyId,
-            RegistryRolesLib.ROLE_SET_RESOLVER
-        );
+        (uint256 tokenId, Entry storage entry) =
+            _checkExpiryAndTokenRoles(anyId, RegistryRolesLib.ROLE_SET_RESOLVER);
         entry.resolver = resolver;
         emit ResolverUpdated(tokenId, resolver, _msgSender());
     }
 
     /// @inheritdoc IStandardRegistry
-    function setParent(
-        IRegistry parent,
-        string memory label
-    ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_SET_PARENT) {
+    function setParent(IRegistry parent, string memory label)
+        public
+        virtual
+        onlyRootRoles(RegistryRolesLib.ROLE_SET_PARENT)
+    {
         _parentRegistry = parent;
         _childLabel = label;
         emit ParentUpdated(parent, label, _msgSender());
@@ -170,7 +170,12 @@ contract PermissionedRegistry is
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    ) public virtual override returns (uint256 tokenId) {
+    )
+        public
+        virtual
+        override
+        returns (uint256 tokenId)
+    {
         NameCoder.assertLabelSize(label);
         uint256 labelId = LibLabel.id(label);
         Entry storage entry = _entry(labelId);
@@ -231,10 +236,8 @@ contract PermissionedRegistry is
     /// @inheritdoc IStandardRegistry
     /// @dev Requires `REGISTERED | RESERVED` and `ROLE_UNREGISTER`.
     function unregister(uint256 anyId) public virtual {
-        (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
-            anyId,
-            RegistryRolesLib.ROLE_UNREGISTER
-        );
+        (uint256 tokenId, Entry storage entry) =
+            _checkExpiryAndTokenRoles(anyId, RegistryRolesLib.ROLE_UNREGISTER);
         emit LabelUnregistered(tokenId, _msgSender());
         address owner = super.ownerOf(tokenId);
         if (owner != address(0)) {
@@ -248,10 +251,8 @@ contract PermissionedRegistry is
     /// @inheritdoc IStandardRegistry
     /// @dev Requires `REGISTERED | RESERVED` and `ROLE_RENEW`.
     function renew(uint256 anyId, uint64 newExpiry) public override {
-        (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
-            anyId,
-            RegistryRolesLib.ROLE_RENEW
-        );
+        (uint256 tokenId, Entry storage entry) =
+            _checkExpiryAndTokenRoles(anyId, RegistryRolesLib.ROLE_RENEW);
         if (newExpiry < entry.expiry) {
             revert CannotReduceExpiry(entry.expiry, newExpiry);
         }
@@ -260,20 +261,20 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function grantRoles(
-        uint256 anyId,
-        uint256 roleBitmap,
-        address account
-    ) public override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
+    function grantRoles(uint256 anyId, uint256 roleBitmap, address account)
+        public
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (bool)
+    {
         return super.grantRoles(getResource(anyId), roleBitmap, account);
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function revokeRoles(
-        uint256 anyId,
-        uint256 roleBitmap,
-        address account
-    ) public override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
+    function revokeRoles(uint256 anyId, uint256 roleBitmap, address account)
+        public
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (bool)
+    {
         return super.revokeRoles(getResource(anyId), roleBitmap, account);
     }
 
@@ -339,9 +340,13 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IERC1155Singleton
-    function ownerOf(
-        uint256 tokenId
-    ) public view virtual override(ERC1155Singleton, IERC1155Singleton) returns (address) {
+    function ownerOf(uint256 tokenId)
+        public
+        view
+        virtual
+        override(ERC1155Singleton, IERC1155Singleton)
+        returns (address)
+    {
         Entry storage entry = _entry(tokenId);
         return
             tokenId != _constructTokenId(tokenId, entry) || _isExpired(entry.expiry)
@@ -349,46 +354,48 @@ contract PermissionedRegistry is
                 : super.ownerOf(tokenId);
     }
 
-    /// @dev EAC view overrides — each translates `anyId` to the canonical EAC resource
-    ///      (via `getResource`) before delegating to the base `EnhancedAccessControl` implementation.
-
     /// @inheritdoc IEnhancedAccessControl
-    function roles(
-        uint256 anyId,
-        address account
-    ) public view override(EnhancedAccessControl, IEnhancedAccessControl) returns (uint256) {
+    function roles(uint256 anyId, address account)
+        public
+        view
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (uint256)
+    {
         return super.roles(getResource(anyId), account);
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function roleCount(
-        uint256 anyId
-    ) public view override(EnhancedAccessControl, IEnhancedAccessControl) returns (uint256) {
+    function roleCount(uint256 anyId)
+        public
+        view
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (uint256)
+    {
         return super.roleCount(getResource(anyId));
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasRoles(
-        uint256 anyId,
-        uint256 roleBitmap,
-        address account
-    ) public view override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
+    function hasRoles(uint256 anyId, uint256 roleBitmap, address account)
+        public
+        view
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (bool)
+    {
         return super.hasRoles(getResource(anyId), roleBitmap, account);
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasAssignees(
-        uint256 anyId,
-        uint256 roleBitmap
-    ) public view override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
+    function hasAssignees(uint256 anyId, uint256 roleBitmap)
+        public
+        view
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (bool)
+    {
         return super.hasAssignees(getResource(anyId), roleBitmap);
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function getAssigneeCount(
-        uint256 anyId,
-        uint256 roleBitmap
-    )
+    function getAssigneeCount(uint256 anyId, uint256 roleBitmap)
         public
         view
         override(EnhancedAccessControl, IEnhancedAccessControl)
@@ -402,12 +409,11 @@ contract PermissionedRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Override `ERC1155Singleton._update()` to transfer the roles to the new owner if the token is transferred.
-    function _update(
-        address from,
-        address to,
-        uint256[] memory tokenIds,
-        uint256[] memory amounts
-    ) internal virtual override {
+    function _update(address from, address to, uint256[] memory tokenIds, uint256[] memory amounts)
+        internal
+        virtual
+        override
+    {
         bool externalTransfer = to != address(0) && from != address(0); // skip mint and burn
         if (externalTransfer) {
             // only check ROLE_CAN_TRANSFER_ADMIN on token owner (from)
@@ -434,7 +440,11 @@ contract PermissionedRegistry is
         uint256 /*oldRoles*/,
         uint256 /*newRoles*/,
         uint256 /*roleBitmap*/
-    ) internal virtual override {
+    )
+        internal
+        virtual
+        override
+    {
         _regenerate(resource);
     }
 
@@ -445,7 +455,11 @@ contract PermissionedRegistry is
         uint256 /*oldRoles*/,
         uint256 /*newRoles*/,
         uint256 /*roleBitmap*/
-    ) internal virtual override {
+    )
+        internal
+        virtual
+        override
+    {
         _regenerate(resource);
     }
 
@@ -478,10 +492,13 @@ contract PermissionedRegistry is
     /// @param resource The resource to get settable roles for.
     /// @param account The account to get settable roles for.
     /// @return The settable roles (regular roles only, not admin roles).
-    function _getSettableRoles(
-        uint256 resource,
-        address account
-    ) internal view virtual override returns (uint256) {
+    function _getSettableRoles(uint256 resource, address account)
+        internal
+        view
+        virtual
+        override
+        returns (uint256)
+    {
         uint256 roleBitmap = super._getSettableRoles(resource, account);
         if (resource == ROOT_RESOURCE) {
             return roleBitmap;
@@ -498,10 +515,13 @@ contract PermissionedRegistry is
     ///
     /// Root roles are unaffected.
     ///
-    function _getRevokableRoles(
-        uint256 resource,
-        address account
-    ) internal view virtual override returns (uint256) {
+    function _getRevokableRoles(uint256 resource, address account)
+        internal
+        view
+        virtual
+        override
+        returns (uint256)
+    {
         if (
             resource != ROOT_RESOURCE &&
             ownerOf(_constructTokenId(resource, _entry(resource))) == address(0)
@@ -517,10 +537,11 @@ contract PermissionedRegistry is
     }
 
     /// @dev Assert token is not expired and caller has necessary roles.
-    function _checkExpiryAndTokenRoles(
-        uint256 anyId,
-        uint256 roleBitmap
-    ) internal view returns (uint256 tokenId, Entry storage entry) {
+    function _checkExpiryAndTokenRoles(uint256 anyId, uint256 roleBitmap)
+        internal
+        view
+        returns (uint256 tokenId, Entry storage entry)
+    {
         entry = _entry(anyId);
         tokenId = _constructTokenId(anyId, entry);
         if (_isExpired(entry.expiry)) {
@@ -536,10 +557,7 @@ contract PermissionedRegistry is
 
     /// @dev Create `resource` from parts.
     ///      Returns next resource if expired.
-    function _constructResource(
-        uint256 anyId,
-        Entry storage entry
-    ) internal view returns (uint256) {
+    function _constructResource(uint256 anyId, Entry storage entry) internal view returns (uint256) {
         return LibLabel.withVersion(anyId, entry.eacVersionId);
     }
 
