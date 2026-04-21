@@ -66,6 +66,15 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     /// @dev Error selector: `0x8baa579f`
     error InvalidSignature();
 
+    /// @notice Thrown when the chain ID array is not in strictly ascending order.
+    /// @dev Error selector: `0xea0b14e2`. Re-declared here (despite living in
+    ///      `ChainIdsBuilderLib`) because the library reverts via assembly literal
+    ///      and Solidity has no source-level reference to propagate the type into
+    ///      this contract's ABI. `CurrentChainNotFound` doesn't need this anchor —
+    ///      the library reverts it via `revert CurrentChainNotFound(...)` so its
+    ///      type propagates automatically.
+    error ChainIdsNotAscending();
+
     ////////////////////////////////////////////////////////////////////////
     // Modifiers
     ////////////////////////////////////////////////////////////////////////
