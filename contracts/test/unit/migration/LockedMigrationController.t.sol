@@ -523,7 +523,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_migrate_lockedChildren() external {
+    function test_migrate_cannotCreateChildren() external {
         bytes memory name = registerWrappedETH2LD(
             testLabel,
             CANNOT_UNWRAP | CANNOT_CREATE_SUBDOMAIN
@@ -603,7 +603,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         registry2.renew(tokenId, expiry + 1);
     }
 
-    function test_migrate_emancipatedLockedChildren() external {
+    function test_migrate_lockedChildren() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes memory name3 = createWrappedChild(
             name2,
@@ -688,7 +688,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         checkResolution(name3unmigrated, testResolver, address(ensV1Resolver));
     }
 
-    function test_migrate_emancipatedUnlockedChildren() external {
+    function test_migrate_detachedChildren() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes memory name3 = createWrappedChild(name2, "sub", friend, PARENT_CANNOT_CONTROL);
         bytes memory name3unmigrated = createWrappedChild(
