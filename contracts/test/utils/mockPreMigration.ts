@@ -58,8 +58,10 @@ export function buildMainArgs(
     dryRun?: boolean;
     limit?: number;
     continue?: boolean;
-    minExpiryDays?: number;
+    gracePeriodDays?: number;
     batchSize?: number;
+    useEnvVarForPrivateKey?: boolean;
+    omitPrivateKey?: boolean;
   } = {},
 ): string[] {
   const rpcUrl = `http://${env.hostPort}`;
@@ -74,19 +76,23 @@ export function buildMainArgs(
     registryAddress,
     "--batch-registrar",
     env.rocketh.get("BatchRegistrar").address,
-    "--private-key",
-    DEPLOYER_PRIVATE_KEY,
     "--csv-file",
     csvFilePath,
     "--v1-resolver",
     env.v2.ENSV1Resolver.address,
     "--mainnet-rpc-url",
     rpcUrl,
-    "--min-expiry-days",
-    String(overrides.minExpiryDays ?? 0),
+    "--grace-period-days",
+    String(overrides.gracePeriodDays ?? 0),
     "--v1-base-registrar",
     env.v1.BaseRegistrar.address,
   ];
+
+  if (overrides.useEnvVarForPrivateKey) {
+    process.env.PREMIGRATION_PRIVATE_KEY = DEPLOYER_PRIVATE_KEY;
+  } else if (!overrides.omitPrivateKey) {
+    args.push("--private-key", DEPLOYER_PRIVATE_KEY);
+  }
 
   if (overrides.dryRun) {
     args.push("--dry-run");
@@ -103,6 +109,7 @@ export function buildMainArgs(
 
   return args;
 }
+
 
 export async function verifyV2State(
   env: DevnetEnvironment,
