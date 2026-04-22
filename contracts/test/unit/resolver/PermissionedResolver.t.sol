@@ -44,6 +44,7 @@ contract PermissionedResolverTest is Test {
     PermissionedResolver resolver;
 
     address owner = makeAddr("owner");
+    address actor = makeAddr("actor");
     address friend = makeAddr("friend");
 
     bytes testName;
@@ -234,7 +235,7 @@ contract PermissionedResolverTest is Test {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // grantNameRoles(), grantTextRoles(), and grantAddrRoles()
+    // grantNameRoles() and revokeRoles()
     ////////////////////////////////////////////////////////////////////////
 
     function test_grantNameRoles() external {
@@ -245,6 +246,13 @@ contract PermissionedResolverTest is Test {
         vm.prank(owner);
         resolver.grantNameRoles(testName, roleBitmap, friend);
         assertTrue(resolver.hasRoles(resource, roleBitmap, friend));
+    }
+
+    function test_grantNameRoles_root() external {
+        uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
+        vm.prank(owner);
+        resolver.grantNameRoles(NameCoder.encode(""), roleBitmap, friend);
+        assertTrue(resolver.hasRootRoles(roleBitmap, friend));
     }
 
     function test_grantNameRoles_notAuthorized() external {
@@ -261,7 +269,33 @@ contract PermissionedResolverTest is Test {
         resolver.grantNameRoles(testName, roleBitmap, owner);
     }
 
-    function test_grantTextRoles() external {
+    function test_revokeRoles() external {
+        uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
+        vm.prank(owner);
+        resolver.grantNameRoles(testName, roleBitmap, friend);
+        vm.prank(owner);
+        assertTrue(
+            resolver.revokeRoles(
+                PermissionedResolverLib.resource(NameCoder.namehash(testName, 0), 0),
+                PermissionedResolverLib.ROLE_SET_TEXT,
+                friend
+            )
+        );
+    }
+
+    function test_revokeRoles_root() external {
+        uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
+        vm.prank(owner);
+        resolver.grantNameRoles(NameCoder.encode(""), roleBitmap, friend);
+        vm.prank(owner);
+        assertTrue(resolver.revokeRootRoles(roleBitmap, friend));
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // authorizeTextRoles() and authorizeAddrRoles()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_authorizeTextRoles() external {
         uint256 resource = PermissionedResolverLib.resource(
             NameCoder.namehash(testName, 0),
             PermissionedResolverLib.textPart(testString)
@@ -274,11 +308,31 @@ contract PermissionedResolverTest is Test {
             testString
         );
         vm.prank(owner);
-        resolver.grantTextRoles(testName, testString, friend);
+        resolver.authorizeTextRoles(testName, testString, friend, true);
         assertTrue(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_TEXT, friend));
+
+        vm.prank(owner);
+        resolver.authorizeTextRoles(testName, testString, friend, false);
+        assertFalse(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_TEXT, friend));
     }
 
-    function test_grantTextRoles_notAuthorized() external {
+    function test_authorizeTextRoles_anyName() external {
+        vm.prank(owner);
+        resolver.authorizeTextRoles(NameCoder.encode(""), testString, friend, true);
+        vm.prank(owner);
+        resolver.authorizeTextRoles(NameCoder.encode(""), testString, friend, false);
+    }
+
+    function test_authorizeTextRoles_notRoot() external {
+        vm.prank(owner);
+        resolver.grantNameRoles(testName, PermissionedResolverLib.ROLE_SET_TEXT_ADMIN, actor);
+        vm.prank(actor);
+        resolver.authorizeTextRoles(testName, testString, friend, true);
+        vm.prank(actor);
+        resolver.authorizeTextRoles(testName, testString, friend, false);
+    }
+
+    function test_authorizeTextRoles_notAuthorized() external {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
@@ -288,10 +342,10 @@ contract PermissionedResolverTest is Test {
             )
         );
         vm.prank(friend);
-        resolver.grantTextRoles(testName, testString, owner);
+        resolver.authorizeTextRoles(testName, testString, owner, true);
     }
 
-    function test_grantAddrRoles(uint256 coinType) external {
+    function test_authorizeAddrRoles(uint256 coinType) external {
         uint256 resource = PermissionedResolverLib.resource(
             NameCoder.namehash(testName, 0),
             PermissionedResolverLib.addrPart(coinType)
@@ -299,11 +353,33 @@ contract PermissionedResolverTest is Test {
         vm.expectEmit();
         emit PermissionedResolver.NamedAddrResource(resource, testName, coinType);
         vm.prank(owner);
-        resolver.grantAddrRoles(testName, coinType, friend);
+        resolver.authorizeAddrRoles(testName, coinType, friend, true);
         assertTrue(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_ADDR, friend));
+
+        vm.prank(owner);
+        resolver.authorizeAddrRoles(testName, coinType, friend, false);
+        assertFalse(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_ADDR, friend));
     }
 
-    function test_grantAddrRoles_notAuthorized() external {
+    function test_authorizeAddrRoles_anyName() external {
+        uint256 coinType = 0;
+        vm.prank(owner);
+        resolver.authorizeAddrRoles(NameCoder.encode(""), coinType, friend, true);
+        vm.prank(owner);
+        resolver.authorizeAddrRoles(NameCoder.encode(""), coinType, friend, false);
+    }
+
+    function test_authorizeAddrRoles_notRoot() external {
+        uint256 coinType = 0;
+        vm.prank(owner);
+        resolver.grantNameRoles(testName, PermissionedResolverLib.ROLE_SET_ADDR_ADMIN, actor);
+        vm.prank(actor);
+        resolver.authorizeAddrRoles(testName, coinType, friend, true);
+        vm.prank(actor);
+        resolver.authorizeAddrRoles(testName, coinType, friend, false);
+    }
+
+    function test_authorizeAddrRoles_notAuthorized() external {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
@@ -313,58 +389,7 @@ contract PermissionedResolverTest is Test {
             )
         );
         vm.prank(friend);
-        resolver.grantAddrRoles(testName, 0, owner);
-    }
-
-    ////////////////////////////////////////////////////////////////////////
-    // revokeRoles() [corresponding to granters above]
-    ////////////////////////////////////////////////////////////////////////
-
-    function test_revokeRoles_name() external {
-        uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
-        vm.prank(owner);
-        resolver.grantNameRoles(testName, roleBitmap, friend);
-        vm.prank(owner);
-        assertTrue(
-            resolver.revokeRoles(
-                PermissionedResolverLib.resource(NameCoder.namehash(testName, 0), 0),
-                roleBitmap,
-                friend
-            )
-        );
-    }
-
-    function test_revokeRoles_text() external {
-        vm.prank(owner);
-        resolver.grantTextRoles(testName, testString, friend);
-        vm.prank(owner);
-        assertTrue(
-            resolver.revokeRoles(
-                PermissionedResolverLib.resource(
-                    NameCoder.namehash(testName, 0),
-                    PermissionedResolverLib.textPart(testString)
-                ),
-                PermissionedResolverLib.ROLE_SET_TEXT,
-                friend
-            )
-        );
-    }
-
-    function test_revokeRoles_addr() external {
-        uint256 coinType = 0;
-        vm.prank(owner);
-        resolver.grantAddrRoles(testName, coinType, friend);
-        vm.prank(owner);
-        assertTrue(
-            resolver.revokeRoles(
-                PermissionedResolverLib.resource(
-                    NameCoder.namehash(testName, 0),
-                    PermissionedResolverLib.addrPart(coinType)
-                ),
-                PermissionedResolverLib.ROLE_SET_ADDR,
-                friend
-            )
-        );
+        resolver.authorizeAddrRoles(testName, 0, owner, true);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -800,7 +825,7 @@ contract PermissionedResolverTest is Test {
         resolver.setText(testNode, testString, "A");
 
         vm.prank(owner);
-        resolver.grantTextRoles(NameCoder.encode(""), testString, friend);
+        resolver.authorizeTextRoles(NameCoder.encode(""), testString, friend, true);
 
         vm.prank(friend);
         resolver.setText(testNode, testString, "B");
@@ -833,7 +858,7 @@ contract PermissionedResolverTest is Test {
         resolver.setText(testNode, testString, "A");
 
         vm.prank(owner);
-        resolver.grantTextRoles(testName, testString, friend);
+        resolver.authorizeTextRoles(testName, testString, friend, true);
 
         vm.prank(friend);
         resolver.setText(testNode, testString, "B");
@@ -864,7 +889,7 @@ contract PermissionedResolverTest is Test {
         resolver.setAddr(testNode, coinType, hex"01");
 
         vm.prank(owner);
-        resolver.grantAddrRoles(NameCoder.encode(""), coinType, friend);
+        resolver.authorizeAddrRoles(NameCoder.encode(""), coinType, friend, true);
 
         vm.prank(friend);
         resolver.setAddr(testNode, coinType, hex"02");
@@ -898,7 +923,7 @@ contract PermissionedResolverTest is Test {
         resolver.setAddr(testNode, coinType, hex"01");
 
         vm.prank(owner);
-        resolver.grantAddrRoles(testName, coinType, friend);
+        resolver.authorizeAddrRoles(testName, coinType, friend, true);
 
         vm.prank(friend);
         resolver.setAddr(testNode, coinType, hex"02");

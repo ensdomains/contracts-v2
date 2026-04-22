@@ -254,54 +254,68 @@ contract PermissionedResolver is
         return _grantRoles(resource, roleBitmap, account, true);
     }
 
-    /// @notice Grant `setText(key)` permission to `account` for `toName`.
+    /// @notice Authorize `setText(key)` permission to `account` for `toName`.
     ///         Use `NameCoder.encode("")` for any name.
-    /// @param toName The name to grant roles for.
-    /// @param key The text key to grant roles for.
-    /// @param account The account to grant roles to.
-    /// @return success Whether the roles were updated.
-    function grantTextRoles(
+    /// @param toName The name to authorize roles for.
+    /// @param key The text key to authorize roles for.
+    /// @param account The account to authorize roles to.
+    /// @param grant If `true`, grants, otherwise, revokes.
+    /// @return `true` if the roles were updated.
+    function authorizeTextRoles(
         bytes calldata toName,
         string calldata key,
-        address account
+        address account,
+        bool grant
     ) external returns (bool) {
         bytes32 node = NameCoder.namehash(toName, 0);
-        _checkCanGrantRoles(
-            PermissionedResolverLib.resource(node, 0),
-            PermissionedResolverLib.ROLE_SET_TEXT,
-            _msgSender()
-        );
-        uint256 resource = PermissionedResolverLib.resource(
+        uint256 roleBit = PermissionedResolverLib.ROLE_SET_TEXT;
+        uint256 nodeResource = PermissionedResolverLib.resource(node, bytes32(0));
+        uint256 partResource = PermissionedResolverLib.resource(
             node,
             PermissionedResolverLib.textPart(key)
         );
-        emit NamedTextResource(resource, toName, keccak256(bytes(key)), key);
-        return _grantRoles(resource, PermissionedResolverLib.ROLE_SET_TEXT, account, true);
+        if (grant) {
+            _checkCanGrantRoles(nodeResource, roleBit, _msgSender());
+            if (roleCount(partResource) == 0) {
+                emit NamedTextResource(partResource, toName, keccak256(bytes(key)), key);
+            }
+            return _grantRoles(partResource, roleBit, account, true);
+        } else {
+            _checkCanRevokeRoles(nodeResource, roleBit, _msgSender());
+            return _revokeRoles(partResource, roleBit, account, true);
+        }
     }
 
-    /// @notice Grant `setAddr(coinType)` permission to `account` for `toName`.
+    /// @notice Authorize `setAddr(coinType)` permission to `account` for `toName`.
     ///         Use `NameCoder.encode("")` for any name.
-    /// @param toName The name to grant roles for.
-    /// @param coinType The coin type to grant roles for.
-    /// @param account The account to grant roles to.
-    /// @return success Whether the roles were updated.
-    function grantAddrRoles(
+    /// @param toName The name to authorize roles for.
+    /// @param coinType The coin type to granauthorizet roles for.
+    /// @param account The account to authorize roles to.
+    /// @param grant If `true`, grants, otherwise, revokes.
+    /// @return updated `true` if the roles were updated.
+    function authorizeAddrRoles(
         bytes calldata toName,
         uint256 coinType,
-        address account
-    ) external returns (bool) {
+        address account,
+        bool grant
+    ) external returns (bool updated) {
         bytes32 node = NameCoder.namehash(toName, 0);
-        _checkCanGrantRoles(
-            PermissionedResolverLib.resource(node, 0),
-            PermissionedResolverLib.ROLE_SET_ADDR,
-            _msgSender()
-        );
-        uint256 resource = PermissionedResolverLib.resource(
+        uint256 roleBit = PermissionedResolverLib.ROLE_SET_ADDR;
+        uint256 nodeResource = PermissionedResolverLib.resource(node, bytes32(0));
+        uint256 partResource = PermissionedResolverLib.resource(
             node,
             PermissionedResolverLib.addrPart(coinType)
         );
-        emit NamedAddrResource(resource, toName, coinType);
-        return _grantRoles(resource, PermissionedResolverLib.ROLE_SET_ADDR, account, true);
+        if (grant) {
+            _checkCanGrantRoles(nodeResource, roleBit, _msgSender());
+            if (roleCount(partResource) == 0) {
+                emit NamedAddrResource(partResource, toName, coinType);
+            }
+            return _grantRoles(partResource, roleBit, account, true);
+        } else {
+            _checkCanRevokeRoles(nodeResource, roleBit, _msgSender());
+            return _revokeRoles(partResource, roleBit, account, true);
+        }
     }
 
     /// @notice Set ABI data of the associated ENS node.
