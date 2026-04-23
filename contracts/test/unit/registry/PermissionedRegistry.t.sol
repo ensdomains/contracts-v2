@@ -1210,7 +1210,9 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         // step #1: token expires
         vm.warp(testExpiry);
         // step #2: transfer while expired
-        vm.expectRevert(abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+        );
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
