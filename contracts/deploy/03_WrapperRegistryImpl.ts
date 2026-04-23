@@ -18,6 +18,12 @@ export default execute(
     const ensV1Resolver =
       get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
 
+    const publicResolverSet =
+      get<(typeof artifacts.IAddressSet)["abi"]>("PublicResolverSet");
+
+    const publicResolverV2 =
+      get<(typeof artifacts.PublicResolverV2)["abi"]>("PublicResolverV2");
+
     await deploy("WrapperRegistryImpl", {
       account: deployer,
       artifact: artifacts.WrapperRegistry,
@@ -27,6 +33,8 @@ export default execute(
         ensV1Resolver.address,
         hcaFactory.address,
         registryMetadata.address,
+        publicResolverSet.address,
+        publicResolverV2.address,
       ],
     });
   },
@@ -38,6 +46,8 @@ export default execute(
       "SimpleRegistryMetadata",
       "VerifiableFactory",
       "ENSV1Resolver",
+      "PublicResolverSet",
+      "PublicResolverV2",
     ],
   },
 );

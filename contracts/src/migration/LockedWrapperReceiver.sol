@@ -16,6 +16,7 @@ import {InvalidOwner} from "../CommonErrors.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
@@ -50,6 +51,12 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @notice The `WrapperRegistry` implementation contract.
     address public immutable WRAPPER_REGISTRY_IMPL;
 
+    /// @notice The list of `PublicResolver` contracts that require replacement.
+    IAddressSet public immutable PUBLIC_RESOLVER_SET;
+
+    /// @notice The replacement `PublicResolver`.
+    address public immutable PUBLIC_RESOLVER;
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -58,15 +65,21 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
+    /// @param publicResolverSet The approved list of `PublicResolver` contracts.
+    /// @param publicResolver The replacement `PublicResolver`.
     constructor(
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
-        address wrapperRegistryImpl
+        address wrapperRegistryImpl,
+        IAddressSet publicResolverSet,
+        address publicResolver
     )
         AbstractWrapperReceiver(nameWrapper)
     {
         VERIFIABLE_FACTORY = verifiableFactory;
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
+        PUBLIC_RESOLVER_SET = publicResolverSet;
+        PUBLIC_RESOLVER = publicResolver;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -116,10 +129,14 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 revert LibMigration.FrozenTokenApproval(uint256(node));
             }
 
+            address resolver = md.resolver;
             if ((fuses & CANNOT_SET_RESOLVER) == 0) {
                 NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
             } else {
-                md.resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
+                resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
+                if (PUBLIC_RESOLVER_SET.includes(resolver)) {
+                    resolver = PUBLIC_RESOLVER; // replace with new PublicResolver
+                }
             }
 
             // create subregistry
@@ -149,7 +166,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 md.label,
                 md.owner,
                 subregistry,
-                md.resolver,
+                resolver,
                 _tokenRoleBitmapFromFuses(fuses),
                 expiry
             );

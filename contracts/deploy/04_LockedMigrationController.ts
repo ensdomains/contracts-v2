@@ -16,6 +16,12 @@ export default execute(
       "WrapperRegistryImpl",
     );
 
+    const publicResolverSet =
+      get<(typeof artifacts.IAddressSet)["abi"]>("PublicResolverSet");
+
+    const publicResolverV2 =
+      get<(typeof artifacts.PublicResolverV2)["abi"]>("PublicResolverV2");
+
     const migrationController = await deploy("LockedMigrationController", {
       account: deployer,
       artifact: artifacts.LockedMigrationController,
@@ -24,6 +30,8 @@ export default execute(
         ethRegistry.address,
         verifiableFactory.address,
         wrapperRegistryImpl.address,
+        publicResolverSet.address,
+        publicResolverV2.address,
       ],
     });
 
@@ -44,6 +52,8 @@ export default execute(
       "ETHRegistry",
       "VerifiableFactory",
       "WrapperRegistryImpl",
+      "PublicResolverSet",
+      "PublicResolverV2",
     ],
   },
 );
