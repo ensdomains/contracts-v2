@@ -7,11 +7,9 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
 import {
   createPublicClient,
   createWalletClient,
-  defineChain,
   getContract,
   http,
   keccak256,
@@ -19,7 +17,6 @@ import {
   toHex,
   zeroAddress,
   type Address,
-  type Chain,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { mainnet } from "viem/chains";
@@ -36,15 +33,7 @@ import {
   yellow,
 } from "./logger.js";
 
-// Load ABI from forge compilation artifacts
-function loadArtifact(contractName: string): { abi: any[] } {
-  const artifactPath = join(
-    import.meta.dirname,
-    `../out/${contractName}.sol/${contractName}.json`,
-  );
-  const artifact = JSON.parse(readFileSync(artifactPath, "utf-8"));
-  return { abi: artifact.abi };
-}
+import { loadArtifact, resolveChain } from "./scriptUtils.js";
 
 // ABI fragments for v1 BaseRegistrar
 const BASE_REGISTRAR_ABI = [
@@ -460,20 +449,7 @@ interface MigrationClients {
 async function createMigrationClients(
   config: PreMigrationConfig,
 ): Promise<MigrationClients> {
-  const tempClient = createPublicClient({
-    transport: http(config.rpcUrl, { retryCount: 0, timeout: RPC_TIMEOUT_MS }),
-  });
-  const chainId = await tempClient.getChainId();
-
-  const v2Chain: Chain =
-    chainId === 1
-      ? mainnet
-      : defineChain({
-          id: chainId,
-          name: "Custom",
-          nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-          rpcUrls: { default: { http: [config.rpcUrl] } },
-        });
+  const v2Chain = await resolveChain(config.rpcUrl, RPC_TIMEOUT_MS);
 
   const client = createWalletClient({
     account: privateKeyToAccount(config.privateKey),
