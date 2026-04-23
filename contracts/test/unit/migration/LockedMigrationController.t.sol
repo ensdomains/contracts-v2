@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {console} from "forge-std/console.sol";
+import {Vm, console} from "forge-std/Test.sol";
 import {
     INameWrapper,
     OperationProhibited,
@@ -58,6 +58,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
     function setUp() public override {
         super.setUp();
+        vm.expectEmit();
+        emit IRegistry.RegistryCreated();
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
             verifiableFactory,
@@ -280,6 +282,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit ENS.NewResolver(node, address(0));
         // emit IERC1967.Upgraded()
+        vm.expectEmit();
+        emit IRegistry.RegistryCreated();
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
             0 /*ROOT_RESOURCE*/,

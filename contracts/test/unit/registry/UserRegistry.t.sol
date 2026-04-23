@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
@@ -45,6 +45,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
         metadata = new SimpleRegistryMetadata(hcaFactory);
 
         // Deploy the implementation
+        vm.expectEmit();
+        emit IRegistry.RegistryCreated();
         implementation = new UserRegistry(hcaFactory, metadata);
 
         // Create initialization data
@@ -54,6 +56,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
         );
 
         // Deploy the proxy using the factory
+        vm.expectEmit();
+        emit IRegistry.RegistryCreated();
         vm.prank(admin);
         address proxyAddress = factory.deployProxy(address(implementation), SALT, initData);
 
