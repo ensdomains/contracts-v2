@@ -31,6 +31,7 @@ contract StandardRentPriceOracleTest is Test, ERC1155Holder {
     MockHCAFactoryBasic hcaFactory;
 
     StandardRentPriceOracle rentPriceOracle;
+    uint64 fullPricePeriod;
 
     MockERC20 tokenUSDC;
     MockERC20 tokenIdentity;
@@ -63,6 +64,8 @@ contract StandardRentPriceOracleTest is Test, ERC1155Holder {
             StandardPricing.PREMIUM_PERIOD,
             paymentRatios
         );
+
+        fullPricePeriod = StandardPricing.getDiscountPoints()[0].t; // first discount
 
         vm.warp(rentPriceOracle.premiumPeriod()); // avoid timestamp issues
     }
@@ -147,9 +150,12 @@ contract StandardRentPriceOracleTest is Test, ERC1155Holder {
         string memory label = new string(n);
         uint256 base = rentPriceOracle.baseRate(label);
         assertEq(base, rate, "rate");
-        // duration must be before initial discount or price will be reduced
-        _testRentPrice(label, rate, StandardPricing.SEC_PER_YEAR, tokenUSDC);
-        _testRentPrice(label, rate, StandardPricing.SEC_PER_YEAR, tokenIdentity);
+        uint64 t = fullPricePeriod;
+        while (t > 0) {
+            _testRentPrice(label, rate, t, tokenUSDC);
+            _testRentPrice(label, rate, t, tokenIdentity);
+            t >>= 1;
+        }
     }
 
     function _testRentPrice(
@@ -296,77 +302,6 @@ contract StandardRentPriceOracleTest is Test, ERC1155Holder {
         vm.stopPrank();
     }
 
-    function _testAverageDiscount(uint64 t, uint256 average) internal view {
-        uint256 value = (rentPriceOracle.integratedDiscount(t) + t - 1) / t;
-        uint256 diff = value > average ? value - average : average - value;
-        assert(diff <= 1);
-    }
-
-    // these tests are fragile and specific to the chosen discount points
-    function test_discountAfter_start() external view {
-        assertEq(rentPriceOracle.integratedDiscount(0), 0);
-    }
-    function test_discountAfter_1year() external view {
-        _testAverageDiscount(StandardPricing.SEC_PER_YEAR, 0);
-    }
-    function test_discountAfter_1year_4mos_partial() external view {
-        _testAverageDiscount(
-            (StandardPricing.SEC_PER_YEAR * 4) / 3,
-            StandardPricing.discountRatio(5000, 100000)
-        );
-    }
-    function test_discountAfter_2years() external view {
-        _testAverageDiscount(
-            StandardPricing.SEC_PER_YEAR * 2,
-            StandardPricing.discountRatio(10000, 100000)
-        );
-    }
-    function test_discountAfter_2years_6mos_partial() external view {
-        _testAverageDiscount(
-            (StandardPricing.SEC_PER_YEAR * 5) / 2,
-            StandardPricing.discountRatio(19000, 100000)
-        );
-    }
-    function test_discountAfter_3years() external view {
-        _testAverageDiscount(
-            StandardPricing.SEC_PER_YEAR * 3,
-            StandardPricing.discountRatio(25000, 100000)
-        );
-    }
-    function test_discountAfter_4years_partial() external view {
-        _testAverageDiscount(
-            StandardPricing.SEC_PER_YEAR * 4,
-            StandardPricing.discountRatio(34375, 100000)
-        );
-    }
-    function test_discountAfter_5years() external view {
-        _testAverageDiscount(
-            StandardPricing.SEC_PER_YEAR * 5,
-            StandardPricing.discountRatio(40000, 100000)
-        );
-    }
-    function test_discountAfter_8years_partial() external view {
-        _testAverageDiscount(
-            StandardPricing.SEC_PER_YEAR * 8,
-            StandardPricing.discountRatio(47500, 100000)
-        );
-    }
-    function test_discountAfter_10years() external view {
-        _testAverageDiscount(
-            StandardPricing.SEC_PER_YEAR * 10,
-            StandardPricing.discountRatio(50000, 100000)
-        );
-    }
-    function test_discountAfter_30years() external view {
-        _testAverageDiscount(
-            StandardPricing.SEC_PER_YEAR * 30,
-            StandardPricing.discountRatio(50000, 100000)
-        );
-    }
-    function test_discountAfter_end() external view {
-        _testAverageDiscount(type(uint64).max, StandardPricing.discountRatio(50000, 100000));
-    }
-
     function _testDiscountedRentPrice(string memory label, uint64 dur0, uint64 dur1) internal {
         ethRegistry.register(
             label,
@@ -453,5 +388,79 @@ contract StandardRentPriceOracleTest is Test, ERC1155Holder {
             abi.encode(rentPriceOracle.getDiscountPoints()),
             abi.encode(StandardPricing.getDiscountPoints())
         );
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Fragile Tests (specific to the chosen discount points)
+    ////////////////////////////////////////////////////////////////////////
+
+    function _testAverageDiscount(uint64 t, uint256 average) internal view {
+        uint256 value = (rentPriceOracle.integratedDiscount(t) + t - 1) / t;
+        uint256 diff = value > average ? value - average : average - value;
+        assertLe(diff, 1);
+    }
+
+    function test_discountAfter_start() external view {
+        assertEq(rentPriceOracle.integratedDiscount(0), 0);
+    }
+    function test_discountAfter_1year() external view {
+        _testAverageDiscount(StandardPricing.SEC_PER_YEAR, 0);
+    }
+    function test_discountAfter_1year_4mos() external view {
+        _testAverageDiscount(
+            (StandardPricing.SEC_PER_YEAR * 4) / 3,
+            StandardPricing.discountRatio(6250, 100000)
+        );
+    }
+    function test_discountAfter_2years() external view {
+        _testAverageDiscount(
+            StandardPricing.SEC_PER_YEAR * 2,
+            StandardPricing.discountRatio(12500, 100000)
+        );
+    }
+    function test_discountAfter_2years_6mos() external view {
+        _testAverageDiscount(
+            (StandardPricing.SEC_PER_YEAR * 5) / 2,
+            StandardPricing.discountRatio(23750, 100000)
+        );
+    }
+    function test_discountAfter_3years() external view {
+        _testAverageDiscount(
+            StandardPricing.SEC_PER_YEAR * 3,
+            StandardPricing.discountRatio(31250, 100000)
+        );
+    }
+    function test_discountAfter_4years() external view {
+        _testAverageDiscount(
+            StandardPricing.SEC_PER_YEAR * 4,
+            StandardPricing.discountRatio(37500, 100000)
+        );
+    }
+    function test_discountAfter_5years() external view {
+        _testAverageDiscount(
+            StandardPricing.SEC_PER_YEAR * 5,
+            StandardPricing.discountRatio(41250, 100000)
+        );
+    }
+    function test_discountAfter_6years() external view {
+        _testAverageDiscount(
+            StandardPricing.SEC_PER_YEAR * 6,
+            StandardPricing.discountRatio(43750, 100000)
+        );
+    }
+    function test_discountAfter_7years() external view {
+        _testAverageDiscount(
+            StandardPricing.SEC_PER_YEAR * 7,
+            StandardPricing.discountRatio(43750, 100000)
+        );
+    }
+    function test_discountAfter_10years() external view {
+        _testAverageDiscount(
+            StandardPricing.SEC_PER_YEAR * 10,
+            StandardPricing.discountRatio(43750, 100000)
+        );
+    }
+    function test_discountAfter_end() external view {
+        _testAverageDiscount(type(uint64).max, StandardPricing.discountRatio(43750, 100000));
     }
 }

@@ -1,4 +1,5 @@
 import { artifacts, execute } from "@rocketh";
+import { MAX_EXPIRY } from "../script/deploy-constants.ts";
 
 export default execute(
   async ({ deploy, read, get, namedAccounts: { deployer, owner } }) => {
@@ -25,7 +26,7 @@ export default execute(
       0n,
       PRICE_SCALE * 640n,
       PRICE_SCALE * 160n,
-      PRICE_SCALE * 5n,
+      PRICE_SCALE * 8n,
     ].map((x) => (x + SEC_PER_YEAR - 1n) / SEC_PER_YEAR);
 
     const DISCOUNT_SCALE = (1n << 128n) - 1n; // type(uint128).max
@@ -34,10 +35,9 @@ export default execute(
     }
     const discountPoints: [bigint, bigint][] = [
       [SEC_PER_YEAR, 0n],
-      [SEC_PER_YEAR, discountRatio(1n, 5n)], //      20.00%
-      [SEC_PER_YEAR, discountRatio(11n, 20n)], //    55.00%
-      [SEC_PER_YEAR * 2n, discountRatio(5n, 8n)], // 62.50%
-      [SEC_PER_YEAR * 5n, discountRatio(3n, 5n)], // 60.00%
+      [SEC_PER_YEAR, discountRatio(1n, 4n)], //       25.00%
+      [SEC_PER_YEAR, discountRatio(11n, 16n)], //     68.75%
+      [SEC_PER_YEAR * 3n, discountRatio(9n, 16n)], // 56.25%
     ];
 
     const paymentFactors = await Promise.all(
@@ -84,19 +84,30 @@ export default execute(
 
     console.table(
       await Promise.all(
-        discountPoints.map(async (_, i, v) => {
-          const sum = v.slice(0, i + 1).reduce((a, x) => a + x[0], 0n);
-          const acc = v.slice(0, i + 1).reduce((a, x) => a + x[0] * x[1], 0n);
-          const ref = await read(standardRentPriceOracle, {
-            functionName: "integratedDiscount",
-            args: [sum],
-          });
-          return {
-            years: (Number(sum) / Number(SEC_PER_YEAR)).toFixed(2),
-            discount: `${((100 * Number(acc / sum)) / Number(DISCOUNT_SCALE)).toFixed(2)}%`,
-            diff: acc - ref,
-          };
-        }),
+        [
+          ...new Set([
+            ...discountPoints.map((x) => x[0]),
+            ...Array.from(
+              { length: 10 },
+              (_, yr) => BigInt(yr + 1) * SEC_PER_YEAR,
+            ),
+            MAX_EXPIRY,
+          ]),
+        ]
+          .sort((a, b) => Number(a - b))
+          .map(async (t) => {
+            const x = await read(standardRentPriceOracle, {
+              functionName: "integratedDiscount",
+              args: [t],
+            });
+            return {
+              years:
+                t === MAX_EXPIRY
+                  ? "max"
+                  : (Number(t) / Number(SEC_PER_YEAR)).toFixed(2),
+              discount: `${((100 * Number(x / t)) / Number(DISCOUNT_SCALE)).toFixed(2)}%`,
+            };
+          }),
       ),
     );
   },
