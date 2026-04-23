@@ -91,7 +91,7 @@ export default execute(
               { length: 10 },
               (_, yr) => BigInt(yr + 1) * SEC_PER_YEAR,
             ),
-            MAX_EXPIRY,
+            100n * SEC_PER_YEAR,
           ]),
         ]
           .sort((a, b) => Number(a - b))
@@ -101,11 +101,20 @@ export default execute(
               args: [t],
             });
             return {
-              years:
-                t === MAX_EXPIRY
-                  ? "max"
-                  : (Number(t) / Number(SEC_PER_YEAR)).toFixed(2),
+              years: (Number(t) / Number(SEC_PER_YEAR)).toFixed(2),
               discount: `${((100 * Number(x / t)) / Number(DISCOUNT_SCALE)).toFixed(2)}%`,
+              ...Object.fromEntries(
+                baseRatePerCp.flatMap((rate, i) =>
+                  rate
+                    ? [
+                        [
+                          `${i + 1}cp/yr`,
+                          `${(Number((rate * (DISCOUNT_SCALE * t - x)) / DISCOUNT_SCALE) / Number(PRICE_SCALE) / Number(t / SEC_PER_YEAR)).toFixed(2)}`,
+                        ],
+                      ]
+                    : [],
+                ),
+              ),
             };
           }),
       ),
