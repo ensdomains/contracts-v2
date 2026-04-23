@@ -22,6 +22,7 @@ import {
     LibISO8601,
     LibString
 } from "~src/reverse-registrar/L2ReverseRegistrar.sol";
+import {ChainIdsBuilderLib} from "~src/reverse-registrar/libraries/ChainIdsBuilderLib.sol";
 
 contract L2ReverseRegistrarTest is Test {
     using MessageHashUtils for bytes;
@@ -746,7 +747,7 @@ contract L2ReverseRegistrarTest is Test {
         vm.prank(relayer);
         vm.expectRevert(
             abi.encodeWithSelector(
-                L2ReverseRegistrar.CurrentChainNotFound.selector,
+                ChainIdsBuilderLib.CurrentChainNotFound.selector,
                 OPTIMISM_CHAIN_ID
             )
         );
@@ -772,7 +773,7 @@ contract L2ReverseRegistrarTest is Test {
         vm.prank(relayer);
         vm.expectRevert(
             abi.encodeWithSelector(
-                L2ReverseRegistrar.CurrentChainNotFound.selector,
+                ChainIdsBuilderLib.CurrentChainNotFound.selector,
                 OPTIMISM_CHAIN_ID
             )
         );
@@ -796,7 +797,7 @@ contract L2ReverseRegistrarTest is Test {
         });
 
         vm.prank(relayer);
-        vm.expectRevert(L2ReverseRegistrar.ChainIdsNotAscending.selector);
+        vm.expectRevert(ChainIdsBuilderLib.ChainIdsNotAscending.selector);
         registrar.setNameForAddrWithSignature(claim, signature);
     }
 
@@ -817,7 +818,7 @@ contract L2ReverseRegistrarTest is Test {
         });
 
         vm.prank(relayer);
-        vm.expectRevert(L2ReverseRegistrar.ChainIdsNotAscending.selector);
+        vm.expectRevert(ChainIdsBuilderLib.ChainIdsNotAscending.selector);
         registrar.setNameForAddrWithSignature(claim, signature);
     }
 
@@ -1327,7 +1328,7 @@ contract L2ReverseRegistrarTest is Test {
         vm.prank(relayer);
         vm.expectRevert(
             abi.encodeWithSelector(
-                L2ReverseRegistrar.CurrentChainNotFound.selector,
+                ChainIdsBuilderLib.CurrentChainNotFound.selector,
                 OPTIMISM_CHAIN_ID
             )
         );
@@ -1359,7 +1360,7 @@ contract L2ReverseRegistrarTest is Test {
         vm.prank(relayer);
         vm.expectRevert(
             abi.encodeWithSelector(
-                L2ReverseRegistrar.CurrentChainNotFound.selector,
+                ChainIdsBuilderLib.CurrentChainNotFound.selector,
                 OPTIMISM_CHAIN_ID
             )
         );
@@ -1389,7 +1390,7 @@ contract L2ReverseRegistrarTest is Test {
         });
 
         vm.prank(relayer);
-        vm.expectRevert(L2ReverseRegistrar.ChainIdsNotAscending.selector);
+        vm.expectRevert(ChainIdsBuilderLib.ChainIdsNotAscending.selector);
         registrar.setNameForOwnableWithSignature(claim, user1, signature);
     }
 
@@ -1416,7 +1417,7 @@ contract L2ReverseRegistrarTest is Test {
         });
 
         vm.prank(relayer);
-        vm.expectRevert(L2ReverseRegistrar.ChainIdsNotAscending.selector);
+        vm.expectRevert(ChainIdsBuilderLib.ChainIdsNotAscending.selector);
         registrar.setNameForOwnableWithSignature(claim, user1, signature);
     }
 
