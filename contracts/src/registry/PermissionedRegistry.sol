@@ -88,6 +88,8 @@ contract PermissionedRegistry is
     string internal _childLabel;
     /// @dev The entries of this registry.
     mapping(uint256 storageId => Entry entry) internal _entries;
+    /// @dev Per-name transfer lock. When set, ERC1155 transfers are blocked regardless of per-account roles.
+    mapping(uint256 storageId => bool locked) private _transferLocks;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -206,6 +208,7 @@ contract PermissionedRegistry is
             ++entry.tokenVersionId;
             tokenId = _constructTokenId(tokenId, entry);
         }
+        delete _transferLocks[LibLabel.withVersion(labelId, 0)];
         entry.expiry = expiry;
         entry.subregistry = registry;
         entry.resolver = resolver;
@@ -242,6 +245,7 @@ contract PermissionedRegistry is
             ++entry.tokenVersionId;
         }
         entry.expiry = uint64(block.timestamp);
+        delete _transferLocks[LibLabel.withVersion(anyId, 0)];
     }
 
     /// @inheritdoc IStandardRegistry
@@ -274,6 +278,33 @@ contract PermissionedRegistry is
         address account
     ) public override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
         return super.revokeRoles(getResource(anyId), roleBitmap, account);
+    }
+
+    /// @inheritdoc IPermissionedRegistry
+    function revokeRolesAndLockTransfer(
+        uint256 anyId,
+        uint256 roleBitmap,
+        address account
+    ) public virtual {
+        uint256 resource = getResource(anyId);
+        if (resource == ROOT_RESOURCE) {
+            revert EACRootResourceNotAllowed();
+        }
+        _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, _msgSender());
+        _checkCanRevokeRoles(resource, roleBitmap, _msgSender());
+        _setTransferLock(anyId, true);
+        _revokeRoles(resource, roleBitmap, account, true);
+    }
+
+    /// @inheritdoc IPermissionedRegistry
+    function setTransferLock(uint256 anyId, bool locked) public virtual {
+        _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, _msgSender());
+        _setTransferLock(anyId, locked);
+    }
+
+    /// @inheritdoc IPermissionedRegistry
+    function isTransferLocked(uint256 anyId) public view returns (bool) {
+        return _transferLocks[LibLabel.withVersion(anyId, 0)];
     }
 
     /// @inheritdoc IRegistry
@@ -409,8 +440,10 @@ contract PermissionedRegistry is
     ) internal virtual override {
         bool externalTransfer = to != address(0) && from != address(0); // skip mint and burn
         if (externalTransfer) {
-            // only check ROLE_CAN_TRANSFER_ADMIN on token owner (from)
             for (uint256 i; i < tokenIds.length; ++i) {
+                if (_transferLocks[LibLabel.withVersion(tokenIds[i], 0)]) {
+                    revert TransferLocked(tokenIds[i]);
+                }
                 if (!hasRoles(tokenIds[i], RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
                     revert TransferDisallowed(tokenIds[i], from);
                 }
@@ -460,6 +493,13 @@ contract PermissionedRegistry is
             _mint(owner, newTokenId, 1, "");
             emit TokenRegenerated(tokenId, newTokenId); // resource is unchanged
         }
+    }
+
+    /// @dev Sets or clears the per-name transfer lock and emits an event.
+    function _setTransferLock(uint256 anyId, bool locked) internal {
+        uint256 storageId = LibLabel.withVersion(anyId, 0);
+        _transferLocks[storageId] = locked;
+        emit TransferLockChanged(_constructTokenId(anyId, _entry(anyId)), locked, _msgSender());
     }
 
     /// @inheritdoc EnhancedAccessControl

@@ -5,7 +5,7 @@ import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedA
 
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0xafff3a63`
+/// @dev Interface selector: `0x937fca22`
 interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -44,9 +44,43 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     /// @dev Error selector: `0xf60759e0`
     error LabelAlreadyReserved(string label);
 
+    /// @notice Transfer is blocked by a name-level transfer lock.
+    /// @dev Error selector: `0xa9de8c6f`
+    error TransferLocked(uint256 tokenId);
+
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Atomically locks transfers on a name and revokes the specified roles from an account.
+    ///
+    /// The lock prevents any ERC1155 token transfers for the name regardless of per-account
+    /// `ROLE_CAN_TRANSFER_ADMIN` grants, closing the front-running window where a user could
+    /// transfer the token to evade a pending role revocation.
+    ///
+    /// @param anyId The labelhash, token ID, or resource.
+    /// @param roleBitmap The roles bitmap to revoke from `account`.
+    /// @param account The account to revoke roles from.
+    function revokeRolesAndLockTransfer(
+        uint256 anyId,
+        uint256 roleBitmap,
+        address account
+    ) external;
+
+    /// @notice Sets or clears the transfer lock on a name.
+    ///
+    /// When locked, all ERC1155 token transfers for this name are blocked regardless of
+    /// per-account roles. Only callable by accounts holding `ROLE_CAN_TRANSFER_ADMIN`
+    /// on the `ROOT_RESOURCE`.
+    ///
+    /// @param anyId The labelhash, token ID, or resource.
+    /// @param locked Whether to lock (`true`) or unlock (`false`) transfers.
+    function setTransferLock(uint256 anyId, bool locked) external;
+
+    /// @notice Returns whether transfers are locked for the given name.
+    /// @param anyId The labelhash, token ID, or resource.
+    /// @return `true` if transfers are locked, `false` otherwise.
+    function isTransferLocked(uint256 anyId) external view returns (bool);
 
     /// @notice Get the latest owner of a token.
     ///         If the token was burned, returns null.
