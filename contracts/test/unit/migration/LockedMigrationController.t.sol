@@ -106,6 +106,13 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
+    function test_MIN_DATA_SIZE() external pure {
+        LibMigration.Data memory md;
+        assertLt(abi.encode(md).length, LibMigration.MIN_DATA_SIZE, "empty");
+        md.label = new string(1); // shortest
+        assertEq(abi.encode(md).length, LibMigration.MIN_DATA_SIZE, "short");
+    }
+
     function test_finishERC1155Migration_unauthorizedCaller() external {
         vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, user));
         vm.prank(user);
@@ -121,7 +128,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         dummy1155.safeTransferFrom(user, address(migrationController), tokenId, 1, ""); // wrong
     }
 
-    function test_migrate_invalidData() external {
+    function test_migrate_invalidData(bytes calldata v) external {
+        vm.assume(v.length < LibMigration.MIN_DATA_SIZE);
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         vm.expectRevert(
             WrappedErrorLib.wrap(abi.encodeWithSelector(LibMigration.InvalidData.selector))
@@ -132,7 +140,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(migrationController),
             uint256(NameCoder.namehash(name, 0)),
             1,
-            "" // wrong
+            v // wrong
         );
     }
 
