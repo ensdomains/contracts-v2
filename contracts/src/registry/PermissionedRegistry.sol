@@ -154,17 +154,13 @@ contract PermissionedRegistry is
     function setParent(
         IRegistry parent,
         string memory label
-    ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_SET_PARENT) {
+    ) public onlyRootRoles(RegistryRolesLib.ROLE_SET_PARENT) {
         _parentRegistry = parent;
         _childLabel = label;
         emit ParentUpdated(parent, label, _msgSender());
     }
 
     /// @inheritdoc IStandardRegistry
-    /// @dev If `AVAILABLE`, requires `ROLE_REGISTRAR` on root.
-    ///         * If `owner` is null (`roleBitmap` must be 0), status becomes `RESERVED` instead of `REGISTERED`.
-    ///      If `RESERVED`, requires `ROLE_REGISTER_RESERVED` on root.
-    ///         * If `expiry` is 0, uses current expiry.
     function register(
         string memory label,
         address owner,
@@ -172,67 +168,13 @@ contract PermissionedRegistry is
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    ) public virtual override returns (uint256 tokenId) {
-        NameCoder.assertLabelSize(label);
-        uint256 labelId = LibLabel.id(label);
-        Entry storage entry = _entry(labelId);
-        tokenId = _constructTokenId(labelId, entry);
-        address prevOwner = super.ownerOf(tokenId);
-        address sender = _msgSender(); // the registrar, not the registrant
-        if (_isExpired(entry.expiry)) {
-            if (sender != address(this)) {
-                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, sender);
-            }
-            if (owner == address(0) && roleBitmap != 0) {
-                revert EACCannotGrantRoles(ROOT_RESOURCE, roleBitmap, sender); // strict
-            }
-        } else {
-            if (prevOwner != address(0)) {
-                revert LabelAlreadyRegistered(label); // cannot overwrite REGISTERED
-            } else if (owner == address(0)) {
-                revert LabelAlreadyReserved(label); // cannot reserve/register RESERVED
-            }
-            if (sender != address(this)) {
-                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
-            }
-            if (expiry == 0) {
-                expiry = entry.expiry; // use current expiry
-            }
-        }
-        if (_isExpired(expiry)) {
-            revert CannotSetPastExpiry(expiry);
-        }
-        if (prevOwner != address(0)) {
-            _burn(prevOwner, tokenId, 1);
-            ++entry.eacVersionId;
-            ++entry.tokenVersionId;
-            tokenId = _constructTokenId(tokenId, entry);
-        }
-        entry.expiry = expiry;
-        entry.subregistry = registry;
-        entry.resolver = resolver;
-        // emit LabelRegistered before mint so we can determine this is a registry (in an indexer)
-        if (owner == address(0)) {
-            emit LabelReserved(tokenId, bytes32(labelId), label, expiry, sender);
-        } else {
-            emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
-            _mint(owner, tokenId, 1, "");
-            uint256 resource = _constructResource(tokenId, entry);
-            emit TokenResource(tokenId, resource);
-            assert(resource != ROOT_RESOURCE);
-            _grantRoles(resource, roleBitmap, owner, false);
-        }
-        if (address(registry) != address(0)) {
-            emit SubregistryUpdated(tokenId, registry, sender);
-        }
-        if (address(resolver) != address(0)) {
-            emit ResolverUpdated(tokenId, resolver, sender);
-        }
+    ) public virtual returns (uint256) {
+        return _register(label, owner, registry, resolver, roleBitmap, expiry, true);
     }
 
     /// @inheritdoc IStandardRegistry
     /// @dev Requires `REGISTERED | RESERVED` and `ROLE_UNREGISTER`.
-    function unregister(uint256 anyId) public virtual {
+    function unregister(uint256 anyId) public {
         (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
             anyId,
             RegistryRolesLib.ROLE_UNREGISTER
@@ -249,7 +191,7 @@ contract PermissionedRegistry is
 
     /// @inheritdoc IStandardRegistry
     /// @dev Requires `REGISTERED | RESERVED` and `ROLE_RENEW`.
-    function renew(uint256 anyId, uint64 newExpiry) public override {
+    function renew(uint256 anyId, uint64 newExpiry) public {
         (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
             anyId,
             RegistryRolesLib.ROLE_RENEW
@@ -292,7 +234,7 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IRegistry
-    function getParent() public view virtual returns (IRegistry parent, string memory label) {
+    function getParent() public view returns (IRegistry parent, string memory label) {
         return (_parentRegistry, _childLabel);
     }
 
@@ -336,14 +278,14 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IPermissionedRegistry
-    function latestOwnerOf(uint256 tokenId) public view virtual returns (address) {
+    function latestOwnerOf(uint256 tokenId) public view returns (address) {
         return super.ownerOf(tokenId);
     }
 
     /// @inheritdoc IERC1155Singleton
     function ownerOf(
         uint256 tokenId
-    ) public view virtual override(ERC1155Singleton, IERC1155Singleton) returns (address) {
+    ) public view override(ERC1155Singleton, IERC1155Singleton) returns (address) {
         Entry storage entry = _entry(tokenId);
         return
             tokenId != _constructTokenId(tokenId, entry) || _isExpired(entry.expiry)
@@ -400,13 +342,82 @@ contract PermissionedRegistry is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev If `AVAILABLE`, requires `ROLE_REGISTRAR` on root and status becomes `REGISTERED`.
+    ///         * If `owner` is null (`roleBitmap` must be 0), status becomes `RESERVED`.
+    ///      If `RESERVED`, requires `ROLE_REGISTER_RESERVED` on root and status becomes `REGISTERED`.
+    ///         * If `expiry` is 0, uses current expiry.
+    function _register(
+        string memory label,
+        address owner,
+        IRegistry registry,
+        address resolver,
+        uint256 roleBitmap,
+        uint64 expiry,
+        bool checkRoles
+    ) internal returns (uint256 tokenId) {
+        NameCoder.assertLabelSize(label);
+        uint256 labelId = LibLabel.id(label);
+        Entry storage entry = _entry(labelId);
+        tokenId = _constructTokenId(labelId, entry);
+        address prevOwner = super.ownerOf(tokenId);
+        address sender = _msgSender(); // the registrar, not the registrant
+        if (_isExpired(entry.expiry)) {
+            if (checkRoles) {
+                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, sender);
+            }
+            if (owner == address(0) && roleBitmap != 0) {
+                revert EACCannotGrantRoles(ROOT_RESOURCE, roleBitmap, sender); // strict
+            }
+        } else {
+            if (prevOwner != address(0)) {
+                revert LabelAlreadyRegistered(label); // cannot overwrite REGISTERED
+            } else if (owner == address(0)) {
+                revert LabelAlreadyReserved(label); // cannot reserve/register RESERVED
+            }
+            if (checkRoles) {
+                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
+            }
+            if (expiry == 0) {
+                expiry = entry.expiry; // use current expiry
+            }
+        }
+        if (_isExpired(expiry)) {
+            revert CannotSetPastExpiry(expiry);
+        }
+        if (prevOwner != address(0)) {
+            _burn(prevOwner, tokenId, 1);
+            ++entry.eacVersionId;
+            ++entry.tokenVersionId;
+            tokenId = _constructTokenId(tokenId, entry);
+        }
+        entry.expiry = expiry;
+        entry.subregistry = registry;
+        entry.resolver = resolver;
+        if (owner == address(0)) {
+            emit LabelReserved(tokenId, bytes32(labelId), label, expiry, sender);
+        } else {
+            emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
+            _mint(owner, tokenId, 1, "");
+            uint256 resource = _constructResource(tokenId, entry);
+            assert(resource != ROOT_RESOURCE);
+            emit TokenResource(tokenId, resource);
+            _grantRoles(resource, roleBitmap, owner, false);
+        }
+        if (address(registry) != address(0)) {
+            emit SubregistryUpdated(tokenId, registry, sender);
+        }
+        if (address(resolver) != address(0)) {
+            emit ResolverUpdated(tokenId, resolver, sender);
+        }
+    }
+
     /// @dev Override `ERC1155Singleton._update()` to transfer the roles to the new owner if the token is transferred.
     function _update(
         address from,
         address to,
         uint256[] memory tokenIds,
         uint256[] memory amounts
-    ) internal virtual override {
+    ) internal override {
         bool externalTransfer = to != address(0) && from != address(0); // skip mint and burn
         if (externalTransfer) {
             for (uint256 i; i < tokenIds.length; ++i) {
@@ -434,7 +445,7 @@ contract PermissionedRegistry is
         uint256 /*oldRoles*/,
         uint256 /*newRoles*/,
         uint256 /*roleBitmap*/
-    ) internal virtual override {
+    ) internal override {
         _regenerate(resource);
     }
 
@@ -445,7 +456,7 @@ contract PermissionedRegistry is
         uint256 /*oldRoles*/,
         uint256 /*newRoles*/,
         uint256 /*roleBitmap*/
-    ) internal virtual override {
+    ) internal override {
         _regenerate(resource);
     }
 
@@ -481,7 +492,7 @@ contract PermissionedRegistry is
     function _getSettableRoles(
         uint256 resource,
         address account
-    ) internal view virtual override returns (uint256) {
+    ) internal view override returns (uint256) {
         uint256 roleBitmap = super._getSettableRoles(resource, account);
         if (resource == ROOT_RESOURCE) {
             return roleBitmap;
@@ -501,7 +512,7 @@ contract PermissionedRegistry is
     function _getRevokableRoles(
         uint256 resource,
         address account
-    ) internal view virtual override returns (uint256) {
+    ) internal view override returns (uint256) {
         if (
             resource != ROOT_RESOURCE &&
             ownerOf(_constructTokenId(resource, _entry(resource))) == address(0)
