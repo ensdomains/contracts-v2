@@ -84,8 +84,10 @@ contract PermissionedRegistry is
 
     /// @dev The parent registry of this registry.
     IRegistry internal _parentRegistry;
+
     /// @dev The child label of this registry.
     string internal _childLabel;
+
     /// @dev The entries of this registry.
     mapping(uint256 storageId => Entry entry) internal _entries;
 
@@ -349,9 +351,6 @@ contract PermissionedRegistry is
                 : super.ownerOf(tokenId);
     }
 
-    /// @dev EAC view overrides — each translates `anyId` to the canonical EAC resource
-    ///      (via `getResource`) before delegating to the base `EnhancedAccessControl` implementation.
-
     /// @inheritdoc IEnhancedAccessControl
     function roles(
         uint256 anyId,
@@ -458,8 +457,8 @@ contract PermissionedRegistry is
             _burn(owner, tokenId, 1);
             ++entry.tokenVersionId;
             uint256 newTokenId = _constructTokenId(tokenId, entry);
-            _mint(owner, newTokenId, 1, "");
             emit TokenRegenerated(tokenId, newTokenId); // resource is unchanged
+            _mint(owner, newTokenId, 1, "");
         }
     }
 
