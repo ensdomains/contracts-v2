@@ -6,12 +6,13 @@ import {NexusProxy} from "nexus/utils/NexusProxy.sol";
 import {CREATE3} from "solady/utils/CREATE3.sol";
 
 /// @title ProxyLib
-/// @notice A library for deploying NexusProxy contracts
+/// @dev Deploys deterministic Nexus proxy accounts using CREATE3 and owner-derived salts.
 library ProxyLib {
     /// @notice Error thrown when ETH transfer fails.
     /// @dev Error selector: `0x6d963f88`
     error EthTransferFailed();
 
+    /// @dev Deploys a deterministic Nexus proxy for an owner, or forwards ETH to the existing proxy if already deployed.
     function deployProxy(address implementation, address owner_, bytes memory initData)
         internal
         returns (bool alreadyDeployed, address payable account)
@@ -37,6 +38,7 @@ library ProxyLib {
         }
     }
 
+    /// @dev Predicts the deterministic Nexus proxy address for an owner.
     function predictProxyAddress(address owner_)
         internal
         view
@@ -45,6 +47,7 @@ library ProxyLib {
         return payable(CREATE3.predictDeterministicAddress(_getSalt(owner_)));
     }
 
+    /// @dev Converts an owner address into the deterministic CREATE3 salt used for that owner's proxy.
     function _getSalt(address owner_) internal pure returns (bytes32) {
         return bytes32(bytes20(owner_));
     }

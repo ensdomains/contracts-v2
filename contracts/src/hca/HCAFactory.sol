@@ -12,12 +12,12 @@ import {ProxyLib} from "./ProxyLib.sol";
 /// @dev Uses CREATE3 via ProxyLib to deploy NexusProxy instances at addresses derived from the owner.
 ///      An external IHCAInitDataParser provides account-specific initialization data at deploy time.
 contract HCAFactory is Ownable, IHCAFactory {
-    /// @notice The current HCA implementation contract that new proxies delegate to.
+    /// @dev The current HCA implementation contract that new proxies delegate to.
     address internal _implementation;
-    /// @notice The generator contract that produces account-specific initialization data.
+    /// @dev The parser contract that extracts account ownership from HCA initialization data.
     IHCAInitDataParser internal _initDataGenerator;
 
-    /// @notice Maps each deployed HCA proxy address to its owner.
+    /// @dev Maps each deployed HCA proxy address to its owner.
     mapping(address hca => address owner) internal _hcaOwners;
 
     /// @notice Emitted when a new HCA is deployed.
@@ -25,6 +25,9 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @param hca The address of the deployed HCA proxy.
     event AccountCreated(address indexed hcaOwner, address indexed hca);
 
+    /// @notice Emitted when the implementation and init data parser used for new HCA proxies change.
+    /// @param accountImplementation The implementation contract for newly deployed HCA proxies.
+    /// @param initDataGenerator The parser used to extract account ownership from initialization data.
     event NewHCAImplementation(
         address indexed accountImplementation,
         address indexed initDataGenerator
@@ -49,20 +52,22 @@ contract HCAFactory is Ownable, IHCAFactory {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Updates the HCA implementation contract that new proxies will point to.
-    /// @param implementation_ The new implementation address.
-    function setImplementation(address implementation_, IHCAInitDataParser initDataGenerator_)
+    /// @notice Updates the implementation and init data parser used for new HCA proxies.
+    /// @param implementation The new implementation address.
+    /// @param initDataGenerator The new parser used to extract account ownership from initialization data.
+    function setImplementation(address implementation, IHCAInitDataParser initDataGenerator)
         external
         onlyOwner
     {
-        _implementation = implementation_;
-        _initDataGenerator = initDataGenerator_;
-        emit NewHCAImplementation(implementation_, address(initDataGenerator_));
+        _implementation = implementation;
+        _initDataGenerator = initDataGenerator;
+        emit NewHCAImplementation(implementation, address(initDataGenerator));
     }
 
-    /// @notice Deploys a new HCA proxy for the given owner, or forwards ETH if already deployed.
-    /// @dev The proxy address is deterministic based on `hcaOwner_`. If the account already exists,
-    ///      any attached ETH is forwarded to the existing account.
+    /// @notice Deploys a new HCA proxy for the owner encoded in the initialization data, or forwards ETH if already deployed.
+    /// @dev The proxy address is deterministic based on the owner extracted from the initialization data. If the account already exists, any attached ETH is forwarded to the existing account.
+    /// @param initData The initialization data used to initialize the HCA proxy and identify its owner.
+    /// @return hca The deployed or existing HCA proxy address.
     function createAccount(bytes calldata initData) external payable returns (address payable hca) {
         // Generate account-specific init data using the external generator
         address hcaOwner_ = getOwnerFromHCAInitdata(initData);
@@ -74,7 +79,7 @@ contract HCAFactory is Ownable, IHCAFactory {
         }
     }
 
-    /// @notice Returns the current HCA implementation address.
+    /// @inheritdoc IHCAFactory
     function getImplementation() external view returns (address) {
         return _implementation;
     }
@@ -84,9 +89,7 @@ contract HCAFactory is Ownable, IHCAFactory {
         return _initDataGenerator;
     }
 
-    /// @notice Returns the owner of a deployed HCA proxy.
-    /// @param hca The HCA proxy address to look up.
-    /// @return hcaOwner The owner address, or `address(0)` if the HCA was not deployed by this factory.
+    /// @inheritdoc IHCAFactory
     function getAccountOwner(address hca) external view returns (address hcaOwner) {
         hcaOwner = _hcaOwners[hca];
     }
@@ -98,6 +101,9 @@ contract HCAFactory is Ownable, IHCAFactory {
         return ProxyLib.predictProxyAddress(owner_);
     }
 
+    /// @notice Extracts the HCA owner from initialization data.
+    /// @param initData The initialization data to parse.
+    /// @return hcaOwner The owner encoded in the initialization data.
     function getOwnerFromHCAInitdata(bytes calldata initData)
         public
         view
