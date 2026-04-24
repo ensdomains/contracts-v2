@@ -258,10 +258,10 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
             _roles[resource][account] = updatedRoles;
             uint256 newlyAddedRoles = roleBitmap & ~currentRoles;
             _updateRoleCounts(resource, newlyAddedRoles, true);
+            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             if (executeCallbacks) {
                 _onRolesGranted(resource, account, currentRoles, updatedRoles, roleBitmap);
             }
-            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             return true;
         } else {
             return false;
@@ -288,23 +288,14 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
             _roles[resource][account] = updatedRoles;
             uint256 newlyRemovedRoles = roleBitmap & currentRoles;
             _updateRoleCounts(resource, newlyRemovedRoles, false);
+            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             if (executeCallbacks) {
                 _onRolesRevoked(resource, account, currentRoles, updatedRoles, roleBitmap);
             }
-            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             return true;
         } else {
             return false;
         }
-    }
-
-    /// @dev Revoke all roles for account within resource.
-    function _revokeAllRoles(
-        uint256 resource,
-        address account,
-        bool executeCallbacks
-    ) internal virtual returns (bool) {
-        return _revokeRoles(resource, EACBaseRolesLib.ALL_ROLES, account, executeCallbacks);
     }
 
     /// @dev Updates role counts when roles are granted/revoked
