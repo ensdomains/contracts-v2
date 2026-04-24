@@ -400,9 +400,8 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         uint256 resource,
         address account
     ) internal view virtual returns (uint256) {
-        uint256 adminRoleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) &
-            EACBaseRolesLib.ADMIN_ROLES;
-        return (adminRoleBitmap >> 128) | adminRoleBitmap;
+        uint256 roleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
+        return (roleBitmap << 128) | roleBitmap;
     }
 
     /// @dev Returns the revokable roles for `account` within `resource`.
@@ -416,10 +415,8 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         uint256 resource,
         address account
     ) internal view virtual returns (uint256) {
-        uint256 adminRoleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) &
-            EACBaseRolesLib.ADMIN_ROLES;
-        uint256 regularRoles = adminRoleBitmap >> 128;
-        return regularRoles | adminRoleBitmap;
+        uint256 roleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
+        return (roleBitmap << 128) | roleBitmap;
     }
 
     ////////////////////////////////////////////////////////////////////////
