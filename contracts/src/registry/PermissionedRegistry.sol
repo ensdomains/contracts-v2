@@ -409,10 +409,11 @@ contract PermissionedRegistry is
     ) internal virtual override {
         bool externalTransfer = to != address(0) && from != address(0); // skip mint and burn
         if (externalTransfer) {
-            // only check ROLE_CAN_TRANSFER_ADMIN on token owner (from)
             for (uint256 i; i < tokenIds.length; ++i) {
-                if (!hasRoles(tokenIds[i], RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
-                    revert TransferDisallowed(tokenIds[i], from);
+                uint256 tokenId = tokenIds[i];
+                // only check ROLE_CAN_TRANSFER_ADMIN on token owner (from)
+                if (!hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
+                    revert TransferDisallowed(tokenId, from);
                 }
             }
         }
@@ -534,12 +535,20 @@ contract PermissionedRegistry is
     }
 
     /// @dev Create `resource` from parts.
+    ///      Does nothing if `ROOT_RESOURCE`.
     ///      Returns next resource if expired.
     function _constructResource(
         uint256 anyId,
         Entry storage entry
     ) internal view returns (uint256) {
-        return LibLabel.withVersion(anyId, entry.eacVersionId);
+        if (anyId == ROOT_RESOURCE) {
+            return anyId;
+        }
+        return
+            LibLabel.withVersion(
+                anyId,
+                _isExpired(entry.expiry) ? entry.eacVersionId + 1 : entry.eacVersionId
+            );
     }
 
     /// @dev Create `tokenId` from parts.
