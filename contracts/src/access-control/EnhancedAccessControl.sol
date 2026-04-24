@@ -298,15 +298,6 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         }
     }
 
-    /// @dev Revoke all roles for account within resource.
-    function _revokeAllRoles(
-        uint256 resource,
-        address account,
-        bool executeCallbacks
-    ) internal virtual returns (bool) {
-        return _revokeRoles(resource, EACBaseRolesLib.ALL_ROLES, account, executeCallbacks);
-    }
-
     /// @dev Updates role counts when roles are granted/revoked
     /// @param resource The resource to update counts for
     /// @param roleBitmap The roles being modified
