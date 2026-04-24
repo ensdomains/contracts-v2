@@ -7,6 +7,17 @@
 @unruggable/gateways/=lib/unruggable-gateways/
 @ensdomains/verifiable-factory/=lib/verifiable-factory/src/
 forge-std/=lib/forge-std/src/
+solady/=lib/solady/src/
+account-abstraction/=lib/account-abstraction/contracts/
+erc7739Validator/=lib/erc7739Validator/src/
+nexus/=lib/nexus/contracts
+lib/nexus/:lib-prep/=lib/prep/
+lib/nexus/:excessively-safe-call/=lib/ExcessivelySafeCall/src/
+lib/nexus/:account-abstraction/=lib/account-abstraction/contracts/
+lib/nexus/:solady/=lib/solady/src/
+lib/nexus/:sentinellist/=lib/sentinellist/src/
+lib/nexus/:erc7739Validator/=lib/erc7739Validator/src/
+lib/nexus/:composability/=lib/composability/contracts/
 lib/ens-contracts/contracts/utils/LibMem/=src/utils/
 lib/ens-contracts/:@openzeppelin/contracts=lib/openzeppelin-contracts-v4/contracts
 lib/ens-contracts/:@openzeppelin/contracts-v5=lib/openzeppelin-contracts/contracts
