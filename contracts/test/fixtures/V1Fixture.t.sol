@@ -124,10 +124,10 @@ contract V1FixtureTest is V1Fixture {
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_setFuses() external {
         bytes memory name = registerWrappedETH2LD("test", 0);
         (bytes32 labelhash, ) = NameCoder.readLabel(name, 0);
-        vm.startPrank(user);
+        vm.prank(user);
         nameWrapper.setFuses(NameCoder.namehash(name, 0), uint16(PARENT_CANNOT_CONTROL));
+        vm.prank(user);
         nameWrapper.unwrapETH2LD(labelhash, user, user);
-        vm.stopPrank();
     }
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_wrap() external {
@@ -139,10 +139,14 @@ contract V1FixtureTest is V1Fixture {
             PARENT_CANNOT_CONTROL
         );
         (bytes32 labelhash, ) = NameCoder.readLabel(name, 0);
-        vm.startPrank(user);
-        nameWrapper.setFuses(NameCoder.namehash(name, 0), uint16(PARENT_CANNOT_CONTROL));
+        vm.prank(user);
         nameWrapper.unwrap(NameCoder.namehash(parentName, 0), labelhash, user);
-        vm.stopPrank();
+    }
+
+    function test_nameWrapper_PARENT_CANNOT_CONTROL_withoutParent() external {
+        bytes memory parentName = registerWrappedETH2LD("test", 0);
+        vm.expectRevert();
+        this.createWrappedChild(parentName, "sub", address(0), PARENT_CANNOT_CONTROL);
     }
 
     function test_nameWrapper_CANNOT_BURN_FUSES_via_wrap() external {
