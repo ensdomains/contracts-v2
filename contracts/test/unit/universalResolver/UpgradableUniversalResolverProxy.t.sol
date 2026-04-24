@@ -58,7 +58,6 @@ contract ProxyTest is Test {
 
     /////// Mock ReverseClaimer ///////
     function claim(address) external pure returns (bytes32) {}
-
     function owner(bytes32) external view returns (address) {
         return address(this);
     }

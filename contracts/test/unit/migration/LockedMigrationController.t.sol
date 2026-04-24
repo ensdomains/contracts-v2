@@ -282,11 +282,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         // emit IERC1967.Upgraded()
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
-            0,
-            /*ROOT_RESOURCE*/
+            0 /*ROOT_RESOURCE*/,
             md.owner,
-            0,
-            /*old roles*/
+            0 /*old roles*/,
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
                 RegistryRolesLib.ROLE_UPGRADE |
                 RegistryRolesLib.ROLE_REGISTRAR |
@@ -325,8 +323,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         emit IEnhancedAccessControl.EACRolesChanged(
             tokenId,
             md.owner,
-            0,
-            /*old roles*/
+            0 /*old roles*/,
             RegistryRolesLib.ROLE_SET_RESOLVER |
                 RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
                 RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN

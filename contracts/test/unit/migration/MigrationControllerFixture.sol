@@ -84,7 +84,6 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 contract MockERC1155 is ERC1155 {
     uint256 _id;
     constructor() ERC1155("") {}
-
     function mint(address to) external returns (uint256) {
         _mint(to, _id, 1, "");
         return _id++;

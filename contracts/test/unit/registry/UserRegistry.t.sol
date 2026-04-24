@@ -330,7 +330,6 @@ contract UserRegistryV2Mock is UserRegistry {
         IHCAFactoryBasic _hcaFactory,
         IRegistryMetadata _metadataProvider
     ) UserRegistry(_hcaFactory, _metadataProvider) {}
-
     function version() public pure returns (uint256) {
         return 2;
     }

@@ -6,7 +6,9 @@ pragma solidity ^0.8.20;
 import {Test} from "forge-std/Test.sol";
 
 import {EnhancedAccessControl} from "~src/access-control/EnhancedAccessControl.sol";
-import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
+import {
+    IEnhancedAccessControl
+} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {HCAEquivalence} from "~src/hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";

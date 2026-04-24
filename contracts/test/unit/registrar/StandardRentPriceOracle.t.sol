@@ -169,31 +169,24 @@ contract StandardRentPriceOracleTest is Test, ERC1155Holder {
     function test_rentPrice_0() external {
         _testRentPrice(0, 0);
     }
-
     function test_rentPrice_1() external {
         _testRentPrice(1, StandardPricing.RATE_1CP);
     }
-
     function test_rentPrice_2() external {
         _testRentPrice(2, StandardPricing.RATE_2CP);
     }
-
     function test_rentPrice_3() external {
         _testRentPrice(3, StandardPricing.RATE_3CP);
     }
-
     function test_rentPrice_4() external {
         _testRentPrice(4, StandardPricing.RATE_4CP);
     }
-
     function test_rentPrice_5() external {
         _testRentPrice(5, StandardPricing.RATE_5CP);
     }
-
     function test_rentPrice_255() external {
         _testRentPrice(255, StandardPricing.RATE_5CP);
     }
-
     function test_rentPrice_256() external {
         _testRentPrice(256, 0);
     }
@@ -313,74 +306,63 @@ contract StandardRentPriceOracleTest is Test, ERC1155Holder {
     function test_discountAfter_start() external view {
         assertEq(rentPriceOracle.integratedDiscount(0), 0);
     }
-
     function test_discountAfter_1year() external view {
         _testAverageDiscount(StandardPricing.SEC_PER_YEAR, 0);
     }
-
     function test_discountAfter_1year_4mos_partial() external view {
         _testAverageDiscount(
             (StandardPricing.SEC_PER_YEAR * 4) / 3,
             StandardPricing.discountRatio(25, 1000)
         );
     }
-
     function test_discountAfter_2years() external view {
         _testAverageDiscount(
             StandardPricing.SEC_PER_YEAR * 2,
             StandardPricing.discountRatio(5, 100)
         );
     }
-
     function test_discountAfter_2years_6mos_partial() external view {
         _testAverageDiscount(
             (StandardPricing.SEC_PER_YEAR * 5) / 2,
             StandardPricing.discountRatio(8, 100)
         );
     }
-
     function test_discountAfter_3years() external view {
         _testAverageDiscount(
             StandardPricing.SEC_PER_YEAR * 3,
             StandardPricing.discountRatio(10, 100)
         );
     }
-
     function test_discountAfter_4years_partial() external view {
         _testAverageDiscount(
             StandardPricing.SEC_PER_YEAR * 4,
             StandardPricing.discountRatio(146875, 1000000)
         );
     }
-
     function test_discountAfter_5years() external view {
         _testAverageDiscount(
             StandardPricing.SEC_PER_YEAR * 5,
             StandardPricing.discountRatio(175, 1000)
         );
     }
-
     function test_discountAfter_8years_partial() external view {
         _testAverageDiscount(
             StandardPricing.SEC_PER_YEAR * 8,
             StandardPricing.discountRatio(23125, 100000)
         );
     }
-
     function test_discountAfter_10years() external view {
         _testAverageDiscount(
             StandardPricing.SEC_PER_YEAR * 10,
             StandardPricing.discountRatio(25, 100)
         );
     }
-
     function test_discountAfter_30years() external view {
         _testAverageDiscount(
             StandardPricing.SEC_PER_YEAR * 30,
             StandardPricing.discountRatio(30, 100)
         );
     }
-
     function test_discountAfter_end() external view {
         _testAverageDiscount(type(uint64).max, StandardPricing.discountRatio(30, 100));
     }
@@ -426,11 +408,9 @@ contract StandardRentPriceOracleTest is Test, ERC1155Holder {
     function test_discountedRentPrice_3() external {
         _testDiscountedPermutations(3);
     }
-
     function test_discountedRentPrice_4() external {
         _testDiscountedPermutations(4);
     }
-
     function test_discountedRentPrice_5() external {
         _testDiscountedPermutations(5);
     }

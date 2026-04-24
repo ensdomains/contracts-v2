@@ -1630,7 +1630,6 @@ contract L2ReverseRegistrarTest is Test {
 
 contract MockContractName is IContractName {
     string public contractName;
-
     constructor(string memory name) {
         contractName = name;
     }
