@@ -52,9 +52,6 @@ library ResolverProfileRewriterLib {
                 default {
                     // only bound checks on write
                     if lt(bound, ptr) {
-                        // mstore(0, 0x4e487b71) // error Panic(uint256)
-                        // mstore(32, 0x32) // code
-                        // revert(28, 36) // 32-4, 4+32
                         leave
                     }
                     mstore(ptr, node) // replace node
