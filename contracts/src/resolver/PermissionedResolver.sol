@@ -70,14 +70,20 @@ import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib
 ///
 /// Fine-grained Permissions:
 ///
-/// `setText(key)` can be restricted to a key using: `part = partHash(<key>)`.
-/// `setData(key)` can be restricted to a key using: `part = partHash(<key>)`.
-/// `setAddr(coinType)` can be restricted to a coinType using: `part = partHash(<coinType>)`.
+/// * `setText(key)` can be permissioned with `authorizeTextRoles()`
+///    - caller requires `ROLE_SET_TEXT_ADMIN` on `resource(<namehash>, 0)`
+///    - `ROLE_SET_TEXT` is authorized on `resource(<namehash>, <part>)`
+/// * `setData(key)` can be permissioned with `authorizeDataRoles()`
+///    - caller requires `ROLE_SET_DATA_ADMIN` on `resource(<namehash>, 0)`
+///    - `ROLE_SET_DATA` is authorized on `resource(<namehash>, <part>)`
+/// * `setAddr(coinType)` can be permissioned with `authorizeAddrRoles()`
+///    - caller requires `ROLE_SET_ADDR_ADMIN` on `resource(<namehash>, 0)`
+///    - `ROLE_SET_ADDR` is authorized on `resource(<namehash>, <part>)`
 ///
 /// Setters with `node` check (4) EAC resources:
 ///                                           Parts
 ///        Resources      +-----------------------------+------------------------------+
-///               |           Any (*)           |         Specific (1)         |
+///                       |           Any (*)           |         Specific (1)         |
 ///        +--------------+-----------------------------+------------------------------+
 ///        |      Any (*) |       resource(0, 0)        |      resource(0, <part>)     |
 ///  Names |--------------+-----------------------------+------------------------------+
