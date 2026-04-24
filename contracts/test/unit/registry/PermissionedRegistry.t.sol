@@ -99,10 +99,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_register_expired() external {
-        this._register();
+        uint256 tokenId = this._register();
         vm.warp(testExpiry);
         testExpiry += testExpiry;
         this._register();
+        assertEq(registry.latestOwnerOf(tokenId), address(0));
     }
 
     // is this needed?
@@ -613,6 +614,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
         StrictERC1155Holder r = new StrictERC1155Holder(false);
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(user1, user1, address(r), tokenId, 1);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, user1, testRoles, 0); // revoke (transfer 1/2)
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, address(r), 0, testRoles); // grant (transfer 2/2)
         vm.prank(user1);
         registry.safeTransferFrom(user1, address(r), tokenId, 1, "");
     }
@@ -620,6 +627,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function test_safeTransferFrom_noop() external {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(user1, user1, user2, tokenId, 0);
         vm.recordLogs();
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, 0, "");
@@ -700,6 +709,27 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.safeBatchTransferFrom(user1, address(r), tokenIds, amounts, "");
     }
 
+    function test_safeBatchTransferFrom_noop() external {
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256[] memory tokenIds = new uint256[](2);
+        tokenIds[0] = this._register();
+        testLabel = "abc";
+        tokenIds[1] = this._register();
+        uint256[] memory amounts = new uint256[](2);
+        vm.prank(user1);
+        registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
+    }
+
+    function test_safeBatchTransferFrom_twice() external {
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256[] memory tokenIds = new uint256[](2);
+        tokenIds[0] = tokenIds[1] = this._register();
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = amounts[1] = 1;
+        vm.prank(user1);
+        registry.safeBatchTransferFrom(user1, user1, tokenIds, amounts, "");
+    }
+
     function test_safeBatchTransferFrom_oneError() external {
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register(); // no transfer role
@@ -731,7 +761,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(state.expiry, 0, "expiry");
         assertEq(state.latestOwner, address(0), "owner");
         assertEq(state.tokenId, tokenId, "tokenId");
-        assertEq(state.resource, tokenId, "resource");
+        assertEq(state.resource, tokenId + 1, "resource"); // next
         _checkStateGetters(state);
     }
 
@@ -765,7 +795,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(state.expiry, testExpiry, "expiry");
         assertEq(state.latestOwner, testOwner, "owner");
         assertEq(state.tokenId, tokenId, "tokenId");
-        assertEq(state.resource, tokenId, "resource");
+        assertEq(state.resource, tokenId + 1, "resource"); // next
         _checkStateGetters(state);
     }
 
@@ -777,7 +807,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(state.expiry, block.timestamp, "expiry");
         assertEq(state.latestOwner, address(0), "owner");
         assertEq(state.tokenId, tokenId + 1, "tokenId"); // burned
-        assertEq(state.resource, tokenId + 1, "resource"); // ^^^^
+        assertEq(state.resource, tokenId + 2, "resource"); // next
         _checkStateGetters(state);
     }
 
@@ -823,10 +853,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_getStatus_anyId(uint32 version) external {
         uint256 tokenId = this._register();
-        assertEq(
-            uint8(registry.getStatus(LibLabel.withVersion(tokenId, version))),
-            uint8(IPermissionedRegistry.Status.REGISTERED)
-        );
+        uint256 anyId = LibLabel.withVersion(tokenId, version);
+        assertEq(uint8(registry.getStatus(anyId)), uint8(IPermissionedRegistry.Status.REGISTERED));
+        vm.warp(testExpiry);
+        assertEq(uint8(registry.getStatus(anyId)), uint8(IPermissionedRegistry.Status.AVAILABLE));
     }
 
     function test_getState_anyId(uint32 version) external {
@@ -872,35 +902,48 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function test_roles_anyId(uint32 version) external {
         testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 tokenId = this._register();
-        assertEq(registry.roles(LibLabel.withVersion(tokenId, version), testOwner), testRoles);
+        uint256 anyId = LibLabel.withVersion(tokenId, version);
+        assertEq(registry.roles(anyId, testOwner), testRoles);
+        vm.warp(testExpiry);
+        assertEq(registry.roles(anyId, testOwner), 0);
     }
 
     function test_roleCount_anyId(uint32 version) external {
         testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 tokenId = this._register();
-        assertEq(registry.roleCount(LibLabel.withVersion(tokenId, version)), testRoles);
+        uint256 anyId = LibLabel.withVersion(tokenId, version);
+        assertEq(registry.roleCount(anyId), testRoles);
+        vm.warp(testExpiry);
+        assertEq(registry.roleCount(anyId), 0);
     }
 
     function test_hasRoles_anyId(uint32 version) external {
         testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 tokenId = this._register();
-        assertTrue(registry.hasRoles(LibLabel.withVersion(tokenId, version), testRoles, testOwner));
+        uint256 anyId = LibLabel.withVersion(tokenId, version);
+        assertTrue(registry.hasRoles(anyId, testRoles, testOwner));
+        vm.warp(testExpiry);
+        assertFalse(registry.hasRoles(anyId, testRoles, testOwner));
     }
 
     function test_hasAssignees_anyId(uint32 version) external {
         testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 tokenId = this._register();
-        assertTrue(registry.hasAssignees(LibLabel.withVersion(tokenId, version), testRoles));
+        uint256 anyId = LibLabel.withVersion(tokenId, version);
+        assertTrue(registry.hasAssignees(anyId, testRoles));
+        vm.warp(testExpiry);
+        assertFalse(registry.hasAssignees(anyId, testRoles));
     }
 
     function test_getAssigneeCount_anyId(uint32 version) external {
         testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 tokenId = this._register();
-        (uint256 counts, ) = registry.getAssigneeCount(
-            LibLabel.withVersion(tokenId, version),
-            testRoles
-        );
+        uint256 anyId = LibLabel.withVersion(tokenId, version);
+        (uint256 counts, ) = registry.getAssigneeCount(anyId, testRoles);
         assertEq(counts, testRoles);
+        vm.warp(testExpiry);
+        (counts, ) = registry.getAssigneeCount(anyId, testRoles);
+        assertEq(counts, 0);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -961,6 +1004,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         testRoles = roleBitmap << 128; // admin
         uint256 tokenId = this._register();
 
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId, tokenId + 1);
         vm.prank(testOwner);
         assertTrue(registry.grantRoles(tokenId, roleBitmap, user2));
     }
@@ -1016,7 +1061,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
-                tokenId, // same as resource
+                tokenId + 1, // next
                 roleBitmap,
                 address(this)
             )
@@ -1048,6 +1093,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256 tokenId = this._register();
 
         // revoke normal role
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId, tokenId + 1);
         vm.prank(testOwner);
         assertTrue(registry.revokeRoles(tokenId, roleBitmap, testOwner));
 
@@ -1090,7 +1137,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotRevokeRoles.selector,
-                tokenId, // same as resource
+                tokenId + 1, // next
                 testRoles,
                 address(this)
             )
@@ -1182,6 +1229,85 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         // step #2: transfer doesn't fail
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+    }
+
+    // scenerio:
+    // 1. token expires, role modification is frozen
+    // 2. transfer while expired, hasRoles() still exists
+    function test_transferWhileExpired() external {
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256 tokenId = this._register();
+        // step #1: token expires
+        vm.warp(testExpiry);
+        // step #2: transfer while expired
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+        );
+        vm.prank(user1);
+        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+    }
+
+    // scenerio: BET-594
+    // if EACRolesChanged is emit after callback execution, it is out of order
+    // 1. role A is granted => regenerate
+    // 2. callback triggers another action
+    // 3. role B is granted => regenerate (during callback)
+    // 4. EACRolesChanged is emit for B
+    // 5. EACRolesChanged is emit for A
+    function test_reentrantCallbackEventOrdering_grantRoles() external {
+        ReentrantReceiver r = new ReentrantReceiver(registry);
+
+        uint256 role = RegistryRolesLib.ROLE_SET_RESOLVER;
+
+        testOwner = address(r);
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+        uint256 tokenId = this._register();
+
+        // make it so we grant another role during callback
+        r.setReceiverCalldata(
+            abi.encodeCall(PermissionedRegistry.grantRoles, (tokenId, role, actor))
+        );
+
+        // grant => burn+mint => grant again
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, user2, 0, role); // grant 1
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId, tokenId + 1);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, actor, 0, role); // grant 2
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId + 1, tokenId + 2);
+        vm.prank(address(r));
+        registry.grantRoles(tokenId, role, user2);
+    }
+
+    // same as above except for revoke
+    function test_reentrantCallbackEventOrdering_revokeRoles() external {
+        ReentrantReceiver r = new ReentrantReceiver(registry);
+
+        uint256 role1 = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256 role2 = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+
+        testOwner = address(r);
+        testRoles = role1 | role2;
+        uint256 tokenId = this._register();
+
+        // make it so we revoke another role during callback
+        r.setReceiverCalldata(
+            abi.encodeCall(PermissionedRegistry.revokeRoles, (tokenId, role2, testOwner))
+        );
+
+        // revoke => burn+mint => revoke again
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, testOwner, testRoles, role2); // revoke 1
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId, tokenId + 1);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, testOwner, role2, 0); // revoke 2
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId + 1, tokenId + 2);
+        vm.prank(testOwner);
+        registry.revokeRoles(tokenId, role1, testOwner);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1287,8 +1413,43 @@ contract MockPermissionedRegistry is PermissionedRegistry {
         address ownerAddress,
         uint256 ownerRoles
     ) PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles) {}
+
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
+    }
+}
+
+contract ReentrantReceiver is ERC1155Holder {
+    PermissionedRegistry immutable REGISTRY;
+    bytes _data;
+    constructor(PermissionedRegistry registry) {
+        REGISTRY = registry;
+    }
+    function setReceiverCalldata(bytes calldata data) external {
+        _data = data;
+    }
+    function onERC1155Received(
+        address operator,
+        address from,
+        uint256 id,
+        uint256 value,
+        bytes memory data
+    ) public override returns (bytes4) {
+        if (from == address(0)) {
+            // during mint(), eg. token regeneration(), mutate the registry
+            bytes memory v = _data;
+            if (v.length > 0) {
+                delete _data; // consume calldata
+                bool ok;
+                (ok, v) = address(REGISTRY).call(v); // execute it
+                if (!ok) {
+                    assembly {
+                        revert(add(v, 32), mload(v)) // propagate
+                    }
+                }
+            }
+        }
+        return super.onERC1155Received(operator, from, id, value, data);
     }
 }
 
