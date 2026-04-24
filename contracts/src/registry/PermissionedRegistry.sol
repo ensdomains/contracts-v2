@@ -84,10 +84,8 @@ contract PermissionedRegistry is
 
     /// @dev The parent registry of this registry.
     IRegistry internal _parentRegistry;
-
     /// @dev The child label of this registry.
     string internal _childLabel;
-
     /// @dev The entries of this registry.
     mapping(uint256 storageId => Entry entry) internal _entries;
 
@@ -350,6 +348,9 @@ contract PermissionedRegistry is
                 ? address(0)
                 : super.ownerOf(tokenId);
     }
+
+    /// @dev EAC view overrides — each translates `anyId` to the canonical EAC resource
+    ///      (via `getResource`) before delegating to the base `EnhancedAccessControl` implementation.
 
     /// @inheritdoc IEnhancedAccessControl
     function roles(
