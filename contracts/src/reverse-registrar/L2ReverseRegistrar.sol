@@ -179,8 +179,9 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
             if (!_UNIVERSAL_SIG_VALIDATOR.isValidSig(addr, message, signature))
                 revert InvalidSignature();
         } else {
-            if (!SignatureChecker.isValidSignatureNow(addr, message, signature))
+            if (!SignatureChecker.isValidSignatureNow(addr, message, signature)) {
                 revert InvalidSignature();
+            }
         }
     }
 

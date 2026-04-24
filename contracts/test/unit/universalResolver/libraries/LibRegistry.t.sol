@@ -31,6 +31,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
                 EACBaseRolesLib.ALL_ROLES
             );
     }
+
     function _register(
         PermissionedRegistry parentRegistry,
         string memory label,

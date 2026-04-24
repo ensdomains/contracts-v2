@@ -1269,6 +1269,7 @@ contract MockPermissionedRegistry is PermissionedRegistry {
         address ownerAddress,
         uint256 ownerRoles
     ) PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles) {}
+
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
     }

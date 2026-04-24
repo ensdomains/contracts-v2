@@ -135,7 +135,10 @@ export async function testNames(env: DevnetEnvironment) {
   ]);
   if (aliasBalance < aliasPrice) {
     await env.erc20.MockUSDC.write.mint(
-      [env.namedAccounts.owner.address, aliasPrice - aliasBalance + 1000000n],
+      [
+        env.namedAccounts.owner.address,
+        BigInt(aliasPrice) - BigInt(aliasBalance) + 1_000_000n,
+      ],
       { account: env.namedAccounts.owner },
     );
   }

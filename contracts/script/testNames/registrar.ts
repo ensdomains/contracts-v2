@@ -216,7 +216,7 @@ export async function renewName(
   console.log(`Current balance: ${balance}`);
 
   if (balance < price) {
-    const amountToMint = price - balance + 1000000n;
+    const amountToMint = BigInt(price) - BigInt(balance) + 1_000_000n;
     console.log(`Minting ${amountToMint} tokens...`);
     await env.erc20.MockUSDC.write.mint([account.address, amountToMint], {
       account,
