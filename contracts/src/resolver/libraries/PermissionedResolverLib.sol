@@ -48,6 +48,11 @@ library PermissionedResolverLib {
     /// @dev Nybble 40: authorizes setting ROLE_CLEAR.
     uint256 internal constant ROLE_CLEAR_ADMIN = ROLE_CLEAR << 128;
 
+    /// @dev Nybble 9: authorizes setting data records. Root or name.
+    uint256 internal constant ROLE_SET_DATA = 1 << 36;
+    /// @dev Nybble 41: authorizes setting ROLE_SET_DATA.
+    uint256 internal constant ROLE_SET_DATA_ADMIN = ROLE_SET_DATA << 128;
+
     /// @dev Nybble 31: authorizes UUPS proxy upgrades. Root-only.
     uint256 internal constant ROLE_UPGRADE = 1 << 124;
     /// @dev Nybble 63: authorizes setting ROLE_UPGRADE.
@@ -69,27 +74,20 @@ library PermissionedResolverLib {
         }
     }
 
-    /// @dev Computes a record-type identifier for address records, namespaced by coin type.
-    /// @param coinType The SLIP-44 coin type.
+    /// @dev Computes a record-type identifier for uint256-keyed records.
+    /// @param x The uint256 value.
     /// @return part The computed record-type identifier.
-    function addrPart(uint256 coinType) internal pure returns (bytes32 part) {
+    function partHash(uint256 x) internal pure returns (bytes32 part) {
         assembly {
-            mstore8(0, 1)
-            mstore(1, coinType)
-            part := keccak256(0, 33)
+            mstore(0, x)
+            part := keccak256(0, 32)
         }
-        // Equivalent: return keccak256(abi.encodePacked(uint8(1), coinType));
     }
 
-    /// @dev Computes a record-type identifier for text records, namespaced by key.
-    /// @param key The text record key.
+    /// @dev Computes a record-type identifier for string-keyed records.
+    /// @param x The string value.
     /// @return part The computed record-type identifier.
-    function textPart(string memory key) internal pure returns (bytes32 part) {
-        assembly {
-            mstore8(0, 2)
-            mstore(1, keccak256(add(key, 32), mload(key)))
-            part := keccak256(0, 33)
-        }
-        // Equivalent: return keccak256(abi.encodePacked(uint8(2), key));
+    function partHash(string memory x) internal pure returns (bytes32) {
+        return keccak256(bytes(x));
     }
 }
