@@ -409,15 +409,12 @@ contract DNSTLDResolver is
             end := add(ptr, end) // end of input
             ptr := add(txt, 32) // start of output
             // prettier-ignore
-            for {} // while input
-             lt(off, end) {} {
+            for { } lt(off, end) { } { // while input
                 let size := byte(0, mload(off)) // length of chunk
                 off := add(off, 1) // advance input
-                if size {
-                    // length > 0
+                if size { // length > 0
                     let next := add(off, size) // compute end of chunk
-                    if gt(next, end) {
-                        // beyond end
+                    if gt(next, end) { // beyond end
                         end := 0 // error: overflow
                         break
                     }

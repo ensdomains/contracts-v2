@@ -16,8 +16,5 @@
   "resolutions": {
     "esbuild": "0.25.11"
   },
-  "engineStrict": true,
-  "patchedDependencies": {
-    "hardhat@3.0.1": "patches/hardhat@3.0.1.patch"
-  }
+  "engineStrict": true
 }
