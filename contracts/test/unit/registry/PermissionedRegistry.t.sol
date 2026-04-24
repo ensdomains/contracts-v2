@@ -596,6 +596,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
         StrictERC1155Holder r = new StrictERC1155Holder(false);
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(user1, user1, address(r), tokenId, 1);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, user1, testRoles, 0); // revoke (transfer 1/2)
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, address(r), 0, testRoles); // grant (transfer 2/2)
         vm.prank(user1);
         registry.safeTransferFrom(user1, address(r), tokenId, 1, "");
     }
@@ -603,6 +609,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function test_safeTransferFrom_noop() external {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(user1, user1, user2, tokenId, 0);
         vm.recordLogs();
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, 0, "");
@@ -978,6 +986,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         testRoles = roleBitmap << 128; // admin
         uint256 tokenId = this._register();
 
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId, tokenId + 1);
         vm.prank(testOwner);
         assertTrue(registry.grantRoles(tokenId, roleBitmap, user2));
     }
@@ -1065,6 +1075,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256 tokenId = this._register();
 
         // revoke normal role
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId, tokenId + 1);
         vm.prank(testOwner);
         assertTrue(registry.revokeRoles(tokenId, roleBitmap, testOwner));
 
@@ -1217,6 +1229,69 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
 
+    // scenerio: BET-594
+    // if EACRolesChanged is emit after callback execution, it is out of order
+    // 1. role A is granted => regenerate
+    // 2. callback triggers another action
+    // 3. role B is granted => regenerate (during callback)
+    // 4. EACRolesChanged is emit for B
+    // 5. EACRolesChanged is emit for A
+    function test_reentrantCallbackEventOrdering_grantRoles() external {
+        ReentrantReceiver r = new ReentrantReceiver(registry);
+
+        uint256 role = RegistryRolesLib.ROLE_SET_RESOLVER;
+
+        testOwner = address(r);
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+        uint256 tokenId = this._register();
+
+        // make it so we grant another role during callback
+        r.setReceiverCalldata(
+            abi.encodeCall(PermissionedRegistry.grantRoles, (tokenId, role, actor))
+        );
+
+        // grant => burn+mint => grant again
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, user2, 0, role); // grant 1
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId, tokenId + 1);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, actor, 0, role); // grant 2
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId + 1, tokenId + 2);
+        vm.prank(address(r));
+        registry.grantRoles(tokenId, role, user2);
+    }
+
+    // same as above except for revoke
+    function test_reentrantCallbackEventOrdering_revokeRoles() external {
+        ReentrantReceiver r = new ReentrantReceiver(registry);
+
+        uint256 role1 = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256 role2 = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+
+        testOwner = address(r);
+        testRoles = role1 | role2;
+        uint256 tokenId = this._register();
+
+        // make it so we revoke another role during callback
+        r.setReceiverCalldata(
+            abi.encodeCall(PermissionedRegistry.revokeRoles, (tokenId, role2, testOwner))
+        );
+
+        // revoke => burn+mint => revoke again
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, testOwner, testRoles, role2); // revoke 1
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId, tokenId + 1);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, testOwner, role2, 0); // revoke 2
+        vm.expectEmit();
+        emit IRegistryEvents.TokenRegenerated(tokenId + 1, tokenId + 2);
+        vm.prank(testOwner);
+        registry.revokeRoles(tokenId, role1, testOwner);
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Internals
     ////////////////////////////////////////////////////////////////////////
@@ -1320,8 +1395,43 @@ contract MockPermissionedRegistry is PermissionedRegistry {
         address ownerAddress,
         uint256 ownerRoles
     ) PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles) {}
+
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
+    }
+}
+
+contract ReentrantReceiver is ERC1155Holder {
+    PermissionedRegistry immutable REGISTRY;
+    bytes _data;
+    constructor(PermissionedRegistry registry) {
+        REGISTRY = registry;
+    }
+    function setReceiverCalldata(bytes calldata data) external {
+        _data = data;
+    }
+    function onERC1155Received(
+        address operator,
+        address from,
+        uint256 id,
+        uint256 value,
+        bytes memory data
+    ) public override returns (bytes4) {
+        if (from == address(0)) {
+            // during mint(), eg. token regeneration(), mutate the registry
+            bytes memory v = _data;
+            if (v.length > 0) {
+                delete _data; // consume calldata
+                bool ok;
+                (ok, v) = address(REGISTRY).call(v); // execute it
+                if (!ok) {
+                    assembly {
+                        revert(add(v, 32), mload(v)) // propagate
+                    }
+                }
+            }
+        }
+        return super.onERC1155Received(operator, from, id, value, data);
     }
 }
 
