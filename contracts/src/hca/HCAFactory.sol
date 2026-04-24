@@ -7,34 +7,24 @@ import {IHCAFactory} from "./interfaces/IHCAFactory.sol";
 import {IHCAInitDataParser} from "./interfaces/IHCAInitDataParser.sol";
 import {ProxyLib} from "./ProxyLib.sol";
 
-/// @notice Factory for deploying deterministic Hardware Contract Account proxies.
-/// @dev Uses owner-derived CREATE3 salts and records the owner for accounts created by this factory.
+/// @title HCAFactory
+/// @notice Factory for deploying Hardware Contract Accounts (HCAs) as deterministic proxies.
+/// @dev Uses CREATE3 via ProxyLib to deploy NexusProxy instances at addresses derived from the owner.
+///      An external IHCAInitDataParser provides account-specific initialization data at deploy time.
 contract HCAFactory is Ownable, IHCAFactory {
-    ////////////////////////////////////////////////////////////////////////
-    // Storage
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Current HCA implementation used by new proxy deployments.
+    /// @notice The current HCA implementation contract that new proxies delegate to.
     address internal _implementation;
-
-    /// @dev Parser used to read account owners from initialization data.
+    /// @notice The generator contract that produces account-specific initialization data.
     IHCAInitDataParser internal _initDataGenerator;
 
-    /// @dev Owner recorded for each account deployed by this factory.
+    /// @notice Maps each deployed HCA proxy address to its owner.
     mapping(address hca => address owner) internal _hcaOwners;
-
-    ////////////////////////////////////////////////////////////////////////
-    // Events
-    ////////////////////////////////////////////////////////////////////////
 
     /// @notice Emitted when a new HCA is deployed.
     /// @param hcaOwner The owner of the newly created account.
     /// @param hca The address of the deployed HCA proxy.
     event AccountCreated(address indexed hcaOwner, address indexed hca);
 
-    /// @notice Emitted when the account implementation and init data parser are updated.
-    /// @param accountImplementation The implementation used by new HCA proxies.
-    /// @param initDataGenerator The parser used to read owners from initialization data.
     event NewHCAImplementation(
         address indexed accountImplementation,
         address indexed initDataGenerator
@@ -44,13 +34,15 @@ contract HCAFactory is Ownable, IHCAFactory {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Creates the factory with an initial implementation and init data parser.
-    /// @param implementation_ The implementation used by new HCA proxies.
-    /// @param initDataGenerator_ The parser used to read owners from initialization data.
-    /// @param owner_ The owner of the factory.
-    constructor(address implementation_, IHCAInitDataParser initDataGenerator_, address owner_)
-        Ownable(owner_)
-    {
+    /// @notice Initializes the factory with an implementation, init data generator, and owner.
+    /// @param implementation_ The HCA implementation contract to proxy to.
+    /// @param initDataGenerator_ The generator used to produce account-specific init data.
+    /// @param owner_ The owner of this factory (receives `onlyOwner` privileges).
+    constructor(
+        address implementation_,
+        IHCAInitDataParser initDataGenerator_,
+        address owner_
+    ) Ownable(owner_) {
         _implementation = implementation_;
         _initDataGenerator = initDataGenerator_;
     }
@@ -59,64 +51,58 @@ contract HCAFactory is Ownable, IHCAFactory {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Updates the implementation and parser used for new account deployments.
+    /// @notice Updates the HCA implementation contract that new proxies will point to.
     /// @param implementation_ The new implementation address.
-    /// @param initDataGenerator_ The new init data parser.
-    function setImplementation(address implementation_, IHCAInitDataParser initDataGenerator_)
-        external
-        onlyOwner
-    {
+    function setImplementation(
+        address implementation_,
+        IHCAInitDataParser initDataGenerator_
+    ) external onlyOwner {
         _implementation = implementation_;
         _initDataGenerator = initDataGenerator_;
         emit NewHCAImplementation(implementation_, address(initDataGenerator_));
     }
 
-    /// @notice Deploys or returns the deterministic HCA account for initialization data.
-    /// @dev If the account already exists, any attached ETH is forwarded to the existing account.
-    /// @param initData The account initialization data.
-    /// @return hca The account address.
+    /// @notice Deploys a new HCA proxy for the given owner, or forwards ETH if already deployed.
+    /// @dev The proxy address is deterministic based on `hcaOwner_`. If the account already exists,
+    ///      any attached ETH is forwarded to the existing account.
     function createAccount(bytes calldata initData) external payable returns (address payable hca) {
-        address hcaOwner = getOwnerFromHCAInitdata(initData);
+        // Generate account-specific init data using the external generator
+        address hcaOwner_ = getOwnerFromHCAInitdata(initData);
         bool alreadyDeployed;
-        (alreadyDeployed, hca) = ProxyLib.deployProxy(_implementation, hcaOwner, initData);
+        (alreadyDeployed, hca) = ProxyLib.deployProxy(_implementation, hcaOwner_, initData);
         if (!alreadyDeployed) {
-            emit AccountCreated(hcaOwner, hca);
-            _hcaOwners[hca] = hcaOwner;
+            emit AccountCreated(hcaOwner_, hca);
+            _hcaOwners[hca] = hcaOwner_;
         }
     }
 
-    /// @notice Returns the current account implementation.
+    /// @notice Returns the current HCA implementation address.
     function getImplementation() external view returns (address) {
         return _implementation;
     }
 
-    /// @notice Returns the current init data parser.
+    /// @notice Returns the current init data generator.
     function getInitDataGenerator() external view returns (IHCAInitDataParser) {
         return _initDataGenerator;
     }
 
-    /// @notice Returns the owner of an account deployed by this factory.
-    /// @param hca The HCA proxy address to inspect.
-    /// @return hcaOwner The recorded owner, or zero if the account was not deployed by this factory.
+    /// @notice Returns the owner of a deployed HCA proxy.
+    /// @param hca The HCA proxy address to look up.
+    /// @return hcaOwner The owner address, or `address(0)` if the HCA was not deployed by this factory.
     function getAccountOwner(address hca) external view returns (address hcaOwner) {
         hcaOwner = _hcaOwners[hca];
     }
 
-    /// @notice Computes the deterministic account address for an owner.
-    /// @param owner_ The owner used to derive the account address.
-    /// @return The predicted account address.
+    /// @notice Computes the deterministic address of an HCA proxy for the given owner.
+    /// @param owner_ The owner whose HCA address to predict.
+    /// @return The deterministic proxy address.
     function computeAccountAddress(address owner_) external view returns (address) {
         return ProxyLib.predictProxyAddress(owner_);
     }
 
-    /// @notice Returns the HCA owner encoded in initialization data.
-    /// @param initData The account initialization data.
-    /// @return hcaOwner The owner parsed from the initialization data.
-    function getOwnerFromHCAInitdata(bytes calldata initData)
-        public
-        view
-        returns (address hcaOwner)
-    {
+    function getOwnerFromHCAInitdata(
+        bytes calldata initData
+    ) public view returns (address hcaOwner) {
         hcaOwner = _initDataGenerator.getOwnerFromInitData(initData);
     }
 }
