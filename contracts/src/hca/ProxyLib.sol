@@ -12,11 +12,10 @@ library ProxyLib {
     /// @dev Error selector: `0x6d963f88`
     error EthTransferFailed();
 
-    function deployProxy(
-        address implementation,
-        address owner_,
-        bytes memory initData
-    ) internal returns (bool alreadyDeployed, address payable account) {
+    function deployProxy(address implementation, address owner_, bytes memory initData)
+        internal
+        returns (bool alreadyDeployed, address payable account)
+    {
         // Check if the contract is already deployed
         account = predictProxyAddress(owner_);
         alreadyDeployed = account.code.length > 0;
@@ -38,9 +37,11 @@ library ProxyLib {
         }
     }
 
-    function predictProxyAddress(
-        address owner_
-    ) internal view returns (address payable predictedAddress) {
+    function predictProxyAddress(address owner_)
+        internal
+        view
+        returns (address payable predictedAddress)
+    {
         return payable(CREATE3.predictDeterministicAddress(_getSalt(owner_)));
     }
 

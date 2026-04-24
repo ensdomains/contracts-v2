@@ -38,11 +38,9 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @param implementation_ The HCA implementation contract to proxy to.
     /// @param initDataGenerator_ The generator used to produce account-specific init data.
     /// @param owner_ The owner of this factory (receives `onlyOwner` privileges).
-    constructor(
-        address implementation_,
-        IHCAInitDataParser initDataGenerator_,
-        address owner_
-    ) Ownable(owner_) {
+    constructor(address implementation_, IHCAInitDataParser initDataGenerator_, address owner_)
+        Ownable(owner_)
+    {
         _implementation = implementation_;
         _initDataGenerator = initDataGenerator_;
     }
@@ -53,10 +51,10 @@ contract HCAFactory is Ownable, IHCAFactory {
 
     /// @notice Updates the HCA implementation contract that new proxies will point to.
     /// @param implementation_ The new implementation address.
-    function setImplementation(
-        address implementation_,
-        IHCAInitDataParser initDataGenerator_
-    ) external onlyOwner {
+    function setImplementation(address implementation_, IHCAInitDataParser initDataGenerator_)
+        external
+        onlyOwner
+    {
         _implementation = implementation_;
         _initDataGenerator = initDataGenerator_;
         emit NewHCAImplementation(implementation_, address(initDataGenerator_));
@@ -100,9 +98,11 @@ contract HCAFactory is Ownable, IHCAFactory {
         return ProxyLib.predictProxyAddress(owner_);
     }
 
-    function getOwnerFromHCAInitdata(
-        bytes calldata initData
-    ) public view returns (address hcaOwner) {
+    function getOwnerFromHCAInitdata(bytes calldata initData)
+        public
+        view
+        returns (address hcaOwner)
+    {
         hcaOwner = _initDataGenerator.getOwnerFromInitData(initData);
     }
 }
