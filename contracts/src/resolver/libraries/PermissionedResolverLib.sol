@@ -41,7 +41,7 @@ library PermissionedResolverLib {
     /// @dev Nybble 7: authorizes setting data records. Root or name.
     uint256 internal constant ROLE_SET_DATA = 1 << 28;
     /// @dev Nybble 39: authorizes setting ROLE_SET_DATA.
-    uint256 internal constant ROLE_SET_DATA_ADMIN = ROLE_SET_TEXT << 128;
+    uint256 internal constant ROLE_SET_DATA_ADMIN = ROLE_SET_DATA << 128;
 
     /// @dev Nybble 8: authorizes creating records.  Root only.
     uint256 internal constant ROLE_NEW_RECORD = 1 << 32;

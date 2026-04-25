@@ -121,6 +121,10 @@ contract PermissionedResolverTest is Test {
             "RECORD_RESOLVER_INTERFACE_ID"
         );
         assertTrue(
+            resolver.supportsInterface(type(IPermissionedResolver).interfaceId),
+            "IPermissionedResolver"
+        );
+        assertTrue(
             resolver.supportsInterface(type(IRecordResolver).interfaceId),
             "IRecordResolver"
         );
