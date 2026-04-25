@@ -176,6 +176,7 @@ contract PermissionedResolver is
         return
             PERMISSIONED_RESOLVER_INTERFACE_ID == interfaceId ||
             RECORD_RESOLVER_INTERFACE_ID == interfaceId ||
+            type(IPermissionedResolver).interfaceId == interfaceId ||
             type(IRecordResolver).interfaceId == interfaceId ||
             type(IResolverSetters).interfaceId == interfaceId ||
             type(IMulticallable).interfaceId == interfaceId ||
