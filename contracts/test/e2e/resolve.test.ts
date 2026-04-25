@@ -79,10 +79,11 @@ describe("Resolve", () => {
         const resolver = await env.deployPermissionedResolver({
           account,
         });
-        await resolver.write.setAddress([
-          dnsEncodeName(name),
-          COIN_TYPE_ETH,
-          account.address,
+        await resolver.write.multicall([
+          makeResolutions({
+            name,
+            addresses: [{ coinType: COIN_TYPE_ETH, value: account.address }],
+          }).map((x) => x.writeV2),
         ]);
         // hack: create name
         await env.v2.ETHRegistry.write.register([
@@ -120,10 +121,13 @@ describe("Resolve", () => {
         const resolver = await env.deployPermissionedResolver({
           account,
         });
-        await resolver.write.setAddress([
-          dnsEncodeName(name),
-          COIN_TYPE_DEFAULT,
-          account.address,
+        await resolver.write.multicall([
+          makeResolutions({
+            name,
+            addresses: [
+              { coinType: COIN_TYPE_DEFAULT, value: account.address },
+            ],
+          }).map((x) => x.writeV2),
         ]);
         // hack: create name
         await env.v2.ETHRegistry.write.register([

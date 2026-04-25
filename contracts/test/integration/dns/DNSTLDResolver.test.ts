@@ -142,10 +142,11 @@ async function fixture() {
       name,
       resolverAddress: myResolver.address,
     });
-    await myResolver.write.setAddress([
-      dnsEncodeName(name),
-      COIN_TYPE_ETH,
-      resolver,
+    await myResolver.write.multicall([
+      makeResolutions({
+        name,
+        addresses: [{ coinType: COIN_TYPE_ETH, value: resolver }],
+      }).map((x) => x.writeV2),
     ]);
   }
 }
