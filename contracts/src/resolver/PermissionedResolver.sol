@@ -86,7 +86,7 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// They can be granted with `grantSetterRoles()` and are annotated
 /// using truncated ABI-encoded calldata:
 /// * w/data: `abi.encodeCall(setAddr, (name, coinType, "..."))`
-/// * w/o data: `abi.encodeCall(setAddr, (name coinType, ""))`
+/// * w/o data: `abi.encodeCall(setAddr, (name, coinType, ""))`
 /// * truncated: `abi.encodeWithSelector(setAddr.selector, name, coinType)`
 /// The `roleBitmap` can be derived from the setter selector.
 ///
@@ -362,22 +362,32 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IPermissionedResolver
-    function grantRecordRoles(
+    function authorizeRecordRoles(
         bytes calldata name_,
         uint256 roleBitmap,
-        address account
+        address account,
+        bool grant
     ) external returns (bool) {
         uint256 recordId = _ensureRecordExceptDefault(name_);
         uint256 resource = PermissionedResolverLib.resource(recordId);
-        _checkCanGrantRoles(resource, roleBitmap, _msgSender());
-        if (roleCount(resource) == 0) {
-            emit RecordResource(recordId, resource, PermissionedResolverLib.anySetter(name_));
+        if (grant) {
+            _checkCanGrantRoles(resource, roleBitmap, _msgSender());
+            if (resource != ROOT_RESOURCE && roleCount(resource) == 0) {
+                emit RecordResource(recordId, resource, PermissionedResolverLib.anySetter(name_));
+            }
+            return _grantRoles(resource, roleBitmap, account, true);
+        } else {
+            _checkCanRevokeRoles(resource, roleBitmap, _msgSender());
+            return _revokeRoles(resource, roleBitmap, account, true);
         }
-        return _grantRoles(resource, roleBitmap, account, true);
     }
 
     /// @inheritdoc IPermissionedResolver
-    function grantSetterRoles(bytes calldata setter, address account) external returns (bool) {
+    function authorizeSetterRoles(
+        bytes calldata setter,
+        address account,
+        bool grant
+    ) external returns (bool) {
         bytes memory name_;
         bytes32 part;
         uint256 roleBitmap;
@@ -419,11 +429,24 @@ contract PermissionedResolver is
         assert(part != bytes32(0));
         uint256 recordId = _ensureRecordExceptDefault(name_);
         uint256 resource = PermissionedResolverLib.resource(recordId, part);
-        _checkCanGrantRoles(PermissionedResolverLib.resource(recordId), roleBitmap, _msgSender());
-        if (roleCount(resource) == 0) {
-            emit RecordResource(recordId, resource, compactSetter);
+        if (grant) {
+            _checkCanGrantRoles(
+                PermissionedResolverLib.resource(recordId),
+                roleBitmap,
+                _msgSender()
+            );
+            if (roleCount(resource) == 0) {
+                emit RecordResource(recordId, resource, compactSetter);
+            }
+            return _grantRoles(resource, roleBitmap, account, true);
+        } else {
+            _checkCanRevokeRoles(
+                PermissionedResolverLib.resource(recordId),
+                roleBitmap,
+                _msgSender()
+            );
+            return _revokeRoles(resource, roleBitmap, account, true);
         }
-        return _grantRoles(resource, roleBitmap, account, true);
     }
 
     /// @notice Same as `multicall()`.
@@ -543,13 +566,23 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc EnhancedAccessControl
-    /// @notice Function is disabled.  Use `grant{Record|Setter}Roles()` instead.
+    /// @notice Function is disabled.  Use `authorize{Record|Setter}Roles()` instead.
     function grantRoles(
         uint256 resource,
         uint256 roleBitmap,
         address account
     ) public pure override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
         revert EACCannotGrantRoles(resource, roleBitmap, account);
+    }
+
+    /// @inheritdoc EnhancedAccessControl
+    /// @notice Function is disabled.  Use `authorize{Record|Setter}Roles()` instead.
+    function revokeRoles(
+        uint256 resource,
+        uint256 roleBitmap,
+        address account
+    ) public pure override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
+        revert EACCannotRevokeRoles(resource, roleBitmap, account);
     }
 
     ////////////////////////////////////////////////////////////////////////

@@ -627,7 +627,7 @@ describe("DNSTLDResolver", () => {
 
     function parseContext(name: string, context: string) {
       const pos = context.indexOf(" ");
-      if (pos == -1) return context;
+      if (pos === -1) return context;
       return name.replace(
         new RegExp(`(^|\.)${context.slice(0, pos)}$`),
         (_, x) => x + context.slice(pos + 1),

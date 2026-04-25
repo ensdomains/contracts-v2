@@ -1,5 +1,5 @@
 import { describe, it } from "bun:test";
-import { type Address, namehash, zeroAddress } from "viem";
+import { type Address, zeroAddress } from "viem";
 
 import { MAX_EXPIRY } from "../../script/deploy-constants.js";
 import { expectVar } from "../utils/expectVar.js";

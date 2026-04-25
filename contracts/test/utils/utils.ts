@@ -26,7 +26,7 @@ export function splitName(name: string): string[] {
 // "a.b.c" => "b.c"
 export function getParentName(name: string) {
   const i = name.indexOf(".");
-  return i == -1 ? "" : name.slice(i + 1);
+  return i === -1 ? "" : name.slice(i + 1);
 }
 
 // "a.b.c"  0 => "a" aka firstLabel()

@@ -107,7 +107,7 @@ export type KnownBundle = Expected & {
 };
 
 export function bundleCalls(resolutions: KnownResolution[]): KnownBundle {
-  if (resolutions.length == 1) {
+  if (resolutions.length === 1) {
     return {
       ...resolutions[0],
       resolutions,
@@ -129,7 +129,9 @@ export function bundleCalls(resolutions: KnownResolution[]): KnownBundle {
     expect(answer) {
       const answers = this.unbundleAnswers(answer);
       expect(answers).toHaveLength(resolutions.length);
-      resolutions.forEach((x, i) => x.expect(answers[i]));
+      resolutions.forEach((x, i) => {
+        x.expect(answers[i]);
+      });
     },
     writeV1: encodeFunctionData({
       abi,
@@ -144,7 +146,7 @@ export function bundleCalls(resolutions: KnownResolution[]): KnownBundle {
 
 export function makeResolutions(p: KnownProfile): KnownResolution[] {
   const resolutions: KnownResolution[] = [];
-  const name = dnsEncodeName(p.name);
+  const dnsName = dnsEncodeName(p.name);
   const node = namehash(p.name);
   if (p.addresses) {
     const functionName = "addr";
@@ -167,25 +169,26 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
           writeV2: encodeFunctionData({
             abi: V2_SETTER_ABI,
             functionName: "setAddress",
-            args: [name, coinType, value],
+            args: [dnsName, coinType, value],
           }),
         });
       } else {
+        const abi = PROFILE_ABI;
         resolutions.push({
           desc: `${functionName}(${shortCoin(coinType)})`,
           call: encodeFunctionData({
-            abi: PROFILE_ABI,
+            abi,
             functionName,
             args: [node, coinType],
           }),
           answer: encodeFunctionResult({
-            abi: PROFILE_ABI,
+            abi,
             functionName,
             result: value,
           }),
           expect(data) {
             const actual = decodeFunctionResult({
-              abi: PROFILE_ABI,
+              abi,
               functionName,
               data,
             });
@@ -199,30 +202,31 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
           writeV2: encodeFunctionData({
             abi: V2_SETTER_ABI,
             functionName: "setAddress",
-            args: [name, coinType, value],
+            args: [dnsName, coinType, value],
           }),
         });
       }
     }
   }
   if (p.hasAddresses) {
+    const abi = PROFILE_ABI;
     const functionName = "hasAddr";
     for (const { coinType, exists } of p.hasAddresses) {
       resolutions.push({
         desc: `${functionName}(${shortCoin(coinType)})`,
         call: encodeFunctionData({
-          abi: PROFILE_ABI,
+          abi,
           functionName,
           args: [node, coinType],
         }),
         answer: encodeFunctionResult({
-          abi: PROFILE_ABI,
+          abi,
           functionName,
           result: exists,
         }),
         expect(data) {
           const actual = decodeFunctionResult({
-            abi: PROFILE_ABI,
+            abi,
             functionName,
             data,
           });
@@ -234,23 +238,24 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
     }
   }
   if (p.texts) {
+    const abi = PROFILE_ABI;
     const functionName = "text";
     for (const { key, value } of p.texts) {
       resolutions.push({
         desc: `${functionName}(${key})`,
         call: encodeFunctionData({
-          abi: PROFILE_ABI,
+          abi,
           functionName,
           args: [node, key],
         }),
         answer: encodeFunctionResult({
-          abi: PROFILE_ABI,
+          abi,
           functionName,
           result: value,
         }),
         expect(data) {
           const actual = decodeFunctionResult({
-            abi: PROFILE_ABI,
+            abi,
             functionName,
             data,
           });
@@ -264,7 +269,7 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
         writeV2: encodeFunctionData({
           abi: V2_SETTER_ABI,
           functionName: "setText",
-          args: [name, key, value],
+          args: [dnsName, key, value],
         }),
       });
     }
@@ -300,7 +305,44 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
         writeV2: encodeFunctionData({
           abi: V2_SETTER_ABI,
           functionName: "setData",
-          args: [name, key, value],
+          args: [dnsName, key, value],
+        }),
+      });
+    }
+  }
+  if (p.datas) {
+    const abi = PROFILE_ABI;
+    const functionName = "data";
+    for (const { key, value } of p.datas) {
+      resolutions.push({
+        desc: `${functionName}(${key})`,
+        call: encodeFunctionData({
+          abi,
+          functionName,
+          args: [node, key],
+        }),
+        answer: encodeFunctionResult({
+          abi,
+          functionName,
+          result: value,
+        }),
+        expect(data) {
+          const actual = decodeFunctionResult({
+            abi,
+            functionName,
+            data,
+          });
+          expect(actual, this.desc).toStrictEqual(value);
+        },
+        writeV1: encodeFunctionData({
+          abi: V1_SETTER_ABI,
+          functionName: "setData",
+          args: [node, key, value],
+        }),
+        writeV2: encodeFunctionData({
+          abi: V2_SETTER_ABI,
+          functionName: "setData",
+          args: [dnsName, key, value],
         }),
       });
     }
@@ -336,7 +378,7 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
       writeV2: encodeFunctionData({
         abi: V2_SETTER_ABI,
         functionName: "setContentHash",
-        args: [name, value],
+        args: [dnsName, value],
       }),
     });
   }
@@ -371,7 +413,7 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
       writeV2: encodeFunctionData({
         abi: V2_SETTER_ABI,
         functionName: "setPubkey",
-        args: [name, x, y],
+        args: [dnsName, x, y],
       }),
     });
   }
@@ -406,7 +448,7 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
       writeV2: encodeFunctionData({
         abi: V2_SETTER_ABI,
         functionName: "setName",
-        args: [name, value],
+        args: [dnsName, value],
       }),
     });
   }
@@ -441,7 +483,7 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
         writeV2: encodeFunctionData({
           abi: V2_SETTER_ABI,
           functionName: "setABI",
-          args: [name, contentType, value],
+          args: [dnsName, contentType, value],
         }),
       });
     }
@@ -477,7 +519,7 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
         writeV2: encodeFunctionData({
           abi: V2_SETTER_ABI,
           functionName: "setInterface",
-          args: [name, selector, value],
+          args: [dnsName, selector, value],
         }),
       });
     }

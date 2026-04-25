@@ -172,7 +172,7 @@ contract PermissionedResolverTest is Test {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // grantRecordRoles()
+    // EAC grant/revoke disabled
     ////////////////////////////////////////////////////////////////////////
 
     function test_grantRoles_disabled(uint256 resource, uint8 nibble) external {
@@ -190,7 +190,26 @@ contract PermissionedResolverTest is Test {
         resolver.grantRoles(resource, roleBitmap, friend);
     }
 
-    function test_grantRecordRoles_anyName() external {
+    function test_revokeRoles_disabled(uint256 resource, uint8 nibble) external {
+        vm.assume(resource > 0 && nibble < 64);
+        uint256 roleBitmap = 1 << (nibble << 2);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                resource,
+                roleBitmap,
+                friend
+            )
+        );
+        vm.prank(owner);
+        resolver.revokeRoles(resource, roleBitmap, friend);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // authorizeRecordRoles()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_authorizeRecordRoles_anyName() external {
         uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
         uint256 resource = PermissionedResolverLib.resource(0);
         assertEq(resolver.ROOT_RESOURCE(), resource);
@@ -198,15 +217,15 @@ contract PermissionedResolverTest is Test {
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(resource, friend, 0, roleBitmap);
         vm.prank(owner);
-        resolver.grantRecordRoles(EMPTY_NAME, roleBitmap, friend);
+        assertTrue(resolver.authorizeRecordRoles(EMPTY_NAME, roleBitmap, friend, true), "grant");
         assertTrue(resolver.hasRoles(resource, roleBitmap, friend), "granted");
 
         vm.prank(owner);
-        resolver.revokeRootRoles(roleBitmap, friend);
+        assertTrue(resolver.authorizeRecordRoles(EMPTY_NAME, roleBitmap, friend, false), "revoke");
         assertFalse(resolver.hasRoles(resource, roleBitmap, friend), "revoked");
     }
 
-    function test_grantRecordRoles_oneName() external {
+    function test_authorizeRecordRoles_oneName() external {
         uint256 recordId = 1;
         uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
         uint256 resource = PermissionedResolverLib.resource(recordId);
@@ -220,15 +239,15 @@ contract PermissionedResolverTest is Test {
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(resource, friend, 0, roleBitmap);
         vm.prank(owner);
-        resolver.grantRecordRoles(name1, roleBitmap, friend);
+        assertTrue(resolver.authorizeRecordRoles(name1, roleBitmap, friend, true), "grant");
         assertTrue(resolver.hasRoles(resource, roleBitmap, friend), "granted");
 
         vm.prank(owner);
-        resolver.revokeRoles(resource, roleBitmap, friend);
+        assertTrue(resolver.authorizeRecordRoles(name1, roleBitmap, friend, false), "revoke");
         assertFalse(resolver.hasRoles(resource, roleBitmap, friend), "revoked");
     }
 
-    function test_grantRecordRoles_notAuthorized() external {
+    function test_authorizeRecordRoles_notAuthorized() external {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -238,10 +257,10 @@ contract PermissionedResolverTest is Test {
             )
         );
         vm.prank(friend);
-        resolver.grantRecordRoles(name1, EACBaseRolesLib.ALL_ROLES, owner);
+        resolver.authorizeRecordRoles(name1, EACBaseRolesLib.ALL_ROLES, owner, true);
     }
 
-    function test_grantRecordRoles_cannotGrant() external {
+    function test_authorizeRecordRoles_cannotGrant() external {
         vm.prank(owner);
         resolver.setName(name1, TEST_STRING); // ensure record
 
@@ -255,61 +274,53 @@ contract PermissionedResolverTest is Test {
             )
         );
         vm.prank(friend);
-        resolver.grantRecordRoles(name1, roleBitmap, owner);
+        resolver.authorizeRecordRoles(name1, roleBitmap, owner, true);
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // grantSetterRoles()
+    // authorizeSetterRoles()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_grantSetterRoles_anyName(string calldata key) external {
+    function test_authorizeSetterRoles_anyName(string calldata key) external {
         uint256 recordId = 0;
         uint256 resource = PermissionedResolverLib.resource(
             recordId,
             PermissionedResolverLib.partHash(key)
         );
         uint256 roleBitmap = PermissionedResolverLib.ROLE_SET_TEXT;
+        bytes memory setter = abi.encodeWithSelector(
+            IResolverSetters.setText.selector,
+            EMPTY_NAME,
+            key
+        );
 
         vm.expectEmit();
-        emit IPermissionedResolver.RecordResource(
-            recordId,
-            resource,
-            abi.encodeWithSelector(IResolverSetters.setText.selector, EMPTY_NAME, key)
-        );
+        emit IPermissionedResolver.RecordResource(recordId, resource, setter);
         vm.prank(owner);
-        resolver.grantSetterRoles(
-            abi.encodeCall(IResolverSetters.setText, (EMPTY_NAME, key, "<ignored>")),
-            friend
-        );
+        assertTrue(resolver.authorizeSetterRoles(setter, friend, true), "grant");
         assertTrue(resolver.hasRoles(resource, roleBitmap, friend), "granted");
         assertFalse(
             resolver.hasRoles(PermissionedResolverLib.resource(recordId), roleBitmap, friend)
         );
 
         vm.prank(owner);
-        resolver.revokeRoles(resource, roleBitmap, friend);
+        assertTrue(resolver.authorizeSetterRoles(setter, friend, false), "revoke");
         assertFalse(resolver.hasRoles(resource, roleBitmap, friend), "revoked");
     }
 
-    function test_grantSetterRoles_oneName(string calldata key) external {
+    function test_authorizeSetterRoles_oneName(string calldata key) external {
         uint256 recordId = 1;
         uint256 resource = PermissionedResolverLib.resource(
             recordId,
             PermissionedResolverLib.partHash(key)
         );
         uint256 roleBitmap = PermissionedResolverLib.ROLE_SET_TEXT;
+        bytes memory setter = abi.encodeWithSelector(IResolverSetters.setText.selector, name1, key);
 
         vm.expectEmit();
-        emit IPermissionedResolver.RecordResource(
-            recordId,
-            resource,
-            abi.encodeWithSelector(IResolverSetters.setText.selector, name1, key)
-        );
+        emit IPermissionedResolver.RecordResource(recordId, resource, setter);
         vm.prank(owner);
-        resolver.grantSetterRoles(
-            abi.encodeCall(IResolverSetters.setText, (name1, key, "<ignored>")),
-            friend
-        );
+        assertTrue(resolver.authorizeSetterRoles(setter, friend, true), "grant");
         assertTrue(resolver.hasRoles(resource, roleBitmap, friend), "granted");
         assertFalse(
             resolver.hasRoles(PermissionedResolverLib.resource(recordId), roleBitmap, friend),
@@ -321,11 +332,11 @@ contract PermissionedResolverTest is Test {
         );
 
         vm.prank(owner);
-        resolver.revokeRoles(resource, roleBitmap, friend);
+        assertTrue(resolver.authorizeSetterRoles(setter, friend, false), "revoke");
         assertFalse(resolver.hasRoles(resource, roleBitmap, friend), "revoked");
     }
 
-    function test_grantSetterRoles_cannotGrant() external {
+    function test_authorizeSetterRoles_cannotGrant() external {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
@@ -335,9 +346,10 @@ contract PermissionedResolverTest is Test {
             )
         );
         vm.prank(friend);
-        resolver.grantSetterRoles(
+        resolver.authorizeSetterRoles(
             abi.encodeCall(IResolverSetters.setText, (EMPTY_NAME, "<key>", "<ignored>")),
-            owner
+            owner,
+            true
         );
     }
 
@@ -966,7 +978,12 @@ contract PermissionedResolverTest is Test {
 
         // give friend setContentHash() on any record
         vm.prank(owner);
-        resolver.grantRecordRoles(EMPTY_NAME, PermissionedResolverLib.ROLE_SET_CONTENTHASH, friend);
+        resolver.authorizeRecordRoles(
+            EMPTY_NAME,
+            PermissionedResolverLib.ROLE_SET_CONTENTHASH,
+            friend,
+            true
+        );
 
         // friend can change same setter of name1
         vm.prank(friend);
@@ -1013,7 +1030,12 @@ contract PermissionedResolverTest is Test {
 
         // give friend setText(*) on any record
         vm.prank(owner);
-        resolver.grantRecordRoles(EMPTY_NAME, PermissionedResolverLib.ROLE_SET_TEXT, friend);
+        resolver.authorizeRecordRoles(
+            EMPTY_NAME,
+            PermissionedResolverLib.ROLE_SET_TEXT,
+            friend,
+            true
+        );
 
         // friend can change same setter of name1
         vm.prank(friend);
@@ -1048,7 +1070,7 @@ contract PermissionedResolverTest is Test {
 
         // give friend setText(*) on name1
         vm.prank(owner);
-        resolver.grantRecordRoles(name1, PermissionedResolverLib.ROLE_SET_TEXT, friend);
+        resolver.authorizeRecordRoles(name1, PermissionedResolverLib.ROLE_SET_TEXT, friend, true);
 
         // friend can change diff setter of name1
         vm.prank(friend);
@@ -1087,9 +1109,10 @@ contract PermissionedResolverTest is Test {
 
         // give friend setText(key) on any record
         vm.prank(owner);
-        resolver.grantSetterRoles(
+        resolver.authorizeSetterRoles(
             abi.encodeCall(IResolverSetters.setText, (EMPTY_NAME, key, "<ignored>")),
-            friend
+            friend,
+            true
         );
 
         // friend can change same setter of name1
@@ -1133,9 +1156,10 @@ contract PermissionedResolverTest is Test {
 
         // give friend setText(key) on name1
         vm.prank(owner);
-        resolver.grantSetterRoles(
+        resolver.authorizeSetterRoles(
             abi.encodeCall(IResolverSetters.setText, (name1, key, "<ignored>")),
-            friend
+            friend,
+            true
         );
 
         // friend can change same setter of name1
@@ -1187,9 +1211,10 @@ contract PermissionedResolverTest is Test {
 
         // give friend setAddr(coinType) on any record
         vm.prank(owner);
-        resolver.grantSetterRoles(
+        resolver.authorizeSetterRoles(
             abi.encodeCall(IResolverSetters.setAddress, (EMPTY_NAME, coinType, "<ignored>")),
-            friend
+            friend,
+            true
         );
 
         // friend can change same setter of name1
@@ -1233,9 +1258,10 @@ contract PermissionedResolverTest is Test {
 
         // give friend setAddr(coinType) on any name
         vm.prank(owner);
-        resolver.grantSetterRoles(
+        resolver.authorizeSetterRoles(
             abi.encodeCall(IResolverSetters.setAddress, (name1, coinType, "<ignored>")),
-            friend
+            friend,
+            true
         );
 
         // friend can change same setter of name1

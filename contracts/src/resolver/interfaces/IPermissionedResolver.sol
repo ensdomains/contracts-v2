@@ -10,7 +10,7 @@ bytes4 constant PERMISSIONED_RESOLVER_INTERFACE_ID = RECORD_RESOLVER_INTERFACE_I
     type(IPermissionedResolver).interfaceId ^
     type(IEnhancedAccessControl).interfaceId;
 
-/// @dev Interface selector: `0x899f136b`
+/// @dev Interface selector: `0x8d85298b`
 interface IPermissionedResolver is IEnhancedAccessControl, IRecordResolver {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -26,20 +26,27 @@ interface IPermissionedResolver is IEnhancedAccessControl, IRecordResolver {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Grant `roleBitmap` permissions to `account` for record of `name`.
+    /// @notice Authorize `roleBitmap` permissions to `account` for record of `name`.
     /// @param name The DNS-encoded name.
-    /// @param roleBitmap The roles bitmap to grant.
-    /// @param account The account to be granted roles.
-    /// @return `true` if any roles are granted.
-    function grantRecordRoles(
+    /// @param roleBitmap The roles bitmap to authorize.
+    /// @param account The account to be authorize for roles.
+    /// @param grant If `true`, grants, otherwise revokes.
+    /// @return `true` if an authorization was changed.
+    function authorizeRecordRoles(
         bytes calldata name,
         uint256 roleBitmap,
-        address account
+        address account,
+        bool grant
     ) external returns (bool);
 
-    /// @notice Grant fine-grained permission to `account` for record of `name`.
-    /// @param setter The ABI-encoded setter calldata.
-    /// @param account The account to be granted a role.
-    /// @return `true` if a role is granted.
-    function grantSetterRoles(bytes calldata setter, address account) external returns (bool);
+    /// @notice Authorize fine-grained permission to `account` for record of `name`.
+    /// @param setter The ABI-encoded setter calldata to authorize.
+    /// @param account The account to be authorize for role.
+    /// @param grant If `true`, grants, otherwise revokes.
+    /// @return `true` if an authorization was changed.
+    function authorizeSetterRoles(
+        bytes calldata setter,
+        address account,
+        bool grant
+    ) external returns (bool);
 }
