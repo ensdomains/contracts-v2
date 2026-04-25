@@ -1,5 +1,5 @@
 import { describe, it } from "bun:test";
-import { type Address, namehash, zeroAddress } from "viem";
+import { type Address, zeroAddress } from "viem";
 
 import { MAX_EXPIRY } from "../../script/deploy-constants.js";
 import { expectVar } from "../utils/expectVar.js";
@@ -9,10 +9,10 @@ import {
   makeResolutions,
 } from "../utils/resolutions.js";
 import {
-  COIN_TYPE_DEFAULT,
-  COIN_TYPE_ETH,
   dnsEncodeName,
   getReverseName,
+  COIN_TYPE_ETH,
+  COIN_TYPE_DEFAULT,
 } from "../utils/utils.js";
 
 describe("Resolve", () => {
@@ -43,7 +43,7 @@ describe("Resolve", () => {
     named("addr.reverse", () => env.shared.ETHReverseResolver.address);
   });
 
-  describe("L1", () => {
+  describe("Pointers", () => {
     it("dnstxt.ens.eth + addr() => DNSTXTResolver", () =>
       expectResolve({
         name: "dnstxt.ens.eth",
@@ -79,10 +79,11 @@ describe("Resolve", () => {
         const resolver = await env.deployPermissionedResolver({
           account,
         });
-        await resolver.write.setAddr([
-          namehash(name),
-          COIN_TYPE_ETH,
-          account.address,
+        await resolver.write.multicall([
+          makeResolutions({
+            name,
+            addresses: [{ coinType: COIN_TYPE_ETH, value: account.address }],
+          }).map((x) => x.writeV2),
         ]);
         // hack: create name
         await env.v2.ETHRegistry.write.register([
@@ -120,10 +121,13 @@ describe("Resolve", () => {
         const resolver = await env.deployPermissionedResolver({
           account,
         });
-        await resolver.write.setAddr([
-          namehash(name),
-          COIN_TYPE_DEFAULT,
-          account.address,
+        await resolver.write.multicall([
+          makeResolutions({
+            name,
+            addresses: [
+              { coinType: COIN_TYPE_DEFAULT, value: account.address },
+            ],
+          }).map((x) => x.writeV2),
         ]);
         // hack: create name
         await env.v2.ETHRegistry.write.register([

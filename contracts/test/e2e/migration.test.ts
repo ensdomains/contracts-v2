@@ -12,11 +12,11 @@ import {
 import { STATUS, MAX_EXPIRY, FUSES } from "../../script/deploy-constants.js";
 import { expect, expectVar } from "../utils/expectVar.js";
 import {
-  COIN_TYPE_ETH,
   dnsEncodeName,
   getLabelAt,
   getParentName,
   idFromLabel,
+  COIN_TYPE_ETH,
 } from "../utils/utils.js";
 import {
   bundleCalls,
@@ -109,7 +109,7 @@ describe("Migration", () => {
       await this.setResolver(env.v1.PublicResolver.address);
       const { name, account } = this;
       await env.v1.PublicResolver.write.multicall(
-        [makeResolutions({ name, ...defaultProfile }).map((x) => x.write)],
+        [makeResolutions({ name, ...defaultProfile }).map((x) => x.writeV1)],
         { account },
       );
     }
@@ -407,7 +407,7 @@ describe("Migration", () => {
       await unwrapped.checkMigrated();
       await resolver.write.multicall([
         makeResolutions({ name: unwrapped.name, ...defaultProfile }).map(
-          (x) => x.write,
+          (x) => x.writeV2,
         ),
       ]);
       await unwrapped.checkResolution();

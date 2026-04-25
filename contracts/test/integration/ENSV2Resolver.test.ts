@@ -3,8 +3,8 @@ import hre from "hardhat";
 import { describe, it } from "vitest";
 
 import {
-  type KnownProfile,
   bundleCalls,
+  type KnownProfile,
   makeResolutions,
 } from "../utils/resolutions.js";
 import { shouldSupportFeatures } from "../utils/supportsFeatures.js";
@@ -110,7 +110,7 @@ describe("ENSV2Resolver", () => {
         name,
         resolverAddress: myResolver.address,
       });
-      await myResolver.write.multicall([res.resolutions.map((x) => x.write)]);
+      await myResolver.write.multicall([res.resolutions.map((x) => x.writeV2)]);
       // resolve in v1
       {
         const [answer, resolver] = await F.v1.universalResolver.read.resolve([
