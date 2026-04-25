@@ -1,18 +1,19 @@
 import { describe, it } from "bun:test";
-import { type Address, namehash, zeroAddress } from "viem";
+import type { Address } from "viem";
 
-import { MAX_EXPIRY } from "../../script/deploy-constants.js";
 import { expectVar } from "../utils/expectVar.js";
 import {
   bundleCalls,
-  COIN_TYPE_DEFAULT,
-  COIN_TYPE_ETH,
-  coinTypeFromChain,
-  getReverseName,
   type KnownProfile,
   makeResolutions,
 } from "../utils/resolutions.js";
-import { dnsEncodeName } from "../utils/utils.js";
+import {
+  coinTypeFromChain,
+  COIN_TYPE_DEFAULT,
+  COIN_TYPE_ETH,
+  dnsEncodeName,
+  getReverseNamespace,
+} from "../utils/utils.js";
 
 const COIN_TYPE_OPTIMISM = coinTypeFromChain(10);
 
@@ -31,7 +32,7 @@ describe("Resolve", () => {
   }
 
   describe("Protocol", () => {
-    async function named(name: string, fn: () => Address) {
+    function named(name: string, fn: () => Address) {
       it(name, async () => {
         const [resolver] = await env.v2.UniversalResolver.read.findResolver([
           dnsEncodeName(name),
@@ -41,10 +42,21 @@ describe("Resolve", () => {
     }
 
     named("reverse", () => env.v2.ENSV1Resolver.address);
-    named("addr.reverse", () => env.v2.ENSV1Resolver.address);
+    named(
+      getReverseNamespace(COIN_TYPE_ETH),
+      () => env.v2.ENSV1Resolver.address,
+    );
+    named(
+      getReverseNamespace(COIN_TYPE_DEFAULT),
+      () => env.v2.ENSV1Resolver.address,
+    );
+    named(
+      getReverseNamespace(COIN_TYPE_OPTIMISM),
+      () => env.v2.ENSV1Resolver.address,
+    );
   });
 
-  describe("L1", () => {
+  describe("DNS", () => {
     it("dnstxt.ens.eth + addr() => DNSTXTResolver", () =>
       expectResolve({
         name: "dnstxt.ens.eth",
@@ -66,102 +78,7 @@ describe("Resolve", () => {
           },
         ],
       }));
-  });
 
-  describe("Reverse", () => {
-    describe("addr.reverse", () => {
-      const label = "user";
-      const name = `${label}.eth`;
-
-      it("addr.reverse", async () => {
-        const account = env.namedAccounts.owner;
-
-        // setup addr(default)
-        const resolver = account.resolver;
-        await resolver.write.setAddr([
-          namehash(name),
-          COIN_TYPE_ETH,
-          account.address,
-        ]);
-        // hack: create name
-        await env.v2.ETHRegistry.write.register([
-          label,
-          account.address,
-          zeroAddress,
-          resolver.address,
-          0n,
-          MAX_EXPIRY,
-        ]);
-        // setup name()
-        await env.shared.ETHReverseRegistrar.write.claimForAddr(
-          [account.address, account.address, resolver.address],
-          { account },
-        );
-        await resolver.write.setName(
-          [namehash(getReverseName(account.address)), name],
-          { account },
-        );
-
-        await expectResolve({
-          name: getReverseName(account.address),
-          primary: { value: name },
-        });
-        await expectResolve({
-          name,
-          addresses: [{ coinType: COIN_TYPE_ETH, value: account.address }],
-        });
-        const [primary] = await env.v2.UniversalResolver.read.reverse([
-          account.address,
-          COIN_TYPE_ETH,
-        ]);
-        expectVar({ primary }).toStrictEqual(name);
-      });
-
-      it("default.reverse", async () => {
-        const account = env.namedAccounts.owner;
-
-        // setup addr(default)
-        const resolver = account.resolver;
-        await resolver.write.setAddr([
-          namehash(name),
-          COIN_TYPE_DEFAULT,
-          account.address,
-        ]);
-        // hack: create name
-        await env.v2.ETHRegistry.write.register([
-          label,
-          account.address,
-          zeroAddress,
-          resolver.address,
-          0n,
-          MAX_EXPIRY,
-        ]);
-        // setup name()
-        await env.shared.DefaultReverseRegistrar.write.setName([name], {
-          account,
-        });
-
-        await expectResolve({
-          name: getReverseName(account.address, COIN_TYPE_OPTIMISM),
-          primary: { value: name },
-        });
-        await expectResolve({
-          name,
-          addresses: [
-            { coinType: COIN_TYPE_ETH, value: account.address },
-            { coinType: COIN_TYPE_OPTIMISM, value: account.address },
-          ],
-        });
-        const [primary] = await env.v2.UniversalResolver.read.reverse([
-          account.address,
-          COIN_TYPE_OPTIMISM,
-        ]);
-        expectVar({ primary }).toStrictEqual(name);
-      });
-    });
-  });
-
-  describe("DNS", () => {
     it("onchain txt: taytems.xyz", () =>
       // Uses real DNS TXT record for taytems.xyz
       expectResolve({
