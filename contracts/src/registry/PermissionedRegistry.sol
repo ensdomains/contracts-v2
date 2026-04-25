@@ -16,6 +16,8 @@ import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
+import {ITemporalRegistry} from "./interfaces/ITemporalRegistry.sol";
+import {ITokenizedRegistry} from "./interfaces/ITokenizedRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {MetadataMixin} from "./MetadataMixin.sol";
 
@@ -121,6 +123,8 @@ contract PermissionedRegistry is
     {
         return
             interfaceId == type(IPermissionedRegistry).interfaceId ||
+            interfaceId == type(ITokenizedRegistry).interfaceId ||
+            interfaceId == type(ITemporalRegistry).interfaceId ||
             interfaceId == type(IStandardRegistry).interfaceId ||
             interfaceId == type(IRegistry).interfaceId ||
             super.supportsInterface(interfaceId);
@@ -129,6 +133,17 @@ contract PermissionedRegistry is
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
+
+    /// @inheritdoc ITemporalRegistry
+    function findExpiry(string calldata label) external view returns (uint64) {
+        return getExpiry(LibLabel.id(label));
+    }
+
+    /// @inheritdoc ITokenizedRegistry
+    function findTokenId(string calldata label) external view returns (uint256 tokenId) {
+        tokenId = LibLabel.id(label);
+        tokenId = _constructTokenId(tokenId, _entry(tokenId));
+    }
 
     /// @inheritdoc IStandardRegistry
     function setSubregistry(uint256 anyId, IRegistry registry) public virtual {
