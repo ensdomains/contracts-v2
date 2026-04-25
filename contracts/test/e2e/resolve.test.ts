@@ -5,13 +5,15 @@ import { MAX_EXPIRY } from "../../script/deploy-constants.js";
 import { expectVar } from "../utils/expectVar.js";
 import {
   bundleCalls,
-  COIN_TYPE_DEFAULT,
-  COIN_TYPE_ETH,
-  getReverseName,
   type KnownProfile,
   makeResolutions,
 } from "../utils/resolutions.js";
-import { dnsEncodeName } from "../utils/utils.js";
+import {
+  COIN_TYPE_DEFAULT,
+  COIN_TYPE_ETH,
+  dnsEncodeName,
+  getReverseName,
+} from "../utils/utils.js";
 
 describe("Resolve", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
