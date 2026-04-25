@@ -13,14 +13,16 @@ import { describe, expect, it } from "vitest";
 
 import { expectVar } from "../../utils/expectVar.js";
 import {
-  type KnownProfile,
   bundleCalls,
+  type KnownProfile,
+  makeResolutions,
+} from "../../utils/resolutions.js";
+import { shouldSupportFeatures } from "../../utils/supportsFeatures.js";
+import {
+  dnsEncodeName,
   COIN_TYPE_DEFAULT,
   COIN_TYPE_ETH,
-  makeResolutions,
-} from "../../utils/resolutions.ts";
-import { shouldSupportFeatures } from "../../utils/supportsFeatures.js";
-import { dnsEncodeName } from "../../utils/utils.js";
+} from "../../utils/utils.js";
 import { deployV1Fixture } from "../fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "../fixtures/deployV2Fixture.js";
 import { deployArtifact } from "../fixtures/deployArtifact.js";
@@ -33,6 +35,7 @@ const dnsTXTResolverName = "dnstxt.ens.eth";
 const extendedDNSResolverName = "dnsname.ens.eth";
 const dummyBytes4 = "0x12345678";
 const testAddress = "0x8000000000000000000000000000000000000001";
+const testData = "0xabcdef";
 const testURL = "https://ens.domains";
 const basicProfile: KnownProfile = {
   name: "test.com",
@@ -140,7 +143,7 @@ async function fixture() {
       name,
       resolverAddress: myResolver.address,
     });
-    await myResolver.write.setAddr([namehash(name), COIN_TYPE_ETH, resolver]);
+    await myResolver.write.setAddr([namehash(name), resolver]);
   }
 }
 
@@ -389,7 +392,7 @@ describe("DNSTLDResolver", () => {
     const anotherAddress = "0x1234567812345678123456781234567812345678";
     const x = `0x${"a".repeat(64)}` as const;
     const y = `0x${"b".repeat(64)}` as const;
-    const context = `a[60]=${testAddress} a[e0]=${anotherAddress} t[url]='${testURL}' c=${contenthash} xy=${concat([x, y])}`;
+    const context = `a[60]=${testAddress} a[e0]=${anotherAddress} t[url]='${testURL}' d[abc]=${testData} c=${contenthash} xy=${concat([x, y])}`;
     const encodedRRs = encodeRRs([
       makeTXT(basicProfile.name, `ENS1 ${dnsTXTResolverName} ${context}`),
     ]);
@@ -407,36 +410,37 @@ describe("DNSTLDResolver", () => {
         .withArgs([dummyBytes4]);
     });
 
-    it("invalid hex", async () => {
-      const F = await network.networkHelpers.loadFixture(fixture);
-      const invalidHex = "!@#$";
-      await F.mockDNSSEC.write.setResponse([
-        encodeRRs([
-          makeTXT(
-            basicProfile.name,
-            `ENS1 ${dnsTXTResolverName} a[60]=${invalidHex}`,
-          ),
-        ]),
-      ]);
-      const [res] = makeResolutions({
-        name: basicProfile.name,
-        addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
-      });
-      await expect(
-        F.v2.universalResolver.read.resolve([
-          dnsEncodeName(basicProfile.name),
-          res.call,
-        ]),
-      )
-        .toBeRevertedWithCustomError("ResolverError")
-        .withArgs([
-          encodeErrorResult({
-            abi: F.dnsTXTResolver.abi,
-            errorName: "InvalidHexData",
-            args: [stringToHex(invalidHex)],
-          }),
+    for (const invalidHex of ["0", "00", "0x0", "!@#$"]) {
+      it(`invalid hex: ${invalidHex}`, async () => {
+        const F = await network.networkHelpers.loadFixture(fixture);
+        await F.mockDNSSEC.write.setResponse([
+          encodeRRs([
+            makeTXT(
+              basicProfile.name,
+              `ENS1 ${dnsTXTResolverName} a[60]=${invalidHex}`,
+            ),
+          ]),
         ]);
-    });
+        const [res] = makeResolutions({
+          name: basicProfile.name,
+          addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
+        });
+        await expect(
+          F.v2.universalResolver.read.resolve([
+            dnsEncodeName(basicProfile.name),
+            res.call,
+          ]),
+        )
+          .toBeRevertedWithCustomError("ResolverError")
+          .withArgs([
+            encodeErrorResult({
+              abi: F.dnsTXTResolver.abi,
+              errorName: "InvalidHexData",
+              args: [stringToHex(invalidHex)],
+            }),
+          ]);
+      });
+    }
 
     it("invalid length: address", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
@@ -528,12 +532,39 @@ describe("DNSTLDResolver", () => {
       });
     });
 
-    it("text(url)", async () => {
+    it("text()", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.mockDNSSEC.write.setResponse([encodedRRs]);
       await F.expectTXT({
         name: basicProfile.name,
         texts: [{ key: "url", value: testURL }],
+      });
+    });
+
+    it("text() w/[-key", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      const key = "a[b[c]]";
+      const value = "123";
+      await F.mockDNSSEC.write.setResponse([
+        encodeRRs([
+          makeTXT(
+            basicProfile.name,
+            `ENS1 ${dnsTXTResolverName} t[${key}]=${value}`,
+          ),
+        ]),
+      ]);
+      await F.expectTXT({
+        name: basicProfile.name,
+        texts: [{ key, value }],
+      });
+    });
+
+    it("data()", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      await F.mockDNSSEC.write.setResponse([encodedRRs]);
+      await F.expectTXT({
+        name: basicProfile.name,
+        datas: [{ key: "abc", value: testData }],
       });
     });
 
@@ -593,7 +624,7 @@ describe("DNSTLDResolver", () => {
 
     function parseContext(name: string, context: string) {
       const pos = context.indexOf(" ");
-      if (pos == -1) return context;
+      if (pos === -1) return context;
       return name.replace(
         new RegExp(`(^|\.)${context.slice(0, pos)}$`),
         (_, x) => x + context.slice(pos + 1),
@@ -613,6 +644,7 @@ describe("DNSTLDResolver", () => {
             name: newName,
             addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
             texts: [{ key: "url", value: testURL }],
+            datas: [{ key: "abc", value: testData }],
           } as const satisfies KnownProfile;
           await F.v2.setupName({
             name: newName,
