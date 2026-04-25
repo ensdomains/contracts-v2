@@ -45,7 +45,9 @@ string constant TEST_STRING = "abc";
 contract PermissionedResolverTest is Test {
     uint256 constant DEFAULT_ROLES = EACBaseRolesLib.ALL_ROLES;
 
+    VerifiableFactory factory;
     MockHCAFactoryBasic hcaFactory;
+    PermissionedResolver implementation;
     PermissionedResolver resolver;
 
     address owner = makeAddr("owner");
@@ -59,9 +61,9 @@ contract PermissionedResolverTest is Test {
     bytes testAddress = abi.encodePacked(testAddr);
 
     function setUp() external {
-        VerifiableFactory factory = new VerifiableFactory();
+        factory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
-        PermissionedResolver resolverImpl = new PermissionedResolver(hcaFactory);
+        implementation = new PermissionedResolver(hcaFactory);
 
         name1 = NameCoder.encode("test.eth");
         node1 = NameCoder.namehash(name1, 0);
@@ -71,10 +73,10 @@ contract PermissionedResolverTest is Test {
 
         bytes memory initData = abi.encodeCall(
             PermissionedResolver.initialize,
-            (owner, DEFAULT_ROLES)
+            (owner, DEFAULT_ROLES, new bytes[](0))
         );
         resolver = PermissionedResolver(
-            factory.deployProxy(address(resolverImpl), uint256(keccak256(initData)), initData)
+            factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
         );
     }
 
@@ -88,6 +90,31 @@ contract PermissionedResolverTest is Test {
 
     function test_initialize() external view {
         assertTrue(resolver.hasRootRoles(DEFAULT_ROLES, owner), "roles");
+    }
+
+    function test_initialize_unowned() external {
+        bytes memory initData = abi.encodeCall(
+            PermissionedResolver.initialize,
+            (address(0), 0, new bytes[](0))
+        );
+        PermissionedResolver r = PermissionedResolver(
+            factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
+        );
+        assertEq(r.roleCount(r.ROOT_RESOURCE()), 0);
+    }
+
+    function test_initalize_with_setters() external {
+        bytes[] memory m = new bytes[](2);
+        m[0] = abi.encodeCall(IResolverSetters.setName, (name1, TEST_STRING));
+        m[1] = abi.encodeCall(IResolverSetters.setContentHash, (name2, testAddress));
+
+        bytes memory initData = abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, m));
+        PermissionedResolver r = PermissionedResolver(
+            factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
+        );
+
+        assertEq(r.name(node1), TEST_STRING, "name()");
+        assertEq(r.contenthash(node2), testAddress, "contenthash()");
     }
 
     function test_upgrade() external {
