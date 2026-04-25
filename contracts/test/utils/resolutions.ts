@@ -339,6 +339,38 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
       });
     }
   }
+  if (p.datas) {
+    const abi = PROFILE_ABI;
+    const functionName = "data";
+    for (const { key, value } of p.datas) {
+      resolutions.push({
+        desc: `${functionName}(${key})`,
+        call: encodeFunctionData({
+          abi,
+          functionName,
+          args: [node, key],
+        }),
+        answer: encodeFunctionResult({
+          abi,
+          functionName,
+          result: value,
+        }),
+        expect(data) {
+          const actual = decodeFunctionResult({
+            abi,
+            functionName,
+            data,
+          });
+          expect(actual, this.desc).toStrictEqual(value);
+        },
+        write: encodeFunctionData({
+          abi: V1_SETTER_ABI,
+          functionName: "setData",
+          args: [node, key, value],
+        }),
+      });
+    }
+  }
   if (p.contenthash) {
     const functionName = "contenthash";
     const { value } = p.contenthash;
