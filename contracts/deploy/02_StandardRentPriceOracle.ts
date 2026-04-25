@@ -1,4 +1,5 @@
 import { artifacts, execute } from "@rocketh";
+import { MAX_EXPIRY } from "../script/deploy-constants.ts";
 
 export default execute(
   async ({ deploy, read, get, namedAccounts: { deployer, owner } }) => {
@@ -12,7 +13,7 @@ export default execute(
     const paymentTokens = [mockUSDC, mockDAI];
 
     // see: StandardPricing.sol
-    const SEC_PER_YEAR = 31_557_600n;
+    const SEC_PER_YEAR = 31_557_600n; // 365.25
     const SEC_PER_DAY = 86400n;
     const PRICE_DECIMALS = 12;
     const PRICE_SCALE = 10n ** BigInt(PRICE_DECIMALS);
@@ -25,7 +26,7 @@ export default execute(
       0n,
       PRICE_SCALE * 640n,
       PRICE_SCALE * 160n,
-      PRICE_SCALE * 5n,
+      PRICE_SCALE * 8n,
     ].map((x) => (x + SEC_PER_YEAR - 1n) / SEC_PER_YEAR);
 
     const DISCOUNT_SCALE = (1n << 128n) - 1n; // type(uint128).max
@@ -34,11 +35,9 @@ export default execute(
     }
     const discountPoints: [bigint, bigint][] = [
       [SEC_PER_YEAR, 0n],
-      [SEC_PER_YEAR, discountRatio(1n, 10n)], // 10%
-      [SEC_PER_YEAR, discountRatio(2n, 10n)],
-      [SEC_PER_YEAR * 2n, discountRatio(2875n, 10000n)],
-      [SEC_PER_YEAR * 5n, discountRatio(325n, 1000n)],
-      [SEC_PER_YEAR * 15n, discountRatio(1n, 3n)],
+      [SEC_PER_YEAR, discountRatio(1n, 4n)], //       25.00%
+      [SEC_PER_YEAR, discountRatio(11n, 16n)], //     68.75%
+      [SEC_PER_YEAR * 3n, discountRatio(9n, 16n)], // 56.25%
     ];
 
     const paymentFactors = await Promise.all(
@@ -68,18 +67,7 @@ export default execute(
       }),
     );
 
-    console.table(
-      discountPoints.map((_, i, v) => {
-        const sum = v.slice(0, i + 1).reduce((a, x) => a + x[0], 0n);
-        const acc = v.slice(0, i + 1).reduce((a, x) => a + x[0] * x[1], 0n);
-        return {
-          years: (Number(sum) / Number(SEC_PER_YEAR)).toFixed(2),
-          discount: `${((100 * Number(acc / sum)) / Number(DISCOUNT_SCALE)).toFixed(2)}%`,
-        };
-      }),
-    );
-
-    await deploy("StandardRentPriceOracle", {
+    const standardRentPriceOracle = await deploy("StandardRentPriceOracle", {
       account: deployer,
       artifact: artifacts.StandardRentPriceOracle,
       args: [
@@ -93,6 +81,44 @@ export default execute(
         paymentFactors,
       ],
     });
+
+    console.table(
+      await Promise.all(
+        [
+          ...new Set([
+            ...discountPoints.map((x) => x[0]),
+            ...Array.from(
+              { length: 10 },
+              (_, yr) => BigInt(yr + 1) * SEC_PER_YEAR,
+            ),
+            100n * SEC_PER_YEAR,
+          ]),
+        ]
+          .sort((a, b) => Number(a - b))
+          .map(async (t) => {
+            const x = await read(standardRentPriceOracle, {
+              functionName: "integratedDiscount",
+              args: [t],
+            });
+            return {
+              years: (Number(t) / Number(SEC_PER_YEAR)).toFixed(2),
+              discount: `${((100 * Number(x / t)) / Number(DISCOUNT_SCALE)).toFixed(2)}%`,
+              ...Object.fromEntries(
+                baseRatePerCp.flatMap((rate, i) =>
+                  rate
+                    ? [
+                        [
+                          `${i + 1}cp/yr`,
+                          `${(Number((rate * (DISCOUNT_SCALE * t - x)) / DISCOUNT_SCALE) / Number(PRICE_SCALE) / Number(t / SEC_PER_YEAR)).toFixed(2)}`,
+                        ],
+                      ]
+                    : [],
+                ),
+              ),
+            };
+          }),
+      ),
+    );
   },
   {
     tags: ["StandardRentPriceOracle", "v2"],

@@ -6,6 +6,47 @@ pragma solidity >=0.8.13;
 import {PaymentRatio, DiscountPoint} from "~src/registrar/StandardRentPriceOracle.sol";
 import {MockERC20} from "~test/mocks/MockERC20.sol";
 
+// *** Changes MUST be synced with `deploy/StandardRentPriceOracle.ts` ***
+//
+// https://discuss.ens.domains/t/temp-check-ens-v2-pricing-5-character-name-price-adjustment-multi-year-discounts/22038
+//
+// Term  | Discount | 5-char $/yr | 5-char Total | 4-char $/yr | 4-char Total | 3-char $/yr | 3-char Total
+// ------|----------|-------------|--------------|-------------|--------------|-------------|-------------
+// 1 yr  | 0%       | $8.00       | $8.00        | $160        | $160         | $640        | $640
+// 2 yr  | 12.5%    | $7.00       | $14.00       | $140        | $280         | $560        | $1,120
+// 3 yr  | ~31%     | $5.50       | $16.50       | $110        | $330         | $440        | $1,320
+// 4 yr  | ~31%     | $5.50       | $22.00       | $110        | $440         | $440        | $1,760
+// 5 yr  | ~31%     | $5.50       | $27.50       | $110        | $550         | $440        | $2,200
+// 6 yr  | ~44%     | $4.50       | $27.00       | $90         | $540         | $360        | $2,160
+// 7 yr  | ~44%     | $4.50       | $31.50       | $90         | $630         | $360        | $2,520
+// 8 yr  | ~44%     | $4.50       | $36.00       | $90         | $720         | $360        | $2,880
+// 9 yr  | ~44%     | $4.50       | $40.50       | $90         | $810         | $360        | $3,240
+// 10 yr | ~44%     | $4.50       | $45.00       | $90         | $900         | $360        | $3,600
+//
+// devnet output:
+// ┌───┬────┬───────────┬────────┐
+// │   │ cp │ rate      │ yearly │
+// ├───┼────┼───────────┼────────┤
+// │ 0 │ 3  │ 20280377n │ 640.00 │
+// │ 1 │ 4  │ 5070095n  │ 160.00 │
+// │ 2 │ 5  │ 253505n   │ 8.00   │
+// └───┴────┴───────────┴────────┘
+// ┌────┬────────┬──────────┬────────┬────────┬────────┐
+// │    │ years  │ discount │ 3cp/yr │ 4cp/yr │ 5cp/yr │
+// ├────┼────────┼──────────┼────────┼────────┼────────┤
+// │  0 │ 1.00   │ 0.00%    │ 640.00 │ 160.00 │ 8.00   │
+// │  1 │ 2.00   │ 12.50%   │ 560.00 │ 140.00 │ 7.00   │
+// │  2 │ 3.00   │ 31.25%   │ 440.00 │ 110.00 │ 5.50   │
+// │  3 │ 4.00   │ 37.50%   │ 400.00 │ 100.00 │ 5.00   │
+// │  4 │ 5.00   │ 41.25%   │ 376.00 │ 94.00  │ 4.70   │
+// │  5 │ 6.00   │ 43.75%   │ 360.00 │ 90.00  │ 4.50   │
+// │  6 │ 7.00   │ 43.75%   │ 360.00 │ 90.00  │ 4.50   │
+// │  7 │ 8.00   │ 43.75%   │ 360.00 │ 90.00  │ 4.50   │
+// │  8 │ 9.00   │ 43.75%   │ 360.00 │ 90.00  │ 4.50   │
+// │  9 │ 10.00  │ 43.75%   │ 360.00 │ 90.00  │ 4.50   │
+// │ 10 │ 100.00 │ 43.75%   │ 360.00 │ 90.00  │ 4.50   │
+// └────┴────────┴──────────┴────────┴────────┴────────┘
+//
 library StandardPricing {
     uint64 constant SEC_PER_YEAR = 31_557_600; // 365.25
     uint64 constant SEC_PER_DAY = 86400; // 1 days
@@ -22,7 +63,7 @@ library StandardPricing {
     uint256 constant RATE_2CP = 0;
     uint256 constant RATE_3CP = (640 * PRICE_SCALE + SEC_PER_YEAR - 1) / SEC_PER_YEAR;
     uint256 constant RATE_4CP = (160 * PRICE_SCALE + SEC_PER_YEAR - 1) / SEC_PER_YEAR;
-    uint256 constant RATE_5CP = (5 * PRICE_SCALE + SEC_PER_YEAR - 1) / SEC_PER_YEAR;
+    uint256 constant RATE_5CP = (8 * PRICE_SCALE + SEC_PER_YEAR - 1) / SEC_PER_YEAR;
 
     uint256 constant PREMIUM_PRICE_INITIAL = 100_000_000 * PRICE_SCALE;
     uint64 constant PREMIUM_HALVING_PERIOD = SEC_PER_DAY;
@@ -44,19 +85,18 @@ library StandardPricing {
     }
 
     function getDiscountPoints() internal pure returns (DiscountPoint[] memory points) {
-        // see: StandardRentPriceOracle.updateDiscountFunction()
-        // *  2yr @  5.00% ==  1yr @  0.00% +  1yr @ x =>  +1yr @ x = 10.00%
-        // *  3yr @ 10.00% ==  2yr @  5.00% +  1yr @ x =>  +1yr @ x = 20.00%
-        // *  5yr @ 17.50% ==  3yr @ 10.00% +  2yr @ x =>  +2yr @ x = 28.75%
-        // * 10yr @ 25.00% ==  5yr @ 17.50% +  5yr @ x =>  +5yr @ x = 32.50%
-        // * 25yr @ 30.00% == 10yr @ 25.00% + 15yr @ x => +15yr @ x = 33.33%
-        points = new DiscountPoint[](6);
+        // see: src/registrar/StandardRentPriceOracle.updateDiscountFunction()
+        //
+        // breakpoints derived from discount table:
+        // * 2yr @ 12.50% ==  1yr @  0.00% +  1yr @ x =>  +1yr @ x = 25.00%
+        // * 3yr @ 31.25% ==  2yr @ 12.50% +  1yr @ x =>  +1yr @ x = 68.75%
+        // * 6yr @ 43.75% ==  3yr @ 31.25% +  3yr @ x =>  +2yr @ x = 56.25%
+        //
+        points = new DiscountPoint[](4);
         points[0] = DiscountPoint(SEC_PER_YEAR, 0);
-        points[1] = DiscountPoint(SEC_PER_YEAR, discountRatio(1, 10)); // 10%
-        points[2] = DiscountPoint(SEC_PER_YEAR, discountRatio(2, 10));
-        points[3] = DiscountPoint(SEC_PER_YEAR * 2, discountRatio(2875, 10000));
-        points[4] = DiscountPoint(SEC_PER_YEAR * 5, discountRatio(325, 1000));
-        points[5] = DiscountPoint(SEC_PER_YEAR * 15, discountRatio(1, 3)); // 33.3%
+        points[1] = DiscountPoint(SEC_PER_YEAR, discountRatio(1, 4)); //      25.00%
+        points[2] = DiscountPoint(SEC_PER_YEAR, discountRatio(11, 16)); //    68.75%
+        points[3] = DiscountPoint(SEC_PER_YEAR * 3, discountRatio(9, 16)); // 56.25%
     }
 
     function ratioFromStable(MockERC20 token) internal view returns (PaymentRatio memory) {
