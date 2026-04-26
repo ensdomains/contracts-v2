@@ -48,6 +48,13 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
     uint256 internal immutable _GRACE_PERIOD;
 
     ////////////////////////////////////////////////////////////////////////
+    // Errors
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Error selector: `0xacae6b3b`
+    error NameNotClearable();
+
+    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
@@ -89,7 +96,9 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
         (parentNode, state) = _clear(name, nextOffset);
         node = NameCoder.namehash(parentNode, labelHash);
         if (state == State.ROOT) {
-            require(node == NameCoder.ETH_NODE);
+            if (node != NameCoder.ETH_NODE) {
+                revert NameNotClearable();
+            }
             return (node, State.ETH);
         } else if (state == State.ETH) {
             address owner = _REGISTRY_V1.owner(node);
@@ -100,7 +109,9 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
             uint32 fuses;
             (owner, fuses, ) = NAME_WRAPPER.getData(uint256(node));
             if (LibMigration.isLocked(fuses)) {
-                require(owner == address(this));
+                if (owner != address(this)) {
+                    revert NameNotClearable();
+                }
                 // resolver is cleared by migration
                 return (node, State.LOCKED);
             }
