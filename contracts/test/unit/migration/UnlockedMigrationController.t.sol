@@ -416,7 +416,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
             tokenId,
-            keccak256(bytes(md.label)),
+            bytes32(tokenIdV1),
             md.label,
             md.owner,
             uint64(ethRegistrarV1.nameExpires(tokenIdV1)),
@@ -490,7 +490,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     function test_wrapped_migrate() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
         LibMigration.Data memory md = _makeData(name);
-        uint256 tokenIdV1 = uint256(keccak256(bytes(md.label)));
+        uint256 tokenIdV1 = LibLabel.id(md.label);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
         bytes32 node = NameCoder.namehash(name, 0);
         vm.expectEmit();
@@ -504,7 +504,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
             tokenId,
-            keccak256(bytes(md.label)),
+            bytes32(tokenIdV1),
             md.label,
             md.owner,
             uint64(ethRegistrarV1.nameExpires(tokenIdV1)),
@@ -658,11 +658,12 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         );
         for (uint256 i; i < count; ++i) {
             LibMigration.Data memory md = mds[i];
-            uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+            uint256 tokenIdV1 = LibLabel.id(md.label);
+            uint256 tokenId = ethRegistry.getTokenId(tokenIdV1);
             assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
             assertEq(
                 ethRegistry.getExpiry(tokenId),
-                ethRegistrarV1.nameExpires(uint256(keccak256(bytes(md.label)))),
+                ethRegistrarV1.nameExpires(tokenIdV1),
                 "expiry"
             );
             assertEq(
