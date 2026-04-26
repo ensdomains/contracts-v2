@@ -48,19 +48,21 @@ contract WrapperRegistry is
 
     /// @notice Creates the WrapperRegistry implementation.
     /// @param nameWrapper The ENSv1 NameWrapper.
+    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.
     /// @param hcaFactory The HCA factory.
     /// @param metadataProvider The metadata provider.
     constructor(
         INameWrapper nameWrapper,
+        address graveyard,
         VerifiableFactory verifiableFactory,
         address ensV1Resolver,
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider
     )
         PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) // no roles are granted
-        LockedWrapperReceiver(nameWrapper, verifiableFactory, address(this))
+        LockedWrapperReceiver(nameWrapper, graveyard, verifiableFactory, address(this))
     {
         V1_RESOLVER = ensV1Resolver;
         _disableInitializers();

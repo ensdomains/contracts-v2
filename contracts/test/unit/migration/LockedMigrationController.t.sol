@@ -49,8 +49,8 @@ import {
     ERC165Checker,
     NameCoder
 } from "./MigrationControllerFixture.sol";
-import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
-import {V2Fixture, VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
+import {ENS} from "~test/fixtures/V1Fixture.sol";
+import {VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
@@ -60,6 +60,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         super.setUp();
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
+            address(graveyard),
             verifiableFactory,
             address(ensV1Resolver),
             hcaFactory,
@@ -67,11 +68,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         migrationController = new LockedMigrationController(
             nameWrapper,
+            address(graveyard),
             ethRegistry,
             verifiableFactory,
             address(wrapperRegistryImpl)
         );
-        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
             address(migrationController)
@@ -79,9 +80,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         ethRegistrarV1.setResolver(address(ensV2Resolver));
     }
 
-    function test_constructor() external view {
-        assertEq(address(migrationController.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
+    function test_constructor_controller() external view {
+        assertEq(address(migrationController.GRAVEYARD()), address(graveyard), "GRAVEYARD");
         assertEq(address(migrationController.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
+        assertEq(address(migrationController.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
         assertEq(
             address(migrationController.VERIFIABLE_FACTORY()),
             address(verifiableFactory),
@@ -92,17 +94,46 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             "WRAPPER_REGISTRY_IMPL"
         );
+
         assertEq(migrationController.getWrappedName(), NameCoder.encode("eth"), "getWrappedName");
         assertEq(migrationController.getWrappedNode(), NameCoder.ETH_NODE, "getWrappedNode");
     }
 
-    function test_supportsInterface() external view {
+    function test_constructor_registry() external view {
+        assertEq(address(wrapperRegistryImpl.GRAVEYARD()), address(graveyard), "GRAVEYARD");
+        assertEq(address(wrapperRegistryImpl.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
+        assertEq(
+            address(wrapperRegistryImpl.VERIFIABLE_FACTORY()),
+            address(verifiableFactory),
+            "VERIFIABLE_FACTORY"
+        );
+        assertEq(wrapperRegistryImpl.V1_RESOLVER(), address(ensV1Resolver), "V1_RESOLVER");
+    }
+
+    function test_supportsInterface_controller() external view {
         assertTrue(
             ERC165Checker.supportsInterface(
                 address(migrationController),
                 type(IERC1155Receiver).interfaceId
             ),
             "IERC1155Receiver"
+        );
+    }
+
+    function test_supportsInterface_registry() external view {
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(migrationController),
+                type(IERC1155Receiver).interfaceId
+            ),
+            "IERC1155Receiver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(wrapperRegistryImpl),
+                type(IWrapperRegistry).interfaceId
+            ),
+            "IWrapperRegistry"
         );
     }
 
@@ -752,6 +783,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(testRegistry),
             "registry3"
         );
+        assertEq(registryV1.owner(NameCoder.namehash(name3, 0)), address(graveyard), "graveyard3");
 
         // check migrated 3LD child
         vm.expectRevert(

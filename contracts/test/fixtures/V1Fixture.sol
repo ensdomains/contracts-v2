@@ -20,6 +20,8 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     BaseRegistrarImplementation ethRegistrarV1;
     NameWrapper nameWrapper;
 
+    uint64 gracePeriodV1;
+    uint64 testDuration = 1 days;
     address user = makeAddr("user");
     address ensV1Controller = makeAddr("ensV1Controller");
 
@@ -27,12 +29,13 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         registryV1 = new ENSRegistry();
         ethRegistrarV1 = new BaseRegistrarImplementation(registryV1, NameCoder.ETH_NODE);
         ethRegistrarV1.addController(ensV1Controller);
+        gracePeriodV1 = uint64(ethRegistrarV1.GRACE_PERIOD());
         _claimNodes(NameCoder.encode("eth"), 0, address(ethRegistrarV1));
         _claimNodes(NameCoder.encode("addr.reverse"), 0, address(this)); // see: fake ReverseClaimer
         nameWrapper = new NameWrapper(registryV1, ethRegistrarV1, IMetadataService(address(0)));
         nameWrapper.setController(ensV1Controller, true);
         ethRegistrarV1.addController(address(nameWrapper));
-        vm.warp(ethRegistrarV1.GRACE_PERIOD() + 1); // avoid timestamp issues
+        vm.warp(gracePeriodV1 + 1); // avoid timestamp issues
     }
 
     // fake ReverseClaimer
@@ -59,7 +62,7 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         name = NameCoder.ethName(label);
         tokenId = uint256(keccak256(bytes(label)));
         vm.prank(ensV1Controller);
-        ethRegistrarV1.register(tokenId, user, 1 days); // test duration
+        ethRegistrarV1.register(tokenId, user, testDuration);
     }
 
     function registerWrappedETH2LD(
