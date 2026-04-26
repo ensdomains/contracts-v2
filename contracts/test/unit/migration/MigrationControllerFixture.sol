@@ -11,7 +11,7 @@ import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
-import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
+import {V2Fixture, RegistryRolesLib} from "~test/fixtures/V2Fixture.sol";
 
 // forge test test/unit/migration/UnlockedMigrationController.t.sol -vv
 // forge test test/unit/migration/LockedMigrationController.t.sol -vv
@@ -42,6 +42,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     function setUp() public virtual {
         deployV1Fixture();
         deployV2Fixture();
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         graveyard = new Graveyard(nameWrapper);
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));

@@ -110,7 +110,7 @@ contract V1FixtureTest is V1Fixture {
             uint256(keccak256(bytes(NameCoder.firstLabel(name))))
         );
         (, , uint256 wrappedExpiry) = nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));
-        assertEq(unwrappedExpiry + ethRegistrarV1.GRACE_PERIOD(), wrappedExpiry);
+        assertEq(unwrappedExpiry + gracePeriodV1, wrappedExpiry);
     }
 
     function test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL() external {

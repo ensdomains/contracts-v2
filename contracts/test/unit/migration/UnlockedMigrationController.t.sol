@@ -51,7 +51,6 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             address(graveyard),
             ethRegistry
         );
-        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
             address(migrationController)
@@ -501,6 +500,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         uint256[] memory amounts = new uint256[](count);
         LibMigration.Data[] memory mds = new LibMigration.Data[](count);
         for (uint256 i; i < count; ++i) {
+            testDuration = uint64(vm.randomUint(1, 1000 days));
             bytes memory name = registerWrappedETH2LD(_label(i), CAN_DO_EVERYTHING);
             LibMigration.Data memory md = _makeData(name);
             md.resolver = address(uint160(i));
