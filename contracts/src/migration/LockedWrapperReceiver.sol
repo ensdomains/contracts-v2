@@ -5,9 +5,12 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {
     INameWrapper,
     CAN_EXTEND_EXPIRY,
-    CANNOT_TRANSFER,
+    CANNOT_APPROVE,
+    CANNOT_CREATE_SUBDOMAIN,
     CANNOT_SET_RESOLVER,
-    CANNOT_CREATE_SUBDOMAIN
+    CANNOT_TRANSFER,
+    IS_DOT_ETH,
+    PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {
     IVerifiableFactory
@@ -113,7 +116,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 uint256(node)
             );
             if (LibMigration.isLocked(fuses)) {
-                if (NAME_WRAPPER.getApproved(uint256(node)) != address(0)) {
+                if (
+                    (fuses & CANNOT_APPROVE) != 0 &&
+                    NAME_WRAPPER.getApproved(uint256(node)) != address(0)
+                ) {
                     revert LibMigration.FrozenTokenApproval(uint256(node));
                 }
 
