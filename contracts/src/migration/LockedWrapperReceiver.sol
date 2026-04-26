@@ -7,7 +7,9 @@ import {
     CAN_EXTEND_EXPIRY,
     CANNOT_TRANSFER,
     CANNOT_SET_RESOLVER,
-    CANNOT_CREATE_SUBDOMAIN
+    CANNOT_CREATE_SUBDOMAIN,
+    IS_DOT_ETH,
+    PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
@@ -191,6 +193,13 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             ownerV1 != address(0) &&
             ownerV1 != address(GRAVEYARD) &&
             LibMigration.isEmancipatedChild(fuses);
+    }
+
+    /// @dev Returns `true` if the NameWrapper token is emancipated and not 2LD .eth.
+    function _isEmancipatedChild(uint32 fuses) internal pure returns (bool) {
+        // PARENT_CANNOT_CONTROL must be set for the entire ancestory.
+        // see: V1Fixture.t.sol: `test_nameWrapper_PARENT_CANNOT_CONTROL_withoutParent()`
+        return (fuses & (IS_DOT_ETH | PARENT_CANNOT_CONTROL)) == PARENT_CANNOT_CONTROL;
     }
 
     /// @dev Convert fuses to equivalent subregistry root roles.

@@ -166,7 +166,7 @@ contract WrapperRegistry is
         uint256 roleBitmap,
         uint64 expiry
     ) internal override returns (uint256 tokenId) {
-        return super.register(label, owner, subregistry, resolver, roleBitmap, expiry);
+        return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
     }
 
     /// @dev Requires `ROLE_UPGRADE` to upgrade.
