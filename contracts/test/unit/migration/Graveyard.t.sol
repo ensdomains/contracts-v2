@@ -339,9 +339,7 @@ contract GraveyardTest is MigrationControllerFixture {
     function _simulateExpiry(bytes memory name) internal {
         (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
         if (NameCoder.namehash(name, offset) == NameCoder.ETH_NODE) {
-            vm.warp(
-                ethRegistrarV1.nameExpires(uint256(labelHash)) + ethRegistrarV1.GRACE_PERIOD() + 1
-            );
+            vm.warp(ethRegistrarV1.nameExpires(uint256(labelHash)) + gracePeriodV1 + 1);
         } else {
             (address owner, , uint64 expiry) = nameWrapper.getData(
                 uint256(NameCoder.namehash(name, 0))

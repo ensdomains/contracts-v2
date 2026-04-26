@@ -96,10 +96,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl)
         );
         ethRegistry.grantRootRoles(
-            RegistryRolesLib.ROLE_REGISTRAR,
-            premigrationController
-        );
-        ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
             address(migrationController)
         );
