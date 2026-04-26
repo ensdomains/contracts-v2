@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {console} from "forge-std/console.sol";
 import {
     CAN_DO_EVERYTHING,
     CANNOT_SET_RESOLVER,
@@ -19,28 +18,58 @@ contract GraveyardTest is MigrationControllerFixture {
         ethRegistrarV1.addController(address(graveyard));
     }
 
-    function test_clear_alreadyRegistered() external {
-        (bytes memory name, ) = registerUnwrapped(testLabel);
-
-        vm.expectRevert();
-        graveyard.clear(_oneName(name));
-    }
-
-    function test_clear_unregistered() external {
-        graveyard.clear(_oneName(NameCoder.encode("dne.eth")));
-    }
-
-    function test_clear_notDotEth() external {
-        vm.expectRevert();
-        graveyard.clear(_oneName(NameCoder.encode("test.xyz")));
-    }
-
     function test_clear_root() external {
         graveyard.clear(_oneName(NameCoder.encode(""))); // noop
     }
 
     function test_clear_eth() external {
         graveyard.clear(_oneName(NameCoder.encode("eth"))); // noop
+    }
+
+    function test_clear_xyz() external {
+        vm.expectRevert();
+        graveyard.clear(_oneName(NameCoder.encode("xyz")));
+        vm.expectRevert();
+        graveyard.clear(_oneName(NameCoder.encode("test.xyz")));
+    }
+
+    function test_clear_registered_unwrapped() external {
+        (bytes memory name, ) = registerUnwrapped(testLabel);
+
+        vm.expectRevert();
+        graveyard.clear(_oneName(name));
+    }
+
+    function test_clear_registered_unlocked() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+
+        vm.expectRevert();
+        graveyard.clear(_oneName(name));
+    }
+
+    function test_clear_registered_locked() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+
+        vm.expectRevert();
+        graveyard.clear(_oneName(name));
+    }
+
+    function test_clear_unregistered(uint256) external {
+        graveyard.clear(_oneName(_randomName()));
+    }
+
+    function test_clear_junk_deep(uint256) external {
+        bytes memory name = _randomName();
+        bytes32 node = NameCoder.namehash(name, 0);
+
+        _claimNodes(name, 0, address(user));
+        vm.prank(user);
+        registryV1.setResolver(node, address(1));
+        assertEq(registryV1.resolver(node), address(1));
+
+        graveyard.clear(_oneName(name));
+
+        assertEq(registryV1.resolver(node), address(0));
     }
 
     function test_clear_deep() external {
@@ -189,6 +218,33 @@ contract GraveyardTest is MigrationControllerFixture {
         assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
     }
 
+    function test_clear_detached(bool unwrapped) external {
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes memory name3 = createWrappedChild(name2, testLabel, user, PARENT_CANNOT_CONTROL);
+
+        // set resolvers
+        vm.startPrank(user);
+        nameWrapper.setResolver(NameCoder.namehash(name2, 0), address(1));
+        nameWrapper.setResolver(NameCoder.namehash(name3, 0), address(1));
+        vm.stopPrank();
+
+        if (unwrapped) {
+            vm.prank(user);
+            nameWrapper.unwrap(
+                NameCoder.namehash(name2, 0),
+                keccak256(bytes(NameCoder.firstLabel(name3))),
+                address(graveyard)
+            );
+        }
+
+        _simulateExpiry(name2);
+
+        graveyard.clear(_oneName(name3));
+
+        assertEq(registryV1.resolver(NameCoder.namehash(name2, 0)), address(0), "2");
+        assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
+    }
+
     function test_clear_locked_expired() external {
         bytes memory name0 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes memory name = name0;
@@ -279,6 +335,7 @@ contract GraveyardTest is MigrationControllerFixture {
         }
     }
 
+    /// @dev Warp past expiry + grace.
     function _simulateExpiry(bytes memory name) internal {
         (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
         if (NameCoder.namehash(name, offset) == NameCoder.ETH_NODE) {
@@ -292,6 +349,14 @@ contract GraveyardTest is MigrationControllerFixture {
             if (owner != address(0)) {
                 vm.warp(expiry + 1);
             }
+        }
+    }
+
+    /// @dev Create random .eth name.
+    function _randomName() internal returns (bytes memory name) {
+        name = NameCoder.encode("eth");
+        for (uint256 n = vm.randomUint(1, 10); n > 0; --n) {
+            name = NameCoder.addLabel(name, new string(vm.randomUint(1, 255)));
         }
     }
 

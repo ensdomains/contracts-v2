@@ -12,10 +12,18 @@ import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
-// initial gas analysis
+// forge test test/unit/migration/UnlockedMigrationController.t.sol -vv
+// forge test test/unit/migration/LockedMigrationController.t.sol -vv
+
+// [initial gas analysis]
 // * Unwrapped: 160300
 // * Unlocked: 179367
 // * Locked: 658489 (~500k for VerifiedFactory => WrapperRegistry)
+
+// [after graveyard]
+// * Unwrapped: 193011 (+32K)
+// * Unlocked: 183292 (+4K)
+// * Locked: 665863 (+7K)
 
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;
