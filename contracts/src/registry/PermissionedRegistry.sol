@@ -391,6 +391,7 @@ contract PermissionedRegistry is
             if (expiry == 0) {
                 expiry = entry.expiry; // use current expiry
             }
+            roleBitmap |= RegistryRolesLib.ROLE_REGISTER_RESERVED;
         }
         if (_isExpired(expiry)) {
             revert CannotSetPastExpiry(expiry);

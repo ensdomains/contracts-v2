@@ -28,8 +28,14 @@ import {
     InvalidOwner,
     UnauthorizedCaller
 } from "~src/migration/UnlockedMigrationController.sol";
-
-import {MigrationControllerFixture, NameCoder} from "./MigrationControllerFixture.sol";
+import {
+    MigrationControllerFixture,
+    ERC165Checker,
+    NameCoder
+} from "./MigrationControllerFixture.sol";
+import {REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
+import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
+import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
 contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     UnlockedMigrationController migrationController;
@@ -304,6 +310,23 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
+    function test_checkIfMigrated() external {
+        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        LibMigration.Data memory md = _makeData(name);
+
+        assertFalse(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_REGISTER_RESERVED, user));
+
+        vm.prank(user);
+        ethRegistrarV1.safeTransferFrom(
+            user,
+            address(migrationController),
+            tokenIdV1,
+            abi.encode(md)
+        );
+
+        assertTrue(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_REGISTER_RESERVED, user));
+    }
+
     function test_unwrapped_migrate() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         LibMigration.Data memory md = _makeData(name);
@@ -323,6 +346,13 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
         vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(
+            tokenId,
+            md.owner,
+            0 /*old roles*/,
+            REGISTRATION_ROLE_BITMAP | RegistryRolesLib.ROLE_REGISTER_RESERVED
+        );
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(
             tokenId,
@@ -375,6 +405,13 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
         vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(
+            tokenId,
+            md.owner,
+            0 /*old roles*/,
+            REGISTRATION_ROLE_BITMAP | RegistryRolesLib.ROLE_REGISTER_RESERVED
+        );
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(
             tokenId,
