@@ -65,7 +65,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
                 IRegistry(address(0)),
                 address(ensV1Resolver), // fallback
                 0,
-                uint64(ethRegistrarV1.nameExpires(tokenId))
+                uint64(ethRegistrarV1.nameExpires(tokenId)) + gracePeriodV1
             );
         }
     }

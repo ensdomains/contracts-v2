@@ -29,7 +29,10 @@ interface IWrappedETHRegistrarController {
 ///
 /// To sync:
 /// 1. renew() in v2
-/// 2. must be unmigratable or v1 expiry < CUTOFF_EXPIRY
+/// 2. must have at least one of:
+///     - have v1 expiry < CUTOFF_EXPIRY
+///     - have v1 expiry in grace period
+///     - be unmigratable
 ///
 /// To be unmigratable:
 /// 1. must be Locked .eth 2LD (NameWrapper w/CANNOT_UNLOCK burned)
@@ -51,7 +54,7 @@ contract ETHRenewerV1 {
     /// @notice The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
-    /// @notice The maximum expiry this contract will renew for, in seconds.
+    /// @notice The maximum expiry this contract will renew for without restriction, in seconds.
     uint64 public immutable CUTOFF_EXPIRY;
 
     /// @dev The ENSv1 `BaseRegistrar` contract.
@@ -94,7 +97,7 @@ contract ETHRenewerV1 {
         for (uint256 i; i < labels.length; ++i) {
             string calldata label = labels[i];
             uint256 tokenIdV1 = LibLabel.id(label);
-            (uint64 syncDuration, bool syncWrapper) = _getState(tokenIdV1);
+            (uint64 syncDuration, bool syncWrapper) = getState(tokenIdV1);
             if (syncDuration > 0) {
                 _REGISTRAR_V1.renew(tokenIdV1, syncDuration);
             }
@@ -111,22 +114,14 @@ contract ETHRenewerV1 {
         }
     }
 
-    /// @notice Determine if name can be synced.
-    /// @param label The name to sync.
-    /// @return `true` if name can be synced.
-    function canSync(string calldata label) external view returns (bool) {
-        (uint64 syncDuration, bool syncWrapper) = _getState(LibLabel.id(label));
-        return syncDuration > 0 || syncWrapper;
-    }
-
-    ////////////////////////////////////////////////////////////////////////
-    // Internal Functions
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Determine necessary synchronization.
-    function _getState(
+    /// @notice Determine synchronization state.
+    ///         If `syncDuration > 0 || syncWrapper`, then `sync()` should be called.
+    /// @param tokenIdV1 The labelhash.
+    /// @return syncDuration The ENSv1 registration extension, in seconds.
+    /// @return syncWrapper `true` if NameWrapper expiry requires updating.
+    function getState(
         uint256 tokenIdV1
-    ) internal view returns (uint64 syncDuration, bool syncWrapper) {
+    ) public view returns (uint64 syncDuration, bool syncWrapper) {
         IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(tokenIdV1);
         if (state.status == IPermissionedRegistry.Status.RESERVED) {
             bytes32 node = NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenIdV1));
@@ -135,8 +130,11 @@ contract ETHRenewerV1 {
             (address owner, uint32 fuses, uint64 wrappedExpiry) = NAME_WRAPPER.getData(
                 uint256(node)
             );
-            if (expiryV2 > CUTOFF_EXPIRY && _isMigratable(node, fuses)) {
-                expiryV2 = CUTOFF_EXPIRY;
+            if (_isMigratable(node, fuses)) {
+                uint64 cutoff = _inGraceV1(expiryV1) ? expiryV1 + _GRACE_PERIOD : CUTOFF_EXPIRY;
+                if (expiryV2 > cutoff) {
+                    expiryV2 = cutoff;
+                }
             }
             if (expiryV2 > expiryV1) {
                 syncDuration = expiryV2 - expiryV1;
@@ -145,7 +143,17 @@ contract ETHRenewerV1 {
         }
     }
 
-    /// @dev Determine if migratable.
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Determine if in grace in ENSv1.
+    function _inGraceV1(uint64 expiry) internal view returns (bool) {
+        uint256 t = block.timestamp;
+        return t >= expiry && (t - expiry) < _GRACE_PERIOD;
+    }
+
+    /// @dev Determine if migratable to ENSv2.
     function _isMigratable(bytes32 node, uint32 fuses) internal view returns (bool) {
         if (LibMigration.isLocked(fuses)) {
             if ((fuses & CANNOT_TRANSFER) != 0) {

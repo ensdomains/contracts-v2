@@ -112,6 +112,18 @@ contract V1FixtureTest is V1Fixture {
         assertEq(unwrappedExpiry + gracePeriodV1, wrappedExpiry);
     }
 
+    function test_nameWrapper_ownerAndFusesDuringGrace() external {
+        bytes memory name = registerWrappedETH2LD("test", CANNOT_UNWRAP);
+        uint256 unwrappedExpiry = ethRegistrarV1.nameExpires(
+            uint256(keccak256(bytes(NameCoder.firstLabel(name))))
+        );
+        uint64[3] ts = [0, gracePeriodV1 >> 1, gracePeriodV1 - 1];
+        vm.warp(unwrappedExpiry + (gracePeriodV1 >> 1)); // middle
+        (address owner, uint32 fuses, ) = nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));
+        assertEq(owner, user, "owner");
+        assertTrue((fuses & CANNOT_UNWRAP) != 0, "fuses");
+    }
+
     function test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL() external {
         bytes memory name = registerWrappedETH2LD("test", CANNOT_UNWRAP);
         createWrappedChild(name, "1", address(0), PARENT_CANNOT_CONTROL);

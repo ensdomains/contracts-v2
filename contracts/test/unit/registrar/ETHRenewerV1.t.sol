@@ -35,6 +35,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
     string labelLocked = "locked";
     string labelCannotTransfer = "cannot-transfer";
     string labelFrozenApproval = "frozen-approval";
+    string labelFuture = "future";
 
     function setUp() public override {
         super.setUp();
@@ -56,8 +57,11 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
             nameWrapper.setFuses(node, uint16(CANNOT_APPROVE));
         }
 
-        cutoffExpiry = uint64(block.timestamp) + testDuration + gracePeriodV1 + 1 days; // after launch (arbitrary duration)
+        cutoffExpiry = uint64(block.timestamp) + gracePeriodV1 + testDuration; // after launch (arbitrary duration)
         afterCutoff = cutoffExpiry + 1 days; // (arbitrary duration)
+
+        testDuration = 1000 days;
+        registerUnwrapped(labelFuture);
 
         wrappedController = new MockWrappedETHRegistrarController(nameWrapper);
         renewer = new ETHRenewerV1(
@@ -126,11 +130,24 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
 
     function test_sync_expiredAfterGrace() external {
         vm.warp(ethRegistrarV1.nameExpires(LibLabel.id(labelUnwrapped)) + gracePeriodV1);
+        assertTrue(block.timestamp < cutoffExpiry);
+
         vm.expectRevert();
         ethRegistrarV1.ownerOf(LibLabel.id(labelUnwrapped));
 
         assertFalse(renewer.canSync(labelUnwrapped));
         renewer.sync(_one(labelUnwrapped)); // noop
+    }
+
+    function test_sync_future_afterCutoff() external {
+        _warpToGrace(labelFuture);
+        assertTrue(block.timestamp > cutoffExpiry);
+
+        _extendReservation(labelFuture);
+
+        State memory state = _expectSyncAddsDuration(label);
+        renewer.sync(_one(label));
+        _expectSynced(state);
     }
 
     function test_sync_unwrapped_beforeCutoff(bool grace) external {
@@ -265,13 +282,33 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
         _extendReservation(v[0]);
         _extendReservation(v[1]);
 
-        assertFalse(renewer.canSync(v[0]));
-        assertTrue(renewer.canSync(v[1]));
+        _expectSyncIsNoop(v[0]);
+        _expectSyncAddsDuration(v[1]);
 
         renewer.sync(v);
 
         _checkSynced(v[0], true);
         _checkSynced(v[1], false);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Helpers
+    ////////////////////////////////////////////////////////////////////////
+
+    struct State {
+        string label;
+        uint64 expiryV1;
+        uint64 expiryV2;
+        uint64 syncDuration;
+        bool syncWrapper;
+    }
+
+    function _getState(string memory label) internal view returns (State memory state) {
+        state.label = label;
+        uint256 labelId = LibLabel.id(label);
+        state.expiryV1 = uint64(ethRegistrarV1.nameExpires(labelId));
+        state.expiryV2 = ethRegistry.getExpiry(labelId);
+        (state.syncDuration, state.syncWrapper) = renewer.getState(labelId);
     }
 
     /// @dev Warp to sometime during grace period.
@@ -294,19 +331,36 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
     }
 
     function _checkSync(string memory label, bool isMigratable) internal {
-        assertTrue(renewer.canSync(label), "canSync");
+        _expectSyncDuration(label);
         renewer.sync(_one(label));
         _checkSynced(label, isMigratable);
+    }
+
+    function _expectSyncAddsDuration(string memory label) internal view {
+        (uint64 syncDuration, ) = renewer.getState(LibLabel.id(label));
+        assertEq(syncDuration > 0, "syncAddsDuration");
+    }
+
+    function _expectSyncIsNoop(string memory label) internal view {
+        (uint64 syncDuration, bool syncWrapper) = renewer.getState(LibLabel.id(label));
+        assertFalse(syncDuration > 0 || syncWrapper, "syncIsNoop");
+    }
+
+    function _expectSynced(State memory state0) internal view {
+        State memory state1 = _getState(state0.label);
+        assertEq(state0.expiryV1 + state0.syncDuration, state1.expiryV1, "synced:expiryV1");
+        if (nameWrapper.isWrapped(node)) {
+            (, , uint64 wrappedExpiry) = nameWrapper.getData(uint256(node));
+            assertEq(wrappedExpiry, state1.expiryV1 + gracePeriodV1, "synced:wrapper");
+        }
     }
 
     function _checkSynced(string memory label, bool isMigratable) internal view {
         uint256 labelId = LibLabel.id(label);
         uint64 expiryV1 = uint64(ethRegistrarV1.nameExpires(labelId));
         uint64 expiryV2 = ethRegistry.getExpiry(labelId);
-        if (expiryV2 > cutoffExpiry && isMigratable) {
-            expiryV2 = cutoffExpiry;
-        }
-        assertEq(expiryV1, expiryV2, "unwrappedSync");
+
+        uint64 cutoff = assertEq(expiryV1, expiryV2, "unwrappedSync");
         bytes32 node = NameCoder.namehash(NameCoder.ETH_NODE, bytes32(labelId));
         if (nameWrapper.isWrapped(node)) {
             (, , uint64 wrappedExpiry) = nameWrapper.getData(uint256(node));
