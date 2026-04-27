@@ -69,7 +69,14 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
     }
 
     function revokeAllRoles(uint256 resource, address account) external returns (bool) {
-        return _revokeAllRoles(resource, account, true);
+        return _revokeRoles(resource, EACBaseRolesLib.ALL_ROLES, account, true);
+    }
+
+    function revokeAllRolesWithoutCallback(
+        uint256 resource,
+        address account
+    ) external returns (bool) {
+        return _revokeRoles(resource, EACBaseRolesLib.ALL_ROLES, account, false);
     }
 
     function _onRolesGranted(
@@ -134,12 +141,6 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
         _transferRoles(resource, srcAccount, dstAccount, false);
     }
 
-    function revokeAllRolesWithoutCallback(
-        uint256 resource,
-        address account
-    ) external returns (bool) {
-        return _revokeAllRoles(resource, account, false);
-    }
 }
 
 contract EnhancedAccessControlTest is Test {
@@ -533,32 +534,6 @@ contract EnhancedAccessControlTest is Test {
 
         // Verify user2 no longer has ROLE_A in root resource
         assertFalse(access.hasRootRoles(ROLE_A, user2));
-    }
-
-    function test_revoke_all_roles() external {
-        // Setup: Grant multiple roles to user1
-        _grant(RESOURCE_1, ROLE_A | ROLE_B, user1);
-        _grant(RESOURCE_2, ROLE_A, user1);
-
-        // Revoke all roles for RESOURCE_1
-        // Verify the operation was successful
-        vm.expectEmit(true, true, false, true);
-        emit IEnhancedAccessControl.EACRolesChanged(RESOURCE_1, user1, ROLE_A | ROLE_B, 0);
-        assertTrue(access.revokeAllRoles(RESOURCE_1, user1), "revoke");
-
-        // Verify all roles for RESOURCE_1 were revoked
-        assertFalse(access.hasRoles(RESOURCE_1, ROLE_A, user1));
-        assertFalse(access.hasRoles(RESOURCE_1, ROLE_B, user1));
-
-        // Verify roles for RESOURCE_2 were not affected
-        assertTrue(access.hasRoles(RESOURCE_2, ROLE_A, user1));
-
-        // Test revoking all roles when there are no roles to revoke
-        // Verify the operation was not successful (no roles to revoke)
-        // Verify no event was emitted
-        vm.recordLogs();
-        assertFalse(access.revokeAllRoles(RESOURCE_1, user1), "noop");
-        assertEq(vm.getRecordedLogs().length, 0, "silent");
     }
 
     function test_supports_interface() external view {

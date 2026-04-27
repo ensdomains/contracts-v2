@@ -20,9 +20,6 @@ contract SimpleRegistryMetadata is EnhancedAccessControl, IRegistryMetadata {
     /// @dev Role bit allowing an account to update individual token URIs.
     uint256 private constant _ROLE_UPDATE_METADATA = 1 << 0;
 
-    /// @dev Admin-tier counterpart of the metadata update role, shifted into the upper half of the bitmap.
-    uint256 private constant _ROLE_UPDATE_METADATA_ADMIN = _ROLE_UPDATE_METADATA << 128;
-
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////

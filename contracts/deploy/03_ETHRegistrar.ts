@@ -1,5 +1,5 @@
 import { artifacts, execute } from "@rocketh";
-import { ROLES } from "../script/deploy-constants.js";
+import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
 
 export default execute(
   async ({
@@ -37,10 +37,7 @@ export default execute(
 
     await write(ethRegistry, {
       functionName: "grantRootRoles",
-      args: [
-        ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
-        ethRegistrar.address,
-      ],
+      args: [DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT, ethRegistrar.address],
       account: deployer,
     });
   },

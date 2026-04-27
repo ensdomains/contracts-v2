@@ -314,6 +314,11 @@ Modified ERC1155 allowing only one token per ID:
 - `LockedMigrationController`: Handles ENSv1 → ENSv2 migration for locked names
 - `UnlockedMigrationController`: Handles ENSv1 → ENSv2 migration for unlocked names
 
+Scripts for running the migration end-to-end:
+
+- [Pre-migration](docs/premigration.md) — seed v1 registrations into the v2 registry as *reserved* entries, via `BatchRegistrar`.
+- [Prepare migration](docs/prepareMigration.md) — swap registry roles from `BatchRegistrar` to `ETHRegistrar` and the two migration controllers once pre-migration is complete.
+
 ### Resolution
 
 #### `UniversalResolverV2` - One-Stop Resolution

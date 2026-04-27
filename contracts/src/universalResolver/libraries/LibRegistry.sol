@@ -111,21 +111,6 @@ library LibRegistry {
         }
     }
 
-    /// @dev Find the parent registry for `name[offset:]`.
-    /// @param rootRegistry The root ENS registry.
-    /// @param name The DNS-encoded name to search.
-    /// @return parentRegistry The parent registry or null if not found.
-    function findParentRegistry(
-        IRegistry rootRegistry,
-        bytes memory name,
-        uint256 offset
-    ) internal view returns (IRegistry parentRegistry) {
-        (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, offset);
-        if (labelHash != bytes32(0)) {
-            parentRegistry = findExactRegistry(rootRegistry, name, next);
-        }
-    }
-
     /// @dev Find all registries in the ancestry of `name`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name.

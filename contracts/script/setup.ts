@@ -19,7 +19,7 @@ import {
   slice,
   stringToHex,
   testActions,
-  webSocket,
+  http,
   zeroAddress,
 } from "viem";
 import { mainnet } from "viem/chains";
@@ -145,10 +145,8 @@ export async function setupDevnet({
     anvilInstance.on("message", log);
     finalizers.push(() => anvilInstance.off("message", log));
 
-    const transport = webSocket(`ws://${hostPort}`, {
+    const transport = http(`http://${hostPort}`, {
       retryCount: 1,
-      keepAlive: true,
-      reconnect: false,
       timeout: 10000,
     });
 
