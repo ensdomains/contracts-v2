@@ -2,6 +2,7 @@
 pragma solidity >=0.8.13;
 
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
@@ -19,6 +20,7 @@ import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;
     ENSV2Resolver ensV2Resolver;
+    MockERC721 dummy721;
     MockERC1155 dummy1155;
 
     string testLabel = "test";
@@ -32,6 +34,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
         deployV2Fixture();
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
+        dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();
         ethRegistrarV1.setResolver(address(ensV2Resolver));
     }
@@ -78,6 +81,15 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 
     function _soon() internal view returns (uint64) {
         return uint64(block.timestamp + 1000);
+    }
+}
+
+contract MockERC721 is ERC721 {
+    uint256 _id;
+    constructor() ERC721("", "") {}
+    function mint(address to) external returns (uint256) {
+        _mint(to, _id);
+        return _id++;
     }
 }
 

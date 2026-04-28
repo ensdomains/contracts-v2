@@ -84,7 +84,14 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         migrationController.finishERC1155Migration(new uint256[](0), new LibMigration.Data[](0));
     }
 
-    function test_safeTransferFrom_unauthorizedCaller() external {
+    function test_unwrapped_safeTransferFrom_unauthorizedCaller() external {
+        uint256 tokenId = dummy721.mint(user);
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, dummy721));
+        vm.prank(user);
+        dummy721.safeTransferFrom(user, address(migrationController), tokenId); // wrong
+    }
+
+    function test_wrapped_safeTransferFrom_unauthorizedCaller() external {
         uint256 tokenId = dummy1155.mint(user);
         vm.expectRevert(
             WrappedErrorLib.wrap(abi.encodeWithSelector(UnauthorizedCaller.selector, dummy1155))
@@ -93,7 +100,8 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         dummy1155.safeTransferFrom(user, address(migrationController), tokenId, 1, ""); // wrong
     }
 
-    function test_unwrapped_invalidData() external {
+    function test_unwrapped_invalidData(bytes calldata v) external {
+        vm.assume(v.length < LibMigration.MIN_DATA_SIZE);
         (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         vm.expectRevert(abi.encodeWithSelector(LibMigration.InvalidData.selector));
         vm.prank(user);
@@ -101,11 +109,12 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             user,
             address(migrationController),
             tokenIdV1,
-            "" // wrong
+            v // wrong
         );
     }
 
-    function test_wrapped_invalidData() external {
+    function test_wrapped_invalidData(bytes calldata v) external {
+        vm.assume(v.length < LibMigration.MIN_DATA_SIZE);
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
         vm.expectRevert(
             WrappedErrorLib.wrap(abi.encodeWithSelector(LibMigration.InvalidData.selector))
@@ -116,7 +125,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             address(migrationController),
             uint256(NameCoder.namehash(name, 0)),
             1,
-            "" // wrong
+            v // wrong
         );
     }
 
@@ -213,6 +222,20 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             address(migrationController),
             uint256(NameCoder.namehash(name, 0)),
             1,
+            abi.encode(md)
+        );
+    }
+
+    function test_unwrapped_nameDataMismatch() external {
+        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        LibMigration.Data memory md = _makeData(name);
+        md.label = "wrong";
+        vm.expectRevert(abi.encodeWithSelector(LibMigration.NameDataMismatch.selector, tokenIdV1));
+        vm.prank(user);
+        ethRegistrarV1.safeTransferFrom(
+            user,
+            address(migrationController),
+            tokenIdV1,
             abi.encode(md)
         );
     }
@@ -360,14 +383,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         LibMigration.Data memory md = _makeData(name);
         uint256 tokenIdV1 = uint256(keccak256(bytes(md.label)));
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
+        bytes32 node = NameCoder.namehash(name, 0);
         vm.expectEmit();
-        emit IERC1155.TransferSingle(
-            user,
-            user,
-            address(migrationController),
-            uint256(NameCoder.namehash(name, 0)),
-            1
-        );
+        emit IERC1155.TransferSingle(user, user, address(migrationController), uint256(node), 1);
         vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
             tokenId,
@@ -400,7 +418,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         nameWrapper.safeTransferFrom(
             user,
             address(migrationController),
-            uint256(NameCoder.namehash(name, 0)),
+            uint256(node),
             1,
             abi.encode(md)
         );
@@ -416,6 +434,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             address(md.subregistry),
             "subregistry"
         );
+        assertEq(registryV1.resolver(node), address(0), "resolverV1");
     }
 
     function test_unwrapped_migrateViaApproval(bool all) external {
