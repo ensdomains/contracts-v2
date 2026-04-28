@@ -37,6 +37,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address premigrationController = makeAddr("premigrationController");
     address friend = makeAddr("friend");
+    uint64 premigrationBonusDuration;
 
     function setUp() public virtual {
         deployV1Fixture();
@@ -48,6 +49,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();
         ethRegistrarV1.setResolver(address(ensV2Resolver));
+        premigrationBonusDuration = gracePeriodV1;
     }
 
     /// @dev Ensure premigration has occurred.
@@ -65,7 +67,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
                 IRegistry(address(0)),
                 address(ensV1Resolver), // fallback
                 0,
-                uint64(ethRegistrarV1.nameExpires(tokenId)) + gracePeriodV1
+                uint64(ethRegistrarV1.nameExpires(tokenId)) + premigrationBonusDuration
             );
         }
     }

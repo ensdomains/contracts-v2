@@ -112,16 +112,26 @@ contract V1FixtureTest is V1Fixture {
         assertEq(unwrappedExpiry + gracePeriodV1, wrappedExpiry);
     }
 
-    function test_nameWrapper_ownerAndFusesDuringGrace() external {
+    function test_nameWrapper_gracePeriod() external {
         bytes memory name = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        uint256 unwrappedExpiry = ethRegistrarV1.nameExpires(
-            uint256(keccak256(bytes(NameCoder.firstLabel(name))))
-        );
-        uint64[3] ts = [0, gracePeriodV1 >> 1, gracePeriodV1 - 1];
-        vm.warp(unwrappedExpiry + (gracePeriodV1 >> 1)); // middle
-        (address owner, uint32 fuses, ) = nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));
-        assertEq(owner, user, "owner");
-        assertTrue((fuses & CANNOT_UNWRAP) != 0, "fuses");
+        uint256 tokenIdV1 = uint256(keccak256(bytes(NameCoder.firstLabel(name))));
+        uint256 unwrappedExpiry = ethRegistrarV1.nameExpires(tokenIdV1);
+        bytes32 node = NameCoder.namehash(name, 0);
+        uint64[3] memory ts = [0, gracePeriodV1 >> 1, gracePeriodV1]; // start, middle, before-end
+        for (uint256 i; i < ts.length; ++i) {
+            vm.warp(unwrappedExpiry + ts[i]);
+            (address owner, uint32 fuses, ) = nameWrapper.getData(uint256(node));
+            assertFalse(ethRegistrarV1.available(tokenIdV1), "grace:available");
+            assertEq(owner, user, "grace:owner");
+            assertTrue((fuses & CANNOT_UNWRAP) != 0, "grace:fuses");
+        }
+        {
+            vm.warp(unwrappedExpiry + gracePeriodV1 + 1); // after-end
+            (address owner, uint32 fuses, ) = nameWrapper.getData(uint256(node));
+            assertTrue(ethRegistrarV1.available(tokenIdV1), "after:available");
+            assertEq(owner, address(0), "after:owner");
+            assertEq(fuses, 0, "after:fuses");
+        }
     }
 
     function test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL() external {
