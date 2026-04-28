@@ -315,7 +315,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         LibMigration.Data memory md = _makeData(name);
         uint256 tokenIdV1 = LibLabel.id(md.label);
 
-        assertFalse(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_REGISTER_RESERVED, user));
+        assertFalse(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, user));
 
         vm.prank(user);
         nameWrapper.safeTransferFrom(
@@ -326,7 +326,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(md)
         );
 
-        assertTrue(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_REGISTER_RESERVED, user));
+        assertTrue(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, user));
     }
 
     function test_migrate() external {
@@ -387,7 +387,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_SET_RESOLVER |
                 RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
                 RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
-                RegistryRolesLib.ROLE_REGISTER_RESERVED
+                RegistryRolesLib.ROLE_WAS_RESERVED
         );
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(

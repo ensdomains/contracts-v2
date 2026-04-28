@@ -314,7 +314,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         LibMigration.Data memory md = _makeData(name);
 
-        assertFalse(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_REGISTER_RESERVED, user));
+        assertFalse(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, user));
 
         vm.prank(user);
         ethRegistrarV1.safeTransferFrom(
@@ -324,7 +324,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(md)
         );
 
-        assertTrue(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_REGISTER_RESERVED, user));
+        assertTrue(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, user));
     }
 
     function test_unwrapped_migrate() external {
@@ -351,7 +351,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             tokenId,
             md.owner,
             0 /*old roles*/,
-            REGISTRATION_ROLE_BITMAP | RegistryRolesLib.ROLE_REGISTER_RESERVED
+            REGISTRATION_ROLE_BITMAP | RegistryRolesLib.ROLE_WAS_RESERVED
         );
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(
@@ -410,7 +410,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             tokenId,
             md.owner,
             0 /*old roles*/,
-            REGISTRATION_ROLE_BITMAP | RegistryRolesLib.ROLE_REGISTER_RESERVED
+            REGISTRATION_ROLE_BITMAP | RegistryRolesLib.ROLE_WAS_RESERVED
         );
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(

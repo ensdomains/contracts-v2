@@ -383,15 +383,15 @@ contract PermissionedRegistry is
             if (prevOwner != address(0)) {
                 revert LabelAlreadyRegistered(label); // cannot overwrite REGISTERED
             } else if (owner == address(0)) {
-                revert LabelAlreadyReserved(label); // cannot reserve/register RESERVED
+                revert LabelAlreadyReserved(label); // cannot overwrite RESERVED
             }
             if (checkRoles) {
                 _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
             }
             if (expiry == 0) {
-                expiry = entry.expiry; // use current expiry
+                expiry = entry.expiry; // use RESERVED expiry
             }
-            roleBitmap |= RegistryRolesLib.ROLE_REGISTER_RESERVED;
+            roleBitmap |= RegistryRolesLib.ROLE_WAS_RESERVED; // remember
         }
         if (_isExpired(expiry)) {
             revert CannotSetPastExpiry(expiry);
