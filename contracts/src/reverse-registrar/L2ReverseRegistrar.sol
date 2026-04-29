@@ -116,11 +116,13 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     /// @inheritdoc IL2ReverseRegistrar
     function setName(string calldata name) external {
         _setName(msg.sender, name);
+        _advanceInception(msg.sender);
     }
 
     /// @inheritdoc IL2ReverseRegistrar
     function setNameForAddr(address addr, string calldata name) external authorized(addr) {
         _setName(addr, name);
+        _advanceInception(addr);
     }
 
     /// @inheritdoc IL2ReverseRegistrar
@@ -203,6 +205,15 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
 
         // Update the inception to the new signedAt
         inceptionOf[addr] = signedAt;
+    }
+
+    /// @notice Advances the inception timestamp after an authorized direct name update.
+    /// @dev The replay fence never moves backward.
+    /// @param addr The address whose inception should be advanced.
+    function _advanceInception(address addr) internal {
+        if (block.timestamp > inceptionOf[addr]) {
+            inceptionOf[addr] = block.timestamp;
+        }
     }
 
     /// @notice Checks if the provided address owns the contract via the Ownable interface.

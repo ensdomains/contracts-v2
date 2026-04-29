@@ -320,6 +320,49 @@ contract L2ReverseRegistrarTest is Test {
         vm.stopPrank();
     }
 
+    function test_setName_updatesInception() public {
+        uint256 timestamp = 1_700_000_000;
+        vm.warp(timestamp);
+
+        vm.prank(user1);
+        registrar.setName("myname.eth");
+
+        assertEq(registrar.inceptionOf(user1), timestamp, "Inception should track direct write");
+    }
+
+    function test_setName_invalidatesPriorUnusedSignature() public {
+        string memory signedName = "signed.eth";
+        uint256 signedAt = block.timestamp;
+        uint256[] memory chainIds = _singleChainIdArray();
+
+        bytes32 message = _createNameForAddrMessage(signedName, user1, chainIds, signedAt);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
+            name: signedName,
+            addr: user1,
+            chainIds: chainIds,
+            signedAt: signedAt
+        });
+
+        vm.warp(block.timestamp + 1);
+        uint256 directSetAt = block.timestamp;
+
+        vm.prank(user1);
+        registrar.setName("direct.eth");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                L2ReverseRegistrar.StaleSignature.selector,
+                signedAt,
+                directSetAt
+            )
+        );
+        vm.prank(relayer);
+        registrar.setNameForAddrWithSignature(claim, signature);
+    }
+
     function test_setName_canSetToEmptyString() public {
         string memory name_ = "myname.eth";
 
@@ -376,6 +419,59 @@ contract L2ReverseRegistrarTest is Test {
 
         bytes32 node = _getNode(user1);
         assertEq(registrar.name(node), name_, "Name should be set for caller");
+    }
+
+    function test_setNameForAddr_updatesInceptionForTarget() public {
+        uint256 timestamp = 1_700_000_000;
+        vm.warp(timestamp);
+
+        vm.prank(user1);
+        registrar.setNameForAddr(address(mockOwnableEoa), "myname.eth");
+
+        assertEq(
+            registrar.inceptionOf(address(mockOwnableEoa)),
+            timestamp,
+            "Inception should track target direct write"
+        );
+    }
+
+    function test_setNameForAddr_invalidatesPriorUnusedOwnableSignature() public {
+        string memory signedName = "signed.eth";
+        uint256 signedAt = block.timestamp;
+        uint256[] memory chainIds = _singleChainIdArray();
+
+        bytes32 message = _createNameForOwnableMessage(
+            signedName,
+            address(mockOwnableEoa),
+            user1,
+            chainIds,
+            signedAt
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(user1Pk, message);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        IL2ReverseRegistrar.NameClaim memory claim = IL2ReverseRegistrar.NameClaim({
+            name: signedName,
+            addr: address(mockOwnableEoa),
+            chainIds: chainIds,
+            signedAt: signedAt
+        });
+
+        vm.warp(block.timestamp + 1);
+        uint256 directSetAt = block.timestamp;
+
+        vm.prank(user1);
+        registrar.setNameForAddr(address(mockOwnableEoa), "direct.eth");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                L2ReverseRegistrar.StaleSignature.selector,
+                signedAt,
+                directSetAt
+            )
+        );
+        vm.prank(relayer);
+        registrar.setNameForOwnableWithSignature(claim, user1, signature);
     }
 
     function test_setNameForAddr_revert_callerNotOwnerOfTargetAddress() public {
