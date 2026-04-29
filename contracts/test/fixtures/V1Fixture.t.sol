@@ -220,6 +220,24 @@ contract V1FixtureTest is V1Fixture {
     // BaseRegistrar Quirks
     ////////////////////////////////////////////////////////////////////////
 
+    function test_ethRegistrarV1_gracePeriod() external {
+        (, uint256 tokenIdV1) = registerUnwrapped("test");
+        uint256 expiry = ethRegistrarV1.nameExpires(tokenIdV1);
+        uint64[3] memory ts = [0, gracePeriodV1 >> 1, gracePeriodV1];
+        for (uint256 i; i < ts.length; ++i) {
+            vm.warp(expiry + ts[i]);
+            assertFalse(ethRegistrarV1.available(tokenIdV1), "grace:available");
+            vm.expectRevert();
+            ethRegistrarV1.ownerOf(tokenIdV1);
+        }
+        {
+            vm.warp(expiry + gracePeriodV1 + 1); // after-end
+            assertTrue(ethRegistrarV1.available(tokenIdV1), "after:available");
+            vm.expectRevert();
+            ethRegistrarV1.ownerOf(tokenIdV1);
+        }
+    }
+
     function test_ethRegistrarV1_ownerOf_unregisteredReverts() external {
         vm.expectRevert();
         ethRegistrarV1.ownerOf(0);
