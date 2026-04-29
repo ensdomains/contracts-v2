@@ -24,7 +24,7 @@ const args = parseArgs({
 
 const env = await setupDevnet({
   port: 8545,
-  chainId: parseInt(args.values.chainId ?? "") || undefined,
+  chainId: Number(args.values.chainId) || undefined,
   saveDeployments: true,
   procLog: args.values.procLog,
   extraTime: args.values.testNames ? 86_401 : 60,
