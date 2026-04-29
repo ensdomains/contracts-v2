@@ -44,6 +44,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
         deployV2Fixture();
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         graveyard = new Graveyard(nameWrapper);
+        ethRegistrarV1.addController(address(graveyard));
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
         dummy721 = new MockERC721();

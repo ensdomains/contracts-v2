@@ -13,11 +13,6 @@ import {MigrationControllerFixture, NameCoder} from "./MigrationControllerFixtur
 contract GraveyardTest is MigrationControllerFixture {
     uint256 constant N = 10;
 
-    function setUp() public override {
-        super.setUp();
-        ethRegistrarV1.addController(address(graveyard));
-    }
-
     function test_clear_root() external {
         graveyard.clear(_oneName(NameCoder.encode(""))); // noop
     }
@@ -31,6 +26,17 @@ contract GraveyardTest is MigrationControllerFixture {
         graveyard.clear(_oneName(NameCoder.encode("xyz")));
         vm.expectRevert();
         graveyard.clear(_oneName(NameCoder.encode("test.xyz")));
+    }
+
+    function test_clear_fullyExpired() external {
+        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+
+        vm.warp(ethRegistrarV1.nameExpires(tokenIdV1) + gracePeriodV1 + 1);
+        vm.expectRevert();
+        ethRegistrarV1.ownerOf(tokenIdV1);
+        assertTrue(ethRegistrarV1.available(tokenIdV1), "grace:available");
+
+        graveyard.clear(_oneName(name));
     }
 
     function test_clear_registered_unwrapped() external {

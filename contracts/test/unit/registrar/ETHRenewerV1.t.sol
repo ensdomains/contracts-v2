@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 import {
     INameWrapper,
     CANNOT_APPROVE,
@@ -23,6 +23,11 @@ import {
 } from "~src/registrar/ETHRenewerV1.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
 
+// [gas analysis]
+// * Juggle: 35494
+// * Unwrapped: 43133
+// * Wrapped: 96128
+
 contract ETHRenewerV1Test is MigrationControllerFixture {
     MockWrappedETHRegistrarController wrappedController;
     ETHRenewerV1 renewer;
@@ -32,7 +37,6 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
     string labelLocked = "locked";
     string labelCannotTransfer = "cannot-transfer";
     string labelFrozenApproval = "frozen-approval";
-    string[] labels;
 
     function setUp() public override {
         super.setUp();
@@ -61,13 +65,6 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
             nameWrapper.setFuses(node, uint16(CANNOT_APPROVE));
         }
 
-        labels = new string[](5);
-        labels[0] = labelUnwrapped;
-        labels[1] = labelUnlocked;
-        labels[2] = labelLocked;
-        labels[3] = labelCannotTransfer;
-        labels[4] = labelFrozenApproval;
-
         nameWrapper.setController(ensV1Controller, false); // remove default controller
         nameWrapper.setController(address(wrappedController), true); // add mock wrapped controller
         nameWrapper.renounceOwnership(); // lock it
@@ -86,7 +83,8 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
             "Renewer is BaseRegistrar controller"
         );
 
-        // BaseRegistrar.controllers = [renewer]
+        // BaseRegistrar.owner = renewer
+        // BaseRegistrar.controllers = [graveyard, renewer]
         // NameWrapper.controllers = [wrappedController]
     }
 
@@ -101,16 +99,17 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
         assertEq(renewer.GRACE_PERIOD(), gracePeriodV1, "GRACE_PERIOD");
     }
 
-    function test_expectSync_unregistered() external {
-        assertTrue(ethRegistrarV1.available(LibLabel.id(testLabel)));
+    function test_sync_unregistered() external {
+        uint256 tokenIdV1 = LibLabel.id(testLabel);
+        assertTrue(ethRegistrarV1.available(tokenIdV1));
 
-        assertEq(ethRegistrarV1.nameExpires(LibLabel.id(testLabel)), 0, "v1");
-        assertEq(ethRegistry.getExpiry(LibLabel.id(testLabel)), 0, "v2");
+        assertEq(ethRegistrarV1.nameExpires(tokenIdV1), 0, "v1");
+        assertEq(ethRegistry.getExpiry(tokenIdV1), 0, "v2");
 
         _expectSync(testLabel, false);
     }
 
-    function test_expectSync_migrated() external {
+    function test_sync_migrated() external {
         // register in v2
         ethRegistry.register(
             testLabel,
@@ -124,77 +123,113 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
         _expectSync(testLabel, false);
     }
 
-    function test_expectSync_expiredAfterGrace() external {
-        // fully expire in v1
-        vm.warp(ethRegistrarV1.nameExpires(LibLabel.id(labelUnwrapped)) + gracePeriodV1 + 1);
-        assertTrue(ethRegistrarV1.available(LibLabel.id(labelUnwrapped)));
+    function test_sync_expired() external {
+        uint256 tokenIdV1 = LibLabel.id(labelUnwrapped);
+        uint64 expired = uint64(ethRegistrarV1.nameExpires(tokenIdV1)) + gracePeriodV1 + 1;
+        ethRegistry.renew(tokenIdV1, expired + 1);
+
+        // "forgot to sync" => reserved in v2 but fully expired in v1
+        vm.warp(expired);
+        assertTrue(ethRegistrarV1.available(tokenIdV1), "v1");
+        assertEq(
+            uint8(ethRegistry.getStatus(tokenIdV1)),
+            uint8(IPermissionedRegistry.Status.RESERVED),
+            "v2"
+        );
 
         _expectSync(labelUnwrapped, false);
     }
 
-    function test_expectSync_unwrapped(uint64 grace, bool extend) external {
+    function test_sync_unwrapped(uint64 grace, bool extend) external {
         if (grace > 0) _warpToGrace(labelUnwrapped);
         if (extend) _extendReservation(labelUnwrapped);
         _expectSync(labelUnwrapped, extend);
     }
 
-    function test_expectSync_unlocked(bool grace, bool extend) external {
+    function test_sync_unlocked(bool grace, bool extend) external {
         if (grace) _warpToGrace(labelUnlocked);
         if (extend) _extendReservation(labelUnlocked);
         _expectSync(labelUnlocked, extend);
     }
 
-    function test_expectSync_locked(bool grace, bool extend) external {
+    function test_sync_locked(bool grace, bool extend) external {
         if (grace) _warpToGrace(labelLocked);
         if (extend) _extendReservation(labelLocked);
         _expectSync(labelLocked, extend);
     }
 
-    function test_expectSync_cannotTransfer(bool grace, bool extend) external {
+    function test_sync_cannotTransfer(bool grace, bool extend) external {
         if (grace) _warpToGrace(labelCannotTransfer);
         if (extend) _extendReservation(labelCannotTransfer);
         _expectSync(labelCannotTransfer, extend);
     }
 
-    function test_expectSync_frozenApproval(bool grace, bool extend) external {
+    function test_sync_frozenApproval(bool grace, bool extend) external {
         if (grace) _warpToGrace(labelFrozenApproval);
         if (extend) _extendReservation(labelFrozenApproval);
         _expectSync(labelFrozenApproval, extend);
     }
 
-    function test_expectSync_wtf() external {
-        _warpToGrace(labelFrozenApproval);
-        _extendReservation(labelFrozenApproval);
-        _expectSync(labelFrozenApproval, true);
-    }
-
-    function test_expectSync_batch(uint256) external {
-        string[] memory subset = new string[](labels.length);
+    function test_sync_batch(uint256) external {
+        string[] memory labels = new string[](5);
         uint256 n;
-        for (uint256 i; i < labels.length; ++i) {
-            if (vm.randomBool()) subset[n++] = labels[i];
-        }
+        if (vm.randomBool()) labels[n++] = labelUnwrapped;
+        if (vm.randomBool()) labels[n++] = labelUnlocked;
+        if (vm.randomBool()) labels[n++] = labelLocked;
+        if (vm.randomBool()) labels[n++] = labelCannotTransfer;
+        if (vm.randomBool()) labels[n++] = labelFrozenApproval;
         assembly {
-            mstore(subset, n) // truncate
+            mstore(labels, n) // truncate
         }
 
-        // extend and check
-        State[] memory states = new State[](subset.length);
-        for (uint256 i; i < subset.length; ++i) {
-            string memory label = subset[i];
+        State[] memory states = new State[](labels.length);
+        for (uint256 i; i < labels.length; ++i) {
+            string memory label = labels[i];
             bool extend = vm.randomBool();
             if (extend) _extendReservation(label);
             assertEq(renewer.canSync(label), extend);
             states[i] = _getState(label);
         }
 
-        // sync
-        renewer.sync(subset);
+        renewer.sync(labels);
 
-        // confirm
-        for (uint256 i; i < subset.length; ++i) {
+        for (uint256 i; i < labels.length; ++i) {
             _expectSynced(states[i]);
         }
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Gas
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_gas_juggle() external {
+        vm.startPrank(address(renewer));
+        uint256 g = gasleft();
+        ethRegistrarV1.addController(address(wrappedController));
+        ethRegistrarV1.removeController(address(wrappedController));
+        g -= gasleft();
+        vm.stopPrank();
+        console.log("Gas: %s", g);
+    }
+
+    function test_gas_sync_unwrapped() external {
+        _extendReservation(labelUnwrapped);
+        string[] memory labels = new string[](1);
+        labels[0] = labelUnwrapped;
+        uint256 g = gasleft();
+        renewer.sync(labels);
+        g -= gasleft();
+        console.log("Gas: %s", g);
+    }
+
+    function test_gas_sync_wrapped() external {
+        _extendReservation(labelUnlocked);
+        string[] memory labels = new string[](1);
+        labels[0] = labelUnlocked;
+        uint256 g = gasleft();
+        renewer.sync(labels);
+        g -= gasleft();
+        console.log("Gas: %s", g);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -214,12 +249,13 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
         vm.warp(ethRegistrarV1.nameExpires(tokenIdV1) + vm.randomUint(0, gracePeriodV1 - 1));
         vm.expectRevert();
         ethRegistrarV1.ownerOf(tokenIdV1);
+        assertFalse(ethRegistrarV1.available(tokenIdV1), "grace:available");
     }
 
     function _extendReservation(string memory label) internal {
         uint256 tokenIdV1 = LibLabel.id(label);
         IPermissionedRegistry.State memory state = ethRegistry.getState(tokenIdV1);
-        assertTrue(state.status == IPermissionedRegistry.Status.RESERVED, "reserved");
+        assertEq(uint8(state.status), uint8(IPermissionedRegistry.Status.RESERVED), "reserved");
         ethRegistry.renew(tokenIdV1, state.expiry + uint64(vm.randomUint(1, 1000 days)));
     }
 
@@ -251,9 +287,9 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
     function _expectSync(string memory label, bool expect) internal {
         assertEq(renewer.canSync(label), expect, "canSync");
         State memory state = _getState(label);
-        string[] memory v = new string[](1);
-        v[0] = label;
-        renewer.sync(v);
+        string[] memory labels = new string[](1);
+        labels[0] = label;
+        renewer.sync(labels);
         _expectSynced(state);
     }
 }

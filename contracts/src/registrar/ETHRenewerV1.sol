@@ -32,10 +32,10 @@ contract ETHRenewerV1 {
     /// @notice The ENSv1 `ETHRegistrarController` that is a `NameWrapper` controller.
     IWrappedETHRegistrarController public immutable WRAPPED_CONTROLLER;
 
-    /// @notice The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
+    /// @notice The ENSv2 .eth `PermissionedRegistry`.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
-    /// @notice The ENSv1 `GRACE_PERIOD`, in seconds.
+    /// @notice Same as `BaseRegistrarImplementation.GRACE_PERIOD()`.
     uint64 public immutable GRACE_PERIOD;
 
     /// @dev The ENSv1 `BaseRegistrar` contract.
@@ -48,7 +48,7 @@ contract ETHRenewerV1 {
     /// @notice Initializes WrapperRenewerV1.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param wrappedController The ENSv1 `ETHRegistrarController` that is a `NameWrapper` controller.
-    /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
+    /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry`.
     constructor(
         INameWrapper nameWrapper,
         address wrappedController,
@@ -108,16 +108,19 @@ contract ETHRenewerV1 {
         if (state.status == IPermissionedRegistry.Status.RESERVED) {
             uint64 expiryV2 = state.expiry - GRACE_PERIOD; // remove bonus
             uint64 expiryV1 = uint64(_REGISTRAR_V1.nameExpires(tokenIdV1));
-            if (expiryV2 > expiryV1) {
-                syncDuration = expiryV2 - expiryV1;
-            }
-            if (NAME_WRAPPER.isWrapped(NameCoder.ETH_NODE, bytes32(tokenIdV1))) {
-                (, , uint64 wrappedExpiry) = NAME_WRAPPER.getData(
-                    uint256(NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenIdV1)))
-                );
-                // wrapper expiry contains grace
-                // see: V1Fixture.t.sol: `test_nameWrapper_expiryForETH2LDIncludesGrace()`.
-                syncWrapper = wrappedExpiry < expiryV2 + GRACE_PERIOD;
+            // same as: !BaseRegistrar.available()
+            if (expiryV1 + GRACE_PERIOD >= block.timestamp) {
+                if (expiryV2 > expiryV1) {
+                    syncDuration = expiryV2 - expiryV1;
+                }
+                if (NAME_WRAPPER.isWrapped(NameCoder.ETH_NODE, bytes32(tokenIdV1))) {
+                    (, , uint64 wrappedExpiry) = NAME_WRAPPER.getData(
+                        uint256(NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenIdV1)))
+                    );
+                    // wrapper expiry contains grace
+                    // see: V1Fixture.t.sol: `test_nameWrapper_expiryForETH2LDIncludesGrace()`.
+                    syncWrapper = wrappedExpiry < expiryV2 + GRACE_PERIOD;
+                }
             }
         }
     }
