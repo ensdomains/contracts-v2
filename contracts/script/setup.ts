@@ -228,16 +228,18 @@ export async function setupDevnet({
         client,
       }),
       ETHReverseRegistrar: getContract({
-        // TODO: update to actual reverse registrar when we have it
-        abi: artifacts[
-          "lib/ens-contracts/contracts/reverseRegistrar/L2ReverseRegistrar.sol/L2ReverseRegistrar"
-        ].abi,
-        address: rocketh.get("ETHReverseRegistrar").address,
+        abi: artifacts.ReverseRegistrar.abi,
+        address: rocketh.get("ReverseRegistrar").address,
         client,
       }),
-      ETHReverseResolver: getContract({
-        abi: artifacts.ETHReverseResolver.abi,
-        address: rocketh.get("ETHReverseResolver").address,
+      ReverseRegistrarHCAAdapter: getContract({
+        abi: artifacts.ReverseRegistrarHCAAdapter.abi,
+        address: rocketh.get("ReverseRegistrarHCAAdapter").address,
+        client,
+      }),
+      DefaultReverseRegistrarHCAAdapter: getContract({
+        abi: artifacts.DefaultReverseRegistrarHCAAdapter.abi,
+        address: rocketh.get("DefaultReverseRegistrarHCAAdapter").address,
         client,
       }),
     };
