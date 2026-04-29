@@ -15,12 +15,16 @@ const args = parseArgs({
     testNames: {
       type: "boolean",
     },
+    chainId: {
+      type: "string",
+    },
   },
   strict: true,
 });
 
 const env = await setupDevnet({
   port: 8545,
+  chainId: parseInt(args.values.chainId ?? "") || undefined,
   saveDeployments: true,
   procLog: args.values.procLog,
   extraTime: args.values.testNames ? 86_401 : 60,
