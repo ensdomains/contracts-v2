@@ -198,7 +198,7 @@ export async function setupDevnet({
     });
 
     console.log("Deploying contracts");
-    const deploymentName = "devnet-local";
+    const deploymentName = `devnet-${chainId}`;
     if (saveDeployments) {
       await rm(new URL(`../deployments/${deploymentName}`, import.meta.url), {
         recursive: true,
