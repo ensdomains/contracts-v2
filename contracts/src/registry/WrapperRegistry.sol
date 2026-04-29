@@ -13,6 +13,7 @@ import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 
+import {ApprovedUpgradeGate} from "./ApprovedUpgradeGate.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
@@ -35,12 +36,24 @@ contract WrapperRegistry is
     /// @notice Fallback resolver for ENSv1 resolution.
     address public immutable V1_RESOLVER;
 
+    /// @notice Gate for approved implementation upgrade targets.
+    ApprovedUpgradeGate public immutable UPGRADE_GATE;
+
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev The namehash of this registry.
     bytes32 internal _node;
+
+    ////////////////////////////////////////////////////////////////////////
+    // Errors
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Upgrade target is not approved for `WrapperRegistry` proxies.
+    /// @dev Error selector: `0xf74d7dd0`
+    /// @param implementation The disallowed implementation address.
+    error UpgradeTargetNotApproved(address implementation);
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -52,17 +65,20 @@ contract WrapperRegistry is
     /// @param ensV1Resolver The ENSv1 resolver.
     /// @param hcaFactory The HCA factory.
     /// @param metadataProvider The metadata provider.
+    /// @param upgradeGate The upgrade target allowlist.
     constructor(
         INameWrapper nameWrapper,
         VerifiableFactory verifiableFactory,
         address ensV1Resolver,
         IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadataProvider
+        IRegistryMetadata metadataProvider,
+        ApprovedUpgradeGate upgradeGate
     )
         PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) // no roles are granted
         LockedWrapperReceiver(nameWrapper, verifiableFactory, address(this))
     {
         V1_RESOLVER = ensV1Resolver;
+        UPGRADE_GATE = upgradeGate;
         _disableInitializers();
     }
 
@@ -167,11 +183,13 @@ contract WrapperRegistry is
         return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
     }
 
-    /// @dev Requires `ROLE_UPGRADE` to upgrade.
+    /// @dev Requires `ROLE_UPGRADE` and approval for the target implementation.
     function _authorizeUpgrade(
-        address
-    ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {
-        //
+        address newImplementation
+    ) internal view override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {
+        if (!UPGRADE_GATE.approvedImplementations(newImplementation)) {
+            revert UpgradeTargetNotApproved(newImplementation);
+        }
     }
 
     /// @inheritdoc LockedWrapperReceiver
