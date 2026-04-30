@@ -21,7 +21,7 @@ Signature-based methods use an **inception timestamp** system for replay protect
 1. The signature's `signedAt` timestamp must be **strictly greater than** the current inception for that address
 2. The `signedAt` timestamp must not be in the future (i.e., `signedAt <= block.timestamp`)
 
-When a valid signature is used, the inception is updated to the `signedAt` value. This ensures:
+When a valid signature is used, the inception is updated to the `signedAt` value. Authorized direct updates via `setName()` or `setNameForAddr()` advance the inception to the current block timestamp. This ensures:
 - Each signature can only be used once per chain
 - Newer signatures always supersede older ones
 - Ordering is guaranteed (signatures with older `signedAt` values become invalid once a newer one is used)
