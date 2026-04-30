@@ -18,6 +18,10 @@ export default execute(
     const ensV1Resolver =
       get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
 
+    const approvedUpgradeGate = get<
+      (typeof artifacts.ApprovedUpgradeGate)["abi"]
+    >("ApprovedUpgradeGate");
+
     await deploy("WrapperRegistryImpl", {
       account: deployer,
       artifact: artifacts.WrapperRegistry,
@@ -27,6 +31,7 @@ export default execute(
         ensV1Resolver.address,
         hcaFactory.address,
         registryMetadata.address,
+        approvedUpgradeGate.address,
       ],
     });
   },
@@ -38,6 +43,7 @@ export default execute(
       "SimpleRegistryMetadata",
       "VerifiableFactory",
       "ENSV1Resolver",
+      "ApprovedUpgradeGate",
     ],
   },
 );

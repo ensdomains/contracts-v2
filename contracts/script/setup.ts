@@ -21,8 +21,8 @@ import {
   testActions,
   http,
   zeroAddress,
+  defineChain,
 } from "viem";
-import { mainnet } from "viem/chains";
 import { mnemonicToAccount } from "viem/accounts";
 
 import {
@@ -52,6 +52,7 @@ function ansi(c: any, s: any) {
 
 export async function setupDevnet({
   port = 0,
+  chainId = 31337,
   mnemonic = "test test test test test test test test test test test junk",
   saveDeployments = false,
   quiet = !saveDeployments,
@@ -59,6 +60,7 @@ export async function setupDevnet({
   extraTime = 0,
 }: {
   port?: number;
+  chainId?: number;
   mnemonic?: string;
   saveDeployments?: boolean;
   quiet?: boolean;
@@ -88,7 +90,7 @@ export async function setupDevnet({
     const anvilInstance = createAnvil({
       accounts: NAMED_ACCOUNTS.length,
       mnemonic,
-      chainId: mainnet.id,
+      chainId,
       port,
       ...(extraTime
         ? { timestamp: Math.floor(Date.now() / 1000) - extraTime }
@@ -105,14 +107,6 @@ export async function setupDevnet({
     await anvilInstance.start();
     finalizers.push(() => anvilInstance.stop());
 
-    // parse `host:port` from the anvil boot message
-    const hostPort = (() => {
-      const message = anvilInstance.messages.get().join("\n").trim();
-      const match = message.match(/Listening on (.*)$/);
-      if (!match) throw new Error(`expected host: ${message}`);
-      return match[1];
-    })();
-
     let showConsole = true;
     const log = (chunk: string) => {
       // ref: https://github.com/adraffy/blocksmith.js/blob/main/src/Foundry.js#L991
@@ -124,7 +118,7 @@ export async function setupDevnet({
         // "2025-10-09T16:31:48.449325Z  INFO node::user:"
         // "2025-10-09T16:31:48.451639Z  WARN backend: Skipping..."
         const match = line.match(
-          /^.{27}  ([A-Z]+) (\w+(?:|::\w+)):(?:$| (.*)$)/,
+          /^.{27} {2}([A-Z]+) (\w+(?:|::\w+)):(?:$| (.*)$)/,
         );
         if (match) {
           const [, , kind, action] = match;
@@ -145,7 +139,32 @@ export async function setupDevnet({
     anvilInstance.on("message", log);
     finalizers.push(() => anvilInstance.off("message", log));
 
-    const transport = http(`http://${hostPort}`, {
+    // parse `host:port` from the anvil boot message
+    const hostPort = (() => {
+      const message = anvilInstance.messages.get().join("\n").trim();
+      const match = message.match(/Listening on (.*)$/);
+      if (!match) throw new Error(`expected host: ${message}`);
+      return match[1];
+    })();
+
+    const httpURL = `http://${hostPort}`;
+    const chain = defineChain({
+      id: chainId,
+      name: "ENSv2",
+      nativeCurrency: {
+        decimals: 18,
+        name: "Ether",
+        symbol: "ETH",
+      },
+      rpcUrls: {
+        default: {
+          http: [httpURL],
+          webSocket: [`ws://${hostPort}`],
+        },
+      },
+    });
+
+    const transport = http(httpURL, {
       retryCount: 1,
       timeout: 10000,
     });
@@ -153,7 +172,7 @@ export async function setupDevnet({
     function createClient(account: Account) {
       return createWalletClient({
         transport,
-        chain: mainnet,
+        chain,
         account,
         pollingInterval: 50,
         cacheTime: 0, // must be 0 due to client caching
@@ -179,7 +198,7 @@ export async function setupDevnet({
     });
 
     console.log("Deploying contracts");
-    const deploymentName = "devnet-local";
+    const deploymentName = `devnet-${chainId}`;
     if (saveDeployments) {
       await rm(new URL(`../deployments/${deploymentName}`, import.meta.url), {
         recursive: true,
@@ -190,7 +209,7 @@ export async function setupDevnet({
     const rocketh = await executeDeployScripts(
       resolveConfig({
         network: {
-          nodeUrl: `http://${hostPort}`,
+          nodeUrl: httpURL,
           name: deploymentName,
           tags: [
             "v2",
