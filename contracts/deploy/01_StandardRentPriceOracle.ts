@@ -2,14 +2,13 @@ import { artifacts, execute } from "@rocketh";
 
 export default execute(
   async ({ deploy, read, get, namedAccounts: { deployer, owner } }) => {
-    const ethRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
-
     type MockERC20 =
       (typeof artifacts)["test/mocks/MockERC20.sol/MockERC20"]["abi"];
     const mockUSDC = get<MockERC20>("MockUSDC");
     const mockDAI = get<MockERC20>("MockDAI");
     const paymentTokens = [mockUSDC, mockDAI];
+
+    const BENEFICIARY = owner || deployer;
 
     // see: StandardPricing.sol
     const SEC_PER_YEAR = 31_557_600n;
@@ -19,6 +18,7 @@ export default execute(
     const PREMIUM_PRICE_INITIAL = PRICE_SCALE * 100_000_000n;
     const PREMIUM_HALVING_PERIOD = SEC_PER_DAY;
     const PREMIUM_PERIOD = SEC_PER_DAY * 21n;
+    const MIN_REGISTER_DURATION = SEC_PER_DAY * 28n;
 
     const baseRatePerCp = [
       0n,
@@ -84,7 +84,8 @@ export default execute(
       artifact: artifacts.StandardRentPriceOracle,
       args: [
         owner,
-        ethRegistry.address,
+        BENEFICIARY,
+        MIN_REGISTER_DURATION,
         baseRatePerCp,
         discountPoints.map(([t, value]) => ({ t, value })),
         PREMIUM_PRICE_INITIAL,
@@ -96,6 +97,6 @@ export default execute(
   },
   {
     tags: ["StandardRentPriceOracle", "v2"],
-    dependencies: ["MockTokens", "ETHRegistry"],
+    dependencies: ["MockTokens"],
   },
 );

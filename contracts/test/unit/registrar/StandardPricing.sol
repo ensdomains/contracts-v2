@@ -12,7 +12,9 @@ library StandardPricing {
 
     uint64 constant MIN_COMMITMENT_AGE = 1 minutes;
     uint64 constant MAX_COMMITMENT_AGE = 1 days;
-    uint64 constant MIN_REGISTER_DURATION = 28 days;
+    uint64 constant GRACE_PERIOD = 28 days;
+
+    uint64 constant MIN_REGISTER_DURATION = GRACE_PERIOD;
 
     uint8 constant PRICE_DECIMALS = 12;
 
@@ -62,9 +64,9 @@ library StandardPricing {
     function ratioFromStable(MockERC20 token) internal view returns (PaymentRatio memory) {
         uint8 d = token.decimals();
         if (d > PRICE_DECIMALS) {
-            return PaymentRatio(token, uint128(10) ** (d - PRICE_DECIMALS), 1);
+            return PaymentRatio(address(token), uint128(10) ** (d - PRICE_DECIMALS), 1);
         } else {
-            return PaymentRatio(token, 1, uint128(10) ** (PRICE_DECIMALS - d));
+            return PaymentRatio(address(token), 1, uint128(10) ** (PRICE_DECIMALS - d));
         }
     }
 }

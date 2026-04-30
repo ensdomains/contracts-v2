@@ -25,6 +25,7 @@ import {V2Fixture, RegistryRolesLib} from "~test/fixtures/V2Fixture.sol";
 // * Unlocked: 183292 (+4K)
 // * Locked: 665863 (+7K)
 
+/// @dev Reusable testing fixture for migration.
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;
     ENSV2Resolver ensV2Resolver;
@@ -39,17 +40,18 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     address friend = makeAddr("friend");
     uint64 premigrationBonusDuration;
 
-    function setUp() public virtual {
+    function deployMigrationControllerFixture() public {
         deployV1Fixture();
         deployV2Fixture();
+
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         graveyard = new Graveyard(nameWrapper);
-        ethRegistrarV1.addController(address(graveyard));
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();
-        ethRegistrarV1.setResolver(address(ensV2Resolver));
+        baseRegistrar.addController(address(graveyard));
+        baseRegistrar.setResolver(address(ensV2Resolver));
         premigrationBonusDuration = gracePeriodV1;
     }
 
@@ -68,7 +70,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
                 IRegistry(address(0)),
                 address(ensV1Resolver), // fallback
                 0,
-                uint64(ethRegistrarV1.nameExpires(tokenId)) + premigrationBonusDuration
+                uint64(baseRegistrar.nameExpires(tokenId)) + premigrationBonusDuration
             );
         }
     }

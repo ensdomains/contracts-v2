@@ -4,11 +4,11 @@ pragma solidity >=0.8.13;
 import {StringUtils} from "@ens/contracts/utils/StringUtils.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {
+    SafeERC20
+} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-
-import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
-import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 import {LibHalving} from "./libraries/LibHalving.sol";
@@ -23,7 +23,7 @@ struct DiscountPoint {
 
 /// @dev Initialization-time structure pairing a payment token with its exchange rate (numerator/denominator).
 struct PaymentRatio {
-    IERC20 token;
+    address token;
     uint128 numer;
     uint128 denom;
 }
@@ -55,15 +55,14 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Immutables
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice The permissioned registry used to look up name state (expiry, latest owner) for premium and discount calculations.
-    IPermissionedRegistry public immutable REGISTRY;
-
-    ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Minimum register duration, in seconds.
+    uint64 public minRegisterDuration;
+
+    /// @notice Address that receives payments.
+    address public beneficiary;
 
     /// @notice Starting value of the exponential decay premium for recently expired names, in base pricing units.
     uint256 public premiumPriceInitial;
@@ -75,31 +74,47 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     uint64 public premiumPeriod;
 
     /// @dev Per-second base rates indexed by codepoint count; `_baseRatePerCp[i]` prices labels with `i+1` codepoints.
-    uint256[] private _baseRatePerCp;
+    uint256[] internal _baseRatePerCp;
 
     /// @dev Ordered segments of the piecewise-linear duration discount function.
-    DiscountPoint[] private _discountPoints;
+    DiscountPoint[] internal _discountPoints;
 
     /// @dev Exchange rates for each accepted payment token, mapping token address to its numerator/denominator ratio.
-    mapping(IERC20 tokenAddress => Ratio ratio) private _paymentRatios;
+    mapping(address paymentToken => Ratio ratio) internal _paymentRatios;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice `paymentToken` is now supported.
+    /// @param paymentToken The payment token added.
+    event PaymentTokenAdded(address indexed paymentToken);
+
+    /// @notice `paymentToken` is no longer supported.
+    /// @param paymentToken The payment token removed.
+    event PaymentTokenRemoved(address indexed paymentToken);
+
+    /// @notice `minRegisterDuration` was changed.
+    /// @param duration The new duration.
+    event MinimumRegisterDurationUpdated(uint64 duration);
+
+    /// @notice `beneficiary` was changed.
+    /// @param beneficiary The new beneficiary address.
+    event BeneficiaryUpdated(address indexed beneficiary);
+
     /// @notice Discount points were changed.
     /// @param points The new discount points.
-    event DiscountPointsChanged(DiscountPoint[] points);
+    event DiscountPointsUpdated(DiscountPoint[] points);
 
     /// @notice Base rates were changed.
     /// @param ratePerCp The new base rates.
-    event BaseRatesChanged(uint256[] ratePerCp);
+    event BaseRatesUpdated(uint256[] ratePerCp);
 
     /// @notice Premium pricing was changed.
     /// @param initialPrice The new initial price.
     /// @param halvingPeriod The new halving period.
     /// @param period The new period.
-    event PremiumPricingChanged(
+    event PremiumPricingUpdated(
         uint256 indexed initialPrice,
         uint64 indexed halvingPeriod,
         uint64 indexed period
@@ -121,37 +136,46 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param owner_ The owner of the contract.
-    /// @param registry The permissioned registry.
-    /// @param baseRatePerCp The initial base rates, in base units per second.
-    /// @param discountPoints The initial discount points.
-    /// @param premiumPriceInitial_ The initial price, in base units.
-    /// @param premiumHalvingPeriod_ The initial premium halving period, in seconds.
-    /// @param premiumPeriod_ The initial premium period, in seconds.
-    /// @param paymentRatios The initial payment ratios, mapping payment token to its numerator/denominator ratio.
+    /// @notice Initializes StandardRentPriceOracle.
+    /// @param owner_ Owner of the contract.
+    /// @param beneficiary_ Address that receives payments.
+    /// @param minRegisterDuration_ Minimum register duration, in seconds.
+    /// @param baseRatePerCp Base rates, in base units per second.
+    /// @param discountPoints Discount points.
+    /// @param premiumPriceInitial_ Premium pnitial price, in base units.
+    /// @param premiumHalvingPeriod_ Premium halving period, in seconds.
+    /// @param premiumPeriod_ Premium period, in seconds.
+    /// @param paymentRatios List of payment tokens with conversion ratios.
     constructor(
         address owner_,
-        IPermissionedRegistry registry,
+        address beneficiary_,
+        uint64 minRegisterDuration_,
         uint256[] memory baseRatePerCp,
         DiscountPoint[] memory discountPoints,
         uint256 premiumPriceInitial_,
         uint64 premiumHalvingPeriod_,
         uint64 premiumPeriod_,
         PaymentRatio[] memory paymentRatios
-    )
-        Ownable(owner_)
-    {
-        REGISTRY = registry;
+    ) Ownable(owner_) {
+        beneficiary = beneficiary_;
+        emit BeneficiaryUpdated(beneficiary_);
+
+        minRegisterDuration = minRegisterDuration_;
+        emit MinimumRegisterDurationUpdated(minRegisterDuration_);
 
         _baseRatePerCp = baseRatePerCp;
-        emit BaseRatesChanged(baseRatePerCp);
+        emit BaseRatesUpdated(baseRatePerCp);
 
         _setDiscountPoints(discountPoints);
 
         premiumPriceInitial = premiumPriceInitial_;
         premiumHalvingPeriod = premiumHalvingPeriod_;
         premiumPeriod = premiumPeriod_;
-        emit PremiumPricingChanged(premiumPriceInitial_, premiumHalvingPeriod_, premiumPeriod_);
+        emit PremiumPricingUpdated(
+            premiumPriceInitial_,
+            premiumHalvingPeriod_,
+            premiumPeriod_
+        );
 
         for (uint256 i; i < paymentRatios.length; ++i) {
             PaymentRatio memory x = paymentRatios[i];
@@ -164,7 +188,9 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     }
 
     /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view override returns (bool) {
         return
             interfaceId == type(IRentPriceOracle).interfaceId ||
             super.supportsInterface(interfaceId);
@@ -174,17 +200,31 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Update the beneficiary address.
+    /// @param beneficiary_ The new beneficiary address.
+    function updateBeneficiary(address beneficiary_) external onlyOwner {
+        beneficiary = beneficiary_;
+        emit BeneficiaryUpdated(beneficiary_);
+    }
+
+    /// @notice Update the minimum register duration.
+    /// @param duration The new duration.
+    function updateMinimumRegisterDuration(uint64 duration) external onlyOwner {
+        minRegisterDuration = duration;
+        emit MinimumRegisterDurationUpdated(duration);
+    }
+
     /// @notice Update base rates per codepoint.
     /// @dev - `ratePerCp[i]` corresponds to `i+1` codepoints.
     /// - Larger lengths are priced by `ratePerCp[-1]`.
     /// - Use rate of `0` to disable a specific length.
     /// - Use empty array to disable all registrations.
-    /// - Emits `BaseRatesChanged`.
+    /// - Emits `BaseRatesUpdated`.
     ///
     /// @param ratePerCp The base rates, in base units per second.
     function updateBaseRates(uint256[] calldata ratePerCp) external onlyOwner {
         _baseRatePerCp = ratePerCp;
-        emit BaseRatesChanged(ratePerCp);
+        emit BaseRatesUpdated(ratePerCp);
     }
 
     /// @notice Update the discount function.
@@ -197,33 +237,36 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     ///   * Point: (1yr, 10%) == (1 years, type(uint128).max / 10)
     /// - Final discount is derived from the weighted average over the intervals.
     /// - Use empty array to disable.
-    /// - Emits `DiscountPointsChanged`.
+    /// - Emits `DiscountPointsUpdated`.
     ///
     /// @param points The new discount points.
-    function updateDiscountPoints(DiscountPoint[] calldata points) external onlyOwner {
+    function updateDiscountPoints(
+        DiscountPoint[] calldata points
+    ) external onlyOwner {
         _setDiscountPoints(points);
     }
 
     /// @notice Update premium pricing function.
     /// @dev Notes:
     /// - Use `initialPrice = 0` to disable.
-    /// - Use `premiumPriceAfter(0)` to get exact starting price.
-    /// - `premiumPriceAfter(halvingPeriod) ~= premiumPriceAfter(0) / 2`.
-    /// - `premiumPriceAfter(halvingPeriod * x) ~= premiumPriceAfter(0) / 2^x`.
-    /// - `premiumPriceAfter(period) = 0`.
-    /// - Emits `PremiumPricingChanged`.
+    /// - Use `getPremiumPriceAfter(0)` to get exact starting price.
+    /// - `getPremiumPriceAfter(halvingPeriod) ~= getPremiumPriceAfter(0) / 2`.
+    /// - `getPremiumPriceAfter(halvingPeriod * x) ~= getPremiumPriceAfter(0) / 2^x`.
+    /// - `getPremiumPriceAfter(period) = 0`.
+    /// - Emits `PremiumPricingUpdated`.
     ///
     /// @param initialPrice The initial price, in base units.
     /// @param halvingPeriod Duration until the price is reduced in half.
     /// @param period Number of seconds until the price is reduced to 0.
-    function updatePremiumPricing(uint256 initialPrice, uint64 halvingPeriod, uint64 period)
-        external
-        onlyOwner
-    {
+    function updatePremiumPricing(
+        uint256 initialPrice,
+        uint64 halvingPeriod,
+        uint64 period
+    ) external onlyOwner {
         premiumPriceInitial = initialPrice;
         premiumHalvingPeriod = halvingPeriod;
         premiumPeriod = period;
-        emit PremiumPricingChanged(initialPrice, halvingPeriod, period);
+        emit PremiumPricingUpdated(initialPrice, halvingPeriod, period);
     }
 
     /// @notice Update `paymentToken` support and/or exchange rate.
@@ -236,23 +279,38 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @param paymentToken The payment token.
     /// @param numer The numerator of the exchange rate.
     /// @param denom The denominator of the exchange rate.
-    function updatePaymentToken(IERC20 paymentToken, uint128 numer, uint128 denom)
-        external
-        onlyOwner
-    {
-        bool active = isPaymentToken(paymentToken);
+    function updatePaymentToken(
+        address paymentToken,
+        uint128 numer,
+        uint128 denom
+    ) external onlyOwner {
+        Ratio memory ratio = _paymentRatios[paymentToken];
         if (denom > 0) {
             if (numer == 0) {
                 revert InvalidRatio();
             }
-            _paymentRatios[paymentToken] = Ratio(numer, denom);
-            if (!active) {
+            if (ratio.denom == 0) {
                 emit PaymentTokenAdded(paymentToken);
             }
-        } else if (active) {
+            _paymentRatios[paymentToken] = Ratio(numer, denom);
+        } else if (ratio.denom > 0) {
             delete _paymentRatios[paymentToken];
             emit PaymentTokenRemoved(paymentToken);
         }
+    }
+
+    /// @inheritdoc IRentPriceOracle
+    function pay(
+        address from,
+        address paymentToken,
+        uint256 amount
+    ) external payable {
+        SafeERC20.safeTransferFrom(
+            IERC20(paymentToken),
+            from,
+            beneficiary,
+            amount
+        ); // reverts if payment failed
     }
 
     /// @notice Returns all base rates, in base units per second.
@@ -261,33 +319,87 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     }
 
     /// @notice Returns all discount function points.
-    function getDiscountPoints() external view returns (DiscountPoint[] memory) {
+    function getDiscountPoints()
+        external
+        view
+        returns (DiscountPoint[] memory)
+    {
         return _discountPoints;
     }
 
-    /// @inheritdoc IRentPriceOracle
-    /// @notice Does not check if normalized.
+    /// @notice Check if a `label` is valid. Does not check if normalized.
+    /// @param label The name to check.
+    /// @return `true` if the `label` is valid.
     function isValid(string calldata label) external view returns (bool) {
-        return baseRate(label) > 0;
+        return getBasePrice(label, 1) > 0;
     }
 
-    /// @inheritdoc IRentPriceOracle
-    function isPaymentToken(IERC20 paymentToken) public view returns (bool) {
+    /// @notice Get numerator/denominator for `paymentToken`.
+    /// @param paymentToken The payment token.
+    /// @return numer The numerator of the exchange rate.
+    /// @return denom The denominator of the exchange rate.
+    function getPaymentTokenRatio(
+        address paymentToken
+    ) external view returns (uint128 numer, uint128 denom) {
+        Ratio storage ratio = _paymentRatios[paymentToken];
+        return (ratio.numer, ratio.denom);
+    }
+
+    /// @notice Check if `paymentToken` is supported for payment.
+    /// @param paymentToken The payment token.
+    /// @return `true` if `paymentToken` is supported.
+    function isPaymentToken(address paymentToken) external view returns (bool) {
         return _paymentRatios[paymentToken].denom > 0;
     }
 
-    /// @notice Get base rate to register or renew `label` for 1 second.
+    /// @inheritdoc IRentPriceOracle
+    function getRegisterPrice(
+        string calldata label,
+        uint64 available,
+        uint64 duration,
+        address paymentToken
+    ) external view returns (uint256 base, uint256 premium) {
+        _requireMinimumDuration(duration, minRegisterDuration);
+        Ratio memory ratio = _requirePaymentToken(paymentToken);
+        base = _requireBasePrice(label, duration);
+        premium = getPremiumPriceAfter(available);
+        if (premium > 0) {
+            base += premium; // total
+            premium = _toAmount(premium, ratio);
+        }
+        base = _toAmount(base, ratio) - premium; // ensure: f(a+b) - f(a) == f(b)
+    }
+
+    /// @inheritdoc IRentPriceOracle
+    function getRenewPrice(
+        string calldata label,
+        uint64 /*expiry*/,
+        uint64 duration,
+        address paymentToken
+    ) external view returns (uint256) {
+        _requireMinimumDuration(duration, 1);
+        return
+            _toAmount(
+                _requireBasePrice(label, duration),
+                _requirePaymentToken(paymentToken)
+            );
+    }
+
+    /// @notice Get base price to register or renew `label` for `duration` seconds.
     /// @param label The name to price.
-    /// @return The base rate or 0 if not valid, in base units.
-    function baseRate(string memory label) public view returns (uint256) {
+    /// @param duration The duration, in seconds.
+    /// @return The base price or 0 if not valid, in base units.
+    function getBasePrice(
+        string calldata label,
+        uint64 duration
+    ) public view returns (uint256) {
         uint256 len = bytes(label).length;
-        if (len == 0 || len > 255)
-            return 0; // too long or too short
+        if (len == 0 || len > 255) return 0; // too long or too short
         uint256 nbr = _baseRatePerCp.length;
-        if (nbr == 0)
-            return 0; // no base rates
-        uint256 ncp = StringUtils.strlen(label);
-        return _baseRatePerCp[(ncp > nbr ? nbr : ncp) - 1];
+        if (nbr == 0) return 0; // no base rates
+        uint256 ncp = getLength(label);
+        uint256 rate = _baseRatePerCp[(ncp > nbr ? nbr : ncp) - 1];
+        return applyDiscount(rate * duration, duration);
     }
 
     /// @notice Compute integral of discount function for `duration`.
@@ -296,8 +408,7 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @return Integral of discount function over `[0, duration)`.
     function integratedDiscount(uint64 duration) public view returns (uint256) {
         uint256 n = _discountPoints.length;
-        if (n == 0)
-            return 0;
+        if (n == 0) return 0;
         uint256 acc;
         uint256 sum;
         for (uint256 i; i < n; ++i) {
@@ -312,58 +423,49 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         return acc + (duration * acc + sum - 1) / sum;
     }
 
-    /// @notice Get premium price for an expiry relative to now.
-    /// @param expiry The expiry time, in seconds.
-    /// @return The premium price, in base units.
-    function premiumPrice(uint64 expiry) public view returns (uint256) {
-        uint64 t = uint64(block.timestamp);
-        return t >= expiry ? premiumPriceAfter(t - expiry) : 0;
-    }
-
     /// @notice Get premium price for a duration after expiry.
     /// @dev Defined over `[0, premiumPeriod)`.
     /// @param duration The time after expiration, in seconds.
     /// @return The premium price, in base units.
-    function premiumPriceAfter(uint64 duration) public view returns (uint256) {
-        if (duration >= premiumPeriod)
-            return 0;
+    function getPremiumPriceAfter(
+        uint64 duration
+    ) public view returns (uint256) {
+        if (duration >= premiumPeriod) return 0;
         return
-            LibHalving.halving(premiumPriceInitial, premiumHalvingPeriod, duration) -
-            LibHalving.halving(premiumPriceInitial, premiumHalvingPeriod, premiumPeriod);
+            LibHalving.halving(
+                premiumPriceInitial,
+                premiumHalvingPeriod,
+                duration
+            ) -
+            LibHalving.halving(
+                premiumPriceInitial,
+                premiumHalvingPeriod,
+                premiumPeriod
+            );
     }
 
-    /// @inheritdoc IRentPriceOracle
-    function rentPrice(string memory label, address owner, uint64 duration, IERC20 paymentToken)
-        public
-        view
-        returns (uint256 base, uint256 premium)
-    {
-        Ratio memory ratio = _paymentRatios[paymentToken];
-        if (ratio.denom == 0) {
-            revert PaymentTokenNotSupported(paymentToken);
-        }
-        uint256 baseUnits = baseRate(label) * duration;
-        if (baseUnits == 0) {
-            revert NotValid(label);
-        }
-        IPermissionedRegistry.State memory state = REGISTRY.getState(LibLabel.id(label));
-        uint64 t = state.expiry > block.timestamp ? state.expiry - uint64(block.timestamp) : 0;
-        baseUnits -= Math.mulDiv(
-            baseUnits,
-            integratedDiscount(t + duration) - integratedDiscount(t),
-            uint256(type(uint128).max) * duration
-        );
-        uint256 premiumUnits;
-        // prior owner pays no premium
-        // use null owner to exclude premium for estimation
-        if (owner != address(0) && owner != state.latestOwner) {
-            premiumUnits = premiumPrice(state.expiry);
-        }
-        // reverts on overflow
-        premium = Math.mulDiv(premiumUnits, ratio.numer, ratio.denom);
-        base =
-            Math.mulDiv(baseUnits + premiumUnits, ratio.numer, ratio.denom, Math.Rounding.Ceil) -
-            premium; // ensure: f(a+b) - f(a) == f(b)
+    /// @notice Apply duration-based discount percentage.
+    /// @param value An arbitrary value.
+    /// @param duration The duration, in seconds.
+    /// @return `value` reduced by discount percentage.
+    function applyDiscount(
+        uint256 value,
+        uint64 duration
+    ) public view returns (uint256) {
+        return
+            value -
+            Math.mulDiv(
+                value,
+                integratedDiscount(duration),
+                uint256(type(uint128).max) * duration
+            );
+    }
+
+    /// @notice Check length of a name.
+    /// @param label The name to check.
+    /// @return The number of Unicode codepoints.
+    function getLength(string calldata label) public pure returns (uint256) {
+        return StringUtils.strlen(label);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -379,6 +481,50 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
             }
             _discountPoints.push(points[i]);
         }
-        emit DiscountPointsChanged(points);
+        emit DiscountPointsUpdated(points);
+    }
+
+    /// @dev Compute `rate * duration` and apply discount.
+    function _requireBasePrice(
+        string calldata label,
+        uint64 duration
+    ) internal view returns (uint256 rate) {
+        rate = getBasePrice(label, duration);
+        if (rate == 0) {
+            revert NotValid(label);
+        }
+    }
+
+    /// @dev Ensure `paymentToken` is supported.
+    function _requirePaymentToken(
+        address paymentToken
+    ) internal view returns (Ratio memory ratio) {
+        ratio = _paymentRatios[paymentToken];
+        if (ratio.denom == 0) {
+            revert PaymentTokenNotSupported(paymentToken);
+        }
+    }
+
+    /// @dev Ensure `dur >= max`.
+    function _requireMinimumDuration(uint64 dur, uint64 min) internal pure {
+        if (dur < min) {
+            revert DurationTooShort(dur, min);
+        }
+    }
+
+    /// @dev Convert units to price.
+    function _toAmount(
+        uint256 units,
+        Ratio memory ratio
+    ) internal pure returns (uint256) {
+        return
+            ratio.numer == ratio.denom
+                ? units
+                : Math.mulDiv(
+                    units,
+                    ratio.numer,
+                    ratio.denom,
+                    Math.Rounding.Ceil
+                );
     }
 }

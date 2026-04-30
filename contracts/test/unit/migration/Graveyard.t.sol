@@ -8,10 +8,14 @@ import {
     PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 
-import {MigrationControllerFixture, NameCoder} from "./MigrationControllerFixture.sol";
+import {MigrationControllerFixture, NameCoder} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract GraveyardTest is MigrationControllerFixture {
     uint256 constant N = 10;
+
+    function setUp() external {
+        deployMigrationControllerFixture();
+    }
 
     function test_clear_root() external {
         graveyard.clear(_oneName(NameCoder.encode(""))); // noop
@@ -31,10 +35,10 @@ contract GraveyardTest is MigrationControllerFixture {
     function test_clear_fullyExpired() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
 
-        vm.warp(ethRegistrarV1.nameExpires(tokenIdV1) + gracePeriodV1 + 1);
+        vm.warp(baseRegistrar.nameExpires(tokenIdV1) + gracePeriodV1 + 1);
         vm.expectRevert();
-        ethRegistrarV1.ownerOf(tokenIdV1);
-        assertTrue(ethRegistrarV1.available(tokenIdV1), "grace:available");
+        baseRegistrar.ownerOf(tokenIdV1);
+        assertTrue(baseRegistrar.available(tokenIdV1), "grace:available");
 
         graveyard.clear(_oneName(name));
     }
@@ -325,7 +329,7 @@ contract GraveyardTest is MigrationControllerFixture {
                 0 // ttl
             );
             vm.prank(owner);
-            ethRegistrarV1.safeTransferFrom(owner, address(graveyard), uint256(labelHash));
+            baseRegistrar.safeTransferFrom(owner, address(graveyard), uint256(labelHash));
         }
     }
 
@@ -333,7 +337,7 @@ contract GraveyardTest is MigrationControllerFixture {
     function _simulateExpiry(bytes memory name) internal {
         (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
         if (NameCoder.namehash(name, offset) == NameCoder.ETH_NODE) {
-            vm.warp(ethRegistrarV1.nameExpires(uint256(labelHash)) + gracePeriodV1 + 1);
+            vm.warp(baseRegistrar.nameExpires(uint256(labelHash)) + gracePeriodV1 + 1);
         } else {
             (address owner, , uint64 expiry) =
                 nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));

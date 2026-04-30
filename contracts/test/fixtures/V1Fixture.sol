@@ -16,7 +16,7 @@ import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol"
 /// @dev Reusable testing fixture for ENSv1.
 contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     ENS registryV1;
-    BaseRegistrarImplementation ethRegistrarV1;
+    BaseRegistrarImplementation baseRegistrar;
     NameWrapper nameWrapper;
 
     uint64 gracePeriodV1;
@@ -26,14 +26,14 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
 
     function deployV1Fixture() public {
         registryV1 = new ENSRegistry();
-        ethRegistrarV1 = new BaseRegistrarImplementation(registryV1, NameCoder.ETH_NODE);
-        ethRegistrarV1.addController(ensV1Controller);
-        gracePeriodV1 = uint64(ethRegistrarV1.GRACE_PERIOD());
-        _claimNodes(NameCoder.encode("eth"), 0, address(ethRegistrarV1));
+        baseRegistrar = new BaseRegistrarImplementation(registryV1, NameCoder.ETH_NODE);
+        baseRegistrar.addController(ensV1Controller);
+        gracePeriodV1 = uint64(baseRegistrar.GRACE_PERIOD());
+        _claimNodes(NameCoder.encode("eth"), 0, address(baseRegistrar));
         _claimNodes(NameCoder.encode("addr.reverse"), 0, address(this)); // see: fake ReverseClaimer
-        nameWrapper = new NameWrapper(registryV1, ethRegistrarV1, IMetadataService(address(0)));
+        nameWrapper = new NameWrapper(registryV1, baseRegistrar, IMetadataService(address(0)));
         nameWrapper.setController(ensV1Controller, true);
-        ethRegistrarV1.addController(address(nameWrapper));
+        baseRegistrar.addController(address(nameWrapper));
         vm.warp(gracePeriodV1 + 1); // avoid timestamp issues
     }
 
@@ -63,7 +63,7 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         name = NameCoder.ethName(label);
         tokenId = uint256(keccak256(bytes(label)));
         vm.prank(ensV1Controller);
-        ethRegistrarV1.register(tokenId, user, testDuration);
+        baseRegistrar.register(tokenId, user, testDuration);
     }
 
     function registerWrappedETH2LD(string memory label, uint32 ownerFuses)
@@ -72,9 +72,9 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     {
         uint256 tokenId;
         (name, tokenId) = registerUnwrapped(label);
-        address owner = ethRegistrarV1.ownerOf(tokenId);
+        address owner = baseRegistrar.ownerOf(tokenId);
         vm.prank(owner);
-        ethRegistrarV1.setApprovalForAll(address(nameWrapper), true);
+        baseRegistrar.setApprovalForAll(address(nameWrapper), true);
         vm.prank(owner);
         nameWrapper.wrapETH2LD(label, owner, uint16(ownerFuses), address(0));
     }

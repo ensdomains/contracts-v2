@@ -66,16 +66,18 @@ import {
 import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
 import {
     MigrationControllerFixture
-} from "~test/unit/migration/MigrationControllerFixture.sol";
+} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
     ApprovedUpgradeGate approvedUpgradeGate;
     WrapperRegistry wrapperRegistryImpl;
 
-    function setUp() public override {
-        super.setUp();
+    function setUp() external {
+        deployMigrationControllerFixture();
+
         approvedUpgradeGate = new ApprovedUpgradeGate(address(this));
+
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
         wrapperRegistryImpl = new WrapperRegistry(
@@ -88,6 +90,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             approvedUpgradeGate,
             labelStore
         );
+
         migrationController = new LockedMigrationController(
             nameWrapper,
             address(graveyard),
@@ -95,11 +98,12 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             verifiableFactory,
             address(wrapperRegistryImpl)
         );
+
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
             address(migrationController)
         );
-        ethRegistrarV1.setResolver(address(ensV2Resolver));
+        baseRegistrar.setResolver(address(ensV2Resolver));
     }
 
     function test_constructor_controller() external view {
@@ -478,7 +482,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(migrationController),
             salt
         );
-        uint64 expectedExpiry = uint64(ethRegistrarV1.nameExpires(tokenIdV1)) +
+        uint64 expectedExpiry = uint64(baseRegistrar.nameExpires(tokenIdV1)) +
             premigrationBonusDuration;
         vm.expectEmit();
         emit IERC1155.TransferSingle(

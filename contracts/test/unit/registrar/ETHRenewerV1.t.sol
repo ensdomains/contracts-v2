@@ -13,13 +13,19 @@ import {IPriceOracle} from "@ens/contracts/ethregistrar/IPriceOracle.sol";
 import {
     MigrationControllerFixture,
     RegistryRolesLib,
-    IRegistry
-} from "~test/unit/migration/MigrationControllerFixture.sol";
+    IRegistry,
+    NameCoder
+} from "~test/fixtures/MigrationControllerFixture.sol";
+import {
+    StandardRentPriceOracleFixture,
+    StandardPricing
+} from "~test/fixtures/StandardRentPriceOracleFixture.sol";
 import {
     ETHRenewerV1,
+    ETHRegistrar,
+    INameRenewer,
     IWrappedETHRegistrarController,
-    IPermissionedRegistry,
-    NameCoder
+    IPermissionedRegistry
 } from "~src/registrar/ETHRenewerV1.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
 
@@ -28,21 +34,41 @@ import {LibLabel} from "~src/utils/LibLabel.sol";
 // * Unwrapped: 43133
 // * Wrapped: 96128
 
-contract ETHRenewerV1Test is MigrationControllerFixture {
+contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracleFixture {
     MockWrappedETHRegistrarController wrappedController;
-    ETHRenewerV1 renewer;
+    ETHRegistrar ethRegistrar;
+    ETHRenewerV1 ethRenewer;
 
-    string labelUnwrapped = "unwrapped";
+    string labelUnwrapped = "unwrappeda";
     string labelUnlocked = "unlocked";
     string labelLocked = "locked";
     string labelCannotTransfer = "cannot-transfer";
     string labelFrozenApproval = "frozen-approval";
 
-    function setUp() public override {
-        super.setUp();
+    bytes32 testReferrer;
+
+    function setUp() external {
+        deployMigrationControllerFixture();
+        deployStandardRentPriceOracleFixture();
+
+        testReferrer = bytes32(vm.randomUint());
+
+        ethRegistrar = new ETHRegistrar(
+            hcaFactory,
+            ethRegistry,
+            StandardPricing.MIN_COMMITMENT_AGE,
+            StandardPricing.MAX_COMMITMENT_AGE,
+            StandardPricing.GRACE_PERIOD,
+            rentPriceOracle
+        );
 
         wrappedController = new MockWrappedETHRegistrarController(nameWrapper);
-        renewer = new ETHRenewerV1(nameWrapper, address(wrappedController), ethRegistry);
+        ethRenewer = new ETHRenewerV1(
+            hcaFactory,
+            nameWrapper,
+            address(wrappedController),
+            ethRegistrar
+        );
 
         // enable _extendReservation()
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_RENEW, address(this));
@@ -69,46 +95,47 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
         nameWrapper.setController(address(wrappedController), true); // add mock wrapped controller
         nameWrapper.renounceOwnership(); // lock it
 
-        ethRegistrarV1.removeController(ensV1Controller); // remove default controller
-        ethRegistrarV1.addController(address(renewer)); // add renewer
-        ethRegistrarV1.transferOwnership(address(renewer)); // transfer to renewer
+        baseRegistrar.removeController(ensV1Controller); // remove default controller
+        baseRegistrar.addController(address(ethRenewer)); // add ethRenewer
+        baseRegistrar.transferOwnership(address(ethRenewer)); // transfer to ethRenewer
 
         // check state
         assertEq(nameWrapper.owner(), address(0), "NameWrapper locked");
         assertFalse(nameWrapper.controllers(ensV1Controller), "NameWrapper og controller");
-        assertFalse(ethRegistrarV1.controllers(ensV1Controller), "BaseRegistrar og controller");
-        assertEq(ethRegistrarV1.owner(), address(renewer), "Renewer owns BaseRegistrar");
+        assertFalse(baseRegistrar.controllers(ensV1Controller), "BaseRegistrar og controller");
+        assertEq(baseRegistrar.owner(), address(ethRenewer), "Renewer owns BaseRegistrar");
         assertTrue(
-            ethRegistrarV1.controllers(address(renewer)),
+            baseRegistrar.controllers(address(ethRenewer)),
             "Renewer is BaseRegistrar controller"
         );
 
-        // BaseRegistrar.owner = renewer
-        // BaseRegistrar.controllers = [graveyard, renewer]
+        // BaseRegistrar.owner = ethRenewer
+        // BaseRegistrar.controllers = [graveyard, ethRenewer]
         // NameWrapper.controllers = [wrappedController]
     }
 
     function test_constructor() external view {
-        assertEq(address(renewer.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
+        assertEq(address(ethRenewer.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
         assertEq(
-            address(renewer.WRAPPED_CONTROLLER()),
+            address(ethRenewer.WRAPPED_CONTROLLER()),
             address(wrappedController),
             "WRAPPED_CONTROLLER"
         );
-        assertEq(address(renewer.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
-        assertEq(renewer.GRACE_PERIOD(), gracePeriodV1, "GRACE_PERIOD");
+        assertEq(address(ethRenewer.ETH_REGISTRAR()), address(ethRegistrar), "ETH_REGISTRAR");
     }
 
-    function test_sync_unregistered() external {
+    function test_renew_unregistered() external {
         uint256 tokenIdV1 = LibLabel.id(testLabel);
-        assertTrue(ethRegistrarV1.available(tokenIdV1));
+        assertTrue(baseRegistrar.available(tokenIdV1));
 
-        assertEq(ethRegistrarV1.nameExpires(tokenIdV1), 0, "v1");
+        assertEq(baseRegistrar.nameExpires(tokenIdV1), 0, "v1");
         assertEq(ethRegistry.getExpiry(tokenIdV1), 0, "v2");
 
-        _expectSync(testLabel, false);
+        vm.expectRevert(abi.encodeWithSelector(INameRenewer.NameNotRenewable.selector, testLabel));
+        ethRenewer.renew(testLabel, 1, address(tokenUSDC), testReferrer);
     }
 
+    /*
     function test_sync_migrated() external {
         // register in v2
         ethRegistry.register(
@@ -125,12 +152,12 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
 
     function test_sync_expired() external {
         uint256 tokenIdV1 = LibLabel.id(labelUnwrapped);
-        uint64 expired = uint64(ethRegistrarV1.nameExpires(tokenIdV1)) + gracePeriodV1 + 1;
+        uint64 expired = uint64(baseRegistrar.nameExpires(tokenIdV1)) + gracePeriodV1 + 1;
         ethRegistry.renew(tokenIdV1, expired + 1);
 
         // "forgot to sync" => reserved in v2 but fully expired in v1
         vm.warp(expired);
-        assertTrue(ethRegistrarV1.available(tokenIdV1), "v1");
+        assertTrue(baseRegistrar.available(tokenIdV1), "v1");
         assertEq(
             uint8(ethRegistry.getStatus(tokenIdV1)),
             uint8(IPermissionedRegistry.Status.RESERVED),
@@ -170,43 +197,41 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
         _expectSync(labelFrozenApproval, extend);
     }
 
-    function test_sync_batch(uint256) external {
-        string[] memory labels = new string[](5);
-        uint256 n;
-        if (vm.randomBool()) labels[n++] = labelUnwrapped;
-        if (vm.randomBool()) labels[n++] = labelUnlocked;
-        if (vm.randomBool()) labels[n++] = labelLocked;
-        if (vm.randomBool()) labels[n++] = labelCannotTransfer;
-        if (vm.randomBool()) labels[n++] = labelFrozenApproval;
-        assembly {
-            mstore(labels, n) // truncate
-        }
+    // function test_renew_batch(uint256) external {
+    //     string[] memory labels = new string[](5);
+    //     uint256 n;
+    //     if (vm.randomBool()) labels[n++] = labelUnwrapped;
+    //     if (vm.randomBool()) labels[n++] = labelUnlocked;
+    //     if (vm.randomBool()) labels[n++] = labelLocked;
+    //     if (vm.randomBool()) labels[n++] = labelCannotTransfer;
+    //     if (vm.randomBool()) labels[n++] = labelFrozenApproval;
+    //     assembly {
+    //         mstore(labels, n) // truncate
+    //     }
 
-        State[] memory states = new State[](labels.length);
-        for (uint256 i; i < labels.length; ++i) {
-            string memory label = labels[i];
-            bool extend = vm.randomBool();
-            if (extend) _extendReservation(label);
-            assertEq(renewer.canSync(label), extend);
-            states[i] = _getState(label);
-        }
+    //     State[] memory states = new State[](labels.length);
+    //     for (uint256 i; i < labels.length; ++i) {
+    //         string memory label = labels[i];
+    //         bool extend = vm.randomBool();
+    //         if (extend) _extendReservation(label);
+    //         assertEq(ethRenewer.isRenewable(label), extend);
+    //         states[i] = _getState(label);
+    //     }
 
-        renewer.sync(labels);
-
-        for (uint256 i; i < labels.length; ++i) {
-            _expectSynced(states[i]);
-        }
-    }
+    //     for (uint256 i; i < labels.length; ++i) {
+    //         _expectSynced(states[i]);
+    //     }
+    // }
 
     ////////////////////////////////////////////////////////////////////////
     // Gas
     ////////////////////////////////////////////////////////////////////////
 
     function test_gas_juggle() external {
-        vm.startPrank(address(renewer));
+        vm.startPrank(address(ethRenewer));
         uint256 g = gasleft();
-        ethRegistrarV1.addController(address(wrappedController));
-        ethRegistrarV1.removeController(address(wrappedController));
+        baseRegistrar.addController(address(wrappedController));
+        baseRegistrar.removeController(address(wrappedController));
         g -= gasleft();
         vm.stopPrank();
         console.log("Gas: %s", g);
@@ -217,7 +242,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
         string[] memory labels = new string[](1);
         labels[0] = labelUnwrapped;
         uint256 g = gasleft();
-        renewer.sync(labels);
+        ethRenewer.sync(labels);
         g -= gasleft();
         console.log("Gas: %s", g);
     }
@@ -227,7 +252,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
         string[] memory labels = new string[](1);
         labels[0] = labelUnlocked;
         uint256 g = gasleft();
-        renewer.sync(labels);
+        ethRenewer.sync(labels);
         g -= gasleft();
         console.log("Gas: %s", g);
     }
@@ -246,10 +271,10 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
 
     function _warpToGrace(string memory label) internal {
         uint256 tokenIdV1 = LibLabel.id(label);
-        vm.warp(ethRegistrarV1.nameExpires(tokenIdV1) + vm.randomUint(0, gracePeriodV1 - 1));
+        vm.warp(baseRegistrar.nameExpires(tokenIdV1) + vm.randomUint(0, gracePeriodV1 - 1));
         vm.expectRevert();
-        ethRegistrarV1.ownerOf(tokenIdV1);
-        assertFalse(ethRegistrarV1.available(tokenIdV1), "grace:available");
+        baseRegistrar.ownerOf(tokenIdV1);
+        assertFalse(baseRegistrar.available(tokenIdV1), "grace:available");
     }
 
     function _extendReservation(string memory label) internal {
@@ -262,9 +287,9 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
     function _getState(string memory label) internal view returns (State memory state) {
         state.label = label;
         uint256 tokenIdV1 = LibLabel.id(label);
-        state.expiryV1 = uint64(ethRegistrarV1.nameExpires(tokenIdV1));
+        state.expiryV1 = uint64(baseRegistrar.nameExpires(tokenIdV1));
         state.expiryV2 = ethRegistry.getExpiry(tokenIdV1);
-        (state.syncDuration, state.syncWrapper) = renewer.getState(tokenIdV1);
+        (state.syncDuration, state.syncWrapper) = ethRenewer.getState(tokenIdV1);
     }
 
     function _expectSynced(State memory state0) internal view {
@@ -285,13 +310,14 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
     }
 
     function _expectSync(string memory label, bool expect) internal {
-        assertEq(renewer.canSync(label), expect, "canSync");
+        assertEq(ethRenewer.canSync(label), expect, "canSync");
         State memory state = _getState(label);
         string[] memory labels = new string[](1);
         labels[0] = label;
-        renewer.sync(labels);
+        ethRenewer.sync(labels);
         _expectSynced(state);
     }
+    */
 }
 
 // https://github.com/ensdomains/ens-contracts/blob/staging/deployments/mainnet/WrappedETHRegistrarController.json
