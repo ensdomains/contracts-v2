@@ -40,7 +40,7 @@ describe("Resolve", () => {
       });
     }
 
-    named("reverse", () => env.shared.DefaultReverseResolver.address);
+    named("reverse", () => env.v2.ENSV1Resolver.address);
     named("addr.reverse", () => env.v2.ENSV1Resolver.address);
   });
 

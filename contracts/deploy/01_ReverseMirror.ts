@@ -5,28 +5,27 @@ import { DEPLOYMENT_ROLES, MAX_EXPIRY } from "../script/deploy-constants.js";
 // TODO: ownership
 export default execute(
   async ({ execute: write, get, namedAccounts: { deployer } }) => {
-    const reverseRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ReverseRegistry");
+    const rootRegistry =
+      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
     const ensV1Resolver =
       get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
 
-    // register "addr.reverse"
-    await write(reverseRegistry, {
+    await write(rootRegistry, {
       account: deployer,
       functionName: "register",
       args: [
-        "addr",
+        "reverse",
         deployer,
         zeroAddress,
         ensV1Resolver.address,
-        DEPLOYMENT_ROLES.REVERSE_AND_ADDR,
+        DEPLOYMENT_ROLES.REVERSE_TOKEN,
         MAX_EXPIRY,
       ],
     });
   },
   {
-    tags: ["AddrReverseMirror", "v2"],
-    dependencies: ["ReverseRegistry", "ENSV1Resolver"],
+    tags: ["ReverseMirror", "v2"],
+    dependencies: ["RootRegistry", "ENSV1Resolver"],
   },
 );
