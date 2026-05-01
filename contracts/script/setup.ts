@@ -51,6 +51,7 @@ function ansi(c: any, s: any) {
 }
 
 export async function setupDevnet({
+  host,
   port = 0,
   chainId = 31337,
   mnemonic = "test test test test test test test test test test test junk",
@@ -59,6 +60,7 @@ export async function setupDevnet({
   procLog = false,
   extraTime = 0,
 }: {
+  host?: string;
   port?: number;
   chainId?: number;
   mnemonic?: string;
@@ -91,6 +93,7 @@ export async function setupDevnet({
       accounts: NAMED_ACCOUNTS.length,
       mnemonic,
       chainId,
+      host,
       port,
       ...(extraTime
         ? { timestamp: Math.floor(Date.now() / 1000) - extraTime }
@@ -144,7 +147,9 @@ export async function setupDevnet({
       const message = anvilInstance.messages.get().join("\n").trim();
       const match = message.match(/Listening on (.*)$/);
       if (!match) throw new Error(`expected host: ${message}`);
-      return match[1];
+      const [, listenHostPort] = match;
+      const { hostname, port } = new URL(`http://${listenHostPort}`);
+      return `${hostname === "0.0.0.0" ? "127.0.0.1" : hostname}:${port}`;
     })();
 
     const httpURL = `http://${hostPort}`;
