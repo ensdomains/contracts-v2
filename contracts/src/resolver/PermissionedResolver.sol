@@ -18,6 +18,7 @@ import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {ENSIP19, COIN_TYPE_ETH, COIN_TYPE_DEFAULT} from "@ens/contracts/utils/ENSIP19.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
@@ -107,7 +108,8 @@ contract PermissionedResolver is
     INameResolver,
     IPubkeyResolver,
     ITextResolver,
-    IVersionableResolver
+    IVersionableResolver,
+    IProxyAuthorization
 {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -221,6 +223,7 @@ contract PermissionedResolver is
             type(ITextResolver).interfaceId == interfaceId ||
             type(IVersionableResolver).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
+            type(IProxyAuthorization).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -615,6 +618,17 @@ contract PermissionedResolver is
     /// @inheritdoc ITextResolver
     function text(bytes32 node, string calldata key) external view returns (string memory) {
         return _record(node).texts[key];
+    }
+
+    /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
+    /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
+    ///      upgrade call.
+    /// @param {previousImplementation} Ignored.
+    /// @return allowed Always `true` for implementations in this resolver family.
+    function canUpgradeFrom(
+        address /* previousImplementation */
+    ) external pure virtual override returns (bool allowed) {
+        return true;
     }
 
     /// @notice Perform multiple write operations.
