@@ -94,12 +94,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_register() external {
         uint256 labelId = LibLabel.id(testLabel);
-        uint256 expectedTokenId = LibLabel.withVersion(labelId, 0);
+        uint256 tokenId = LibLabel.withVersion(labelId, 0);
         vm.expectEmit();
         emit ILabelStore.Label(bytes32(labelId), testLabel);
         vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
-            expectedTokenId,
+            tokenId,
             bytes32(labelId),
             testLabel,
             testOwner,
@@ -107,14 +107,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             address(this)
         );
         vm.expectEmit();
-        emit IERC1155.TransferSingle(address(this), address(0), testOwner, expectedTokenId, 1);
+        emit IERC1155.TransferSingle(address(this), address(0), testOwner, tokenId, 1);
         vm.expectEmit();
-        emit IPermissionedRegistry.TokenResource(expectedTokenId, expectedTokenId);
+        emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
-        emit IRegistryEvents.SubregistryUpdated(expectedTokenId, testRegistry, address(this));
+        emit IRegistryEvents.SubregistryUpdated(tokenId, testRegistry, address(this));
         vm.expectEmit();
-        emit IRegistryEvents.ResolverUpdated(expectedTokenId, testResolver, address(this));
-        uint256 tokenId = this._register();
+        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, address(this));
+        assertEq(this._register(), tokenId, "token");
         assertEq(registry.getExpiry(tokenId), testExpiry, "expiry");
         assertEq(registry.ownerOf(tokenId), testOwner, "owner");
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");

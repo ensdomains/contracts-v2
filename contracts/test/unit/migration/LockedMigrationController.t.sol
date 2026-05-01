@@ -483,7 +483,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             salt
         );
         uint64 expectedExpiry = uint64(baseRegistrar.nameExpires(tokenIdV1)) +
-            premigrationBonusDuration;
+            premigrationBonusPeriod;
         vm.expectEmit();
         emit IERC1155.TransferSingle(
             user,

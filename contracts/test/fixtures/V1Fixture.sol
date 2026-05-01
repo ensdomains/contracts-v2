@@ -20,7 +20,7 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     NameWrapper nameWrapper;
 
     uint64 gracePeriodV1;
-    uint64 testDuration = 1 days;
+    uint64 testDurationV1 = 1 days;
     address user = makeAddr("user");
     address ensV1Controller = makeAddr("ensV1Controller");
 
@@ -63,7 +63,7 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         name = NameCoder.ethName(label);
         tokenId = uint256(keccak256(bytes(label)));
         vm.prank(ensV1Controller);
-        baseRegistrar.register(tokenId, user, testDuration);
+        baseRegistrar.register(tokenId, user, testDurationV1);
     }
 
     function registerWrappedETH2LD(string memory label, uint32 ownerFuses)

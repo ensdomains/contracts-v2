@@ -14,8 +14,11 @@ import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-import {INameRegistrar} from "./interfaces/INameRegistrar.sol";
-import {INameRenewer} from "./interfaces/INameRenewer.sol";
+import {
+    IETHRegistrar,
+    INameRegistrar,
+    INameRenewer
+} from "./interfaces/IETHRegistrar.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
 /// @dev Composite role bitmap granted to name owners at registration — includes set-subregistry, set-resolver, and can-transfer (with admin variants).
@@ -42,7 +45,7 @@ uint256 constant ROLE_SET_ORACLE_ADMIN = ROLE_SET_ORACLE << 128;
 ///
 /// Pricing and payment are delegated to a swappable `IRentPriceOracle`.
 ///
-contract ETHRegistrar is INameRegistrar, INameRenewer, EnhancedAccessControl {
+contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -129,9 +132,9 @@ contract ETHRegistrar is INameRegistrar, INameRenewer, EnhancedAccessControl {
         bytes4 interfaceId
     ) public view override(EnhancedAccessControl) returns (bool) {
         return
+            interfaceId == type(IETHRegistrar).interfaceId ||
             interfaceId == type(INameRegistrar).interfaceId ||
             interfaceId == type(INameRenewer).interfaceId ||
-            interfaceId == type(IRentPriceOracle).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -171,19 +174,7 @@ contract ETHRegistrar is INameRegistrar, INameRenewer, EnhancedAccessControl {
         if (owner == address(0)) {
             revert InvalidOwner();
         }
-        IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(
-            LibLabel.id(label)
-        );
-        if (!_isAvailable(state)) {
-            revert NameNotAvailable(label);
-        }
-
-        (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
-            label,
-            uint64(block.timestamp) - state.expiry - GRACE_PERIOD, // duration while isAvailable()
-            duration,
-            paymentToken
-        ); // reverts if invalid
+        IPermissionedRegistry.State memory state = _requireAvailable(label); // reverts if not available
         _consumeCommitment(
             makeCommitment(
                 label,
@@ -195,6 +186,12 @@ contract ETHRegistrar is INameRegistrar, INameRenewer, EnhancedAccessControl {
                 referrer
             )
         ); // reverts if no commitment
+        (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
+            label,
+            _availablePeriod(state.expiry),
+            duration,
+            paymentToken
+        ); // reverts if invalid
         rentPriceOracle.pay{value: msg.value}(
             _msgSender(),
             paymentToken,
@@ -229,11 +226,9 @@ contract ETHRegistrar is INameRegistrar, INameRenewer, EnhancedAccessControl {
         address paymentToken,
         bytes32 referrer
     ) external payable {
-        IPermissionedRegistry.State memory state = _requireRenewableState(
-            label
-        );
-        uint64 expiry = state.expiry + duration;
-        uint256 amount = getRenewPrice(label, duration, paymentToken);
+        IPermissionedRegistry.State memory state = _requireRenewable(label);
+        uint64 expiry = state.expiry + duration; // reverts if overflow
+        uint256 amount = getRenewPrice(label, duration, paymentToken); // reverts if invalid
         rentPriceOracle.pay{value: msg.value}(
             _msgSender(),
             paymentToken,
@@ -261,11 +256,35 @@ contract ETHRegistrar is INameRegistrar, INameRenewer, EnhancedAccessControl {
         return _isRenewable(ETH_REGISTRY.getState(LibLabel.id(label)));
     }
 
-    /// @notice Determine renew price for a name.
-    /// @param label The name to renew.
-    /// @param duration The duration extension, in seconds.
-    /// @param paymentToken The ERC-20 to use for payment.
-    /// @return The amount of `paymentToken`.
+    /// @inheritdoc IETHRegistrar
+    function getRemainingGracePeriod(
+        string calldata label
+    ) external view returns (uint64) {
+        IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(
+            LibLabel.id(label)
+        );
+        return
+            _checkGrace(state, true)
+                ? GRACE_PERIOD - uint64(block.timestamp) - state.expiry
+                : uint64(0);
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function getRegisterPrice(
+        string calldata label,
+        uint64 duration,
+        address paymentToken
+    ) external view returns (uint256 bae, uint256 premium) {
+        return
+            rentPriceOracle.getRegisterPrice(
+                label,
+                _availablePeriod(_requireAvailable(label).expiry),
+                duration,
+                paymentToken
+            );
+    }
+
+    /// @inheritdoc IETHRegistrar
     function getRenewPrice(
         string calldata label,
         uint64 duration,
@@ -274,7 +293,7 @@ contract ETHRegistrar is INameRegistrar, INameRenewer, EnhancedAccessControl {
         return
             rentPriceOracle.getRenewPrice(
                 label,
-                _requireRenewableState(label).expiry,
+                _requireRenewable(label).expiry,
                 duration,
                 paymentToken
             );
@@ -325,8 +344,18 @@ contract ETHRegistrar is INameRegistrar, INameRenewer, EnhancedAccessControl {
         delete commitmentAt[commitment];
     }
 
+    /// @dev Ensure `label` is available.
+    function _requireAvailable(
+        string calldata label
+    ) internal view returns (IPermissionedRegistry.State memory state) {
+        state = ETH_REGISTRY.getState(LibLabel.id(label));
+        if (!_isAvailable(state)) {
+            revert NameNotAvailable(label);
+        }
+    }
+
     /// @dev Ensure `label` is renewable.
-    function _requireRenewableState(
+    function _requireRenewable(
         string calldata label
     ) internal view returns (IPermissionedRegistry.State memory state) {
         state = ETH_REGISTRY.getState(LibLabel.id(label));
@@ -335,25 +364,7 @@ contract ETHRegistrar is INameRegistrar, INameRenewer, EnhancedAccessControl {
         }
     }
 
-    /// @dev Check if `AVAILABLE` and not before `GRACE_PERIOD` ends if previously `REGISTERED`.
-    /// @param state The current registry state.
-    /// @return `true` if available for registration.
-    function _isAvailable(
-        IPermissionedRegistry.State memory state
-    ) internal view returns (bool) {
-        return _checkGrace(state, false);
-    }
-
-    /// @dev Check if `REGISTERED` or before `GRACE_PERIOD` ends if previously `REGISTERED`.
-    function _isRenewable(
-        IPermissionedRegistry.State memory state
-    ) internal view returns (bool) {
-        return
-            state.status == IPermissionedRegistry.Status.REGISTERED ||
-            _checkGrace(state, true);
-    }
-
-    /// @dev Check if `AVAILABLE` and `grace` matches if previously `REGISTERED` and during `GRACE_PERIOD`.
+    /// @dev Check if `AVAILABLE` and conditionally in grace.
     function _checkGrace(
         IPermissionedRegistry.State memory state,
         bool grace
@@ -361,7 +372,33 @@ contract ETHRegistrar is INameRegistrar, INameRenewer, EnhancedAccessControl {
         return
             state.status == IPermissionedRegistry.Status.AVAILABLE &&
             (grace ==
-                (state.latestOwner != address(0) &&
+                (state.expiry > 0 &&
                     block.timestamp - state.expiry < GRACE_PERIOD));
+    }
+
+    /// @dev Determine if `AVAILABLE` and not in grace.
+    function _isAvailable(
+        IPermissionedRegistry.State memory state
+    ) internal view returns (bool) {
+        return _checkGrace(state, false);
+    }
+
+    /// @dev Determine if `REGISTERED` or previously `REGISTERED` and in grace.
+    function _isRenewable(
+        IPermissionedRegistry.State memory state
+    ) internal view returns (bool) {
+        return
+            state.status == IPermissionedRegistry.Status.REGISTERED ||
+            (_checkGrace(state, true) && state.latestOwner != address(0));
+    }
+
+    /// @dev Determine duration `isAvailable()` has been true.
+    function _availablePeriod(uint64 expiry) internal view returns (uint64) {
+        uint64 t = uint64(block.timestamp);
+        if (expiry == 0) {
+            return t; // never registered
+        }
+        expiry += GRACE_PERIOD;
+        return t > expiry ? t - expiry : 0;
     }
 }

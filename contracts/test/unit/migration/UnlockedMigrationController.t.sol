@@ -413,7 +413,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         LibMigration.Data memory md = _makeData(name);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
         uint64 expectedExpiry = uint64(baseRegistrar.nameExpires(tokenIdV1)) +
-            premigrationBonusDuration;
+            premigrationBonusPeriod;
         vm.expectEmit();
         emit IERC721.Transfer(user, address(migrationController), tokenIdV1);
         vm.expectEmit();
@@ -492,7 +492,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         uint256 tokenIdV1 = LibLabel.id(md.label);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
         uint64 expectedExpiry = uint64(baseRegistrar.nameExpires(tokenIdV1)) +
-            premigrationBonusDuration;
+            premigrationBonusPeriod;
         bytes32 node = NameCoder.namehash(name, 0);
         vm.expectEmit();
         emit IERC1155.TransferSingle(
@@ -630,7 +630,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         uint256[] memory amounts = new uint256[](count);
         LibMigration.Data[] memory mds = new LibMigration.Data[](count);
         for (uint256 i; i < count; ++i) {
-            testDuration = uint64(vm.randomUint(1, 1000 days));
+            testDurationV1 = uint64(vm.randomUint(1, 1000 days));
             bytes memory name = registerWrappedETH2LD(
                 _label(i),
                 CAN_DO_EVERYTHING
@@ -656,8 +656,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
             assertEq(
                 ethRegistry.getExpiry(tokenId),
-                baseRegistrar.nameExpires(tokenIdV1) +
-                    premigrationBonusDuration,
+                baseRegistrar.nameExpires(tokenIdV1) + premigrationBonusPeriod,
                 "expiry"
             );
             assertEq(

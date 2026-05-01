@@ -12,8 +12,6 @@ import {
     ERC165Checker
 } from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
-import {StandardPricing} from "./StandardPricing.sol";
-
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {LibHalving} from "~src/registrar/libraries/LibHalving.sol";
 import {
@@ -28,6 +26,7 @@ import {
 } from "~src/registrar/StandardRentPriceOracle.sol";
 import {
     StandardRentPriceOracleFixture,
+    StandardPricing,
     MockERC20,
     MockERC20Blacklist
 } from "~test/fixtures/StandardRentPriceOracleFixture.sol";
@@ -36,8 +35,11 @@ contract StandardRentPriceOracleTest is
     StandardRentPriceOracleFixture,
     ERC1155Holder
 {
+    address user = makeAddr("user");
+
     function setUp() external {
         deployStandardRentPriceOracleFixture();
+        setupPaymentTokens(user);
     }
 
     function test_constructor_invalidRatio() external {
@@ -132,18 +134,18 @@ contract StandardRentPriceOracleTest is
         vm.expectRevert(
             abi.encodeWithSelector(
                 Ownable.OwnableUnauthorizedAccount.selector,
-                payer
+                user
             )
         );
-        vm.prank(payer);
+        vm.prank(user);
         rentPriceOracle.updatePaymentToken(address(tokenUSDC), 0, 0); // remove
         vm.expectRevert(
             abi.encodeWithSelector(
                 Ownable.OwnableUnauthorizedAccount.selector,
-                payer
+                user
             )
         );
-        vm.prank(payer);
+        vm.prank(user);
         rentPriceOracle.updatePaymentToken(address(tokenUSDC), 1, 1); // add
     }
 
@@ -338,10 +340,10 @@ contract StandardRentPriceOracleTest is
         vm.expectRevert(
             abi.encodeWithSelector(
                 Ownable.OwnableUnauthorizedAccount.selector,
-                payer
+                user
             )
         );
-        vm.prank(payer);
+        vm.prank(user);
         rentPriceOracle.updateBaseRates(new uint256[](1));
     }
 
@@ -513,10 +515,10 @@ contract StandardRentPriceOracleTest is
         vm.expectRevert(
             abi.encodeWithSelector(
                 Ownable.OwnableUnauthorizedAccount.selector,
-                payer
+                user
             )
         );
-        vm.prank(payer);
+        vm.prank(user);
         rentPriceOracle.updateDiscountPoints(new DiscountPoint[](0));
     }
 
@@ -594,10 +596,10 @@ contract StandardRentPriceOracleTest is
         vm.expectRevert(
             abi.encodeWithSelector(
                 Ownable.OwnableUnauthorizedAccount.selector,
-                payer
+                user
             )
         );
-        vm.prank(payer);
+        vm.prank(user);
         rentPriceOracle.updatePremiumPricing(0, 0, 0);
     }
 
@@ -606,7 +608,7 @@ contract StandardRentPriceOracleTest is
     ////////////////////////////////////////////////////////////////////////
 
     function test_voidReturn_acceptedBySafeERC20() public {
-        rentPriceOracle.pay(payer, address(tokenVoid), 1);
+        rentPriceOracle.pay(user, address(tokenVoid), 1);
     }
 
     function test_falseReturn_rejectedBySafeERC20() public {
@@ -616,18 +618,18 @@ contract StandardRentPriceOracleTest is
                 tokenFalse
             )
         );
-        rentPriceOracle.pay(payer, address(tokenFalse), 1);
+        rentPriceOracle.pay(user, address(tokenFalse), 1);
     }
 
-    function test_blacklisted_payer() external {
-        tokenBlack.setBlacklisted(payer, true);
+    function test_blacklisted_user() external {
+        tokenBlack.setBlacklisted(user, true);
         vm.expectRevert(
             abi.encodeWithSelector(
                 MockERC20Blacklist.Blacklisted.selector,
-                payer
+                user
             )
         );
-        rentPriceOracle.pay(payer, address(tokenBlack), 1);
+        rentPriceOracle.pay(user, address(tokenBlack), 1);
     }
 
     function test_blacklisted_beneficiary() external {
@@ -638,6 +640,6 @@ contract StandardRentPriceOracleTest is
                 beneficiary
             )
         );
-        rentPriceOracle.pay(payer, address(tokenBlack), 1);
+        rentPriceOracle.pay(user, address(tokenBlack), 1);
     }
 }

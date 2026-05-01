@@ -39,8 +39,8 @@ interface IRentPriceOracle {
     /// @param available The duration the name has been available, in seconds.
     /// @param duration The duration to register for, in seconds.
     /// @param paymentToken The payment token.
-    /// @return base The base price, relative to `paymentToken`.
-    /// @return premium The premium price, relative to `paymentToken`.
+    /// @return base The amount of `paymentToken` for the registration.
+    /// @return premium The amount of `paymentToken` due to premium.
     function getRegisterPrice(
         string memory label,
         uint64 available,

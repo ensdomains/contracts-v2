@@ -360,8 +360,8 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         address paymentToken
     ) external view returns (uint256 base, uint256 premium) {
         _requireMinimumDuration(duration, minRegisterDuration);
-        Ratio memory ratio = _requirePaymentToken(paymentToken);
         base = _requireBasePrice(label, duration);
+        Ratio memory ratio = _requirePaymentToken(paymentToken);
         premium = getPremiumPriceAfter(available);
         if (premium > 0) {
             base += premium; // total

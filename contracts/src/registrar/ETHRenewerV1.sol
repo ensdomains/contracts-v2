@@ -44,11 +44,14 @@ contract ETHRenewerV1 is HCAContext, ERC165, INameRenewer {
     /// @dev ENSv2 .eth `PermissionedRegistry`.
     IPermissionedRegistry internal immutable _ETH_REGISTRY;
 
+    /// @dev ENSv1 `BaseRegistrarImplementation` contract.
+    IBaseRegistrar internal immutable _BASE_REGISTRAR;
+
     /// @dev Same as `BaseRegistrarImplementation.GRACE_PERIOD()`.
     uint64 internal immutable _GRACE_PERIOD_V1;
 
-    /// @dev ENSv1 `BaseRegistrarImplementation` contract.
-    IBaseRegistrar internal immutable _BASE_REGISTRAR;
+    /// @dev Same as `ETH_REGISTRAR.GRACE_PERIOD()`.
+    uint64 internal immutable _GRACE_PERIOD_V2;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -73,6 +76,7 @@ contract ETHRenewerV1 is HCAContext, ERC165, INameRenewer {
         WRAPPED_CONTROLLER = IWrappedETHRegistrarController(wrappedController);
         ETH_REGISTRAR = ethRegistrar;
         _ETH_REGISTRY = ethRegistrar.ETH_REGISTRY();
+        _GRACE_PERIOD_V2 = ETH_REGISTRAR.GRACE_PERIOD();
     }
 
     /// @inheritdoc ERC165
@@ -97,12 +101,12 @@ contract ETHRenewerV1 is HCAContext, ERC165, INameRenewer {
         if (!_isRenewable(state)) {
             revert NameNotRenewable(label);
         }
-        uint64 expiry = state.expiry + duration;
+        uint64 expiry = state.expiry + duration; // reverts if overflow
         IRentPriceOracle oracle = ETH_REGISTRAR.rentPriceOracle();
-        uint256 amount = oracle.getRenewPrice(label, state.expiry, duration, paymentToken);
+        uint256 amount = oracle.getRenewPrice(label, state.expiry, duration, paymentToken); // reverts if invalid
         oracle.pay{value: msg.value}(_msgSender(), paymentToken, amount); // reverts if payment failed
-        _ETH_REGISTRY.renew(tokenIdV1, expiry);
-        assert(_BASE_REGISTRAR.renew(tokenIdV1, duration) == expiry); // invariant: always sync()
+        _ETH_REGISTRY.renew(tokenIdV1, expiry); // should not revert
+        _BASE_REGISTRAR.renew(tokenIdV1, duration); // invariant: always in sync
         emit NameRenewed(state.tokenId, label, duration, expiry, paymentToken, referrer, amount);
     }
 
@@ -125,8 +129,12 @@ contract ETHRenewerV1 is HCAContext, ERC165, INameRenewer {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Check if `RESERVED`.
-    function _isRenewable(IPermissionedRegistry.State memory state) internal pure returns (bool) {
-        return state.status == IPermissionedRegistry.Status.RESERVED;
+    /// @dev Check if `RESERVED` or previously `RESERVED` and in grace.
+    function _isRenewable(IPermissionedRegistry.State memory state) internal view returns (bool) {
+        return
+            state.status == IPermissionedRegistry.Status.RESERVED ||
+            (state.status == IPermissionedRegistry.Status.AVAILABLE &&
+                state.latestOwner == address(0) &&
+                block.timestamp - state.expiry < _GRACE_PERIOD_V2);
     }
 }

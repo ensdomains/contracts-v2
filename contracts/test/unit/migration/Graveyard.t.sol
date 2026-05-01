@@ -32,7 +32,7 @@ contract GraveyardTest is MigrationControllerFixture {
         graveyard.clear(_oneName(NameCoder.encode("test.xyz")));
     }
 
-    function test_clear_fullyExpired() external {
+    function test_clear_afterGrace() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
 
         vm.warp(baseRegistrar.nameExpires(tokenIdV1) + gracePeriodV1 + 1);

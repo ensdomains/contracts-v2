@@ -18,10 +18,11 @@ import {IEnhancedAccessControl} from "~src/registry/PermissionedRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {
     ETHRegistrar,
-    IPermissionedRegistry,
+    IETHRegistrar,
     INameRegistrar,
     INameRenewer,
     IRegistry,
+    IPermissionedRegistry,
     RegistryRolesLib,
     LibLabel,
     InvalidOwner,
@@ -50,8 +51,8 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
     ETHRegistrar ethRegistrar;
 
     string testLabel = "testname";
-    address testSender = payer;
-    address testOwner = payer;
+    address testOwner = makeAddr("owner");
+    address testSender = testOwner;
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address testResolver = makeAddr("resolver");
     address testPaymentToken; //|
@@ -60,11 +61,11 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
     uint64 testDuration; ///////|
     uint64 testCommitDelay; ////|
 
-    uint64 minRenewDuration = 1;
-
     function setUp() external {
         deployV2Fixture();
         deployStandardRentPriceOracleFixture();
+
+        setupPaymentTokens(testOwner);
 
         ethRegistrar = new ETHRegistrar(
             hcaFactory,
@@ -155,15 +156,16 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
     }
 
     function test_setRentPriceOracle_notAuthorized() external {
+        address actor = makeAddr("actor");
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
                 ethRegistry.ROOT_RESOURCE(),
                 ROLE_SET_ORACLE,
-                payer
+                actor
             )
         );
-        vm.prank(payer);
+        vm.prank(actor);
         ethRegistrar.setRentPriceOracle(IRentPriceOracle(address(1)));
     }
 
@@ -259,7 +261,7 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
             base,
             premium
         );
-        this._register();
+        assertEq(this._register(), tokenId, "token");
         assertEq(ethRegistry.ownerOf(tokenId), testOwner, "owner");
         assertEq(ethRegistry.getExpiry(tokenId), expiry, "expiry");
         assertTrue(
@@ -302,7 +304,7 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
 
         (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
             testLabel,
-            testCommitDelay,
+            testCommitDelay, // due to commit-reveal
             testDuration,
             testPaymentToken
         );
@@ -548,6 +550,10 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
 
     function test_supportsInterface() external view {
         assertTrue(
+            ERC165Checker.supportsInterface(address(ethRegistrar), type(IETHRegistrar).interfaceId),
+            "IETHRegistrar"
+        );
+        assertTrue(
             ERC165Checker.supportsInterface(
                 address(ethRegistrar),
                 type(INameRegistrar).interfaceId
@@ -560,13 +566,6 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
                 type(INameRenewer).interfaceId
             ),
             "INameRenewer"
-        );
-        assertTrue(
-            ERC165Checker.supportsInterface(
-                address(ethRegistrar),
-                type(IRentPriceOracle).interfaceId
-            ),
-            "IRentPriceOracle"
         );
     }
 

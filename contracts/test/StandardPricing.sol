@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-// solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
-
 import {PaymentRatio, DiscountPoint} from "~src/registrar/StandardRentPriceOracle.sol";
 import {MockERC20} from "~test/mocks/MockERC20.sol";
 
@@ -10,9 +8,11 @@ library StandardPricing {
     uint64 constant SEC_PER_YEAR = 31_557_600; // 365.25
     uint64 constant SEC_PER_DAY = 86400; // 1 days
 
-    uint64 constant MIN_COMMITMENT_AGE = 1 minutes;
-    uint64 constant MAX_COMMITMENT_AGE = 1 days;
-    uint64 constant GRACE_PERIOD = 28 days;
+    uint64 constant MIN_COMMITMENT_AGE = 60; // 1 minute
+    uint64 constant MAX_COMMITMENT_AGE = SEC_PER_DAY;
+
+    uint64 constant GRACE_PERIOD = 28 * SEC_PER_DAY;
+    uint64 constant BONUS_PERIOD = 90 days - GRACE_PERIOD;
 
     uint64 constant MIN_REGISTER_DURATION = GRACE_PERIOD;
 

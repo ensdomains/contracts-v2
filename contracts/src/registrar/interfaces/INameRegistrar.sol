@@ -23,8 +23,8 @@ interface INameRegistrar {
     /// @param duration The registration duration, in seconds.
     /// @param paymentToken The payment token.
     /// @param referrer The referrer hash.
-    /// @param base The base price, relative to `paymentToken`.
-    /// @param premium The premium price, relative to `paymentToken`.
+    /// @param base The amount of `paymentToken` for the registration.
+    /// @param premium The amount of `paymentToken` due to premium.
     event NameRegistered(
         uint256 indexed tokenId,
         string label,
