@@ -312,8 +312,13 @@ export async function setupDevnet({
         client,
       }),
       HCAFactory: getContract({
-        abi: artifacts.MockHCAFactoryBasic.abi,
+        abi: artifacts.HCAFactory.abi,
         address: rocketh.get("HCAFactory").address,
+        client,
+      }),
+      EntryPoint: getContract({
+        abi: artifacts.EntryPoint.abi,
+        address: rocketh.get("EntryPoint").address,
         client,
       }),
       VerifiableFactory: getContract({

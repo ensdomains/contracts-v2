@@ -9,7 +9,7 @@ export default execute(
     namedAccounts: { deployer, owner },
   }) => {
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<(typeof artifacts.IHCAFactoryBasic)["abi"]>("HCAFactory");
 
     const ethRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");

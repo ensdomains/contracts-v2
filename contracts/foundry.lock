@@ -20,14 +20,44 @@
   "contracts/lib/verifiable-factory": {
     "rev": "c47c0e61ce03b3ab5891a3b743287b54aee9f021"
   },
+  "lib/account-abstraction": {
+    "rev": "7af70c8993a6f42973f520ae0752386a5032abe7"
+  },
   "lib/buffer": {
     "rev": "82cc81935de1d1a82e021cf1030d902c5248982b"
+  },
+  "lib/checknsignatures": {
+    "tag": {
+      "name": "v1.0.0",
+      "rev": "9847c6b0d551c75ac337be1c9fe87f4449c352c9"
+    }
+  },
+  "lib/composability": {
+    "tag": {
+      "name": "v1.0.0",
+      "rev": "9e090c24b195822f668f96cb4ff518a9b7ff712d"
+    }
   },
   "lib/ens-contracts": {
     "rev": "6d877523e11f647ed62e8ee159f48f288c9cd9e9"
   },
+  "lib/ens-modules": {
+    "rev": "1a3e01300bf426e76cc9e8e38ef75a080e340fce"
+  },
+  "lib/erc7739Validator": {
+    "tag": {
+      "name": "v1.0.0",
+      "rev": "d1e38493f58f28e62e12e41773086a90e8f60840"
+    }
+  },
   "lib/forge-std": {
     "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
+  },
+  "lib/modulekit": {
+    "tag": {
+      "name": "v0.5.9",
+      "rev": "b696ccbe1b16a55d8b1a1de192309500af0fae5e"
+    }
   },
   "lib/openzeppelin-contracts": {
     "rev": "e4f70216d759d8e6a64144a9e1f7bbeed78e7079"
@@ -37,6 +67,15 @@
   },
   "lib/openzeppelin-contracts-v4": {
     "rev": "54b3f14346da01ba0d159114b399197fea8b7cda"
+  },
+  "lib/sentinellist": {
+    "tag": {
+      "name": "v1.0.0",
+      "rev": "6dff696f39fb55bfdde9581544d788932f145e47"
+    }
+  },
+  "lib/solady": {
+    "rev": "90db92ce173856605d24a554969f2c67cadbc7e9"
   },
   "lib/solsha1": {
     "rev": "c4fbe97cf5e8c1b8d607001588fd23abb5bfb923"

@@ -6,7 +6,7 @@ export default execute(
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<(typeof artifacts.IHCAFactoryBasic)["abi"]>("HCAFactory");
 
     const registryMetadata = get<
       (typeof artifacts.SimpleRegistryMetadata)["abi"]

@@ -1,0 +1,70 @@
+diff --git a/dist/src/internal/builtin-plugins/solidity/build-system/resolver/dependency-resolver.js b/dist/src/internal/builtin-plugins/solidity/build-system/resolver/dependency-resolver.js
+index 1d0c7b8896fff5d13461c47d10d868065b8fa0a6..59982e227243f5c7873f6c82dab3ee3c9fb6d22f 100644
+--- a/dist/src/internal/builtin-plugins/solidity/build-system/resolver/dependency-resolver.js
++++ b/dist/src/internal/builtin-plugins/solidity/build-system/resolver/dependency-resolver.js
+@@ -400,7 +400,9 @@ export class ResolverImplementation {
+         // the fromNpmPackage.
+         const targetNpmPackage = remapping.type === UserRemappingType.NPM
+             ? remapping.targetNpmPackage.package
+-            : fromNpmPackage;
++            : remapping.source === path.join(this.#hhProjectPackage.rootFsPath, "remappings.txt")
++                ? this.#hhProjectPackage
++                : fromNpmPackage;
+         // A user remapping is created based on the fs path in the package, so
+         // we can get the relative path based on the input source name root of the
+         // target package.
+diff --git a/dist/src/internal/builtin-plugins/solidity/build-system/resolver/remapped-npm-packages-graph.js b/dist/src/internal/builtin-plugins/solidity/build-system/resolver/remapped-npm-packages-graph.js
+index 660539514accff1151fa8fc439c2573baf30537f..0e95ce1e80b9f4b102d8a719c7d84f23dc7ece65 100644
+--- a/dist/src/internal/builtin-plugins/solidity/build-system/resolver/remapped-npm-packages-graph.js
++++ b/dist/src/internal/builtin-plugins/solidity/build-system/resolver/remapped-npm-packages-graph.js
+@@ -140,14 +140,15 @@ export class RemappedNpmPackagesGraphImplementation {
+         return resultOfNewPackage;
+     }
+     async selectBestUserRemapping(from, directImport) {
+-        let userRemappings = this.#userRemappingsPerPackage.get(from.package);
++        const remappingsPackage = this.#hardhatProjectPackage;
++        let userRemappings = this.#userRemappingsPerPackage.get(remappingsPackage);
+         if (userRemappings === undefined) {
+-            const readResult = await this.#readPackageRemappings(from.package);
++            const readResult = await this.#readPackageRemappings(remappingsPackage);
+             if (!readResult.success) {
+                 return { success: false, error: readResult.error };
+             }
+             userRemappings = readResult.value;
+-            this.#userRemappingsPerPackage.set(from.package, userRemappings);
++            this.#userRemappingsPerPackage.set(remappingsPackage, userRemappings);
+         }
+         const bestUserRemappingIndex = selectBestRemapping(from.inputSourceName, directImport, userRemappings);
+         if (bestUserRemappingIndex === undefined) {
+@@ -220,11 +221,19 @@ export class RemappedNpmPackagesGraphImplementation {
+      * @param npmPackage The package.
+      */
+     async #readPackageRemappings(npmPackage) {
+-        const remappingsTxtFiles = await getAllFilesMatching(npmPackage.rootFsPath, (f) => path.basename(f) === "remappings.txt", (f) => !f.endsWith("node_modules"));
++        const remappingsTxtFiles = [
++            path.join(npmPackage.rootFsPath, "remappings.txt"),
++        ];
+         const remappings = [];
+         const errors = [];
+         for (const remappingsTxtFsPath of remappingsTxtFiles) {
+-            const packageRemappingsTxtContents = await readUtf8File(remappingsTxtFsPath);
++            let packageRemappingsTxtContents;
++            try {
++                packageRemappingsTxtContents = await readUtf8File(remappingsTxtFsPath);
++            }
++            catch {
++                continue;
++            }
+             const rawUserRemappings = packageRemappingsTxtContents
+                 .split("\n")
+                 .map((line) => line.trim())
+@@ -398,6 +407,9 @@ export class RemappedNpmPackagesGraphImplementation {
+      * This function doesn't update any fragment starting with npm/
+      */
+     #updateRemappingsTxFragment(from, relativeFsPathToRemappingsFileFromPackage, remappingFragment) {
++        if (remappingFragment === "") {
++            return "";
++        }
+         if (remappingFragment.startsWith("npm/")) {
+             return remappingFragment;
+         }

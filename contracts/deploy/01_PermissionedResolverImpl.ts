@@ -3,7 +3,7 @@ import { artifacts, execute } from "@rocketh";
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer } }) => {
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<(typeof artifacts.IHCAFactoryBasic)["abi"]>("HCAFactory");
 
     await deploy("PermissionedResolverImpl", {
       account: deployer,
