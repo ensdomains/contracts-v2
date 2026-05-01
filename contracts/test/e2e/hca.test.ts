@@ -40,7 +40,7 @@ describe("HCA", () => {
 
   it("creates an HCA inside handleOps before executing a user operation", async () => {
     const owner = env.namedAccounts.user;
-    expectVar({ entryPoint: env.v2.EntryPoint.address }).toEqualAddress(
+    expectVar({ entryPoint: env.v2.Entrypoint.address }).toEqualAddress(
       entryPoint07Address,
     );
     const gas = createGasReporter("HCA account creation inside handleOps");
@@ -54,7 +54,7 @@ describe("HCA", () => {
     const hcaOwnerBefore = await env.v2.HCAFactory.read.getAccountOwner([hca]);
     expectVar({ hcaOwnerBefore }).toEqualAddress(zeroAddress);
 
-    await env.v2.EntryPoint.write.depositTo([hca], {
+    await env.v2.Entrypoint.write.depositTo([hca], {
       account: env.namedAccounts.deployer,
       value: parseUnits("1", 18),
     });
@@ -237,7 +237,7 @@ describe("HCA", () => {
     const resolverCodeBefore = await env.client.getCode({ address: resolver });
     expectVar({ resolverCodeBefore }).toBeUndefined();
 
-    await env.v2.EntryPoint.write.depositTo([hca], {
+    await env.v2.Entrypoint.write.depositTo([hca], {
       account: env.namedAccounts.deployer,
       value: parseUnits("1", 18),
     });

@@ -1,11 +1,10 @@
 import { artifacts, execute } from "@rocketh";
-
-import { encodeTemplateInitData } from "./_helpers.js";
+import { encodeAbiParameters, parseAbiParameters } from "viem";
 
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer } }) => {
     const hcaFactory = get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
-    const entryPoint = get<(typeof artifacts.EntryPoint)["abi"]>("EntryPoint");
+    const entryPoint = get<(typeof artifacts.EntryPoint)["abi"]>("Entrypoint");
     const hcaModule = get<(typeof artifacts.HCAModule)["abi"]>("HCAModule");
     const intentExecutor =
       get<(typeof artifacts.IntentExecutor)["abi"]>("IntentExecutor");
@@ -18,7 +17,20 @@ export default execute(
         entryPoint.address,
         hcaModule.address,
         intentExecutor.address,
-        encodeTemplateInitData(),
+        encodeAbiParameters(
+          parseAbiParameters(
+            "uint256 threshold, (address addr, uint48 expiration)[] owners",
+          ),
+          [
+            1n,
+            [
+              {
+                addr: "0x0000000000000000000000000000000000000001",
+                expiration: 281474976710655,
+              },
+            ],
+          ],
+        ),
       ],
     });
   },
@@ -26,7 +38,7 @@ export default execute(
     tags: ["HCAImplementation", "v2"],
     dependencies: [
       "HCAFactoryBase",
-      "HCAEntryPoint",
+      "Entrypoint",
       "HCAModule",
       "IntentExecutor",
     ],

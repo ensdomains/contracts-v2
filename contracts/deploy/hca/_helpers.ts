@@ -1,11 +1,9 @@
 import { artifacts } from "@rocketh";
 import {
-  encodeAbiParameters,
   encodeDeployData,
   getCreate2Address,
   isAddress,
   keccak256,
-  parseAbiParameters,
   stringToHex,
   zeroAddress,
   type Address,
@@ -33,10 +31,6 @@ export type IntentExecutorArgs = [
   Address,
 ];
 
-type JsonRpcProvider = {
-  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
-};
-
 export const ENTRY_POINT_V07_ARTIFACT = {
   ...artifacts.EntryPoint,
   bytecode: ENTRY_POINT_V07_INIT_CODE,
@@ -44,25 +38,7 @@ export const ENTRY_POINT_V07_ARTIFACT = {
   metadata: "{}",
 };
 
-async function readCode(
-  provider: JsonRpcProvider,
-  address: Address,
-): Promise<Hex> {
-  return (await provider.request({
-    method: "eth_getCode",
-    params: [address, "latest"],
-  })) as Hex;
-}
-
-export async function hasCode(
-  provider: JsonRpcProvider,
-  address: Address,
-): Promise<boolean> {
-  const code = await readCode(provider, address);
-  return code !== "0x" && code !== "0x0";
-}
-
-export function optionalAddress(
+function optionalAddress(
   value: string | undefined,
   name: string,
 ): Address | undefined {
@@ -82,7 +58,7 @@ export function allowIncompleteIntentStack(tags: {
   return Boolean(tags.local || tags.test);
 }
 
-export function resolveIntentStackAddress(
+function resolveIntentStackAddress(
   value: string | undefined,
   name: string,
   fallback: Address,
@@ -117,7 +93,7 @@ export function resolveCompact(allowFallback: boolean): Address {
   );
 }
 
-export function resolveAllocator(
+function resolveAllocator(
   factoryOwner: Address,
   allowFallback: boolean,
 ): Address {
@@ -129,7 +105,7 @@ export function resolveAllocator(
   );
 }
 
-export function resolveSmartSessionEmissary(allowFallback: boolean): Address {
+function resolveSmartSessionEmissary(allowFallback: boolean): Address {
   return resolveIntentStackAddress(
     process.env.HCA_SMART_SESSION_EMISSARY,
     "HCA_SMART_SESSION_EMISSARY",
@@ -158,7 +134,7 @@ export function resolveIntentExecutorArgs({
   ];
 }
 
-export function encodeIntentExecutorDeployData(args: IntentExecutorArgs): Hex {
+function encodeIntentExecutorDeployData(args: IntentExecutorArgs): Hex {
   return encodeDeployData({
     abi: artifacts.IntentExecutor.abi,
     bytecode: artifacts.IntentExecutor.bytecode as Hex,
@@ -178,21 +154,4 @@ export function computeIntentExecutorAddress({
     salt: INTENT_EXECUTOR_SALT,
     bytecode: encodeIntentExecutorDeployData(args),
   });
-}
-
-export function encodeTemplateInitData(): Hex {
-  return encodeAbiParameters(
-    parseAbiParameters(
-      "uint256 threshold, (address addr, uint48 expiration)[] owners",
-    ),
-    [
-      1n,
-      [
-        {
-          addr: "0x0000000000000000000000000000000000000001",
-          expiration: 281474976710655,
-        },
-      ],
-    ],
-  );
 }

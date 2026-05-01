@@ -321,9 +321,9 @@ export async function setupDevnet({
         address: rocketh.get("HCAFactory").address,
         client,
       }),
-      EntryPoint: getContract({
+      Entrypoint: getContract({
         abi: artifacts.EntryPoint.abi,
-        address: rocketh.get("EntryPoint").address,
+        address: rocketh.get("Entrypoint").address,
         client,
       }),
       VerifiableFactory: getContract({

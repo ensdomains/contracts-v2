@@ -457,7 +457,7 @@ export function createHCATestUtils(env: DevnetEnvironment) {
     const hcaOwner = await env.v2.HCAFactory.read.getAccountOwner([hca]);
     expectVar({ hcaOwner }).toEqualAddress(owner.address);
 
-    await env.v2.EntryPoint.write.depositTo([hca], {
+    await env.v2.Entrypoint.write.depositTo([hca], {
       account: env.namedAccounts.deployer,
       value: parseUnits("1", 18),
     });
@@ -480,19 +480,19 @@ export function createHCATestUtils(env: DevnetEnvironment) {
     gas?: GasReporter;
     gasLabel?: string;
   }): Promise<TransactionReceipt> {
-    const nonce = await env.v2.EntryPoint.read.getNonce([hca, 0n]);
+    const nonce = await env.v2.Entrypoint.read.getNonce([hca, 0n]);
     const unsignedUserOp = buildUserOp({
       sender: hca,
       nonce,
       initCode,
       callData,
     });
-    const userOpHash = await env.v2.EntryPoint.read.getUserOpHash([
+    const userOpHash = await env.v2.Entrypoint.read.getUserOpHash([
       unsignedUserOp,
     ]);
     const signature = await signUserOpHash(owner, userOpHash);
 
-    const transactionHash = await env.v2.EntryPoint.write.handleOps(
+    const transactionHash = await env.v2.Entrypoint.write.handleOps(
       [[{ ...unsignedUserOp, signature }], env.namedAccounts.deployer.address],
       { account: env.namedAccounts.deployer },
     );

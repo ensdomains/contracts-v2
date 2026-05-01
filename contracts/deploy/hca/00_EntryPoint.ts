@@ -1,19 +1,18 @@
 import { artifacts, execute } from "@rocketh";
 import { isAddressEqual, type Address } from "viem";
 
-import {
-  DEFAULT_ENTRY_POINT,
-  ENTRY_POINT_V07_ARTIFACT,
-  hasCode,
-} from "./_helpers.js";
+import { DEFAULT_ENTRY_POINT, ENTRY_POINT_V07_ARTIFACT } from "./_helpers.js";
 import { ENTRY_POINT_V07_SALT } from "./_entrypoint070.js";
 
 export default execute(
-  async ({ deploy, network, save, namedAccounts: { deployer } }) => {
+  async ({ deploy, viem, save, namedAccounts: { deployer } }) => {
     const entryPointAddress = DEFAULT_ENTRY_POINT as Address;
-    if (await hasCode(network.provider, entryPointAddress)) {
+    const entryPointCode = await viem.publicClient.getCode({
+      address: entryPointAddress,
+    });
+    if (entryPointCode && entryPointCode !== "0x") {
       await save(
-        "EntryPoint",
+        "Entrypoint",
         {
           ...artifacts.EntryPoint,
           address: entryPointAddress,
@@ -28,7 +27,7 @@ export default execute(
     }
 
     const entryPoint = await deploy(
-      "EntryPoint",
+      "Entrypoint",
       {
         account: deployer,
         artifact: ENTRY_POINT_V07_ARTIFACT,
@@ -39,11 +38,11 @@ export default execute(
 
     if (!isAddressEqual(entryPoint.address, entryPointAddress)) {
       throw new Error(
-        `EntryPoint v0.7 deployed to ${entryPoint.address}, expected ${entryPointAddress}`,
+        `Entrypoint v0.7 deployed to ${entryPoint.address}, expected ${entryPointAddress}`,
       );
     }
   },
   {
-    tags: ["EntryPoint", "HCAEntryPoint", "v2"],
+    tags: ["Entrypoint", "v2"],
   },
 );
