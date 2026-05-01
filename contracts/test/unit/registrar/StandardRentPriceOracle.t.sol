@@ -16,13 +16,16 @@ import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {LibHalving} from "~src/registrar/libraries/LibHalving.sol";
 import {
     StandardRentPriceOracle,
+    PAYMENT_ROLE_BITMAP,
     PaymentRatio,
+    IPermissionedRegistry,
     IRentPriceOracle,
     DiscountPoint,
     Ownable,
     SafeERC20,
     IERC20,
-    Math
+    Math,
+    UnauthorizedCaller
 } from "~src/registrar/StandardRentPriceOracle.sol";
 import {
     StandardRentPriceOracleFixture,
@@ -38,8 +41,19 @@ contract StandardRentPriceOracleTest is
     address user = makeAddr("user");
 
     function setUp() external {
-        deployStandardRentPriceOracleFixture();
+        deployStandardRentPriceOracleFixture(
+            IPermissionedRegistry(address(this))
+        );
         setupPaymentTokens(user);
+    }
+
+    // fake PermissionedRegistry
+    function roles(
+        uint256 resource,
+        address account
+    ) external view returns (uint256) {
+        return
+            resource == 0 && account == address(this) ? PAYMENT_ROLE_BITMAP : 0;
     }
 
     function test_constructor_invalidRatio() external {
@@ -52,6 +66,7 @@ contract StandardRentPriceOracleTest is
         );
         new StandardRentPriceOracle(
             address(this),
+            IPermissionedRegistry(address(0)),
             address(0),
             0,
             new uint256[](0),
@@ -604,24 +619,32 @@ contract StandardRentPriceOracleTest is
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // SafeERC20
+    // Payment Processing
     ////////////////////////////////////////////////////////////////////////
 
-    function test_voidReturn_acceptedBySafeERC20() public {
-        rentPriceOracle.pay(user, address(tokenVoid), 1);
+    function test_processPayment_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(UnauthorizedCaller.selector, user)
+        );
+        vm.prank(user);
+        rentPriceOracle.processPayment(user, address(tokenUSDC), 1);
     }
 
-    function test_falseReturn_rejectedBySafeERC20() public {
+    function test_processPayment_voidReturn_acceptedBySafeERC20() external {
+        rentPriceOracle.processPayment(user, address(tokenVoid), 1);
+    }
+
+    function test_processPayment_falseReturn_rejectedBySafeERC20() external {
         vm.expectRevert(
             abi.encodeWithSelector(
                 SafeERC20.SafeERC20FailedOperation.selector,
                 tokenFalse
             )
         );
-        rentPriceOracle.pay(user, address(tokenFalse), 1);
+        rentPriceOracle.processPayment(user, address(tokenFalse), 1);
     }
 
-    function test_blacklisted_user() external {
+    function test_processPayment_blacklisted_user() external {
         tokenBlack.setBlacklisted(user, true);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -629,10 +652,10 @@ contract StandardRentPriceOracleTest is
                 user
             )
         );
-        rentPriceOracle.pay(user, address(tokenBlack), 1);
+        rentPriceOracle.processPayment(user, address(tokenBlack), 1);
     }
 
-    function test_blacklisted_beneficiary() external {
+    function test_processPayment_blacklisted_beneficiary() external {
         tokenBlack.setBlacklisted(beneficiary, true);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -640,6 +663,6 @@ contract StandardRentPriceOracleTest is
                 beneficiary
             )
         );
-        rentPriceOracle.pay(user, address(tokenBlack), 1);
+        rentPriceOracle.processPayment(user, address(tokenBlack), 1);
     }
 }

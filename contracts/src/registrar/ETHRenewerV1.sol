@@ -104,7 +104,7 @@ contract ETHRenewerV1 is HCAContext, ERC165, INameRenewer {
         uint64 expiry = state.expiry + duration; // reverts if overflow
         IRentPriceOracle oracle = ETH_REGISTRAR.rentPriceOracle();
         uint256 amount = oracle.getRenewPrice(label, state.expiry, duration, paymentToken); // reverts if invalid
-        oracle.pay{value: msg.value}(_msgSender(), paymentToken, amount); // reverts if payment failed
+        oracle.processPayment{value: msg.value}(_msgSender(), paymentToken, amount); // reverts if payment failed
         _ETH_REGISTRY.renew(tokenIdV1, expiry); // should not revert
         _BASE_REGISTRAR.renew(tokenIdV1, duration); // invariant: always in sync
         emit NameRenewed(state.tokenId, label, duration, expiry, paymentToken, referrer, amount);

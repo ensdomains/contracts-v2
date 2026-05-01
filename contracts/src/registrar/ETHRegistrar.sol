@@ -192,7 +192,7 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
             duration,
             paymentToken
         ); // reverts if invalid
-        rentPriceOracle.pay{value: msg.value}(
+        rentPriceOracle.processPayment{value: msg.value}(
             _msgSender(),
             paymentToken,
             base + premium
@@ -229,7 +229,7 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         IPermissionedRegistry.State memory state = _requireRenewable(label);
         uint64 expiry = state.expiry + duration; // reverts if overflow
         uint256 amount = getRenewPrice(label, duration, paymentToken); // reverts if invalid
-        rentPriceOracle.pay{value: msg.value}(
+        rentPriceOracle.processPayment{value: msg.value}(
             _msgSender(),
             paymentToken,
             amount
@@ -265,7 +265,7 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         );
         return
             _checkGrace(state, true)
-                ? GRACE_PERIOD - uint64(block.timestamp) - state.expiry
+                ? GRACE_PERIOD + state.expiry - uint64(block.timestamp)
                 : uint64(0);
     }
 

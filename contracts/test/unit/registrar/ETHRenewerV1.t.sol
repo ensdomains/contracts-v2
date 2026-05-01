@@ -31,7 +31,7 @@ import {LibLabel} from "~src/utils/LibLabel.sol";
 
 // [gas analysis]
 // * Juggle: 35500
-// * Renew w/MockUSDC: 118524
+// * Renew w/MockUSDC: 119838
 
 contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracleFixture {
     MockWrappedETHRegistrarController wrappedController;
@@ -48,7 +48,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
 
     function setUp() external {
         deployMigrationControllerFixture();
-        deployStandardRentPriceOracleFixture();
+        deployStandardRentPriceOracleFixture(ethRegistry);
 
         setupPaymentTokens(user);
 

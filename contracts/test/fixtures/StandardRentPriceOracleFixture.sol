@@ -10,6 +10,7 @@ import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {StandardPricing} from "~test/StandardPricing.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {
     StandardRentPriceOracle,
     PaymentRatio,
@@ -40,7 +41,7 @@ contract StandardRentPriceOracleFixture is Test {
     address invalidPaymentToken = makeAddr("invalidPaymentToken");
     uint64 minRenewDuration = 1;
 
-    function deployStandardRentPriceOracleFixture() public {
+    function deployStandardRentPriceOracleFixture(IPermissionedRegistry ethRegistry) public {
         tokenUSDC = new MockERC20("USDC", 6);
         tokenDAI = new MockERC20("DAI", 18);
         tokenIdentity = new MockERC20("ID", StandardPricing.PRICE_DECIMALS);
@@ -83,6 +84,7 @@ contract StandardRentPriceOracleFixture is Test {
         }
         rentPriceOracle = new StandardRentPriceOracle(
             address(this),
+            ethRegistry,
             beneficiary,
             StandardPricing.MIN_REGISTER_DURATION,
             StandardPricing.getBaseRates(),

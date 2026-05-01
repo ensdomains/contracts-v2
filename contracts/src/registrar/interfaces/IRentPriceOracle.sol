@@ -2,7 +2,7 @@
 pragma solidity >=0.8.13;
 
 /// @notice Interface for pricing registration and renewals.
-/// @dev Interface selector: `0x68d19d88`.
+/// @dev Interface selector: `0x0aa6305c`
 interface IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -24,11 +24,11 @@ interface IRentPriceOracle {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Transfer payment.
+    /// @notice Process the payment.
     /// @param from The payer account.
     /// @param paymentToken The payment token.
     /// @param amount The amount of `paymentToken`.
-    function pay(
+    function processPayment(
         address from,
         address paymentToken,
         uint256 amount
@@ -42,7 +42,7 @@ interface IRentPriceOracle {
     /// @return base The amount of `paymentToken` for the registration.
     /// @return premium The amount of `paymentToken` due to premium.
     function getRegisterPrice(
-        string memory label,
+        string calldata label,
         uint64 available,
         uint64 duration,
         address paymentToken
@@ -55,7 +55,7 @@ interface IRentPriceOracle {
     /// @param paymentToken The payment token.
     /// @return The amount of `paymentToken`.
     function getRenewPrice(
-        string memory label,
+        string calldata label,
         uint64 expiry,
         uint64 duration,
         address paymentToken

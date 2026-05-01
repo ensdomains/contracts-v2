@@ -63,7 +63,7 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
 
     function setUp() external {
         deployV2Fixture();
-        deployStandardRentPriceOracleFixture();
+        deployStandardRentPriceOracleFixture(ethRegistry);
 
         setupPaymentTokens(testOwner);
 
@@ -75,7 +75,6 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
             StandardPricing.GRACE_PERIOD,
             rentPriceOracle
         );
-
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW,
             address(ethRegistrar)
@@ -277,9 +276,11 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
         vm.warp(block.timestamp + t);
         assertEq(
             uint8(ethRegistry.getStatus(tokenId)),
-            uint8(IPermissionedRegistry.Status.REGISTERED)
+            uint8(IPermissionedRegistry.Status.REGISTERED),
+            "status"
         );
-        assertFalse(ethRegistrar.isAvailable(testLabel));
+        assertFalse(ethRegistrar.isAvailable(testLabel), "available");
+        assertEq(ethRegistrar.getRemainingGracePeriod(testLabel), 0, "remaining");
     }
 
     function test_register_duringGrace(uint32 t) external {
@@ -288,9 +289,15 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
         vm.warp(ethRegistry.getExpiry(tokenId) + t);
         assertEq(
             uint8(ethRegistry.getStatus(tokenId)),
-            uint8(IPermissionedRegistry.Status.AVAILABLE)
+            uint8(IPermissionedRegistry.Status.AVAILABLE),
+            "status"
         );
-        assertFalse(ethRegistrar.isAvailable(testLabel));
+        assertFalse(ethRegistrar.isAvailable(testLabel), "available");
+        assertEq(
+            ethRegistrar.getRemainingGracePeriod(testLabel),
+            ethRegistrar.GRACE_PERIOD() - t,
+            "remaining"
+        );
     }
 
     function test_register_afterGrace() external {
@@ -298,9 +305,11 @@ contract ETHRegistrarTest is V2Fixture, StandardRentPriceOracleFixture {
         vm.warp(ethRegistry.getExpiry(tokenId) + ethRegistrar.GRACE_PERIOD());
         assertEq(
             uint8(ethRegistry.getStatus(tokenId)),
-            uint8(IPermissionedRegistry.Status.AVAILABLE)
+            uint8(IPermissionedRegistry.Status.AVAILABLE),
+            "status"
         );
-        assertTrue(ethRegistrar.isAvailable(testLabel));
+        assertTrue(ethRegistrar.isAvailable(testLabel), "available");
+        assertEq(ethRegistrar.getRemainingGracePeriod(testLabel), 0, "remaining");
 
         (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
             testLabel,

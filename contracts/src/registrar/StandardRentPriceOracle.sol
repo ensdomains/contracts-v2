@@ -10,8 +10,18 @@ import {
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
+import {UnauthorizedCaller} from "../CommonErrors.sol";
+import {
+    IPermissionedRegistry
+} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 import {LibHalving} from "./libraries/LibHalving.sol";
+
+/// @dev Roles for payment processors.
+uint256 constant PAYMENT_ROLE_BITMAP = RegistryRolesLib.ROLE_RENEW |
+    RegistryRolesLib.ROLE_REGISTRAR;
 
 /// @dev Defines one segment of the piecewise-linear discount function.
 /// @param t Incremental time interval for discount, in seconds.
@@ -58,11 +68,14 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Minimum register duration, in seconds.
-    uint64 public minRegisterDuration;
+    /// @notice ENSv2 .eth `PermissionedRegistry`.
+    IPermissionedRegistry public immutable ETH_REGISTRY;
 
     /// @notice Address that receives payments.
     address public beneficiary;
+
+    /// @notice Minimum register duration, in seconds.
+    uint64 public minRegisterDuration;
 
     /// @notice Starting value of the exponential decay premium for recently expired names, in base pricing units.
     uint256 public premiumPriceInitial;
@@ -138,6 +151,7 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
 
     /// @notice Initializes StandardRentPriceOracle.
     /// @param owner_ Owner of the contract.
+    /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.
     /// @param beneficiary_ Address that receives payments.
     /// @param minRegisterDuration_ Minimum register duration, in seconds.
     /// @param baseRatePerCp Base rates, in base units per second.
@@ -148,6 +162,7 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @param paymentRatios List of payment tokens with conversion ratios.
     constructor(
         address owner_,
+        IPermissionedRegistry ethRegistry,
         address beneficiary_,
         uint64 minRegisterDuration_,
         uint256[] memory baseRatePerCp,
@@ -157,6 +172,7 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         uint64 premiumPeriod_,
         PaymentRatio[] memory paymentRatios
     ) Ownable(owner_) {
+        ETH_REGISTRY = ethRegistry;
         beneficiary = beneficiary_;
         emit BeneficiaryUpdated(beneficiary_);
 
@@ -300,11 +316,14 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     }
 
     /// @inheritdoc IRentPriceOracle
-    function pay(
+    function processPayment(
         address from,
         address paymentToken,
         uint256 amount
     ) external payable {
+        if ((ETH_REGISTRY.roles(0, msg.sender) & PAYMENT_ROLE_BITMAP) == 0) {
+            revert UnauthorizedCaller(msg.sender);
+        }
         SafeERC20.safeTransferFrom(
             IERC20(paymentToken),
             from,
