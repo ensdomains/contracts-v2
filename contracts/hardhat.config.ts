@@ -13,6 +13,18 @@ import HardhatIgnoreWarningsPlugin from "./plugins/ignore-warnings/index.ts";
 import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
+const isCoverageBuild =
+  process.argv.includes("--coverage") || process.env.COVERAGE === "1";
+
+const hcaArtifactSourcePaths = [
+  "./lib/compact-utils/src/common/AddressBook/",
+  "./lib/compact-utils/src/router/",
+  "./lib/compact-utils/src/arbiters/samechain/",
+  "./lib/compact-utils/src/executor/",
+  "./lib/ens-modules/src/hca/",
+  "./lib/ens-modules/src/hca-module/",
+  "./lib/account-abstraction/contracts/core/",
+];
 
 const compactUtilsSettings = {
   optimizer: {
@@ -85,11 +97,11 @@ const config = {
           },
           evmVersion: "cancun",
         },
-      }
-    ],
+      },
+    ].filter((compiler) => !isCoverageBuild || compiler.version !== "0.8.30"),
     overrides: {
       ...compactUtilsOverrides,
-      'src/L2/reverse-registrar/L2ReverseRegistrar.sol': {
+      "src/L2/reverse-registrar/L2ReverseRegistrar.sol": {
         version: "0.8.25",
         settings: {
           optimizer: {
@@ -103,20 +115,14 @@ const config = {
             },
           },
         },
-      }
-    }
+      },
+    },
   },
   paths: {
     sources: {
       solidity: [
         "./src/",
-        "./lib/compact-utils/src/common/AddressBook/",
-        "./lib/compact-utils/src/router/",
-        "./lib/compact-utils/src/arbiters/samechain/",
-        "./lib/compact-utils/src/executor/",
-        "./lib/ens-modules/src/hca/",
-        "./lib/ens-modules/src/hca-module/",
-        "./lib/account-abstraction/contracts/core/",
+        ...(isCoverageBuild ? [] : hcaArtifactSourcePaths),
         "./test/mocks/",
         "./lib/verifiable-factory/src/",
         "./lib/ens-contracts/contracts/",
