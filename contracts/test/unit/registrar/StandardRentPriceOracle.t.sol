@@ -3,20 +3,15 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
-import {
-    ERC1155Holder
-} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {
     ERC165Checker
 } from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
-import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {
     IEnhancedAccessControl
 } from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
-import {LibHalving} from "~src/registrar/libraries/LibHalving.sol";
 import {
     StandardRentPriceOracle,
     IRentPriceOracle,
@@ -30,18 +25,13 @@ import {
 } from "~src/registrar/StandardRentPriceOracle.sol";
 import {
     StandardRentPriceOracleFixture,
-    StandardRegistrar,
-    MockERC20,
-    MockERC20Blacklist
+    StandardRegistrar
 } from "~test/fixtures/StandardRentPriceOracleFixture.sol";
 
 /// @dev The expiry parameter of `getRenewPrice()` is currently unused.
 uint64 constant UNUSED_EXPIRY = 0;
 
-contract StandardRentPriceOracleTest is
-    StandardRentPriceOracleFixture,
-    ERC1155Holder
-{
+contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     address actor = makeAddr("actor");
 
     function setUp() external {
@@ -119,8 +109,8 @@ contract StandardRentPriceOracleTest is
         external
     {
         DiscountPoint[] memory v = new DiscountPoint[](2);
-        v[0] = DiscountPoint(1, 2);
-        v[1] = DiscountPoint(v[0].duration, 1); // wrong
+        v[0] = DiscountPoint(100, 2);
+        v[1] = DiscountPoint(100, 1); // wrong: 100 -> 100 => no increase
         vm.expectRevert(
             abi.encodeWithSelector(
                 StandardRentPriceOracle.InvalidDiscount.selector
@@ -142,8 +132,8 @@ contract StandardRentPriceOracleTest is
         external
     {
         DiscountPoint[] memory v = new DiscountPoint[](2);
-        v[0] = DiscountPoint(1, 1);
-        v[1] = DiscountPoint(2, v[0].numerator); // wrong
+        v[0] = DiscountPoint(100, 1);
+        v[1] = DiscountPoint(200, 1); // wrong: 1 -> 1 => no decrease
         vm.expectRevert(
             abi.encodeWithSelector(
                 StandardRentPriceOracle.InvalidDiscount.selector
@@ -163,7 +153,27 @@ contract StandardRentPriceOracleTest is
 
     function test_constructor_invalidDiscount_aboveDenominator() external {
         DiscountPoint[] memory v = new DiscountPoint[](1);
-        v[0] = DiscountPoint(1, 3); // wrong
+        v[0] = DiscountPoint(1, 3); // wrong: 3/3 => 0% discount
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StandardRentPriceOracle.InvalidDiscount.selector
+            )
+        );
+        new StandardRentPriceOracle(
+            address(this),
+            new uint256[](0),
+            v,
+            3, // denominator
+            0,
+            0,
+            0,
+            new PaymentRatio[](0)
+        );
+    }
+
+    function test_constructor_invalidDiscount_free() external {
+        DiscountPoint[] memory v = new DiscountPoint[](1);
+        v[0] = DiscountPoint(1, 0); // wrong: 0/3 => 100% discount
         vm.expectRevert(
             abi.encodeWithSelector(
                 StandardRentPriceOracle.InvalidDiscount.selector
@@ -235,6 +245,28 @@ contract StandardRentPriceOracleTest is
             1
         );
         rentPriceOracle.updatePaymentToken(invalidPaymentToken, 1, 1);
+        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(
+            invalidPaymentToken
+        );
+        assertEq(numer, 1, "numer");
+        assertEq(denom, 1, "denom");
+        assertTrue(rentPriceOracle.isPaymentToken(invalidPaymentToken));
+    }
+
+    function test_updatePaymentToken_edit() external {
+        rentPriceOracle.updatePaymentToken(invalidPaymentToken, 1, 1);
+        vm.expectEmit();
+        emit StandardRentPriceOracle.PaymentTokenUpdated(
+            invalidPaymentToken,
+            2,
+            2
+        );
+        rentPriceOracle.updatePaymentToken(invalidPaymentToken, 2, 2);
+        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(
+            invalidPaymentToken
+        );
+        assertEq(numer, 2, "numer");
+        assertEq(denom, 2, "denom");
         assertTrue(rentPriceOracle.isPaymentToken(invalidPaymentToken));
     }
 
@@ -247,10 +279,11 @@ contract StandardRentPriceOracleTest is
         assertFalse(rentPriceOracle.isPaymentToken(paymentToken));
     }
 
-    function test_updatePaymentToken_noChange() external {
+    function test_updatePaymentToken_unchanged() external {
         rentPriceOracle.updatePaymentToken(invalidPaymentToken, 1, 1);
-        vm.expectRevert();
-        rentPriceOracle.updatePaymentToken(invalidPaymentToken, 1, 1); // wrong
+        vm.recordLogs();
+        rentPriceOracle.updatePaymentToken(invalidPaymentToken, 1, 1); // noop
+        assertEq(vm.getRecordedLogs().length, 0);
     }
 
     function test_updatePaymentToken_invalidRatio() external {
@@ -262,7 +295,7 @@ contract StandardRentPriceOracleTest is
         rentPriceOracle.updatePaymentToken(randomPaymentToken(), 0, 1);
     }
 
-    function test_updatePaymentToken_remove_notAuthorized() external {
+    function test_updatePaymentToken_notAuthorized() external {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -272,20 +305,20 @@ contract StandardRentPriceOracleTest is
             )
         );
         vm.prank(actor);
-        rentPriceOracle.updatePaymentToken(randomPaymentToken(), 0, 0); // remove
+        rentPriceOracle.updatePaymentToken(randomPaymentToken(), 0, 0);
     }
 
-    function test_updatePaymentToken_edit_notAuthorized() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                rentPriceOracle.ROOT_RESOURCE(),
-                ROLE_UPDATE_TOKEN,
-                actor
-            )
-        );
-        vm.prank(actor);
-        rentPriceOracle.updatePaymentToken(randomPaymentToken(), 1, 1); // edit
+    function test_disablePaymentToken() external {
+        IERC20 paymentToken = randomPaymentToken();
+        vm.expectEmit();
+        emit StandardRentPriceOracle.PaymentTokenUpdated(paymentToken, 0, 0);
+        rentPriceOracle.disablePaymentToken(paymentToken);
+    }
+
+    function test_disablePaymentToken_unchanged() external {
+        vm.recordLogs();
+        rentPriceOracle.disablePaymentToken(invalidPaymentToken); // noop
+        assertEq(vm.getRecordedLogs().length, 0);
     }
 
     function test_disablePaymentToken_notAuthorized() external {
@@ -299,33 +332,6 @@ contract StandardRentPriceOracleTest is
         );
         vm.prank(actor);
         rentPriceOracle.disablePaymentToken(randomPaymentToken());
-    }
-
-    function test_getBasePrice_1sec() external view {
-        assertEq(rentPriceOracle.getBasePrice(new string(0), 1), 0);
-        assertEq(
-            rentPriceOracle.getBasePrice(new string(1), 1),
-            StandardRegistrar.RATE_1CP
-        );
-        assertEq(
-            rentPriceOracle.getBasePrice(new string(2), 1),
-            StandardRegistrar.RATE_2CP
-        );
-        assertEq(
-            rentPriceOracle.getBasePrice(new string(3), 1),
-            StandardRegistrar.RATE_3CP
-        );
-        assertEq(
-            rentPriceOracle.getBasePrice(new string(4), 1),
-            StandardRegistrar.RATE_4CP
-        );
-        for (uint256 i = 5; i <= 255; ++i) {
-            assertEq(
-                rentPriceOracle.getBasePrice(new string(i), 1),
-                StandardRegistrar.RATE_5CP
-            );
-        }
-        assertEq(rentPriceOracle.getBasePrice(new string(256), 1), 0);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -573,8 +579,35 @@ contract StandardRentPriceOracleTest is
         );
     }
 
+    function test_getBasePrice_1sec() external view {
+        assertEq(rentPriceOracle.getBasePrice(new string(0), 1), 0);
+        assertEq(
+            rentPriceOracle.getBasePrice(new string(1), 1),
+            StandardRegistrar.RATE_1CP
+        );
+        assertEq(
+            rentPriceOracle.getBasePrice(new string(2), 1),
+            StandardRegistrar.RATE_2CP
+        );
+        assertEq(
+            rentPriceOracle.getBasePrice(new string(3), 1),
+            StandardRegistrar.RATE_3CP
+        );
+        assertEq(
+            rentPriceOracle.getBasePrice(new string(4), 1),
+            StandardRegistrar.RATE_4CP
+        );
+        for (uint256 i = 5; i <= 255; ++i) {
+            assertEq(
+                rentPriceOracle.getBasePrice(new string(i), 1),
+                StandardRegistrar.RATE_5CP
+            );
+        }
+        assertEq(rentPriceOracle.getBasePrice(new string(256), 1), 0);
+    }
+
     function test_convertUnits_calc(uint192 x) external view {
-        MockERC20 paymentToken = randomPaymentToken();
+        IERC20 paymentToken = randomPaymentToken();
         (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(
             paymentToken
         );
@@ -584,7 +617,7 @@ contract StandardRentPriceOracleTest is
         );
     }
 
-    function test_convertUnits_Identity(uint256 x) external view {
+    function test_convertUnits_identity(uint256 x) external view {
         assertEq(rentPriceOracle.convertUnits(x, tokenIdentity), x);
     }
 

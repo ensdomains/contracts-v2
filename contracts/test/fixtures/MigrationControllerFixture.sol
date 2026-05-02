@@ -12,7 +12,7 @@ import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture, RegistryRolesLib} from "~test/fixtures/V2Fixture.sol";
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
-import {ETHRenewerV1} from "~src/registrar/ETHRenewerV1.sol";
+import {ETHSyncer} from "~src/registrar/ETHSyncer.sol";
 
 // forge test test/unit/migration/UnlockedMigrationController.t.sol -vv
 // forge test test/unit/migration/LockedMigrationController.t.sol -vv
@@ -31,7 +31,7 @@ import {ETHRenewerV1} from "~src/registrar/ETHRenewerV1.sol";
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;
     ENSV2Resolver ensV2Resolver;
-    ETHRenewerV1 ethRenewer;
+    ETHSyncer ethSyncer;
     Graveyard graveyard;
     MockERC721 dummy721;
     MockERC1155 dummy1155;
@@ -54,10 +54,9 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
-        baseRegistrar.setResolver(address(ensV2Resolver));
 
         graveyard = new Graveyard(nameWrapper);
-        ethRenewer = new ETHRenewerV1(
+        ethSyncer = new ETHSyncer(
             address(this),
             nameWrapper,
             address(wrappedController),
@@ -65,9 +64,10 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
             premigrationBonusPeriod
         );
 
+        baseRegistrar.setResolver(address(ensV2Resolver));
         baseRegistrar.addController(address(graveyard));
-        baseRegistrar.addController(address(ethRenewer));
-        baseRegistrar.transferOwnership(address(ethRenewer));
+        baseRegistrar.addController(address(ethSyncer));
+        baseRegistrar.transferOwnership(address(ethSyncer));
 
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();

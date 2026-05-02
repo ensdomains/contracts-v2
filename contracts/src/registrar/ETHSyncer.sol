@@ -9,7 +9,7 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-import {IETHRenewerV1} from "./interfaces/IETHRenewerV1.sol";
+import {IETHSyncer} from "./interfaces/IETHSyncer.sol";
 
 /// @notice `ETHRegistrarController.renew()` stub interface.
 /// @dev Interface selector: `0xacf1a841`
@@ -20,10 +20,10 @@ interface IWrappedETHRegistrarController {
     function renew(string calldata label, uint256 duration) external payable;
 }
 
-/// @notice A mechanism to sync ENSv2 registrations with ENSv1.
-contract ETHRenewerV1 is Ownable, ERC165, IETHRenewerV1 {
+/// @notice A mechanism for syncing ENSv2 with ENSv1.
+contract ETHSyncer is Ownable, ERC165, IETHSyncer {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice ENSv1 `NameWrapper`.
@@ -45,9 +45,9 @@ contract ETHRenewerV1 is Ownable, ERC165, IETHRenewerV1 {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes ETHRenewerV1.
-    /// @param owner_ The owner.
-    /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @notice Initializes the contract.
+    /// @param owner_ Ownable owner.
+    /// @param nameWrapper ENSv1 `NameWrapper` contract.
     /// @param wrappedController ENSv1 `ETHRegistrarController` that is a `NameWrapper` controller.
     /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.
     /// @param bonusPeriod ENSv2 premigration bonus period, in seconds.
@@ -67,8 +67,7 @@ contract ETHRenewerV1 is Ownable, ERC165, IETHRenewerV1 {
 
     /// @inheritdoc ERC165
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return
-            interfaceId == type(IETHRenewerV1).interfaceId || super.supportsInterface(interfaceId);
+        return interfaceId == type(IETHSyncer).interfaceId || super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -81,7 +80,7 @@ contract ETHRenewerV1 is Ownable, ERC165, IETHRenewerV1 {
         Ownable(address(_BASE_REGISTRAR)).transferOwnership(newOwner);
     }
 
-    /// @inheritdoc IETHRenewerV1
+    /// @inheritdoc IETHSyncer
     function syncRegistrar(string calldata label) external {
         uint256 tokenIdV1 = LibLabel.id(label);
         IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(tokenIdV1);
@@ -93,7 +92,7 @@ contract ETHRenewerV1 is Ownable, ERC165, IETHRenewerV1 {
         _BASE_REGISTRAR.renew(tokenIdV1, expiryV2 - expiryV1); // reverts if expired
     }
 
-    /// @inheritdoc IETHRenewerV1
+    /// @inheritdoc IETHSyncer
     function syncWrapper(string[] calldata labels) external {
         _BASE_REGISTRAR.addController(address(WRAPPED_CONTROLLER));
         for (uint256 i; i < labels.length; ++i) {

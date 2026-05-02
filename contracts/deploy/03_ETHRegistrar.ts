@@ -21,8 +21,7 @@ export default execute(
     const ethRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
 
-    const ethRenewerV1 =
-      get<(typeof artifacts.ETHRenewerV1)["abi"]>("ETHRenewerV1");
+    const ethSyncer = get<(typeof artifacts.ETHSyncer)["abi"]>("ETHSyncer");
 
     const rentPriceOracle = get<(typeof artifacts.IRentPriceOracle)["abi"]>(
       "StandardRentPriceOracle",
@@ -34,7 +33,7 @@ export default execute(
       args: [
         hcaFactory.address,
         ethRegistry.address,
-        ethRenewerV1.address,
+        ethSyncer.address,
         owner, // beneficiary,
         MIN_COMMITMENT_AGE,
         MAX_COMMITMENT_AGE,
@@ -56,7 +55,7 @@ export default execute(
     dependencies: [
       "HCAFactory",
       "ETHRegistry",
-      "ETHRenewerV1",
+      "ETHSyncer",
       "StandardRentPriceOracle",
     ],
   },

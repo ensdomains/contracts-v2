@@ -15,46 +15,55 @@ import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 import {LibHalving} from "./libraries/LibHalving.sol";
 
+/// @dev Nybble 0: authorizes updating tokens. Root only.
 uint256 constant ROLE_UPDATE_TOKEN = 1 << 0;
+/// @dev Nybble 32: authorizes setting `ROLE_UPDATE_TOKEN`.
 uint256 constant ROLE_UPDATE_TOKEN_ADMIN = ROLE_UPDATE_TOKEN << 128;
-
+/// @dev Nybble 1: authorizes disabling tokens. Root only.
 uint256 constant ROLE_DISABLE_TOKEN = 1 << 4;
+/// @dev Nybble 33: authorizes setting `ROLE_DISABLE_TOKEN`.
 uint256 constant ROLE_DISABLE_TOKEN_ADMIN = ROLE_DISABLE_TOKEN << 128;
 
-/// @dev Default roles for the oracle.
-uint256 constant DEFAULT_ROLE_BITMAP = ROLE_UPDATE_TOKEN |
+/// @dev Default root roles assigned during construction.
+uint256 constant DEFAULT_ROLE_BITMAP = 0 |
+    ROLE_UPDATE_TOKEN |
     ROLE_UPDATE_TOKEN_ADMIN |
+    ROLE_DISABLE_TOKEN |
     ROLE_DISABLE_TOKEN_ADMIN;
 
-/// @dev Initialization-time structure for discounts.
+/// @dev Initialization-time structure for a discount point.
 /// @param duration Duration threshold, in seconds.
-/// @param numerator Discount numerator, relative to `DISCOUNT_DENOMINATOR`.
+/// @param numer Discount numerator, relative to `DISCOUNT_DENOMINATOR`.
 struct DiscountPoint {
     uint64 duration;
-    uint128 numerator;
+    uint128 numer;
 }
 
-/// @dev Initialization-time structure for payment tokens.
+/// @dev Initialization-time structure for a payment token and exchange rate.
+/// @param paymenToken The payment token.
+/// @param numer Exchange rate numerator, relative to base units.
+/// @param denom Exchange rate denominator, relative to base units.
 struct PaymentRatio {
-    IERC20 token;
+    IERC20 paymentToken;
     uint128 numer;
     uint128 denom;
 }
 
-/// @notice Configurable rent pricing oracle with three components:
+/// @notice Rent pricing oracle with (4) components:
 ///
-/// 1. Base rate: per-second cost indexed by label codepoint count. Shorter names cost more.
+/// 1. Base rates: per-second cost indexed by label codepoint count. Shorter names cost more.
 ///    Rates are stored in an array where index `i` corresponds to `i+1` codepoints; labels
 ///    longer than the array use the last entry.
-/// 2. Duration discount: piecewise-linear function defined by discount points. Each point
-///    specifies an interval duration and its discount rate. The integral over the registration
-///    period determines the effective discount. Rewards longer registrations.
+/// 2. Duration discounts: increasing expiry reduce costs. Each dicount point specifies a
+///    duration and a numerator. `1 - numerator / DISCOUNT_DENOMINATOR` determines the
+///    discount percentage. Rewards longer registrations.
 /// 3. Expiry premium: exponential decay from an initial premium with a configurable halving
 ///    period, reaching zero at the end of the premium period. Only charged to new owners of
-///    recently expired names; prior owners and renewals are exempt.
-///
-/// Payment tokens have configurable exchange rates (numerator/denominator ratios). Final
-/// prices are converted via `Math.mulDiv` with ceiling rounding to prevent underpayment.
+///    recently expired names; renewals are exempt.
+/// 4. Configurable payment tokens: payment tokens and their exchange rates can be managed
+///    with `ROLE_UPDATE_TOKEN`. The exchange rate converts the token to standard units.
+///    Since no external oracle is consulted, only stablecoins.
+///    Accounts with `ROLE_DISABLE_TOKEN` can only disable payment tokens.
 ///
 contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
@@ -68,7 +77,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Storage
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Denominator for discounts.
@@ -86,14 +95,15 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
     /// @notice Precomputed premium halving at end of period.
     uint256 public immutable PREMIUM_PRICE_OFFSET;
 
+    ////////////////////////////////////////////////////////////////////////
+    // Storage
+    ////////////////////////////////////////////////////////////////////////
+
     /// @dev Per-second base rates indexed by codepoint count; `_baseRatePerCp[i]` prices labels with `i+1` codepoints.
     uint256[] internal _baseRatePerCp;
 
-    /// @dev Strictly increasing discount durations.
-    uint64[] internal _discountDurations;
-
-    /// @dev Strictly decreasing discount numerators, relative to `DISCOUNT_DENOMINATOR`.
-    uint128[] internal _discountNumerators;
+    /// @dev Ordered discount points, relative to `DISCOUNT_DENOMINATOR`.
+    DiscountPoint[] internal _discountPoints;
 
     /// @dev Exchange rates for each accepted payment token, mapping token address to its numerator/denominator ratio.
     mapping(IERC20 paymentToken => Ratio ratio) internal _paymentRatios;
@@ -104,8 +114,8 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
 
     /// @notice `paymentToken` has changed.
     /// @param paymentToken The payment token.
-    /// @param numer The numerator of the exchange rate.
-    /// @param denom The denominator of the exchange rate, or 0 if disabled.
+    /// @param numer Exchange rate numerator, relative to base units.
+    /// @param denom Exchange rate denominator, relative to base units, or 0 if disabled.
     event PaymentTokenUpdated(
         IERC20 indexed paymentToken,
         uint128 numer,
@@ -153,20 +163,20 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
 
         uint256 n = discountPoints.length;
         if (n > 0) {
-            uint64 duration;
-            uint128 numerator = discountDenominator;
-            uint64[] memory durations = new uint64[](n);
-            uint128[] memory numerators = new uint128[](n);
+            uint64 duration; // must increase
+            uint128 numer = discountDenominator; // must decrease
             for (uint256 i; i < n; ++i) {
-                DiscountPoint memory pt = discountPoints[i];
-                if (pt.duration <= duration || pt.numerator >= numerator) {
+                DiscountPoint memory p = discountPoints[i];
+                if (p.duration <= duration || p.numer >= numer) {
                     revert InvalidDiscount(); // not strictly monotonic
                 }
-                durations[i] = duration = pt.duration;
-                numerators[i] = numerator = pt.numerator;
+                duration = p.duration;
+                numer = p.numer;
+                _discountPoints.push(p);
             }
-            _discountDurations = durations;
-            _discountNumerators = numerators;
+            if (numer == 0) {
+                revert InvalidDiscount(); // free
+            }
             DISCOUNT_DENOMINATOR = discountDenominator;
         }
 
@@ -184,8 +194,8 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
             if (pr.numer == 0 || pr.denom == 0) {
                 revert InvalidRatio();
             }
-            _paymentRatios[pr.token] = Ratio(pr.numer, pr.denom);
-            emit PaymentTokenUpdated(pr.token, pr.numer, pr.denom);
+            _paymentRatios[pr.paymentToken] = Ratio(pr.numer, pr.denom);
+            emit PaymentTokenUpdated(pr.paymentToken, pr.numer, pr.denom);
         }
     }
 
@@ -203,7 +213,6 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Update `paymentToken` support and/or exchange rate.
-    /// @dev Reverts if invalid exchange rate or no change occured.
     /// @param paymentToken The payment token.
     /// @param numer The numerator of the exchange rate.
     /// @param denom The denominator of the exchange rate, or 0 to disable.
@@ -217,25 +226,25 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
             if (numer == 0) {
                 revert InvalidRatio();
             }
-            require(ratio.numer != numer || ratio.denom != denom);
-            _paymentRatios[paymentToken] = Ratio(numer, denom);
-            emit PaymentTokenUpdated(paymentToken, numer, denom);
-        } else {
-            require(ratio.denom > 0);
+            if (ratio.numer != numer || ratio.denom != denom) {
+                _paymentRatios[paymentToken] = Ratio(numer, denom);
+                emit PaymentTokenUpdated(paymentToken, numer, denom);
+            }
+        } else if (ratio.denom > 0) {
             delete _paymentRatios[paymentToken];
             emit PaymentTokenUpdated(paymentToken, 0, 0);
         }
     }
 
     /// @notice Disable `paymentToken` support.
-    /// @dev Reverts if already disabled.
     /// @param paymentToken The payment token.
     function disablePaymentToken(
         IERC20 paymentToken
     ) external onlyRootRoles(ROLE_DISABLE_TOKEN) {
-        require(_paymentRatios[paymentToken].denom > 0);
-        delete _paymentRatios[paymentToken];
-        emit PaymentTokenUpdated(paymentToken, 0, 0);
+        if (_paymentRatios[paymentToken].denom > 0) {
+            delete _paymentRatios[paymentToken];
+            emit PaymentTokenUpdated(paymentToken, 0, 0);
+        }
     }
 
     /// @notice Get all base rates, in standard units per second.
@@ -249,12 +258,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
         view
         returns (DiscountPoint[] memory v)
     {
-        uint64[] memory durations = _discountDurations;
-        uint128[] memory numerators = _discountNumerators;
-        v = new DiscountPoint[](durations.length);
-        for (uint256 i; i < durations.length; ++i) {
-            v[i] = DiscountPoint(durations[i], numerators[i]);
-        }
+        return _discountPoints;
     }
 
     /// @notice Check if a `label` is valid. Does not check if normalized.
@@ -332,17 +336,17 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
         uint256 value,
         uint64 duration
     ) public view returns (uint256) {
-        uint64[] memory v = _discountDurations;
-        uint256 i;
-        while (i < v.length && duration >= v[i]) ++i;
+        uint256 n = _discountPoints.length;
+        uint128 numer;
+        for (uint256 i; i < n; ++i) {
+            DiscountPoint storage p = _discountPoints[i];
+            if (duration < p.duration) break;
+            numer = p.numer;
+        }
         return
-            i == 0
+            numer == 0
                 ? value
-                : Math.mulDiv(
-                    value,
-                    _discountNumerators[i - 1],
-                    DISCOUNT_DENOMINATOR
-                );
+                : Math.mulDiv(value, numer, DISCOUNT_DENOMINATOR);
     }
 
     /// @notice Get base price to register or renew `label` for `duration` seconds.

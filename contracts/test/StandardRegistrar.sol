@@ -18,7 +18,6 @@ library StandardRegistrar {
     uint64 internal constant BONUS_PERIOD = 1 + GRACE_PERIOD_V1 - GRACE_PERIOD_V2;
 
     uint8 internal constant PRICE_DECIMALS = 12;
-
     uint256 internal constant PRICE_SCALE = 10 ** PRICE_DECIMALS;
 
     uint256 internal constant PREMIUM_PRICE_INITIAL = 100_000_000 * PRICE_SCALE;
@@ -35,7 +34,7 @@ library StandardRegistrar {
 
     uint256 internal constant RATE_1CP = 0;
     uint256 internal constant RATE_2CP = 0;
-    uint256 internal constant RATE_3CP = (640 * PRICE_SCALE + SEC_PER_YEAR - 1) / SEC_PER_YEAR;
+    uint256 internal constant RATE_3CP = (640 * PRICE_SCALE + SEC_PER_YEAR - 1) / SEC_PER_YEAR; // round up
     uint256 internal constant RATE_4CP = (160 * PRICE_SCALE + SEC_PER_YEAR - 1) / SEC_PER_YEAR;
     uint256 internal constant RATE_5CP = (8 * PRICE_SCALE + SEC_PER_YEAR - 1) / SEC_PER_YEAR;
 
@@ -67,7 +66,7 @@ library StandardRegistrar {
 
     function getDiscountPoints() internal pure returns (DiscountPoint[] memory v) {
         v = new DiscountPoint[](3);
-        v[0] = DiscountPoint(SEC_PER_YEAR, _discountNumer(7, 8)); ////// 1 - 14/16 = 12.50%
+        v[0] = DiscountPoint(SEC_PER_YEAR, _discountNumer(7, 8)); //////// 1 - 14/16 = 12.50%
         v[1] = DiscountPoint(SEC_PER_YEAR * 2, _discountNumer(11, 16)); // 1 - 11/16 = 31.25%
         v[2] = DiscountPoint(SEC_PER_YEAR * 5, _discountNumer(9, 16)); /// 1 -  9/16 = 43.75%
     }
@@ -76,7 +75,7 @@ library StandardRegistrar {
 
     function _discountNumer(uint256 numer, uint256 denom) private pure returns (uint128) {
         require(numer < denom, "discountNumer");
-        return uint128((DISCOUNT_DENOMINATOR * numer) / denom);
+        return uint128((DISCOUNT_DENOMINATOR * numer + denom - 1) / denom); // round up
     }
 
     function ratioFromStable(MockERC20 token) internal view returns (PaymentRatio memory) {

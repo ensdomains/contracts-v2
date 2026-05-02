@@ -21,9 +21,9 @@ export default execute(
     const ethRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
 
-    const ethRenewerV1 = await deploy("ETHRenewerV1", {
+    const ethSyncer = await deploy("ETHSyncer", {
       account: deployer,
-      artifact: artifacts.ETHRenewerV1,
+      artifact: artifacts.ETHSyncer,
       args: [
         owner,
         nameWrapper.address,
@@ -35,12 +35,12 @@ export default execute(
 
     await write(ethRegistry, {
       functionName: "grantRootRoles",
-      args: [DEPLOYMENT_ROLES.ETH_RENEWER_V1_ROOT, ethRenewerV1.address],
+      args: [DEPLOYMENT_ROLES.ETH_SYNCER_ROOT, ethSyncer.address],
       account: deployer,
     });
   },
   {
-    tags: ["ETHRenewerV1", "v2"],
+    tags: ["ETHSyncer", "v2"],
     dependencies: [
       "NameWrapper",
       "WrappedETHRegistrarController",

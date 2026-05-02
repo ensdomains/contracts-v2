@@ -46,7 +46,7 @@ export type DevnetEnvironment = Awaited<ReturnType<typeof setupDevnet>>;
 export type DevnetAccount =
   DevnetEnvironment["namedAccounts"][(typeof NAMED_ACCOUNTS)[number]];
 
-function ansi(c: any, s: any) {
+function ansi(c: unknown, s: unknown) {
   return `\x1b[${c}m${s}\x1b[0m`;
 }
 
@@ -86,7 +86,7 @@ export async function setupDevnet({
     console.log("Deploying ENSv2...");
     await patchArtifactsV1();
 
-    process.env["RUST_LOG"] = "info"; // required to capture console.log()
+    process.env.RUST_LOG = "info"; // required to capture console.log()
     const anvilInstance = createAnvil({
       accounts: NAMED_ACCOUNTS.length,
       mnemonic,
@@ -384,9 +384,9 @@ export async function setupDevnet({
         address: rocketh.get("Graveyard").address,
         client,
       }),
-      ETHRenewerV1: getContract({
-        abi: artifacts.ETHRenewerV1.abi,
-        address: rocketh.get("ETHRenewerV1").address,
+      ETHSyncer: getContract({
+        abi: artifacts.ETHSyncer.abi,
+        address: rocketh.get("ETHSyncer").address,
         client,
       }),
       // resolvers
@@ -729,9 +729,9 @@ export async function setupDevnet({
 
     async function activateV2() {
       const account = namedAccounts.owner;
-      // brick NameWrapper
+      // lock NameWrapper
       await v1.NameWrapper.write.renounceOwnership({ account });
-      // disable v1 controllers
+      // disable v1 eth controllers
       await v1.RegistrarSecurityController.write.removeRegistrarController(
         [rocketh.get("ETHRegistrarController").address],
         { account },
@@ -744,18 +744,18 @@ export async function setupDevnet({
         [rocketh.get("LegacyETHRegistrarController").address],
         { account },
       );
-      // add v2 controllers
+      // add v2 eth controllers
       await v1.RegistrarSecurityController.write.addRegistrarController(
         [v2.Graveyard.address],
         { account },
       );
       await v1.RegistrarSecurityController.write.addRegistrarController(
-        [v2.ETHRenewerV1.address],
+        [v2.ETHSyncer.address],
         { account },
       );
-      // give to graveyard
+      // transfer to syncer for juggling
       await v1.RegistrarSecurityController.write.transferRegistrarOwnership(
-        [v2.Graveyard.address],
+        [v2.ETHSyncer.address],
         { account },
       );
       // TODO:

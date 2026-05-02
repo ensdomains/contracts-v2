@@ -34,8 +34,9 @@ export default execute(
         ]);
         return {
           MockERC20: symbol,
+          paymentToken: x.address,
           decimals,
-          token: x.address,
+          Δ: decimals - PRICE_DECIMALS,
           numer: 10n ** BigInt(Math.max(decimals - PRICE_DECIMALS, 0)),
           denom: 10n ** BigInt(Math.max(PRICE_DECIMALS - decimals, 0)),
         };
@@ -83,8 +84,7 @@ export default execute(
       await Promise.all(
         durations.map(async (t, i) => {
           const years = Number(t) / Number(SEC_PER_YEAR);
-          const numer = numers[i];
-          const ratio = Number(numer) / Number(denom);
+          const ratio = Number(numers[i]) / Number(denom);
           return {
             years: `<${years.toFixed(2)}`,
             discount: `${(100 * (1 - ratio)).toFixed(2)}%`,

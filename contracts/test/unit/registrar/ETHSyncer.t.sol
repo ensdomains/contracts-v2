@@ -11,12 +11,7 @@ import {
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {MigrationControllerFixture, NameCoder} from "~test/fixtures/MigrationControllerFixture.sol";
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
-import {
-    ETHRenewerV1,
-    IETHRenewerV1,
-    IPermissionedRegistry,
-    Ownable
-} from "~src/registrar/ETHRenewerV1.sol";
+import {ETHSyncer, IETHSyncer, IPermissionedRegistry, Ownable} from "~src/registrar/ETHSyncer.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
 
 // [gas analysis]
@@ -34,7 +29,7 @@ import {LibLabel} from "~src/utils/LibLabel.sol";
 //   7 | 102734
 //   8 | 113746
 
-contract ETHRenewerV1Test is MigrationControllerFixture {
+contract ETHSyncerTest is MigrationControllerFixture {
     address actor = makeAddr("actor");
 
     function setUp() external {
@@ -42,26 +37,26 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
     }
 
     function test_constructor() external view {
-        assertEq(ethRenewer.owner(), address(this), "owner");
-        assertEq(address(ethRenewer.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
+        assertEq(ethSyncer.owner(), address(this), "owner");
+        assertEq(address(ethSyncer.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
         assertEq(
-            address(ethRenewer.WRAPPED_CONTROLLER()),
+            address(ethSyncer.WRAPPED_CONTROLLER()),
             address(wrappedController),
             "WRAPPED_CONTROLLER"
         );
-        assertEq(address(ethRenewer.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
-        assertEq(ethRenewer.BONUS_PERIOD(), StandardRegistrar.BONUS_PERIOD, "BONUS_PERIOD");
+        assertEq(address(ethSyncer.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
+        assertEq(ethSyncer.BONUS_PERIOD(), StandardRegistrar.BONUS_PERIOD, "BONUS_PERIOD");
     }
 
     function test_transferRegistrarOwnership() external {
-        ethRenewer.transferRegistrarOwnership(user);
+        ethSyncer.transferRegistrarOwnership(user);
         assertEq(baseRegistrar.owner(), user);
     }
 
     function test_transferRegistrarOwnership_notAuthorized() external {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, actor));
         vm.prank(actor);
-        ethRenewer.transferRegistrarOwnership(user);
+        ethSyncer.transferRegistrarOwnership(user);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -81,7 +76,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
         ethRegistry.renew(tokenIdV1, expiryV2 + duration); // renew RESERVED only
 
         uint256 g = gasleft();
-        ethRenewer.syncRegistrar(testLabel);
+        ethSyncer.syncRegistrar(testLabel);
         g -= gasleft();
         console.log("Gas: %s", g);
 
@@ -101,8 +96,8 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
             "status"
         );
 
-        vm.expectRevert(abi.encodeWithSelector(IETHRenewerV1.NameNotReserved.selector, testLabel));
-        ethRenewer.syncRegistrar(testLabel);
+        vm.expectRevert(abi.encodeWithSelector(IETHSyncer.NameNotReserved.selector, testLabel));
+        ethSyncer.syncRegistrar(testLabel);
     }
 
     function test_syncRegistar_registered() external {
@@ -114,8 +109,8 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
             "status"
         );
 
-        vm.expectRevert(abi.encodeWithSelector(IETHRenewerV1.NameNotReserved.selector, testLabel));
-        ethRenewer.syncRegistrar(testLabel);
+        vm.expectRevert(abi.encodeWithSelector(IETHSyncer.NameNotReserved.selector, testLabel));
+        ethSyncer.syncRegistrar(testLabel);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -127,7 +122,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
         string[] memory labels = new string[](1);
         labels[0] = testLabel;
         uint256 g = gasleft();
-        ethRenewer.syncWrapper(labels); // noop
+        ethSyncer.syncWrapper(labels); // noop
         g -= gasleft();
         console.log("Gas: %s", g);
     }
@@ -138,7 +133,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
 
         uint64 duration = 1 days;
 
-        vm.prank(address(ethRenewer));
+        vm.prank(address(ethSyncer));
         baseRegistrar.renew(LibLabel.id(testLabel), duration); // renew unwrapped only
 
         (, , uint64 wrappedExpiry0) = nameWrapper.getData(uint256(node));
@@ -148,7 +143,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
         string[] memory labels = new string[](1);
         labels[0] = testLabel;
         uint256 g = gasleft();
-        ethRenewer.syncWrapper(labels);
+        ethSyncer.syncWrapper(labels);
         g -= gasleft();
         console.log("Gas: %s", g);
 
@@ -173,7 +168,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture {
                 labels[j] = _label(i++);
             }
             uint256 g = gasleft();
-            ethRenewer.syncWrapper(labels);
+            ethSyncer.syncWrapper(labels);
             g -= gasleft();
             console.log("%s | %s", n, g);
         }

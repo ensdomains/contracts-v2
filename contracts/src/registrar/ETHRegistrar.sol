@@ -20,10 +20,7 @@ import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IETHRegistrar} from "./interfaces/IETHRegistrar.sol";
-import {ICommitRevealRegistrar} from "./interfaces/IETHRegistrar.sol";
-import {IETHRenewerV1} from "./interfaces/IETHRenewerV1.sol";
-import {INameRegistrar} from "./interfaces/INameRegistrar.sol";
-import {INameRenewer} from "./interfaces/INameRenewer.sol";
+import {IETHSyncer} from "./interfaces/IETHSyncer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
 /// @dev Composite role bitmap granted to name owners at registration — includes set-subregistry, set-resolver, and can-transfer (with admin variants).
@@ -37,6 +34,8 @@ uint256 constant REGISTRATION_ROLE_BITMAP = 0 |
 /// @dev Root-level role authorizing oracle updates.
 uint256 constant ROLE_SET_ORACLE = 1 << 0;
 uint256 constant ROLE_SET_ORACLE_ADMIN = ROLE_SET_ORACLE << 128;
+
+uint256 constant DEFAULT_ROLE_BITMAP = ROLE_SET_ORACLE | ROLE_SET_ORACLE_ADMIN;
 
 /// @notice Commit-reveal registrar for .eth names. Registration requires two transactions: first
 /// `commit(hash)` to record a commitment, then `register(...)` after the minimum commitment
@@ -58,8 +57,8 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
     /// @notice ENSv2 .eth `PermissionedRegistry`.
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
-    /// @notice ETHRenewerV1 contract for syncing ENSv1.
-    IETHRenewerV1 public immutable ETH_RENEWER;
+    /// @notice `ETHSyncer` contract.
+    IETHSyncer public immutable ETH_SYNCER;
 
     /// @notice Address that receives payments.
     address public immutable BENEFICIARY;
@@ -87,7 +86,7 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
     /// @notice Oracle for registration and renewal costs.
     IRentPriceOracle public rentPriceOracle;
 
-    /// @inheritdoc ICommitRevealRegistrar
+    /// @inheritdoc IETHRegistrar
     mapping(bytes32 commitment => uint64 commitTime) public commitmentAt;
 
     ////////////////////////////////////////////////////////////////////////
@@ -110,21 +109,21 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes ETHRegistrar.
+    /// @notice Initializes the contract.
     /// @param hcaFactory HCA factory.
     /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.
-    /// @param ethRenewer ETHRenewerV1 contract for syncing ENSv1.
+    /// @param ethSyncer ETHSyncer contract.
     /// @param beneficiary Address that receives payments.
     /// @param minCommitmentAge Minimum seconds a commitment must age before registration can proceed.
     /// @param maxCommitmentAge Maximum seconds a commitment remains valid; expired commitments are rejected.
-    /// @param gracePeriod Post-expiry period where a name can still be renewed and is not available, in seconds.
+    /// @param gracePeriod Post-expiry period where still renewable and not available, in seconds.
     /// @param minRegisterDuration Minimum register duration, in seconds.
     /// @param minRenewDuration Minimum renew duration, in seconds.
     /// @param rentPriceOracle_ Initial oracle for registration and renewal costs.
     constructor(
         IHCAFactoryBasic hcaFactory,
         IPermissionedRegistry ethRegistry,
-        IETHRenewerV1 ethRenewer,
+        IETHSyncer ethSyncer,
         address beneficiary,
         uint64 minCommitmentAge,
         uint64 maxCommitmentAge,
@@ -136,15 +135,10 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
         if (maxCommitmentAge <= minCommitmentAge) {
             revert MaxCommitmentAgeTooLow();
         }
-        _grantRoles(
-            ROOT_RESOURCE,
-            ROLE_SET_ORACLE | ROLE_SET_ORACLE_ADMIN,
-            _msgSender(),
-            true
-        );
+        _grantRoles(ROOT_RESOURCE, DEFAULT_ROLE_BITMAP, _msgSender(), false);
 
         ETH_REGISTRY = ethRegistry;
-        ETH_RENEWER = ethRenewer;
+        ETH_SYNCER = ethSyncer;
         BENEFICIARY = beneficiary;
         MIN_COMMITMENT_AGE = minCommitmentAge;
         MAX_COMMITMENT_AGE = maxCommitmentAge;
@@ -159,12 +153,9 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
     /// @inheritdoc EnhancedAccessControl
     function supportsInterface(
         bytes4 interfaceId
-    ) public view override(EnhancedAccessControl) returns (bool) {
+    ) public view override returns (bool) {
         return
             interfaceId == type(IETHRegistrar).interfaceId ||
-            interfaceId == type(ICommitRevealRegistrar).interfaceId ||
-            interfaceId == type(INameRegistrar).interfaceId ||
-            interfaceId == type(INameRenewer).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -181,7 +172,7 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
         emit RentPriceOracleUpdated(oracle);
     }
 
-    /// @inheritdoc ICommitRevealRegistrar
+    /// @inheritdoc IETHRegistrar
     function commit(bytes32 commitment) external {
         if (commitmentAt[commitment] + MAX_COMMITMENT_AGE > block.timestamp) {
             revert UnexpiredCommitmentExists(commitment);
@@ -190,7 +181,7 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
         emit CommitmentMade(commitment);
     }
 
-    /// @inheritdoc INameRegistrar
+    /// @inheritdoc IETHRegistrar
     function register(
         string calldata label,
         address owner,
@@ -253,7 +244,7 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
         );
     }
 
-    /// @inheritdoc INameRenewer
+    /// @inheritdoc IETHRegistrar
     function renew(
         string calldata label,
         uint64 duration,
@@ -288,7 +279,7 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
             amount
         );
         if (_shouldSyncV1(state)) {
-            ETH_RENEWER.syncRegistrar(label);
+            ETH_SYNCER.syncRegistrar(label);
         }
     }
 
@@ -342,7 +333,7 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
             );
     }
 
-    /// @inheritdoc ICommitRevealRegistrar
+    /// @inheritdoc IETHRegistrar
     function makeCommitment(
         string calldata label,
         address owner,

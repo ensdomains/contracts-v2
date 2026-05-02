@@ -86,7 +86,7 @@ export const DEPLOYMENT_ROLES = {
     ROLES.ADMIN.REGISTRY.RENEW,
   // ETHRegistrar and BatchRegistrar are granted REGISTRAR and RENEW on ETHRegistry root at static deploy.
   ETH_REGISTRAR_ROOT: ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
-  ETH_RENEWER_V1_ROOT: ROLES.REGISTRY.RENEW,
+  ETH_SYNCER_ROOT: ROLES.REGISTRY.RENEW,
   // UnlockedMigrationController and LockedMigrationController
   // only need to register() pre-migrated reservations on ETHRegistry (see: "ENSv2 Migration Case Study")
   MIGRATION_CONTROLLER_ROOT: ROLES.REGISTRY.REGISTER_RESERVED,
@@ -154,8 +154,8 @@ export const DISCOUNT_DENOMINATOR = 10n ** 38n;
 function discountNumer(numer: bigint, denom: bigint) {
   return (DISCOUNT_DENOMINATOR * numer) / denom;
 }
-export const DISCOUNT_POINTS: { duration: bigint; numerator: bigint }[] = [
-  { duration: SEC_PER_YEAR, numerator: discountNumer(7n, 8n) }, ///////// 1 - 14/16 = 12.50%
-  { duration: SEC_PER_YEAR * 2n, numerator: discountNumer(11n, 16n) }, // 1 - 11/16 = 31.25%
-  { duration: SEC_PER_YEAR * 5n, numerator: discountNumer(9n, 16n) }, /// 1 -  9/16 = 43.75%
+export const DISCOUNT_POINTS: { duration: bigint; numer: bigint }[] = [
+  { duration: SEC_PER_YEAR, numer: discountNumer(7n, 8n) }, ///////// 1 - 14/16 = 12.50%
+  { duration: SEC_PER_YEAR * 2n, numer: discountNumer(11n, 16n) }, // 1 - 11/16 = 31.25%
+  { duration: SEC_PER_YEAR * 5n, numer: discountNumer(9n, 16n) }, /// 1 -  9/16 = 43.75%
 ];

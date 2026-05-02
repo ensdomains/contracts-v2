@@ -15,17 +15,13 @@ import {
 import {
     ERC165Checker
 } from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
-import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IEnhancedAccessControl} from "~src/registry/PermissionedRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {
     ETHRegistrar,
     IETHRegistrar,
-    IETHRenewerV1,
-    ICommitRevealRegistrar,
-    INameRegistrar,
-    INameRenewer,
+    IETHSyncer,
     IRegistry,
     IPermissionedRegistry,
     RegistryRolesLib,
@@ -64,10 +60,10 @@ contract ETHRegistrarTest is
     address testOwner = makeAddr("owner");
     address testSender = testOwner;
     MockERC20 testPaymentToken; //|
-    bytes32 testSecret; ////////|
-    bytes32 testReferrer; //////| set below
-    uint64 testDuration; ///////|
-    uint64 testCommitDelay; ////|
+    bytes32 testSecret; //////////|
+    bytes32 testReferrer; ////////| set below
+    uint64 testDuration; /////////|
+    uint64 testCommitDelay; //////|
 
     function setUp() external {
         deployMigrationControllerFixture();
@@ -76,7 +72,7 @@ contract ETHRegistrarTest is
         ethRegistrar = new ETHRegistrar(
             hcaFactory,
             ethRegistry,
-            ethRenewer,
+            ethSyncer,
             beneficiary,
             StandardRegistrar.MIN_COMMITMENT_AGE,
             StandardRegistrar.MAX_COMMITMENT_AGE,
@@ -111,9 +107,9 @@ contract ETHRegistrarTest is
             "ETH_REGISTRY"
         );
         assertEq(
-            address(ethRegistrar.ETH_RENEWER()),
-            address(ethRenewer),
-            "ETH_RENEWER"
+            address(ethRegistrar.ETH_SYNCER()),
+            address(ethSyncer),
+            "ETH_SYNCER"
         );
         assertEq(
             address(ethRegistrar.BENEFICIARY()),
@@ -159,7 +155,7 @@ contract ETHRegistrarTest is
         new ETHRegistrar(
             hcaFactory,
             ethRegistry,
-            ethRenewer,
+            ethSyncer,
             address(0),
             1, // minCommitmentAge
             1, // maxCommitmentAge
@@ -177,7 +173,7 @@ contract ETHRegistrarTest is
         new ETHRegistrar(
             hcaFactory,
             ethRegistry,
-            ethRenewer,
+            ethSyncer,
             address(0),
             1, // minCommitmentAge
             0, // maxCommitmentAge
@@ -228,7 +224,7 @@ contract ETHRegistrarTest is
             "hash"
         );
         vm.expectEmit();
-        emit ICommitRevealRegistrar.CommitmentMade(commitment);
+        emit IETHRegistrar.CommitmentMade(commitment);
         ethRegistrar.commit(commitment);
         assertEq(
             ethRegistrar.commitmentAt(commitment),
@@ -253,7 +249,7 @@ contract ETHRegistrarTest is
         ethRegistrar.commit(commitment);
         vm.expectRevert(
             abi.encodeWithSelector(
-                ICommitRevealRegistrar.UnexpiredCommitmentExists.selector,
+                IETHRegistrar.UnexpiredCommitmentExists.selector,
                 commitment
             )
         );
@@ -290,7 +286,7 @@ contract ETHRegistrarTest is
             address(ethRegistrar)
         );
         vm.expectEmit();
-        emit INameRegistrar.NameRegistered(
+        emit IETHRegistrar.NameRegistered(
             tokenId,
             testLabel,
             testOwner,
@@ -444,7 +440,7 @@ contract ETHRegistrarTest is
         uint256 t = block.timestamp + testCommitDelay;
         vm.expectRevert(
             abi.encodeWithSelector(
-                ICommitRevealRegistrar.CommitmentTooNew.selector,
+                IETHRegistrar.CommitmentTooNew.selector,
                 _makeCommitment(),
                 t + dt,
                 t
@@ -459,7 +455,7 @@ contract ETHRegistrarTest is
         uint256 t = block.timestamp + testCommitDelay;
         vm.expectRevert(
             abi.encodeWithSelector(
-                ICommitRevealRegistrar.CommitmentTooOld.selector,
+                IETHRegistrar.CommitmentTooOld.selector,
                 _makeCommitment(),
                 t - dt,
                 t
@@ -491,7 +487,7 @@ contract ETHRegistrarTest is
         this._register();
         vm.expectRevert(
             abi.encodeWithSelector(
-                INameRegistrar.NameNotRegisterable.selector,
+                IETHRegistrar.NameNotRegisterable.selector,
                 testLabel
             )
         );
@@ -502,7 +498,7 @@ contract ETHRegistrarTest is
         _reserve();
         vm.expectRevert(
             abi.encodeWithSelector(
-                INameRegistrar.NameNotRegisterable.selector,
+                IETHRegistrar.NameNotRegisterable.selector,
                 testLabel
             )
         );
@@ -513,25 +509,24 @@ contract ETHRegistrarTest is
         vm.assume(t >= ethRegistrar.MIN_RENEW_DURATION());
         uint256 tokenId = this._register();
         testDuration = t;
-        uint64 expiry0 = ethRegistry.getExpiry(tokenId);
-        uint64 expiry1 = expiry0 + testDuration;
+        uint64 newExpiry = ethRegistry.getExpiry(tokenId) + testDuration;
         uint256 amount = ethRegistrar.getRenewPrice(
             testLabel,
             testDuration,
             testPaymentToken
         );
         vm.expectEmit();
-        emit INameRenewer.NameRenewed(
-            LibLabel.withVersion(LibLabel.id(testLabel), 0),
+        emit IETHRegistrar.NameRenewed(
+            tokenId,
             testLabel,
             testDuration,
-            expiry1,
+            newExpiry,
             testPaymentToken,
             testReferrer,
             amount
         );
         this._renew();
-        assertEq(ethRegistry.getExpiry(tokenId), expiry1);
+        assertEq(ethRegistry.getExpiry(tokenId), newExpiry);
     }
 
     function test_renewV1_registered() external {
@@ -609,7 +604,7 @@ contract ETHRegistrarTest is
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                INameRenewer.NameNotRenewable.selector,
+                IETHRegistrar.NameNotRenewable.selector,
                 testLabel
             )
         );
@@ -619,7 +614,7 @@ contract ETHRegistrarTest is
     function test_renew_available() external {
         vm.expectRevert(
             abi.encodeWithSelector(
-                INameRenewer.NameNotRenewable.selector,
+                IETHRegistrar.NameNotRenewable.selector,
                 testLabel
             )
         );
@@ -638,7 +633,7 @@ contract ETHRegistrarTest is
         vm.warp(ethRegistry.getExpiry(tokenId) + ethRegistrar.GRACE_PERIOD());
         vm.expectRevert(
             abi.encodeWithSelector(
-                INameRenewer.NameNotRenewable.selector,
+                IETHRegistrar.NameNotRenewable.selector,
                 testLabel
             )
         );
@@ -690,16 +685,16 @@ contract ETHRegistrarTest is
         assertTrue(
             ERC165Checker.supportsInterface(
                 address(ethRegistrar),
-                type(INameRegistrar).interfaceId
+                type(IETHRegistrar).interfaceId
             ),
-            "INameRegistrar"
+            "IETHRegistrar"
         );
         assertTrue(
             ERC165Checker.supportsInterface(
                 address(ethRegistrar),
-                type(INameRenewer).interfaceId
+                type(IETHRegistrar).interfaceId
             ),
-            "INameRenewer"
+            "IETHRegistrar"
         );
     }
 
