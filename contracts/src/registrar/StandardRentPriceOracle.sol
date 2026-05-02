@@ -217,7 +217,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
             if (numer == 0) {
                 revert InvalidRatio();
             }
-            require(ratio.numer != numer && ratio.denom != denom);
+            require(ratio.numer != numer || ratio.denom != denom);
             _paymentRatios[paymentToken] = Ratio(numer, denom);
             emit PaymentTokenUpdated(paymentToken, numer, denom);
         } else {
@@ -234,6 +234,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
         IERC20 paymentToken
     ) external onlyRootRoles(ROLE_DISABLE_TOKEN) {
         require(_paymentRatios[paymentToken].denom > 0);
+        delete _paymentRatios[paymentToken];
         emit PaymentTokenUpdated(paymentToken, 0, 0);
     }
 
