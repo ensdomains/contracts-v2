@@ -1,16 +1,8 @@
 import { artifacts, execute } from "@rocketh";
-import {
-  DEPLOYMENT_ROLES,
-  PREMIGRATION_BONUS_PERIOD,
-} from "../script/deploy-constants.js";
+import { PREMIGRATION_BONUS_PERIOD } from "../script/deploy-constants.js";
 
 export default execute(
-  async ({
-    deploy,
-    execute: write,
-    get,
-    namedAccounts: { deployer, owner },
-  }) => {
+  async ({ deploy, get, namedAccounts: { deployer, owner } }) => {
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
@@ -21,7 +13,7 @@ export default execute(
     const ethRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
 
-    const ethSyncer = await deploy("ETHSyncer", {
+    await deploy("ETHSyncer", {
       account: deployer,
       artifact: artifacts.ETHSyncer,
       args: [
@@ -31,12 +23,6 @@ export default execute(
         ethRegistry.address,
         PREMIGRATION_BONUS_PERIOD,
       ],
-    });
-
-    await write(ethRegistry, {
-      functionName: "grantRootRoles",
-      args: [DEPLOYMENT_ROLES.ETH_SYNCER_ROOT, ethSyncer.address],
-      account: deployer,
     });
   },
   {
