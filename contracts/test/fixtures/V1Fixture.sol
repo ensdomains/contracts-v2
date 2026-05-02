@@ -9,17 +9,25 @@ import {ENSRegistry, ENS} from "@ens/contracts/registry/ENSRegistry.sol";
 import {
     BaseRegistrarImplementation
 } from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
-import {NameWrapper, IMetadataService} from "@ens/contracts/wrapper/NameWrapper.sol";
+import {NameWrapper, INameWrapper, IMetadataService} from "@ens/contracts/wrapper/NameWrapper.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 
 /// @dev Reusable testing fixture for ENSv1.
 contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
+    enum StatusV1 {
+        REGISTERED,
+        GRACE,
+        AVAILABLE
+    }
+
     ENS registryV1;
     BaseRegistrarImplementation baseRegistrar;
     NameWrapper nameWrapper;
+    MockWrappedETHRegistrarController wrappedController;
 
     uint64 gracePeriodV1;
+    uint64 effectiveGracePeriodV1;
     uint64 testDurationV1 = 1 days;
     address user = makeAddr("user");
     address ensV1Controller = makeAddr("ensV1Controller");
@@ -29,12 +37,19 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         baseRegistrar = new BaseRegistrarImplementation(registryV1, NameCoder.ETH_NODE);
         baseRegistrar.addController(ensV1Controller);
         gracePeriodV1 = uint64(baseRegistrar.GRACE_PERIOD());
+        effectiveGracePeriodV1 = gracePeriodV1 + 1; // see: BaseRegistrarImplementation.available()
         _claimNodes(NameCoder.encode("eth"), 0, address(baseRegistrar));
         _claimNodes(NameCoder.encode("addr.reverse"), 0, address(this)); // see: fake ReverseClaimer
         nameWrapper = new NameWrapper(registryV1, baseRegistrar, IMetadataService(address(0)));
+        wrappedController = new MockWrappedETHRegistrarController(nameWrapper);
         nameWrapper.setController(ensV1Controller, true);
+        nameWrapper.setController(address(wrappedController), true);
         baseRegistrar.addController(address(nameWrapper));
-        vm.warp(gracePeriodV1 + 1); // avoid timestamp issues
+
+        uint256 t = effectiveGracePeriodV1;
+        if (block.timestamp < t) {
+            vm.warp(t); // avoid timestamp issues
+        }
     }
 
     // fake ReverseClaimer
@@ -116,7 +131,27 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         }
     }
 
+    function getStatusV1(uint256 tokenId) public view returns (StatusV1) {
+        try baseRegistrar.ownerOf(tokenId) {
+            return StatusV1.REGISTERED;
+        } catch {
+            return baseRegistrar.available(tokenId) ? StatusV1.AVAILABLE : StatusV1.GRACE;
+        }
+    }
+
     function findResolverV1(bytes memory name) public view returns (address resolver) {
         (resolver, , ) = RegistryUtils.findResolver(registryV1, name, 0);
+    }
+}
+
+// https://github.com/ensdomains/ens-contracts/blob/staging/deployments/mainnet/WrappedETHRegistrarController.json
+contract MockWrappedETHRegistrarController {
+    INameWrapper internal immutable NAME_WRAPPER;
+    constructor(INameWrapper nameWrapper) {
+        NAME_WRAPPER = nameWrapper;
+    }
+    function renew(string calldata label, uint256 duration) external payable {
+        require(duration == 0);
+        NAME_WRAPPER.renew(uint256(keccak256(bytes(label))), duration);
     }
 }

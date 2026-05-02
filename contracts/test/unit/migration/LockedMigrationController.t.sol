@@ -103,7 +103,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
             address(migrationController)
         );
-        baseRegistrar.setResolver(address(ensV2Resolver));
     }
 
     function test_constructor_controller() external view {

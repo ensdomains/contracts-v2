@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 /// @notice Interface for pricing registration and renewals.
-/// @dev Interface selector: `0x0aa6305c`
+/// @dev Interface selector: `0xdb06fc00`
 interface IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -12,27 +14,13 @@ interface IRentPriceOracle {
     /// @dev Error selector: `0xdbfa2886`
     error NotValid(string label);
 
-    /// @notice `duration` less than `minDuration`.
-    /// @dev Error selector: `0xa096b844`
-    error DurationTooShort(uint64 duration, uint64 minDuration);
-
     /// @notice `paymentToken` is not supported for payment.
     /// @dev Error selector: `0x02e2ae9e`
-    error PaymentTokenNotSupported(address paymentToken);
+    error PaymentTokenNotSupported(IERC20 paymentToken);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Process the payment.
-    /// @param from The payer account.
-    /// @param paymentToken The payment token.
-    /// @param amount The amount of `paymentToken`.
-    function processPayment(
-        address from,
-        address paymentToken,
-        uint256 amount
-    ) external payable;
 
     /// @notice Determine registration price for `label`.
     /// @param label The name to price.
@@ -45,7 +33,7 @@ interface IRentPriceOracle {
         string calldata label,
         uint64 available,
         uint64 duration,
-        address paymentToken
+        IERC20 paymentToken
     ) external view returns (uint256 base, uint256 premium);
 
     /// @notice Determine renewal price for `label`.
@@ -58,6 +46,6 @@ interface IRentPriceOracle {
         string calldata label,
         uint64 expiry,
         uint64 duration,
-        address paymentToken
+        IERC20 paymentToken
     ) external view returns (uint256);
 }

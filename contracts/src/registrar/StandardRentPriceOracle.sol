@@ -2,38 +2,41 @@
 pragma solidity >=0.8.13;
 
 import {StringUtils} from "@ens/contracts/utils/StringUtils.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {
-    SafeERC20
-} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
-import {UnauthorizedCaller} from "../CommonErrors.sol";
 import {
-    IPermissionedRegistry
-} from "../registry/interfaces/IPermissionedRegistry.sol";
-import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+    EnhancedAccessControl
+} from "../access-control/EnhancedAccessControl.sol";
+import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
+import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 import {LibHalving} from "./libraries/LibHalving.sol";
 
-/// @dev Roles for payment processors.
-uint256 constant PAYMENT_ROLE_BITMAP = RegistryRolesLib.ROLE_RENEW |
-    RegistryRolesLib.ROLE_REGISTRAR;
+uint256 constant ROLE_UPDATE_TOKEN = 1 << 0;
+uint256 constant ROLE_UPDATE_TOKEN_ADMIN = ROLE_UPDATE_TOKEN << 128;
 
-/// @dev Defines one segment of the piecewise-linear discount function.
-/// @param t Incremental time interval for discount, in seconds.
-/// @param value Discount percentage, relative to `type(uint128).max`.
+uint256 constant ROLE_DISABLE_TOKEN = 1 << 4;
+uint256 constant ROLE_DISABLE_TOKEN_ADMIN = ROLE_DISABLE_TOKEN << 128;
+
+/// @dev Default roles for the oracle.
+uint256 constant DEFAULT_ROLE_BITMAP = ROLE_UPDATE_TOKEN |
+    ROLE_UPDATE_TOKEN_ADMIN |
+    ROLE_DISABLE_TOKEN_ADMIN;
+
+/// @dev Initialization-time structure for discounts.
+/// @param duration Duration threshold, in seconds.
+/// @param numerator Discount numerator, relative to `DISCOUNT_DENOMINATOR`.
 struct DiscountPoint {
-    uint64 t;
-    uint128 value;
+    uint64 duration;
+    uint128 numerator;
 }
 
-/// @dev Initialization-time structure pairing a payment token with its exchange rate (numerator/denominator).
+/// @dev Initialization-time structure for payment tokens.
 struct PaymentRatio {
-    address token;
+    IERC20 token;
     uint128 numer;
     uint128 denom;
 }
@@ -53,7 +56,7 @@ struct PaymentRatio {
 /// Payment tokens have configurable exchange rates (numerator/denominator ratios). Final
 /// prices are converted via `Math.mulDiv` with ceiling rounding to prevent underpayment.
 ///
-contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
+contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -68,69 +71,45 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice ENSv2 .eth `PermissionedRegistry`.
-    IPermissionedRegistry public immutable ETH_REGISTRY;
-
-    /// @notice Address that receives payments.
-    address public beneficiary;
-
-    /// @notice Minimum register duration, in seconds.
-    uint64 public minRegisterDuration;
+    /// @notice Denominator for discounts.
+    uint128 public immutable DISCOUNT_DENOMINATOR;
 
     /// @notice Starting value of the exponential decay premium for recently expired names, in base pricing units.
-    uint256 public premiumPriceInitial;
+    uint256 public immutable PREMIUM_PRICE_INITIAL;
 
     /// @notice Number of seconds for the premium to halve in value.
-    uint64 public premiumHalvingPeriod;
+    uint64 public immutable PREMIUM_HALVING_PERIOD;
 
     /// @notice Total duration of the premium window; the premium reaches zero at this offset from expiry.
-    uint64 public premiumPeriod;
+    uint64 public immutable PREMIUM_PERIOD;
+
+    /// @notice Precomputed premium halving at end of period.
+    uint256 public immutable PREMIUM_PRICE_OFFSET;
 
     /// @dev Per-second base rates indexed by codepoint count; `_baseRatePerCp[i]` prices labels with `i+1` codepoints.
     uint256[] internal _baseRatePerCp;
 
-    /// @dev Ordered segments of the piecewise-linear duration discount function.
-    DiscountPoint[] internal _discountPoints;
+    /// @dev Strictly increasing discount durations.
+    uint64[] internal _discountDurations;
+
+    /// @dev Strictly decreasing discount numerators, relative to `DISCOUNT_DENOMINATOR`.
+    uint128[] internal _discountNumerators;
 
     /// @dev Exchange rates for each accepted payment token, mapping token address to its numerator/denominator ratio.
-    mapping(address paymentToken => Ratio ratio) internal _paymentRatios;
+    mapping(IERC20 paymentToken => Ratio ratio) internal _paymentRatios;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice `paymentToken` is now supported.
-    /// @param paymentToken The payment token added.
-    event PaymentTokenAdded(address indexed paymentToken);
-
-    /// @notice `paymentToken` is no longer supported.
-    /// @param paymentToken The payment token removed.
-    event PaymentTokenRemoved(address indexed paymentToken);
-
-    /// @notice `minRegisterDuration` was changed.
-    /// @param duration The new duration.
-    event MinimumRegisterDurationUpdated(uint64 duration);
-
-    /// @notice `beneficiary` was changed.
-    /// @param beneficiary The new beneficiary address.
-    event BeneficiaryUpdated(address indexed beneficiary);
-
-    /// @notice Discount points were changed.
-    /// @param points The new discount points.
-    event DiscountPointsUpdated(DiscountPoint[] points);
-
-    /// @notice Base rates were changed.
-    /// @param ratePerCp The new base rates.
-    event BaseRatesUpdated(uint256[] ratePerCp);
-
-    /// @notice Premium pricing was changed.
-    /// @param initialPrice The new initial price.
-    /// @param halvingPeriod The new halving period.
-    /// @param period The new period.
-    event PremiumPricingUpdated(
-        uint256 indexed initialPrice,
-        uint64 indexed halvingPeriod,
-        uint64 indexed period
+    /// @notice `paymentToken` has changed.
+    /// @param paymentToken The payment token.
+    /// @param numer The numerator of the exchange rate.
+    /// @param denom The denominator of the exchange rate, or 0 if disabled.
+    event PaymentTokenUpdated(
+        IERC20 indexed paymentToken,
+        uint128 numer,
+        uint128 denom
     );
 
     ////////////////////////////////////////////////////////////////////////
@@ -141,65 +120,72 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @dev Error selector: `0x648564d3`
     error InvalidRatio();
 
-    /// @notice Invalid discount point.
-    /// @dev Error selector: `0xd1be8bbe`
-    error InvalidDiscountPoint();
+    /// @notice Invalid discount configuration.
+    /// @dev Error selector: `0x997ea360`
+    error InvalidDiscount();
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Initializes StandardRentPriceOracle.
-    /// @param owner_ Owner of the contract.
-    /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.
-    /// @param beneficiary_ Address that receives payments.
-    /// @param minRegisterDuration_ Minimum register duration, in seconds.
-    /// @param baseRatePerCp Base rates, in base units per second.
-    /// @param discountPoints Discount points.
-    /// @param premiumPriceInitial_ Premium pnitial price, in base units.
-    /// @param premiumHalvingPeriod_ Premium halving period, in seconds.
-    /// @param premiumPeriod_ Premium period, in seconds.
-    /// @param paymentRatios List of payment tokens with conversion ratios.
+    /// @param rootAccount Account granted root roles.
+    /// @param baseRatePerCp Base rates, in standard units per second.
+    /// @param discountPoints List of discount points.
+    /// @param discountDenominator Denominator for discounts.
+    /// @param premiumPriceInitial Premium initial price, in standard units.
+    /// @param premiumHalvingPeriod Premium halving period, in seconds.
+    /// @param premiumPeriod Premium period, in seconds.
+    /// @param paymentRatios List of payment tokens with exchange rates.
     constructor(
-        address owner_,
-        IPermissionedRegistry ethRegistry,
-        address beneficiary_,
-        uint64 minRegisterDuration_,
+        address rootAccount,
         uint256[] memory baseRatePerCp,
         DiscountPoint[] memory discountPoints,
-        uint256 premiumPriceInitial_,
-        uint64 premiumHalvingPeriod_,
-        uint64 premiumPeriod_,
+        uint128 discountDenominator,
+        uint256 premiumPriceInitial,
+        uint64 premiumHalvingPeriod,
+        uint64 premiumPeriod,
         PaymentRatio[] memory paymentRatios
-    ) Ownable(owner_) {
-        ETH_REGISTRY = ethRegistry;
-        beneficiary = beneficiary_;
-        emit BeneficiaryUpdated(beneficiary_);
-
-        minRegisterDuration = minRegisterDuration_;
-        emit MinimumRegisterDurationUpdated(minRegisterDuration_);
+    ) HCAEquivalence(IHCAFactoryBasic(address(0))) {
+        _grantRoles(ROOT_RESOURCE, DEFAULT_ROLE_BITMAP, rootAccount, false);
 
         _baseRatePerCp = baseRatePerCp;
-        emit BaseRatesUpdated(baseRatePerCp);
 
-        _setDiscountPoints(discountPoints);
+        uint256 n = discountPoints.length;
+        if (n > 0) {
+            uint64 duration;
+            uint128 numerator = discountDenominator;
+            uint64[] memory durations = new uint64[](n);
+            uint128[] memory numerators = new uint128[](n);
+            for (uint256 i; i < n; ++i) {
+                DiscountPoint memory pt = discountPoints[i];
+                if (pt.duration <= duration || pt.numerator >= numerator) {
+                    revert InvalidDiscount(); // not strictly monotonic
+                }
+                durations[i] = duration = pt.duration;
+                numerators[i] = numerator = pt.numerator;
+            }
+            _discountDurations = durations;
+            _discountNumerators = numerators;
+            DISCOUNT_DENOMINATOR = discountDenominator;
+        }
 
-        premiumPriceInitial = premiumPriceInitial_;
-        premiumHalvingPeriod = premiumHalvingPeriod_;
-        premiumPeriod = premiumPeriod_;
-        emit PremiumPricingUpdated(
-            premiumPriceInitial_,
-            premiumHalvingPeriod_,
-            premiumPeriod_
+        PREMIUM_PRICE_INITIAL = premiumPriceInitial;
+        PREMIUM_HALVING_PERIOD = premiumHalvingPeriod;
+        PREMIUM_PERIOD = premiumPeriod;
+        PREMIUM_PRICE_OFFSET = LibHalving.halving(
+            premiumPriceInitial,
+            premiumHalvingPeriod,
+            premiumPeriod
         );
 
         for (uint256 i; i < paymentRatios.length; ++i) {
-            PaymentRatio memory x = paymentRatios[i];
-            if (x.numer == 0 || x.denom == 0) {
+            PaymentRatio memory pr = paymentRatios[i];
+            if (pr.numer == 0 || pr.denom == 0) {
                 revert InvalidRatio();
             }
-            _paymentRatios[x.token] = Ratio(x.numer, x.denom);
-            emit PaymentTokenAdded(x.token);
+            _paymentRatios[pr.token] = Ratio(pr.numer, pr.denom);
+            emit PaymentTokenUpdated(pr.token, pr.numer, pr.denom);
         }
     }
 
@@ -216,134 +202,58 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Update the beneficiary address.
-    /// @param beneficiary_ The new beneficiary address.
-    function updateBeneficiary(address beneficiary_) external onlyOwner {
-        beneficiary = beneficiary_;
-        emit BeneficiaryUpdated(beneficiary_);
-    }
-
-    /// @notice Update the minimum register duration.
-    /// @param duration The new duration.
-    function updateMinimumRegisterDuration(uint64 duration) external onlyOwner {
-        minRegisterDuration = duration;
-        emit MinimumRegisterDurationUpdated(duration);
-    }
-
-    /// @notice Update base rates per codepoint.
-    /// @dev - `ratePerCp[i]` corresponds to `i+1` codepoints.
-    /// - Larger lengths are priced by `ratePerCp[-1]`.
-    /// - Use rate of `0` to disable a specific length.
-    /// - Use empty array to disable all registrations.
-    /// - Emits `BaseRatesUpdated`.
-    ///
-    /// @param ratePerCp The base rates, in base units per second.
-    function updateBaseRates(uint256[] calldata ratePerCp) external onlyOwner {
-        _baseRatePerCp = ratePerCp;
-        emit BaseRatesUpdated(ratePerCp);
-    }
-
-    /// @notice Update the discount function.
-    /// @dev Notes:
-    /// - Each point is (∆t, intervalDiscount).
-    /// - Discounts are relative to `type(uint128).max`.
-    /// - Given an average discount, solve for the corresponding interval:
-    ///   * Assume: 1yr at 0% discount
-    ///   * Solve: 2yr * 5% == 1yr * 0% + 1yr * x => x = 10.00%
-    ///   * Point: (1yr, 10%) == (1 years, type(uint128).max / 10)
-    /// - Final discount is derived from the weighted average over the intervals.
-    /// - Use empty array to disable.
-    /// - Emits `DiscountPointsUpdated`.
-    ///
-    /// @param points The new discount points.
-    function updateDiscountPoints(
-        DiscountPoint[] calldata points
-    ) external onlyOwner {
-        _setDiscountPoints(points);
-    }
-
-    /// @notice Update premium pricing function.
-    /// @dev Notes:
-    /// - Use `initialPrice = 0` to disable.
-    /// - Use `getPremiumPriceAfter(0)` to get exact starting price.
-    /// - `getPremiumPriceAfter(halvingPeriod) ~= getPremiumPriceAfter(0) / 2`.
-    /// - `getPremiumPriceAfter(halvingPeriod * x) ~= getPremiumPriceAfter(0) / 2^x`.
-    /// - `getPremiumPriceAfter(period) = 0`.
-    /// - Emits `PremiumPricingUpdated`.
-    ///
-    /// @param initialPrice The initial price, in base units.
-    /// @param halvingPeriod Duration until the price is reduced in half.
-    /// @param period Number of seconds until the price is reduced to 0.
-    function updatePremiumPricing(
-        uint256 initialPrice,
-        uint64 halvingPeriod,
-        uint64 period
-    ) external onlyOwner {
-        premiumPriceInitial = initialPrice;
-        premiumHalvingPeriod = halvingPeriod;
-        premiumPeriod = period;
-        emit PremiumPricingUpdated(initialPrice, halvingPeriod, period);
-    }
-
     /// @notice Update `paymentToken` support and/or exchange rate.
-    /// @dev Notes:
-    /// - Use `denom = 0` to remove.
-    /// - Emits `PaymentTokenAdded` if now supported.
-    /// - Emits `PaymentTokenRemoved` if no longer supported.
-    /// - Reverts if invalid exchange rate.
-    ///
+    /// @dev Reverts if invalid exchange rate or no change occured.
     /// @param paymentToken The payment token.
     /// @param numer The numerator of the exchange rate.
-    /// @param denom The denominator of the exchange rate.
+    /// @param denom The denominator of the exchange rate, or 0 to disable.
     function updatePaymentToken(
-        address paymentToken,
+        IERC20 paymentToken,
         uint128 numer,
         uint128 denom
-    ) external onlyOwner {
+    ) external onlyRootRoles(ROLE_UPDATE_TOKEN) {
         Ratio memory ratio = _paymentRatios[paymentToken];
         if (denom > 0) {
             if (numer == 0) {
                 revert InvalidRatio();
             }
-            if (ratio.denom == 0) {
-                emit PaymentTokenAdded(paymentToken);
-            }
+            require(ratio.numer != numer && ratio.denom != denom);
             _paymentRatios[paymentToken] = Ratio(numer, denom);
-        } else if (ratio.denom > 0) {
+            emit PaymentTokenUpdated(paymentToken, numer, denom);
+        } else {
+            require(ratio.denom > 0);
             delete _paymentRatios[paymentToken];
-            emit PaymentTokenRemoved(paymentToken);
+            emit PaymentTokenUpdated(paymentToken, 0, 0);
         }
     }
 
-    /// @inheritdoc IRentPriceOracle
-    function processPayment(
-        address from,
-        address paymentToken,
-        uint256 amount
-    ) external payable {
-        if ((ETH_REGISTRY.roles(0, msg.sender) & PAYMENT_ROLE_BITMAP) == 0) {
-            revert UnauthorizedCaller(msg.sender);
-        }
-        SafeERC20.safeTransferFrom(
-            IERC20(paymentToken),
-            from,
-            beneficiary,
-            amount
-        ); // reverts if payment failed
+    /// @notice Disable `paymentToken` support.
+    /// @dev Reverts if already disabled.
+    /// @param paymentToken The payment token.
+    function disablePaymentToken(
+        IERC20 paymentToken
+    ) external onlyRootRoles(ROLE_DISABLE_TOKEN) {
+        require(_paymentRatios[paymentToken].denom > 0);
+        emit PaymentTokenUpdated(paymentToken, 0, 0);
     }
 
-    /// @notice Returns all base rates, in base units per second.
+    /// @notice Get all base rates, in standard units per second.
     function getBaseRates() external view returns (uint256[] memory) {
         return _baseRatePerCp;
     }
 
-    /// @notice Returns all discount function points.
+    /// @notice Get all discount durations, in seconds.
     function getDiscountPoints()
         external
         view
-        returns (DiscountPoint[] memory)
+        returns (DiscountPoint[] memory v)
     {
-        return _discountPoints;
+        uint64[] memory durations = _discountDurations;
+        uint128[] memory numerators = _discountNumerators;
+        v = new DiscountPoint[](durations.length);
+        for (uint256 i; i < durations.length; ++i) {
+            v[i] = DiscountPoint(durations[i], numerators[i]);
+        }
     }
 
     /// @notice Check if a `label` is valid. Does not check if normalized.
@@ -358,7 +268,7 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @return numer The numerator of the exchange rate.
     /// @return denom The denominator of the exchange rate.
     function getPaymentTokenRatio(
-        address paymentToken
+        IERC20 paymentToken
     ) external view returns (uint128 numer, uint128 denom) {
         Ratio storage ratio = _paymentRatios[paymentToken];
         return (ratio.numer, ratio.denom);
@@ -367,7 +277,7 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     /// @notice Check if `paymentToken` is supported for payment.
     /// @param paymentToken The payment token.
     /// @return `true` if `paymentToken` is supported.
-    function isPaymentToken(address paymentToken) external view returns (bool) {
+    function isPaymentToken(IERC20 paymentToken) external view returns (bool) {
         return _paymentRatios[paymentToken].denom > 0;
     }
 
@@ -376,9 +286,8 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         string calldata label,
         uint64 available,
         uint64 duration,
-        address paymentToken
+        IERC20 paymentToken
     ) external view returns (uint256 base, uint256 premium) {
-        _requireMinimumDuration(duration, minRegisterDuration);
         base = _requireBasePrice(label, duration);
         Ratio memory ratio = _requirePaymentToken(paymentToken);
         premium = getPremiumPriceAfter(available);
@@ -394,9 +303,8 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         string calldata label,
         uint64 /*expiry*/,
         uint64 duration,
-        address paymentToken
+        IERC20 paymentToken
     ) external view returns (uint256) {
-        _requireMinimumDuration(duration, 1);
         return
             _toAmount(
                 _requireBasePrice(label, duration),
@@ -404,10 +312,42 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
             );
     }
 
+    /// @notice Convert arbitrary standard units to payment token amount.
+    /// @param value An arbitrary value, in standard units.
+    /// @param paymentToken The payment token.
+    /// @return The amount of payment token.
+    function convertUnits(
+        uint256 value,
+        IERC20 paymentToken
+    ) external view returns (uint256) {
+        return _toAmount(value, _requirePaymentToken(paymentToken));
+    }
+
+    /// @notice Apply discount function to an arbitrary value.
+    /// @param value An arbitrary value.
+    /// @param duration The duration, in seconds.
+    /// @return `value` reduced by discount.
+    function applyDiscount(
+        uint256 value,
+        uint64 duration
+    ) public view returns (uint256) {
+        uint64[] memory v = _discountDurations;
+        uint256 i;
+        while (i < v.length && duration >= v[i]) ++i;
+        return
+            i == 0
+                ? value
+                : Math.mulDiv(
+                    value,
+                    _discountNumerators[i - 1],
+                    DISCOUNT_DENOMINATOR
+                );
+    }
+
     /// @notice Get base price to register or renew `label` for `duration` seconds.
     /// @param label The name to price.
     /// @param duration The duration, in seconds.
-    /// @return The base price or 0 if not valid, in base units.
+    /// @return The base price, in standard units, or 0 if not valid.
     function getBasePrice(
         string calldata label,
         uint64 duration
@@ -421,63 +361,21 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         return applyDiscount(rate * duration, duration);
     }
 
-    /// @notice Compute integral of discount function for `duration`.
-    /// @dev Use `integratedDiscount(t) / t` to compute average discount.
-    /// @param duration The time since now, in seconds.
-    /// @return Integral of discount function over `[0, duration)`.
-    function integratedDiscount(uint64 duration) public view returns (uint256) {
-        uint256 n = _discountPoints.length;
-        if (n == 0) return 0;
-        uint256 acc;
-        uint256 sum;
-        for (uint256 i; i < n; ++i) {
-            DiscountPoint memory p = _discountPoints[i];
-            if (duration <= p.t) {
-                return acc + duration * uint256(p.value);
-            }
-            duration -= p.t;
-            acc += p.t * uint256(p.value);
-            sum += p.t;
-        }
-        return acc + (duration * acc + sum - 1) / sum;
-    }
-
     /// @notice Get premium price for a duration after expiry.
     /// @dev Defined over `[0, premiumPeriod)`.
     /// @param duration The time after expiration, in seconds.
-    /// @return The premium price, in base units.
+    /// @return The premium price, in standard units.
     function getPremiumPriceAfter(
         uint64 duration
     ) public view returns (uint256) {
-        if (duration >= premiumPeriod) return 0;
         return
-            LibHalving.halving(
-                premiumPriceInitial,
-                premiumHalvingPeriod,
-                duration
-            ) -
-            LibHalving.halving(
-                premiumPriceInitial,
-                premiumHalvingPeriod,
-                premiumPeriod
-            );
-    }
-
-    /// @notice Apply duration-based discount percentage.
-    /// @param value An arbitrary value.
-    /// @param duration The duration, in seconds.
-    /// @return `value` reduced by discount percentage.
-    function applyDiscount(
-        uint256 value,
-        uint64 duration
-    ) public view returns (uint256) {
-        return
-            value -
-            Math.mulDiv(
-                value,
-                integratedDiscount(duration),
-                uint256(type(uint128).max) * duration
-            );
+            duration < PREMIUM_PERIOD
+                ? LibHalving.halving(
+                    PREMIUM_PRICE_INITIAL,
+                    PREMIUM_HALVING_PERIOD,
+                    duration
+                ) - PREMIUM_PRICE_OFFSET
+                : 0;
     }
 
     /// @notice Check length of a name.
@@ -490,18 +388,6 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Replace the discount function points.
-    function _setDiscountPoints(DiscountPoint[] memory points) internal {
-        delete _discountPoints;
-        for (uint256 i; i < points.length; ++i) {
-            if (points[i].t == 0) {
-                revert InvalidDiscountPoint();
-            }
-            _discountPoints.push(points[i]);
-        }
-        emit DiscountPointsUpdated(points);
-    }
 
     /// @dev Compute `rate * duration` and apply discount.
     function _requireBasePrice(
@@ -516,7 +402,7 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
 
     /// @dev Ensure `paymentToken` is supported.
     function _requirePaymentToken(
-        address paymentToken
+        IERC20 paymentToken
     ) internal view returns (Ratio memory ratio) {
         ratio = _paymentRatios[paymentToken];
         if (ratio.denom == 0) {
@@ -524,23 +410,16 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
         }
     }
 
-    /// @dev Ensure `dur >= max`.
-    function _requireMinimumDuration(uint64 dur, uint64 min) internal pure {
-        if (dur < min) {
-            revert DurationTooShort(dur, min);
-        }
-    }
-
-    /// @dev Convert units to price.
+    /// @dev Convert standard units to token amount.
     function _toAmount(
-        uint256 units,
+        uint256 value,
         Ratio memory ratio
     ) internal pure returns (uint256) {
         return
             ratio.numer == ratio.denom
-                ? units
+                ? value
                 : Math.mulDiv(
-                    units,
+                    value,
                     ratio.numer,
                     ratio.denom,
                     Math.Rounding.Ceil

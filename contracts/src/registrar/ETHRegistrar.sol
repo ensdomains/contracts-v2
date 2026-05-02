@@ -2,6 +2,11 @@
 pragma solidity >=0.8.13;
 
 import {
+    SafeERC20,
+    IERC20
+} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+import {
     EnhancedAccessControl
 } from "../access-control/EnhancedAccessControl.sol";
 import {InvalidOwner} from "../CommonErrors.sol";
@@ -14,11 +19,11 @@ import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-import {
-    IETHRegistrar,
-    INameRegistrar,
-    INameRenewer
-} from "./interfaces/IETHRegistrar.sol";
+import {IETHRegistrar} from "./interfaces/IETHRegistrar.sol";
+import {ICommitRevealRegistrar} from "./interfaces/IETHRegistrar.sol";
+import {IETHRenewerV1} from "./interfaces/IETHRenewerV1.sol";
+import {INameRegistrar} from "./interfaces/INameRegistrar.sol";
+import {INameRenewer} from "./interfaces/INameRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
 /// @dev Composite role bitmap granted to name owners at registration — includes set-subregistry, set-resolver, and can-transfer (with admin variants).
@@ -45,13 +50,19 @@ uint256 constant ROLE_SET_ORACLE_ADMIN = ROLE_SET_ORACLE << 128;
 ///
 /// Pricing and payment are delegated to a swappable `IRentPriceOracle`.
 ///
-contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
+contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice ENSv2 .eth `PermissionedRegistry`.
     IPermissionedRegistry public immutable ETH_REGISTRY;
+
+    /// @notice ETHRenewerV1 contract for syncing ENSv1.
+    IETHRenewerV1 public immutable ETH_RENEWER;
+
+    /// @notice Address that receives payments.
+    address public immutable BENEFICIARY;
 
     /// @notice Minimum seconds a commitment must age before registration can proceed.
     /// @dev If zero, front-running protection is disabled.
@@ -60,17 +71,23 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     /// @notice Maximum seconds a commitment remains valid; expired commitments are rejected.
     uint64 public immutable MAX_COMMITMENT_AGE;
 
-    /// @notice Post-expiry period where a name can still be renewed and is not available, in seconds.
+    /// @inheritdoc IETHRegistrar
     uint64 public immutable GRACE_PERIOD;
+
+    /// @notice Minimum register duration, in seconds.
+    uint64 public immutable MIN_REGISTER_DURATION;
+
+    /// @notice Minimum renew duration, in seconds.
+    uint64 public immutable MIN_RENEW_DURATION;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Current pricing oracle used for computing registration and renewal costs.
+    /// @notice Oracle for registration and renewal costs.
     IRentPriceOracle public rentPriceOracle;
 
-    /// @inheritdoc INameRegistrar
+    /// @inheritdoc ICommitRevealRegistrar
     mapping(bytes32 commitment => uint64 commitTime) public commitmentAt;
 
     ////////////////////////////////////////////////////////////////////////
@@ -96,16 +113,24 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     /// @notice Initializes ETHRegistrar.
     /// @param hcaFactory HCA factory.
     /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.
+    /// @param ethRenewer ETHRenewerV1 contract for syncing ENSv1.
+    /// @param beneficiary Address that receives payments.
     /// @param minCommitmentAge Minimum seconds a commitment must age before registration can proceed.
     /// @param maxCommitmentAge Maximum seconds a commitment remains valid; expired commitments are rejected.
     /// @param gracePeriod Post-expiry period where a name can still be renewed and is not available, in seconds.
-    /// @param rentPriceOracle_ Initial pricing oracle used for computing registration and renewal costs.
+    /// @param minRegisterDuration Minimum register duration, in seconds.
+    /// @param minRenewDuration Minimum renew duration, in seconds.
+    /// @param rentPriceOracle_ Initial oracle for registration and renewal costs.
     constructor(
         IHCAFactoryBasic hcaFactory,
         IPermissionedRegistry ethRegistry,
+        IETHRenewerV1 ethRenewer,
+        address beneficiary,
         uint64 minCommitmentAge,
         uint64 maxCommitmentAge,
         uint64 gracePeriod,
+        uint64 minRegisterDuration,
+        uint64 minRenewDuration,
         IRentPriceOracle rentPriceOracle_
     ) HCAEquivalence(hcaFactory) {
         if (maxCommitmentAge <= minCommitmentAge) {
@@ -119,9 +144,13 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         );
 
         ETH_REGISTRY = ethRegistry;
+        ETH_RENEWER = ethRenewer;
+        BENEFICIARY = beneficiary;
         MIN_COMMITMENT_AGE = minCommitmentAge;
         MAX_COMMITMENT_AGE = maxCommitmentAge;
         GRACE_PERIOD = gracePeriod;
+        MIN_REGISTER_DURATION = minRegisterDuration;
+        MIN_RENEW_DURATION = minRenewDuration;
 
         rentPriceOracle = rentPriceOracle_;
         emit RentPriceOracleUpdated(rentPriceOracle_);
@@ -133,6 +162,7 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     ) public view override(EnhancedAccessControl) returns (bool) {
         return
             interfaceId == type(IETHRegistrar).interfaceId ||
+            interfaceId == type(ICommitRevealRegistrar).interfaceId ||
             interfaceId == type(INameRegistrar).interfaceId ||
             interfaceId == type(INameRenewer).interfaceId ||
             super.supportsInterface(interfaceId);
@@ -151,7 +181,7 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         emit RentPriceOracleUpdated(oracle);
     }
 
-    /// @inheritdoc INameRegistrar
+    /// @inheritdoc ICommitRevealRegistrar
     function commit(bytes32 commitment) external {
         if (commitmentAt[commitment] + MAX_COMMITMENT_AGE > block.timestamp) {
             revert UnexpiredCommitmentExists(commitment);
@@ -168,13 +198,12 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         IRegistry subregistry,
         address resolver,
         uint64 duration,
-        address paymentToken,
+        IERC20 paymentToken,
         bytes32 referrer
-    ) external payable returns (uint256 tokenId) {
+    ) external returns (uint256 tokenId) {
         if (owner == address(0)) {
             revert InvalidOwner();
         }
-        IPermissionedRegistry.State memory state = _requireAvailable(label); // reverts if not available
         _consumeCommitment(
             makeCommitment(
                 label,
@@ -186,15 +215,20 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
                 referrer
             )
         ); // reverts if no commitment
+        IPermissionedRegistry.State memory state = _requireRegisterable(
+            label,
+            duration
+        ); // reverts if not
         (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
             label,
             _availablePeriod(state.expiry),
             duration,
             paymentToken
         ); // reverts if invalid
-        rentPriceOracle.processPayment{value: msg.value}(
-            _msgSender(),
+        SafeERC20.safeTransferFrom(
             paymentToken,
+            _msgSender(),
+            BENEFICIARY,
             base + premium
         ); // reverts if payment failed
         tokenId = ETH_REGISTRY.register(
@@ -223,37 +257,44 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     function renew(
         string calldata label,
         uint64 duration,
-        address paymentToken,
+        IERC20 paymentToken,
         bytes32 referrer
-    ) external payable {
-        IPermissionedRegistry.State memory state = _requireRenewable(label);
-        uint64 expiry = state.expiry + duration; // reverts if overflow
-        uint256 amount = getRenewPrice(label, duration, paymentToken); // reverts if invalid
-        rentPriceOracle.processPayment{value: msg.value}(
-            _msgSender(),
+    ) external {
+        IPermissionedRegistry.State memory state = _requireRenewable(
+            label,
+            duration
+        ); // reverts if not
+        uint64 newExpiry = state.expiry + duration; // reverts if overflow
+        uint256 amount = rentPriceOracle.getRenewPrice(
+            label,
+            state.expiry,
+            duration,
+            paymentToken
+        ); // reverts if invalid
+        SafeERC20.safeTransferFrom(
             paymentToken,
+            _msgSender(),
+            BENEFICIARY,
             amount
         ); // reverts if payment failed
-        ETH_REGISTRY.renew(state.tokenId, expiry);
+        ETH_REGISTRY.renew(state.tokenId, newExpiry);
         emit NameRenewed(
             state.tokenId,
             label,
             duration,
-            expiry,
+            newExpiry,
             paymentToken,
             referrer,
             amount
         );
+        if (_shouldSyncV1(state)) {
+            ETH_RENEWER.syncRegistrar(label);
+        }
     }
 
-    /// @inheritdoc INameRegistrar
+    /// @inheritdoc IETHRegistrar
     function isAvailable(string calldata label) external view returns (bool) {
         return _isAvailable(ETH_REGISTRY.getState(LibLabel.id(label)));
-    }
-
-    /// @inheritdoc INameRenewer
-    function isRenewable(string calldata label) external view returns (bool) {
-        return _isRenewable(ETH_REGISTRY.getState(LibLabel.id(label)));
     }
 
     /// @inheritdoc IETHRegistrar
@@ -264,21 +305,23 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
             LibLabel.id(label)
         );
         return
-            _checkGrace(state, true)
-                ? GRACE_PERIOD + state.expiry - uint64(block.timestamp)
-                : uint64(0);
+            uint64(
+                _checkGrace(state, true)
+                    ? GRACE_PERIOD - (block.timestamp - state.expiry)
+                    : 0
+            );
     }
 
     /// @inheritdoc IETHRegistrar
     function getRegisterPrice(
         string calldata label,
         uint64 duration,
-        address paymentToken
+        IERC20 paymentToken
     ) external view returns (uint256 bae, uint256 premium) {
         return
             rentPriceOracle.getRegisterPrice(
                 label,
-                _availablePeriod(_requireAvailable(label).expiry),
+                _availablePeriod(_requireRegisterable(label, duration).expiry),
                 duration,
                 paymentToken
             );
@@ -288,18 +331,18 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     function getRenewPrice(
         string calldata label,
         uint64 duration,
-        address paymentToken
+        IERC20 paymentToken
     ) public view returns (uint256) {
         return
             rentPriceOracle.getRenewPrice(
                 label,
-                _requireRenewable(label).expiry,
+                _requireRenewable(label, duration).expiry,
                 duration,
                 paymentToken
             );
     }
 
-    /// @inheritdoc INameRegistrar
+    /// @inheritdoc ICommitRevealRegistrar
     function makeCommitment(
         string calldata label,
         address owner,
@@ -344,23 +387,31 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         delete commitmentAt[commitment];
     }
 
-    /// @dev Ensure `label` is available.
-    function _requireAvailable(
-        string calldata label
+    /// @dev Ensure `label` is registerable.
+    function _requireRegisterable(
+        string calldata label,
+        uint64 duration
     ) internal view returns (IPermissionedRegistry.State memory state) {
         state = ETH_REGISTRY.getState(LibLabel.id(label));
         if (!_isAvailable(state)) {
-            revert NameNotAvailable(label);
+            revert NameNotRegisterable(label);
+        }
+        if (duration < MIN_REGISTER_DURATION) {
+            revert DurationTooShort(duration, MIN_REGISTER_DURATION);
         }
     }
 
     /// @dev Ensure `label` is renewable.
     function _requireRenewable(
-        string calldata label
+        string calldata label,
+        uint64 duration
     ) internal view returns (IPermissionedRegistry.State memory state) {
         state = ETH_REGISTRY.getState(LibLabel.id(label));
-        if (!_isRenewable(state)) {
+        if (_isAvailable(state)) {
             revert NameNotRenewable(label);
+        }
+        if (duration < MIN_RENEW_DURATION) {
+            revert DurationTooShort(duration, MIN_RENEW_DURATION);
         }
     }
 
@@ -383,16 +434,16 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
         return _checkGrace(state, false);
     }
 
-    /// @dev Determine if `REGISTERED` or previously `REGISTERED` and in grace.
-    function _isRenewable(
+    /// @dev Determine if `RESERVED` or in grace was `RESERVED`.
+    function _shouldSyncV1(
         IPermissionedRegistry.State memory state
     ) internal view returns (bool) {
         return
-            state.status == IPermissionedRegistry.Status.REGISTERED ||
-            (_checkGrace(state, true) && state.latestOwner != address(0));
+            state.status == IPermissionedRegistry.Status.RESERVED ||
+            (_checkGrace(state, true) && state.latestOwner == address(0));
     }
 
-    /// @dev Determine duration `isAvailable()` has been true.
+    /// @dev Determine duration name has been available.
     function _availablePeriod(uint64 expiry) internal view returns (uint64) {
         uint64 t = uint64(block.timestamp);
         if (expiry == 0) {

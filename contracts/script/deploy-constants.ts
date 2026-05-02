@@ -119,3 +119,43 @@ export const FUSE_MASKS = {
   PARENT_RESERVED: 0x0000ff80, // bits 7-15 (docs say 17-32)
   USER_SETTABLE: 0xfffdffff, // ~IS_DOT_ETH
 } as const;
+
+// see: StandardRegistrar.sol
+export const SEC_PER_YEAR = 31_557_600n;
+export const SEC_PER_DAY = 86400n;
+
+export const MIN_COMMITMENT_AGE = 60n; // 1 minute
+export const MAX_COMMITMENT_AGE = SEC_PER_DAY;
+
+export const GRACE_PERIOD_V1 = 90n * SEC_PER_DAY;
+export const GRACE_PERIOD_V2 = 28n * SEC_PER_DAY;
+export const PREMIGRATION_BONUS_PERIOD =
+  1n + (GRACE_PERIOD_V1 - GRACE_PERIOD_V2);
+
+export const PRICE_DECIMALS = 12;
+export const PRICE_SCALE = 10n ** BigInt(PRICE_DECIMALS);
+
+export const MIN_REGISTER_DURATION = 28n * SEC_PER_DAY;
+export const MIN_RENEW_DURATION = 1n;
+
+export const PREMIUM_PRICE_INITIAL = PRICE_SCALE * 100_000_000n;
+export const PREMIUM_HALVING_PERIOD = SEC_PER_DAY;
+export const PREMIUM_PERIOD = SEC_PER_DAY * 21n;
+
+export const BASE_RATE_PER_CP = [
+  0n,
+  0n,
+  PRICE_SCALE * 640n,
+  PRICE_SCALE * 160n,
+  PRICE_SCALE * 8n,
+].map((x) => (x + SEC_PER_YEAR - 1n) / SEC_PER_YEAR);
+
+export const DISCOUNT_DENOMINATOR = 10n ** 38n;
+function discountNumer(numer: bigint, denom: bigint) {
+  return (DISCOUNT_DENOMINATOR * numer) / denom;
+}
+export const DISCOUNT_POINTS: { duration: bigint; numerator: bigint }[] = [
+  { duration: SEC_PER_YEAR, numerator: discountNumer(7n, 8n) }, ///////// 1 - 14/16 = 12.50%
+  { duration: SEC_PER_YEAR * 2n, numerator: discountNumer(11n, 16n) }, // 1 - 11/16 = 31.25%
+  { duration: SEC_PER_YEAR * 5n, numerator: discountNumer(9n, 16n) }, /// 1 -  9/16 = 43.75%
+];

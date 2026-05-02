@@ -11,7 +11,8 @@ import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture, RegistryRolesLib} from "~test/fixtures/V2Fixture.sol";
-import {StandardPricing} from "~test/StandardPricing.sol";
+import {StandardRegistrar} from "~test/StandardRegistrar.sol";
+import {ETHRenewerV1} from "~src/registrar/ETHRenewerV1.sol";
 
 // forge test test/unit/migration/UnlockedMigrationController.t.sol -vv
 // forge test test/unit/migration/LockedMigrationController.t.sol -vv
@@ -30,6 +31,7 @@ import {StandardPricing} from "~test/StandardPricing.sol";
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;
     ENSV2Resolver ensV2Resolver;
+    ETHRenewerV1 ethRenewer;
     Graveyard graveyard;
     MockERC721 dummy721;
     MockERC1155 dummy1155;
@@ -38,20 +40,37 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     address testResolver = makeAddr("resolver");
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address premigrationController = makeAddr("premigrationController");
-    uint64 premigrationBonusPeriod = StandardPricing.BONUS_PERIOD;
+    uint64 premigrationBonusPeriod = StandardRegistrar.BONUS_PERIOD;
     address friend = makeAddr("friend");
 
     function deployMigrationControllerFixture() public {
         deployV1Fixture();
         deployV2Fixture();
-        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
-        graveyard = new Graveyard(nameWrapper);
+
+        ethRegistry.grantRootRoles(
+            RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW,
+            premigrationController
+        );
+
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
+        baseRegistrar.setResolver(address(ensV2Resolver));
+
+        graveyard = new Graveyard(nameWrapper);
+        ethRenewer = new ETHRenewerV1(
+            address(this),
+            nameWrapper,
+            address(wrappedController),
+            ethRegistry,
+            premigrationBonusPeriod
+        );
+
+        baseRegistrar.addController(address(graveyard));
+        baseRegistrar.addController(address(ethRenewer));
+        baseRegistrar.transferOwnership(address(ethRenewer));
+
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();
-        baseRegistrar.addController(address(graveyard));
-        baseRegistrar.setResolver(address(ensV2Resolver));
     }
 
     /// @dev Ensure premigration has occurred.

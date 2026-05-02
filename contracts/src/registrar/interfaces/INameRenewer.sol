@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 /// @notice Interface for renewing names.
-/// @dev Interface selector: `0x9ada16c3`
+/// @dev Interface selector: `0x89d779c3`
 interface INameRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -21,7 +23,7 @@ interface INameRenewer {
         string label,
         uint64 duration,
         uint64 newExpiry,
-        address paymentToken,
+        IERC20 paymentToken,
         bytes32 indexed referrer,
         uint256 amount
     );
@@ -39,7 +41,7 @@ interface INameRenewer {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Renew a name.
-    /// @dev Emits `NameRenewed` or reverts with a variety of errors.
+    /// @dev Should emit `NameRenewed`.
     /// @param label The name to renew.
     /// @param duration The duration extension, in seconds.
     /// @param paymentToken The payment token.
@@ -47,12 +49,7 @@ interface INameRenewer {
     function renew(
         string memory label,
         uint64 duration,
-        address paymentToken,
+        IERC20 paymentToken,
         bytes32 referrer
-    ) external payable;
-
-    /// @notice Determine if name can be renewed by this contract.
-    /// @param label The name to renew.
-    /// @return `true` if the name can be renewed.
-    function isRenewable(string memory label) external view returns (bool);
+    ) external;
 }
