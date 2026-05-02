@@ -5,6 +5,7 @@ pragma solidity >=0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
 
+<<<<<<< HEAD
 import {
     IERC20Errors
 } from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -15,6 +16,11 @@ import {
 import {
     ERC165Checker
 } from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+=======
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+>>>>>>> fcd20163 (fix grace => grace sync)
 
 import {IEnhancedAccessControl} from "~src/registry/PermissionedRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
@@ -33,10 +39,9 @@ import {
 import {
     StandardRentPriceOracle,
     IRentPriceOracle,
-    Math,
-    PaymentRatio,
-    DiscountPoint
+    Math
 } from "~src/registrar/StandardRentPriceOracle.sol";
+<<<<<<< HEAD
 import {
     MockERC20,
     MockERC20Blacklist,
@@ -46,6 +51,10 @@ import {
 import {
     MigrationControllerFixture
 } from "~test/fixtures/MigrationControllerFixture.sol";
+=======
+import {MockERC20, MockERC20Blacklist} from "~test/mocks/MockERC20.sol";
+import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
+>>>>>>> fcd20163 (fix grace => grace sync)
 import {
     StandardRentPriceOracleFixture,
     StandardRegistrar
@@ -98,6 +107,21 @@ contract ETHRegistrarTest is
         if (block.timestamp < t) {
             vm.warp(t); // avoid timestamp issues
         }
+    }
+
+    function test_supportsInterface() external view {
+        assertTrue(
+            ERC165Checker.supportsInterface(address(ethRegistrar), type(IETHRegistrar).interfaceId),
+            "IETHRegistrar"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(ethRegistrar), type(IETHRegistrar).interfaceId),
+            "IETHRegistrar"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(ethRegistrar), type(IETHRegistrar).interfaceId),
+            "IETHRegistrar"
+        );
     }
 
     function test_constructor() external view {
@@ -206,6 +230,10 @@ contract ETHRegistrarTest is
         ethRegistrar.setRentPriceOracle(IRentPriceOracle(address(1)));
     }
 
+    ////////////////////////////////////////////////////////////////////////
+    // Commit / Reveal
+    ////////////////////////////////////////////////////////////////////////
+
     function test_commit() external {
         bytes32 commitment = _makeCommitment();
         assertEq(
@@ -256,10 +284,12 @@ contract ETHRegistrarTest is
         ethRegistrar.commit(commitment);
     }
 
-    function test_isAvailable() external {
+    ////////////////////////////////////////////////////////////////////////
+    // register()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_isAvailable_unregistered() external view {
         assertTrue(ethRegistrar.isAvailable(testLabel));
-        this._register();
-        assertFalse(ethRegistrar.isAvailable(testLabel));
     }
 
     function test_register(uint32 t) external {
@@ -363,13 +393,9 @@ contract ETHRegistrarTest is
             testDuration,
             testPaymentToken
         );
-        uint256 balance0 = IERC20(testPaymentToken).balanceOf(testOwner);
+        uint256 balance0 = testPaymentToken.balanceOf(testOwner);
         this._register();
-        assertEq(
-            balance0 - base - premium,
-            IERC20(testPaymentToken).balanceOf(testOwner),
-            "balance"
-        );
+        assertEq(balance0 - base - premium, testPaymentToken.balanceOf(testOwner), "balance");
     }
 
     function test_register_afterPremium() external {
@@ -386,13 +412,9 @@ contract ETHRegistrarTest is
             testDuration,
             testPaymentToken
         );
-        uint256 balance0 = IERC20(testPaymentToken).balanceOf(testOwner);
+        uint256 balance0 = testPaymentToken.balanceOf(testOwner);
         this._register();
-        assertEq(
-            balance0 - base - premium,
-            IERC20(testPaymentToken).balanceOf(testOwner),
-            "balance"
-        );
+        assertEq(balance0 - base - premium, testPaymentToken.balanceOf(testOwner), "balance");
         assertEq(premium, 0, "premium");
     }
 
@@ -505,6 +527,10 @@ contract ETHRegistrarTest is
         this._register();
     }
 
+    ////////////////////////////////////////////////////////////////////////
+    // renew()
+    ////////////////////////////////////////////////////////////////////////
+
     function test_renew(uint32 t) external {
         vm.assume(t >= ethRegistrar.MIN_RENEW_DURATION());
         uint256 tokenId = this._register();
@@ -529,6 +555,7 @@ contract ETHRegistrarTest is
         assertEq(ethRegistry.getExpiry(tokenId), newExpiry);
     }
 
+<<<<<<< HEAD
     function test_renewV1_registered() external {
         (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         assertEq(
@@ -611,6 +638,8 @@ contract ETHRegistrarTest is
         this._renew();
     }
 
+=======
+>>>>>>> fcd20163 (fix grace => grace sync)
     function test_renew_available() external {
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -674,6 +703,7 @@ contract ETHRegistrarTest is
         this._renew();
     }
 
+<<<<<<< HEAD
     function test_supportsInterface() external view {
         assertTrue(
             ERC165Checker.supportsInterface(
@@ -695,8 +725,91 @@ contract ETHRegistrarTest is
                 type(IETHRegistrar).interfaceId
             ),
             "IETHRegistrar"
+=======
+    ////////////////////////////////////////////////////////////////////////
+    // renew() for ENSv1
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_renewV1_registered() external {
+        (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        assertEq(uint8(getStatusV1(tokenIdV1)), uint8(StatusV1.REGISTERED), "status");
+
+        uint256 expiryV1 = baseRegistrar.nameExpires(tokenIdV1);
+        uint64 expiryV2 = ethRegistry.getExpiry(tokenIdV1);
+
+        this._renew();
+
+        assertEq(uint8(getStatusV1(tokenIdV1)), uint8(StatusV1.REGISTERED), "renewed:status");
+        assertEq(baseRegistrar.nameExpires(tokenIdV1), expiryV1 + testDuration, "expiryV1");
+        assertEq(ethRegistry.getExpiry(tokenIdV1), expiryV2 + testDuration, "expiryV2");
+        assertEq(
+            baseRegistrar.nameExpires(tokenIdV1) + premigrationBonusPeriod,
+            ethRegistry.getExpiry(tokenIdV1),
+            "sync"
+>>>>>>> fcd20163 (fix grace => grace sync)
         );
     }
+
+    function test_renewV1_duringGrace_outOfGrace(uint32 t) external {
+        vm.assume(t < gracePeriodV1);
+        (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+
+        uint256 expiryV1 = baseRegistrar.nameExpires(tokenIdV1);
+        uint64 expiryV2 = ethRegistry.getExpiry(tokenIdV1);
+
+        vm.warp(expiryV1 + t);
+        assertEq(uint8(getStatusV1(tokenIdV1)), uint8(StatusV1.GRACE), "status");
+
+        testDuration = trueGracePeriodV1;
+        this._renew();
+
+        assertEq(uint8(getStatusV1(tokenIdV1)), uint8(StatusV1.REGISTERED), "renewed:status");
+        assertEq(baseRegistrar.nameExpires(tokenIdV1), expiryV1 + testDuration, "expiryV1");
+        assertEq(ethRegistry.getExpiry(tokenIdV1), expiryV2 + testDuration, "expiryV2");
+        assertEq(
+            baseRegistrar.nameExpires(tokenIdV1) + premigrationBonusPeriod,
+            ethRegistry.getExpiry(tokenIdV1),
+            "sync"
+        );
+    }
+
+    function test_renewV1_duringGrace_stillInGrace(uint32 t) external {
+        uint64 min = ethRegistrar.MIN_RENEW_DURATION();
+        vm.assume(t > min && t < gracePeriodV1);
+        (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+
+        uint256 expiryV1 = baseRegistrar.nameExpires(tokenIdV1);
+        uint64 expiryV2 = ethRegistry.getExpiry(tokenIdV1);
+
+        vm.warp(expiryV1 + t);
+        assertEq(uint8(getStatusV1(tokenIdV1)), uint8(StatusV1.GRACE), "status");
+
+        testDuration = min;
+        this._renew();
+
+        assertEq(uint8(getStatusV1(tokenIdV1)), uint8(StatusV1.GRACE), "renewed:status");
+        assertEq(baseRegistrar.nameExpires(tokenIdV1), expiryV1 + testDuration, "expiryV1");
+        assertEq(ethRegistry.getExpiry(tokenIdV1), expiryV2 + testDuration, "expiryV2");
+        assertEq(
+            baseRegistrar.nameExpires(tokenIdV1) + premigrationBonusPeriod,
+            ethRegistry.getExpiry(tokenIdV1),
+            "sync"
+        );
+    }
+
+    function test_renewV1_afterGrace() external {
+        (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+
+        vm.warp(baseRegistrar.nameExpires(tokenIdV1) + trueGracePeriodV1);
+        assertEq(uint8(getStatusV1(tokenIdV1)), uint8(StatusV1.AVAILABLE), "status");
+
+        vm.expectRevert(abi.encodeWithSelector(IETHRegistrar.NameNotRenewable.selector, testLabel));
+        this._renew();
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Payment Processing
+    ////////////////////////////////////////////////////////////////////////
 
     function test_beneficiary_register() external {
         (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
@@ -705,16 +818,21 @@ contract ETHRegistrarTest is
             testDuration,
             testPaymentToken
         );
-        uint256 balance0 = IERC20(testPaymentToken).balanceOf(beneficiary);
+        uint256 balance0 = testPaymentToken.balanceOf(beneficiary);
         this._register();
+<<<<<<< HEAD
         assertEq(
             IERC20(testPaymentToken).balanceOf(beneficiary),
             balance0 + base + premium
         );
+=======
+        assertEq(testPaymentToken.balanceOf(beneficiary), balance0 + base + premium);
+>>>>>>> fcd20163 (fix grace => grace sync)
     }
 
     function test_beneficiary_renew() external {
         this._register();
+<<<<<<< HEAD
         uint256 amount = ethRegistrar.getRenewPrice(
             testLabel,
             testDuration,
@@ -739,6 +857,14 @@ contract ETHRegistrarTest is
     // Payment Processing
     ////////////////////////////////////////////////////////////////////////
 
+=======
+        uint256 amount = ethRegistrar.getRenewPrice(testLabel, testDuration, testPaymentToken);
+        uint256 balance0 = testPaymentToken.balanceOf(beneficiary);
+        this._renew();
+        assertEq(testPaymentToken.balanceOf(beneficiary), balance0 + amount);
+    }
+
+>>>>>>> fcd20163 (fix grace => grace sync)
     function test_voidReturn_acceptedBySafeERC20() external {
         // register
         testPaymentToken = tokenVoid;

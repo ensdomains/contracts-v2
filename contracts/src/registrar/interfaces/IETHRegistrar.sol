@@ -5,7 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
-/// @notice Interface for registering and renewing in ENSv2.
+/// @notice Interface for the ".eth" registrar which manages the ".eth" registry.
 /// @dev Interface selector: `0xd4e79fb2`
 interface IETHRegistrar {
     ////////////////////////////////////////////////////////////////////////
@@ -40,7 +40,7 @@ interface IETHRegistrar {
         uint256 premium
     );
 
-    /// @notice `label` was extended by `duration`.
+    /// @notice A name was extended by `duration`.
     /// @param tokenId The registry token id.
     /// @param label The name of the renewal.
     /// @param duration The duration extension, in seconds.

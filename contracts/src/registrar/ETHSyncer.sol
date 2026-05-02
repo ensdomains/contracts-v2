@@ -84,8 +84,12 @@ contract ETHSyncer is Ownable, ERC165, IETHSyncer {
     function syncRegistrar(string calldata label) external {
         uint256 tokenIdV1 = LibLabel.id(label);
         IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(tokenIdV1);
-        if (state.status != IPermissionedRegistry.Status.RESERVED) {
-            revert NameNotReserved(label);
+        if (
+            state.status == IPermissionedRegistry.Status.REGISTERED ||
+            state.latestOwner != address(0) ||
+            state.expiry == 0
+        ) {
+            revert NameNotSyncable(label);
         }
         uint64 expiryV2 = state.expiry - BONUS_PERIOD;
         uint256 expiryV1 = _BASE_REGISTRAR.nameExpires(tokenIdV1);

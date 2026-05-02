@@ -8,9 +8,9 @@ interface IETHSyncer {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice `label` is not `RESERVED`.
-    /// @dev Error selector: `0xd17ee357`
-    error NameNotReserved(string label);
+    /// @notice `label` cannot be synced.
+    /// @dev Error selector: `0x9610019f`
+    error NameNotSyncable(string label);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions

@@ -103,7 +103,7 @@ contract V1FixtureTest is V1Fixture {
         );
         vm.warp(baseRegistrar.nameExpires(tokenId));
         assertEq(uint(getStatusV1(tokenId)), uint8(StatusV1.GRACE), "GRACE");
-        vm.warp(baseRegistrar.nameExpires(tokenId) + effectiveGracePeriodV1);
+        vm.warp(baseRegistrar.nameExpires(tokenId) + trueGracePeriodV1);
         assertEq(
             uint(getStatusV1(tokenId)),
             uint8(StatusV1.AVAILABLE),
@@ -179,7 +179,7 @@ contract V1FixtureTest is V1Fixture {
             assertTrue((fuses & CANNOT_UNWRAP) != 0, "grace:fuses");
         }
         {
-            vm.warp(unwrappedExpiry + effectiveGracePeriodV1); // after-end
+            vm.warp(unwrappedExpiry + trueGracePeriodV1); // after-end
             (address owner, uint32 fuses, ) = nameWrapper.getData(
                 uint256(node)
             );
@@ -318,7 +318,7 @@ contract V1FixtureTest is V1Fixture {
             baseRegistrar.ownerOf(tokenId);
         }
         {
-            vm.warp(expiry + effectiveGracePeriodV1); // after-end
+            vm.warp(expiry + trueGracePeriodV1); // after-end
             assertTrue(baseRegistrar.available(tokenId), "after:available");
             vm.expectRevert();
             baseRegistrar.ownerOf(tokenId);

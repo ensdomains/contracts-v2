@@ -96,7 +96,7 @@ contract ETHSyncerTest is MigrationControllerFixture {
             "status"
         );
 
-        vm.expectRevert(abi.encodeWithSelector(IETHSyncer.NameNotReserved.selector, testLabel));
+        vm.expectRevert(abi.encodeWithSelector(IETHSyncer.NameNotSyncable.selector, testLabel));
         ethSyncer.syncRegistrar(testLabel);
     }
 
@@ -109,7 +109,7 @@ contract ETHSyncerTest is MigrationControllerFixture {
             "status"
         );
 
-        vm.expectRevert(abi.encodeWithSelector(IETHSyncer.NameNotReserved.selector, testLabel));
+        vm.expectRevert(abi.encodeWithSelector(IETHSyncer.NameNotSyncable.selector, testLabel));
         ethSyncer.syncRegistrar(testLabel);
     }
 
@@ -118,7 +118,7 @@ contract ETHSyncerTest is MigrationControllerFixture {
     ////////////////////////////////////////////////////////////////////////
 
     function test_syncWrapper_unwrapped() external {
-        (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        registerUnwrapped(testLabel);
         string[] memory labels = new string[](1);
         labels[0] = testLabel;
         uint256 g = gasleft();
