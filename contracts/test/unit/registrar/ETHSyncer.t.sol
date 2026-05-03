@@ -9,31 +9,39 @@ import {
     CANNOT_UNWRAP,
     CAN_DO_EVERYTHING
 } from "@ens/contracts/wrapper/INameWrapper.sol";
+import {
+    ETHSyncer,
+    IETHSyncer,
+    IPermissionedRegistry,
+    Ownable,
+    LibLabel
+} from "~src/registrar/ETHSyncer.sol";
 import {MigrationControllerFixture, NameCoder} from "~test/fixtures/MigrationControllerFixture.sol";
-import {StandardRegistrar} from "~test/StandardRegistrar.sol";
-import {ETHSyncer, IETHSyncer, IPermissionedRegistry, Ownable} from "~src/registrar/ETHSyncer.sol";
-import {LibLabel} from "~src/utils/LibLabel.sol";
 
 // [gas analysis]
 // test_syncRegistrar_reserved(): 17106
 // test_syncWrapper_unwrapped(): 52469
 // test_syncWrapper_wrapped(): 47198
 // test_syncWrapper_wrappedGas():
-//   0 | 34198
-//   1 | 43203
-//   2 | 47705
-//   3 | 58709
-//   4 | 69718
-//   5 | 80724
-//   6 | 91726
-//   7 | 102734
-//   8 | 113746
+//   N | Gas
+//   0 | 36694
+//   1 | 43183
+//   2 | 47679
+//   3 | 58676
+//   4 | 69675
+//   5 | 80678
 
 contract ETHSyncerTest is MigrationControllerFixture {
     address actor = makeAddr("actor");
 
     function setUp() external {
         deployMigrationControllerFixture();
+    }
+
+    function activateV2() internal {
+        // deployMigrationControllerFixture() already activates ENSv2
+        // but does not remove controllers or freeze the wrapper
+        nameWrapper.renounceOwnership();
     }
 
     function test_constructor() external view {
@@ -45,7 +53,7 @@ contract ETHSyncerTest is MigrationControllerFixture {
             "WRAPPED_CONTROLLER"
         );
         assertEq(address(ethSyncer.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
-        assertEq(ethSyncer.BONUS_PERIOD(), StandardRegistrar.BONUS_PERIOD, "BONUS_PERIOD");
+        assertEq(ethSyncer.BONUS_PERIOD(), premigrationBonusPeriod, "BONUS_PERIOD");
     }
 
     function test_transferRegistrarOwnership() external {
@@ -73,7 +81,9 @@ contract ETHSyncerTest is MigrationControllerFixture {
         assertEq(expiryV1 + premigrationBonusPeriod, expiryV2, "sync:before");
 
         vm.prank(premigrationController);
-        ethRegistry.renew(tokenIdV1, expiryV2 + duration); // renew RESERVED only
+        ethRegistry.renew(tokenIdV1, expiryV2 + duration); // renew v2 only
+
+        activateV2();
 
         uint256 g = gasleft();
         ethSyncer.syncRegistrar(testLabel);
@@ -87,6 +97,11 @@ contract ETHSyncerTest is MigrationControllerFixture {
             ethRegistry.getExpiry(tokenIdV1),
             "sync:after"
         );
+    }
+
+    function test_syncRegistrar_alreadySync() external {
+        registerUnwrapped(testLabel);
+        ethSyncer.syncRegistrar(testLabel); // noop
     }
 
     function test_syncRegistar_available() external {
@@ -138,7 +153,7 @@ contract ETHSyncerTest is MigrationControllerFixture {
 
         (, , uint64 wrappedExpiry0) = nameWrapper.getData(uint256(node));
 
-        nameWrapper.renounceOwnership();
+        activateV2();
 
         string[] memory labels = new string[](1);
         labels[0] = testLabel;
@@ -153,19 +168,14 @@ contract ETHSyncerTest is MigrationControllerFixture {
     }
 
     function test_syncWrapper_wrappedGas() external {
-        uint256 N = 8;
-        uint256 i;
-        for (uint256 n; n <= N; ++n) {
-            for (uint256 j; j < n; ++j) {
-                registerWrappedETH2LD(_label(i++), 0);
-            }
-        }
-        i = 0;
+        uint256 k;
         console.log("N | Gas");
-        for (uint256 n; n <= N; ++n) {
+        for (uint256 n; n <= 8; ++n) {
             string[] memory labels = new string[](n);
-            for (uint256 j; j < n; ++j) {
-                labels[j] = _label(i++);
+            for (uint256 i; i < n; ++i) {
+                string memory label = _label(k++);
+                registerWrappedETH2LD(label, 0);
+                labels[i] = label;
             }
             uint256 g = gasleft();
             ethSyncer.syncWrapper(labels);

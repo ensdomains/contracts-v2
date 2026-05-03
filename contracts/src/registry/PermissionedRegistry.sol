@@ -403,7 +403,7 @@ contract PermissionedRegistry is
             }
             roleBitmap |= RegistryRolesLib.ROLE_WAS_RESERVED; // remember
         }
-        if (_isExpired(expiry)) {
+        if (owner == address(0) ? expiry == 0 : _isExpired(expiry)) {
             revert CannotSetPastExpiry(expiry);
         }
         if (prevOwner != address(0)) {

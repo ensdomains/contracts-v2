@@ -169,7 +169,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_register_cannotSetPastExpiry() external {
-        testExpiry = 0;
+        vm.warp(2);
+        testExpiry = uint64(block.timestamp) - 1;
         vm.expectRevert(
             abi.encodeWithSelector(IStandardRegistry.CannotSetPastExpiry.selector, testExpiry)
         );
@@ -220,6 +221,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
         assertEq(address(registry.getSubregistry(testLabel)), address(0), "registry");
         assertEq(labelStore.getLabel(tokenId), testLabel, "label");
+    }
+
+    function test_reserve_canSetPastExpiry() external {
+        vm.warp(2);
+        testExpiry = uint64(block.timestamp) - 1;
+        this._reserve();
+    }
+
+    function test_reserve_cannotSetPastExpiry() external {
+        testExpiry = 0; // genesis
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.CannotSetPastExpiry.selector, testExpiry)
+        );
+        this._reserve();
     }
 
     function test_reserve_alreadyReserved() external {

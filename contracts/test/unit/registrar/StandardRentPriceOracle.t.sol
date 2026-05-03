@@ -95,13 +95,31 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         emit StandardRentPriceOracle.PaymentTokenUpdated(tokenUSDC, 1, 1);
         new StandardRentPriceOracle(
             address(this),
-            new uint256[](0),
+            new uint256[](1),
             new DiscountPoint[](0),
             0,
             0,
             0,
             0,
             v
+        );
+    }
+
+    function test_constructor_invalidBaseRates() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StandardRentPriceOracle.InvalidBaseRates.selector
+            )
+        );
+        new StandardRentPriceOracle(
+            address(this),
+            new uint256[](0), // wrong
+            new DiscountPoint[](0),
+            0,
+            0,
+            0,
+            0,
+            new PaymentRatio[](0)
         );
     }
 
@@ -118,7 +136,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         );
         new StandardRentPriceOracle(
             address(this),
-            new uint256[](0),
+            new uint256[](1),
             v,
             3, // denominator
             0,
@@ -141,7 +159,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         );
         new StandardRentPriceOracle(
             address(this),
-            new uint256[](0),
+            new uint256[](1),
             v,
             3, // denominator
             0,
@@ -161,7 +179,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         );
         new StandardRentPriceOracle(
             address(this),
-            new uint256[](0),
+            new uint256[](1),
             v,
             3, // denominator
             0,
@@ -181,7 +199,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         );
         new StandardRentPriceOracle(
             address(this),
-            new uint256[](0),
+            new uint256[](1),
             v,
             3, // denominator
             0,
@@ -201,7 +219,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         );
         new StandardRentPriceOracle(
             address(this),
-            new uint256[](0),
+            new uint256[](1),
             new DiscountPoint[](0),
             0,
             0,
@@ -400,7 +418,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     function test_getPremiumPriceAfter_calc() external {
         StandardRentPriceOracle oracle = new StandardRentPriceOracle(
             address(this),
-            new uint256[](0),
+            new uint256[](1),
             new DiscountPoint[](0),
             0,
             256000,

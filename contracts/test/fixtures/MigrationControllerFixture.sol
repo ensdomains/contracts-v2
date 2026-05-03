@@ -64,6 +64,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
             premigrationBonusPeriod
         );
 
+        // activate ENSv2 (but does not disable eth controllers)
         baseRegistrar.setResolver(address(ensV2Resolver));
         baseRegistrar.addController(address(graveyard));
         baseRegistrar.addController(address(ethSyncer));

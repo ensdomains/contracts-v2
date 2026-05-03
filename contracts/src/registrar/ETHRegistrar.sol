@@ -23,7 +23,7 @@ import {IETHRegistrar} from "./interfaces/IETHRegistrar.sol";
 import {IETHSyncer} from "./interfaces/IETHSyncer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
-/// @dev Composite role bitmap granted to name owners at registration — includes set-subregistry, set-resolver, and can-transfer (with admin variants).
+/// @dev Roles assigned to owners at registration. Includes set-subregistry, set-resolver, and can-transfer (with admin variants).
 uint256 constant REGISTRATION_ROLE_BITMAP = 0 |
     RegistryRolesLib.ROLE_SET_SUBREGISTRY |
     RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN |
@@ -31,10 +31,11 @@ uint256 constant REGISTRATION_ROLE_BITMAP = 0 |
     RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
     RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
 
-/// @dev Root-level role authorizing oracle updates.
+/// @dev Nybble 0: authorizes updating the oracle. Root only.
 uint256 constant ROLE_SET_ORACLE = 1 << 0;
+/// @dev Nybble 32: authorizes setting `ROLE_SET_ORACLE`.
 uint256 constant ROLE_SET_ORACLE_ADMIN = ROLE_SET_ORACLE << 128;
-
+/// @dev Default root roles assigned at construction.
 uint256 constant DEFAULT_ROLE_BITMAP = ROLE_SET_ORACLE | ROLE_SET_ORACLE_ADMIN;
 
 /// @notice Commit-reveal registrar for .eth names. Registration requires two transactions: first

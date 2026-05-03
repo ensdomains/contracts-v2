@@ -758,9 +758,7 @@ export async function setupDevnet({
         [v2.ETHSyncer.address],
         { account },
       );
-      // TODO:
-      // delay grant of registar/renewer-related roles until here
-      console.log("Activated ENSv2");
+      // TODO: delay grant of registar/renewer-related roles until here?
     }
 
     async function setupEnsDotEth() {

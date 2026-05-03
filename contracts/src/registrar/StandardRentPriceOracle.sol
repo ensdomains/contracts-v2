@@ -23,8 +23,7 @@ uint256 constant ROLE_UPDATE_TOKEN_ADMIN = ROLE_UPDATE_TOKEN << 128;
 uint256 constant ROLE_DISABLE_TOKEN = 1 << 4;
 /// @dev Nybble 33: authorizes setting `ROLE_DISABLE_TOKEN`.
 uint256 constant ROLE_DISABLE_TOKEN_ADMIN = ROLE_DISABLE_TOKEN << 128;
-
-/// @dev Default root roles assigned during construction.
+/// @dev Default root roles assigned at construction.
 uint256 constant DEFAULT_ROLE_BITMAP = 0 |
     ROLE_UPDATE_TOKEN |
     ROLE_UPDATE_TOKEN_ADMIN |
@@ -126,6 +125,10 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Invalid base rates.
+    /// @dev Error selector: `0xde276447`
+    error InvalidBaseRates();
+
     /// @notice Invalid payment token exchange rate.
     /// @dev Error selector: `0x648564d3`
     error InvalidRatio();
@@ -159,6 +162,9 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
     ) HCAEquivalence(IHCAFactoryBasic(address(0))) {
         _grantRoles(ROOT_RESOURCE, DEFAULT_ROLE_BITMAP, rootAccount, false);
 
+        if (baseRatePerCp.length == 0) {
+            revert InvalidBaseRates();
+        }
         _baseRatePerCp = baseRatePerCp;
 
         uint256 n = discountPoints.length;
@@ -357,13 +363,13 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
         string calldata label,
         uint64 duration
     ) public view returns (uint256) {
-        uint256 len = bytes(label).length;
-        if (len == 0 || len > 255) return 0; // too long or too short
-        uint256 nbr = _baseRatePerCp.length;
-        if (nbr == 0) return 0; // no base rates
-        uint256 ncp = getLength(label);
-        uint256 rate = _baseRatePerCp[(ncp > nbr ? nbr : ncp) - 1];
-        return applyDiscount(rate * duration, duration);
+        uint256 n = bytes(label).length;
+        if (n == 0 || n > 255) return 0; // too long or too short
+        uint256 i = getLength(label);
+        if (i > _baseRatePerCp.length) {
+            i = _baseRatePerCp.length;
+        }
+        return applyDiscount(_baseRatePerCp[i - 1] * duration, duration);
     }
 
     /// @notice Get premium price for a duration after expiry.

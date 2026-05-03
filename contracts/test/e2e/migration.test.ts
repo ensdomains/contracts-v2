@@ -9,7 +9,14 @@ import {
   namehash,
   zeroAddress,
 } from "viem";
-import { STATUS, MAX_EXPIRY, FUSES } from "../../script/deploy-constants.js";
+import {
+  STATUS,
+  MAX_EXPIRY,
+  FUSES,
+  PREMIGRATION_BONUS_PERIOD,
+  SEC_PER_YEAR,
+  GRACE_PERIOD_V2,
+} from "../../script/deploy-constants.js";
 import { expect, expectVar } from "../utils/expectVar.js";
 import {
   COIN_TYPE_ETH,
@@ -70,7 +77,7 @@ describe("Migration", () => {
       zeroAddress, // registry
       env.v2.ENSV1Resolver.address, // fallback resolver
       0n, // roleBitmap (must be null)
-      expiry,
+      expiry + PREMIGRATION_BONUS_PERIOD,
     ]);
   }
 
@@ -107,10 +114,13 @@ describe("Migration", () => {
     }
     async setupPublicResolver() {
       await this.setResolver(env.v1.PublicResolver.address);
-      const { name, account } = this;
       await env.v1.PublicResolver.write.multicall(
-        [makeResolutions({ name, ...defaultProfile }).map((x) => x.write)],
-        { account },
+        [
+          makeResolutions({ name: this.name, ...defaultProfile }).map(
+            (x) => x.write,
+          ),
+        ],
+        { account: this.account },
       );
     }
     async checkMigrated({
@@ -188,6 +198,23 @@ describe("Migration", () => {
       );
       return new WrappedToken(name, account);
     }
+    async renew(duration: bigint) {
+      const { label, account } = this;
+      const amount = await env.v2.ETHRegistrar.read.getRenewPrice([
+        label,
+        duration,
+        env.erc20.MockUSDC.address,
+      ]);
+      await env.erc20.MockUSDC.write.mint([account.address, amount]);
+      await env.erc20.MockUSDC.write.approve(
+        [env.v2.ETHRegistrar.address, amount],
+        { account },
+      );
+      await env.v2.ETHRegistrar.write.renew(
+        [label, duration, env.erc20.MockUSDC.address, namehash("")],
+        { account },
+      );
+    }
   }
 
   class WrappedToken extends TokenV1 {
@@ -195,9 +222,8 @@ describe("Migration", () => {
       return BigInt(this.namehash);
     }
     override async setResolver(address: Address) {
-      const { name, account } = this;
       await env.v1.NameWrapper.write.setResolver([this.namehash, address], {
-        account,
+        account: this.account,
       });
     }
     async createChild({
@@ -362,6 +388,60 @@ describe("Migration", () => {
       });
       expect(unwrapped.migrate()).rejects.toThrow(
         "EACUnauthorizedAccountRoles",
+      );
+    });
+  });
+
+  describe("postlaunch", () => {
+    it("renew", async () => {
+      const unwrapped = await registerUnwrapped();
+      const expiry0 = await env.v1.BaseRegistrar.read.nameExpires([
+        unwrapped.tokenId,
+      ]);
+      await env.activateV2();
+      await unwrapped.renew(SEC_PER_YEAR);
+      const expiry1 = await env.v1.BaseRegistrar.read.nameExpires([
+        unwrapped.tokenId,
+      ]);
+      expectVar({ expiry1 }).toStrictEqual(expiry0 + SEC_PER_YEAR);
+    });
+
+    it("renew in grace", async () => {
+      const unwrapped = await registerUnwrapped();
+      const expiry0 = await env.v1.BaseRegistrar.read.nameExpires([
+        unwrapped.tokenId,
+      ]);
+      await env.activateV2();
+      await env.client.setNextBlockTimestamp({ timestamp: expiry0 });
+      await env.client.mine({ blocks: 1 });
+      await expect(
+        env.v1.BaseRegistrar.read.ownerOf([unwrapped.tokenId]),
+      ).rejects.toThrow(); // unowned
+      await expect(
+        env.v1.BaseRegistrar.read.available([unwrapped.tokenId]),
+      ).resolves.toStrictEqual(false); // not available
+      await unwrapped.renew(SEC_PER_YEAR);
+      const expiry1 = await env.v1.BaseRegistrar.read.nameExpires([
+        unwrapped.tokenId,
+      ]);
+      expectVar({ expiry1 }).toStrictEqual(expiry0 + SEC_PER_YEAR);
+    });
+
+    it("renew after grace", async () => {
+      const unwrapped = await registerUnwrapped();
+      const expiry0 = await env.v1.BaseRegistrar.read.nameExpires([
+        unwrapped.tokenId,
+      ]);
+      await env.activateV2();
+      await env.client.setNextBlockTimestamp({
+        timestamp: expiry0 + PREMIGRATION_BONUS_PERIOD + GRACE_PERIOD_V2,
+      });
+      await env.client.mine({ blocks: 1 });
+      await expect(
+        env.v1.BaseRegistrar.read.available([unwrapped.tokenId]),
+      ).resolves.toStrictEqual(true); // available
+      await expect(unwrapped.renew(SEC_PER_YEAR)).rejects.toThrow(
+        "NameNotRenewable",
       );
     });
   });
