@@ -98,19 +98,19 @@ contract PermissionedRegistry is
     /// @notice Initializes the PermissionedRegistry.
     /// @param hcaFactory The HCA factory to use.
     /// @param metadata The metadata provider to use.
-    /// @param ownerAddress The address that will receive the specified roles.
-    /// @param ownerRoles The roles to grant to `ownerAddress`.
+    /// @param rootAccount Account granted root roles.
+    /// @param roleBitmap The role bitmap granted to `rootAccount`.
     constructor(
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadata,
-        address ownerAddress,
-        uint256 ownerRoles
+        address rootAccount,
+        uint256 roleBitmap
     )
         HCAEquivalence(hcaFactory)
         MetadataMixin(metadata)
     {
         emit RegistryCreated();
-        _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
+        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
     }
 
     /// @inheritdoc IERC165

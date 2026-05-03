@@ -12,6 +12,7 @@ import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
@@ -46,7 +47,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Deploy the implementation
         vm.expectEmit();
-        emit IRegistry.RegistryCreated();
+        emit IRegistryEvents.RegistryCreated();
         implementation = new UserRegistry(hcaFactory, metadata);
 
         // Create initialization data
@@ -57,7 +58,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Deploy the proxy using the factory
         vm.expectEmit();
-        emit IRegistry.RegistryCreated();
+        emit IRegistryEvents.RegistryCreated();
         vm.prank(admin);
         address proxyAddress = factory.deployProxy(address(implementation), SALT, initData);
 

@@ -196,7 +196,11 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         if (_notFrozen(fuses)) {
             roleBitmap |= roleBitmap << 128; // give admin
         }
-        roleBitmap |= RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN;
+        roleBitmap |=
+            RegistryRolesLib.ROLE_RENEW |
+            RegistryRolesLib.ROLE_RENEW_ADMIN |
+            RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN;
     }
 
     /// @dev Convert fuses to equivalent token roles.

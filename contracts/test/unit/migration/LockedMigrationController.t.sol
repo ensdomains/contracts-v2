@@ -59,7 +59,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     function setUp() public override {
         super.setUp();
         vm.expectEmit();
-        emit IRegistry.RegistryCreated();
+        emit IRegistryEvents.RegistryCreated();
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
             verifiableFactory,
@@ -283,7 +283,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         emit ENS.NewResolver(node, address(0));
         // emit IERC1967.Upgraded()
         vm.expectEmit();
-        emit IRegistry.RegistryCreated();
+        emit IRegistryEvents.RegistryCreated();
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
             0 /*ROOT_RESOURCE*/,

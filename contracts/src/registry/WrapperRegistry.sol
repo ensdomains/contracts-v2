@@ -85,7 +85,7 @@ contract WrapperRegistry is
         bytes32 node,
         IRegistry parentRegistry,
         string calldata childLabel,
-        address admin,
+        address rootAccount,
         uint256 roleBitmap
     )
         public
@@ -96,12 +96,7 @@ contract WrapperRegistry is
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
         emit RegistryCreated();
-        _grantRoles(
-            ROOT_RESOURCE,
-            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | roleBitmap,
-            admin,
-            false
-        );
+        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
     }
 
     ////////////////////////////////////////////////////////////////////////
