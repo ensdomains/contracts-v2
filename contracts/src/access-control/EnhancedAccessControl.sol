@@ -71,6 +71,9 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     ///
     mapping(uint256 resource => uint256 roleCount) private _roleCount;
 
+    /// @dev Storage gap for future changes.
+    uint256[4] private __gap;
+
     ////////////////////////////////////////////////////////////////////////
     // Modifiers
     ////////////////////////////////////////////////////////////////////////
