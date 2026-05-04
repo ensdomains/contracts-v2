@@ -270,6 +270,9 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
             amount
         ); // reverts if payment failed
         ETH_REGISTRY.renew(state.tokenId, newExpiry);
+        if (_shouldSyncV1(state)) {
+            ETH_SYNCER.syncRegistrar(label);
+        }
         emit NameRenewed(
             state.tokenId,
             label,
@@ -279,9 +282,6 @@ contract ETHRegistrar is EnhancedAccessControl, IETHRegistrar {
             referrer,
             amount
         );
-        if (_shouldSyncV1(state)) {
-            ETH_SYNCER.syncRegistrar(label);
-        }
     }
 
     /// @inheritdoc IETHRegistrar

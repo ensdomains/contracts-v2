@@ -35,7 +35,7 @@ contract GraveyardTest is MigrationControllerFixture {
     function test_clear_afterGrace() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
 
-        vm.warp(baseRegistrar.nameExpires(tokenIdV1) + gracePeriodV1 + 1);
+        vm.warp(baseRegistrar.nameExpires(tokenIdV1) + gracePeriodV1);
         vm.expectRevert();
         baseRegistrar.ownerOf(tokenIdV1);
         assertTrue(baseRegistrar.available(tokenIdV1), "grace:available");
@@ -337,12 +337,12 @@ contract GraveyardTest is MigrationControllerFixture {
     function _simulateExpiry(bytes memory name) internal {
         (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
         if (NameCoder.namehash(name, offset) == NameCoder.ETH_NODE) {
-            vm.warp(baseRegistrar.nameExpires(uint256(labelHash)) + gracePeriodV1 + 1);
+            vm.warp(baseRegistrar.nameExpires(uint256(labelHash)) + gracePeriodV1);
         } else {
             (address owner, , uint64 expiry) =
                 nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));
             if (owner != address(0)) {
-                vm.warp(expiry + 1);
+                vm.warp(expiry + 1); // see: gracePeriodV1 definition
             }
         }
     }

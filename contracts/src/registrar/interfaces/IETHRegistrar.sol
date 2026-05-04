@@ -96,7 +96,6 @@ interface IETHRegistrar {
     function commit(bytes32 commitment) external;
 
     /// @notice Register a name.
-    /// @dev Should emit `NameRegistered`.
     /// @param label The name from commitment.
     /// @param owner The owner from commitment.
     /// @param secret The secret from commitment.
@@ -118,7 +117,6 @@ interface IETHRegistrar {
     ) external returns (uint256);
 
     /// @notice Renew a name.
-    /// @dev Should emit `NameRenewed`.
     /// @param label The name to renew.
     /// @param duration The duration extension, in seconds.
     /// @param paymentToken The payment token.
@@ -160,7 +158,7 @@ interface IETHRegistrar {
 
     /// @notice Check if name is available.
     /// @param label The name to check.
-    /// @return `true` if the `label` is registerable, otherwise renewable.
+    /// @return `true` if registerable, otherwise renewable.
     function isAvailable(string memory label) external view returns (bool);
 
     /// @notice Determine remaining grace period.
