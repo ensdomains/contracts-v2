@@ -421,21 +421,17 @@ contract PermissionedRegistry is
         uint256[] memory tokenIds,
         uint256[] memory amounts
     ) internal override {
-        bool externalTransfer = to != address(0) && from != address(0); // skip mint and burn
-        if (externalTransfer) {
+        super._update(from, to, tokenIds, amounts); // ensures amounts[i] is 0 or 1
+        if (to != address(0) && from != address(0)) {
+            // only transfers (skip mint and burn)
             for (uint256 i; i < tokenIds.length; ++i) {
                 uint256 tokenId = tokenIds[i];
-                // only check ROLE_CAN_TRANSFER_ADMIN on token owner (from)
+                // only check ROLE_CAN_TRANSFER_ADMIN on original owner (from)
+                // ROLE_CAN_TRANSFER_ADMIN is technically a property of the token
                 if (!hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
                     revert TransferDisallowed(tokenId, from);
-                }
-            }
-        }
-        super._update(from, to, tokenIds, amounts); // ensures amounts[i] is 0 or 1
-        if (externalTransfer) {
-            for (uint256 i; i < tokenIds.length; ++i) {
-                if (amounts[i] > 0) {
-                    _transferRoles(getResource(tokenIds[i]), from, to, false);
+                } else if (amounts[i] > 0) {
+                    _transferRoles(getResource(tokenId), from, to, false);
                 }
             }
         }
