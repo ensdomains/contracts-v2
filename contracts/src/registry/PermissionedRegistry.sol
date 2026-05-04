@@ -425,17 +425,12 @@ contract PermissionedRegistry is
                 // only check ROLE_CAN_TRANSFER_ADMIN on token owner (from)
                 if (!hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
                     revert TransferDisallowed(tokenId, from);
-                }
-            }
-        }
-        super._update(from, to, tokenIds, amounts); // ensures amounts[i] is 0 or 1
-        if (externalTransfer) {
-            for (uint256 i; i < tokenIds.length; ++i) {
-                if (amounts[i] > 0) {
+                } else if (amounts[i] > 0) {
                     _transferRoles(getResource(tokenIds[i]), from, to, false);
                 }
             }
         }
+        super._update(from, to, tokenIds, amounts); // ensures amounts[i] is 0 or 1
     }
 
     /// @dev Override the base registry _onRolesGranted function to regenerate the token when the roles are granted.
