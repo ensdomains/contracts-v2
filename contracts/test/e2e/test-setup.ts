@@ -40,7 +40,7 @@ expect.extend({
 
 const t0 = Date.now();
 
-const env = await setupDevnet({ procLog: false });
+const env = await setupDevnet({ procLog: false, chainId: 1 });
 
 // save the initial state
 const resetInitialState = await env.saveState();

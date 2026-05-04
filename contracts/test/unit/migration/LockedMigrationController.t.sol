@@ -34,6 +34,7 @@ import {
     IEnhancedAccessControl,
     EACBaseRolesLib
 } from "~src/access-control/EnhancedAccessControl.sol";
+import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {
     WrapperRegistry,
     IWrapperRegistry,
@@ -44,6 +45,8 @@ import {
     LibMigration
 } from "~src/registry/WrapperRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
+import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
+import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
 import {
     MigrationControllerFixture,
     ERC165Checker,
@@ -54,16 +57,19 @@ import {V2Fixture, VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
+    ApprovedUpgradeGate approvedUpgradeGate;
     WrapperRegistry wrapperRegistryImpl;
 
     function setUp() public override {
         super.setUp();
+        approvedUpgradeGate = new ApprovedUpgradeGate(address(this));
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
             verifiableFactory,
             address(ensV1Resolver),
             hcaFactory,
-            metadata
+            metadata,
+            approvedUpgradeGate
         );
         migrationController = new LockedMigrationController(
             nameWrapper,
@@ -104,6 +110,47 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ),
             "IERC1155Receiver"
         );
+    }
+
+    function test_wrapperRegistryUpgrade_revertsForUnapprovedTarget() external {
+        WrapperRegistry registry = _deployWrapperRegistryProxy(address(this));
+        WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                WrapperRegistry.UpgradeTargetNotApproved.selector,
+                address(newImplementation)
+            )
+        );
+        registry.upgradeToAndCall(address(newImplementation), "");
+    }
+
+    function test_wrapperRegistryUpgrade_allowsApprovedTarget() external {
+        WrapperRegistry registry = _deployWrapperRegistryProxy(address(this));
+        WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
+
+        approvedUpgradeGate.setImplementationApproval(address(newImplementation), true);
+        registry.upgradeToAndCall(address(newImplementation), "");
+
+        assertEq(WrapperRegistryV2Mock(address(registry)).version(), 2, "version");
+    }
+
+    function test_wrapperRegistryUpgrade_requiresUpgradeRole() external {
+        WrapperRegistry registry = _deployWrapperRegistryProxy(address(this));
+        WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
+
+        approvedUpgradeGate.setImplementationApproval(address(newImplementation), true);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_UPGRADE,
+                user
+            )
+        );
+        vm.prank(user);
+        registry.upgradeToAndCall(address(newImplementation), "");
     }
 
     function test_MIN_DATA_SIZE() external pure {
@@ -814,5 +861,56 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 subregistry: IRegistry(address(0)), // ignored by LockedMigrationController
                 resolver: testResolver
             });
+    }
+
+    function _deployWrapperRegistryProxy(address admin) internal returns (WrapperRegistry) {
+        bytes memory name = NameCoder.encode(string.concat(testLabel, ".eth"));
+        bytes32 node = NameCoder.namehash(name, 0);
+        uint256 salt = uint256(node);
+        address proxyAddress = verifiableFactory.deployProxy(
+            address(wrapperRegistryImpl),
+            salt,
+            abi.encodeCall(
+                IWrapperRegistry.initialize,
+                (node, ethRegistry, testLabel, admin, RegistryRolesLib.ROLE_RENEW)
+            )
+        );
+        return WrapperRegistry(proxyAddress);
+    }
+
+    function _newWrapperRegistryV2Mock() internal returns (WrapperRegistryV2Mock) {
+        return
+            new WrapperRegistryV2Mock(
+                nameWrapper,
+                verifiableFactory,
+                address(ensV1Resolver),
+                hcaFactory,
+                metadata,
+                approvedUpgradeGate
+            );
+    }
+}
+
+contract WrapperRegistryV2Mock is WrapperRegistry {
+    constructor(
+        INameWrapper nameWrapper,
+        VerifiableFactory verifiableFactory,
+        address ensV1Resolver,
+        IHCAFactoryBasic hcaFactory,
+        IRegistryMetadata metadataProvider,
+        ApprovedUpgradeGate upgradeGate
+    )
+        WrapperRegistry(
+            nameWrapper,
+            verifiableFactory,
+            ensV1Resolver,
+            hcaFactory,
+            metadataProvider,
+            upgradeGate
+        )
+    {}
+
+    function version() public pure returns (uint256) {
+        return 2;
     }
 }

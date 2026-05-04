@@ -6,6 +6,7 @@ import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
+import {IDataResolver} from "@ens/contracts/resolvers/profiles/IDataResolver.sol";
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
 import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
@@ -48,7 +49,7 @@ import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib
 /// - ENSIP-8: interfaceImplementer()
 /// - ENSIP-9 / EIP-2304: addr(coinType)
 /// - ENSIP-19: addr(default)
-/// - ENSIP-24: data(key) --- TODO
+/// - ENSIP-24: data(key)
 /// - IERC7996: supportsFeature()
 /// - IVersionableResolver: version()
 /// - IHasAddrResolver: hasAddr()
@@ -69,13 +70,20 @@ import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib
 ///
 /// Fine-grained Permissions:
 ///
-/// `setText(key)` can be restricted to a key using: `part = textPart(<key>)`.
-/// `setAddr(coinType)` can be restricted to a coinType using: `part = addrPart(<coinType>)`.
+/// * `setText(key)` can be permissioned with `authorizeTextRoles()`
+///    - caller requires `ROLE_SET_TEXT_ADMIN` on `resource(<namehash>, 0)`
+///    - `ROLE_SET_TEXT` is authorized on `resource(<namehash>, <part>)`
+/// * `setData(key)` can be permissioned with `authorizeDataRoles()`
+///    - caller requires `ROLE_SET_DATA_ADMIN` on `resource(<namehash>, 0)`
+///    - `ROLE_SET_DATA` is authorized on `resource(<namehash>, <part>)`
+/// * `setAddr(coinType)` can be permissioned with `authorizeAddrRoles()`
+///    - caller requires `ROLE_SET_ADDR_ADMIN` on `resource(<namehash>, 0)`
+///    - `ROLE_SET_ADDR` is authorized on `resource(<namehash>, <part>)`
 ///
 /// Setters with `node` check (4) EAC resources:
 ///                                           Parts
 ///        Resources      +-----------------------------+------------------------------+
-///               |           Any (*)           |         Specific (1)         |
+///                       |           Any (*)           |         Specific (1)         |
 ///        +--------------+-----------------------------+------------------------------+
 ///        |      Any (*) |       resource(0, 0)        |      resource(0, <part>)     |
 ///  Names |--------------+-----------------------------+------------------------------+
@@ -93,6 +101,7 @@ contract PermissionedResolver is
     IAddrResolver,
     IAddressResolver,
     IContentHashResolver,
+    IDataResolver,
     IHasAddressResolver,
     IInterfaceResolver,
     INameResolver,
@@ -110,7 +119,8 @@ contract PermissionedResolver is
         string name;
         mapping(uint256 coinType => bytes addressBytes) addresses;
         mapping(string key => string value) texts;
-        mapping(uint256 contentType => bytes data) abis;
+        mapping(string key => bytes value) datas;
+        mapping(uint256 contentType => bytes value) abis;
         mapping(bytes4 interfaceId => address implementer) interfaces;
     }
 
@@ -146,6 +156,18 @@ contract PermissionedResolver is
         string key
     );
 
+    /// @notice Associate an EAC resource with a name and specific `data(key)` record.
+    /// @param resource The EAC resource.
+    /// @param name The name.
+    /// @param keyHash The hash of the key.
+    /// @param key The key.
+    event NamedDataResource(
+        uint256 indexed resource,
+        bytes name,
+        bytes32 indexed keyHash,
+        string key
+    );
+
     /// @notice Associate an EAC resource with a name and specific `addr(coinType)` record.
     /// @param resource The EAC resource.
     /// @param name The name.
@@ -159,8 +181,9 @@ contract PermissionedResolver is
     modifier onlyPartRoles(bytes32 node, bytes32 part, uint256 roleBitmap) {
         address sender = _msgSender();
         if (
-            !hasRoles(PermissionedResolverLib.resource(node, part), roleBitmap, sender) &&
-            !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, sender)
+            part == bytes32(0) ||
+            (!hasRoles(PermissionedResolverLib.resource(node, part), roleBitmap, sender) &&
+                !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, sender))
         ) {
             _checkRoles(PermissionedResolverLib.resource(node, 0), roleBitmap, sender); // reverts using "widest" resource
         }
@@ -190,6 +213,7 @@ contract PermissionedResolver is
             type(IAddrResolver).interfaceId == interfaceId ||
             type(IAddressResolver).interfaceId == interfaceId ||
             type(IContentHashResolver).interfaceId == interfaceId ||
+            type(IDataResolver).interfaceId == interfaceId ||
             type(IHasAddressResolver).interfaceId == interfaceId ||
             type(IInterfaceResolver).interfaceId == interfaceId ||
             type(INameResolver).interfaceId == interfaceId ||
@@ -236,87 +260,142 @@ contract PermissionedResolver is
         emit AliasChanged(fromName, toName, fromName, toName);
     }
 
-    /// @notice Grant `roleBitmap` permissions to `account` for `toName`.
+    /// @notice Authorize `roleBitmap` permissions to `account` for `toName`.
     ///         Use `NameCoder.encode("")` for any name, which is equivalent to `grantRootRoles()`.
-    /// @param toName The name to grant roles for.
-    /// @param roleBitmap The roles to grant.
-    /// @param account The account to grant roles to.
+    /// @param toName The name to authorize roles for.
+    /// @param roleBitmap The roles to authorize.
+    /// @param account The account to authorize roles to.
+    /// @param grant If `true`, grants, otherwise, revokes.
     /// @return success Whether the roles were updated.
-    function grantNameRoles(
+    function authorizeNameRoles(
         bytes calldata toName,
         uint256 roleBitmap,
-        address account
+        address account,
+        bool grant
     ) external returns (bool) {
         bytes32 node = NameCoder.namehash(toName, 0);
         uint256 resource = PermissionedResolverLib.resource(node, 0);
-        _checkCanGrantRoles(resource, roleBitmap, _msgSender());
-        emit NamedResource(resource, toName);
-        return _grantRoles(resource, roleBitmap, account, true);
+        if (grant) {
+            _checkCanGrantRoles(resource, roleBitmap, _msgSender());
+            if (resource != ROOT_RESOURCE && roleCount(resource) == 0) {
+                emit NamedResource(resource, toName);
+            }
+            return _grantRoles(resource, roleBitmap, account, true);
+        } else {
+            _checkCanRevokeRoles(resource, roleBitmap, _msgSender());
+            return _revokeRoles(resource, roleBitmap, account, true);
+        }
     }
 
-    /// @notice Grant `setText(key)` permission to `account` for `toName`.
+    /// @notice Authorize `setText(key)` permission to `account` for `toName`.
     ///         Use `NameCoder.encode("")` for any name.
-    /// @param toName The name to grant roles for.
-    /// @param key The text key to grant roles for.
-    /// @param account The account to grant roles to.
-    /// @return success Whether the roles were updated.
-    function grantTextRoles(
+    /// @param toName The name to authorize roles for.
+    /// @param key The text key to authorize roles for.
+    /// @param account The account to authorize roles to.
+    /// @param grant If `true`, grants, otherwise, revokes.
+    /// @return `true` if the roles were updated.
+    function authorizeTextRoles(
         bytes calldata toName,
         string calldata key,
-        address account
+        address account,
+        bool grant
     ) external returns (bool) {
         bytes32 node = NameCoder.namehash(toName, 0);
-        _checkCanGrantRoles(
-            PermissionedResolverLib.resource(node, 0),
-            PermissionedResolverLib.ROLE_SET_TEXT,
-            _msgSender()
-        );
-        uint256 resource = PermissionedResolverLib.resource(
+        uint256 roleBit = PermissionedResolverLib.ROLE_SET_TEXT;
+        uint256 nodeResource = PermissionedResolverLib.resource(node, bytes32(0));
+        uint256 partResource = PermissionedResolverLib.resource(
             node,
-            PermissionedResolverLib.textPart(key)
+            PermissionedResolverLib.partHash(key)
         );
-        emit NamedTextResource(resource, toName, keccak256(bytes(key)), key);
-        return _grantRoles(resource, PermissionedResolverLib.ROLE_SET_TEXT, account, true);
+        if (grant) {
+            _checkCanGrantRoles(nodeResource, roleBit, _msgSender());
+            if (roleCount(partResource) == 0) {
+                emit NamedTextResource(partResource, toName, keccak256(bytes(key)), key);
+            }
+            return _grantRoles(partResource, roleBit, account, true);
+        } else {
+            _checkCanRevokeRoles(nodeResource, roleBit, _msgSender());
+            return _revokeRoles(partResource, roleBit, account, true);
+        }
     }
 
-    /// @notice Grant `setAddr(coinType)` permission to `account` for `toName`.
+    /// @notice Authorize `setData(key)` permission to `account` for `toName`.
     ///         Use `NameCoder.encode("")` for any name.
-    /// @param toName The name to grant roles for.
-    /// @param coinType The coin type to grant roles for.
-    /// @param account The account to grant roles to.
-    /// @return success Whether the roles were updated.
-    function grantAddrRoles(
+    /// @param toName The name to authorize roles for.
+    /// @param key The data key to authorize roles for.
+    /// @param account The account to authorize roles to.
+    /// @param grant If `true`, grants, otherwise, revokes.
+    /// @return `true` if the roles were updated.
+    function authorizeDataRoles(
         bytes calldata toName,
-        uint256 coinType,
-        address account
+        string calldata key,
+        address account,
+        bool grant
     ) external returns (bool) {
         bytes32 node = NameCoder.namehash(toName, 0);
-        _checkCanGrantRoles(
-            PermissionedResolverLib.resource(node, 0),
-            PermissionedResolverLib.ROLE_SET_ADDR,
-            _msgSender()
-        );
-        uint256 resource = PermissionedResolverLib.resource(
+        uint256 roleBit = PermissionedResolverLib.ROLE_SET_DATA;
+        uint256 nodeResource = PermissionedResolverLib.resource(node, bytes32(0));
+        uint256 partResource = PermissionedResolverLib.resource(
             node,
-            PermissionedResolverLib.addrPart(coinType)
+            PermissionedResolverLib.partHash(key)
         );
-        emit NamedAddrResource(resource, toName, coinType);
-        return _grantRoles(resource, PermissionedResolverLib.ROLE_SET_ADDR, account, true);
+        if (grant) {
+            _checkCanGrantRoles(nodeResource, roleBit, _msgSender());
+            if (roleCount(partResource) == 0) {
+                emit NamedDataResource(partResource, toName, keccak256(bytes(key)), key);
+            }
+            return _grantRoles(partResource, roleBit, account, true);
+        } else {
+            _checkCanRevokeRoles(nodeResource, roleBit, _msgSender());
+            return _revokeRoles(partResource, roleBit, account, true);
+        }
+    }
+
+    /// @notice Authorize `setAddr(coinType)` permission to `account` for `toName`.
+    ///         Use `NameCoder.encode("")` for any name.
+    /// @param toName The name to authorize roles for.
+    /// @param coinType The coin type to authorize roles for.
+    /// @param account The account to authorize roles to.
+    /// @param grant If `true`, grants, otherwise, revokes.
+    /// @return updated `true` if the roles were updated.
+    function authorizeAddrRoles(
+        bytes calldata toName,
+        uint256 coinType,
+        address account,
+        bool grant
+    ) external returns (bool updated) {
+        bytes32 node = NameCoder.namehash(toName, 0);
+        uint256 roleBit = PermissionedResolverLib.ROLE_SET_ADDR;
+        uint256 nodeResource = PermissionedResolverLib.resource(node, bytes32(0));
+        uint256 partResource = PermissionedResolverLib.resource(
+            node,
+            PermissionedResolverLib.partHash(coinType)
+        );
+        if (grant) {
+            _checkCanGrantRoles(nodeResource, roleBit, _msgSender());
+            if (roleCount(partResource) == 0) {
+                emit NamedAddrResource(partResource, toName, coinType);
+            }
+            return _grantRoles(partResource, roleBit, account, true);
+        } else {
+            _checkCanRevokeRoles(nodeResource, roleBit, _msgSender());
+            return _revokeRoles(partResource, roleBit, account, true);
+        }
     }
 
     /// @notice Set ABI data of the associated ENS node.
     /// @param node The node to update.
     /// @param contentType The content type of the ABI.
-    /// @param data The ABI data.
+    /// @param value The ABI data.
     function setABI(
         bytes32 node,
         uint256 contentType,
-        bytes calldata data
+        bytes calldata value
     ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_ABI) {
         if (!_isPowerOf2(contentType)) {
             revert InvalidContentType(contentType);
         }
-        _record(node).abis[contentType] = data;
+        _record(node).abis[contentType] = value;
         emit ABIChanged(node, contentType);
     }
 
@@ -337,6 +416,26 @@ contract PermissionedResolver is
     ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_CONTENTHASH) {
         _record(node).contenthash = hash;
         emit ContenthashChanged(node, hash);
+    }
+
+    /// @notice Set the data for `key` of the associated ENS node.
+    /// @param node The node to update.
+    /// @param key The data key.
+    /// @param value The data value.
+    function setData(
+        bytes32 node,
+        string calldata key,
+        bytes calldata value
+    )
+        external
+        onlyPartRoles(
+            node,
+            PermissionedResolverLib.partHash(key),
+            PermissionedResolverLib.ROLE_SET_DATA
+        )
+    {
+        _record(node).datas[key] = value;
+        emit DataChanged(node, key, key, value);
     }
 
     /// @notice Set an interface of the associated ENS node.
@@ -388,7 +487,7 @@ contract PermissionedResolver is
         external
         onlyPartRoles(
             node,
-            PermissionedResolverLib.textPart(key),
+            PermissionedResolverLib.partHash(key),
             PermissionedResolverLib.ROLE_SET_TEXT
         )
     {
@@ -459,13 +558,13 @@ contract PermissionedResolver is
     function ABI(
         bytes32 node,
         uint256 contentTypes
-    ) external view returns (uint256 contentType, bytes memory data) {
+    ) external view returns (uint256 contentType, bytes memory value) {
         Record storage R = _record(node);
         for (contentType = 1; contentType > 0 && contentType <= contentTypes; contentType <<= 1) {
             if ((contentType & contentTypes) != 0) {
-                data = R.abis[contentType];
-                if (data.length > 0) {
-                    return (contentType, data);
+                value = R.abis[contentType];
+                if (value.length > 0) {
+                    return (contentType, value);
                 }
             }
         }
@@ -480,6 +579,11 @@ contract PermissionedResolver is
     /// @inheritdoc IContentHashResolver
     function contenthash(bytes32 node) external view returns (bytes memory) {
         return _record(node).contenthash;
+    }
+
+    /// @inheritdoc IDataResolver
+    function data(bytes32 node, string calldata key) external view returns (bytes memory) {
+        return _record(node).datas[key];
     }
 
     /// @inheritdoc IInterfaceResolver
@@ -544,7 +648,7 @@ contract PermissionedResolver is
         public
         onlyPartRoles(
             node,
-            PermissionedResolverLib.addrPart(coinType),
+            PermissionedResolverLib.partHash(coinType),
             PermissionedResolverLib.ROLE_SET_ADDR
         )
     {
@@ -588,7 +692,7 @@ contract PermissionedResolver is
         }
     }
 
-    /// @notice Function is disabled.  Use `grant(Name|Text|Addr)Roles()` instead.
+    /// @notice Function is disabled.  Use `authorize(Name|Text|Addr)Roles()` instead.
     /// @param resource Ignored.
     /// @param roleBitmap Ignored.
     /// @param account Ignored.
@@ -599,6 +703,19 @@ contract PermissionedResolver is
         address account
     ) public pure override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
         revert EACCannotGrantRoles(resource, roleBitmap, account);
+    }
+
+    /// @notice Function is disabled.  Use `authorize(Name|Text|Addr)Roles()` instead.
+    /// @param resource Ignored.
+    /// @param roleBitmap Ignored.
+    /// @param account Ignored.
+    /// @return success Ignored, always reverts.
+    function revokeRoles(
+        uint256 resource,
+        uint256 roleBitmap,
+        address account
+    ) public pure override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
+        revert EACCannotRevokeRoles(resource, roleBitmap, account);
     }
 
     ////////////////////////////////////////////////////////////////////////
