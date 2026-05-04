@@ -597,11 +597,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256 tokenId = this._register();
         StrictERC1155Holder r = new StrictERC1155Holder(false);
         vm.expectEmit();
+        emit IERC1155.TransferSingle(user1, user1, address(r), tokenId, 1);
+        vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(tokenId, user1, testRoles, 0); // revoke (transfer 1/2)
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(tokenId, address(r), 0, testRoles); // grant (transfer 2/2)
-        vm.expectEmit();
-        emit IERC1155.TransferSingle(user1, user1, address(r), tokenId, 1);
         vm.prank(user1);
         registry.safeTransferFrom(user1, address(r), tokenId, 1, "");
     }
@@ -688,6 +688,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         amounts[1] = 1;
         StrictERC1155Holder r = new StrictERC1155Holder(true);
         vm.expectEmit();
+        emit IERC1155.TransferBatch(user1, user1, address(r), tokenIds, amounts);
+        vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(tokenIds[0], user1, testRoles, 0);
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(tokenIds[0], address(r), 0, testRoles);
@@ -695,8 +697,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         emit IEnhancedAccessControl.EACRolesChanged(tokenIds[1], user1, testRoles, 0);
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(tokenIds[1], address(r), 0, testRoles);
-        vm.expectEmit();
-        emit IERC1155.TransferBatch(user1, user1, address(r), tokenIds, amounts);
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, address(r), tokenIds, amounts, "");
     }
