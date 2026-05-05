@@ -92,7 +92,7 @@ contract PermissionedRegistry is
     mapping(uint256 storageId => Entry entry) internal _entries;
 
     /// @dev Storage gap for future changes.
-    uint256[4] private __gap;
+    uint256[256] private __gap;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
