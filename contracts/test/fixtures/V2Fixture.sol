@@ -38,7 +38,9 @@ contract V2Fixture is Test, ERC1155Holder {
             RegistryRolesLib.ROLE_SET_PARENT |
             RegistryRolesLib.ROLE_SET_PARENT_ADMIN |
             RegistryRolesLib.ROLE_RENEW |
-            RegistryRolesLib.ROLE_RENEW_ADMIN;
+            RegistryRolesLib.ROLE_RENEW_ADMIN |
+            RegistryRolesLib.ROLE_CAN_NAME |
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN;
     }
 
     function _ethRegistryRootRoles() internal pure returns (uint256) {
@@ -47,7 +49,9 @@ contract V2Fixture is Test, ERC1155Holder {
             RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN |
             RegistryRolesLib.ROLE_SET_PARENT |
             RegistryRolesLib.ROLE_SET_PARENT_ADMIN |
-            RegistryRolesLib.ROLE_RENEW_ADMIN;
+            RegistryRolesLib.ROLE_RENEW_ADMIN |
+            RegistryRolesLib.ROLE_CAN_NAME |
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN;
     }
 
     function _ethTokenRoles() internal pure returns (uint256) {

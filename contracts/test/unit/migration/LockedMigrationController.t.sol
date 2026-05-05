@@ -405,11 +405,13 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             md.owner,
             0 /*old roles*/,
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
-            RegistryRolesLib.ROLE_UPGRADE |
-            RegistryRolesLib.ROLE_REGISTRAR |
-            RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
-            RegistryRolesLib.ROLE_RENEW |
-            RegistryRolesLib.ROLE_RENEW_ADMIN
+                RegistryRolesLib.ROLE_UPGRADE |
+                RegistryRolesLib.ROLE_REGISTRAR |
+                RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
+                RegistryRolesLib.ROLE_RENEW |
+                RegistryRolesLib.ROLE_RENEW_ADMIN |
+                RegistryRolesLib.ROLE_CAN_NAME |
+                RegistryRolesLib.ROLE_CAN_NAME_ADMIN
         );
         // emit Initializable.Initialized()
         vm.expectEmit();
@@ -657,8 +659,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
         assertEq(
-            registry.roles(registry.ROOT_RESOURCE(), testOwner) & EACBaseRolesLib.ADMIN_ROLES,
-            RegistryRolesLib.ROLE_UPGRADE_ADMIN | RegistryRolesLib.ROLE_RENEW_ADMIN,
+            registry.roles(registry.ROOT_RESOURCE(), user) & EACBaseRolesLib.ADMIN_ROLES,
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN |
+                RegistryRolesLib.ROLE_RENEW_ADMIN |
+                RegistryRolesLib.ROLE_CAN_NAME_ADMIN,
             "registry"
         );
     }

@@ -1226,6 +1226,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // IContractNamer
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_isContractNamer() external {
+        assertTrue(registry.isContractNamer(address(this)));
+
+        assertFalse(registry.isContractNamer(user1), "before");
+        registry.grantRootRoles(RegistryRolesLib.ROLE_CAN_NAME, user1);
+        assertTrue(registry.isContractNamer(user1), "granted");
+        registry.revokeRootRoles(RegistryRolesLib.ROLE_CAN_NAME, user1);
+        assertFalse(registry.isContractNamer(user1), "revoked");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // Specific Cases
     ////////////////////////////////////////////////////////////////////////
 
