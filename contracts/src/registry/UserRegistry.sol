@@ -23,13 +23,11 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Creates the UserRegistry implementation.
     /// @param hcaFactory The HCA factory.
     /// @param metadataProvider The metadata provider.
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadataProvider
-    ) PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) {
+    constructor(IHCAFactoryBasic hcaFactory, IRegistryMetadata metadataProvider)
+        PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0)
+    {
         // This disables initialization for the implementation contract
         _disableInitializers();
     }
@@ -65,13 +63,21 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
     /// @return allowed Always `true` for implementations in this registry family.
     function canUpgradeFrom(
         address /* previousImplementation */
-    ) external pure virtual override returns (bool allowed) {
+    )
+        external
+        pure
+        virtual
+        override
+        returns (bool allowed)
+    {
         return true;
     }
 
     /// @dev Restricts UUPS upgrades to accounts holding the upgrade role on the root resource.
     /// @param newImplementation The address of the new implementation contract.
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {}
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE)
+    {}
 }

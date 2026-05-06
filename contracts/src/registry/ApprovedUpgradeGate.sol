@@ -25,7 +25,6 @@ contract ApprovedUpgradeGate is Ownable {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Creates the upgrade gate.
     /// @param owner_ The address that controls implementation approvals.
     constructor(address owner_) Ownable(owner_) {}
 

@@ -19,7 +19,8 @@ interface IWrapperRegistry is IPermissionedRegistry {
         string calldata childLabel,
         address admin,
         uint256 roleBitmap
-    ) external;
+    )
+        external;
 
     /// @notice Returns the DNS-encoded name for this registry.
     function getWrappedName() external view returns (bytes memory);

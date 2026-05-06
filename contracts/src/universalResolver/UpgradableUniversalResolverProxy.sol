@@ -57,7 +57,8 @@ contract UpgradableUniversalResolverProxy {
 
     /// @dev Modifier restricting a function to the admin.
     modifier onlyAdmin() {
-        if (msg.sender != _getAdmin()) revert CallerNotAdmin();
+        if (msg.sender != _getAdmin())
+            revert CallerNotAdmin();
         _;
     }
 
@@ -65,7 +66,6 @@ contract UpgradableUniversalResolverProxy {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the proxy with an implementation and admin.
     /// @param admin_ The address of the admin
     /// @param implementation_ The address of the implementation
     constructor(address admin_, address implementation_) {
