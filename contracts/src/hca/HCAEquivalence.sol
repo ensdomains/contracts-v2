@@ -16,6 +16,10 @@ import {IHCAFactoryBasic} from "./interfaces/IHCAFactoryBasic.sol";
 /// an EOA or an HCA proxy.
 ///
 abstract contract HCAEquivalence {
+    ////////////////////////////////////////////////////////////////////////
+    // Immutables
+    ////////////////////////////////////////////////////////////////////////
+
     /// @notice The HCA factory contract
     IHCAFactoryBasic public immutable HCA_FACTORY;
 
@@ -35,9 +39,11 @@ abstract contract HCAEquivalence {
 
     /// @dev Returns the HCA owner if `msg.sender` is a registered HCA, otherwise returns `msg.sender`.
     function _msgSenderWithHcaEquivalence() internal view returns (address) {
-        if (address(HCA_FACTORY) == address(0)) return msg.sender;
+        if (address(HCA_FACTORY) == address(0))
+            return msg.sender;
         address accountOwner = HCA_FACTORY.getAccountOwner(msg.sender);
-        if (accountOwner == address(0)) return msg.sender;
+        if (accountOwner == address(0))
+            return msg.sender;
         return accountOwner;
     }
 }

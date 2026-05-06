@@ -54,7 +54,7 @@ contract DNSTLDResolver is
     ERC165
 {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv1 registry, used to check for existing resolvers on mainnet before falling
@@ -104,7 +104,9 @@ contract DNSTLDResolver is
         DNSSEC dnssecOracle,
         IGatewayProvider oracleGatewayProvider,
         IGatewayProvider batchGatewayProvider
-    ) CCIPReader(DEFAULT_UNSAFE_CALL_GAS) {
+    )
+        CCIPReader(DEFAULT_UNSAFE_CALL_GAS)
+    {
         ENS_REGISTRY_V1 = ensRegistryV1;
         DNS_TLD_RESOLVER_V1 = dnsTLDResolverV1;
         ROOT_REGISTRY = rootRegistry;
@@ -114,9 +116,13 @@ contract DNSTLDResolver is
     }
 
     /// @inheritdoc ERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(ERC165) returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(ERC165)
+        returns (bool)
+    {
         return
             type(IExtendedResolver).interfaceId == interfaceId ||
             type(ICompositeResolver).interfaceId == interfaceId ||
@@ -157,14 +163,13 @@ contract DNSTLDResolver is
     /// @param response The response data.
     /// @param name The DNS-encoded name.
     /// @return txts The verified DNSSEC TXT records.
-    function getDNSSECRecordsCallback(
-        bytes calldata response,
-        bytes calldata name
-    ) external view returns (bytes[] memory txts) {
-        DNSSEC.RRSetWithSignature[] memory rrsets = abi.decode(
-            response,
-            (DNSSEC.RRSetWithSignature[])
-        );
+    function getDNSSECRecordsCallback(bytes calldata response, bytes calldata name)
+        external
+        view
+        returns (bytes[] memory txts)
+    {
+        DNSSEC.RRSetWithSignature[] memory rrsets =
+            abi.decode(response, (DNSSEC.RRSetWithSignature[]));
         (bytes memory data, ) = DNSSEC_ORACLE.verifyRRSet(rrsets);
         uint256 i;
         for (
@@ -190,9 +195,11 @@ contract DNSTLDResolver is
     }
 
     /// @inheritdoc IVerifiableResolver
-    function verifierMetadata(
-        bytes calldata name
-    ) external view returns (address verifier, string[] memory gateways) {
+    function verifierMetadata(bytes calldata name)
+        external
+        view
+        returns (address verifier, string[] memory gateways)
+    {
         if (_determineMainnetResolver(name) == address(0)) {
             verifier = address(DNSSEC_ORACLE);
             gateways = ORACLE_GATEWAY_PROVIDER.gateways();
@@ -225,10 +232,11 @@ contract DNSTLDResolver is
     /// @param name The DNS-encoded name.
     /// @return resolver The underlying resolver address.
     /// @return offchain `true` if `resolver` is offchain.
-    function getResolverCallback(
-        bytes calldata response,
-        bytes calldata name
-    ) external view returns (address, bool) {
+    function getResolverCallback(bytes calldata response, bytes calldata name)
+        external
+        view
+        returns (address, bool)
+    {
         (address resolver, ) = _verifyDNSSEC(name, response);
         return (resolver, true);
     }
@@ -239,10 +247,7 @@ contract DNSTLDResolver is
     /// @param name The DNS-encoded name.
     /// @param data The data to resolve.
     /// @return The abi-encoded result from the resolver.
-    function resolve(
-        bytes calldata name,
-        bytes calldata data
-    ) external view returns (bytes memory) {
+    function resolve(bytes calldata name, bytes calldata data) external view returns (bytes memory) {
         address resolver = _determineMainnetResolver(name);
         if (resolver != address(0)) {
             return callResolver(resolver, name, data, false, "", BATCH_GATEWAY_PROVIDER.gateways()); // ==> step 2
@@ -261,10 +266,11 @@ contract DNSTLDResolver is
     /// @param response The response data.
     /// @param extraData The contextual data passed from `resolve()`.
     /// @return The abi-encoded result from the resolver.
-    function resolveOracleCallback(
-        bytes calldata response,
-        bytes calldata extraData
-    ) external view returns (bytes memory) {
+    function resolveOracleCallback(bytes calldata response, bytes calldata extraData)
+        external
+        view
+        returns (bytes memory)
+    {
         (bytes memory name, bytes memory call) = abi.decode(extraData, (bytes, bytes));
         (address resolver, bytes memory context) = _verifyDNSSEC(name, response);
         if (resolver == address(0)) {
@@ -278,9 +284,11 @@ contract DNSTLDResolver is
     /// @param txt The DNSSEC TXT record.
     /// @return resolver The resolver address or null if wrong format or name didn't resolve.
     /// @return context The context data.
-    function parseDNSSECRecord(
-        bytes memory txt
-    ) public view returns (address resolver, bytes memory context) {
+    function parseDNSSECRecord(bytes memory txt)
+        public
+        view
+        returns (address resolver, bytes memory context)
+    {
         uint256 p = TXT_PREFIX.length;
         uint256 n = txt.length;
         if (n > p && BytesUtils.equals(txt, 0, TXT_PREFIX, 0, p)) {
@@ -317,14 +325,13 @@ contract DNSTLDResolver is
     /// @param oracleWitness The ABI-encoded `DNSSEC.RRSetWithSignature[]` proof from the gateway.
     /// @return resolver The resolver address parsed from the first valid `ENS1` TXT record.
     /// @return context The context bytes following the resolver in the TXT record.
-    function _verifyDNSSEC(
-        bytes memory name,
-        bytes calldata oracleWitness
-    ) internal view returns (address resolver, bytes memory context) {
-        DNSSEC.RRSetWithSignature[] memory rrsets = abi.decode(
-            oracleWitness,
-            (DNSSEC.RRSetWithSignature[])
-        );
+    function _verifyDNSSEC(bytes memory name, bytes calldata oracleWitness)
+        internal
+        view
+        returns (address resolver, bytes memory context)
+    {
+        DNSSEC.RRSetWithSignature[] memory rrsets =
+            abi.decode(oracleWitness, (DNSSEC.RRSetWithSignature[]));
         (bytes memory data, ) = DNSSEC_ORACLE.verifyRRSet(rrsets);
         for (
             RRUtils.RRIterator memory iter = RRUtils.iterateRRs(data, 0);
@@ -343,10 +350,9 @@ contract DNSTLDResolver is
     }
 
     /// @dev Parse the value into a resolver address.
-    /// If the value matches `/^0x[0-9a-fA-F]{40}$/`, it's a literal address.
-    /// Otherwise, it's considered a name and resolved in the registry.
-    /// Reverts `DNSEncodingFailed` if the name cannot be encoded.
-    ///
+    ///      If the value matches `/^0x[0-9a-fA-F]{40}$/`, it's a literal address.
+    ///      Otherwise, it's considered a name and resolved in the registry.
+    ///      Reverts `DNSEncodingFailed` if the name cannot be encoded.
     /// @param v The address or name.
     /// @return resolver The corresponding resolver address.
     function _parseResolver(bytes memory v) internal view returns (address resolver) {
@@ -371,10 +377,11 @@ contract DNSTLDResolver is
     /// @param iter The current position in the resource-record iteration.
     /// @param name The DNS-encoded name to match against the record's owner name.
     /// @return `true` if the record is a matching Internet-class TXT record.
-    function _isTXTForName(
-        RRUtils.RRIterator memory iter,
-        bytes memory name
-    ) internal pure returns (bool) {
+    function _isTXTForName(RRUtils.RRIterator memory iter, bytes memory name)
+        internal
+        pure
+        returns (bool)
+    {
         return
             iter.class == CLASS_INET &&
             iter.dnstype == QTYPE_TXT &&
@@ -388,12 +395,13 @@ contract DNSTLDResolver is
     /// @param off The offset of the record data.
     /// @param end The upper bound of the record data.
     /// @return txt The decoded TXT value.
-    function _readTXT(
-        bytes memory v,
-        uint256 off,
-        uint256 end
-    ) internal pure returns (bytes memory txt) {
-        if (end > v.length) revert InvalidTXT();
+    function _readTXT(bytes memory v, uint256 off, uint256 end)
+        internal
+        pure
+        returns (bytes memory txt)
+    {
+        if (end > v.length)
+            revert InvalidTXT();
         txt = new bytes(end - off);
         assembly {
             let ptr := add(v, 32)
@@ -417,6 +425,7 @@ contract DNSTLDResolver is
             }
             mstore(txt, sub(ptr, add(txt, 32))) // truncate
         }
-        if (off != end) revert InvalidTXT(); // overflow or junk at end
+        if (off != end)
+            revert InvalidTXT(); // overflow or junk at end
     }
 }

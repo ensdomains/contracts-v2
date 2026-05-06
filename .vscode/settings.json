@@ -2,14 +2,34 @@
   "solidity.packageDefaultDependenciesContractsDirectory": "./contracts/src",
   "solidity.packageDefaultDependenciesDirectory": "./contracts/lib",
   "solidity.compileUsingRemoteVersion": "v0.8.25+commit.b61c2a91",
-  "solidity.solhintPackageDirectory": "./node_modules/solhint",
-  "solidity.formatter": "prettier",
+  "[javascript]": {
+    "editor.defaultFormatter": "biomejs.biome",
+    "editor.formatOnSave": true
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome",
+    "editor.formatOnSave": true
+  },
+  "[json]": {
+    "editor.defaultFormatter": "biomejs.biome",
+    "editor.formatOnSave": true
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "biomejs.biome",
+    "editor.formatOnSave": true
+  },
   "[solidity]": {
-    "editor.defaultFormatter": "JuanBlanco.solidity",
+    "editor.formatOnSave": false
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "biomejs.biome",
+    "editor.formatOnSave": true
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome",
     "editor.formatOnSave": true
   },
   "editor.formatOnSave": true,
-  "prettier.configPath": "./.prettierrc.json",
   "search.exclude": {
     "**/node_modules": true,
     "**/cache": true,

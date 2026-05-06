@@ -79,21 +79,20 @@ abstract contract StandaloneReverseRegistrar is
         PARENT_NODE = NameCoder.namehash(_REVERSE_NODE, keccak256(bytes(label)));
 
         // Build the DNS-encoded parent name: {labelLength}{label}{7}reverse{0}
-        bytes memory parent = abi.encodePacked(
-            NameCoder.assertLabelSize(label),
-            label,
-            uint8(7),
-            "reverse",
-            uint8(0)
-        );
+        bytes memory parent =
+            abi.encodePacked(NameCoder.assertLabelSize(label), label, uint8(7), "reverse", uint8(0));
         _SIMPLE_HASHED_PARENT = keccak256(parent);
         _PARENT_LENGTH = parent.length;
     }
 
     /// @inheritdoc ERC165
-    function supportsInterface(
-        bytes4 interfaceID
-    ) public view virtual override(ERC165) returns (bool) {
+    function supportsInterface(bytes4 interfaceID)
+        public
+        view
+        virtual
+        override(ERC165)
+        returns (bool)
+    {
         return
             interfaceID == type(IExtendedResolver).interfaceId ||
             interfaceID == type(INameResolver).interfaceId ||
@@ -116,9 +115,7 @@ abstract contract StandaloneReverseRegistrar is
     /// @inheritdoc IStandaloneReverseRegistrar
     function nameForAddr(address addr) external view returns (string memory) {
         return
-            _names[
-                NameCoder.namehash(PARENT_NODE, keccak256(bytes(LibString.toAddressString(addr))))
-            ];
+            _names[NameCoder.namehash(PARENT_NODE, keccak256(bytes(LibString.toAddressString(addr))))];
     }
 
     /// @notice Resolves a DNS-encoded reverse name to its primary ENS name.
@@ -131,21 +128,26 @@ abstract contract StandaloneReverseRegistrar is
     /// @param name_ The DNS-encoded reverse name to resolve.
     /// @param data The ABI-encoded function call (must be `name(bytes32)`).
     /// @return The ABI-encoded primary ENS name.
-    function resolve(
-        bytes calldata name_,
-        bytes calldata data
-    ) external view override returns (bytes memory) {
+    function resolve(bytes calldata name_, bytes calldata data)
+        external
+        view
+        override
+        returns (bytes memory)
+    {
         bytes4 selector = bytes4(data);
 
         // Only support the name(bytes32) resolver profile
-        if (selector != INameResolver.name.selector) revert UnsupportedResolverProfile(selector);
+        if (selector != INameResolver.name.selector)
+            revert UnsupportedResolverProfile(selector);
 
         // Validate name length: 41 bytes for address component + parent suffix
         // 41 = 1 byte (length prefix) + 40 bytes (hex address without 0x)
-        if (name_.length != _PARENT_LENGTH + 41) revert UnreachableName(name_);
+        if (name_.length != _PARENT_LENGTH + 41)
+            revert UnreachableName(name_);
 
         // Validate the parent suffix matches this registrar's namespace
-        if (keccak256(name_[41:]) != _SIMPLE_HASHED_PARENT) revert UnreachableName(name_);
+        if (keccak256(name_[41:]) != _SIMPLE_HASHED_PARENT)
+            revert UnreachableName(name_);
 
         // Compute the reverse node and return the stored name
         bytes32 node = keccak256(abi.encodePacked(PARENT_NODE, keccak256(name_[1:41])));

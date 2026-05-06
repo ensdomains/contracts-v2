@@ -12,7 +12,7 @@ import {AbstractMirrorResolver} from "./AbstractMirrorResolver.sol";
 /// @notice Resolver that performs resolutions using ENSv2 with override for ENSv1 "eth" resolver.
 contract ENSV2Resolver is AbstractMirrorResolver {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv2 root registry used to traverse the registry hierarchy and locate resolvers.
@@ -29,11 +29,9 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     /// @param rootRegistry The root registry.
     /// @param batchGatewayProvider The batch gateway provider.
     /// @param ethResolver The override resolver for "eth" or null to use ENSv2.
-    constructor(
-        IRegistry rootRegistry,
-        IGatewayProvider batchGatewayProvider,
-        address ethResolver
-    ) AbstractMirrorResolver(batchGatewayProvider) {
+    constructor(IRegistry rootRegistry, IGatewayProvider batchGatewayProvider, address ethResolver)
+        AbstractMirrorResolver(batchGatewayProvider)
+    {
         ROOT_REGISTRY = rootRegistry;
         ETH_RESOLVER = ethResolver;
     }
