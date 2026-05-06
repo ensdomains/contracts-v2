@@ -123,22 +123,23 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 }
 
                 // create subregistry
-                IRegistry subregistry = IRegistry(
-                    VERIFIABLE_FACTORY.deployProxy(
-                        WRAPPER_REGISTRY_IMPL,
-                        uint256(node),
-                        abi.encodeCall(
-                            IWrapperRegistry.initialize,
-                            (
-                                node,
-                                parentRegistry,
-                                md.label,
-                                md.owner,
-                                _subregistryRoleBitmapFromFuses(fuses)
+                IRegistry subregistry =
+                    IRegistry(
+                        VERIFIABLE_FACTORY.deployProxy(
+                            WRAPPER_REGISTRY_IMPL,
+                            uint256(node),
+                            abi.encodeCall(
+                                IWrapperRegistry.initialize,
+                                (
+                                    node,
+                                    parentRegistry,
+                                    md.label,
+                                    md.owner,
+                                    _subregistryRoleBitmapFromFuses(fuses)
+                                )
                             )
                         )
-                    )
-                );
+                    );
 
                 // add name to ENSv2
                 // PermissionedRegistry._register() => CannotSetPastExpiry :: see expiry check

@@ -183,14 +183,21 @@ contract WrapperRegistry is
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    ) internal override returns (uint256 tokenId) {
+    )
+        internal
+        override
+        returns (uint256 tokenId)
+    {
         return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
     }
 
     /// @dev Requires `ROLE_UPGRADE` and approval for the target implementation.
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal view override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        view
+        override
+        onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE)
+    {
         if (!UPGRADE_GATE.approvedImplementations(newImplementation)) {
             revert UpgradeTargetNotApproved(newImplementation);
         }

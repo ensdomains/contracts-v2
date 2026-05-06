@@ -426,10 +426,12 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     /// @param resource The resource to get settable roles for.
     /// @param account The account to get settable roles for.
     /// @return The settable roles for `account` within `resource`.
-    function _getSettableRoles(
-        uint256 resource,
-        address account
-    ) internal view virtual returns (uint256) {
+    function _getSettableRoles(uint256 resource, address account)
+        internal
+        view
+        virtual
+        returns (uint256)
+    {
         uint256 roleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
         return (roleBitmap << 128) | roleBitmap;
     }
@@ -441,10 +443,12 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     /// @param resource The resource to get revokable roles for.
     /// @param account The account to get revokable roles for.
     /// @return The revokable roles for `account` within `resource`.
-    function _getRevokableRoles(
-        uint256 resource,
-        address account
-    ) internal view virtual returns (uint256) {
+    function _getRevokableRoles(uint256 resource, address account)
+        internal
+        view
+        virtual
+        returns (uint256)
+    {
         uint256 roleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
         return (roleBitmap << 128) | roleBitmap;
     }
