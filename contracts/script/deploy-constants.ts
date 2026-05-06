@@ -84,6 +84,9 @@ export const DEPLOYMENT_ROLES = {
     ROLES.REGISTRY.SET_PARENT |
     ROLES.ADMIN.REGISTRY.SET_PARENT |
     ROLES.ADMIN.REGISTRY.RENEW,
+  // ETHRegistrar and BatchRegistrar are granted REGISTRAR and RENEW at the
+  // ETHRegistry root at static deploy.
+  ETH_REGISTRAR_ROOT: ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
   // UnlockedMigrationController and LockedMigrationController
   // only need to register() pre-migrated reservations on ETHRegistry (see: "ENSv2 Migration Case Study")
   MIGRATION_CONTROLLER_ROOT: ROLES.REGISTRY.REGISTER_RESERVED,

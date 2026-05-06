@@ -1,6 +1,7 @@
 import { describe, it } from "bun:test";
-import type { AbiParameter, AbiParameterToPrimitiveType } from "viem";
 import {
+  type AbiParameter,
+  type AbiParameterToPrimitiveType,
   type Account,
   type Address,
   encodeAbiParameters,
@@ -76,7 +77,8 @@ describe("Migration", () => {
   type MigrateArgs = {
     target: Address;
     sender?: Account;
-    data?: Hex | Partial<MigrationData>;
+    rawData?: Hex;
+    data?: Partial<MigrationData>;
   };
 
   abstract class TokenV1 {
@@ -113,7 +115,9 @@ describe("Migration", () => {
     }
     async checkMigrated({
       owner = this.account.address,
-    }: { owner?: Address } = {}) {
+    }: {
+      owner?: Address;
+    } = {}) {
       const parentRegistry = await env.findPermissionedRegistry(
         getParentName(this.name),
       );
@@ -156,9 +160,7 @@ describe("Migration", () => {
             this.account.address,
             args.target ?? env.v2.UnlockedMigrationController.address,
             this.tokenId,
-            typeof args.data === "string"
-              ? (args.data as `0x${string}`)
-              : encodeMigrationData(await this.makeData(args.data)),
+            args.rawData ?? encodeMigrationData(await this.makeData(args.data)),
           ],
           { account: args.sender ?? this.account },
         ),
@@ -228,9 +230,7 @@ describe("Migration", () => {
             args.target,
             this.tokenId,
             1n,
-            typeof args.data === "string"
-              ? (args.data as `0x${string}`)
-              : encodeMigrationData(await this.makeData(args.data)),
+            args.rawData ?? encodeMigrationData(await this.makeData(args.data)),
           ],
           { account: args.sender ?? this.account },
         ),
@@ -447,7 +447,7 @@ describe("Migration", () => {
     it("invalid data", async () => {
       const unwrapped = await registerUnwrapped();
       expect(
-        unwrapped.migrate({ data: "0x1234" }), // wrong
+        unwrapped.migrate({ rawData: "0x1234" }), // wrong
       ).rejects.toThrow("InvalidData");
     });
 
@@ -503,7 +503,7 @@ describe("Migration", () => {
       expect(
         unlocked.migrate({
           target: env.v2.UnlockedMigrationController.address,
-          data: "0x1234", // wrong
+          rawData: "0x1234", // wrong
         }),
       ).rejects.toThrow("InvalidData");
     });
@@ -585,6 +585,24 @@ describe("Migration", () => {
       await lockedChild.checkResolution();
     });
 
+    it("migrate detached child", async () => {
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      const detachedChild = await locked.createChild({
+        fuses: FUSES.PARENT_CANNOT_CONTROL,
+      });
+      await detachedChild.setupPublicResolver();
+      await detachedChild.checkResolution();
+      await locked.migrate({
+        target: env.v2.LockedMigrationController.address,
+      });
+      const lockedRegistry = locked.wrapperRegistry();
+      await detachedChild.migrate({
+        target: lockedRegistry.address,
+      });
+      await detachedChild.checkMigrated();
+      await detachedChild.checkResolution();
+    });
+
     it("unmigrated locked child", async () => {
       const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
       const lockedChild = await locked.createChild({
@@ -606,6 +624,35 @@ describe("Migration", () => {
         lockedRegistry.write.register([
           lockedChild.label,
           lockedChild.account.address,
+          zeroAddress,
+          zeroAddress,
+          0n,
+          MAX_EXPIRY,
+        ]),
+      ).rejects.toThrow("NameRequiresMigration");
+    });
+
+    it("unmigrated detached child", async () => {
+      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
+      const detachedChild = await locked.createChild({
+        fuses: FUSES.PARENT_CANNOT_CONTROL,
+      });
+      await locked.migrate({
+        target: env.v2.LockedMigrationController.address,
+      });
+      const lockedRegistry = locked.wrapperRegistry();
+
+      // name has fallback resolver
+      const resolver = await lockedRegistry.read.getResolver([
+        detachedChild.label,
+      ]);
+      expectVar({ resolver }).toEqualAddress(env.v2.ENSV1Resolver.address);
+
+      // name cannot be registered
+      expect(
+        lockedRegistry.write.register([
+          detachedChild.label,
+          detachedChild.account.address,
           zeroAddress,
           zeroAddress,
           0n,
@@ -733,7 +780,7 @@ describe("Migration", () => {
       expect(
         locked.migrate({
           target: env.v2.LockedMigrationController.address,
-          data: "0x1234", // wrong
+          rawData: "0x1234", // wrong
         }),
       ).rejects.toThrow("InvalidData");
     });

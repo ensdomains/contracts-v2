@@ -278,10 +278,10 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
             _roles[resource][account] = updatedRoles;
             uint256 newlyAddedRoles = roleBitmap & ~currentRoles;
             _updateRoleCounts(resource, newlyAddedRoles, true);
+            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             if (executeCallbacks) {
                 _onRolesGranted(resource, account, currentRoles, updatedRoles, roleBitmap);
             }
-            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             return true;
         } else {
             return false;
@@ -312,23 +312,14 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
             _roles[resource][account] = updatedRoles;
             uint256 newlyRemovedRoles = roleBitmap & currentRoles;
             _updateRoleCounts(resource, newlyRemovedRoles, false);
+            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             if (executeCallbacks) {
                 _onRolesRevoked(resource, account, currentRoles, updatedRoles, roleBitmap);
             }
-            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             return true;
         } else {
             return false;
         }
-    }
-
-    /// @dev Revoke all roles for account within resource.
-    function _revokeAllRoles(uint256 resource, address account, bool executeCallbacks)
-        internal
-        virtual
-        returns (bool)
-    {
-        return _revokeRoles(resource, EACBaseRolesLib.ALL_ROLES, account, executeCallbacks);
     }
 
     /// @dev Updates role counts when roles are granted/revoked
@@ -435,16 +426,12 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     /// @param resource The resource to get settable roles for.
     /// @param account The account to get settable roles for.
     /// @return The settable roles for `account` within `resource`.
-    function _getSettableRoles(uint256 resource, address account)
-        internal
-        view
-        virtual
-        returns (uint256)
-    {
-        uint256 adminRoleBitmap =
-            (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) &
-            EACBaseRolesLib.ADMIN_ROLES;
-        return (adminRoleBitmap >> 128) | adminRoleBitmap;
+    function _getSettableRoles(
+        uint256 resource,
+        address account
+    ) internal view virtual returns (uint256) {
+        uint256 roleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
+        return (roleBitmap << 128) | roleBitmap;
     }
 
     /// @dev Returns the revokable roles for `account` within `resource`.
@@ -454,17 +441,12 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     /// @param resource The resource to get revokable roles for.
     /// @param account The account to get revokable roles for.
     /// @return The revokable roles for `account` within `resource`.
-    function _getRevokableRoles(uint256 resource, address account)
-        internal
-        view
-        virtual
-        returns (uint256)
-    {
-        uint256 adminRoleBitmap =
-            (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) &
-            EACBaseRolesLib.ADMIN_ROLES;
-        uint256 regularRoles = adminRoleBitmap >> 128;
-        return regularRoles | adminRoleBitmap;
+    function _getRevokableRoles(
+        uint256 resource,
+        address account
+    ) internal view virtual returns (uint256) {
+        uint256 roleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
+        return (roleBitmap << 128) | roleBitmap;
     }
 
     ////////////////////////////////////////////////////////////////////////

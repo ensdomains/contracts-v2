@@ -108,7 +108,7 @@ In registry contracts, EAC is used with these specific behaviors:
 | `ROLE_SET_SUBREGISTRY`   | 20  | 148       | Root or token| Change child registry                                                    |
 | `ROLE_SET_RESOLVER`      | 24  | 152       | Root or token| Change resolver address                                                  |
 | `ROLE_CAN_TRANSFER_ADMIN`| 28* | 156       | Root or token| Admin-only. Auto-granted to name owner. Revoke to make soulbound.        |
-| `ROLE_UPGRADE`           | 124 | 252       | Root-only    | UUPS proxy upgrades                                                      |
+| `ROLE_UPGRADE`           | 124 | 252       | Root-only    | UUPS proxy upgrades. WrapperRegistry targets must also be DAO-approved   |
 
 \*`ROLE_CAN_TRANSFER_ADMIN` has no base role; it is admin-only (upper 128 bits).
 
@@ -145,7 +145,7 @@ Roles granted during core deployment.
 
 Legend: A = admin only, R = regular only, AR = admin and regular
 
-*StandardRentPriceOracle uses Ownable, not EAC. Implementation contracts (PermissionedResolverImpl, UserRegistryImpl, WrapperRegistryImpl) grant no roles at deployment; proxies receive roles via `initialize()` when created.*
+*StandardRentPriceOracle and ApprovedUpgradeGate use Ownable, not EAC. Implementation contracts (PermissionedResolverImpl, UserRegistryImpl, WrapperRegistryImpl) grant no roles at deployment; proxies receive roles via `initialize()` when created.*
 
 *The tokens for .eth, .reverse and .addr.reverse are owned by the deployer.*
 
@@ -313,6 +313,11 @@ Modified ERC1155 allowing only one token per ID:
 
 - `LockedMigrationController`: Handles ENSv1 → ENSv2 migration for locked names
 - `UnlockedMigrationController`: Handles ENSv1 → ENSv2 migration for unlocked names
+
+Scripts for running the migration end-to-end:
+
+- [Pre-migration](docs/premigration.md) — seed v1 registrations into the v2 registry as *reserved* entries, via `BatchRegistrar`.
+- [Prepare migration](docs/prepareMigration.md) — swap registry roles from `BatchRegistrar` to `ETHRegistrar` and the two migration controllers once pre-migration is complete.
 
 ### Resolution
 

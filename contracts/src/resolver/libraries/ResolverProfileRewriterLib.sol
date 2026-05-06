@@ -16,11 +16,10 @@ library ResolverProfileRewriterLib {
     /// @param call The calldata for a resolver.
     /// @param newNode The replacement node.
     /// @return copy A copy of the calldata with node replaced.
-    function replaceNode(bytes calldata call, bytes32 newNode)
-        internal
-        pure
-        returns (bytes memory copy)
-    {
+    function replaceNode(
+        bytes calldata call,
+        bytes32 newNode
+    ) internal pure returns (bytes memory copy) {
         // 0xac9650d8                                                       // selector
         // 0000000000000000000000000000000000000000000000000000000000000020 // jump
         // 0000000000000000000000000000000000000000000000000000000000000002 // .length @ jump
@@ -53,9 +52,6 @@ library ResolverProfileRewriterLib {
                 default {
                     // only bound checks on write
                     if lt(bound, ptr) {
-                        // mstore(0, 0x4e487b71) // error Panic(uint256)
-                        // mstore(32, 0x32) // code
-                        // revert(28, 36) // 32-4, 4+32
                         leave
                     }
                     mstore(ptr, node) // replace node
