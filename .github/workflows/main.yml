@@ -87,7 +87,7 @@ jobs:
           CC_SHA: ${{ github.sha }}
 
   lint:
-    name: Lint
+    name: Lint and Format
     runs-on: ubuntu-latest
     steps:
       # setup
@@ -96,6 +96,9 @@ jobs:
 
       - name: Lint
         run: bun --filter contracts lint
+
+      - name: Format
+        run: bun --filter contracts format
 
   publish-docker:
     name: Publish Docker Image
