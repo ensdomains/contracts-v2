@@ -57,7 +57,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes LockedWrapperReceiver.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.

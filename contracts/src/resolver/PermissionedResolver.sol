@@ -198,7 +198,6 @@ contract PermissionedResolver is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Creates the PermissionedResolver implementation.
     /// @param hcaFactory The HCA factory.
     constructor(IHCAFactoryBasic hcaFactory) HCAEquivalence(hcaFactory) {
         _disableInitializers();

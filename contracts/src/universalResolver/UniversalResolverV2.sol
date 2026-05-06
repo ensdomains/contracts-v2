@@ -22,7 +22,6 @@ contract UniversalResolverV2 is AbstractUniversalResolver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the UniversalResolverV2 with the root registry and batch gateway provider.
     /// @param root The root registry.
     /// @param batchGatewayProvider The batch gateway provider.
     constructor(IRegistry root, IGatewayProvider batchGatewayProvider)

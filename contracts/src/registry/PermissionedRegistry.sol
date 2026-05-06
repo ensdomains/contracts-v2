@@ -98,7 +98,6 @@ contract PermissionedRegistry is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the PermissionedRegistry.
     /// @param hcaFactory The HCA factory to use.
     /// @param metadata The metadata provider to use.
     /// @param ownerAddress The address that will receive the specified roles.

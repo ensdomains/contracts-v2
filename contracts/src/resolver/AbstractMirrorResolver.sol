@@ -23,7 +23,6 @@ abstract contract AbstractMirrorResolver is ICompositeResolver, IERC7996, Resolv
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the AbstractMirrorResolver with the batch gateway provider.
     /// @param batchGatewayProvider The batch gateway provider.
     constructor(IGatewayProvider batchGatewayProvider) CCIPReader(DEFAULT_UNSAFE_CALL_GAS) {
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;

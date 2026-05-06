@@ -61,7 +61,6 @@ contract WrapperRegistry is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Creates the WrapperRegistry implementation.
     /// @param nameWrapper The ENSv1 NameWrapper.
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.

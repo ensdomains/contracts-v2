@@ -23,7 +23,6 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Creates the UserRegistry implementation.
     /// @param hcaFactory The HCA factory.
     /// @param metadataProvider The metadata provider.
     constructor(IHCAFactoryBasic hcaFactory, IRegistryMetadata metadataProvider)

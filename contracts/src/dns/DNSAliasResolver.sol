@@ -53,7 +53,6 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes DNSAliasResolver.
     /// @param rootRegistry The ENSv2 root registry.
     /// @param batchGatewayProvider The batch gateway provider.
     constructor(IRegistry rootRegistry, IGatewayProvider batchGatewayProvider)
