@@ -14,34 +14,32 @@ import {
 import {
     ERC165Checker
 } from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
-import {IEnhancedAccessControl} from "~src/registry/PermissionedRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {
     ETHRegistrar,
     IETHRegistrar,
-    IETHSyncer,
-    IRegistry,
+    IETHRenewer,
     IPermissionedRegistry,
-    RegistryRolesLib,
+    IRentPriceOracle,
+    IRegistry,
     LibLabel,
     InvalidOwner,
-    REGISTRATION_ROLE_BITMAP,
-    ROLE_SET_ORACLE
+    REGISTRATION_ROLE_BITMAP
 } from "~src/registrar/ETHRegistrar.sol";
 import {
-    StandardRentPriceOracle,
-    IRentPriceOracle,
-    Math
+    StandardRentPriceOracle
 } from "~src/registrar/StandardRentPriceOracle.sol";
 import {MockERC20, MockERC20Blacklist} from "~test/mocks/MockERC20.sol";
 import {
     MigrationControllerFixture
 } from "~test/fixtures/MigrationControllerFixture.sol";
 import {
-    StandardRentPriceOracleFixture,
-    StandardRegistrar
+    StandardRentPriceOracleFixture
 } from "~test/fixtures/StandardRentPriceOracleFixture.sol";
+import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 
 contract ETHRegistrarTest is
     MigrationControllerFixture,
@@ -49,30 +47,27 @@ contract ETHRegistrarTest is
 {
     ETHRegistrar ethRegistrar;
 
-    address testOwner = makeAddr("owner");
-    address testSender = testOwner;
-    MockERC20 testPaymentToken; //|
-    bytes32 testSecret; //////////|
-    bytes32 testReferrer; ////////| set below
-    uint64 testDuration; /////////|
-    uint64 testCommitDelay; //////|
+    bytes32 testReferrer = keccak256("referrer");
+    bytes32 testSecret = keccak256("secret");
+    MockERC20 testPaymentToken;
+    uint64 testCommitDelay;
 
     function setUp() external {
         deployMigrationControllerFixture();
         deployStandardRentPriceOracleFixture();
 
         ethRegistrar = new ETHRegistrar(
+            address(this),
             hcaFactory,
             ethRegistry,
-            ethSyncer,
             beneficiary,
+            rentPriceOracle,
+            StandardRegistrar.GRACE_PERIOD_V2,
             StandardRegistrar.MIN_COMMITMENT_AGE,
             StandardRegistrar.MAX_COMMITMENT_AGE,
-            StandardRegistrar.GRACE_PERIOD_V2,
-            StandardRegistrar.MIN_REGISTER_DURATION,
-            StandardRegistrar.MIN_RENEW_DURATION,
-            rentPriceOracle
+            StandardRegistrar.MIN_REGISTER_DURATION
         );
+
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW,
             address(ethRegistrar)
@@ -80,8 +75,6 @@ contract ETHRegistrarTest is
 
         setupPaymentTokens(testOwner, address(ethRegistrar));
         testPaymentToken = tokenUSDC;
-        testSecret = bytes32(vm.randomUint());
-        testReferrer = bytes32(vm.randomUint());
         testDuration = ethRegistrar.MIN_REGISTER_DURATION();
         testCommitDelay = ethRegistrar.MIN_COMMITMENT_AGE();
 
@@ -100,37 +93,13 @@ contract ETHRegistrarTest is
             ),
             "IETHRegistrar"
         );
-        assertTrue(
-            ERC165Checker.supportsInterface(
-                address(ethRegistrar),
-                type(IETHRegistrar).interfaceId
-            ),
-            "IETHRegistrar"
-        );
-        assertTrue(
-            ERC165Checker.supportsInterface(
-                address(ethRegistrar),
-                type(IETHRegistrar).interfaceId
-            ),
-            "IETHRegistrar"
-        );
     }
 
     function test_constructor() external view {
         assertEq(
-            address(ethRegistrar.ETH_REGISTRY()),
-            address(ethRegistry),
-            "ETH_REGISTRY"
-        );
-        assertEq(
-            address(ethRegistrar.ETH_SYNCER()),
-            address(ethSyncer),
-            "ETH_SYNCER"
-        );
-        assertEq(
-            address(ethRegistrar.BENEFICIARY()),
-            address(beneficiary),
-            "BENFICIARY"
+            ethRegistrar.GRACE_PERIOD(),
+            StandardRegistrar.GRACE_PERIOD_V2,
+            "GRACE_PERIOD"
         );
         assertEq(
             ethRegistrar.MIN_COMMITMENT_AGE(),
@@ -143,24 +112,9 @@ contract ETHRegistrarTest is
             "MAX_COMMITMENT_AGE"
         );
         assertEq(
-            ethRegistrar.GRACE_PERIOD(),
-            StandardRegistrar.GRACE_PERIOD_V2,
-            "GRACE_PERIOD"
-        );
-        assertEq(
             ethRegistrar.MIN_REGISTER_DURATION(),
             StandardRegistrar.MIN_REGISTER_DURATION,
             "MIN_REGISTER_DURATION"
-        );
-        assertEq(
-            ethRegistrar.MIN_RENEW_DURATION(),
-            StandardRegistrar.MIN_RENEW_DURATION,
-            "MIN_RENEW_DURATION"
-        );
-        assertEq(
-            address(ethRegistrar.rentPriceOracle()),
-            address(rentPriceOracle),
-            "rentPriceOracle"
         );
     }
 
@@ -169,16 +123,15 @@ contract ETHRegistrarTest is
             abi.encodeWithSelector(ETHRegistrar.MaxCommitmentAgeTooLow.selector)
         );
         new ETHRegistrar(
+            address(this),
             hcaFactory,
             ethRegistry,
-            ethSyncer,
-            address(0),
+            beneficiary,
+            rentPriceOracle,
+            0,
             1, // minCommitmentAge
             1, // maxCommitmentAge
-            0,
-            0,
-            0,
-            rentPriceOracle
+            0
         );
     }
 
@@ -187,39 +140,16 @@ contract ETHRegistrarTest is
             abi.encodeWithSelector(ETHRegistrar.MaxCommitmentAgeTooLow.selector)
         );
         new ETHRegistrar(
+            address(this),
             hcaFactory,
             ethRegistry,
-            ethSyncer,
-            address(0),
+            beneficiary,
+            rentPriceOracle,
+            0,
             1, // minCommitmentAge
             0, // maxCommitmentAge
-            0,
-            0,
-            0,
-            rentPriceOracle
+            0
         );
-    }
-
-    function test_setRentPriceOracle() external {
-        IRentPriceOracle oracle = IRentPriceOracle(makeAddr("oracle"));
-        vm.expectEmit();
-        emit ETHRegistrar.RentPriceOracleUpdated(oracle);
-        ethRegistrar.setRentPriceOracle(oracle);
-        assertEq(address(ethRegistrar.rentPriceOracle()), address(oracle));
-    }
-
-    function test_setRentPriceOracle_notAuthorized() external {
-        address actor = makeAddr("actor");
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                ethRegistry.ROOT_RESOURCE(),
-                ROLE_SET_ORACLE,
-                actor
-            )
-        );
-        vm.prank(actor);
-        ethRegistrar.setRentPriceOracle(IRentPriceOracle(address(1)));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -284,20 +214,29 @@ contract ETHRegistrarTest is
         assertTrue(ethRegistrar.isAvailable(testLabel));
     }
 
-    function test_register(uint32 t) external {
-        vm.assume(t >= ethRegistrar.MIN_REGISTER_DURATION());
-        testDuration = t;
+    function test_register(uint32 available, uint32 duration) external {
+        vm.assume(
+            duration >= ethRegistrar.MIN_REGISTER_DURATION() &&
+                available < 2 * rentPriceOracle.PREMIUM_PERIOD()
+        );
+        vm.warp(
+            ethRegistry.getExpiry(this.register()) +
+                ethRegistrar.GRACE_PERIOD() +
+                available
+        );
+
+        testDuration = duration;
         (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
             testLabel,
-            type(uint64).max,
+            available + testCommitDelay, // commit-reveal
             testDuration,
             testPaymentToken
         );
         uint256 labelId = LibLabel.id(testLabel);
-        uint256 tokenId = LibLabel.withVersion(labelId, 0);
+        uint256 tokenId = LibLabel.withVersion(labelId, 1);
         uint64 expiry = uint64(block.timestamp) +
-            testCommitDelay +
-            testDuration;
+            testDuration +
+            testCommitDelay;
         vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
             tokenId,
@@ -320,26 +259,62 @@ contract ETHRegistrarTest is
             base,
             premium
         );
-        assertEq(this._register(), tokenId, "token");
+        assertEq(this.register(), tokenId, "token");
         assertEq(ethRegistry.ownerOf(tokenId), testOwner, "owner");
         assertEq(ethRegistry.getExpiry(tokenId), expiry, "expiry");
         assertTrue(
             ethRegistry.hasRoles(tokenId, REGISTRATION_ROLE_BITMAP, testOwner),
             "roles"
         );
-        assertFalse(ethRegistrar.isAvailable(testLabel), "available");
+        assertFalse(ethRegistrar.isAvailable(testLabel), "isAvailable");
     }
 
-    function test_register_whileRegistered(uint32 t) external {
-        vm.assume(t < testDuration);
-        uint256 tokenId = this._register();
-        vm.warp(block.timestamp + t);
+    function test_register_balanceChanges(
+        uint32 available,
+        uint32 duration
+    ) external {
+        vm.assume(
+            duration >= ethRegistrar.MIN_REGISTER_DURATION() &&
+                available < 2 * rentPriceOracle.PREMIUM_PERIOD()
+        );
+        vm.warp(
+            ethRegistry.getExpiry(this.register()) +
+                ethRegistrar.GRACE_PERIOD() +
+                available
+        );
+        uint256 owner0 = testPaymentToken.balanceOf(testOwner);
+        uint256 beneficiary0 = testPaymentToken.balanceOf(beneficiary);
+        (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
+            testLabel,
+            available + testCommitDelay, // commit-reveal
+            duration,
+            testPaymentToken
+        );
+        testDuration = duration;
+        this.register();
+        uint256 amount = base + premium;
+        assertEq(
+            owner0 - amount,
+            testPaymentToken.balanceOf(testOwner),
+            "owner"
+        );
+        assertEq(
+            beneficiary0 + amount,
+            testPaymentToken.balanceOf(beneficiary),
+            "beneficiary"
+        );
+    }
+
+    function test_register_whileRegistered(uint32 duration) external {
+        vm.assume(duration < testDuration);
+        uint256 tokenId = this.register();
+        vm.warp(block.timestamp + duration);
         assertEq(
             uint8(ethRegistry.getStatus(tokenId)),
             uint8(IPermissionedRegistry.Status.REGISTERED),
             "status"
         );
-        assertFalse(ethRegistrar.isAvailable(testLabel), "available");
+        assertFalse(ethRegistrar.isAvailable(testLabel), "isAvailable");
         assertEq(
             ethRegistrar.getRemainingGracePeriod(testLabel),
             0,
@@ -347,79 +322,64 @@ contract ETHRegistrarTest is
         );
     }
 
-    function test_register_duringGrace(uint32 t) external {
-        vm.assume(t < ethRegistrar.GRACE_PERIOD());
-        uint256 tokenId = this._register();
-        vm.warp(ethRegistry.getExpiry(tokenId) + t);
+    function test_register_duringGrace(uint32 graceDebt) external {
+        vm.assume(graceDebt < ethRegistrar.GRACE_PERIOD());
+        uint256 tokenId = this.register();
+        vm.warp(ethRegistry.getExpiry(tokenId) + graceDebt);
         assertEq(
             uint8(ethRegistry.getStatus(tokenId)),
             uint8(IPermissionedRegistry.Status.AVAILABLE),
             "status"
         );
-        assertFalse(ethRegistrar.isAvailable(testLabel), "available");
+        assertFalse(ethRegistrar.isAvailable(testLabel), "isAvailable");
         assertEq(
             ethRegistrar.getRemainingGracePeriod(testLabel),
-            ethRegistrar.GRACE_PERIOD() - t,
+            ethRegistrar.GRACE_PERIOD() - graceDebt,
             "remaining"
         );
     }
 
-    function test_register_afterGrace() external {
-        uint256 tokenId = this._register();
-        vm.warp(ethRegistry.getExpiry(tokenId) + ethRegistrar.GRACE_PERIOD());
+    function test_register_afterGrace(uint32 available) external {
+        vm.assume(available < rentPriceOracle.PREMIUM_PERIOD() * 2);
+        uint256 tokenId = this.register();
+        vm.warp(
+            ethRegistry.getExpiry(tokenId) +
+                ethRegistrar.GRACE_PERIOD() +
+                available
+        );
         assertEq(
             uint8(ethRegistry.getStatus(tokenId)),
             uint8(IPermissionedRegistry.Status.AVAILABLE),
             "status"
         );
-        assertTrue(ethRegistrar.isAvailable(testLabel), "available");
+        assertTrue(ethRegistrar.isAvailable(testLabel), "isAvailable");
         assertEq(
             ethRegistrar.getRemainingGracePeriod(testLabel),
             0,
             "remaining"
         );
-
-        (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
-            testLabel,
-            testCommitDelay, // due to commit-reveal
-            testDuration,
-            testPaymentToken
-        );
-        uint256 balance0 = testPaymentToken.balanceOf(testOwner);
-        this._register();
-        assertEq(
-            balance0 - base - premium,
-            testPaymentToken.balanceOf(testOwner),
-            "balance"
-        );
+        this.register();
     }
 
     function test_register_afterPremium() external {
-        uint256 tokenId = this._register();
+        uint256 tokenId = this.register();
         vm.warp(
             ethRegistry.getExpiry(tokenId) +
                 ethRegistrar.GRACE_PERIOD() +
                 rentPriceOracle.PREMIUM_PERIOD()
         );
-
-        (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
+        (, uint256 premium) = rentPriceOracle.getRegisterPrice(
             testLabel,
             type(uint64).max,
             testDuration,
             testPaymentToken
         );
-        uint256 balance0 = testPaymentToken.balanceOf(testOwner);
-        this._register();
-        assertEq(
-            balance0 - base - premium,
-            testPaymentToken.balanceOf(testOwner),
-            "balance"
-        );
+        this.register();
         assertEq(premium, 0, "premium");
     }
 
     function test_register_insufficientAllowance() external {
-        vm.prank(testSender);
+        vm.prank(testOwner);
         tokenUSDC.approve(address(ethRegistrar), 0);
         (uint256 base, uint256 premium) = ethRegistrar.getRegisterPrice(
             testLabel,
@@ -434,11 +394,11 @@ contract ETHRegistrarTest is
                 base + premium // needed
             )
         );
-        this._register();
+        this.register();
     }
 
     function test_register_insufficientBalance() external {
-        tokenUSDC.nuke(testSender);
+        testPaymentToken.nuke(testOwner);
         (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
             testLabel,
             type(uint64).max,
@@ -448,12 +408,12 @@ contract ETHRegistrarTest is
         vm.expectRevert(
             abi.encodeWithSelector(
                 IERC20Errors.ERC20InsufficientBalance.selector,
-                testSender, // sender
-                0, // allowance
+                testOwner, // sender
+                0, // balance
                 base + premium // needed
             )
         );
-        this._register();
+        this.register();
     }
 
     function test_register_commitmentTooNew() external {
@@ -468,7 +428,7 @@ contract ETHRegistrarTest is
                 t
             )
         );
-        this._register();
+        this.register();
     }
 
     function test_register_commitmentTooOld() external {
@@ -483,58 +443,67 @@ contract ETHRegistrarTest is
                 t
             )
         );
-        this._register();
+        this.register();
     }
 
-    function test_register_durationTooShort() external {
+    function test_register_durationTooShort(uint32 duration) external {
         uint64 min = ethRegistrar.MIN_REGISTER_DURATION();
-        testDuration = min - 1;
+        vm.assume(duration < min);
+        testDuration = duration;
         vm.expectRevert(
             abi.encodeWithSelector(
-                IETHRegistrar.DurationTooShort.selector,
-                testDuration,
+                IETHRenewer.DurationTooShort.selector,
+                duration,
                 min
             )
         );
-        this._register();
+        this.register();
     }
 
     function test_register_nullOwner() external {
         testOwner = address(0);
         vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
-        this._register();
+        this.register();
     }
 
     function test_register_registered() external {
-        this._register();
+        this.register();
         vm.expectRevert(
             abi.encodeWithSelector(
-                IETHRegistrar.NameNotRegisterable.selector,
+                IETHRegistrar.NameNotAvailable.selector,
                 testLabel
             )
         );
-        this._register();
+        this.register();
     }
 
-    function test_register_reserved() external {
-        _reserve();
+    function test_register_premigrated(uint32 during) external {
+        vm.assume(during < testDuration + gracePeriodV1);
+        registerUnwrapped(testLabel);
+        vm.warp(block.timestamp + during);
+        assertFalse(ethRegistrar.isAvailable(testLabel), "isAvailable");
+        assertFalse(ethRegistrar.isRenewable(testLabel), "isRenewable");
         vm.expectRevert(
             abi.encodeWithSelector(
-                IETHRegistrar.NameNotRegisterable.selector,
+                IETHRegistrar.NameNotAvailable.selector,
                 testLabel
             )
         );
-        this._register();
+        this.register();
     }
 
     ////////////////////////////////////////////////////////////////////////
     // renew()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_renew(uint32 t) external {
-        vm.assume(t >= ethRegistrar.MIN_RENEW_DURATION());
-        uint256 tokenId = this._register();
-        testDuration = t;
+    function test_isRenewable_unregistered() external view {
+        assertFalse(ethRegistrar.isRenewable(testLabel));
+    }
+
+    function test_renew(uint32 duration) external {
+        vm.assume(duration >= ethRegistrar.MIN_RENEW_DURATION());
+        uint256 tokenId = this.register();
+        testDuration = duration;
         uint64 newExpiry = ethRegistry.getExpiry(tokenId) + testDuration;
         uint256 amount = ethRegistrar.getRenewPrice(
             testLabel,
@@ -542,7 +511,13 @@ contract ETHRegistrarTest is
             testPaymentToken
         );
         vm.expectEmit();
-        emit IETHRegistrar.NameRenewed(
+        emit IRegistryEvents.ExpiryUpdated(
+            tokenId,
+            newExpiry,
+            address(ethRegistrar)
+        );
+        vm.expectEmit();
+        emit IETHRenewer.NameRenewed(
             tokenId,
             testLabel,
             testDuration,
@@ -551,57 +526,81 @@ contract ETHRegistrarTest is
             testReferrer,
             amount
         );
-        this._renew();
+        this.renew();
         assertEq(ethRegistry.getExpiry(tokenId), newExpiry);
+    }
+
+    function test_renew_balanceChanges(uint32 duration) external {
+        vm.assume(duration >= ethRegistrar.MIN_RENEW_DURATION());
+        this.register();
+        uint256 owner0 = testPaymentToken.balanceOf(testOwner);
+        uint256 beneficiary0 = testPaymentToken.balanceOf(beneficiary);
+        uint256 amount = ethRegistrar.getRenewPrice(
+            testLabel,
+            duration,
+            testPaymentToken
+        );
+        vm.prank(testOwner);
+        ethRegistrar.renew(testLabel, duration, testPaymentToken, testReferrer);
+        assertEq(
+            owner0 - amount,
+            testPaymentToken.balanceOf(testOwner),
+            "owner"
+        );
+        assertEq(
+            beneficiary0 + amount,
+            testPaymentToken.balanceOf(beneficiary),
+            "beneficiary"
+        );
     }
 
     function test_renew_available() external {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IETHRegistrar.NameNotRenewable.selector,
+                IETHRenewer.NameNotRenewable.selector,
                 testLabel
             )
         );
-        this._renew();
+        this.renew();
     }
 
-    function test_renew_duringGrace(uint32 t) external {
-        vm.assume(t < ethRegistrar.GRACE_PERIOD());
-        uint256 tokenId = this._register();
-        vm.warp(ethRegistry.getExpiry(tokenId) + t);
-        this._renew();
+    function test_renew_duringGrace(uint32 graceDebt) external {
+        vm.assume(graceDebt < ethRegistrar.GRACE_PERIOD());
+        uint256 tokenId = this.register();
+        vm.warp(ethRegistry.getExpiry(tokenId) + graceDebt);
+        this.renew();
     }
 
     function test_renew_afterGrace() external {
-        uint256 tokenId = this._register();
+        uint256 tokenId = this.register();
         vm.warp(ethRegistry.getExpiry(tokenId) + ethRegistrar.GRACE_PERIOD());
         vm.expectRevert(
             abi.encodeWithSelector(
-                IETHRegistrar.NameNotRenewable.selector,
+                IETHRenewer.NameNotRenewable.selector,
                 testLabel
             )
         );
-        this._renew();
+        this.renew();
     }
 
     function test_renew_durationTooShort() external {
-        this._register();
         uint64 min = ethRegistrar.MIN_RENEW_DURATION();
+        this.register();
         testDuration = min - 1;
         vm.expectRevert(
             abi.encodeWithSelector(
-                IETHRegistrar.DurationTooShort.selector,
+                IETHRenewer.DurationTooShort.selector,
                 testDuration,
                 min
             )
         );
-        this._renew();
+        this.renew();
     }
 
     function test_renew_insufficientAllowance() external {
-        this._register();
-        vm.prank(testSender);
-        tokenUSDC.approve(address(ethRegistrar), 0);
+        this.register();
+        vm.prank(testOwner);
+        testPaymentToken.approve(address(ethRegistrar), 0);
         uint256 amount = ethRegistrar.getRenewPrice(
             testLabel,
             testDuration,
@@ -610,189 +609,44 @@ contract ETHRegistrarTest is
         vm.expectRevert(
             abi.encodeWithSelector(
                 IERC20Errors.ERC20InsufficientAllowance.selector,
-                address(ethRegistrar),
-                0,
-                amount
+                address(ethRegistrar), // spender
+                0, // allowance
+                amount // needed
             )
         );
-        this._renew();
+        this.renew();
     }
 
-    ////////////////////////////////////////////////////////////////////////
-    // renew() for ENSv1
-    ////////////////////////////////////////////////////////////////////////
-
-    function test_renewV1_registered() external {
-        (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        assertEq(
-            uint8(getStatusV1(tokenIdV1)),
-            uint8(StatusV1.REGISTERED),
-            "status"
+    function test_renew_insufficientBalance() external {
+        this.register();
+        testPaymentToken.nuke(testOwner);
+        uint256 amount = ethRegistrar.getRenewPrice(
+            testLabel,
+            testDuration,
+            testPaymentToken
         );
-
-        uint256 expiryV1 = baseRegistrar.nameExpires(tokenIdV1);
-        uint64 expiryV2 = ethRegistry.getExpiry(tokenIdV1);
-
-        this._renew();
-
-        assertEq(
-            uint8(getStatusV1(tokenIdV1)),
-            uint8(StatusV1.REGISTERED),
-            "renewed:status"
-        );
-        assertEq(
-            baseRegistrar.nameExpires(tokenIdV1),
-            expiryV1 + testDuration,
-            "expiryV1"
-        );
-        assertEq(
-            ethRegistry.getExpiry(tokenIdV1),
-            expiryV2 + testDuration,
-            "expiryV2"
-        );
-        assertEq(
-            baseRegistrar.nameExpires(tokenIdV1) + premigrationBonusPeriod,
-            ethRegistry.getExpiry(tokenIdV1),
-            "sync"
-        );
-    }
-
-    function test_renewV1_duringGrace_outOfGrace(uint32 t) external {
-        vm.assume(t < gracePeriodV1);
-        (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-
-        uint256 expiryV1 = baseRegistrar.nameExpires(tokenIdV1);
-        uint64 expiryV2 = ethRegistry.getExpiry(tokenIdV1);
-
-        vm.warp(expiryV1 + t);
-        assertEq(
-            uint8(getStatusV1(tokenIdV1)),
-            uint8(StatusV1.GRACE),
-            "status"
-        );
-
-        testDuration = gracePeriodV1;
-        this._renew();
-
-        assertEq(
-            uint8(getStatusV1(tokenIdV1)),
-            uint8(StatusV1.REGISTERED),
-            "renewed:status"
-        );
-        assertEq(
-            baseRegistrar.nameExpires(tokenIdV1),
-            expiryV1 + testDuration,
-            "expiryV1"
-        );
-        assertEq(
-            ethRegistry.getExpiry(tokenIdV1),
-            expiryV2 + testDuration,
-            "expiryV2"
-        );
-        assertEq(
-            baseRegistrar.nameExpires(tokenIdV1) + premigrationBonusPeriod,
-            ethRegistry.getExpiry(tokenIdV1),
-            "sync"
-        );
-    }
-
-    function test_renewV1_duringGrace_stillInGrace(uint32 t) external {
-        uint64 min = ethRegistrar.MIN_RENEW_DURATION();
-        vm.assume(t > min && t < gracePeriodV1);
-        (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-
-        uint256 expiryV1 = baseRegistrar.nameExpires(tokenIdV1);
-        uint64 expiryV2 = ethRegistry.getExpiry(tokenIdV1);
-
-        vm.warp(expiryV1 + t);
-        assertEq(
-            uint8(getStatusV1(tokenIdV1)),
-            uint8(StatusV1.GRACE),
-            "status"
-        );
-
-        testDuration = min;
-        this._renew();
-
-        assertEq(
-            uint8(getStatusV1(tokenIdV1)),
-            uint8(StatusV1.GRACE),
-            "renewed:status"
-        );
-        assertEq(
-            baseRegistrar.nameExpires(tokenIdV1),
-            expiryV1 + testDuration,
-            "expiryV1"
-        );
-        assertEq(
-            ethRegistry.getExpiry(tokenIdV1),
-            expiryV2 + testDuration,
-            "expiryV2"
-        );
-        assertEq(
-            baseRegistrar.nameExpires(tokenIdV1) + premigrationBonusPeriod,
-            ethRegistry.getExpiry(tokenIdV1),
-            "sync"
-        );
-    }
-
-    function test_renewV1_afterGrace() external {
-        (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-
-        vm.warp(baseRegistrar.nameExpires(tokenIdV1) + gracePeriodV1);
-        assertEq(
-            uint8(getStatusV1(tokenIdV1)),
-            uint8(StatusV1.AVAILABLE),
-            "status"
-        );
-
         vm.expectRevert(
             abi.encodeWithSelector(
-                IETHRegistrar.NameNotRenewable.selector,
-                testLabel
+                IERC20Errors.ERC20InsufficientBalance.selector,
+                testOwner, // sender
+                0, // balance
+                amount // needed
             )
         );
-        this._renew();
+        this.renew();
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Payment Processing
     ////////////////////////////////////////////////////////////////////////
 
-    function test_beneficiary_register() external {
-        (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
-            testLabel,
-            type(uint64).max,
-            testDuration,
-            testPaymentToken
-        );
-        uint256 balance0 = testPaymentToken.balanceOf(beneficiary);
-        this._register();
-        assertEq(
-            testPaymentToken.balanceOf(beneficiary),
-            balance0 + base + premium
-        );
-    }
-
-    function test_beneficiary_renew() external {
-        this._register();
-        uint256 amount = ethRegistrar.getRenewPrice(
-            testLabel,
-            testDuration,
-            testPaymentToken
-        );
-        uint256 balance0 = testPaymentToken.balanceOf(beneficiary);
-        this._renew();
-        assertEq(testPaymentToken.balanceOf(beneficiary), balance0 + amount);
-    }
-
     function test_voidReturn_acceptedBySafeERC20() external {
         // register
         testPaymentToken = tokenVoid;
-        this._register();
+        this.register();
 
         // renew
-        this._renew();
+        this.renew();
     }
 
     function test_falseReturn_rejectedBySafeERC20() external {
@@ -804,11 +658,11 @@ contract ETHRegistrarTest is
                 tokenFalse
             )
         );
-        this._register();
+        this.register();
 
         // renew
         testPaymentToken = tokenUSDC;
-        this._register();
+        this.register();
         testPaymentToken = tokenFalse;
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -816,36 +670,36 @@ contract ETHRegistrarTest is
                 tokenFalse
             )
         );
-        this._renew();
+        this.renew();
     }
 
     function test_blacklisted_payer() external {
-        tokenBlack.setBlacklisted(testSender, true);
+        tokenBlack.setBlacklisted(testOwner, true);
 
         // register
         testPaymentToken = tokenBlack;
         vm.expectRevert(
             abi.encodeWithSelector(
                 MockERC20Blacklist.Blacklisted.selector,
-                testSender
+                testOwner
             )
         );
-        this._register();
+        this.register();
 
         // renew
         testPaymentToken = tokenUSDC;
-        this._register();
+        this.register();
         testPaymentToken = tokenBlack;
         vm.expectRevert(
             abi.encodeWithSelector(
                 MockERC20Blacklist.Blacklisted.selector,
-                testSender
+                testOwner
             )
         );
-        this._renew();
+        this.renew();
     }
 
-    function test_processPayment_blacklisted_beneficiary() external {
+    function test_blacklisted_beneficiary() external {
         tokenBlack.setBlacklisted(beneficiary, true);
 
         // register
@@ -856,11 +710,11 @@ contract ETHRegistrarTest is
                 beneficiary
             )
         );
-        this._register();
+        this.register();
 
         // renew
         testPaymentToken = tokenUSDC;
-        this._register();
+        this.register();
         testPaymentToken = tokenBlack;
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -868,7 +722,7 @@ contract ETHRegistrarTest is
                 beneficiary
             )
         );
-        this._renew();
+        this.renew();
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -888,11 +742,10 @@ contract ETHRegistrarTest is
             );
     }
 
-    function _register() external returns (uint256 tokenId) {
-        bytes32 commitment = _makeCommitment();
-        ethRegistrar.commit(commitment);
+    function register() external returns (uint256 tokenId) {
+        ethRegistrar.commit(_makeCommitment());
         vm.warp(block.timestamp + testCommitDelay);
-        vm.prank(testSender);
+        vm.prank(testOwner);
         tokenId = ethRegistrar.register(
             testLabel,
             testOwner,
@@ -905,24 +758,13 @@ contract ETHRegistrarTest is
         );
     }
 
-    function _renew() external {
-        vm.prank(testSender);
+    function renew() external {
+        vm.prank(testOwner);
         ethRegistrar.renew(
             testLabel,
             testDuration,
             testPaymentToken,
             testReferrer
-        );
-    }
-
-    function _reserve() internal {
-        ethRegistry.register(
-            testLabel,
-            address(0),
-            IRegistry(address(0)),
-            address(0),
-            0,
-            uint64(block.timestamp) + testDuration
         );
     }
 }

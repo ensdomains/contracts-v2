@@ -9,11 +9,10 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 import {
     StandardRentPriceOracle,
-    PaymentRatio,
     IRentPriceOracle,
+    PaymentRatio,
     DiscountPoint
 } from "~src/registrar/StandardRentPriceOracle.sol";
 import {
@@ -22,6 +21,7 @@ import {
     MockERC20VoidReturn,
     MockERC20FalseReturn
 } from "~test/mocks/MockERC20.sol";
+import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 
 /// @dev Reusable testing fixture for StandardRentPriceOracle.
 contract StandardRentPriceOracleFixture is Test {

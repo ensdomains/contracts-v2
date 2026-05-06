@@ -9,10 +9,10 @@ import {Graveyard} from "~src/migration/Graveyard.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
-import {V2Fixture, RegistryRolesLib} from "~test/fixtures/V2Fixture.sol";
+import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
-import {ETHSyncer} from "~src/registrar/ETHSyncer.sol";
 
 // forge test test/unit/migration/UnlockedMigrationController.t.sol -vv
 // forge test test/unit/migration/LockedMigrationController.t.sol -vv
@@ -31,7 +31,6 @@ import {ETHSyncer} from "~src/registrar/ETHSyncer.sol";
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;
     ENSV2Resolver ensV2Resolver;
-    ETHSyncer ethSyncer;
     Graveyard graveyard;
     MockERC721 dummy721;
     MockERC1155 dummy1155;
@@ -41,6 +40,8 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address premigrationController = makeAddr("premigrationController");
     uint64 premigrationBonusPeriod = StandardRegistrar.BONUS_PERIOD;
+
+    address actor = makeAddr("actor");
     address friend = makeAddr("friend");
 
     function deployMigrationControllerFixture() public {
@@ -56,19 +57,9 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
         ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
 
         graveyard = new Graveyard(nameWrapper);
-        ethSyncer = new ETHSyncer(
-            address(this),
-            nameWrapper,
-            address(wrappedController),
-            ethRegistry,
-            premigrationBonusPeriod
-        );
 
-        // activate ENSv2 (but does not disable eth controllers)
         baseRegistrar.setResolver(address(ensV2Resolver));
         baseRegistrar.addController(address(graveyard));
-        baseRegistrar.addController(address(ethSyncer));
-        baseRegistrar.transferOwnership(address(ethSyncer));
 
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();

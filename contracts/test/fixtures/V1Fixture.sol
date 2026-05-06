@@ -27,20 +27,20 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     MockWrappedETHRegistrarController wrappedController;
 
     uint64 gracePeriodV1;
-    uint64 testDurationV1 = 1 days;
-    address user = makeAddr("user");
-    address ensV1Controller = makeAddr("ensV1Controller");
+    address testOwner = makeAddr("ownerV1");
+    uint64 testDuration = 1 days;
+    address ethControllerV1 = makeAddr("ethControllerV1");
 
     function deployV1Fixture() public {
         registryV1 = new ENSRegistry();
         baseRegistrar = new BaseRegistrarImplementation(registryV1, NameCoder.ETH_NODE);
-        baseRegistrar.addController(ensV1Controller);
+        baseRegistrar.addController(ethControllerV1);
         gracePeriodV1 = uint64(baseRegistrar.GRACE_PERIOD()) + 1; // see: BaseRegistrarImplementation.available()
         _claimNodes(NameCoder.encode("eth"), 0, address(baseRegistrar));
         _claimNodes(NameCoder.encode("addr.reverse"), 0, address(this)); // see: fake ReverseClaimer
         nameWrapper = new NameWrapper(registryV1, baseRegistrar, IMetadataService(address(0)));
         wrappedController = new MockWrappedETHRegistrarController(nameWrapper);
-        nameWrapper.setController(ensV1Controller, true);
+        nameWrapper.setController(ethControllerV1, true);
         nameWrapper.setController(address(wrappedController), true);
         baseRegistrar.addController(address(nameWrapper));
 
@@ -75,8 +75,8 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     {
         name = NameCoder.ethName(label);
         tokenId = uint256(keccak256(bytes(label)));
-        vm.prank(ensV1Controller);
-        baseRegistrar.register(tokenId, user, testDurationV1);
+        vm.prank(ethControllerV1);
+        baseRegistrar.register(tokenId, testOwner, testDuration);
     }
 
     function registerWrappedETH2LD(string memory label, uint32 ownerFuses)
@@ -116,15 +116,15 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         returns (bytes memory name)
     {
         name = NameCoder.encode(domain);
-        _claimNodes(name, 0, user);
+        _claimNodes(name, 0, testOwner);
         (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
         bytes32 parentNode = NameCoder.namehash(name, offset);
-        vm.prank(user);
+        vm.prank(testOwner);
         registryV1.setApprovalForAll(address(nameWrapper), true);
-        vm.prank(user);
-        nameWrapper.wrap(name, user, address(0));
+        vm.prank(testOwner);
+        nameWrapper.wrap(name, testOwner, address(0));
         if (fuses != 0) {
-            vm.prank(user);
+            vm.prank(testOwner);
             nameWrapper.setFuses(NameCoder.namehash(parentNode, labelHash), uint16(fuses));
         }
     }

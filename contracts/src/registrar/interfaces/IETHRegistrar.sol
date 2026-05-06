@@ -5,9 +5,11 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
-/// @notice Interface for the ".eth" registrar which manages the ".eth" registry.
-/// @dev Interface selector: `0xd4e79fb2`
-interface IETHRegistrar {
+import {IETHRenewer} from "./IETHRenewer.sol";
+
+/// @notice Interface for registering ".eth" names.
+/// @dev Interface selector: `0xc1401b80`
+interface IETHRegistrar is IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
@@ -40,31 +42,9 @@ interface IETHRegistrar {
         uint256 premium
     );
 
-    /// @notice A name was extended by `duration`.
-    /// @param tokenId The registry token id.
-    /// @param label The name of the renewal.
-    /// @param duration The duration extension, in seconds.
-    /// @param newExpiry The new expiry, in seconds.
-    /// @param paymentToken The payment token.
-    /// @param referrer The referrer hash.
-    /// @param amount The amount of `paymentToken`.
-    event NameRenewed(
-        uint256 indexed tokenId,
-        string label,
-        uint64 duration,
-        uint64 newExpiry,
-        IERC20 paymentToken,
-        bytes32 indexed referrer,
-        uint256 amount
-    );
-
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice `duration` less than `minDuration`.
-    /// @dev Error selector: `0xa096b844`
-    error DurationTooShort(uint64 duration, uint64 minDuration);
 
     /// @notice `commitment` is still usable for registration.
     /// @dev Error selector: `0x0a059d71`
@@ -79,12 +59,8 @@ interface IETHRegistrar {
     error CommitmentTooOld(bytes32 commitment, uint64 validTo, uint64 blockTimestamp);
 
     /// @notice `label` cannot be registered.
-    /// @dev Error selector: `0x3f2bfd46`
-    error NameNotRegisterable(string label);
-
-    /// @notice `label` cannot be renewed.
-    /// @dev Error selector: `0x1caefaa0`
-    error NameNotRenewable(string label);
+    /// @dev Error selector: `0x477707e8`
+    error NameNotAvailable(string label);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
@@ -116,18 +92,6 @@ interface IETHRegistrar {
         bytes32 referrer
     ) external returns (uint256);
 
-    /// @notice Renew a name.
-    /// @param label The name to renew.
-    /// @param duration The duration extension, in seconds.
-    /// @param paymentToken The payment token.
-    /// @param referrer The referrer hash.
-    function renew(
-        string memory label,
-        uint64 duration,
-        IERC20 paymentToken,
-        bytes32 referrer
-    ) external;
-
     /// @notice Get timestamp of a prior commitment.
     /// @param commitment The commitment hash.
     /// @return The commitment time, in seconds, or 0 if unknown.
@@ -145,30 +109,10 @@ interface IETHRegistrar {
         IERC20 paymentToken
     ) external view returns (uint256 base, uint256 premium);
 
-    /// @notice Determine renew price for a name.
-    /// @param label The name to renew.
-    /// @param duration The duration extension, in seconds.
-    /// @param paymentToken The payment token.
-    /// @return The amount of `paymentToken`.
-    function getRenewPrice(
-        string calldata label,
-        uint64 duration,
-        IERC20 paymentToken
-    ) external view returns (uint256);
-
     /// @notice Check if name is available.
     /// @param label The name to check.
-    /// @return `true` if registerable, otherwise renewable.
+    /// @return `true` if registerable.
     function isAvailable(string memory label) external view returns (bool);
-
-    /// @notice Determine remaining grace period.
-    /// @dev Defined over `[expiry, expiry + GRACE_PERIOD)`.
-    /// @param label The name to check.
-    /// @return The remaining grace period, in seconds.
-    function getRemainingGracePeriod(string calldata label) external view returns (uint64);
-
-    /// @notice Post-expiry period where still renewable and not available, in seconds.
-    function GRACE_PERIOD() external view returns (uint64);
 
     /// @notice Compute hash of registration parameters.
     /// @param label The name to register.

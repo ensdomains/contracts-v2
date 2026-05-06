@@ -11,7 +11,6 @@ library StandardRegistrar {
     uint64 internal constant MAX_COMMITMENT_AGE = 1 days;
 
     uint64 internal constant MIN_REGISTER_DURATION = 28 days;
-    uint64 internal constant MIN_RENEW_DURATION = 1;
 
     uint64 internal constant GRACE_PERIOD_V1 = 90 days;
     uint64 internal constant GRACE_PERIOD_V2 = 28 days;

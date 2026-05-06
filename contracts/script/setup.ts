@@ -342,14 +342,19 @@ export async function setupDevnet({
         client,
       }),
       // eth registrar
+      StandardRentPriceOracle: getContract({
+        abi: artifacts.StandardRentPriceOracle.abi,
+        address: rocketh.get("StandardRentPriceOracle").address,
+        client,
+      }),
       ETHRegistrar: getContract({
         abi: artifacts.ETHRegistrar.abi,
         address: rocketh.get("ETHRegistrar").address,
         client,
       }),
-      StandardRentPriceOracle: getContract({
-        abi: artifacts.StandardRentPriceOracle.abi,
-        address: rocketh.get("StandardRentPriceOracle").address,
+      ETHRenewerV1: getContract({
+        abi: artifacts.ETHRenewerV1.abi,
+        address: rocketh.get("ETHRenewerV1").address,
         client,
       }),
       // VerifiableFactory implementations
@@ -382,11 +387,6 @@ export async function setupDevnet({
       Graveyard: getContract({
         abi: artifacts.Graveyard.abi,
         address: rocketh.get("Graveyard").address,
-        client,
-      }),
-      ETHSyncer: getContract({
-        abi: artifacts.ETHSyncer.abi,
-        address: rocketh.get("ETHSyncer").address,
         client,
       }),
       // resolvers
@@ -750,12 +750,12 @@ export async function setupDevnet({
         { account },
       );
       await v1.RegistrarSecurityController.write.addRegistrarController(
-        [v2.ETHSyncer.address],
+        [v2.ETHRenewerV1.address],
         { account },
       );
       // transfer to syncer for juggling
       await v1.RegistrarSecurityController.write.transferRegistrarOwnership(
-        [v2.ETHSyncer.address],
+        [v2.ETHRenewerV1.address],
         { account },
       );
       // TODO: delay grant of registar/renewer-related roles until here?

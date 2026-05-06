@@ -198,20 +198,20 @@ describe("Migration", () => {
       );
       return new WrappedToken(name, account);
     }
-    async renew(duration: bigint) {
+    async renewV1(duration: bigint) {
       const { label, account } = this;
-      const amount = await env.v2.ETHRegistrar.read.getRenewPrice([
+      const amount = await env.v2.ETHRenewerV1.read.getRenewPrice([
         label,
         duration,
         env.erc20.MockUSDC.address,
       ]);
       await env.erc20.MockUSDC.write.mint([account.address, amount]);
       await env.erc20.MockUSDC.write.approve(
-        [env.v2.ETHRegistrar.address, amount],
+        [env.v2.ETHRenewerV1.address, amount],
         { account },
       );
-      await env.v2.ETHRegistrar.write.renew(
-        [label, duration, env.erc20.MockUSDC.address, namehash("")],
+      await env.v2.ETHRenewerV1.write.renew(
+        [label, duration, env.erc20.MockUSDC.address, namehash("referrer")],
         { account },
       );
     }
@@ -399,7 +399,7 @@ describe("Migration", () => {
         unwrapped.tokenId,
       ]);
       await env.activateV2();
-      await unwrapped.renew(SEC_PER_YEAR);
+      await unwrapped.renewV1(SEC_PER_YEAR);
       const expiry1 = await env.v1.BaseRegistrar.read.nameExpires([
         unwrapped.tokenId,
       ]);
@@ -420,7 +420,7 @@ describe("Migration", () => {
       await expect(
         env.v1.BaseRegistrar.read.available([unwrapped.tokenId]),
       ).resolves.toStrictEqual(false); // not available
-      await unwrapped.renew(SEC_PER_YEAR);
+      await unwrapped.renewV1(SEC_PER_YEAR);
       const expiry1 = await env.v1.BaseRegistrar.read.nameExpires([
         unwrapped.tokenId,
       ]);
@@ -440,7 +440,7 @@ describe("Migration", () => {
       await expect(
         env.v1.BaseRegistrar.read.available([unwrapped.tokenId]),
       ).resolves.toStrictEqual(true); // available
-      await expect(unwrapped.renew(SEC_PER_YEAR)).rejects.toThrow(
+      await expect(unwrapped.renewV1(SEC_PER_YEAR)).rejects.toThrow(
         "NameNotRenewable",
       );
     });
