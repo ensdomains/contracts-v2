@@ -41,7 +41,8 @@
   "scripts": {
     "lint": "solgrid check src/**/*.sol",
     "lint:fix": "solgrid fix src/**/*.sol",
-    "format": "if [ \"$CI\" = \"true\" ]; then solgrid fmt --diff src/**/*.sol; else solgrid fmt src/**/*.sol; fi",
+    "format": "solgrid fmt src/**/*.sol",
+    "format:check": "solgrid fmt --diff src/**/*.sol",
     "compile:forge": "forge build",
     "compile:hardhat": "hardhat compile",
     "compile": "bun run compile:forge && bun run compile:hardhat",

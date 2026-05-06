@@ -98,7 +98,7 @@ jobs:
         run: bun --filter contracts lint
 
       - name: Format
-        run: bun --filter contracts format
+        run: bun --filter contracts format:check
 
   publish-docker:
     name: Publish Docker Image
