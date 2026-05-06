@@ -71,6 +71,9 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     ///
     mapping(uint256 resource => uint256 roleCount) private _roleCount;
 
+    /// @dev Storage gap for future changes.
+    uint256[256] private __gap;
+
     ////////////////////////////////////////////////////////////////////////
     // Modifiers
     ////////////////////////////////////////////////////////////////////////
@@ -360,7 +363,6 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         internal
         virtual
     {
-        // solhint-disable-previous-line no-empty-blocks
     }
 
     /// @dev Callback for when roles are revoked.
@@ -379,7 +381,6 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         internal
         virtual
     {
-        // solhint-disable-previous-line no-empty-blocks
     }
 
     /// @dev Reverts if `account` does not have all the given roles.

@@ -18,7 +18,6 @@ abstract contract MetadataMixin {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the mixin with a metadata provider
     /// @param metadataProvider Address of the metadata provider contract
     constructor(IRegistryMetadata metadataProvider) {
         METADATA_PROVIDER = metadataProvider;

@@ -1,5 +1,5 @@
 # Closest built-in solgrid mapping of the previous Solidity lint ruleset.
-# solgrid 0.0.14 adds the rule-level configuration needed to match the repo's
+# solgrid 0.0.16 adds the rule-level configuration needed to match the repo's
 # NatSpec/category-header policy closely enough for migration.
 
 [lint]
@@ -66,6 +66,7 @@ enabled = true
 exclude = [
     "function:internal",
     "function:private",
+    "function:default",
     "contract:abstract",
     "contract:interface",
     "library",

@@ -27,7 +27,6 @@ contract LockedMigrationController is LockedWrapperReceiver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes LockedMigrationController.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     /// @param verifiableFactory The shared factory for verifiable deployments.

@@ -30,7 +30,6 @@ contract BatchRegistrar is Ownable {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the BatchRegistrar.
     /// @param ethRegistry_ The ETH registry to use for batch registration.
     /// @param owner_ The owner of the contract.
     constructor(IPermissionedRegistry ethRegistry_, address owner_) Ownable(owner_) {

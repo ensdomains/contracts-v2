@@ -21,6 +21,7 @@ contract MockMetadataProvider is IRegistryMetadata {
     }
 }
 
+
 // Concrete implementation of MetadataMixin for testing
 contract MetadataMixinImpl is MetadataMixin {
     constructor(IRegistryMetadata _metadataProvider) MetadataMixin(_metadataProvider) {}
@@ -30,6 +31,7 @@ contract MetadataMixinImpl is MetadataMixin {
         return _tokenURI(tokenId);
     }
 }
+
 
 contract MetadataMixinTest is Test {
     MetadataMixinImpl public mixinImpl;

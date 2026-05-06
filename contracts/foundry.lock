@@ -18,7 +18,7 @@
     "rev": "c4fbe97cf5e8c1b8d607001588fd23abb5bfb923"
   },
   "contracts/lib/verifiable-factory": {
-    "rev": "c47c0e61ce03b3ab5891a3b743287b54aee9f021"
+    "rev": "04ec76f4c211bff795235feae90ad01882477ca1"
   },
   "lib/buffer": {
     "rev": "82cc81935de1d1a82e021cf1030d902c5248982b"
@@ -48,6 +48,6 @@
     }
   },
   "lib/verifiable-factory": {
-    "rev": "c47c0e61ce03b3ab5891a3b743287b54aee9f021"
+    "rev": "04ec76f4c211bff795235feae90ad01882477ca1"
   }
 }

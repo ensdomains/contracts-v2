@@ -415,6 +415,8 @@ export async function setupDevnet({
       }),
     };
 
+    const verifiableProxyLogic = await v2.VerifiableFactory.read.proxyLogic();
+
     [shared, v1, v2, erc20]
       .flatMap((x) => Object.values(x))
       .forEach(patchContractWrite);
@@ -541,7 +543,7 @@ export async function setupDevnet({
     function computeVerifiableProxyAddress(deployer: Address, salt: bigint) {
       return computeVerifiableProxyAddress_({
         factoryAddress: v2.VerifiableFactory.address,
-        bytecode: artifacts["UUPSProxy"].bytecode,
+        proxyLogic: verifiableProxyLogic,
         deployer,
         salt,
       });

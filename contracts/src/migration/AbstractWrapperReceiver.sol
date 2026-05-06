@@ -64,7 +64,6 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes AbstractWrapperReceiver.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     constructor(INameWrapper nameWrapper) {
         NAME_WRAPPER = nameWrapper;

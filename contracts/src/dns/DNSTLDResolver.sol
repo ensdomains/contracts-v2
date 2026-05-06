@@ -90,7 +90,6 @@ contract DNSTLDResolver is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes DNSTLDResolver.
     /// @param ensRegistryV1 The ENSv1 registry.
     /// @param dnsTLDResolverV1 The v1 DNS TLD resolver address.
     /// @param rootRegistry The ENSv2 root registry.

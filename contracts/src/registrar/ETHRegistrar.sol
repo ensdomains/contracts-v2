@@ -84,7 +84,6 @@ contract ETHRegistrar is IETHRegistrar, EnhancedAccessControl {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes ETHRegistrar.
     /// @param registry The permissioned registry where .eth names are stored and managed.
     /// @param hcaFactory The HCA factory.
     /// @param beneficiary The address that receives all registration and renewal payments.

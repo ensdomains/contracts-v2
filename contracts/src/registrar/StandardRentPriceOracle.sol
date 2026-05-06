@@ -121,7 +121,6 @@ contract StandardRentPriceOracle is ERC165, Ownable, IRentPriceOracle {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes StandardRentPriceOracle.
     /// @param owner_ The owner of the contract.
     /// @param registry The permissioned registry.
     /// @param baseRatePerCp The initial base rates, in base units per second.

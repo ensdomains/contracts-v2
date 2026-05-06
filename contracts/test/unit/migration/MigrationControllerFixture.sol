@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
@@ -40,9 +39,11 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     }
 
     /// @dev Ensure premigration has occurred.
-    function registerUnwrapped(
-        string memory label
-    ) public override returns (bytes memory name, uint256 tokenId) {
+    function registerUnwrapped(string memory label)
+        public
+        override
+        returns (bytes memory name, uint256 tokenId)
+    {
         (name, tokenId) = super.registerUnwrapped(label);
         if (address(premigrationController) != address(0)) {
             vm.prank(premigrationController);
@@ -58,11 +59,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     }
 
     /// @dev Check resolver and fallback logic.
-    function checkResolution(
-        bytes memory name,
-        address resolverV1,
-        address resolverV2
-    ) public view {
+    function checkResolution(bytes memory name, address resolverV1, address resolverV2) public view {
         assertEq(findResolverV1(name), resolverV1, "findResolverV1");
         assertEq(findResolverV2(name), resolverV2, "findResolverV2");
         if (resolverV2 == address(ensV1Resolver)) {
@@ -84,6 +81,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     }
 }
 
+
 contract MockERC721 is ERC721 {
     uint256 _id;
     constructor() ERC721("", "") {}
@@ -92,6 +90,7 @@ contract MockERC721 is ERC721 {
         return _id++;
     }
 }
+
 
 contract MockERC1155 is ERC1155 {
     uint256 _id;

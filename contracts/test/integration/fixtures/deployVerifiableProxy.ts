@@ -8,7 +8,6 @@ import {
   encodeFunctionData,
   getContract,
   getContractAddress,
-  type Hex,
   keccak256,
   parseAbi,
   parseEventLogs,
@@ -77,12 +76,12 @@ export async function deployVerifiableProxy<
 
 export function computeVerifiableProxyAddress({
   factoryAddress,
-  bytecode,
+  proxyLogic,
   deployer,
   salt,
 }: {
   factoryAddress: Address;
-  bytecode: Hex;
+  proxyLogic: Address;
   deployer: Address;
   salt: bigint;
 }) {
@@ -92,14 +91,14 @@ export function computeVerifiableProxyAddress({
       [deployer, salt],
     ),
   );
+  const bytecode = concat([
+    "0x3d604d80600a3d3981f3363d3d373d3d3d363d73",
+    proxyLogic,
+    "0x5af43d82803e903d91602b57fd5bf3",
+    outerSalt,
+  ]);
   return getContractAddress({
-    bytecode: concat([
-      bytecode,
-      encodeAbiParameters(
-        [{ type: "address" }, { type: "bytes32" }],
-        [factoryAddress, outerSalt],
-      ),
-    ]),
+    bytecode,
     from: factoryAddress,
     opcode: "CREATE2",
     salt: outerSalt,

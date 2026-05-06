@@ -18,6 +18,7 @@ import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {ENSIP19, COIN_TYPE_ETH, COIN_TYPE_DEFAULT} from "@ens/contracts/utils/ENSIP19.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
@@ -107,7 +108,8 @@ contract PermissionedResolver is
     INameResolver,
     IPubkeyResolver,
     ITextResolver,
-    IVersionableResolver
+    IVersionableResolver,
+    IProxyAuthorization
 {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -196,7 +198,6 @@ contract PermissionedResolver is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Creates the PermissionedResolver implementation.
     /// @param hcaFactory The HCA factory.
     constructor(IHCAFactoryBasic hcaFactory) HCAEquivalence(hcaFactory) {
         _disableInitializers();
@@ -227,6 +228,7 @@ contract PermissionedResolver is
             type(ITextResolver).interfaceId == interfaceId ||
             type(IVersionableResolver).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
+            type(IProxyAuthorization).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -611,7 +613,6 @@ contract PermissionedResolver is
 
     /// @inheritdoc IPubkeyResolver
     function pubkey(bytes32 node) external view returns (bytes32 x, bytes32 y) {
-        // solgrid-disable-next-line naming/var-name-mixedcase
         Record storage r = _record(node);
         x = r.pubkey[0];
         y = r.pubkey[1];
@@ -620,6 +621,23 @@ contract PermissionedResolver is
     /// @inheritdoc ITextResolver
     function text(bytes32 node, string calldata key) external view returns (string memory) {
         return _record(node).texts[key];
+    }
+
+    /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
+    /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
+    ///      upgrade call.
+    /// @param {previousImplementation} Ignored.
+    /// @return allowed Always `true` for implementations in this resolver family.
+    function canUpgradeFrom(
+        address /* previousImplementation */
+    )
+        external
+        pure
+        virtual
+        override
+        returns (bool allowed)
+    {
+        return true;
     }
 
     /// @notice Perform multiple write operations.
@@ -667,7 +685,6 @@ contract PermissionedResolver is
 
     /// @inheritdoc IAddressResolver
     function addr(bytes32 node, uint256 coinType) public view returns (bytes memory addressBytes) {
-        // solgrid-disable-next-line naming/var-name-mixedcase
         Record storage r = _record(node);
         addressBytes = r.addresses[coinType];
         if (addressBytes.length == 0 && ENSIP19.chainFromCoinType(coinType) > 0) {
@@ -802,7 +819,7 @@ contract PermissionedResolver is
     }
 
     /// @dev Access record storage pointer.
-    function _record(bytes32 node) internal view returns (Record storage r) {
+    function _record(bytes32 node) internal view returns (Record storage) {
         return _records[node][_versions[node]];
     }
 

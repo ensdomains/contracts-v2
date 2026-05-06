@@ -6,36 +6,36 @@ pragma solidity ^0.8.20;
 import {Test} from "forge-std/Test.sol";
 
 import {EnhancedAccessControl} from "~src/access-control/EnhancedAccessControl.sol";
-import {
-    IEnhancedAccessControl
-} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
+import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {HCAEquivalence} from "~src/hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 uint256 constant ROOT_RESOURCE = 0;
+
 uint256 constant RESOURCE_1 = uint256(keccak256("RESOURCE_1"));
+
 uint256 constant RESOURCE_2 = uint256(keccak256("RESOURCE_2"));
 
 uint256 constant ROLE_A = 1 << 0; // First nybble (bits 0-3)
+
 uint256 constant ROLE_B = 1 << 4; // Second nybble (bits 4-7)
+
 uint256 constant ROLE_C = 1 << 8; // Third nybble (bits 8-11)
+
 uint256 constant ROLE_D = 1 << 12; // Fourth nybble (bits 12-15)
 
 uint256 constant ADMIN_ROLE_A = ROLE_A << 128; // First admin nybble (bits 128-131)
+
 uint256 constant ADMIN_ROLE_B = ROLE_B << 128; // Second admin nybble (bits 132-135)
+
 uint256 constant ADMIN_ROLE_C = ROLE_C << 128; // Third admin nybble (bits 136-139)
+
 uint256 constant ADMIN_ROLE_D = ROLE_D << 128; // Fourth admin nybble (bits 140-143)
 
-uint256 constant ALL_ROLES = ROLE_A |
-    ROLE_B |
-    ROLE_C |
-    ROLE_D |
-    ADMIN_ROLE_A |
-    ADMIN_ROLE_B |
-    ADMIN_ROLE_C |
-    ADMIN_ROLE_D;
+uint256 constant ALL_ROLES =
+    ROLE_A | ROLE_B | ROLE_C | ROLE_D | ADMIN_ROLE_A | ADMIN_ROLE_B | ADMIN_ROLE_C | ADMIN_ROLE_D;
 
 contract MockEnhancedAccessControl is EnhancedAccessControl {
     uint256 public lastGrantedCount;
@@ -72,10 +72,10 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
         return _revokeRoles(resource, EACBaseRolesLib.ALL_ROLES, account, true);
     }
 
-    function revokeAllRolesWithoutCallback(
-        uint256 resource,
-        address account
-    ) external returns (bool) {
+    function revokeAllRolesWithoutCallback(uint256 resource, address account)
+        external
+        returns (bool)
+    {
         return _revokeRoles(resource, EACBaseRolesLib.ALL_ROLES, account, false);
     }
 
@@ -85,7 +85,10 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
         uint256 oldRoles,
         uint256 newRoles,
         uint256 roleBitmap
-    ) internal override {
+    )
+        internal
+        override
+    {
         ++lastGrantedCount;
         lastGrantedResource = resource;
         lastGrantedRoleBitmap = roleBitmap;
@@ -101,7 +104,10 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
         uint256 oldRoles,
         uint256 newRoles,
         uint256 roleBitmap
-    ) internal override {
+    )
+        internal
+        override
+    {
         ++lastRevokedCount;
         lastRevokedResource = resource;
         lastRevokedRoleBitmap = roleBitmap;
@@ -111,37 +117,35 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
         lastRevokedAccount = account;
     }
 
-    function grantRolesWithoutCallback(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) external canGrantRoles(resource, roleBitmap) returns (bool) {
+    function grantRolesWithoutCallback(uint256 resource, uint256 roleBitmap, address account)
+        external
+        canGrantRoles(resource, roleBitmap)
+        returns (bool)
+    {
         if (resource == ROOT_RESOURCE) {
             revert EACRootResourceNotAllowed();
         }
         return _grantRoles(resource, roleBitmap, account, false);
     }
 
-    function revokeRolesWithoutCallback(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) external canRevokeRoles(resource, roleBitmap) returns (bool) {
+    function revokeRolesWithoutCallback(uint256 resource, uint256 roleBitmap, address account)
+        external
+        canRevokeRoles(resource, roleBitmap)
+        returns (bool)
+    {
         if (resource == ROOT_RESOURCE) {
             revert EACRootResourceNotAllowed();
         }
         return _revokeRoles(resource, roleBitmap, account, false);
     }
 
-    function transferRolesWithoutCallback(
-        uint256 resource,
-        address srcAccount,
-        address dstAccount
-    ) external {
+    function transferRolesWithoutCallback(uint256 resource, address srcAccount, address dstAccount)
+        external
+    {
         _transferRoles(resource, srcAccount, dstAccount, false);
     }
-
 }
+
 
 contract EnhancedAccessControlTest is Test {
     MockEnhancedAccessControl access;
@@ -835,8 +839,8 @@ contract EnhancedAccessControlTest is Test {
         access.grantRootRoles(ROLE_D, user1);
 
         // Verify consistency for normal resource
-        bool directCheck = (access.roles(RESOURCE_1, user1) & (ROLE_A | ROLE_B)) ==
-            (ROLE_A | ROLE_B);
+        bool directCheck =
+            (access.roles(RESOURCE_1, user1) & (ROLE_A | ROLE_B)) == (ROLE_A | ROLE_B);
         bool helperCheck = access.hasRoles(RESOURCE_1, ROLE_A | ROLE_B, user1);
         assertEq(directCheck, helperCheck);
 
@@ -1571,10 +1575,8 @@ contract EnhancedAccessControlTest is Test {
         (, uint256 maskCD) = access.getAssigneeCount(RESOURCE_1, ROLE_C | ROLE_D);
         (, uint256 maskAC) = access.getAssigneeCount(RESOURCE_1, ROLE_A | ROLE_C);
         (, uint256 maskBD) = access.getAssigneeCount(RESOURCE_1, ROLE_B | ROLE_D);
-        (, uint256 maskAll) = access.getAssigneeCount(
-            RESOURCE_1,
-            ROLE_A | ROLE_B | ROLE_C | ROLE_D
-        );
+        (, uint256 maskAll) =
+            access.getAssigneeCount(RESOURCE_1, ROLE_A | ROLE_B | ROLE_C | ROLE_D);
 
         assertEq(maskAB, 0xff); // First two nybbles
         assertEq(maskCD, 0xff00); // Last two nybbles

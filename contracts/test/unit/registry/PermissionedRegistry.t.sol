@@ -728,11 +728,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1;
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IStandardRegistry.TransferDisallowed.selector,
-                tokenIds[1],
-                user1
-            )
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenIds[1], user1)
         );
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
@@ -758,11 +754,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         amounts[0] = 1;
         amounts[1] = 1;
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IStandardRegistry.TransferDisallowed.selector,
-                tokenIds[0],
-                user1
-            )
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenIds[0], user1)
         );
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
@@ -1203,8 +1195,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     // 3. user2 receives crippled token => angry!
     function test_transferAbortsAfterRevoke() external {
         testRoles =
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
-            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
         uint256 tokenId = this._register();
         // make token available for sale
         vm.prank(user1);
@@ -1424,18 +1415,22 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 }
 
+
 contract MockPermissionedRegistry is PermissionedRegistry {
     constructor(
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadata,
         address ownerAddress,
         uint256 ownerRoles
-    ) PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles) {}
+    )
+        PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles)
+    {}
 
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
     }
 }
+
 
 contract ReentrantReceiver is ERC1155Holder {
     PermissionedRegistry immutable REGISTRY;
@@ -1452,7 +1447,11 @@ contract ReentrantReceiver is ERC1155Holder {
         uint256 id,
         uint256 value,
         bytes memory data
-    ) public override returns (bytes4) {
+    )
+        public
+        override
+        returns (bytes4)
+    {
         if (from == address(0)) {
             // during mint(), eg. token regeneration(), mutate the registry
             bytes memory v = _data;
@@ -1471,6 +1470,7 @@ contract ReentrantReceiver is ERC1155Holder {
     }
 }
 
+
 contract StrictERC1155Holder is ERC1155Holder {
     bool immutable BATCH;
     constructor(bool batch) {
@@ -1482,7 +1482,11 @@ contract StrictERC1155Holder is ERC1155Holder {
         uint256 id,
         uint256 value,
         bytes memory data
-    ) public override returns (bytes4) {
+    )
+        public
+        override
+        returns (bytes4)
+    {
         require(!BATCH);
         return super.onERC1155Received(operator, from, id, value, data);
     }
@@ -1492,7 +1496,11 @@ contract StrictERC1155Holder is ERC1155Holder {
         uint256[] memory ids,
         uint256[] memory values,
         bytes memory data
-    ) public override returns (bytes4) {
+    )
+        public
+        override
+        returns (bytes4)
+    {
         require(BATCH);
         return super.onERC1155BatchReceived(operator, from, ids, values, data);
     }

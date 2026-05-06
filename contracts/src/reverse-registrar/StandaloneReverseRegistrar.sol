@@ -71,7 +71,6 @@ abstract contract StandaloneReverseRegistrar is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initialises the standalone reverse registrar with the given label.
     /// @dev Computes and stores the parent node and DNS-encoded parent hash for efficient lookups.
     /// @param label The string label for the namespace (e.g., "8000000a" for OP Mainnet).
     constructor(string memory label) {

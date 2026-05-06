@@ -28,7 +28,7 @@ const config = {
       },
     ],
     overrides: {
-      'src/L2/reverse-registrar/L2ReverseRegistrar.sol': {
+      "src/L2/reverse-registrar/L2ReverseRegistrar.sol": {
         version: "0.8.25",
         settings: {
           optimizer: {
@@ -42,8 +42,8 @@ const config = {
             },
           },
         },
-      }
-    }
+      },
+    },
   },
   paths: {
     sources: {
@@ -61,10 +61,7 @@ const config = {
     },
   },
   shouldIgnoreWarnings: (path) => {
-    return (
-      path.startsWith("./lib/ens-contracts/") ||
-      path.startsWith("./lib/solsha1/")
-    );
+    return path.startsWith("./lib/");
   },
   plugins: [
     HardhatNetworkHelpersPlugin,

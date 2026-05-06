@@ -16,7 +16,6 @@ import {
     IStandaloneReverseRegistrar,
     LibString
 } from "~src/reverse-registrar/StandaloneReverseRegistrar.sol";
-
 import {
     MockStandaloneReverseRegistrarImplementer
 } from "~test/mocks/MockStandaloneReverseRegistrarImplementer.sol";
@@ -44,58 +43,48 @@ contract StandaloneReverseRegistrarTest is Test {
     ////////////////////////////////////////////////////////////////////////
 
     function test_constructor_setParentNode() public view {
-        bytes32 expectedParentNode = keccak256(
-            abi.encodePacked(REVERSE_NODE, keccak256(abi.encodePacked(ETH_LABEL)))
-        );
+        bytes32 expectedParentNode =
+            keccak256(abi.encodePacked(REVERSE_NODE, keccak256(abi.encodePacked(ETH_LABEL))));
         assertEq(registrar.PARENT_NODE(), expectedParentNode, "PARENT_NODE should match");
     }
 
     function test_constructor_setSimpleHashedParent() public view {
-        bytes memory parent = abi.encodePacked(
-            uint8(bytes(ETH_LABEL).length),
-            ETH_LABEL,
-            uint8(7),
-            "reverse",
-            uint8(0)
-        );
+        bytes memory parent =
+            abi.encodePacked(
+                uint8(bytes(ETH_LABEL).length),
+                ETH_LABEL,
+                uint8(7),
+                "reverse",
+                uint8(0)
+            );
         bytes32 expectedHash = keccak256(parent);
-        assertEq(
-            registrar.SIMPLE_HASHED_PARENT(),
-            expectedHash,
-            "SIMPLE_HASHED_PARENT should match"
-        );
+        assertEq(registrar.SIMPLE_HASHED_PARENT(), expectedHash, "SIMPLE_HASHED_PARENT should match");
     }
 
     function test_constructor_setParentLength() public view {
-        bytes memory parent = abi.encodePacked(
-            uint8(bytes(ETH_LABEL).length),
-            ETH_LABEL,
-            uint8(7),
-            "reverse",
-            uint8(0)
-        );
+        bytes memory parent =
+            abi.encodePacked(
+                uint8(bytes(ETH_LABEL).length),
+                ETH_LABEL,
+                uint8(7),
+                "reverse",
+                uint8(0)
+            );
         assertEq(registrar.PARENT_LENGTH(), parent.length, "PARENT_LENGTH should match");
     }
 
     function testFuzz_constructor_differentLabels(string memory label) public {
         vm.assume(bytes(label).length > 0 && bytes(label).length <= 255);
 
-        MockStandaloneReverseRegistrarImplementer newRegistrar = new MockStandaloneReverseRegistrarImplementer(
-                label
-            );
+        MockStandaloneReverseRegistrarImplementer newRegistrar =
+            new MockStandaloneReverseRegistrarImplementer(label);
 
-        bytes32 expectedParentNode = keccak256(
-            abi.encodePacked(REVERSE_NODE, keccak256(abi.encodePacked(label)))
-        );
+        bytes32 expectedParentNode =
+            keccak256(abi.encodePacked(REVERSE_NODE, keccak256(abi.encodePacked(label))));
         assertEq(newRegistrar.PARENT_NODE(), expectedParentNode, "PARENT_NODE should match");
 
-        bytes memory parent = abi.encodePacked(
-            uint8(bytes(label).length),
-            label,
-            uint8(7),
-            "reverse",
-            uint8(0)
-        );
+        bytes memory parent =
+            abi.encodePacked(uint8(bytes(label).length), label, uint8(7), "reverse", uint8(0));
         assertEq(newRegistrar.SIMPLE_HASHED_PARENT(), keccak256(parent), "SIMPLE_HASHED_PARENT");
         assertEq(newRegistrar.PARENT_LENGTH(), parent.length, "PARENT_LENGTH should match");
     }
@@ -130,10 +119,7 @@ contract StandaloneReverseRegistrarTest is Test {
     }
 
     function test_supportsInterface_ierc165() public view {
-        assertTrue(
-            registrar.supportsInterface(type(IERC165).interfaceId),
-            "Should support IERC165"
-        );
+        assertTrue(registrar.supportsInterface(type(IERC165).interfaceId), "Should support IERC165");
     }
 
     function test_supportsInterface_invalidInterface() public view {
@@ -156,9 +142,8 @@ contract StandaloneReverseRegistrarTest is Test {
         registrar.setName(user1, expectedName);
 
         string memory label = LibString.toAddressString(user1);
-        bytes32 node = keccak256(
-            abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label)))
-        );
+        bytes32 node =
+            keccak256(abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label))));
 
         assertEq(registrar.name(node), expectedName, "Should return set name");
     }
@@ -167,9 +152,8 @@ contract StandaloneReverseRegistrarTest is Test {
         registrar.setName(addr, expectedName);
 
         string memory label = LibString.toAddressString(addr);
-        bytes32 node = keccak256(
-            abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label)))
-        );
+        bytes32 node =
+            keccak256(abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label))));
 
         assertEq(registrar.name(node), expectedName, "Should return set name");
     }
@@ -266,17 +250,10 @@ contract StandaloneReverseRegistrarTest is Test {
     function test_resolve_revert_unreachableName_wrongParent() public {
         // Build name with correct length but wrong parent
         // 41 bytes for address part + wrong parent
-        bytes memory addressPart = abi.encodePacked(
-            uint8(40),
-            "0000000000000000000000000000000000000001"
-        );
-        bytes memory wrongParent = abi.encodePacked(
-            uint8(5),
-            "wrong",
-            uint8(7),
-            "reverse",
-            uint8(0)
-        );
+        bytes memory addressPart =
+            abi.encodePacked(uint8(40), "0000000000000000000000000000000000000001");
+        bytes memory wrongParent =
+            abi.encodePacked(uint8(5), "wrong", uint8(7), "reverse", uint8(0));
         bytes memory dnsEncodedName = abi.encodePacked(addressPart, wrongParent);
 
         // Ensure length matches expected
@@ -310,9 +287,8 @@ contract StandaloneReverseRegistrarTest is Test {
         registrar.setName(user1, name_);
 
         string memory label = LibString.toAddressString(user1);
-        bytes32 node = keccak256(
-            abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label)))
-        );
+        bytes32 node =
+            keccak256(abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label))));
 
         assertEq(registrar.name(node), name_, "Name should be stored");
     }
@@ -349,9 +325,8 @@ contract StandaloneReverseRegistrarTest is Test {
     function test_setName_emitsNameChangedEvent() public {
         string memory name_ = "carol.eth";
         string memory label = LibString.toAddressString(user1);
-        bytes32 expectedNode = keccak256(
-            abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label)))
-        );
+        bytes32 expectedNode =
+            keccak256(abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label))));
 
         vm.expectEmit(true, false, false, true);
         emit INameResolver.NameChanged(expectedNode, name_);
@@ -394,9 +369,8 @@ contract StandaloneReverseRegistrarTest is Test {
         registrar.setName(user1, firstName);
 
         string memory label = LibString.toAddressString(user1);
-        bytes32 node = keccak256(
-            abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label)))
-        );
+        bytes32 node =
+            keccak256(abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label))));
 
         assertEq(registrar.name(node), firstName, "First name should be set");
 
@@ -408,9 +382,8 @@ contract StandaloneReverseRegistrarTest is Test {
         registrar.setName(user1, "");
 
         string memory label = LibString.toAddressString(user1);
-        bytes32 node = keccak256(
-            abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label)))
-        );
+        bytes32 node =
+            keccak256(abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label))));
 
         assertEq(registrar.name(node), "", "Empty name should be stored");
     }
@@ -419,9 +392,8 @@ contract StandaloneReverseRegistrarTest is Test {
         registrar.setName(addr, name_);
 
         string memory label = LibString.toAddressString(addr);
-        bytes32 node = keccak256(
-            abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label)))
-        );
+        bytes32 node =
+            keccak256(abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label))));
 
         assertEq(registrar.name(node), name_, "Name should be stored");
     }
@@ -446,9 +418,8 @@ contract StandaloneReverseRegistrarTest is Test {
 
         // Also verify via direct name() call
         string memory label = LibString.toAddressString(user1);
-        bytes32 node = keccak256(
-            abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label)))
-        );
+        bytes32 node =
+            keccak256(abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label))));
         assertEq(registrar.name(node), expectedName, "Direct name() should match");
     }
 
@@ -472,12 +443,10 @@ contract StandaloneReverseRegistrarTest is Test {
 
     function test_differentLabels() public {
         // Deploy registrars with different labels
-        MockStandaloneReverseRegistrarImplementer ethRegistrar = new MockStandaloneReverseRegistrarImplementer(
-                "default"
-            );
-        MockStandaloneReverseRegistrarImplementer opRegistrar = new MockStandaloneReverseRegistrarImplementer(
-                "8000000a"
-            );
+        MockStandaloneReverseRegistrarImplementer ethRegistrar =
+            new MockStandaloneReverseRegistrarImplementer("default");
+        MockStandaloneReverseRegistrarImplementer opRegistrar =
+            new MockStandaloneReverseRegistrarImplementer("8000000a");
 
         // Parent nodes should be different
         assertTrue(
@@ -493,13 +462,14 @@ contract StandaloneReverseRegistrarTest is Test {
     function _buildDnsEncodedName(address addr) internal pure returns (bytes memory) {
         string memory addrString = LibString.toAddressString(addr);
 
-        bytes memory parent = abi.encodePacked(
-            uint8(bytes(ETH_LABEL).length),
-            ETH_LABEL,
-            uint8(7),
-            "reverse",
-            uint8(0)
-        );
+        bytes memory parent =
+            abi.encodePacked(
+                uint8(bytes(ETH_LABEL).length),
+                ETH_LABEL,
+                uint8(7),
+                "reverse",
+                uint8(0)
+            );
 
         return abi.encodePacked(uint8(40), addrString, parent);
     }

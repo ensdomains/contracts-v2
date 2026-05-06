@@ -25,7 +25,6 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the ENSV2Resolver with the root registry and batch gateway provider.
     /// @param rootRegistry The root registry.
     /// @param batchGatewayProvider The batch gateway provider.
     /// @param ethResolver The override resolver for "eth" or null to use ENSv2.

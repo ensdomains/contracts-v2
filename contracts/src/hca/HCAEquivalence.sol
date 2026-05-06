@@ -27,7 +27,6 @@ abstract contract HCAEquivalence {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes HCAEquivalence.
     /// @param hcaFactory The HCA factory contract.
     constructor(IHCAFactoryBasic hcaFactory) {
         HCA_FACTORY = hcaFactory;
