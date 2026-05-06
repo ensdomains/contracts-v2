@@ -6,7 +6,8 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
-import {VerifiableFactory, UUPSProxy} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {BaseUriRegistryMetadata} from "~src/registry/BaseUriRegistryMetadata.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
@@ -111,15 +112,14 @@ contract V2Fixture is Test, ERC1155Holder {
         uint256 salt
     ) internal view returns (address) {
         bytes32 outerSalt = keccak256(abi.encode(deployer, salt));
+        bytes memory bytecode = CloneProxyBytecode.creationCode(
+            verifiableFactory.proxyLogic(),
+            outerSalt
+        );
         return
             vm.computeCreate2Address(
                 outerSalt,
-                keccak256(
-                    abi.encodePacked(
-                        type(UUPSProxy).creationCode,
-                        abi.encode(verifiableFactory, outerSalt)
-                    )
-                ),
+                keccak256(bytecode),
                 address(verifiableFactory)
             );
     }

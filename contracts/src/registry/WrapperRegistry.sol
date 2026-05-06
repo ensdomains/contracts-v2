@@ -2,6 +2,7 @@
 pragma solidity >=0.8.13;
 
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -27,7 +28,8 @@ contract WrapperRegistry is
     PermissionedRegistry,
     LockedWrapperReceiver,
     Initializable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    IProxyAuthorization
 {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
@@ -93,6 +95,7 @@ contract WrapperRegistry is
         return
             type(IWrapperRegistry).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
+            type(IProxyAuthorization).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -122,6 +125,23 @@ contract WrapperRegistry is
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
+    /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
+    ///      upgrade call, including the wrapper upgrade target allowlist.
+    /// @param {previousImplementation} Ignored.
+    /// @return allowed Always `true` for implementations in this wrapper registry family.
+    function canUpgradeFrom(
+        address /* previousImplementation */
+    )
+        external
+        pure
+        virtual
+        override
+        returns (bool allowed)
+    {
+        return true;
+    }
 
     /// @inheritdoc PermissionedRegistry
     /// @dev Blocks registration of emancipated children.

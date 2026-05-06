@@ -3,6 +3,7 @@ pragma solidity ^0.8.13;
 
 import {Test} from "forge-std/Test.sol";
 
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
@@ -1018,9 +1019,12 @@ contract PermissionedResolverTest is Test {
     }
 }
 
-contract MockUpgrade is UUPSUpgradeable {
+contract MockUpgrade is UUPSUpgradeable, IProxyAuthorization {
     function addr(bytes32) external pure returns (address) {
         return address(1);
+    }
+    function canUpgradeFrom(address) external pure returns (bool) {
+        return true;
     }
     function _authorizeUpgrade(address) internal override {}
 }

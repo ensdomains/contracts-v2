@@ -91,6 +91,9 @@ contract PermissionedRegistry is
     /// @dev The entries of this registry.
     mapping(uint256 storageId => Entry entry) internal _entries;
 
+    /// @dev Storage gap for future changes.
+    uint256[256] private __gap;
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////

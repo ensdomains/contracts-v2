@@ -38,7 +38,7 @@
         "abitype": "^1.2.3",
         "chai": "^5.1.1",
         "ethers": "^6.15.0",
-        "solgrid": "0.0.14",
+        "solgrid": "0.0.16",
         "ts-node": "^10.9.2",
         "vite-tsconfig-paths": "^5.1.4",
         "vitest": "3.1.3",
@@ -262,13 +262,13 @@
 
     "@sindresorhus/merge-streams": ["@sindresorhus/merge-streams@4.0.0", "", {}, "sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ=="],
 
-    "@solgrid/cli-darwin-arm64": ["@solgrid/cli-darwin-arm64@0.0.14", "", { "os": "darwin", "cpu": "arm64" }, "sha512-GumStKxsM1QotFr9tbZIJMEbyklhSzZmazyUgNd7DHt4E9lijM35PEEbcP92dcgiUvFJJF4WiZFVRko3cOHN/w=="],
+    "@solgrid/cli-darwin-arm64": ["@solgrid/cli-darwin-arm64@0.0.16", "", { "os": "darwin", "cpu": "arm64" }, "sha512-Hi9sRcd3NOzS4hUmrovY2GGn+kpmfKuCdyNS0gNtAeTrr+rirJvJOgORD4Yj4xhHhoZPt8RNLUclurqSKFoIsg=="],
 
-    "@solgrid/cli-linux-arm64": ["@solgrid/cli-linux-arm64@0.0.14", "", { "os": "linux", "cpu": "arm64" }, "sha512-XWrJEqQiuXTxNvJyeXfOcumcZXNPkkb4sADU+cIPExgCIQaFRfr3e6Qo042+x0Ht4n0cqShzIkxv+p5QIHYpng=="],
+    "@solgrid/cli-linux-arm64": ["@solgrid/cli-linux-arm64@0.0.16", "", { "os": "linux", "cpu": "arm64" }, "sha512-kc+Js4INos48nC0L82WM6WUHNxF5W8txHsdWcyz3tjEHupBlZhXSZk88G4djLcUYYd8ZPyltOSKboT0PEmY+/A=="],
 
-    "@solgrid/cli-linux-x64": ["@solgrid/cli-linux-x64@0.0.14", "", { "os": "linux", "cpu": "x64" }, "sha512-XaZGetBsa2JcgWsQql0fzCCF2c1KzGfh8iVTeWFsWqB7pCQECHUOPQWntGwk+AcPXc3A2FcKn5DEDVwDnlXDwg=="],
+    "@solgrid/cli-linux-x64": ["@solgrid/cli-linux-x64@0.0.16", "", { "os": "linux", "cpu": "x64" }, "sha512-TZS70lZCEfmtXZqViU9jidgjIwU70sqfqIp88M8CAJ2LP0Zq0fy3iWOSRUbshP3aXmATboC34npY+pBUD6rbAQ=="],
 
-    "@solgrid/cli-win32-x64": ["@solgrid/cli-win32-x64@0.0.14", "", { "os": "win32", "cpu": "x64" }, "sha512-7K5T/10X/Y/UlMuALynLDD8sVDcSRiJ0XJidghF6XFZD0K9W7r7YfTTRLGrmCrfxR9Du3ic//0yJDjhWdHHqAw=="],
+    "@solgrid/cli-win32-x64": ["@solgrid/cli-win32-x64@0.0.16", "", { "os": "win32", "cpu": "x64" }, "sha512-YenZKkeAFu/ntvBhgPrWwHT+Wfkrd28QVJSToN5125YmCX2DidlaJzHuu/AOXv/QvGP4/zgnvldK5HNe+nlblw=="],
 
     "@streamparser/json": ["@streamparser/json@0.0.22", "", {}, "sha512-b6gTSBjJ8G8SuO3Gbbj+zXbVx8NSs1EbpbMKpzGLWMdkR+98McH9bEjSz3+0mPJf68c5nxa3CrJHp5EQNXM6zQ=="],
 
@@ -522,7 +522,7 @@
 
     "slash": ["slash@5.1.0", "", {}, "sha512-ZA6oR3T/pEyuqwMgAKT0/hAv8oAXckzbkmR0UkUosQ+Mc4RxGoJkRmwHgHufaenlyAgE1Mxgpdcrf75y6XcnDg=="],
 
-    "solgrid": ["solgrid@0.0.14", "", { "optionalDependencies": { "@solgrid/cli-darwin-arm64": "0.0.14", "@solgrid/cli-linux-arm64": "0.0.14", "@solgrid/cli-linux-x64": "0.0.14", "@solgrid/cli-win32-x64": "0.0.14" }, "bin": { "solgrid": "bin/solgrid.js" } }, "sha512-v4Mk5Qdmy/U35S09EiGnEPqzoyGlmhYEOL71BIspeEEZ0HJGE2v7C23oO8KmwceIgwSpWPnw+Hr06QQuQLMaqg=="],
+    "solgrid": ["solgrid@0.0.16", "", { "optionalDependencies": { "@solgrid/cli-darwin-arm64": "0.0.16", "@solgrid/cli-linux-arm64": "0.0.16", "@solgrid/cli-linux-x64": "0.0.16", "@solgrid/cli-win32-x64": "0.0.16" }, "bin": { "solgrid": "bin/solgrid.js" } }, "sha512-dnXHeQ4+wLlYhNQCNeHJ6UYUIKZ2hIPA1oUsyeNsXZyU+l6b7TJSyneJetUMaMf2zhqMyXoldsqaUUEK9kTpSw=="],
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 

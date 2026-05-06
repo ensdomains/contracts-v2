@@ -26,7 +26,7 @@
     "abitype": "^1.2.3",
     "chai": "^5.1.1",
     "ethers": "^6.15.0",
-    "solgrid": "0.0.14",
+    "solgrid": "0.0.16",
     "ts-node": "^10.9.2",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "3.1.3"
@@ -39,10 +39,10 @@
     "node": ">=24"
   },
   "scripts": {
-    "lint": "solgrid check src/**/*.sol",
-    "lint:fix": "solgrid fix src/**/*.sol",
-    "format": "solgrid fmt src/**/*.sol",
-    "format:check": "solgrid fmt --diff src/**/*.sol",
+    "lint": "solgrid check 'src/**/*.sol'",
+    "lint:fix": "solgrid fix 'src/**/*.sol'",
+    "format": "solgrid fmt 'src/**/*.sol'",
+    "format:check": "solgrid fmt --diff 'src/**/*.sol'",
     "compile:forge": "forge build",
     "compile:hardhat": "hardhat compile",
     "compile": "bun run compile:forge && bun run compile:hardhat",
