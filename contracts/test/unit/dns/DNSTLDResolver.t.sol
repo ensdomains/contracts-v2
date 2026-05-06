@@ -16,9 +16,7 @@ import {DNSTLDResolver, ENS, IRegistry, DNSSEC, HexUtils} from "~src/dns/DNSTLDR
 
 // coverage:ignore-next-line
 contract MockDNS is DNSTLDResolver {
-    constructor(
-        IRegistry rootRegistry
-    )
+    constructor(IRegistry rootRegistry)
         DNSTLDResolver(
             ENS(address(0)),
             address(0),
@@ -31,11 +29,7 @@ contract MockDNS is DNSTLDResolver {
     function readTXT(bytes memory v) external pure returns (bytes memory) {
         return _readTXT(v, 0, v.length);
     }
-    function readTXT(
-        bytes memory v,
-        uint256 pos,
-        uint256 end
-    ) external pure returns (bytes memory) {
+    function readTXT(bytes memory v, uint256 pos, uint256 end) external pure returns (bytes memory) {
         return _readTXT(v, pos, end);
     }
     // function trim(bytes memory v) external pure returns (bytes memory) {
@@ -45,6 +39,7 @@ contract MockDNS is DNSTLDResolver {
         return _parseResolver(v);
     }
 }
+
 
 contract DNSTLDResolverTest is Test, ERC1155Holder, IAddrResolver {
     PermissionedRegistry rootRegistry;

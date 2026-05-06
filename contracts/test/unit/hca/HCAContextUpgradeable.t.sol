@@ -18,6 +18,7 @@ contract HCAContextUpgradeableHarness is HCAContextUpgradeable {
     }
 }
 
+
 contract HCAContextUpgradeableTest is Test {
     MockHCAFactoryBasic factory;
     HCAContextUpgradeableHarness harness;

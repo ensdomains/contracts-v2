@@ -39,14 +39,15 @@ contract SimpleRegistryMetadataTest is Test, ERC1155Holder {
     }
 
     function test_registry_metadata_token_uri() public {
-        uint256 tokenId = registry.register(
-            "test",
-            address(this),
-            registry,
-            address(0),
-            DEFAULT_ROLE_BITMAP,
-            uint64(block.timestamp + 1000)
-        );
+        uint256 tokenId =
+            registry.register(
+                "test",
+                address(this),
+                registry,
+                address(0),
+                DEFAULT_ROLE_BITMAP,
+                uint64(block.timestamp + 1000)
+            );
 
         assertEq(registry.uri(tokenId), "");
 

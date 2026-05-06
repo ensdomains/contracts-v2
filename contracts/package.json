@@ -39,10 +39,10 @@
     "node": ">=24"
   },
   "scripts": {
-    "lint": "solgrid check 'src/**/*.sol'",
-    "lint:fix": "solgrid fix 'src/**/*.sol'",
-    "format": "solgrid fmt 'src/**/*.sol'",
-    "format:check": "solgrid fmt --diff 'src/**/*.sol'",
+    "lint": "solgrid check 'src/**/*.sol' && solgrid check --config solgrid.test.toml 'test/**/*.sol' 'script/**/*.sol'",
+    "lint:fix": "solgrid fix 'src/**/*.sol' && solgrid fix --config solgrid.test.toml 'test/**/*.sol' 'script/**/*.sol'",
+    "format": "solgrid fmt 'src/**/*.sol' 'test/**/*.sol' 'script/**/*.sol'",
+    "format:check": "solgrid fmt --diff 'src/**/*.sol' 'test/**/*.sol' 'script/**/*.sol'",
     "compile:forge": "forge build",
     "compile:hardhat": "hardhat compile",
     "compile": "bun run compile:forge && bun run compile:hardhat",

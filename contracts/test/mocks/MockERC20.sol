@@ -18,11 +18,10 @@ contract MockERC20 is ERC20, HCAContext {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor(
-        string memory symbol,
-        uint8 decimals_,
-        IHCAFactoryBasic factory
-    ) ERC20(symbol, symbol) HCAEquivalence(factory) {
+    constructor(string memory symbol, uint8 decimals_, IHCAFactoryBasic factory)
+        ERC20(symbol, symbol)
+        HCAEquivalence(factory)
+    {
         _decimals = decimals_;
     }
 
@@ -46,6 +45,7 @@ contract MockERC20 is ERC20, HCAContext {
         return HCAContext._msgSender();
     }
 }
+
 
 contract MockERC20Blacklist is MockERC20 {
     ////////////////////////////////////////////////////////////////////////
@@ -77,11 +77,14 @@ contract MockERC20Blacklist is MockERC20 {
     }
 
     function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
-        if (isBlacklisted[from]) revert Blacklisted(from);
-        if (isBlacklisted[to]) revert Blacklisted(to);
+        if (isBlacklisted[from])
+            revert Blacklisted(from);
+        if (isBlacklisted[to])
+            revert Blacklisted(to);
         return super.transferFrom(from, to, amount);
     }
 }
+
 
 contract MockERC20VoidReturn is MockERC20 {
     ////////////////////////////////////////////////////////////////////////
@@ -103,6 +106,7 @@ contract MockERC20VoidReturn is MockERC20 {
         }
     }
 }
+
 
 contract MockERC20FalseReturn is MockERC20 {
     ////////////////////////////////////////////////////////////////////////
