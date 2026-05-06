@@ -39,8 +39,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "lint": "find src -name '*.sol' -exec solgrid check --no-cache --config solgrid.toml {} + && find src -name '*.sol' -exec solgrid fmt --no-cache --config solgrid.toml --diff {} +",
-    "lint:fix": "find src -name '*.sol' -exec solgrid fix --no-cache --config solgrid.toml {} + && find src -name '*.sol' -exec solgrid fmt --no-cache --config solgrid.toml {} +",
+    "lint": "solgrid check src/**/*.sol && solgrid fmt --diff src/**/*.sol",
+    "lint:fix": "solgrid fix src/**/*.sol && solgrid fmt src/**/*.sol",
     "compile:forge": "forge build",
     "compile:hardhat": "hardhat compile",
     "compile": "bun run compile:forge && bun run compile:hardhat",
