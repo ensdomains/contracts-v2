@@ -63,7 +63,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
     function test_initialization() public view {
         // Verify the proxy was deployed correctly
-        assertTrue(factory.verifyContract(address(proxy)), "Proxy should be verified");
+        assertTrue(
+            factory.verifyContract(address(proxy), address(implementation)),
+            "Proxy should be verified"
+        );
 
         // Verify admin has the expected roles
         assertTrue(
