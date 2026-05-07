@@ -564,11 +564,10 @@ contract PermissionedResolver is
         view
         returns (uint256 contentType, bytes memory value)
     {
-        // solgrid-disable-next-line naming/var-name-mixedcase
-        Record storage R = _record(node);
+        Record storage r = _record(node);
         for (contentType = 1; contentType > 0 && contentType <= contentTypes; contentType <<= 1) {
             if ((contentType & contentTypes) != 0) {
-                value = R.abis[contentType];
+                value = r.abis[contentType];
                 if (value.length > 0) {
                     return (contentType, value);
                 }
@@ -614,10 +613,9 @@ contract PermissionedResolver is
 
     /// @inheritdoc IPubkeyResolver
     function pubkey(bytes32 node) external view returns (bytes32 x, bytes32 y) {
-        // solgrid-disable-next-line naming/var-name-mixedcase
-        Record storage R = _record(node);
-        x = R.pubkey[0];
-        y = R.pubkey[1];
+        Record storage r = _record(node);
+        x = r.pubkey[0];
+        y = r.pubkey[1];
     }
 
     /// @inheritdoc ITextResolver
@@ -687,11 +685,10 @@ contract PermissionedResolver is
 
     /// @inheritdoc IAddressResolver
     function addr(bytes32 node, uint256 coinType) public view returns (bytes memory addressBytes) {
-        // solgrid-disable-next-line naming/var-name-mixedcase
-        Record storage R = _record(node);
-        addressBytes = R.addresses[coinType];
+        Record storage r = _record(node);
+        addressBytes = r.addresses[coinType];
         if (addressBytes.length == 0 && ENSIP19.chainFromCoinType(coinType) > 0) {
-            addressBytes = R.addresses[COIN_TYPE_DEFAULT];
+            addressBytes = r.addresses[COIN_TYPE_DEFAULT];
         }
     }
 
@@ -822,7 +819,7 @@ contract PermissionedResolver is
     }
 
     /// @dev Access record storage pointer.
-    function _record(bytes32 node) internal view returns (Record storage R) {
+    function _record(bytes32 node) internal view returns (Record storage) {
         return _records[node][_versions[node]];
     }
 

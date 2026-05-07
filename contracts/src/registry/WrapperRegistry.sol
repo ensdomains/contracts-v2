@@ -103,7 +103,7 @@ contract WrapperRegistry is
         bytes32 node,
         IRegistry parentRegistry,
         string calldata childLabel,
-        address admin,
+        address rootAccount,
         uint256 roleBitmap
     )
         public
@@ -113,12 +113,8 @@ contract WrapperRegistry is
         // setup canonical parent (ROLE_SET_PARENT is not granted)
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
-        _grantRoles(
-            ROOT_RESOURCE,
-            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | roleBitmap,
-            admin,
-            false
-        );
+        emit RegistryCreated();
+        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
     }
 
     ////////////////////////////////////////////////////////////////////////

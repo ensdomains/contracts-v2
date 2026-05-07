@@ -100,18 +100,19 @@ contract PermissionedRegistry is
 
     /// @param hcaFactory The HCA factory to use.
     /// @param metadata The metadata provider to use.
-    /// @param ownerAddress The address that will receive the specified roles.
-    /// @param ownerRoles The roles to grant to `ownerAddress`.
+    /// @param rootAccount Account granted root roles.
+    /// @param roleBitmap The role bitmap granted to `rootAccount`.
     constructor(
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadata,
-        address ownerAddress,
-        uint256 ownerRoles
+        address rootAccount,
+        uint256 roleBitmap
     )
         HCAEquivalence(hcaFactory)
         MetadataMixin(metadata)
     {
-        _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
+        emit RegistryCreated();
+        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
     }
 
     /// @inheritdoc IERC165
@@ -152,7 +153,6 @@ contract PermissionedRegistry is
     /// @inheritdoc IStandardRegistry
     function setParent(IRegistry parent, string memory label)
         public
-        virtual
         onlyRootRoles(RegistryRolesLib.ROLE_SET_PARENT)
     {
         _parentRegistry = parent;
@@ -178,7 +178,7 @@ contract PermissionedRegistry is
 
     /// @inheritdoc IStandardRegistry
     /// @dev Requires `REGISTERED | RESERVED` and `ROLE_UNREGISTER`.
-    function unregister(uint256 anyId) public virtual {
+    function unregister(uint256 anyId) public {
         (uint256 tokenId, Entry storage entry) =
             _checkExpiryAndTokenRoles(anyId, RegistryRolesLib.ROLE_UNREGISTER);
         emit LabelUnregistered(tokenId, _msgSender());
@@ -286,7 +286,6 @@ contract PermissionedRegistry is
     function ownerOf(uint256 tokenId)
         public
         view
-        virtual
         override(ERC1155Singleton, IERC1155Singleton)
         returns (address)
     {
@@ -426,7 +425,6 @@ contract PermissionedRegistry is
     /// @dev Override `ERC1155Singleton._update()` to transfer the roles to the new owner if the token is transferred.
     function _update(address from, address to, uint256[] memory tokenIds, uint256[] memory amounts)
         internal
-        virtual
         override
     {
         super._update(from, to, tokenIds, amounts); // ensures amounts[i] is 0 or 1
@@ -454,7 +452,6 @@ contract PermissionedRegistry is
         uint256 /*roleBitmap*/
     )
         internal
-        virtual
         override
     {
         _regenerate(resource);
@@ -469,7 +466,6 @@ contract PermissionedRegistry is
         uint256 /*roleBitmap*/
     )
         internal
-        virtual
         override
     {
         _regenerate(resource);
@@ -507,7 +503,6 @@ contract PermissionedRegistry is
     function _getSettableRoles(uint256 resource, address account)
         internal
         view
-        virtual
         override
         returns (uint256)
     {
@@ -530,7 +525,6 @@ contract PermissionedRegistry is
     function _getRevokableRoles(uint256 resource, address account)
         internal
         view
-        virtual
         override
         returns (uint256)
     {

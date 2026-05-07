@@ -59,6 +59,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     function setUp() public override {
         super.setUp();
         approvedUpgradeGate = new ApprovedUpgradeGate(address(this));
+        vm.expectEmit();
+        emit IRegistryEvents.RegistryCreated();
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
             verifiableFactory,
@@ -323,6 +325,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit ENS.NewResolver(node, address(0));
         // emit IERC1967.Upgraded()
+        vm.expectEmit();
+        emit IRegistryEvents.RegistryCreated();
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
             0 /*ROOT_RESOURCE*/,
@@ -819,7 +823,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             });
     }
 
-    function _deployWrapperRegistryProxy(address admin) internal returns (WrapperRegistry) {
+    function _deployWrapperRegistryProxy(address rootAccount) internal returns (WrapperRegistry) {
         bytes memory name = NameCoder.encode(string.concat(testLabel, ".eth"));
         bytes32 node = NameCoder.namehash(name, 0);
         uint256 salt = uint256(node);
@@ -829,7 +833,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 salt,
                 abi.encodeCall(
                     IWrapperRegistry.initialize,
-                    (node, ethRegistry, testLabel, admin, RegistryRolesLib.ROLE_RENEW)
+                    (node, ethRegistry, testLabel, rootAccount, RegistryRolesLib.ROLE_UPGRADE)
                 )
             );
         return WrapperRegistry(proxyAddress);

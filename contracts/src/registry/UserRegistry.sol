@@ -33,15 +33,16 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
     }
 
     /// @notice Initializes a proxy instance of `UserRegistry`.
-    /// @dev Grants the supplied role bitmap to `admin` on the root resource. Reverts if `admin`
-    ///      is the zero address.
-    /// @param admin The address that will receive the specified roles.
-    /// @param roleBitmap The role bitmap to grant to `admin`.
-    function initialize(address admin, uint256 roleBitmap) public initializer {
-        if (admin == address(0)) {
+    /// @dev Grants the supplied role bitmap to `rootAccount` on the root resource.
+    ///      Reverts if the zero address.
+    /// @param rootAccount Account granted root roles.
+    /// @param roleBitmap The role bitmap granted to `rootAccount`.
+    function initialize(address rootAccount, uint256 roleBitmap) public initializer {
+        if (rootAccount == address(0)) {
             revert InvalidOwner();
         }
-        _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
+        emit RegistryCreated();
+        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
     }
 
     /// @inheritdoc IERC165
