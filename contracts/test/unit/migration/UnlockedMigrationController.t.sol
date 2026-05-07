@@ -5,7 +5,9 @@ pragma solidity >=0.8.13;
 
 import {console} from "forge-std/console.sol";
 
+import {ENS} from "@ens/contracts/registry/ENS.sol";
 import {CAN_DO_EVERYTHING, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -13,28 +15,23 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
+import {InvalidOwner, UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
+import {LibLabel} from "~src/utils/LibLabel.sol";
+import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {IEnhancedAccessControl} from "~src/access-control/EnhancedAccessControl.sol";
-import {
-    IPermissionedRegistry,
-    RegistryRolesLib,
-    IRegistry,
-    LibLabel
-} from "~src/registry/PermissionedRegistry.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
 import {
-    UnlockedMigrationController,
-    LibMigration,
-    InvalidOwner,
-    UnauthorizedCaller
+    UnlockedMigrationController
 } from "~src/migration/UnlockedMigrationController.sol";
 import {
-    MigrationControllerFixture,
-    ERC165Checker,
-    NameCoder
-} from "./MigrationControllerFixture.sol";
-import {REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
-import {V1Fixture, ENS} from "~test/fixtures/V1Fixture.sol";
+    MigrationControllerFixture
+} from "~test/unit/migration/MigrationControllerFixture.sol";
+import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
 contract UnlockedMigrationControllerTest is MigrationControllerFixture {
