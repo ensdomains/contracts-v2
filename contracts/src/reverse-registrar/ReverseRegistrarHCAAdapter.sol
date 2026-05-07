@@ -12,7 +12,7 @@ import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 /// @dev The adapter must be configured as a controller on the reverse registrar.
 contract ReverseRegistrarHCAAdapter is HCAContext {
     ////////////////////////////////////////////////////////////////////////
-    // Constants & Immutables
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The v1 reverse registrar for `addr.reverse`.

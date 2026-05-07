@@ -14,7 +14,7 @@ import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 /// @dev The adapter must be configured as a controller on the default reverse registrar.
 contract DefaultReverseRegistrarHCAAdapter is HCAContext {
     ////////////////////////////////////////////////////////////////////////
-    // Constants & Immutables
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The v1 default reverse registrar for `default.reverse`.
