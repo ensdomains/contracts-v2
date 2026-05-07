@@ -7,11 +7,14 @@ import {
   bundleCalls,
   COIN_TYPE_DEFAULT,
   COIN_TYPE_ETH,
+  coinTypeFromChain,
   getReverseName,
   type KnownProfile,
   makeResolutions,
 } from "../utils/resolutions.js";
 import { dnsEncodeName } from "../utils/utils.js";
+
+const COIN_TYPE_OPTIMISM = coinTypeFromChain(10);
 
 describe("Resolve", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
@@ -37,8 +40,8 @@ describe("Resolve", () => {
       });
     }
 
-    named("reverse", () => env.shared.DefaultReverseResolver.address);
-    named("addr.reverse", () => env.shared.ETHReverseResolver.address);
+    named("reverse", () => env.v2.ENSV1Resolver.address);
+    named("addr.reverse", () => env.v2.ENSV1Resolver.address);
   });
 
   describe("L1", () => {
@@ -74,9 +77,7 @@ describe("Resolve", () => {
         const account = env.namedAccounts.owner;
 
         // setup addr(default)
-        const resolver = await env.deployPermissionedResolver({
-          account,
-        });
+        const resolver = account.resolver;
         await resolver.write.setAddr([
           namehash(name),
           COIN_TYPE_ETH,
@@ -92,9 +93,14 @@ describe("Resolve", () => {
           MAX_EXPIRY,
         ]);
         // setup name()
-        await env.shared.ETHReverseRegistrar.write.setName([name], {
-          account,
-        });
+        await env.shared.ETHReverseRegistrar.write.claimForAddr(
+          [account.address, account.address, resolver.address],
+          { account },
+        );
+        await resolver.write.setName(
+          [namehash(getReverseName(account.address)), name],
+          { account },
+        );
 
         await expectResolve({
           name: getReverseName(account.address),
@@ -115,9 +121,7 @@ describe("Resolve", () => {
         const account = env.namedAccounts.owner;
 
         // setup addr(default)
-        const resolver = await env.deployPermissionedResolver({
-          account,
-        });
+        const resolver = account.resolver;
         await resolver.write.setAddr([
           namehash(name),
           COIN_TYPE_DEFAULT,
@@ -138,16 +142,19 @@ describe("Resolve", () => {
         });
 
         await expectResolve({
-          name: getReverseName(account.address, COIN_TYPE_DEFAULT),
+          name: getReverseName(account.address, COIN_TYPE_OPTIMISM),
           primary: { value: name },
         });
         await expectResolve({
           name,
-          addresses: [{ coinType: COIN_TYPE_ETH, value: account.address }],
+          addresses: [
+            { coinType: COIN_TYPE_ETH, value: account.address },
+            { coinType: COIN_TYPE_OPTIMISM, value: account.address },
+          ],
         });
         const [primary] = await env.v2.UniversalResolver.read.reverse([
           account.address,
-          COIN_TYPE_ETH,
+          COIN_TYPE_OPTIMISM,
         ]);
         expectVar({ primary }).toStrictEqual(name);
       });
