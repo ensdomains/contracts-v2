@@ -47,7 +47,16 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new SimpleRegistryMetadata(hcaFactory);
+
+        vm.expectEmit();
+        emit IRegistryEvents.RegistryCreated();
         registry = new MockPermissionedRegistry(hcaFactory, metadata, address(this), ROOT_ROLES);
+    }
+
+    function test_initForProxyImplementation() external {
+        vm.expectEmit();
+        emit IRegistryEvents.RegistryCreated();
+        new PermissionedRegistry(hcaFactory, metadata, address(0), 0);
     }
 
     function test_constructor() external view {
@@ -681,12 +690,22 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register();
-        testLabel = "abc";
+        testLabel = string.concat(testLabel, testLabel);
         tokenIds[1] = this._register();
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1;
         amounts[1] = 1;
         StrictERC1155Holder r = new StrictERC1155Holder(true);
+        vm.expectEmit();
+        emit IERC1155.TransferBatch(user1, user1, address(r), tokenIds, amounts);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenIds[0], user1, testRoles, 0);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenIds[0], address(r), 0, testRoles);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenIds[1], user1, testRoles, 0);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenIds[1], address(r), 0, testRoles);
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, address(r), tokenIds, amounts, "");
     }
@@ -695,14 +714,27 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register();
-        testLabel = "abc";
+        testLabel = string.concat(testLabel, testLabel);
         tokenIds[1] = this._register();
         uint256[] memory amounts = new uint256[](2);
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
     }
 
-    function test_safeBatchTransferFrom_twice() external {
+    function test_safeBatchTransferFrom_noopAfterTransfer() external {
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256[] memory tokenIds = new uint256[](2);
+        tokenIds[0] = tokenIds[1] = this._register();
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 1;
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenIds[1], user1)
+        );
+        vm.prank(user1);
+        registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
+    }
+
+    function test_safeBatchTransferFrom_twiceToSelf() external {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = tokenIds[1] = this._register();
@@ -715,18 +747,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function test_safeBatchTransferFrom_oneError() external {
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register(); // no transfer role
-        testLabel = "abc";
+        testLabel = string.concat(testLabel, testLabel);
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         tokenIds[1] = this._register();
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1;
         amounts[1] = 1;
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IStandardRegistry.TransferDisallowed.selector,
-                tokenIds[0],
-                user1
-            )
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenIds[0], user1)
         );
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
@@ -1167,8 +1195,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     // 3. user2 receives crippled token => angry!
     function test_transferAbortsAfterRevoke() external {
         testRoles =
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
-            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
         uint256 tokenId = this._register();
         // make token available for sale
         vm.prank(user1);
@@ -1388,18 +1415,22 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 }
 
+
 contract MockPermissionedRegistry is PermissionedRegistry {
     constructor(
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadata,
         address ownerAddress,
         uint256 ownerRoles
-    ) PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles) {}
+    )
+        PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles)
+    {}
 
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
     }
 }
+
 
 contract ReentrantReceiver is ERC1155Holder {
     PermissionedRegistry immutable REGISTRY;
@@ -1416,7 +1447,11 @@ contract ReentrantReceiver is ERC1155Holder {
         uint256 id,
         uint256 value,
         bytes memory data
-    ) public override returns (bytes4) {
+    )
+        public
+        override
+        returns (bytes4)
+    {
         if (from == address(0)) {
             // during mint(), eg. token regeneration(), mutate the registry
             bytes memory v = _data;
@@ -1435,6 +1470,7 @@ contract ReentrantReceiver is ERC1155Holder {
     }
 }
 
+
 contract StrictERC1155Holder is ERC1155Holder {
     bool immutable BATCH;
     constructor(bool batch) {
@@ -1446,7 +1482,11 @@ contract StrictERC1155Holder is ERC1155Holder {
         uint256 id,
         uint256 value,
         bytes memory data
-    ) public override returns (bytes4) {
+    )
+        public
+        override
+        returns (bytes4)
+    {
         require(!BATCH);
         return super.onERC1155Received(operator, from, id, value, data);
     }
@@ -1456,7 +1496,11 @@ contract StrictERC1155Holder is ERC1155Holder {
         uint256[] memory ids,
         uint256[] memory values,
         bytes memory data
-    ) public override returns (bytes4) {
+    )
+        public
+        override
+        returns (bytes4)
+    {
         require(BATCH);
         return super.onERC1155BatchReceived(operator, from, ids, values, data);
     }

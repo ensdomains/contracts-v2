@@ -17,6 +17,7 @@ contract HCAEquivalenceHarness is HCAEquivalence {
     }
 }
 
+
 contract HCAEquivalenceTest is Test {
     MockHCAFactoryBasic factory;
     HCAEquivalenceHarness harness;

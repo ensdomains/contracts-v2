@@ -28,6 +28,7 @@ contract MockOldL2ReverseRegistrar is IL2ReverseRegistrarV1 {
     }
 }
 
+
 contract L2ReverseRegistrarWithMigrationTest is Test {
     // Constants matching Optimism chain setup
     uint256 constant OPTIMISM_CHAIN_ID = 10;
@@ -72,9 +73,7 @@ contract L2ReverseRegistrarWithMigrationTest is Test {
     function _getNode(address addr) internal view returns (bytes32) {
         string memory label = LibString.toAddressString(addr);
         return
-            keccak256(
-                abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label)))
-            );
+            keccak256(abi.encodePacked(registrar.PARENT_NODE(), keccak256(abi.encodePacked(label))));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -98,24 +97,20 @@ contract L2ReverseRegistrarWithMigrationTest is Test {
     }
 
     function test_constructor_setsParentNode() public view {
-        bytes32 expectedParentNode = keccak256(
-            abi.encodePacked(REVERSE_NODE, keccak256(abi.encodePacked(COIN_TYPE_LABEL)))
-        );
-        assertEq(
-            registrar.PARENT_NODE(),
-            expectedParentNode,
-            "PARENT_NODE should be set correctly"
-        );
+        bytes32 expectedParentNode =
+            keccak256(abi.encodePacked(REVERSE_NODE, keccak256(abi.encodePacked(COIN_TYPE_LABEL))));
+        assertEq(registrar.PARENT_NODE(), expectedParentNode, "PARENT_NODE should be set correctly");
     }
 
     function test_constructor_differentOwner() public {
         address differentOwner = makeAddr("differentOwner");
-        L2ReverseRegistrarWithMigration newRegistrar = new L2ReverseRegistrarWithMigration(
-            OPTIMISM_CHAIN_ID,
-            COIN_TYPE_LABEL,
-            differentOwner,
-            IL2ReverseRegistrarV1(address(mockOldRegistrar))
-        );
+        L2ReverseRegistrarWithMigration newRegistrar =
+            new L2ReverseRegistrarWithMigration(
+                OPTIMISM_CHAIN_ID,
+                COIN_TYPE_LABEL,
+                differentOwner,
+                IL2ReverseRegistrarV1(address(mockOldRegistrar))
+            );
         assertEq(newRegistrar.owner(), differentOwner, "Different owner should be set");
     }
 
@@ -496,9 +491,7 @@ contract L2ReverseRegistrarWithMigrationTest is Test {
         addresses[0] = user1;
 
         vm.prank(caller);
-        vm.expectRevert(
-            abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, caller)
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, caller));
         registrar.batchSetName(addresses);
     }
 

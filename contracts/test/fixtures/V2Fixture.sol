@@ -4,9 +4,9 @@ pragma solidity >=0.8.13;
 import {Test} from "forge-std/Test.sol";
 
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
-
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
-import {VerifiableFactory, UUPSProxy} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {BaseUriRegistryMetadata} from "~src/registry/BaseUriRegistryMetadata.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
@@ -91,11 +91,10 @@ contract V2Fixture is Test, ERC1155Holder {
         (resolver, , ) = universalResolver.findResolver(name);
     }
 
-    function deployUserRegistry(
-        address owner,
-        uint256 roleBitmap,
-        uint256 salt
-    ) public returns (UserRegistry) {
+    function deployUserRegistry(address owner, uint256 roleBitmap, uint256 salt)
+        public
+        returns (UserRegistry)
+    {
         return
             UserRegistry(
                 verifiableFactory.deployProxy(
@@ -106,21 +105,14 @@ contract V2Fixture is Test, ERC1155Holder {
             );
     }
 
-    function _computeVerifiableFactoryAddress(
-        address deployer,
-        uint256 salt
-    ) internal view returns (address) {
+    function _computeVerifiableFactoryAddress(address deployer, uint256 salt)
+        internal
+        view
+        returns (address)
+    {
         bytes32 outerSalt = keccak256(abi.encode(deployer, salt));
-        return
-            vm.computeCreate2Address(
-                outerSalt,
-                keccak256(
-                    abi.encodePacked(
-                        type(UUPSProxy).creationCode,
-                        abi.encode(verifiableFactory, outerSalt)
-                    )
-                ),
-                address(verifiableFactory)
-            );
+        bytes memory bytecode =
+            CloneProxyBytecode.creationCode(verifiableFactory.proxyLogic(), outerSalt);
+        return vm.computeCreate2Address(outerSalt, keccak256(bytecode), address(verifiableFactory));
     }
 }

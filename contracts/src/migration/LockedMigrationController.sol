@@ -17,7 +17,7 @@ import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 ///
 contract LockedMigrationController is LockedWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
@@ -27,7 +27,6 @@ contract LockedMigrationController is LockedWrapperReceiver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes LockedMigrationController.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     /// @param verifiableFactory The shared factory for verifiable deployments.
@@ -37,7 +36,9 @@ contract LockedMigrationController is LockedWrapperReceiver {
         IPermissionedRegistry ethRegistry,
         VerifiableFactory verifiableFactory,
         address wrapperRegistryImpl
-    ) LockedWrapperReceiver(nameWrapper, verifiableFactory, wrapperRegistryImpl) {
+    )
+        LockedWrapperReceiver(nameWrapper, verifiableFactory, wrapperRegistryImpl)
+    {
         ETH_REGISTRY = ethRegistry;
     }
 
@@ -62,7 +63,11 @@ contract LockedMigrationController is LockedWrapperReceiver {
         address resolver,
         uint256 roleBitmap,
         uint64 /*expiry*/
-    ) internal override returns (uint256 tokenId) {
+    )
+        internal
+        override
+        returns (uint256 tokenId)
+    {
         return
             ETH_REGISTRY.register(
                 label,

@@ -5,6 +5,9 @@ import {IRegistry} from "./IRegistry.sol";
 
 /// @notice Events interface for the registry, following ENSIP16.
 interface IRegistryEvents {
+    /// @notice A registry was created/initialized.
+    event RegistryCreated();
+
     /// @notice A label was registered.
     /// @param tokenId The token ID registered.
     /// @param labelHash The label hash registered.

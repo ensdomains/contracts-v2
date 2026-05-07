@@ -12,6 +12,7 @@ import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
@@ -45,15 +46,17 @@ contract UserRegistryTest is Test, ERC1155Holder {
         metadata = new SimpleRegistryMetadata(hcaFactory);
 
         // Deploy the implementation
+        vm.expectEmit();
+        emit IRegistryEvents.RegistryCreated();
         implementation = new UserRegistry(hcaFactory, metadata);
 
         // Create initialization data
-        bytes memory initData = abi.encodeCall(
-            UserRegistry.initialize,
-            (admin, EACBaseRolesLib.ALL_ROLES)
-        );
+        bytes memory initData =
+            abi.encodeCall(UserRegistry.initialize, (admin, EACBaseRolesLib.ALL_ROLES));
 
         // Deploy the proxy using the factory
+        vm.expectEmit();
+        emit IRegistryEvents.RegistryCreated();
         vm.prank(admin);
         address proxyAddress = factory.deployProxy(address(implementation), SALT, initData);
 
@@ -63,7 +66,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
     function test_initialization() public view {
         // Verify the proxy was deployed correctly
-        assertTrue(factory.verifyContract(address(proxy)), "Proxy should be verified");
+        assertTrue(
+            factory.verifyContract(address(proxy), address(implementation)),
+            "Proxy should be verified"
+        );
 
         // Verify admin has the expected roles
         assertTrue(
@@ -90,10 +96,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
         );
 
         // Verify proxy supports required interfaces
-        assertTrue(
-            proxy.supportsInterface(type(IRegistry).interfaceId),
-            "Should support IRegistry"
-        );
+        assertTrue(proxy.supportsInterface(type(IRegistry).interfaceId), "Should support IRegistry");
         // UUPSUpgradeable doesn't have an interface ID, so we check for ERC1155 interface
         assertTrue(proxy.supportsInterface(0xd9b67a26), "Should support ERC1155");
     }
@@ -104,14 +107,15 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Register a domain as admin
         vm.prank(admin);
-        uint256 tokenId = proxy.register(
-            label,
-            user1,
-            IRegistry(address(0)),
-            address(0),
-            RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
-            uint64(block.timestamp + 365 days)
-        );
+        uint256 tokenId =
+            proxy.register(
+                label,
+                user1,
+                IRegistry(address(0)),
+                address(0),
+                RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
+                uint64(block.timestamp + 365 days)
+            );
 
         // Verify the domain was registered correctly
         assertEq(proxy.ownerOf(tokenId), user1, "Domain should be owned by user1");
@@ -138,14 +142,15 @@ contract UserRegistryTest is Test, ERC1155Holder {
     function test_domain_management() public {
         // Register a domain
         vm.prank(admin);
-        uint256 tokenId = proxy.register(
-            "mdtdomain",
-            user1,
-            IRegistry(address(0)),
-            address(0),
-            RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
-            uint64(block.timestamp + 365 days)
-        );
+        uint256 tokenId =
+            proxy.register(
+                "mdtdomain",
+                user1,
+                IRegistry(address(0)),
+                address(0),
+                RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
+                uint64(block.timestamp + 365 days)
+            );
 
         // User1 sets a resolver
         address resolver = address(0x123);
@@ -180,14 +185,15 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // User1 should be able to register domains now
         vm.prank(user1);
-        uint256 tokenId = proxy.register(
-            "user1domain",
-            user2,
-            IRegistry(address(0)),
-            address(0),
-            RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
-            uint64(block.timestamp + 365 days)
-        );
+        uint256 tokenId =
+            proxy.register(
+                "user1domain",
+                user2,
+                IRegistry(address(0)),
+                address(0),
+                RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
+                uint64(block.timestamp + 365 days)
+            );
 
         // Verify registration was successful
         assertEq(proxy.ownerOf(tokenId), user2, "Domain should be owned by user2");
@@ -237,14 +243,15 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Register a domain as admin
         vm.prank(admin);
-        uint256 tokenId = proxy.register(
-            label,
-            user1,
-            IRegistry(address(0)),
-            address(0),
-            RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
-            expires
-        );
+        uint256 tokenId =
+            proxy.register(
+                label,
+                user1,
+                IRegistry(address(0)),
+                address(0),
+                RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
+                expires
+            );
 
         // Verify registration
         assertEq(proxy.ownerOf(tokenId), user1, "Domain should be owned by user1");
@@ -285,14 +292,15 @@ contract UserRegistryTest is Test, ERC1155Holder {
     function test_domain_expiry() public {
         // Register a domain with short expiry
         vm.prank(admin);
-        uint256 tokenId = proxy.register(
-            "expiredomain",
-            user1,
-            IRegistry(address(0)),
-            address(0),
-            RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
-            uint64(block.timestamp + 1 days)
-        );
+        uint256 tokenId =
+            proxy.register(
+                "expiredomain",
+                user1,
+                IRegistry(address(0)),
+                address(0),
+                RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
+                uint64(block.timestamp + 1 days)
+            );
 
         // Verify it exists
         assertEq(proxy.ownerOf(tokenId), user1, "Domain should be owned by user1");
@@ -310,26 +318,27 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Should be able to register it again
         vm.prank(admin);
-        uint256 newTokenId = proxy.register(
-            "expiredomain",
-            user2,
-            IRegistry(address(0)),
-            address(0),
-            RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
-            uint64(block.timestamp + 1 days)
-        );
+        uint256 newTokenId =
+            proxy.register(
+                "expiredomain",
+                user2,
+                IRegistry(address(0)),
+                address(0),
+                RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_RESOLVER,
+                uint64(block.timestamp + 1 days)
+            );
 
         // Verify new registration
         assertEq(proxy.ownerOf(newTokenId), user2, "Domain should be owned by user2");
     }
 }
 
+
 // Mock V2 contract for testing upgrades
 contract UserRegistryV2Mock is UserRegistry {
-    constructor(
-        IHCAFactoryBasic _hcaFactory,
-        IRegistryMetadata _metadataProvider
-    ) UserRegistry(_hcaFactory, _metadataProvider) {}
+    constructor(IHCAFactoryBasic _hcaFactory, IRegistryMetadata _metadataProvider)
+        UserRegistry(_hcaFactory, _metadataProvider)
+    {}
     function version() public pure returns (uint256) {
         return 2;
     }

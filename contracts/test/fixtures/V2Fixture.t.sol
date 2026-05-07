@@ -14,9 +14,8 @@ contract V2FixtureTest is V2Fixture {
     }
 
     function test_deployUserRegistry(uint256 salt) external {
-        UserRegistry registry = UserRegistry(
-            deployUserRegistry(user, EACBaseRolesLib.ALL_ROLES, salt)
-        );
+        UserRegistry registry =
+            UserRegistry(deployUserRegistry(user, EACBaseRolesLib.ALL_ROLES, salt));
         assertTrue(registry.supportsInterface(type(IPermissionedRegistry).interfaceId));
     }
 
