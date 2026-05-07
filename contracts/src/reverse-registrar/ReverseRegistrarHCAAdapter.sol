@@ -25,10 +25,9 @@ contract ReverseRegistrarHCAAdapter is HCAContext {
     /// @notice Initializes the adapter with its HCA context and target registrar.
     /// @param hcaFactory The HCA factory used to resolve HCA callers to their owners.
     /// @param reverseRegistrar The v1 reverse registrar for `addr.reverse`.
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        IReverseRegistrar reverseRegistrar
-    ) HCAEquivalence(hcaFactory) {
+    constructor(IHCAFactoryBasic hcaFactory, IReverseRegistrar reverseRegistrar)
+        HCAEquivalence(hcaFactory)
+    {
         REVERSE_REGISTRAR = reverseRegistrar;
     }
 
