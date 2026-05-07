@@ -385,9 +385,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             md.owner,
             0 /*old roles*/,
             RegistryRolesLib.ROLE_SET_RESOLVER |
-                RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
-                RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
-                RegistryRolesLib.ROLE_WAS_RESERVED
+            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
+            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
+            RegistryRolesLib.ROLE_WAS_RESERVED
         );
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(

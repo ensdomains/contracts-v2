@@ -24,12 +24,8 @@ import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
-import {
-    UnlockedMigrationController
-} from "~src/migration/UnlockedMigrationController.sol";
-import {
-    MigrationControllerFixture
-} from "~test/unit/migration/MigrationControllerFixture.sol";
+import {UnlockedMigrationController} from "~src/migration/UnlockedMigrationController.sol";
+import {MigrationControllerFixture} from "~test/unit/migration/MigrationControllerFixture.sol";
 
 contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     UnlockedMigrationController migrationController;
