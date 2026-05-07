@@ -173,6 +173,39 @@ contract MigrationHelperTest is MigrationControllerFixture {
         );
     }
 
+    function test_migrate_notSameOwner_wrappedOwnerMismatch() external {
+        bytes memory name1 = registerWrappedETH2LD("a", CAN_DO_EVERYTHING);
+        vm.prank(friend);
+        bytes memory name2 = this.registerWrappedETH2LD("b", CAN_DO_EVERYTHING);
+
+        LibMigration.Data[] memory mds = new LibMigration.Data[](2);
+        mds[0] = _unlockedData(name1);
+        mds[1] = _unlockedData(name2); // wrong: owner is friend
+
+        LibMigration.Data[][] memory groups = _toGroups(mds);
+
+        vm.prank(user);
+        nameWrapper.setApprovalForAll(address(helper), true);
+        vm.prank(friend);
+        nameWrapper.setApprovalForAll(user, true);
+        vm.prank(friend);
+        nameWrapper.setApprovalForAll(address(helper), true);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                MigrationHelper.WrappedOwnerMismatch.selector,
+                NameCoder.namehash(name2, 0)
+            )
+        );
+        vm.prank(user);
+        helper.migrate(
+            new LibMigration.Data[](0),
+            groups,
+            new LibMigration.Data[][](0),
+            new LockedChildren[](0)
+        );
+    }
+
     function test_migrate_notSameOwner() external {
         bytes memory name1 = registerWrappedETH2LD("a", CAN_DO_EVERYTHING);
         vm.prank(friend);
@@ -236,6 +269,26 @@ contract MigrationHelperTest is MigrationControllerFixture {
             groups,
             new LibMigration.Data[][](0),
             new LockedChildren[](0)
+        );
+    }
+
+    function test_migrate_parentAndChildren_parentNotMigrated() external {
+        bytes memory name2 = registerWrappedETH2LD("2", CANNOT_UNWRAP);
+        bytes memory name3 = createWrappedChild(name2, "3", user, PARENT_CANNOT_CONTROL);
+
+        vm.prank(user);
+        nameWrapper.setApprovalForAll(address(helper), true);
+
+        LockedChildren[] memory lcs = new LockedChildren[](1);
+        lcs[0] = LockedChildren(name2, _toGroups(_toArray(_lockedData(name3))));
+
+        vm.expectRevert(abi.encodeWithSelector(MigrationHelper.ParentNotMigrated.selector, name2));
+        vm.prank(user);
+        helper.migrate(
+            new LibMigration.Data[](0),
+            new LibMigration.Data[][](0),
+            new LibMigration.Data[][](0), // wrong: forgot parent
+            lcs
         );
     }
 
