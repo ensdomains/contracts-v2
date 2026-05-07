@@ -4,7 +4,7 @@ import { DEPLOYMENT_ROLES, MAX_EXPIRY } from "../script/deploy-constants.js";
 
 // TODO: ownership
 export default execute(
-  async ({ execute: write, get, namedAccounts: { deployer } }) => {
+  async ({ execute: write, get, namedAccounts: { deployer, owner } }) => {
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
@@ -16,7 +16,7 @@ export default execute(
       functionName: "register",
       args: [
         "reverse",
-        deployer,
+        owner,
         zeroAddress,
         ensV1Resolver.address,
         DEPLOYMENT_ROLES.REVERSE_TOKEN,
