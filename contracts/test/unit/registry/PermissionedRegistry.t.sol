@@ -3,8 +3,9 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Vm, Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
@@ -19,11 +20,11 @@ import {
     IRegistryMetadata,
     IHCAFactoryBasic,
     RegistryRolesLib,
-    NameCoder,
     LibLabel
 } from "~src/registry/PermissionedRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
+import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 uint256 constant ROOT_ROLES = EACBaseRolesLib.ALL_ROLES;
@@ -32,6 +33,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     MockPermissionedRegistry registry;
     MockHCAFactoryBasic hcaFactory;
     IRegistryMetadata metadata;
+    LabelStore labelStore;
 
     address user1 = makeAddr("user1");
     address user2 = makeAddr("user2");
@@ -47,19 +49,30 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new SimpleRegistryMetadata(hcaFactory);
+        labelStore = new LabelStore();
 
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        registry = new MockPermissionedRegistry(hcaFactory, metadata, address(this), ROOT_ROLES);
+        registry = new MockPermissionedRegistry(
+            hcaFactory,
+            metadata,
+            labelStore,
+            address(this),
+            ROOT_ROLES
+        );
     }
 
     function test_initForProxyImplementation() external {
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        new PermissionedRegistry(hcaFactory, metadata, address(0), 0);
+        new PermissionedRegistry(hcaFactory, metadata, labelStore, address(0), 0);
     }
 
     function test_constructor() external view {
+        assertEq(address(registry.HCA_FACTORY()), address(hcaFactory), "HCA_FACTORY");
+        assertEq(address(registry.METADATA_PROVIDER()), address(metadata), "METADATA_PROVIDER");
+        assertEq(address(registry.LABEL_STORE()), address(labelStore), "LABEL_STORE");
+
         assertTrue(registry.hasRootRoles(ROOT_ROLES, address(this)));
     }
 
@@ -83,6 +96,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256 labelId = LibLabel.id(testLabel);
         uint256 expectedTokenId = LibLabel.withVersion(labelId, 0);
         vm.expectEmit();
+        emit ILabelStore.Label(bytes32(labelId), testLabel);
+        vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
             expectedTokenId,
             bytes32(labelId),
@@ -105,6 +120,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
         assertEq(address(registry.getSubregistry(testLabel)), address(testRegistry), "registry");
         assertTrue(registry.hasRoles(tokenId, testRoles, testOwner), "roles");
+        assertEq(labelStore.getLabel(tokenId), testLabel, "label");
     }
 
     function test_register_expired() external {
@@ -185,10 +201,13 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
 
     function test_reserve() external {
+        uint256 labelId = LibLabel.id(testLabel);
+        vm.expectEmit();
+        emit ILabelStore.Label(bytes32(labelId), testLabel);
         vm.expectEmit();
         emit IRegistryEvents.LabelReserved(
-            LibLabel.withVersion(LibLabel.id(testLabel), 0),
-            bytes32(LibLabel.id(testLabel)),
+            LibLabel.withVersion(labelId, 0),
+            bytes32(labelId),
             testLabel,
             testExpiry,
             address(this)
@@ -200,6 +219,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(state.expiry, testExpiry, "expiry");
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
         assertEq(address(registry.getSubregistry(testLabel)), address(0), "registry");
+        assertEq(labelStore.getLabel(tokenId), testLabel, "label");
     }
 
     function test_reserve_alreadyReserved() external {
@@ -208,6 +228,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         vm.expectRevert(
             abi.encodeWithSelector(IPermissionedRegistry.LabelAlreadyReserved.selector, testLabel)
         );
+        vm.prank(actor);
         this._reserve();
     }
 
@@ -1393,9 +1414,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {
         for (uint256 i; i < logs.length; ++i) {
-            if (logs[i].topics[0] == topic0) {
-                revert(string.concat("found unexpected event: ", vm.toString(topic0)));
-            }
+            assertNotEq(logs[i].topics[0], topic0, "found unexpected event");
         }
     }
 
@@ -1420,12 +1439,12 @@ contract MockPermissionedRegistry is PermissionedRegistry {
     constructor(
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadata,
-        address ownerAddress,
-        uint256 ownerRoles
+        ILabelStore labelStore,
+        address rootAccount,
+        uint256 roleBitmap
     )
-        PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles)
+        PermissionedRegistry(hcaFactory, metadata, labelStore, rootAccount, roleBitmap)
     {}
-
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
     }

@@ -3,22 +3,18 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Test} from "forge-std/Test.sol";
-
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {StandardPricing} from "./StandardPricing.sol";
 
-import {PermissionedRegistry, IEnhancedAccessControl} from "~src/registry/PermissionedRegistry.sol";
-import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
+import {IEnhancedAccessControl} from "~src/registry/PermissionedRegistry.sol";
 import {
     ETHRegistrar,
     IETHRegistrar,
     IRegistry,
     RegistryRolesLib,
-    EACBaseRolesLib,
     LibLabel,
     InvalidOwner,
     REGISTRATION_ROLE_BITMAP,
@@ -36,12 +32,9 @@ import {
     MockERC20VoidReturn,
     MockERC20FalseReturn
 } from "~test/mocks/MockERC20.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
+import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
-contract ETHRegistrarTest is Test {
-    PermissionedRegistry ethRegistry;
-    MockHCAFactoryBasic hcaFactory;
-
+contract ETHRegistrarTest is V2Fixture {
     StandardRentPriceOracle rentPriceOracle;
     ETHRegistrar ethRegistrar;
 
@@ -66,13 +59,7 @@ contract ETHRegistrarTest is Test {
     uint256 testCommitDelay; ///|
 
     function setUp() external {
-        hcaFactory = new MockHCAFactoryBasic();
-        ethRegistry = new PermissionedRegistry(
-            hcaFactory,
-            new SimpleRegistryMetadata(hcaFactory),
-            address(this),
-            EACBaseRolesLib.ALL_ROLES
-        );
+        deployV2Fixture();
 
         tokenUSDC = new MockERC20("USDC", 6, hcaFactory);
         tokenDAI = new MockERC20("DAI", 18, hcaFactory);

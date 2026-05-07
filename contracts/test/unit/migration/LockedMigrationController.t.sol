@@ -16,6 +16,8 @@ import {
     PARENT_CANNOT_CONTROL,
     CAN_EXTEND_EXPIRY
 } from "@ens/contracts/wrapper/NameWrapper.sol";
+import {ENS} from "@ens/contracts/registry/ENS.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
@@ -24,32 +26,22 @@ import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFact
 
 import {InvalidOwner, UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
+import {ILabelStore} from "~src/utils/interfaces/ILabelStore.sol";
+import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
-import {
-    LockedMigrationController,
-    IPermissionedRegistry
-} from "~src/migration/LockedMigrationController.sol";
-import {
-    IEnhancedAccessControl,
-    EACBaseRolesLib
-} from "~src/access-control/EnhancedAccessControl.sol";
+import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
+import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
-import {
-    WrapperRegistry,
-    IWrapperRegistry,
-    IStandardRegistry,
-    IRegistry,
-    RegistryRolesLib,
-    LibMigration
-} from "~src/registry/WrapperRegistry.sol";
+import {WrapperRegistry, IWrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
 import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
-
-import {MigrationControllerFixture, NameCoder} from "./MigrationControllerFixture.sol";
-
-import {ENS} from "~test/fixtures/V1Fixture.sol";
-import {VerifiableFactory} from "~test/fixtures/V2Fixture.sol";
+import {MigrationControllerFixture} from "~test/unit/migration/MigrationControllerFixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
@@ -67,7 +59,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(ensV1Resolver),
             hcaFactory,
             metadata,
-            approvedUpgradeGate
+            approvedUpgradeGate,
+            labelStore
         );
         migrationController = new LockedMigrationController(
             nameWrapper,
@@ -867,7 +860,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 address(ensV1Resolver),
                 hcaFactory,
                 metadata,
-                approvedUpgradeGate
+                approvedUpgradeGate,
+                labelStore
             );
     }
 }
@@ -876,11 +870,12 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 contract WrapperRegistryV2Mock is WrapperRegistry {
     constructor(
         INameWrapper nameWrapper,
-        VerifiableFactory verifiableFactory,
+        IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider,
-        ApprovedUpgradeGate upgradeGate
+        ApprovedUpgradeGate upgradeGate,
+        ILabelStore labelStore
     )
         WrapperRegistry(
             nameWrapper,
@@ -888,7 +883,8 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
             ensV1Resolver,
             hcaFactory,
             metadataProvider,
-            upgradeGate
+            upgradeGate,
+            labelStore
         )
     {}
 

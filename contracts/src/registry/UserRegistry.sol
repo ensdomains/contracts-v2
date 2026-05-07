@@ -8,6 +8,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
@@ -25,8 +26,13 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
 
     /// @param hcaFactory The HCA factory.
     /// @param metadataProvider The metadata provider.
-    constructor(IHCAFactoryBasic hcaFactory, IRegistryMetadata metadataProvider)
-        PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0)
+    /// @param labelStore The shared label database.
+    constructor(
+        IHCAFactoryBasic hcaFactory,
+        IRegistryMetadata metadataProvider,
+        ILabelStore labelStore
+    )
+        PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0)
     {
         // This disables initialization for the implementation contract
         _disableInitializers();
