@@ -208,10 +208,10 @@ await userRegistry.write.unregister([labelHash]);
 Requires `ROLE_UNREGISTER` on the name's resource or on `ROOT_RESOURCE`.
 
 What happens:
-1. Burns the ERC1155 token
-2. Invalidates all roles (version bump)
-3. Sets expiry to `block.timestamp` (immediately AVAILABLE)
-4. Emits `LabelUnregistered(tokenId, sender)`
+1. Emits `LabelUnregistered(tokenId, sender)`
+2. If the name has an owner (`REGISTERED`): burns the ERC1155 token and increments `eacVersionId` + `tokenVersionId` — this invalidates all roles on the name's resource and the old token ID
+3. If the name is `RESERVED` (no owner): no burn or version bump — there is nothing to burn
+4. Sets `expiry = block.timestamp` so the name is immediately `AVAILABLE`
 
 After unregistering, the subname is `AVAILABLE` and can be re-registered.
 
