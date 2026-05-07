@@ -41,26 +41,21 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     function setUp() public virtual {
         deployV1Fixture();
         deployV2Fixture();
-        ethRegistry.grantRootRoles(
-            RegistryRolesLib.ROLE_REGISTRAR,
-            premigrationController
-        );
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         graveyard = new Graveyard(nameWrapper);
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
-        ensV2Resolver = new ENSV2Resolver(
-            rootRegistry,
-            batchGatewayProvider,
-            address(0)
-        );
+        ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();
         ethRegistrarV1.setResolver(address(ensV2Resolver));
     }
 
     /// @dev Ensure premigration has occurred.
-    function registerUnwrapped(
-        string memory label
-    ) public override returns (bytes memory name, uint256 tokenId) {
+    function registerUnwrapped(string memory label)
+        public
+        override
+        returns (bytes memory name, uint256 tokenId)
+    {
         (name, tokenId) = super.registerUnwrapped(label);
         if (address(premigrationController) != address(0)) {
             vm.prank(premigrationController);
@@ -76,11 +71,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     }
 
     /// @dev Check resolver and fallback logic.
-    function checkResolution(
-        bytes memory name,
-        address resolverV1,
-        address resolverV2
-    ) public view {
+    function checkResolution(bytes memory name, address resolverV1, address resolverV2) public view {
         assertEq(findResolverV1(name), resolverV1, "findResolverV1");
         assertEq(findResolverV2(name), resolverV2, "findResolverV2");
         if (resolverV2 == address(ensV1Resolver)) {
@@ -89,11 +80,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
         } else if (resolverV1 == address(ensV2Resolver)) {
             (address r, ) = ensV2Resolver.getResolver(name);
             assertEq(r, resolverV2, "compositeV2");
-            assertEq(
-                registryV1.resolver(NameCoder.namehash(name, 0)),
-                address(0),
-                "resolverV1"
-            );
+            assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), "resolverV1");
         }
     }
 
@@ -106,6 +93,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     }
 }
 
+
 contract MockERC721 is ERC721 {
     uint256 _id;
     constructor() ERC721("", "") {}
@@ -114,6 +102,7 @@ contract MockERC721 is ERC721 {
         return _id++;
     }
 }
+
 
 contract MockERC1155 is ERC1155 {
     uint256 _id;

@@ -32,7 +32,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv1 `NameWrapper` contract.
@@ -84,10 +84,10 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Recursively clear ancestor namespace.
-    function _clear(
-        bytes calldata name,
-        uint256 offset
-    ) internal returns (bytes32 node, State state) {
+    function _clear(bytes calldata name, uint256 offset)
+        internal
+        returns (bytes32 node, State state)
+    {
         (bytes32 labelHash, uint256 nextOffset) = NameCoder.readLabel(name, offset);
         if (labelHash == bytes32(0)) {
             return (bytes32(0), State.ROOT);

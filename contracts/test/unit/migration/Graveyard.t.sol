@@ -129,12 +129,8 @@ contract GraveyardTest is MigrationControllerFixture {
 
     function test_clear_nestedLocked_migrateBoth() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        bytes memory name3 = createWrappedChild(
-            name2,
-            testLabel,
-            user,
-            PARENT_CANNOT_CONTROL | CANNOT_UNWRAP
-        );
+        bytes memory name3 =
+            createWrappedChild(name2, testLabel, user, PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
 
         // set resolvers
         vm.startPrank(user);
@@ -157,12 +153,8 @@ contract GraveyardTest is MigrationControllerFixture {
 
     function test_clear_nestedLocked_migrateParent_expiredChild() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        bytes memory name3 = createWrappedChild(
-            name2,
-            testLabel,
-            user,
-            PARENT_CANNOT_CONTROL | CANNOT_UNWRAP
-        );
+        bytes memory name3 =
+            createWrappedChild(name2, testLabel, user, PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
 
         // set resolvers
         vm.startPrank(user);
@@ -185,12 +177,8 @@ contract GraveyardTest is MigrationControllerFixture {
 
     function test_clear_nestedLocked_bothExpired() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        bytes memory name3 = createWrappedChild(
-            name2,
-            testLabel,
-            user,
-            PARENT_CANNOT_CONTROL | CANNOT_UNWRAP
-        );
+        bytes memory name3 =
+            createWrappedChild(name2, testLabel, user, PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
 
         // set resolvers
         vm.startPrank(user);
@@ -341,9 +329,8 @@ contract GraveyardTest is MigrationControllerFixture {
         if (NameCoder.namehash(name, offset) == NameCoder.ETH_NODE) {
             vm.warp(ethRegistrarV1.nameExpires(uint256(labelHash)) + gracePeriodV1 + 1);
         } else {
-            (address owner, , uint64 expiry) = nameWrapper.getData(
-                uint256(NameCoder.namehash(name, 0))
-            );
+            (address owner, , uint64 expiry) =
+                nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));
             if (owner != address(0)) {
                 vm.warp(expiry + 1);
             }

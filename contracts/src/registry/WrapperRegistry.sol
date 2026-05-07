@@ -2,24 +2,14 @@
 pragma solidity >=0.8.13;
 
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
-import {
-    IProxyAuthorization
-} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
-import {
-    IVerifiableFactory
-} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
-import {
-    Initializable
-} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {
-    UUPSUpgradeable
-} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
-import {
-    AbstractWrapperReceiver
-} from "../migration/AbstractWrapperReceiver.sol";
+import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
@@ -90,19 +80,8 @@ contract WrapperRegistry is
         ApprovedUpgradeGate upgradeGate,
         ILabelStore labelStore
     )
-        PermissionedRegistry(
-            hcaFactory,
-            metadataProvider,
-            labelStore,
-            address(0),
-            0
-        ) // no roles are granted
-        LockedWrapperReceiver(
-            nameWrapper,
-            graveyard,
-            verifiableFactory,
-            address(this)
-        )
+        PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0) // no roles are granted
+        LockedWrapperReceiver(nameWrapper, graveyard, verifiableFactory, address(this))
     {
         V1_RESOLVER = ensV1Resolver;
         UPGRADE_GATE = upgradeGate;
@@ -110,9 +89,7 @@ contract WrapperRegistry is
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    )
+    function supportsInterface(bytes4 interfaceId)
         public
         view
         virtual
@@ -133,7 +110,10 @@ contract WrapperRegistry is
         string calldata childLabel,
         address rootAccount,
         uint256 roleBitmap
-    ) public initializer {
+    )
+        public
+        initializer
+    {
         _node = node;
         // setup canonical parent (ROLE_SET_PARENT is not granted)
         _parentRegistry = parentRegistry;
@@ -153,7 +133,13 @@ contract WrapperRegistry is
     /// @return allowed Always `true` for implementations in this wrapper registry family.
     function canUpgradeFrom(
         address /* previousImplementation */
-    ) external pure virtual override returns (bool allowed) {
+    )
+        external
+        pure
+        virtual
+        override
+        returns (bool allowed)
+    {
         return true;
     }
 
@@ -174,24 +160,18 @@ contract WrapperRegistry is
         if (_isMigratableChild(label)) {
             revert LibMigration.NameRequiresMigration();
         }
-        return
-            super.register(
-                label,
-                owner,
-                registry,
-                resolver,
-                roleBitmap,
-                expiry
-            );
+        return super.register(label, owner, registry, resolver, roleBitmap, expiry);
     }
 
     /// @inheritdoc PermissionedRegistry
     /// @dev Return `V1_RESOLVER` upon visiting migratable children.
-    function getResolver(
-        string calldata label
-    ) public view override(IRegistry, PermissionedRegistry) returns (address) {
-        return
-            _isMigratableChild(label) ? V1_RESOLVER : super.getResolver(label);
+    function getResolver(string calldata label)
+        public
+        view
+        override(IRegistry, PermissionedRegistry)
+        returns (address)
+    {
+        return _isMigratableChild(label) ? V1_RESOLVER : super.getResolver(label);
     }
 
     /// @inheritdoc IWrapperRegistry
@@ -227,23 +207,21 @@ contract WrapperRegistry is
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    ) internal override returns (uint256 tokenId) {
-        return
-            _register(
-                label,
-                owner,
-                subregistry,
-                resolver,
-                roleBitmap,
-                expiry,
-                false
-            );
+    )
+        internal
+        override
+        returns (uint256 tokenId)
+    {
+        return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
     }
 
     /// @dev Requires `ROLE_UPGRADE` and approval for the target implementation.
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal view override onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE) {
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        view
+        override
+        onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE)
+    {
         if (!UPGRADE_GATE.approvedImplementations(newImplementation)) {
             revert UpgradeTargetNotApproved(newImplementation);
         }

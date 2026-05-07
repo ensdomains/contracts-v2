@@ -4,16 +4,12 @@ pragma solidity >=0.8.13;
 import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
-import {
-    IERC721Receiver
-} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {InvalidOwner, UnauthorizedCaller} from "../CommonErrors.sol";
 import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
-import {
-    IPermissionedRegistry
-} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
@@ -33,10 +29,7 @@ import {LibMigration} from "./libraries/LibMigration.sol";
 /// performed.  The name is registered in the .eth registry with the roles and subregistry
 /// specified in the caller-provided `LibMigration.Data`.
 ///
-contract UnlockedMigrationController is
-    AbstractWrapperReceiver,
-    IERC721Receiver
-{
+contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -54,22 +47,17 @@ contract UnlockedMigrationController is
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
-    constructor(
-        INameWrapper nameWrapper,
-        address graveyard,
-        IPermissionedRegistry ethRegistry
-    ) AbstractWrapperReceiver(nameWrapper, graveyard) {
+    constructor(INameWrapper nameWrapper, address graveyard, IPermissionedRegistry ethRegistry)
+        AbstractWrapperReceiver(nameWrapper, graveyard)
+    {
         ETH_REGISTRY = ethRegistry;
         _REGISTRAR_V1 = nameWrapper.registrar();
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
-            interfaceId == type(IERC721Receiver).interfaceId ||
-            super.supportsInterface(interfaceId);
+            interfaceId == type(IERC721Receiver).interfaceId || super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -88,7 +76,10 @@ contract UnlockedMigrationController is
         address /*from*/,
         uint256 tokenId,
         bytes calldata data
-    ) external returns (bytes4) {
+    )
+        external
+        returns (bytes4)
+    {
         if (msg.sender != address(_REGISTRAR_V1)) {
             revert UnauthorizedCaller(msg.sender);
         }
@@ -120,10 +111,10 @@ contract UnlockedMigrationController is
     ///      Reverts `NameDataMismatch` if any token is mislabeled.
     /// @param ids The NameWrapper token IDs (namehash) of the names to migrate.
     /// @param mds The migration parameters for each name, indexed in parallel with `ids`.
-    function _migrateWrapped(
-        uint256[] calldata ids,
-        LibMigration.Data[] calldata mds
-    ) internal override {
+    function _migrateWrapped(uint256[] calldata ids, LibMigration.Data[] calldata mds)
+        internal
+        override
+    {
         for (uint256 i; i < ids.length; ++i) {
             uint256 id = ids[i];
             (, uint32 fuses, ) = NAME_WRAPPER.getData(id);
@@ -131,9 +122,7 @@ contract UnlockedMigrationController is
                 revert LibMigration.NameIsLocked(id);
             }
             bytes32 labelHash = keccak256(bytes(mds[i].label));
-            if (
-                bytes32(id) != NameCoder.namehash(NameCoder.ETH_NODE, labelHash)
-            ) {
+            if (bytes32(id) != NameCoder.namehash(NameCoder.ETH_NODE, labelHash)) {
                 revert LibMigration.NameDataMismatch(id);
             }
             NAME_WRAPPER.setResolver(bytes32(id), address(0)); // clear ENSv1 resolver
