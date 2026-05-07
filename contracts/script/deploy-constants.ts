@@ -74,9 +74,9 @@ export const DEPLOYMENT_ROLES = {
     ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
     ROLES.REGISTRY.SET_RESOLVER |
     ROLES.ADMIN.REGISTRY.SET_RESOLVER,
-  // Full registry role bitmap for ReverseRegistry root, .reverse token, and .addr token.
+  // .reverse token: full role bitmap.
   // Granting all roles is harmless; some (e.g. REGISTRAR) are root-only and don't apply to tokens.
-  REVERSE_AND_ADDR: FLAGS.ALL,
+  REVERSE_TOKEN: FLAGS.ALL,
   // ETHRegistry root deployer: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓, RENEW✓
   ETH_REGISTRY_ROOT:
     ROLES.ADMIN.REGISTRY.REGISTRAR |
