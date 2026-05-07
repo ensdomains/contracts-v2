@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {console} from "forge-std/console.sol";
-import {CAN_DO_EVERYTHING, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {
-    UnlockedMigrationController,
-    InvalidOwner
-} from "~src/migration/UnlockedMigrationController.sol";
+    CAN_DO_EVERYTHING,
+    CANNOT_UNWRAP,
+    PARENT_CANNOT_CONTROL
+} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+
+import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
+import {UnlockedMigrationController} from "~src/migration/UnlockedMigrationController.sol";
 import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
-import {WrapperRegistry, RegistryRolesLib, LibMigration} from "~src/registry/WrapperRegistry.sol";
-import {MigrationHelper} from "~src/migration/MigrationHelper.sol";
-import {MigrationControllerFixture, NameCoder} from "./MigrationControllerFixture.sol";
+import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
+import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {MigrationHelper, LockedChildren} from "~src/migration/MigrationHelper.sol";
+import {MigrationControllerFixture} from "~test/unit/migration/MigrationControllerFixture.sol";
 
 contract MigrationHelperTest is MigrationControllerFixture {
     UnlockedMigrationController unlockedController;
@@ -51,7 +56,12 @@ contract MigrationHelperTest is MigrationControllerFixture {
             address(lockedController)
         );
 
-        helper = new MigrationHelper(hcaFactory, unlockedController, lockedController);
+        helper = new MigrationHelper(
+            hcaFactory,
+            rootRegistry,
+            unlockedController,
+            lockedController
+        );
     }
 
     function test_migrate_unwrapped_notApproved() external {
@@ -59,8 +69,14 @@ contract MigrationHelperTest is MigrationControllerFixture {
 
         LibMigration.Data[] memory mds = _toArray(_unlockedData(name));
 
-        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
-        helper.migrate(mds, new LibMigration.Data[][](0), new LibMigration.Data[][](0));
+        vm.expectRevert("ERC721: caller is not token owner or approved");
+        vm.prank(user);
+        helper.migrate(
+            mds,
+            new LibMigration.Data[][](0),
+            new LibMigration.Data[][](0),
+            new LockedChildren[](0)
+        );
     }
 
     function test_migrate_unlocked_notApproved() external {
@@ -68,8 +84,14 @@ contract MigrationHelperTest is MigrationControllerFixture {
 
         LibMigration.Data[][] memory groups = _toGroups(_toArray(_unlockedData(name)));
 
-        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
-        helper.migrate(new LibMigration.Data[](0), groups, new LibMigration.Data[][](0));
+        vm.expectRevert("ERC1155: caller is not owner nor approved");
+        vm.prank(user);
+        helper.migrate(
+            new LibMigration.Data[](0),
+            groups,
+            new LibMigration.Data[][](0),
+            new LockedChildren[](0)
+        );
     }
 
     function test_migrate_locked_notApproved() external {
@@ -77,8 +99,14 @@ contract MigrationHelperTest is MigrationControllerFixture {
 
         LibMigration.Data[][] memory groups = _toGroups(_toArray(_lockedData(name)));
 
-        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
-        helper.migrate(new LibMigration.Data[](0), new LibMigration.Data[][](0), groups);
+        vm.expectRevert("ERC1155: caller is not owner nor approved");
+        vm.prank(user);
+        helper.migrate(
+            new LibMigration.Data[](0),
+            new LibMigration.Data[][](0),
+            groups,
+            new LockedChildren[](0)
+        );
     }
 
     function test_migrate_unwrapped_notOperator() external {
@@ -89,9 +117,20 @@ contract MigrationHelperTest is MigrationControllerFixture {
 
         LibMigration.Data[] memory mds = _toArray(_unlockedData(name));
 
-        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                MigrationHelper.NotApprovedOperator.selector,
+                ethRegistrarV1,
+                user
+            )
+        );
         vm.prank(hacker);
-        helper.migrate(mds, new LibMigration.Data[][](0), new LibMigration.Data[][](0));
+        helper.migrate(
+            mds,
+            new LibMigration.Data[][](0),
+            new LibMigration.Data[][](0),
+            new LockedChildren[](0)
+        );
     }
 
     function test_migrate_unlocked_notOperator() external {
@@ -102,9 +141,16 @@ contract MigrationHelperTest is MigrationControllerFixture {
 
         LibMigration.Data[][] memory groups = _toGroups(_toArray(_unlockedData(name)));
 
-        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
+        vm.expectRevert(
+            abi.encodeWithSelector(MigrationHelper.NotApprovedOperator.selector, nameWrapper, user)
+        );
         vm.prank(hacker);
-        helper.migrate(new LibMigration.Data[](0), groups, new LibMigration.Data[][](0));
+        helper.migrate(
+            new LibMigration.Data[](0),
+            groups,
+            new LibMigration.Data[][](0),
+            new LockedChildren[](0)
+        );
     }
 
     function test_migrate_locked_notOperator() external {
@@ -115,9 +161,16 @@ contract MigrationHelperTest is MigrationControllerFixture {
 
         LibMigration.Data[][] memory groups = _toGroups(_toArray(_lockedData(name)));
 
-        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
+        vm.expectRevert(
+            abi.encodeWithSelector(MigrationHelper.NotApprovedOperator.selector, nameWrapper, user)
+        );
         vm.prank(hacker);
-        helper.migrate(new LibMigration.Data[](0), new LibMigration.Data[][](0), groups);
+        helper.migrate(
+            new LibMigration.Data[](0),
+            new LibMigration.Data[][](0),
+            groups,
+            new LockedChildren[](0)
+        );
     }
 
     function test_migrate_notSameOwner() external {
@@ -125,29 +178,95 @@ contract MigrationHelperTest is MigrationControllerFixture {
         vm.prank(friend);
         bytes memory name2 = this.registerWrappedETH2LD("b", CAN_DO_EVERYTHING);
 
-        // user grants approval to helper
-        vm.prank(user);
-        nameWrapper.setApprovalForAll(address(helper), true);
-
-        // friend grants approval to helper
-        // (but is not sufficent, since different owner)
-        vm.prank(friend);
-        nameWrapper.setApprovalForAll(user, true);
-
         LibMigration.Data[][] memory groups = new LibMigration.Data[][](2);
         groups[0] = _toArray(_unlockedData(name1));
         groups[1] = _toArray(_unlockedData(name2));
 
+        // user grants approval to helper
+        vm.prank(user);
+        nameWrapper.setApprovalForAll(address(helper), true);
+
+        // friend must grant approval to operator AND helper!
+
+        // only helper
+        vm.startPrank(friend);
+        nameWrapper.setApprovalForAll(user, false);
+        nameWrapper.setApprovalForAll(address(helper), true);
+        vm.stopPrank();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                MigrationHelper.NotApprovedOperator.selector,
+                nameWrapper,
+                friend
+            )
+        );
+        vm.prank(user);
+        helper.migrate(
+            new LibMigration.Data[](0),
+            groups,
+            new LibMigration.Data[][](0),
+            new LockedChildren[](0)
+        );
+
+        // only operator
+        vm.startPrank(friend);
+        nameWrapper.setApprovalForAll(user, true);
+        nameWrapper.setApprovalForAll(address(helper), false);
+        vm.stopPrank();
+
         vm.expectRevert("ERC1155: caller is not owner nor approved");
         vm.prank(user);
-        helper.migrate(new LibMigration.Data[](0), groups, new LibMigration.Data[][](0));
+        helper.migrate(
+            new LibMigration.Data[](0),
+            groups,
+            new LibMigration.Data[][](0),
+            new LockedChildren[](0)
+        );
 
-        // friend must grant approval to operator too
+        // both
+        vm.startPrank(friend);
+        nameWrapper.setApprovalForAll(user, true);
+        nameWrapper.setApprovalForAll(address(helper), true);
+        vm.stopPrank();
+
+        vm.prank(user);
+        helper.migrate(
+            new LibMigration.Data[](0),
+            groups,
+            new LibMigration.Data[][](0),
+            new LockedChildren[](0)
+        );
+    }
+
+    function test_migrate_parentAndChildren() external {
+        bytes memory name2 = registerWrappedETH2LD("2", CANNOT_UNWRAP);
+        bytes memory name3a = createWrappedChild(
+            name2,
+            "3a",
+            friend,
+            PARENT_CANNOT_CONTROL | CANNOT_UNWRAP
+        );
+        bytes memory name3b = createWrappedChild(name2, "3b", friend, PARENT_CANNOT_CONTROL);
+
+        vm.prank(user);
+        nameWrapper.setApprovalForAll(address(helper), true);
+        vm.prank(friend);
+        nameWrapper.setApprovalForAll(user, true);
         vm.prank(friend);
         nameWrapper.setApprovalForAll(address(helper), true);
 
+        LibMigration.Data[][] memory groups = _toGroups(_toArray(_lockedData(name2)));
+
+        LibMigration.Data[] memory mds = new LibMigration.Data[](2);
+        mds[0] = _lockedData(name3a);
+        mds[1] = _unlockedData(name3b);
+
+        LockedChildren[] memory lcs = new LockedChildren[](1);
+        lcs[0] = LockedChildren(name2, _toGroups(mds));
+
         vm.prank(user);
-        helper.migrate(new LibMigration.Data[](0), groups, new LibMigration.Data[][](0));
+        helper.migrate(new LibMigration.Data[](0), new LibMigration.Data[][](0), groups, lcs);
     }
 
     function test_migrate_0unwrapped_0unlocked_0locked() external {
@@ -206,7 +325,7 @@ contract MigrationHelperTest is MigrationControllerFixture {
         LibMigration.Data[][] memory lockedGroups = _toGroups(locked);
 
         vm.prank(user);
-        helper.migrate(unwrapped, unlockedGroups, lockedGroups);
+        helper.migrate(unwrapped, unlockedGroups, lockedGroups, new LockedChildren[](0));
     }
 
     function _toArray(
