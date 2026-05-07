@@ -53,7 +53,7 @@ contract LabelStoreTest is Test {
 
     function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {
         for (uint256 i; i < logs.length; ++i) {
-            assertEq(logs[i].topics[0], topic0, "found unexpected event");
+            assertNotEq(logs[i].topics[0], topic0, "found unexpected event");
         }
     }
 }
