@@ -5,7 +5,6 @@ pragma solidity >=0.8.13;
 
 import {console} from "forge-std/console.sol";
 
-import {ENS} from "@ens/contracts/registry/ENS.sol";
 import {CAN_DO_EVERYTHING, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -31,8 +30,6 @@ import {
 import {
     MigrationControllerFixture
 } from "~test/unit/migration/MigrationControllerFixture.sol";
-import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
-import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
 contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     UnlockedMigrationController migrationController;
