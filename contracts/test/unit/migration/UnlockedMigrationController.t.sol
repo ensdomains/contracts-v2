@@ -6,6 +6,7 @@ pragma solidity >=0.8.13;
 import {console} from "forge-std/console.sol";
 
 import {CAN_DO_EVERYTHING, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -13,23 +14,18 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
+import {InvalidOwner, UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
+import {LibLabel} from "~src/utils/LibLabel.sol";
+import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {IEnhancedAccessControl} from "~src/access-control/EnhancedAccessControl.sol";
-import {
-    IPermissionedRegistry,
-    RegistryRolesLib,
-    IRegistry,
-    LibLabel
-} from "~src/registry/PermissionedRegistry.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
-import {
-    UnlockedMigrationController,
-    LibMigration,
-    InvalidOwner,
-    UnauthorizedCaller
-} from "~src/migration/UnlockedMigrationController.sol";
-
-import {MigrationControllerFixture, NameCoder} from "./MigrationControllerFixture.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
+import {UnlockedMigrationController} from "~src/migration/UnlockedMigrationController.sol";
+import {MigrationControllerFixture} from "~test/unit/migration/MigrationControllerFixture.sol";
 
 contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     UnlockedMigrationController migrationController;
@@ -304,6 +300,23 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
+    function test_checkIfMigrated() external {
+        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        LibMigration.Data memory md = _makeData(name);
+
+        assertFalse(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, user));
+
+        vm.prank(user);
+        ethRegistrarV1.safeTransferFrom(
+            user,
+            address(migrationController),
+            tokenIdV1,
+            abi.encode(md)
+        );
+
+        assertTrue(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, user));
+    }
+
     function test_unwrapped_migrate() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         LibMigration.Data memory md = _makeData(name);
@@ -323,6 +336,13 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
         vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(
+            tokenId,
+            md.owner,
+            0 /*old roles*/,
+            REGISTRATION_ROLE_BITMAP | RegistryRolesLib.ROLE_WAS_RESERVED
+        );
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(
             tokenId,
@@ -375,6 +395,13 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
         vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(
+            tokenId,
+            md.owner,
+            0 /*old roles*/,
+            REGISTRATION_ROLE_BITMAP | RegistryRolesLib.ROLE_WAS_RESERVED
+        );
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(
             tokenId,
