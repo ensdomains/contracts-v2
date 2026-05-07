@@ -3,12 +3,10 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, namechain/ordering, one-contract-per-file
 
-import {Test, Vm} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Test.sol";
 
-import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
@@ -136,9 +134,8 @@ contract BatchRegistrarTest is V2Fixture {
         );
         assertEq(state2.expiry, newExpiry, "new2 expiry should match");
 
-        IPermissionedRegistry.State memory existingState = ethRegistry.getState(
-            LibLabel.id("existing")
-        );
+        IPermissionedRegistry.State memory existingState =
+            ethRegistry.getState(LibLabel.id("existing"));
         assertEq(existingState.expiry, newExpiry, "existing expiry should be renewed");
     }
 
@@ -235,9 +232,7 @@ contract BatchRegistrarTest is V2Fixture {
         batchRegistrar.batchRegister(IRegistry(address(0)), resolver, labels, expires);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        bytes32 labelReservedSig = keccak256(
-            "LabelReserved(uint256,bytes32,string,uint64,address)"
-        );
+        bytes32 labelReservedSig = keccak256("LabelReserved(uint256,bytes32,string,uint64,address)");
         bool foundLabelReserved = false;
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == labelReservedSig) {
@@ -291,9 +286,8 @@ contract BatchRegistrarTest is V2Fixture {
             expiry
         );
 
-        IPermissionedRegistry.State memory stateBefore = ethRegistry.getState(
-            LibLabel.id("registered")
-        );
+        IPermissionedRegistry.State memory stateBefore =
+            ethRegistry.getState(LibLabel.id("registered"));
         assertEq(uint256(stateBefore.status), uint256(IPermissionedRegistry.Status.REGISTERED));
 
         uint64 newExpiry = uint64(block.timestamp + 86400 * 730);
@@ -308,15 +302,10 @@ contract BatchRegistrarTest is V2Fixture {
 
         batchRegistrar.batchRegister(IRegistry(address(0)), resolver, mixedLabels, mixedExpires);
 
-        IPermissionedRegistry.State memory stateAfter = ethRegistry.getState(
-            LibLabel.id("registered")
-        );
+        IPermissionedRegistry.State memory stateAfter =
+            ethRegistry.getState(LibLabel.id("registered"));
         assertEq(uint256(stateAfter.status), uint256(IPermissionedRegistry.Status.REGISTERED));
-        assertEq(
-            ethRegistry.ownerOf(stateAfter.tokenId),
-            realOwner,
-            "Owner should remain unchanged"
-        );
+        assertEq(ethRegistry.ownerOf(stateAfter.tokenId), realOwner, "Owner should remain unchanged");
         assertEq(stateAfter.expiry, expiry, "Expiry should remain unchanged");
 
         IPermissionedRegistry.State memory fresh1 = ethRegistry.getState(LibLabel.id("fresh1"));

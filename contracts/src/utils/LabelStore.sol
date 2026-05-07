@@ -4,7 +4,6 @@ pragma solidity ^0.8.13;
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {ILabelStore} from "./interfaces/ILabelStore.sol";
-
 import {LibLabel} from "./LibLabel.sol";
 
 /// @notice Shared label database.

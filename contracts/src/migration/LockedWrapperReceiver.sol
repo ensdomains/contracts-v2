@@ -12,7 +12,7 @@ import {
     IS_DOT_ETH,
     PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
-import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
@@ -48,7 +48,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The shared factory for verifiable deployments.
-    VerifiableFactory public immutable VERIFIABLE_FACTORY;
+    IVerifiableFactory public immutable VERIFIABLE_FACTORY;
 
     /// @notice The `WrapperRegistry` implementation contract.
     address public immutable WRAPPER_REGISTRY_IMPL;
@@ -62,7 +62,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
     constructor(
         INameWrapper nameWrapper,
-        VerifiableFactory verifiableFactory,
+        IVerifiableFactory verifiableFactory,
         address wrapperRegistryImpl
     )
         AbstractWrapperReceiver(nameWrapper)

@@ -6,7 +6,6 @@ pragma solidity >=0.8.13;
 import {Test, Vm} from "forge-std/Test.sol";
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
@@ -51,7 +50,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new SimpleRegistryMetadata(hcaFactory);
         labelStore = new LabelStore();
-        
+
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
         registry = new MockPermissionedRegistry(
@@ -66,7 +65,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function test_initForProxyImplementation() external {
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        new PermissionedRegistry(hcaFactory, metadata, address(0), 0);
+        new PermissionedRegistry(hcaFactory, metadata, labelStore, address(0), 0);
     }
 
     function test_constructor() external view {
@@ -1415,9 +1414,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {
         for (uint256 i; i < logs.length; ++i) {
-            if (logs[i].topics[0] == topic0) {
-                revert(string.concat("found unexpected event: ", vm.toString(topic0)));
-            }
+            assertEq(logs[i].topics[0], topic0, "found unexpected event");
         }
     }
 
@@ -1445,7 +1442,9 @@ contract MockPermissionedRegistry is PermissionedRegistry {
         ILabelStore labelStore,
         address rootAccount,
         uint256 roleBitmap
-    ) PermissionedRegistry(hcaFactory, metadata, labelStore, rootAccount, roleBitmap) {}
+    )
+        PermissionedRegistry(hcaFactory, metadata, labelStore, rootAccount, roleBitmap)
+    {}
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
     }

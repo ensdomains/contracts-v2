@@ -79,7 +79,7 @@ contract PermissionedRegistry is
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The shared label database.
@@ -116,7 +116,10 @@ contract PermissionedRegistry is
         ILabelStore labelStore,
         address rootAccount,
         uint256 roleBitmap
-    ) HCAEquivalence(hcaFactory) MetadataMixin(metadata) {
+    )
+        HCAEquivalence(hcaFactory)
+        MetadataMixin(metadata)
+    {
         emit RegistryCreated();
         LABEL_STORE = labelStore;
         _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);

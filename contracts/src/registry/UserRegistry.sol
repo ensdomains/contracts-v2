@@ -31,7 +31,9 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider,
         ILabelStore labelStore
-    ) PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0) {
+    )
+        PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0)
+    {
         // This disables initialization for the implementation contract
         _disableInitializers();
     }

@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
-import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
@@ -71,11 +71,11 @@ contract WrapperRegistry is
     /// @param labelStore The shared label database.
     constructor(
         INameWrapper nameWrapper,
-        VerifiableFactory verifiableFactory,
+        IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider,
-        ApprovedUpgradeGate upgradeGate
+        ApprovedUpgradeGate upgradeGate,
         ILabelStore labelStore
     )
         PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0) // no roles are granted
