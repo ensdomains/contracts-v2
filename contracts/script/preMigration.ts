@@ -596,6 +596,7 @@ export async function batchVerifyRegistrations(
   registryAddress: Address,
   registryAbi: any[],
   v1BaseRegistrarAddress: Address,
+  gracePeriodSeconds: bigint,
 ): Promise<VerificationResult[]> {
   const v2Contracts = registrations.map((r) => ({
     address: registryAddress,
@@ -661,7 +662,8 @@ export async function batchVerifyRegistrations(
       registration: reg,
       v2Status: (v2.result as any).status,
       v2LatestOwner: (v2.result as any).latestOwner,
-      v1IsRegistered: expiry > 0n && expiry > currentTimestamp,
+      v1IsRegistered:
+        expiry > 0n && expiry + gracePeriodSeconds > currentTimestamp,
       v1Expiry: expiry,
     };
   });
@@ -827,6 +829,7 @@ async function processBatch(
     config.registryAddress,
     registryAbi,
     config.v1BaseRegistrarAddress,
+    gracePeriodSeconds,
   );
 
   const baseProcessed = checkpoint.totalProcessed;
@@ -866,8 +869,8 @@ async function processBatch(
     if (!result.v1IsRegistered) {
       const reason =
         result.v1Expiry === 0n
-          ? "never registered or fully expired"
-          : "expired";
+          ? "never registered"
+          : "past v1 expiry + grace period";
       logger.v1NotRegistered(registration.labelName, reason);
       checkpoint.skippedCount++;
       checkpoint.totalProcessed++;
@@ -1051,7 +1054,7 @@ export async function main(argv = process.argv): Promise<void> {
     .option(
       "--grace-period-days <days>",
       "Days of grace period to add on top of each name's v1 expiry",
-      "90",
+      "62",
     )
     .requiredOption(
       "--v1-resolver <address>",
@@ -1088,7 +1091,7 @@ export async function main(argv = process.argv): Promise<void> {
     dryRun: opts.dryRun,
     continue: opts.continue,
     gracePeriodDays: Number.isNaN(parseInt(opts.gracePeriodDays))
-      ? 90
+      ? 62
       : parseInt(opts.gracePeriodDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,

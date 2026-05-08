@@ -48,7 +48,7 @@ bun run script/preMigration.ts [options]
 | `--limit <number>` | none | Maximum total names to process |
 | `--dry-run` | `false` | Simulate without sending transactions |
 | `--continue` | `false` | Resume from the last checkpoint |
-| `--grace-period-days <days>` | `90` | Days of grace period added on top of each name's v1 expiry. Every reserved name gets `v1Expiry + gracePeriodDays` as its v2 expiry. Set to `0` to preserve v1 expiries exactly. |
+| `--grace-period-days <days>` | `62` | Days of grace period added on top of each name's v1 expiry. Every reserved name gets `v1Expiry + gracePeriodDays` as its v2 expiry. The default `62` plus the v2 28-day premium-pricing window reproduces v1's 90-day post-expiry behavior. Names whose `v1Expiry + gracePeriodDays` is already in the past are skipped. Set to `0` to preserve v1 expiries exactly. |
 | `--v1-base-registrar <address>` | `0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85` | v1 BaseRegistrar address for expiry lookups |
 
 ## CSV Format
@@ -95,11 +95,11 @@ The script handles quoted fields and escaped quotes within CSV values.
 
 | v2 Status | v1 Status | Action |
 |---|---|---|
-| Available (0) | Registered & not expiring soon | **Reserve** on v2 |
+| Available (0) | Registered, or expired but within `--grace-period-days` of `v1Expiry` | **Reserve** on v2 with expiry `v1Expiry + gracePeriodDays` |
 | Reserved (1) | Registered with different expiry | **Renew** on v2 (sync expiry) |
 | Reserved (1) | Registered with same expiry | **Skip** (already up-to-date) |
 | Registered (2) | Any | **Fail** (already fully registered) |
-| Any | Expired or never registered | **Skip** |
+| Any | Never registered, or `v1Expiry + gracePeriodDays` already in the past | **Skip** |
 
 ### On-Chain Registration Parameters
 

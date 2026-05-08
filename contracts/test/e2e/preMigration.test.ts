@@ -110,6 +110,23 @@ describe("PreMigration", () => {
     expect(state.status).toBe(STATUS.AVAILABLE);
   });
 
+  it("reserves names that are expired but within v1 grace period", async () => {
+    const label = "graceperiodname";
+    const { user } = env.namedAccounts;
+
+    const v1Expiry = await registerV1Name(env, label, user.address, 1);
+    await setTimeout(2000);
+
+    createCSVFile(csvFilePath, [label]);
+    const gracePeriodDays = 62;
+    const args = buildMainArgs(env, csvFilePath, { gracePeriodDays });
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+    expect(state.expiry).toBe(v1Expiry + BigInt(gracePeriodDays) * 86400n);
+  });
+
   it("handles already-reserved names (same expiry)", async () => {
     const labels = ["alreadyres1", "alreadyres2"];
     const { user } = env.namedAccounts;
@@ -451,6 +468,7 @@ describe("PreMigration", () => {
       env.v2.ETHRegistry.address,
       registryAbi,
       env.v1.BaseRegistrar.address,
+      0n,
     );
 
     expect(results.length).toBe(4);
