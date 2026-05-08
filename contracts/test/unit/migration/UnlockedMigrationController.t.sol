@@ -32,8 +32,11 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function setUp() public override {
         super.setUp();
-        migrationController = new UnlockedMigrationController(nameWrapper, ethRegistry);
-        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
+        migrationController = new UnlockedMigrationController(
+            nameWrapper,
+            address(graveyard),
+            ethRegistry
+        );
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
             address(migrationController)
@@ -41,8 +44,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     }
 
     function test_constructor() external view {
-        assertEq(address(migrationController.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
         assertEq(address(migrationController.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
+        assertEq(address(migrationController.GRAVEYARD()), address(graveyard), "GRAVEYARD");
+        assertEq(address(migrationController.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
     }
 
     function test_supportsInterface() external view {
@@ -326,7 +330,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
             tokenId,
-            keccak256(bytes(md.label)),
+            bytes32(tokenIdV1),
             md.label,
             md.owner,
             uint64(ethRegistrarV1.nameExpires(tokenIdV1)),
@@ -372,12 +376,13 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             "subregistry"
         );
         assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), "resolverV1");
+        assertEq(registryV1.owner(NameCoder.namehash(name, 0)), address(graveyard), "graveyard");
     }
 
     function test_wrapped_migrate() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
         LibMigration.Data memory md = _makeData(name);
-        uint256 tokenIdV1 = uint256(keccak256(bytes(md.label)));
+        uint256 tokenIdV1 = LibLabel.id(md.label);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
         bytes32 node = NameCoder.namehash(name, 0);
         vm.expectEmit();
@@ -385,7 +390,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
             tokenId,
-            keccak256(bytes(md.label)),
+            bytes32(tokenIdV1),
             md.label,
             md.owner,
             uint64(ethRegistrarV1.nameExpires(tokenIdV1)),
@@ -432,6 +437,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             "subregistry"
         );
         assertEq(registryV1.resolver(node), address(0), "resolverV1");
+        assertEq(registryV1.owner(NameCoder.namehash(name, 0)), address(graveyard), "graveyard");
     }
 
     function test_unwrapped_migrateViaApproval(bool all) external {
@@ -495,6 +501,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         uint256[] memory amounts = new uint256[](count);
         LibMigration.Data[] memory mds = new LibMigration.Data[](count);
         for (uint256 i; i < count; ++i) {
+            testDuration = uint64(vm.randomUint(1, 1000 days));
             bytes memory name = registerWrappedETH2LD(_label(i), CAN_DO_EVERYTHING);
             LibMigration.Data memory md = _makeData(name);
             md.resolver = address(uint160(i));
@@ -512,13 +519,10 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         );
         for (uint256 i; i < count; ++i) {
             LibMigration.Data memory md = mds[i];
-            uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+            uint256 tokenIdV1 = LibLabel.id(md.label);
+            uint256 tokenId = ethRegistry.getTokenId(tokenIdV1);
             assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
-            assertEq(
-                ethRegistry.getExpiry(tokenId),
-                ethRegistrarV1.nameExpires(uint256(keccak256(bytes(md.label)))),
-                "expiry"
-            );
+            assertEq(ethRegistry.getExpiry(tokenId), ethRegistrarV1.nameExpires(tokenIdV1), "expiry");
             assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
             checkResolution(NameCoder.ethName(md.label), address(ensV2Resolver), address(uint160(i)));
             assertEq(
