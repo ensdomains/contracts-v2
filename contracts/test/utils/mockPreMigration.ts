@@ -58,7 +58,7 @@ export function buildMainArgs(
     dryRun?: boolean;
     limit?: number;
     continue?: boolean;
-    gracePeriodDays?: number;
+    expiryAddDays?: number;
     batchSize?: number;
     useEnvVarForPrivateKey?: boolean;
     omitPrivateKey?: boolean;
@@ -82,8 +82,8 @@ export function buildMainArgs(
     env.v2.ENSV1Resolver.address,
     "--mainnet-rpc-url",
     rpcUrl,
-    "--grace-period-days",
-    String(overrides.gracePeriodDays ?? 0),
+    "--expiry-add-days",
+    String(overrides.expiryAddDays ?? 0),
     "--v1-base-registrar",
     env.v1.BaseRegistrar.address,
   ];

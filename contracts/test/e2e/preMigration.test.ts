@@ -118,13 +118,13 @@ describe("PreMigration", () => {
     await setTimeout(2000);
 
     createCSVFile(csvFilePath, [label]);
-    const gracePeriodDays = 62;
-    const args = buildMainArgs(env, csvFilePath, { gracePeriodDays });
+    const expiryAddDays = 62;
+    const args = buildMainArgs(env, csvFilePath, { expiryAddDays });
     await main(args);
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-    expect(state.expiry).toBe(v1Expiry + BigInt(gracePeriodDays) * 86400n);
+    expect(state.expiry).toBe(v1Expiry + BigInt(expiryAddDays) * 86400n);
   });
 
   it("handles already-reserved names (same expiry)", async () => {
@@ -212,7 +212,7 @@ describe("PreMigration", () => {
     expect(state3.status).toBe(STATUS.AVAILABLE);
   });
 
-  it("adds grace period to short v1 expiries", async () => {
+  it("adds expiry buffer to short v1 expiries", async () => {
     const label = "soonexpire";
     const { user } = env.namedAccounts;
 
@@ -225,16 +225,16 @@ describe("PreMigration", () => {
     );
 
     createCSVFile(csvFilePath, [label]);
-    const gracePeriodDays = 90;
-    const args = buildMainArgs(env, csvFilePath, { gracePeriodDays });
+    const expiryAddDays = 90;
+    const args = buildMainArgs(env, csvFilePath, { expiryAddDays });
     await main(args);
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-    expect(state.expiry).toBe(v1Expiry + BigInt(gracePeriodDays) * 86400n);
+    expect(state.expiry).toBe(v1Expiry + BigInt(expiryAddDays) * 86400n);
   });
 
-  it("adds grace period to long v1 expiries", async () => {
+  it("adds expiry buffer to long v1 expiries", async () => {
     const label = "longexpire";
     const { user } = env.namedAccounts;
 
@@ -246,13 +246,13 @@ describe("PreMigration", () => {
     );
 
     createCSVFile(csvFilePath, [label]);
-    const gracePeriodDays = 90;
-    const args = buildMainArgs(env, csvFilePath, { gracePeriodDays });
+    const expiryAddDays = 90;
+    const args = buildMainArgs(env, csvFilePath, { expiryAddDays });
     await main(args);
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-    expect(state.expiry).toBe(v1Expiry + BigInt(gracePeriodDays) * 86400n);
+    expect(state.expiry).toBe(v1Expiry + BigInt(expiryAddDays) * 86400n);
   });
 
   it("handles checkpoint resumption", async () => {
@@ -468,23 +468,23 @@ describe("PreMigration", () => {
       env.v2.ETHRegistry.address,
       registryAbi,
       env.v1.BaseRegistrar.address,
-      0n,
     );
 
     expect(results.length).toBe(4);
 
     expect(results[0].v2Status).toBe(STATUS.AVAILABLE);
-    expect(results[0].v1IsRegistered).toBe(true);
+    expect(results[0].v1IsClaimable).toBe(true);
     expect(results[0].v1Expiry).toBe(validExpiry);
 
+    // Just-expired name is still within v1's 90-day grace, so claimable.
     expect(results[1].v2Status).toBe(STATUS.AVAILABLE);
-    expect(results[1].v1IsRegistered).toBe(false);
+    expect(results[1].v1IsClaimable).toBe(true);
 
     expect(results[2].v2Status).toBe(STATUS.REGISTERED);
-    expect(results[2].v1IsRegistered).toBe(true);
+    expect(results[2].v1IsClaimable).toBe(true);
 
     expect(results[3].v2Status).toBe(STATUS.AVAILABLE);
-    expect(results[3].v1IsRegistered).toBe(false);
+    expect(results[3].v1IsClaimable).toBe(false);
     expect(results[3].v1Expiry).toBe(0n);
   });
 
