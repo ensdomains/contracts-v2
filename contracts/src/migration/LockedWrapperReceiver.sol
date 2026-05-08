@@ -17,6 +17,7 @@ import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
@@ -51,6 +52,12 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @notice The `WrapperRegistry` implementation contract.
     address public immutable WRAPPER_REGISTRY_IMPL;
 
+    /// @notice The list of `PublicResolver` contracts that require replacement.
+    IAddressSet public immutable PUBLIC_RESOLVER_SET;
+
+    /// @notice The replacement `PublicResolver`.
+    address public immutable PUBLIC_RESOLVER;
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -59,16 +66,22 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
+    /// @param publicResolverSet The list of `PublicResolver` contracts that require replacement.
+    /// @param publicResolver The replacement `PublicResolver`.
     constructor(
         INameWrapper nameWrapper,
         address graveyard,
         IVerifiableFactory verifiableFactory,
-        address wrapperRegistryImpl
+        address wrapperRegistryImpl,
+        IAddressSet publicResolverSet,
+        address publicResolver
     )
         AbstractWrapperReceiver(nameWrapper, graveyard)
     {
         VERIFIABLE_FACTORY = verifiableFactory;
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
+        PUBLIC_RESOLVER_SET = publicResolverSet;
+        PUBLIC_RESOLVER = publicResolver;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -123,6 +136,9 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                     NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
                 } else {
                     resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
+                    if (PUBLIC_RESOLVER_SET.includes(resolver)) {
+                        resolver = PUBLIC_RESOLVER; // replace with new PublicResolver
+                    }
                 }
 
                 NAME_WRAPPER.safeTransferFrom(address(this), GRAVEYARD, uint256(node), 1, ""); // transfer to graveyard

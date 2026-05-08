@@ -389,6 +389,11 @@ export async function setupDevnet({
         address: rocketh.get("Graveyard").address,
         client,
       }),
+      PublicResolverSet: getContract({
+        abi: artifacts.PermissionedAddressSet.abi,
+        address: rocketh.get("PublicResolverSet").address,
+        client,
+      }),
       // resolvers
       UniversalResolver: getContract({
         abi: artifacts.UniversalResolverV2.abi,
@@ -418,6 +423,11 @@ export async function setupDevnet({
       ENSV2Resolver: getContract({
         abi: artifacts.ENSV2Resolver.abi,
         address: rocketh.get("ENSV2Resolver").address,
+        client,
+      }),
+      PublicResolver: getContract({
+        abi: artifacts.PublicResolverV2.abi,
+        address: rocketh.get("PublicResolverV2").address,
         client,
       }),
     };
@@ -546,7 +556,10 @@ export async function setupDevnet({
     async function sync({
       blocks = 1,
       warpSec = "local",
-    }: { blocks?: number; warpSec?: number | "local" } = {}) {
+    }: {
+      blocks?: number;
+      warpSec?: number | "local";
+    } = {}) {
       const block = await client.getBlock();
       let timestamp = Number(block.timestamp);
       if (warpSec === "local") {

@@ -8,17 +8,14 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
+import {InvalidOwner} from "~src/CommonErrors.sol";
+import {LibLabel} from "~src/utils/LibLabel.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {
-    ETHRegistrar,
-    IETHRegistrar,
-    IETHRenewer,
-    IPermissionedRegistry,
-    LibLabel,
-    InvalidOwner,
-    REGISTRATION_ROLE_BITMAP
-} from "~src/registrar/ETHRegistrar.sol";
+import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
+import {IETHRenewer} from "~src/registrar/interfaces/IETHRenewer.sol";
+import {ETHRegistrar, REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
 import {MockERC20, MockERC20Blacklist} from "~test/mocks/MockERC20.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOracleFixture.sol";

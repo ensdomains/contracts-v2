@@ -4,23 +4,21 @@ pragma solidity >=0.8.13;
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
+import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
 import {
     StandardRentPriceOracle,
-    IRentPriceOracle,
-    IERC20,
-    Math,
     PaymentRatio,
     DiscountPoint,
     DEFAULT_ROLE_BITMAP,
     ROLE_UPDATE_TOKEN,
     ROLE_DISABLE_TOKEN
 } from "~src/registrar/StandardRentPriceOracle.sol";
-import {
-    StandardRentPriceOracleFixture,
-    StandardRegistrar
-} from "~test/fixtures/StandardRentPriceOracleFixture.sol";
+import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOracleFixture.sol";
+import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 
 /// @dev The expiry parameter of `getRenewPrice()` is currently unused.
 uint64 constant UNUSED_EXPIRY = 0;

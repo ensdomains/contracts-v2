@@ -13,6 +13,7 @@ import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol"
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {ApprovedUpgradeGate} from "./ApprovedUpgradeGate.sol";
@@ -70,6 +71,8 @@ contract WrapperRegistry is
     /// @param metadataProvider The metadata provider.
     /// @param upgradeGate The upgrade target allowlist.
     /// @param labelStore The shared label database.
+    /// @param publicResolverSet The approved list of `PublicResolver` contracts.
+    /// @param publicResolver The replacement `PublicResolver`.
     constructor(
         INameWrapper nameWrapper,
         address graveyard,
@@ -78,10 +81,19 @@ contract WrapperRegistry is
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider,
         ApprovedUpgradeGate upgradeGate,
-        ILabelStore labelStore
+        ILabelStore labelStore,
+        IAddressSet publicResolverSet,
+        address publicResolver
     )
         PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0) // no roles are granted
-        LockedWrapperReceiver(nameWrapper, graveyard, verifiableFactory, address(this))
+        LockedWrapperReceiver(
+            nameWrapper,
+            graveyard,
+            verifiableFactory,
+            address(this),
+            publicResolverSet,
+            publicResolver
+        )
     {
         V1_RESOLVER = ensV1Resolver;
         UPGRADE_GATE = upgradeGate;
