@@ -66,7 +66,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
-    /// @param publicResolverSet The approved list of `PublicResolver` contracts.
+    /// @param publicResolverSet The list of `PublicResolver` contracts that require replacement.
     /// @param publicResolver The replacement `PublicResolver`.
     constructor(
         INameWrapper nameWrapper,
