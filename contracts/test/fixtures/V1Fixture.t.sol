@@ -27,35 +27,35 @@ contract V1FixtureTest is V1Fixture {
 
     function test_registerUnwrapped() external {
         (, uint256 tokenId) = registerUnwrapped("test");
-        assertEq(ethRegistrarV1.ownerOf(tokenId), user, "owner");
+        assertEq(baseRegistrar.ownerOf(tokenId), testOwner, "owner");
     }
 
     function test_registerWrappedETH2LD() external {
         bytes memory name = registerWrappedETH2LD("test", 0);
-        assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), user, "owner");
+        assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), testOwner, "owner");
     }
 
     function test_registerWrappedETH3LD() external {
         bytes memory parentName = registerWrappedETH2LD("test", 0);
         bytes memory name = createWrappedChild(parentName, "sub", address(0), 0);
-        assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), user, "owner");
+        assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), testOwner, "owner");
     }
 
     function test_registerWrappedDNS2LD() external {
         bytes memory name = createWrappedName("ens.domains", 0);
-        assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), user, "owner");
+        assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), testOwner, "owner");
     }
 
     function test_registerWrappedDNS3LD() external {
         bytes memory parentName = createWrappedName("ens.domains", 0);
         bytes memory name = createWrappedChild(parentName, "sub", address(0), 0);
-        assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), user, "owner");
+        assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), testOwner, "owner");
     }
 
     function test_findResolverV1_unwrapped() external {
         (bytes memory name, ) = registerUnwrapped("test");
         assertEq(findResolverV1(name), address(0), "before");
-        vm.prank(user);
+        vm.prank(testOwner);
         registryV1.setResolver(NameCoder.namehash(name, 0), address(1));
         assertEq(findResolverV1(name), address(1), "after");
     }
@@ -63,9 +63,18 @@ contract V1FixtureTest is V1Fixture {
     function test_findResolverV1_wrapped() external {
         bytes memory name = createWrappedName("a.b.c", 0);
         assertEq(findResolverV1(name), address(0), "before");
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.setResolver(NameCoder.namehash(name, 0), address(1));
         assertEq(findResolverV1(name), address(1), "after");
+    }
+
+    function test_getStatusV1_lifecycle() external {
+        (, uint256 tokenId) = registerUnwrapped("test");
+        assertEq(uint256(getStatusV1(tokenId)), uint8(StatusV1.REGISTERED), "REGISTERED");
+        vm.warp(baseRegistrar.nameExpires(tokenId));
+        assertEq(uint256(getStatusV1(tokenId)), uint8(StatusV1.GRACE), "GRACE");
+        vm.warp(baseRegistrar.nameExpires(tokenId) + gracePeriodV1);
+        assertEq(uint256(getStatusV1(tokenId)), uint8(StatusV1.AVAILABLE), "AVAILABLE");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -80,11 +89,11 @@ contract V1FixtureTest is V1Fixture {
     function test_nameWrapper_labelTooShort() external {
         bytes memory name = registerWrappedETH2LD("test", 0);
         vm.expectRevert(abi.encodeWithSelector(LabelTooShort.selector));
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.setSubnodeOwner(
             NameCoder.namehash(name, 0),
             "",
-            user,
+            testOwner,
             0,
             uint64(block.timestamp + 1 days)
         );
@@ -94,11 +103,11 @@ contract V1FixtureTest is V1Fixture {
         bytes memory name = registerWrappedETH2LD("test", 0);
         string memory label = new string(256);
         vm.expectRevert(abi.encodeWithSelector(LabelTooLong.selector, label));
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.setSubnodeOwner(
             NameCoder.namehash(name, 0),
             label,
-            user,
+            testOwner,
             0,
             uint64(block.timestamp + 1 days)
         );
@@ -107,9 +116,31 @@ contract V1FixtureTest is V1Fixture {
     function test_nameWrapper_expiryForETH2LDIncludesGrace() external {
         bytes memory name = registerWrappedETH2LD("test", 0);
         uint256 unwrappedExpiry =
-            ethRegistrarV1.nameExpires(uint256(keccak256(bytes(NameCoder.firstLabel(name)))));
+            baseRegistrar.nameExpires(uint256(keccak256(bytes(NameCoder.firstLabel(name)))));
         (, , uint256 wrappedExpiry) = nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));
-        assertEq(unwrappedExpiry + gracePeriodV1, wrappedExpiry);
+        assertEq(unwrappedExpiry + baseRegistrar.GRACE_PERIOD(), wrappedExpiry);
+    }
+
+    function test_nameWrapper_gracePeriod() external {
+        bytes memory name = registerWrappedETH2LD("test", CANNOT_UNWRAP);
+        uint256 tokenId = uint256(keccak256(bytes(NameCoder.firstLabel(name))));
+        uint256 unwrappedExpiry = baseRegistrar.nameExpires(tokenId);
+        bytes32 node = NameCoder.namehash(name, 0);
+        uint64[3] memory ts = [0, gracePeriodV1 >> 1, gracePeriodV1 - 1]; // start, middle, before-end
+        for (uint256 i; i < ts.length; ++i) {
+            vm.warp(unwrappedExpiry + ts[i]);
+            (address owner, uint32 fuses, ) = nameWrapper.getData(uint256(node));
+            assertFalse(baseRegistrar.available(tokenId), "grace:available");
+            assertEq(owner, testOwner, "grace:owner");
+            assertTrue((fuses & CANNOT_UNWRAP) != 0, "grace:fuses");
+        }
+        {
+            vm.warp(unwrappedExpiry + gracePeriodV1); // after-end
+            (address owner, uint32 fuses, ) = nameWrapper.getData(uint256(node));
+            assertTrue(baseRegistrar.available(tokenId), "after:available");
+            assertEq(owner, address(0), "after:owner");
+            assertEq(fuses, 0, "after:fuses");
+        }
     }
 
     function test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL() external {
@@ -123,18 +154,18 @@ contract V1FixtureTest is V1Fixture {
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_setFuses() external {
         bytes memory name = registerWrappedETH2LD("test", 0);
         (bytes32 labelhash, ) = NameCoder.readLabel(name, 0);
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.setFuses(NameCoder.namehash(name, 0), uint16(PARENT_CANNOT_CONTROL));
-        vm.prank(user);
-        nameWrapper.unwrapETH2LD(labelhash, user, user);
+        vm.prank(testOwner);
+        nameWrapper.unwrapETH2LD(labelhash, testOwner, testOwner);
     }
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_wrap() external {
         bytes memory parentName = registerWrappedETH2LD("test", CANNOT_UNWRAP);
         bytes memory name = createWrappedChild(parentName, "sub", address(0), PARENT_CANNOT_CONTROL);
         (bytes32 labelhash, ) = NameCoder.readLabel(name, 0);
-        vm.prank(user);
-        nameWrapper.unwrap(NameCoder.namehash(parentName, 0), labelhash, user);
+        vm.prank(testOwner);
+        nameWrapper.unwrap(NameCoder.namehash(parentName, 0), labelhash, testOwner);
     }
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_withoutParent() external {
@@ -149,7 +180,7 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_CANNOT_BURN_FUSES_via_setFuses() external {
         bytes memory name = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.setFuses(NameCoder.namehash(name, 0), uint16(CANNOT_BURN_FUSES));
     }
 
@@ -160,7 +191,7 @@ contract V1FixtureTest is V1Fixture {
         // setChildFuses() does not allow fuse changes if PCC
         // _setFuses() requires CU + PCC if child fuses as burned
         vm.expectRevert();
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.setChildFuses(
             NameCoder.namehash(parentName, 0),
             keccak256(bytes(NameCoder.firstLabel(name))),
@@ -184,22 +215,40 @@ contract V1FixtureTest is V1Fixture {
     function test_nameWrapper_approveBug() external {
         bytes memory name = this.registerWrappedETH2LD("test", 0);
         bytes32 node = NameCoder.namehash(name, 0);
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.approve(friend, uint256(node));
         // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L146-L149
         vm.prank(friend);
         vm.expectRevert(
             abi.encodeWithSignature("Error(string)", "ERC1155: caller is not owner nor approved")
         );
-        nameWrapper.safeTransferFrom(user, friend, uint256(node), 1, "");
+        nameWrapper.safeTransferFrom(testOwner, friend, uint256(node), 1, "");
     }
 
     ////////////////////////////////////////////////////////////////////////
     // BaseRegistrar Quirks
     ////////////////////////////////////////////////////////////////////////
 
-    function test_ethRegistrarV1_ownerOf_unregisteredReverts() external {
+    function test_baseRegistrar_gracePeriod() external {
+        (, uint256 tokenId) = registerUnwrapped("test");
+        uint256 expiry = baseRegistrar.nameExpires(tokenId);
+        uint64[3] memory ts = [0, gracePeriodV1 >> 1, gracePeriodV1 - 1];
+        for (uint256 i; i < ts.length; ++i) {
+            vm.warp(expiry + ts[i]);
+            assertFalse(baseRegistrar.available(tokenId), "grace:available");
+            vm.expectRevert();
+            baseRegistrar.ownerOf(tokenId);
+        }
+        {
+            vm.warp(expiry + gracePeriodV1); // after-end
+            assertTrue(baseRegistrar.available(tokenId), "after:available");
+            vm.expectRevert();
+            baseRegistrar.ownerOf(tokenId);
+        }
+    }
+
+    function test_baseRegistrar_ownerOf_unregisteredReverts() external {
         vm.expectRevert();
-        ethRegistrarV1.ownerOf(0);
+        baseRegistrar.ownerOf(0);
     }
 }

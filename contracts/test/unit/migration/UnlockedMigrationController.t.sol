@@ -25,13 +25,14 @@ import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegis
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
 import {UnlockedMigrationController} from "~src/migration/UnlockedMigrationController.sol";
-import {MigrationControllerFixture} from "~test/unit/migration/MigrationControllerFixture.sol";
+import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     UnlockedMigrationController migrationController;
 
-    function setUp() public override {
-        super.setUp();
+    function setUp() external {
+        deployMigrationControllerFixture();
+
         migrationController = new UnlockedMigrationController(
             nameWrapper,
             address(graveyard),
@@ -67,34 +68,34 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     }
 
     function test_finishERC1155Migration_unauthorizedCaller() external {
-        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, user));
-        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, actor));
+        vm.prank(actor);
         migrationController.finishERC1155Migration(new uint256[](0), new LibMigration.Data[](0));
     }
 
     function test_unwrapped_safeTransferFrom_unauthorizedCaller() external {
-        uint256 tokenId = dummy721.mint(user);
+        uint256 tokenId = dummy721.mint(actor);
         vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, dummy721));
-        vm.prank(user);
-        dummy721.safeTransferFrom(user, address(migrationController), tokenId); // wrong
+        vm.prank(actor);
+        dummy721.safeTransferFrom(actor, address(migrationController), tokenId); // wrong
     }
 
     function test_wrapped_safeTransferFrom_unauthorizedCaller() external {
-        uint256 tokenId = dummy1155.mint(user);
+        uint256 tokenId = dummy1155.mint(actor);
         vm.expectRevert(
             WrappedErrorLib.wrap(abi.encodeWithSelector(UnauthorizedCaller.selector, dummy1155))
         );
-        vm.prank(user);
-        dummy1155.safeTransferFrom(user, address(migrationController), tokenId, 1, ""); // wrong
+        vm.prank(actor);
+        dummy1155.safeTransferFrom(actor, address(migrationController), tokenId, 1, ""); // wrong
     }
 
     function test_unwrapped_invalidData(bytes calldata v) external {
         vm.assume(v.length < LibMigration.MIN_DATA_SIZE);
         (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         vm.expectRevert(abi.encodeWithSelector(LibMigration.InvalidData.selector));
-        vm.prank(user);
-        ethRegistrarV1.safeTransferFrom(
-            user,
+        vm.prank(testOwner);
+        baseRegistrar.safeTransferFrom(
+            testOwner,
             address(migrationController),
             tokenIdV1,
             v // wrong
@@ -107,9 +108,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectRevert(
             WrappedErrorLib.wrap(abi.encodeWithSelector(LibMigration.InvalidData.selector))
         );
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.safeTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             uint256(NameCoder.namehash(name, 0)),
             1,
@@ -139,8 +140,14 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
                 )
             )
         );
-        vm.prank(user);
-        nameWrapper.safeBatchTransferFrom(user, address(migrationController), ids, amounts, payload);
+        vm.prank(testOwner);
+        nameWrapper.safeBatchTransferFrom(
+            testOwner,
+            address(migrationController),
+            ids,
+            amounts,
+            payload
+        );
     }
 
     function test_unwrapped_invalidOwner() external {
@@ -148,9 +155,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         LibMigration.Data memory md = _makeData(name);
         md.owner = address(0); // wrong
         vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
-        vm.prank(user);
-        ethRegistrarV1.safeTransferFrom(
-            user,
+        vm.prank(testOwner);
+        baseRegistrar.safeTransferFrom(
+            testOwner,
             address(migrationController),
             tokenIdV1,
             abi.encode(md)
@@ -162,9 +169,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         LibMigration.Data memory md = _makeData(name);
         md.owner = address(0); // wrong
         vm.expectRevert(WrappedErrorLib.wrap(abi.encodeWithSelector(InvalidOwner.selector)));
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.safeTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             uint256(NameCoder.namehash(name, 0)),
             1,
@@ -179,9 +186,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectRevert(
             abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
         );
-        vm.prank(user);
-        ethRegistrarV1.safeTransferFrom(
-            user,
+        vm.prank(testOwner);
+        baseRegistrar.safeTransferFrom(
+            testOwner,
             address(migrationController),
             tokenIdV1,
             abi.encode(md)
@@ -198,9 +205,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
                 abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
             )
         );
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.safeTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             uint256(NameCoder.namehash(name, 0)),
             1,
@@ -213,9 +220,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         LibMigration.Data memory md = _makeData(name);
         md.label = "wrong";
         vm.expectRevert(abi.encodeWithSelector(LibMigration.NameDataMismatch.selector, tokenIdV1));
-        vm.prank(user);
-        ethRegistrarV1.safeTransferFrom(
-            user,
+        vm.prank(testOwner);
+        baseRegistrar.safeTransferFrom(
+            testOwner,
             address(migrationController),
             tokenIdV1,
             abi.encode(md)
@@ -232,9 +239,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
                 abi.encodeWithSelector(LibMigration.NameDataMismatch.selector, node)
             )
         );
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.safeTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             uint256(node),
             1,
@@ -249,9 +256,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectRevert(
             WrappedErrorLib.wrap(abi.encodeWithSelector(LibMigration.NameIsLocked.selector, node))
         );
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.safeTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             uint256(node),
             1,
@@ -271,9 +278,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
                 address(migrationController)
             )
         );
-        vm.prank(user);
-        ethRegistrarV1.safeTransferFrom(
-            user,
+        vm.prank(testOwner);
+        baseRegistrar.safeTransferFrom(
+            testOwner,
             address(migrationController),
             tokenIdV1,
             abi.encode(md)
@@ -294,9 +301,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
                 )
             )
         );
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.safeTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             uint256(NameCoder.namehash(name, 0)),
             1,
@@ -308,32 +315,34 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         LibMigration.Data memory md = _makeData(name);
 
-        assertFalse(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, user));
+        assertFalse(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, testOwner));
 
-        vm.prank(user);
-        ethRegistrarV1.safeTransferFrom(
-            user,
+        vm.prank(testOwner);
+        baseRegistrar.safeTransferFrom(
+            testOwner,
             address(migrationController),
             tokenIdV1,
             abi.encode(md)
         );
 
-        assertTrue(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, user));
+        assertTrue(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, testOwner));
     }
 
     function test_unwrapped_migrate() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         LibMigration.Data memory md = _makeData(name);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
+        uint64 expectedExpiry =
+            uint64(baseRegistrar.nameExpires(tokenIdV1)) + premigrationBonusPeriod;
         vm.expectEmit();
-        emit IERC721.Transfer(user, address(migrationController), tokenIdV1);
+        emit IERC721.Transfer(testOwner, address(migrationController), tokenIdV1);
         vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
             tokenId,
             bytes32(tokenIdV1),
             md.label,
             md.owner,
-            uint64(ethRegistrarV1.nameExpires(tokenIdV1)),
+            expectedExpiry,
             address(migrationController)
         );
         vm.expectEmit();
@@ -355,10 +364,10 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         );
         vm.expectEmit();
         emit IRegistryEvents.ResolverUpdated(tokenId, md.resolver, address(migrationController));
-        vm.prank(user);
+        vm.prank(testOwner);
         uint256 g = gasleft();
-        ethRegistrarV1.safeTransferFrom(
-            user,
+        baseRegistrar.safeTransferFrom(
+            testOwner,
             address(migrationController),
             tokenIdV1,
             abi.encode(md)
@@ -367,7 +376,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
         assertEq(ethRegistry.getTokenId(tokenIdV1), tokenId, "tokenId");
         assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
-        assertEq(ethRegistry.getExpiry(tokenId), ethRegistrarV1.nameExpires(tokenIdV1), "expiry");
+        assertEq(ethRegistry.getExpiry(tokenId), expectedExpiry, "expiry");
         assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
         checkResolution(name, address(ensV2Resolver), md.resolver);
         assertEq(
@@ -384,16 +393,24 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         LibMigration.Data memory md = _makeData(name);
         uint256 tokenIdV1 = LibLabel.id(md.label);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
+        uint64 expectedExpiry =
+            uint64(baseRegistrar.nameExpires(tokenIdV1)) + premigrationBonusPeriod;
         bytes32 node = NameCoder.namehash(name, 0);
         vm.expectEmit();
-        emit IERC1155.TransferSingle(user, user, address(migrationController), uint256(node), 1);
+        emit IERC1155.TransferSingle(
+            testOwner,
+            testOwner,
+            address(migrationController),
+            uint256(node),
+            1
+        );
         vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
             tokenId,
             bytes32(tokenIdV1),
             md.label,
             md.owner,
-            uint64(ethRegistrarV1.nameExpires(tokenIdV1)),
+            expectedExpiry,
             address(migrationController)
         );
         vm.expectEmit();
@@ -415,10 +432,10 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         );
         vm.expectEmit();
         emit IRegistryEvents.ResolverUpdated(tokenId, md.resolver, address(migrationController));
-        vm.prank(user);
+        vm.prank(testOwner);
         uint256 g = gasleft();
         nameWrapper.safeTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             uint256(node),
             1,
@@ -428,7 +445,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
         assertEq(ethRegistry.getTokenId(tokenIdV1), tokenId, "tokenId");
         assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
-        assertEq(ethRegistry.getExpiry(tokenId), ethRegistrarV1.nameExpires(tokenIdV1), "expiry");
+        assertEq(ethRegistry.getExpiry(tokenId), expectedExpiry, "expiry");
         assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
         checkResolution(name, address(ensV2Resolver), md.resolver);
         assertEq(
@@ -445,17 +462,17 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         LibMigration.Data memory md = _makeData(name);
 
         // give friend approval
-        vm.prank(user);
+        vm.prank(testOwner);
         if (all) {
-            ethRegistrarV1.setApprovalForAll(friend, true);
+            baseRegistrar.setApprovalForAll(friend, true);
         } else {
-            ethRegistrarV1.approve(friend, tokenIdV1);
+            baseRegistrar.approve(friend, tokenIdV1);
         }
 
         // friend initiates migration
         vm.prank(friend);
-        ethRegistrarV1.safeTransferFrom(
-            user,
+        baseRegistrar.safeTransferFrom(
+            testOwner,
             address(migrationController),
             tokenIdV1,
             abi.encode(md)
@@ -472,7 +489,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         bytes32 node = NameCoder.namehash(name, 0);
 
         // give friend approval
-        vm.prank(user);
+        vm.prank(testOwner);
         // if (all) {
         nameWrapper.setApprovalForAll(friend, true);
 
@@ -484,7 +501,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         // friend initiates migration
         vm.prank(friend);
         nameWrapper.safeTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             uint256(node),
             1,
@@ -509,9 +526,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             ids[i] = uint256(NameCoder.namehash(name, 0));
             amounts[i] = 1;
         }
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.safeBatchTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             ids,
             amounts,
@@ -522,7 +539,11 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             uint256 tokenIdV1 = LibLabel.id(md.label);
             uint256 tokenId = ethRegistry.getTokenId(tokenIdV1);
             assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
-            assertEq(ethRegistry.getExpiry(tokenId), ethRegistrarV1.nameExpires(tokenIdV1), "expiry");
+            assertEq(
+                ethRegistry.getExpiry(tokenId),
+                baseRegistrar.nameExpires(tokenIdV1) + premigrationBonusPeriod,
+                "expiry"
+            );
             assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
             checkResolution(NameCoder.ethName(md.label), address(ensV2Resolver), address(uint160(i)));
             assertEq(
@@ -551,9 +572,9 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
                 abi.encodeWithSelector(LibMigration.NameIsLocked.selector, ids[count - 1])
             )
         );
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.safeBatchTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             ids,
             amounts,
@@ -563,6 +584,6 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function _makeData(bytes memory name) internal view returns (LibMigration.Data memory) {
         return
-            LibMigration.Data({label: NameCoder.firstLabel(name), owner: user, subregistry: testRegistry, resolver: testResolver});
+            LibMigration.Data({label: NameCoder.firstLabel(name), owner: testOwner, subregistry: testRegistry, resolver: testResolver});
     }
 }

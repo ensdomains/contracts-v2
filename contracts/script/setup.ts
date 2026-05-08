@@ -46,7 +46,7 @@ export type DevnetEnvironment = Awaited<ReturnType<typeof setupDevnet>>;
 export type DevnetAccount =
   DevnetEnvironment["namedAccounts"][(typeof NAMED_ACCOUNTS)[number]];
 
-function ansi(c: any, s: any) {
+function ansi(c: unknown, s: unknown) {
   return `\x1b[${c}m${s}\x1b[0m`;
 }
 
@@ -86,7 +86,7 @@ export async function setupDevnet({
     console.log("Deploying ENSv2...");
     await patchArtifactsV1();
 
-    process.env["RUST_LOG"] = "info"; // required to capture console.log()
+    process.env.RUST_LOG = "info"; // required to capture console.log()
     const anvilInstance = createAnvil({
       accounts: NAMED_ACCOUNTS.length,
       mnemonic,
@@ -261,11 +261,6 @@ export async function setupDevnet({
         address: rocketh.get("DefaultReverseRegistrarHCAAdapter").address,
         client,
       }),
-      Graveyard: getContract({
-        abi: artifacts.Graveyard.abi,
-        address: rocketh.get("Graveyard").address,
-        client,
-      }),
     };
 
     const v1 = {
@@ -347,14 +342,19 @@ export async function setupDevnet({
         client,
       }),
       // eth registrar
+      StandardRentPriceOracle: getContract({
+        abi: artifacts.StandardRentPriceOracle.abi,
+        address: rocketh.get("StandardRentPriceOracle").address,
+        client,
+      }),
       ETHRegistrar: getContract({
         abi: artifacts.ETHRegistrar.abi,
         address: rocketh.get("ETHRegistrar").address,
         client,
       }),
-      StandardRentPriceOracle: getContract({
-        abi: artifacts.StandardRentPriceOracle.abi,
-        address: rocketh.get("StandardRentPriceOracle").address,
+      ETHRenewerV1: getContract({
+        abi: artifacts.ETHRenewerV1.abi,
+        address: rocketh.get("ETHRenewerV1").address,
         client,
       }),
       // VerifiableFactory implementations
@@ -382,6 +382,11 @@ export async function setupDevnet({
       LockedMigrationController: getContract({
         abi: [...artifacts.LockedMigrationController.abi, ...NameCoderErrors],
         address: rocketh.get("LockedMigrationController").address,
+        client,
+      }),
+      Graveyard: getContract({
+        abi: artifacts.Graveyard.abi,
+        address: rocketh.get("Graveyard").address,
         client,
       }),
       // resolvers
@@ -484,6 +489,7 @@ export async function setupDevnet({
       findPermissionedRegistry,
       findWrapperRegistry,
       patchContractWrite,
+      activateV2,
     };
 
     async function waitFor(hash: Hex | Promise<Hex>) {
@@ -719,6 +725,40 @@ export async function setupDevnet({
           client: createClient(account),
         }),
       );
+    }
+
+    async function activateV2() {
+      const account = namedAccounts.owner;
+      // lock NameWrapper
+      await v1.NameWrapper.write.renounceOwnership({ account });
+      // disable v1 eth controllers
+      await v1.RegistrarSecurityController.write.removeRegistrarController(
+        [rocketh.get("ETHRegistrarController").address],
+        { account },
+      );
+      await v1.RegistrarSecurityController.write.removeRegistrarController(
+        [rocketh.get("WrappedETHRegistrarController").address],
+        { account },
+      );
+      await v1.RegistrarSecurityController.write.removeRegistrarController(
+        [rocketh.get("LegacyETHRegistrarController").address],
+        { account },
+      );
+      // add v2 eth controllers
+      await v1.RegistrarSecurityController.write.addRegistrarController(
+        [v2.Graveyard.address],
+        { account },
+      );
+      await v1.RegistrarSecurityController.write.addRegistrarController(
+        [v2.ETHRenewerV1.address],
+        { account },
+      );
+      // transfer to syncer for juggling
+      await v1.RegistrarSecurityController.write.transferRegistrarOwnership(
+        [v2.ETHRenewerV1.address],
+        { account },
+      );
+      // TODO: delay grant of registar/renewer-related roles until here?
     }
 
     async function setupEnsDotEth() {

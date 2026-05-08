@@ -43,6 +43,7 @@
     "lint:fix": "solgrid fix 'src/**/*.sol' && solgrid fix --config solgrid.test.toml 'test/**/*.sol' 'script/**/*.sol'",
     "format": "solgrid fmt 'src/**/*.sol' 'test/**/*.sol' 'script/**/*.sol'",
     "format:check": "solgrid fmt --diff 'src/**/*.sol' 'test/**/*.sol' 'script/**/*.sol'",
+    "check:types": "tsc --noEmit",
     "compile:forge": "forge build",
     "compile:hardhat": "hardhat compile",
     "compile": "bun run compile:forge && bun run compile:hardhat",
@@ -58,8 +59,7 @@
     "coverage": "bun run coverage:forge && bun run coverage:hardhat && bun run coverage:reports",
     "clean": "forge clean && hardhat clean && rm -rf coverage/",
     "devnet": "bun run compile && bun ./script/runDevnet.ts",
-    "aakit": "bun ./script/deployAAkit.ts",
-    "check:types": "tsc --noEmit"
+    "aakit": "bun ./script/deployAAkit.ts"
   },
   "type": "module"
 }

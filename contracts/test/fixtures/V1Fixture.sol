@@ -9,32 +9,45 @@ import {ENSRegistry, ENS} from "@ens/contracts/registry/ENSRegistry.sol";
 import {
     BaseRegistrarImplementation
 } from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
-import {NameWrapper, IMetadataService} from "@ens/contracts/wrapper/NameWrapper.sol";
+import {NameWrapper, INameWrapper, IMetadataService} from "@ens/contracts/wrapper/NameWrapper.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 
 /// @dev Reusable testing fixture for ENSv1.
 contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
+    enum StatusV1 {
+        REGISTERED,
+        GRACE,
+        AVAILABLE
+    }
+
     ENS registryV1;
-    BaseRegistrarImplementation ethRegistrarV1;
+    BaseRegistrarImplementation baseRegistrar;
     NameWrapper nameWrapper;
+    MockWrappedETHRegistrarController wrappedController;
 
     uint64 gracePeriodV1;
+    address testOwner = makeAddr("ownerV1");
     uint64 testDuration = 1 days;
-    address user = makeAddr("user");
-    address ensV1Controller = makeAddr("ensV1Controller");
+    address ethControllerV1 = makeAddr("ethControllerV1");
 
     function deployV1Fixture() public {
         registryV1 = new ENSRegistry();
-        ethRegistrarV1 = new BaseRegistrarImplementation(registryV1, NameCoder.ETH_NODE);
-        ethRegistrarV1.addController(ensV1Controller);
-        gracePeriodV1 = uint64(ethRegistrarV1.GRACE_PERIOD());
-        _claimNodes(NameCoder.encode("eth"), 0, address(ethRegistrarV1));
+        baseRegistrar = new BaseRegistrarImplementation(registryV1, NameCoder.ETH_NODE);
+        baseRegistrar.addController(ethControllerV1);
+        gracePeriodV1 = uint64(baseRegistrar.GRACE_PERIOD()) + 1; // see: BaseRegistrarImplementation.available()
+        _claimNodes(NameCoder.encode("eth"), 0, address(baseRegistrar));
         _claimNodes(NameCoder.encode("addr.reverse"), 0, address(this)); // see: fake ReverseClaimer
-        nameWrapper = new NameWrapper(registryV1, ethRegistrarV1, IMetadataService(address(0)));
-        nameWrapper.setController(ensV1Controller, true);
-        ethRegistrarV1.addController(address(nameWrapper));
-        vm.warp(gracePeriodV1 + 1); // avoid timestamp issues
+        nameWrapper = new NameWrapper(registryV1, baseRegistrar, IMetadataService(address(0)));
+        wrappedController = new MockWrappedETHRegistrarController(nameWrapper);
+        nameWrapper.setController(ethControllerV1, true);
+        nameWrapper.setController(address(wrappedController), true);
+        baseRegistrar.addController(address(nameWrapper));
+
+        uint256 t = gracePeriodV1;
+        if (block.timestamp < t) {
+            vm.warp(t); // avoid timestamp issues
+        }
     }
 
     // fake ReverseClaimer
@@ -62,8 +75,8 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     {
         name = NameCoder.ethName(label);
         tokenId = uint256(keccak256(bytes(label)));
-        vm.prank(ensV1Controller);
-        ethRegistrarV1.register(tokenId, user, testDuration);
+        vm.prank(ethControllerV1);
+        baseRegistrar.register(tokenId, testOwner, testDuration);
     }
 
     function registerWrappedETH2LD(string memory label, uint32 ownerFuses)
@@ -72,9 +85,9 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     {
         uint256 tokenId;
         (name, tokenId) = registerUnwrapped(label);
-        address owner = ethRegistrarV1.ownerOf(tokenId);
+        address owner = baseRegistrar.ownerOf(tokenId);
         vm.prank(owner);
-        ethRegistrarV1.setApprovalForAll(address(nameWrapper), true);
+        baseRegistrar.setApprovalForAll(address(nameWrapper), true);
         vm.prank(owner);
         nameWrapper.wrapETH2LD(label, owner, uint16(ownerFuses), address(0));
     }
@@ -103,20 +116,41 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         returns (bytes memory name)
     {
         name = NameCoder.encode(domain);
-        _claimNodes(name, 0, user);
+        _claimNodes(name, 0, testOwner);
         (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
         bytes32 parentNode = NameCoder.namehash(name, offset);
-        vm.prank(user);
+        vm.prank(testOwner);
         registryV1.setApprovalForAll(address(nameWrapper), true);
-        vm.prank(user);
-        nameWrapper.wrap(name, user, address(0));
+        vm.prank(testOwner);
+        nameWrapper.wrap(name, testOwner, address(0));
         if (fuses != 0) {
-            vm.prank(user);
+            vm.prank(testOwner);
             nameWrapper.setFuses(NameCoder.namehash(parentNode, labelHash), uint16(fuses));
+        }
+    }
+
+    function getStatusV1(uint256 tokenId) public view returns (StatusV1) {
+        try baseRegistrar.ownerOf(tokenId) {
+            return StatusV1.REGISTERED;
+        } catch {
+            return baseRegistrar.available(tokenId) ? StatusV1.AVAILABLE : StatusV1.GRACE;
         }
     }
 
     function findResolverV1(bytes memory name) public view returns (address resolver) {
         (resolver, , ) = RegistryUtils.findResolver(registryV1, name, 0);
+    }
+}
+
+
+// https://github.com/ensdomains/ens-contracts/blob/staging/deployments/mainnet/WrappedETHRegistrarController.json
+contract MockWrappedETHRegistrarController {
+    INameWrapper internal immutable NAME_WRAPPER;
+    constructor(INameWrapper nameWrapper) {
+        NAME_WRAPPER = nameWrapper;
+    }
+    function renew(string calldata label, uint256 duration) external payable {
+        require(duration == 0);
+        NAME_WRAPPER.renew(uint256(keccak256(bytes(label))), duration);
     }
 }

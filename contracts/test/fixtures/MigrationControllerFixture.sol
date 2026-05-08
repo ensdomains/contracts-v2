@@ -9,8 +9,10 @@ import {Graveyard} from "~src/migration/Graveyard.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
-import {V2Fixture, RegistryRolesLib} from "~test/fixtures/V2Fixture.sol";
+import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
+import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 
 // forge test test/unit/migration/UnlockedMigrationController.t.sol -vv
 // forge test test/unit/migration/LockedMigrationController.t.sol -vv
@@ -25,6 +27,7 @@ import {V2Fixture, RegistryRolesLib} from "~test/fixtures/V2Fixture.sol";
 // * Unlocked: 183292 (+4K)
 // * Locked: 665863 (+7K)
 
+/// @dev Reusable testing fixture for migration.
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;
     ENSV2Resolver ensV2Resolver;
@@ -36,18 +39,30 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     address testResolver = makeAddr("resolver");
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address premigrationController = makeAddr("premigrationController");
+    uint64 premigrationBonusPeriod = StandardRegistrar.BONUS_PERIOD;
+
+    address actor = makeAddr("actor");
     address friend = makeAddr("friend");
 
-    function setUp() public virtual {
+    function deployMigrationControllerFixture() public {
         deployV1Fixture();
         deployV2Fixture();
-        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
-        graveyard = new Graveyard(nameWrapper);
+
+        ethRegistry.grantRootRoles(
+            RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW,
+            premigrationController
+        );
+
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
+
+        graveyard = new Graveyard(nameWrapper);
+
+        baseRegistrar.setResolver(address(ensV2Resolver));
+        baseRegistrar.addController(address(graveyard));
+
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();
-        ethRegistrarV1.setResolver(address(ensV2Resolver));
     }
 
     /// @dev Ensure premigration has occurred.
@@ -65,7 +80,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
                 IRegistry(address(0)),
                 address(ensV1Resolver), // fallback
                 0,
-                uint64(ethRegistrarV1.nameExpires(tokenId))
+                uint64(baseRegistrar.nameExpires(tokenId)) + premigrationBonusPeriod
             );
         }
     }

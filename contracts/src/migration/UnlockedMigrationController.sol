@@ -38,7 +38,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     IPermissionedRegistry public immutable ETH_REGISTRY;
 
     /// @dev The ENSv1 `BaseRegistrar` contract.
-    IBaseRegistrar internal immutable _REGISTRAR_V1;
+    IBaseRegistrar internal immutable _BASE_REGISTRAR;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -51,7 +51,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         AbstractWrapperReceiver(nameWrapper, graveyard)
     {
         ETH_REGISTRY = ethRegistry;
-        _REGISTRAR_V1 = nameWrapper.registrar();
+        _BASE_REGISTRAR = nameWrapper.registrar();
     }
 
     /// @inheritdoc IERC165
@@ -80,7 +80,7 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         external
         returns (bytes4)
     {
-        if (msg.sender != address(_REGISTRAR_V1)) {
+        if (msg.sender != address(_BASE_REGISTRAR)) {
             revert UnauthorizedCaller(msg.sender);
         }
         if (data.length < LibMigration.MIN_DATA_SIZE) {
@@ -90,14 +90,14 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
         if (tokenId != uint256(keccak256(bytes(md.label)))) {
             revert LibMigration.NameDataMismatch(tokenId);
         }
-        _REGISTRAR_V1.reclaim(tokenId, address(this));
+        _BASE_REGISTRAR.reclaim(tokenId, address(this));
         _REGISTRY_V1.setRecord(
             NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenId)),
             GRAVEYARD, // transfer ownership to graveyard
             address(0), // clear ENSv1 resolver
             0
         );
-        _REGISTRAR_V1.safeTransferFrom(address(this), GRAVEYARD, tokenId); // transfer token to graveyard
+        _BASE_REGISTRAR.safeTransferFrom(address(this), GRAVEYARD, tokenId); // transfer token to graveyard
         _inject(md);
         return this.onERC721Received.selector;
     }

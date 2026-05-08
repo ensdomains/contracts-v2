@@ -23,7 +23,6 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
@@ -204,13 +203,7 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc EnhancedAccessControl
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        virtual
-        override(IERC165, EnhancedAccessControl)
-        returns (bool)
-    {
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             type(IPermissionedResolver).interfaceId == interfaceId ||
             type(IExtendedResolver).interfaceId == interfaceId ||
@@ -807,7 +800,11 @@ contract PermissionedResolver is
                     toName = new bytes(offset + matchName.length);
                     assembly {
                         mcopy(add(toName, 32), add(fromName, 32), offset) // copy prefix
-                        mcopy(add(toName, add(32, offset)), add(matchName, 32), mload(matchName)) // copy suffix
+                        mcopy(
+                            add(toName, add(32, offset)),
+                            add(matchName, 32),
+                            mload(matchName)
+                        ) // copy suffix
                     }
                 } else {
                     toName = matchName;

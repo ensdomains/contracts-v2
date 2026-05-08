@@ -94,12 +94,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_register() external {
         uint256 labelId = LibLabel.id(testLabel);
-        uint256 expectedTokenId = LibLabel.withVersion(labelId, 0);
+        uint256 tokenId = LibLabel.withVersion(labelId, 0);
         vm.expectEmit();
         emit ILabelStore.Label(bytes32(labelId), testLabel);
         vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
-            expectedTokenId,
+            tokenId,
             bytes32(labelId),
             testLabel,
             testOwner,
@@ -107,14 +107,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             address(this)
         );
         vm.expectEmit();
-        emit IERC1155.TransferSingle(address(this), address(0), testOwner, expectedTokenId, 1);
+        emit IERC1155.TransferSingle(address(this), address(0), testOwner, tokenId, 1);
         vm.expectEmit();
-        emit IPermissionedRegistry.TokenResource(expectedTokenId, expectedTokenId);
+        emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
-        emit IRegistryEvents.SubregistryUpdated(expectedTokenId, testRegistry, address(this));
+        emit IRegistryEvents.SubregistryUpdated(tokenId, testRegistry, address(this));
         vm.expectEmit();
-        emit IRegistryEvents.ResolverUpdated(expectedTokenId, testResolver, address(this));
-        uint256 tokenId = this._register();
+        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, address(this));
+        assertEq(this._register(), tokenId, "token");
         assertEq(registry.getExpiry(tokenId), testExpiry, "expiry");
         assertEq(registry.ownerOf(tokenId), testOwner, "owner");
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
@@ -169,7 +169,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_register_cannotSetPastExpiry() external {
-        testExpiry = 0;
+        vm.warp(2);
+        testExpiry = uint64(block.timestamp) - 1;
         vm.expectRevert(
             abi.encodeWithSelector(IStandardRegistry.CannotSetPastExpiry.selector, testExpiry)
         );
@@ -220,6 +221,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
         assertEq(address(registry.getSubregistry(testLabel)), address(0), "registry");
         assertEq(labelStore.getLabel(tokenId), testLabel, "label");
+    }
+
+    function test_reserve_canSetPastExpiry() external {
+        vm.warp(2);
+        testExpiry = uint64(block.timestamp) - 1;
+        this._reserve();
+    }
+
+    function test_reserve_cannotSetPastExpiry() external {
+        testExpiry = 0; // genesis
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.CannotSetPastExpiry.selector, testExpiry)
+        );
+        this._reserve();
     }
 
     function test_reserve_alreadyReserved() external {

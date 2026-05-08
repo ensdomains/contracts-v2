@@ -42,7 +42,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
     ENS internal immutable _REGISTRY_V1;
 
     /// @dev The ENSv1 `BaseRegistrar` contract.
-    IBaseRegistrar internal immutable _REGISTRAR_V1;
+    IBaseRegistrar internal immutable _BASE_REGISTRAR;
 
     /// @dev Same as `BaseRegistrarImplementation.GRACE_PERIOD()`.
     uint256 internal immutable _GRACE_PERIOD;
@@ -63,8 +63,8 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
     constructor(INameWrapper nameWrapper) {
         NAME_WRAPPER = nameWrapper;
         _REGISTRY_V1 = nameWrapper.ens();
-        _REGISTRAR_V1 = nameWrapper.registrar();
-        _GRACE_PERIOD = BaseRegistrarImplementation(address(_REGISTRAR_V1)).GRACE_PERIOD();
+        _BASE_REGISTRAR = nameWrapper.registrar();
+        _GRACE_PERIOD = BaseRegistrarImplementation(address(_BASE_REGISTRAR)).GRACE_PERIOD();
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -115,7 +115,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
                 // resolver is cleared by migration
                 return (node, State.LOCKED);
             }
-            _REGISTRAR_V1.register(
+            _BASE_REGISTRAR.register(
                 uint256(labelHash),
                 address(this),
                 type(uint64).max - block.timestamp - _GRACE_PERIOD // max duration?
