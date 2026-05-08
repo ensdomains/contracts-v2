@@ -95,7 +95,7 @@ describe("PreMigration", () => {
     }
   });
 
-  it("skips expired names", async () => {
+  it("fails to migrate when v2 expiry would be in the past", async () => {
     const label = "expiredname";
     const { user } = env.namedAccounts;
 
@@ -108,6 +108,9 @@ describe("PreMigration", () => {
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.AVAILABLE);
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.failureCount).toBe(1);
   });
 
   it("reserves names that are expired but within v1 grace period", async () => {
@@ -605,8 +608,8 @@ describe("PreMigration", () => {
     const checkpoint = readTestCheckpoint();
     expect(checkpoint).not.toBeNull();
     expect(checkpoint!.successCount).toBe(1);
-    expect(checkpoint!.skippedCount).toBe(2);
-    expect(checkpoint!.failureCount).toBe(0);
+    expect(checkpoint!.skippedCount).toBe(1);
+    expect(checkpoint!.failureCount).toBe(1);
     expect(checkpoint!.totalProcessed).toBe(3);
   });
 
@@ -825,8 +828,8 @@ describe("PreMigration", () => {
 
     const checkpoint = readTestCheckpoint();
     expect(checkpoint!.successCount).toBe(3);
-    expect(checkpoint!.skippedCount).toBe(3);
-    expect(checkpoint!.failureCount).toBe(0);
+    expect(checkpoint!.skippedCount).toBe(1);
+    expect(checkpoint!.failureCount).toBe(2);
   });
 
   it("multiple registered names in batch are all counted as failures", async () => {

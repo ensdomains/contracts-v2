@@ -285,11 +285,6 @@ class PreMigrationLogger extends Logger {
     );
   }
 
-  v2ExpiryInPast(name: string, expiryAddDays: number): void {
-    const msg = `v2 expiry would be in the past with --expiry-add-days ${expiryAddDays}`;
-    this.raw(yellow(`  → ⊘ ${msg}`), `  → ⊘ ${msg}`);
-  }
-
   skippingInvalidName(domainName: string): void {
     this.raw(
       yellow(`  → ⊘ Skipping: ${bold(domainName)}`) +
@@ -837,7 +832,6 @@ async function processBatch(
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
 
   const expiryAddSeconds = BigInt(config.expiryAddDays) * 86400n;
-  const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
 
   const verificationResults = await batchVerifyRegistrations(
     registrations,
@@ -895,16 +889,6 @@ async function processBatch(
     }
 
     const effectiveExpiry = result.v1Expiry + expiryAddSeconds;
-    if (effectiveExpiry <= currentTimestamp) {
-      logger.v2ExpiryInPast(
-        registration.labelName,
-        config.expiryAddDays,
-      );
-      checkpoint.skippedCount++;
-      checkpoint.totalProcessed++;
-      logger.finishedName(registration.labelName, "skipped");
-      continue;
-    }
 
     const expiryDateFormatted = new Date(Number(effectiveExpiry) * 1000)
       .toISOString()
@@ -1079,7 +1063,7 @@ export async function main(argv = process.argv): Promise<void> {
     )
     .option(
       "--expiry-add-days <days>",
-      "Days added to each name's v1 expiry to compute its v2 expiry. Distinct from v1's hard 90-day grace period (which gates eligibility). Default 62 + v2's 28-day premium window reproduces v1's 90-day post-expiry behavior.",
+      "Days added to each name's v1 expiry to compute its v2 expiry",
       "62",
     )
     .requiredOption(

@@ -48,7 +48,7 @@ bun run script/preMigration.ts [options]
 | `--limit <number>` | none | Maximum total names to process |
 | `--dry-run` | `false` | Simulate without sending transactions |
 | `--continue` | `false` | Resume from the last checkpoint |
-| `--expiry-add-days <days>` | `62` | Days added to each name's v1 expiry to compute its v2 expiry: `v2Expiry = v1Expiry + expiryAddDays`. Distinct from v1's hard 90-day grace period (used separately for migration eligibility). The default `62` plus the v2 28-day premium-pricing window reproduces v1's 90-day post-expiry behavior. Names whose computed `v2Expiry` is already in the past are skipped. Set to `0` to preserve v1 expiries exactly. |
+| `--expiry-add-days <days>` | `62` | Days added to each name's v1 expiry to compute its v2 expiry. |
 | `--v1-base-registrar <address>` | `0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85` | v1 BaseRegistrar address for expiry lookups |
 
 ## CSV Format
@@ -85,8 +85,7 @@ The script handles quoted fields and escaped quotes within CSV values.
    - If already **registered** (status 2): fail — name is fully owned on v2
    - If already **reserved** (status 1): mark for potential renewal
    - If never registered on v1, or past v1's 90-day grace period (`v1Expiry + 90 days < now`): skip — v1 owner has lost their claim
-   - If `v1Expiry + --expiry-add-days` is already in the past: skip — v2 reservation expiry would be in the past
-   - Otherwise add to the batch reservation list with v2 expiry = `v1Expiry + --expiry-add-days`
+   - Otherwise add to the batch reservation list with v2 expiry = `v1Expiry + --expiry-add-days`. If the result is in the past, registration will fail — operators should choose `--expiry-add-days` large enough to cover the deepest-in-grace name they want migrated
 9. **Estimate gas** for the batch and preemptively split if estimated gas exceeds 80% of the block gas limit
 10. **Submit batch transaction** via `BatchRegistrar.batchRegister()`. If a batch reverts, recursively split it in half (binary-search fallback) until individual failing names are isolated.
 11. **Save checkpoint** after each batch
@@ -101,7 +100,6 @@ The script handles quoted fields and escaped quotes within CSV values.
 | Reserved (1) | Registered with same expiry | **Skip** (already up-to-date) |
 | Registered (2) | Any | **Fail** (already fully registered) |
 | Any | Never registered, or past v1's 90-day grace | **Skip** (v1 owner has lost their claim) |
-| Any | Within v1 grace, but `v1Expiry + expiryAddDays` already in the past | **Skip** (v2 reservation expiry would be in past — adjust `--expiry-add-days` if desired) |
 
 ### On-Chain Registration Parameters
 
@@ -284,7 +282,7 @@ bun run script/preMigration.ts --expiry-add-days 180 [other options]
 
 Every reserved name's v2 expiry is set to `v1Expiry + 180 days`. Pass `0` to preserve v1 expiries exactly.
 
-Note: eligibility for migration is gated by v1's hard-coded 90-day grace period regardless of this value. A name expired more than 90 days ago is past v1 grace and is skipped. Increasing `--expiry-add-days` beyond 90 just gives migrated names a longer v2 expiry; it does not extend the eligibility window.
+Note: eligibility for migration is gated by v1's hard-coded 90-day grace period regardless of this value. A name expired more than 90 days ago is past v1 grace and is skipped.
 
 ### Custom v1 BaseRegistrar (for testing)
 
