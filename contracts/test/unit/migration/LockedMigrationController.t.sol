@@ -238,10 +238,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
                 registry.ROOT_RESOURCE(),
                 RegistryRolesLib.ROLE_UPGRADE,
-                user
+                actor
             )
         );
-        vm.prank(user);
+        vm.prank(actor);
         registry.upgradeToAndCall(address(newImplementation), "");
     }
 
@@ -447,13 +447,13 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ethRegistry.hasRoles(
                 tokenIdV1,
                 RegistryRolesLib.ROLE_WAS_RESERVED,
-                user
+                testOwner
             )
         );
 
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.safeTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             uint256(NameCoder.namehash(name, 0)),
             1,
@@ -464,7 +464,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ethRegistry.hasRoles(
                 tokenIdV1,
                 RegistryRolesLib.ROLE_WAS_RESERVED,
-                user
+                testOwner
             )
         );
     }

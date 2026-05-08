@@ -387,13 +387,13 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             ethRegistry.hasRoles(
                 tokenIdV1,
                 RegistryRolesLib.ROLE_WAS_RESERVED,
-                user
+                testOwner
             )
         );
 
-        vm.prank(user);
+        vm.prank(testOwner);
         baseRegistrar.safeTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             tokenIdV1,
             abi.encode(md)
@@ -403,7 +403,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             ethRegistry.hasRoles(
                 tokenIdV1,
                 RegistryRolesLib.ROLE_WAS_RESERVED,
-                user
+                testOwner
             )
         );
     }
