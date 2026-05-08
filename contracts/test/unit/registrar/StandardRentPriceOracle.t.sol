@@ -316,10 +316,10 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     function test_applyDiscount_fragile() external view {
         uint64 y = StandardRegistrar.SEC_PER_YEAR;
         uint256[3] memory v0 = [uint256(800), 16000, 64000];
-        _applyDiscount(v0, 0, y - 1, v0);
-        _applyDiscount(v0, y, 2 * y - 1, [uint256(700), 14000, 56000]);
-        _applyDiscount(v0, 2 * y, 5 * y - 1, [uint256(550), 11000, 44000]);
-        _applyDiscount(v0, 5 * y, type(uint64).max, [uint256(450), 9000, 36000]);
+        _applyDiscount(v0, 0, 2 * y - 1, v0);
+        _applyDiscount(v0, y, 3 * y - 1, [uint256(700), 14000, 56000]);
+        _applyDiscount(v0, 3 * y, 6 * y - 1, [uint256(550), 11000, 44000]);
+        _applyDiscount(v0, 6 * y, type(uint64).max, [uint256(450), 9000, 36000]);
     }
 
     ////////////////////////////////////////////////////////////////////////
