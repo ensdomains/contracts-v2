@@ -106,11 +106,10 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_expiryForETH2LDIncludesGrace() external {
         bytes memory name = registerWrappedETH2LD("test", 0);
-        uint256 unwrappedExpiry = ethRegistrarV1.nameExpires(
-            uint256(keccak256(bytes(NameCoder.firstLabel(name))))
-        );
+        uint256 unwrappedExpiry =
+            ethRegistrarV1.nameExpires(uint256(keccak256(bytes(NameCoder.firstLabel(name)))));
         (, , uint256 wrappedExpiry) = nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));
-        assertEq(unwrappedExpiry + ethRegistrarV1.GRACE_PERIOD(), wrappedExpiry);
+        assertEq(unwrappedExpiry + gracePeriodV1, wrappedExpiry);
     }
 
     function test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL() external {
@@ -132,12 +131,7 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_wrap() external {
         bytes memory parentName = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        bytes memory name = createWrappedChild(
-            parentName,
-            "sub",
-            address(0),
-            PARENT_CANNOT_CONTROL
-        );
+        bytes memory name = createWrappedChild(parentName, "sub", address(0), PARENT_CANNOT_CONTROL);
         (bytes32 labelhash, ) = NameCoder.readLabel(name, 0);
         vm.prank(user);
         nameWrapper.unwrap(NameCoder.namehash(parentName, 0), labelhash, user);
@@ -161,12 +155,8 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_CANNOT_BURN_FUSES_via_setChildFuses() external {
         bytes memory parentName = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        bytes memory name = createWrappedChild(
-            parentName,
-            "sub",
-            address(0),
-            CANNOT_UNWRAP | PARENT_CANNOT_CONTROL
-        );
+        bytes memory name =
+            createWrappedChild(parentName, "sub", address(0), CANNOT_UNWRAP | PARENT_CANNOT_CONTROL);
         // setChildFuses() does not allow fuse changes if PCC
         // _setFuses() requires CU + PCC if child fuses as burned
         vm.expectRevert();

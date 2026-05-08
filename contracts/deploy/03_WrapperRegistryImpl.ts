@@ -5,6 +5,14 @@ export default execute(
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
+    const graveyard = get<(typeof artifacts.Graveyard)["abi"]>("Graveyard");
+
+    const verifiableFactory =
+      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
+
+    const ensV1Resolver =
+      get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
+
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
@@ -12,11 +20,7 @@ export default execute(
       (typeof artifacts.SimpleRegistryMetadata)["abi"]
     >("SimpleRegistryMetadata");
 
-    const verifiableFactory =
-      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
-
-    const ensV1Resolver =
-      get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
+    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
     const approvedUpgradeGate = get<
       (typeof artifacts.ApprovedUpgradeGate)["abi"]
@@ -27,11 +31,13 @@ export default execute(
       artifact: artifacts.WrapperRegistry,
       args: [
         nameWrapper.address,
+        graveyard.address,
         verifiableFactory.address,
         ensV1Resolver.address,
         hcaFactory.address,
         registryMetadata.address,
         approvedUpgradeGate.address,
+        labelStore.address,
       ],
     });
   },
@@ -39,11 +45,13 @@ export default execute(
     tags: ["WrapperRegistryImpl", "v2"],
     dependencies: [
       "NameWrapper",
-      "HCAFactory",
-      "SimpleRegistryMetadata",
+      "Graveyard",
       "VerifiableFactory",
       "ENSV1Resolver",
+      "HCAFactory",
+      "RegistryMetadata",
       "ApprovedUpgradeGate",
+      "LabelStore",
     ],
   },
 );

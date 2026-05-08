@@ -2,6 +2,7 @@
 .env
 
 node_modules/
+.solgrid_cache/
 
 .DS_Store
 
@@ -10,4 +11,4 @@ node_modules/
 .devdocs/
 
 # for now
-deployments/ 
+deployments/

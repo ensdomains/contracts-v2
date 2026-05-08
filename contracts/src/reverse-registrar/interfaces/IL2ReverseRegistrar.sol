@@ -22,10 +22,8 @@ interface IL2ReverseRegistrar {
     /// @notice Sets the `nameForAddr()` record for the addr provided account using a signature.
     /// @param claim The claim to set the name for.
     /// @param signature The signature from the addr.
-    function setNameForAddrWithSignature(
-        NameClaim calldata claim,
-        bytes calldata signature
-    ) external;
+    function setNameForAddrWithSignature(NameClaim calldata claim, bytes calldata signature)
+        external;
 
     /// @notice Sets the `nameForAddr()` record for the contract provided that is owned with `Ownable`.
     /// @param claim The claim to set the name for.
@@ -35,13 +33,13 @@ interface IL2ReverseRegistrar {
         NameClaim calldata claim,
         address owner,
         bytes calldata signature
-    ) external;
+    )
+        external;
 
     /// @notice Set the `nameForAddr()` record for the contract provided using `IContractName`.
-    /// Callable by anyone.
-    /// Reverts if not implemented.
-    /// Does not require `ERC165` support.
-    ///
+    ///         Callable by anyone.
+    ///         Reverts if not implemented.
+    ///         Does not require `ERC165` support.
     /// @param addr The address to set the name for.
     function syncName(address addr) external;
 

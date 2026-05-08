@@ -1,25 +1,34 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
+import {Graveyard} from "~src/migration/Graveyard.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
-import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
+import {V2Fixture, RegistryRolesLib} from "~test/fixtures/V2Fixture.sol";
 
-// initial gas analysis
+// forge test test/unit/migration/UnlockedMigrationController.t.sol -vv
+// forge test test/unit/migration/LockedMigrationController.t.sol -vv
+
+// [initial gas analysis]
 // * Unwrapped: 160300
 // * Unlocked: 179367
 // * Locked: 658489 (~500k for VerifiedFactory => WrapperRegistry)
 
+// [after graveyard]
+// * Unwrapped: 193011 (+32K)
+// * Unlocked: 183292 (+4K)
+// * Locked: 665863 (+7K)
+
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;
     ENSV2Resolver ensV2Resolver;
+    Graveyard graveyard;
     MockERC721 dummy721;
     MockERC1155 dummy1155;
 
@@ -32,6 +41,8 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     function setUp() public virtual {
         deployV1Fixture();
         deployV2Fixture();
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
+        graveyard = new Graveyard(nameWrapper);
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
         dummy721 = new MockERC721();
@@ -40,9 +51,11 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     }
 
     /// @dev Ensure premigration has occurred.
-    function registerUnwrapped(
-        string memory label
-    ) public override returns (bytes memory name, uint256 tokenId) {
+    function registerUnwrapped(string memory label)
+        public
+        override
+        returns (bytes memory name, uint256 tokenId)
+    {
         (name, tokenId) = super.registerUnwrapped(label);
         if (address(premigrationController) != address(0)) {
             vm.prank(premigrationController);
@@ -58,11 +71,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     }
 
     /// @dev Check resolver and fallback logic.
-    function checkResolution(
-        bytes memory name,
-        address resolverV1,
-        address resolverV2
-    ) public view {
+    function checkResolution(bytes memory name, address resolverV1, address resolverV2) public view {
         assertEq(findResolverV1(name), resolverV1, "findResolverV1");
         assertEq(findResolverV2(name), resolverV2, "findResolverV2");
         if (resolverV2 == address(ensV1Resolver)) {
@@ -84,6 +93,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     }
 }
 
+
 contract MockERC721 is ERC721 {
     uint256 _id;
     constructor() ERC721("", "") {}
@@ -92,6 +102,7 @@ contract MockERC721 is ERC721 {
         return _id++;
     }
 }
+
 
 contract MockERC1155 is ERC1155 {
     uint256 _id;

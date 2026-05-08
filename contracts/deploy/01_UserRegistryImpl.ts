@@ -9,14 +9,16 @@ export default execute(
       (typeof artifacts.SimpleRegistryMetadata)["abi"]
     >("SimpleRegistryMetadata");
 
+    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+
     await deploy("UserRegistryImpl", {
       account: deployer,
       artifact: artifacts.UserRegistry,
-      args: [hcaFactory.address, registryMetadata.address],
+      args: [hcaFactory.address, registryMetadata.address, labelStore.address],
     });
   },
   {
     tags: ["UserRegistryImpl", "v2"],
-    dependencies: ["HCAFactory", "RegistryMetadata"],
+    dependencies: ["HCAFactory", "RegistryMetadata", "LabelStore"],
   },
 );

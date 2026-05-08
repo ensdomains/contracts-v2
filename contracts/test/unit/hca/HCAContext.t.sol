@@ -18,6 +18,7 @@ contract HCAContextHarness is HCAContext {
     }
 }
 
+
 contract HCAContextTest is Test {
     MockHCAFactoryBasic factory;
     HCAContextHarness harness;
