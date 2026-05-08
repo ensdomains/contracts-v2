@@ -8,6 +8,7 @@ import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IAddressSet} from "./interfaces/IAddressSet.sol";
 
 uint256 constant ROLE_APPROVE = 1 << 0;
+
 uint256 constant ROLE_APPROVE_ADMIN = ROLE_APPROVE << 128;
 
 /// @notice An arbitrary set of addresses managed by EAC.
@@ -41,9 +42,13 @@ contract PermissionedAddressSet is EnhancedAccessControl, IAddressSet {
     }
 
     /// @inheritdoc EnhancedAccessControl
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(EnhancedAccessControl) returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(EnhancedAccessControl)
+        returns (bool)
+    {
         return type(IAddressSet).interfaceId == interfaceId || super.supportsInterface(interfaceId);
     }
 

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {Test} from "forge-std/Test.sol";
-
 import {PublicResolverV2, NameCoder} from "~src/resolver/PublicResolverV2.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
@@ -11,6 +9,7 @@ import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 contract PublicResolverV2Test is V1Fixture, V2Fixture {
     PublicResolverV2 publicResolver;
 
+    address actor = makeAddr("actor");
     address friend = makeAddr("friend");
 
     function setUp() external {
@@ -23,27 +22,27 @@ contract PublicResolverV2Test is V1Fixture, V2Fixture {
         bytes32 node = _register("test");
 
         // call a setter
-        vm.prank(user);
-        publicResolver.setAddr(node, user);
+        vm.prank(testOwner);
+        publicResolver.setAddr(node, testOwner);
     }
 
     function test_canModifyName_setApprovalForAll() external {
         bytes32 node = _register("test");
 
-        vm.prank(user);
+        vm.prank(testOwner);
         publicResolver.setApprovalForAll(friend, true);
 
         assertTrue(publicResolver.canModifyName(node, friend));
 
         // call a setter
         vm.prank(friend);
-        publicResolver.setAddr(node, user);
+        publicResolver.setAddr(node, testOwner);
     }
 
     function test_canModifyName_approve() external {
         bytes32 node = _register("test");
 
-        vm.prank(user);
+        vm.prank(testOwner);
         publicResolver.approve(node, friend, true);
 
         assertTrue(publicResolver.canModifyName(node, friend));
@@ -51,15 +50,16 @@ contract PublicResolverV2Test is V1Fixture, V2Fixture {
 
         // call a setter
         vm.prank(friend);
-        publicResolver.setAddr(node, user);
+        publicResolver.setAddr(node, testOwner);
     }
 
     function test_canModifyName_notAuthorized(bytes32 node) external {
-        assertFalse(publicResolver.canModifyName(node, user));
+        assertFalse(publicResolver.canModifyName(node, testOwner));
 
         // call a setter
         vm.expectRevert();
-        publicResolver.setAddr(node, user);
+        vm.prank(actor);
+        publicResolver.setAddr(node, testOwner);
     }
 
     function _register(string memory label) internal returns (bytes32 node) {
@@ -67,18 +67,18 @@ contract PublicResolverV2Test is V1Fixture, V2Fixture {
         bytes memory name = this.registerWrappedETH2LD(label, 0);
         node = NameCoder.namehash(name, 0);
 
-        assertFalse(publicResolver.canModifyName(node, user), "before");
+        assertFalse(publicResolver.canModifyName(node, testOwner), "before");
 
         // register same name in v2
         ethRegistry.register(
             label,
-            user,
+            testOwner,
             IRegistry(address(0)),
             address(publicResolver),
             0,
             uint64(block.timestamp + 1 days)
         );
 
-        assertTrue(publicResolver.canModifyName(node, user), "after");
+        assertTrue(publicResolver.canModifyName(node, testOwner), "after");
     }
 }

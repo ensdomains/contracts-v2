@@ -2,15 +2,13 @@
 pragma solidity >=0.8.13;
 
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-import {
-    AbstractETHRegistrar,
-    IHCAFactoryBasic,
-    IETHRenewer,
-    IRentPriceOracle,
-    IPermissionedRegistry,
-    Ownable
-} from "~src/registrar/AbstractETHRegistrar.sol";
+import {AbstractETHRegistrar} from "~src/registrar/AbstractETHRegistrar.sol";
+import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
+import {IETHRenewer} from "~src/registrar/interfaces/IETHRenewer.sol";
+import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOracleFixture.sol";
 

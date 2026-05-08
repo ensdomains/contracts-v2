@@ -46,6 +46,7 @@ contract LockedMigrationController is LockedWrapperReceiver {
     )
         LockedWrapperReceiver(
             nameWrapper,
+            graveyard,
             verifiableFactory,
             wrapperRegistryImpl,
             publicResolverSet,

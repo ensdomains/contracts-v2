@@ -13,8 +13,8 @@ import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol"
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
-import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
+import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {ApprovedUpgradeGate} from "./ApprovedUpgradeGate.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
@@ -80,12 +80,15 @@ contract WrapperRegistry is
         address ensV1Resolver,
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider,
+        ApprovedUpgradeGate upgradeGate,
+        ILabelStore labelStore,
         IAddressSet publicResolverSet,
         address publicResolver
     )
         PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0) // no roles are granted
         LockedWrapperReceiver(
             nameWrapper,
+            graveyard,
             verifiableFactory,
             address(this),
             publicResolverSet,

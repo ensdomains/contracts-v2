@@ -35,7 +35,7 @@ contract PublicResolverV2 is
     HCAContext
 {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv1 `NameWrapper` contract.
@@ -51,14 +51,12 @@ contract PublicResolverV2 is
     /// @dev A mapping of operators. An address that is authorised for an address
     ///      may make any changes to the name that the owner could, but may not update
     ///      the set of authorisations.
-    mapping(address owner => mapping(address operator => bool approved))
-        internal _operatorApprovals;
+    mapping(address owner => mapping(address operator => bool approved)) internal _operatorApprovals;
 
     /// @dev A mapping of delegates. A delegate that is authorised by an owner
     ///      for a name may make changes to the name's resolver, but may not update
     ///      the set of token approvals.
-    mapping(address owner => mapping(bytes32 node => mapping(address delegate => bool approved)))
-        internal _tokenApprovals;
+    mapping(address owner => mapping(bytes32 node => mapping(address delegate => bool approved))) internal _tokenApprovals;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -94,15 +92,15 @@ contract PublicResolverV2 is
         IHCAFactoryBasic hcaFactory,
         INameWrapper nameWrapper,
         IPermissionedRegistry rootRegistry
-    ) HCAEquivalence(hcaFactory) {
+    )
+        HCAEquivalence(hcaFactory)
+    {
         NAME_WRAPPER = nameWrapper;
         ROOT_REGISTRY = rootRegistry;
     }
 
     /// @inheritdoc AddrResolver
-    function supportsInterface(
-        bytes4 interfaceId
-    )
+    function supportsInterface(bytes4 interfaceId)
         public
         view
         override(
@@ -160,11 +158,11 @@ contract PublicResolverV2 is
     /// @param node The namehash to check.
     /// @param delegate The delegated account.
     /// @return `true` if `operator` is approved.
-    function isApprovedFor(
-        address owner,
-        bytes32 node,
-        address delegate
-    ) public view returns (bool) {
+    function isApprovedFor(address owner, bytes32 node, address delegate)
+        public
+        view
+        returns (bool)
+    {
         return _tokenApprovals[owner][node][delegate];
     }
 
@@ -185,9 +183,8 @@ contract PublicResolverV2 is
         if (parent == address(0)) {
             return false;
         }
-        IPermissionedRegistry.State memory state = IPermissionedRegistry(parent).getState(
-            uint256(labelHash)
-        );
+        IPermissionedRegistry.State memory state =
+            IPermissionedRegistry(parent).getState(uint256(labelHash));
         if (state.status != IPermissionedRegistry.Status.REGISTERED) {
             return false;
         }

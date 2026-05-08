@@ -4,11 +4,7 @@ pragma solidity ^0.8.13;
 import {Test} from "forge-std/Test.sol";
 
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
-import {
-    PermissionedAddressSet,
-    ROLE_APPROVE,
-    ROLE_APPROVE_ADMIN
-} from "~src/utils/PermissionedAddressSet.sol";
+import {PermissionedAddressSet, ROLE_APPROVE} from "~src/utils/PermissionedAddressSet.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 contract PermissionedAddressSetTest is Test {

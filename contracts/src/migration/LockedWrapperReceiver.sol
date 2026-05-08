@@ -71,11 +71,13 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     constructor(
         INameWrapper nameWrapper,
         address graveyard,
-        VerifiableFactory verifiableFactory,
+        IVerifiableFactory verifiableFactory,
         address wrapperRegistryImpl,
         IAddressSet publicResolverSet,
         address publicResolver
-    ) AbstractWrapperReceiver(nameWrapper, graveyard) {
+    )
+        AbstractWrapperReceiver(nameWrapper, graveyard)
+    {
         VERIFIABLE_FACTORY = verifiableFactory;
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
         PUBLIC_RESOLVER_SET = publicResolverSet;
@@ -134,6 +136,9 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                     NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
                 } else {
                     resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
+                    if (PUBLIC_RESOLVER_SET.includes(resolver)) {
+                        resolver = PUBLIC_RESOLVER; // replace with new PublicResolver
+                    }
                 }
 
                 NAME_WRAPPER.safeTransferFrom(address(this), GRAVEYARD, uint256(node), 1, ""); // transfer to graveyard
@@ -185,54 +190,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             } else {
                 revert LibMigration.NameNotLocked(uint256(node));
             }
-<<<<<<< HEAD
-=======
-
-            if (NAME_WRAPPER.getApproved(uint256(node)) != address(0)) {
-                revert LibMigration.FrozenTokenApproval(uint256(node));
-            }
-
-            address resolver = md.resolver;
-            if ((fuses & CANNOT_SET_RESOLVER) == 0) {
-                NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
-            } else {
-                resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
-                if (PUBLIC_RESOLVER_SET.includes(resolver)) {
-                    resolver = PUBLIC_RESOLVER; // replace with new PublicResolver
-                }
-            }
-
-            // create subregistry
-            IRegistry subregistry = IRegistry(
-                VERIFIABLE_FACTORY.deployProxy(
-                    WRAPPER_REGISTRY_IMPL,
-                    uint256(node),
-                    abi.encodeCall(
-                        IWrapperRegistry.initialize,
-                        (
-                            node,
-                            parentRegistry,
-                            md.label,
-                            md.owner,
-                            _subregistryRoleBitmapFromFuses(fuses)
-                        )
-                    )
-                )
-            );
-
-            // add name to ENSv2
-            // PermissionedRegistry._register() => CannotSetPastExpiry :: see expiry check
-            // PermissionedRegistry._register() => LabelAlreadyRegistered :: only have ROLE_REGISTER_RESERVED
-            // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver :: see owner check
-            _inject(
-                md.label,
-                md.owner,
-                subregistry,
-                resolver,
-                _tokenRoleBitmapFromFuses(fuses),
-                expiry
-            );
->>>>>>> 33a2ff1c (wip)
         }
     }
 

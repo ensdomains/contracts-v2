@@ -42,6 +42,7 @@ import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
 import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
+import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
@@ -57,7 +58,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         approvedUpgradeGate = new ApprovedUpgradeGate(address(this));
 
-        publicResolverSet = new PermissionedAddresses(hcaFactory, address(this));
+        publicResolverSet = new PermissionedAddressSet(hcaFactory, address(this));
         publicResolver = new PublicResolverV2(hcaFactory, nameWrapper, rootRegistry);
 
         vm.expectEmit();
@@ -593,27 +594,27 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         LibMigration.Data memory md = _makeData(name);
 
         address oldPublicResolver = makeAddr("oldPublicResolver");
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.setResolver(node, oldPublicResolver);
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.setFuses(node, uint16(CANNOT_UNWRAP | CANNOT_SET_RESOLVER));
         assertNotEq(md.resolver, oldPublicResolver, "diff");
 
         // add as approved PublicResolver
         publicResolverSet.approve(oldPublicResolver, true);
 
-        assertFalse(publicResolver.canModifyName(node, user), "before");
+        assertFalse(publicResolver.canModifyName(node, testOwner), "before");
 
-        vm.prank(user);
+        vm.prank(testOwner);
         nameWrapper.safeTransferFrom(
-            user,
+            testOwner,
             address(migrationController),
             uint256(node),
             1,
             abi.encode(md)
         );
 
-        assertTrue(publicResolver.canModifyName(node, user), "after");
+        assertTrue(publicResolver.canModifyName(node, testOwner), "after");
 
         assertEq(ethRegistry.getResolver(md.label), address(publicResolver), "prV2");
         checkResolution(name, address(oldPublicResolver), address(publicResolver));
@@ -954,7 +955,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 hcaFactory,
                 metadata,
                 approvedUpgradeGate,
-                labelStore
+                labelStore,
+                publicResolverSet,
+                address(publicResolver)
             );
     }
 }
@@ -969,7 +972,9 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider,
         ApprovedUpgradeGate upgradeGate,
-        ILabelStore labelStore
+        ILabelStore labelStore,
+        IAddressSet publicResolverSet,
+        address publicResolver
     )
         WrapperRegistry(
             nameWrapper,
@@ -979,7 +984,9 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
             hcaFactory,
             metadataProvider,
             upgradeGate,
-            labelStore
+            labelStore,
+            publicResolverSet,
+            publicResolver
         )
     {}
 
