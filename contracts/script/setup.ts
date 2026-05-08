@@ -261,6 +261,11 @@ export async function setupDevnet({
         address: rocketh.get("DefaultReverseRegistrarHCAAdapter").address,
         client,
       }),
+      Graveyard: getContract({
+        abi: artifacts.Graveyard.abi,
+        address: rocketh.get("Graveyard").address,
+        client,
+      }),
     };
 
     const v1 = {

@@ -6,6 +6,8 @@ export default execute(
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
+    const graveyard = get<(typeof artifacts.Graveyard)["abi"]>("Graveyard");
+
     const ethRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
 
@@ -21,6 +23,7 @@ export default execute(
       artifact: artifacts.LockedMigrationController,
       args: [
         nameWrapper.address,
+        graveyard.address,
         ethRegistry.address,
         verifiableFactory.address,
         wrapperRegistryImpl.address,
@@ -41,6 +44,7 @@ export default execute(
     tags: ["LockedMigrationController", "v2"],
     dependencies: [
       "NameWrapper",
+      "Graveyard",
       "ETHRegistry",
       "VerifiableFactory",
       "WrapperRegistryImpl",
