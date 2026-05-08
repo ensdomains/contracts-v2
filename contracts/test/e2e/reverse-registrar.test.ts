@@ -8,7 +8,7 @@ import {
   COIN_TYPE_ETH,
   coinTypeFromChain,
   getReverseName,
-} from "../utils/resolutions.js";
+} from "../utils/utils.js";
 
 const COIN_TYPE_OPTIMISM = coinTypeFromChain(10);
 

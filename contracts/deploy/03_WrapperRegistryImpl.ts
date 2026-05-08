@@ -49,7 +49,7 @@ export default execute(
       "VerifiableFactory",
       "ENSV1Resolver",
       "HCAFactory",
-      "SimpleRegistryMetadata",
+      "RegistryMetadata",
       "ApprovedUpgradeGate",
       "LabelStore",
     ],

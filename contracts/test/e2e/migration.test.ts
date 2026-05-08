@@ -12,6 +12,7 @@ import {
 import { STATUS, MAX_EXPIRY, FUSES } from "../../script/deploy-constants.js";
 import { expect, expectVar } from "../utils/expectVar.js";
 import {
+  COIN_TYPE_ETH,
   dnsEncodeName,
   getLabelAt,
   getParentName,
@@ -19,7 +20,6 @@ import {
 } from "../utils/utils.js";
 import {
   bundleCalls,
-  COIN_TYPE_ETH,
   type KnownProfile,
   makeResolutions,
 } from "../utils/resolutions.js";
