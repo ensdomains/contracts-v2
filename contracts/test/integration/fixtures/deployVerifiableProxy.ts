@@ -16,11 +16,14 @@ import {
   type WalletClient,
 } from "viem";
 import { waitForSuccessfulTransactionReceipt } from "../../utils/waitForSuccessfulTransactionReceipt.ts";
+import { recordReceipt } from "../../utils/gasMetrics.ts";
 
 const verifiableFactoryAbi = parseAbi([
   "function deployProxy(address implementation, uint256 salt, bytes data)",
   "event ProxyDeployed(address indexed sender, address indexed proxyAddress, uint256 salt, address implementation)",
 ]);
+
+let deterministicSaltCounter = 0n;
 
 export async function deployVerifiableProxy<
   const abi extends Abi | readonly unknown[],
@@ -28,7 +31,8 @@ export async function deployVerifiableProxy<
   walletClient,
   factoryAddress,
   implAddress,
-  salt = BigInt(keccak256(stringToBytes(new Date().toISOString()))),
+  contractName,
+  salt = defaultSalt(),
   abi,
   functionName,
   args,
@@ -36,6 +40,7 @@ export async function deployVerifiableProxy<
   walletClient: WalletClient<Transport, Chain, Account>;
   factoryAddress: Address;
   implAddress: Address;
+  contractName?: string;
   salt?: bigint;
   abi: abi;
   functionName: string;
@@ -63,6 +68,22 @@ export async function deployVerifiableProxy<
     eventName: "ProxyDeployed",
     logs: receipt.logs,
   });
+  await recordReceipt({
+    receipt,
+    phase: process.env.METRICS_PHASE,
+    kind: "deployment",
+    metric: "proxy-deployment-gas",
+    replace: true,
+    contractName,
+    address: log.args.proxyAddress,
+    functionName: "deployProxy",
+    raw: {
+      factoryAddress,
+      implementation: implAddress,
+      salt: salt.toString(),
+      initializer: functionName,
+    },
+  });
   const contract = getContract({
     abi,
     address: log.args.proxyAddress,
@@ -72,6 +93,15 @@ export async function deployVerifiableProxy<
     deploymentHash: hash,
     deploymentReceipt: receipt,
   });
+}
+
+function defaultSalt() {
+  if (process.env.GAS_METRICS === "1") {
+    return BigInt(
+      keccak256(stringToBytes(`gas-metrics:${deterministicSaltCounter++}`)),
+    );
+  }
+  return BigInt(keccak256(stringToBytes(new Date().toISOString())));
 }
 
 export function computeVerifiableProxyAddress({

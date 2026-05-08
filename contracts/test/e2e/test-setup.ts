@@ -1,11 +1,12 @@
 // Global test setup
-import { afterAll, beforeAll, beforeEach, expect } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, expect } from "bun:test";
 import { isAddress, isAddressEqual, type Address } from "viem";
 import {
   type DevnetEnvironment,
   type StateSnapshot,
   setupDevnet,
 } from "../../script/setup.js";
+import { endTest, startTest, writeMetrics } from "../utils/gasMetrics.js";
 
 declare global {
   // Add DevnetEnvironment type to NodeJS.ProcessEnv for type safety
@@ -40,7 +41,12 @@ expect.extend({
 
 const t0 = Date.now();
 
+startTest("e2e global setup", {
+  suite: "e2e",
+  phase: "e2e-global-setup",
+});
 const env = await setupDevnet({ procLog: false, chainId: 1 });
+endTest();
 
 // save the initial state
 const resetInitialState = await env.saveState();
@@ -74,12 +80,21 @@ process.env.TEST_GLOBALS = {
 };
 
 beforeEach(async () => {
+  startTest("e2e test", {
+    suite: "e2e",
+    phase: "e2e-test",
+  });
   await resetEachState?.();
   if (resetEachState) {
     await env.sync();
   }
 });
 
+afterEach(() => {
+  endTest();
+});
+
 afterAll(async () => {
+  await writeMetrics(process.env.METRICS_OUTPUT ?? "metrics/e2e.json");
   await env.shutdown();
 });

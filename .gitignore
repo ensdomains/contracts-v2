@@ -12,3 +12,5 @@ node_modules/
 
 # for now
 deployments/
+
+contracts/metrics/

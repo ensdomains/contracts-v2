@@ -9,6 +9,8 @@ import {
 import { splitName, idFromLabel } from "../../utils/utils.js";
 import { deployVerifiableProxy } from "./deployVerifiableProxy.js";
 
+let deterministicSaltCounter = 0;
+
 export async function deployV2Fixture(
   network: NetworkConnection,
   enableCcipRead = false,
@@ -81,7 +83,7 @@ export async function deployV2Fixture(
   async function deployPermissionedResolver({
     owner = walletClient.account.address,
     roles = ROLES.ALL,
-    salt = idFromLabel(new Date().toISOString()),
+    salt = defaultSalt(),
   }: {
     owner?: Address;
     roles?: bigint;
@@ -91,6 +93,7 @@ export async function deployV2Fixture(
       walletClient: await network.viem.getWalletClient(owner),
       factoryAddress: verifiableFactory.address,
       implAddress: PermissionedResolverImpl.address,
+      contractName: "PermissionedResolverProxy",
       abi: PermissionedResolverImpl.abi,
       functionName: "initialize",
       args: [walletClient.account.address, roles],
@@ -202,4 +205,11 @@ export async function deployV2Fixture(
       }
     }
   }
+}
+
+function defaultSalt() {
+  if (process.env.GAS_METRICS === "1") {
+    return idFromLabel(`gas-metrics-${deterministicSaltCounter++}`);
+  }
+  return idFromLabel(new Date().toISOString());
 }

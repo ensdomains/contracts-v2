@@ -38,6 +38,7 @@ import {
 } from "./deploy-constants.js";
 import { deployArtifact } from "../test/integration/fixtures/deployArtifact.js";
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
+import { recordReceipt } from "../test/utils/gasMetrics.js";
 
 const NAMED_ACCOUNTS = ["deployer", "owner", "user", "user2"] as const;
 
@@ -87,14 +88,17 @@ export async function setupDevnet({
     await patchArtifactsV1();
 
     process.env["RUST_LOG"] = "info"; // required to capture console.log()
+    const deterministicTimestamp = 1_700_000_000;
     const anvilInstance = createAnvil({
       accounts: NAMED_ACCOUNTS.length,
       mnemonic,
       chainId,
       port,
-      ...(extraTime
-        ? { timestamp: Math.floor(Date.now() / 1000) - extraTime }
-        : {}),
+      ...(process.env.GAS_METRICS === "1"
+        ? { timestamp: deterministicTimestamp - extraTime }
+        : extraTime
+          ? { timestamp: Math.floor(Date.now() / 1000) - extraTime }
+          : {}),
     });
 
     const accounts = NAMED_ACCOUNTS.map((name, i) =>
@@ -496,6 +500,13 @@ export async function setupDevnet({
                     ? promise.catch(handleTransferError) // v1 abi lacks v2 errors
                     : promise,
                 );
+                await recordReceipt({
+                  receipt,
+                  suite: process.env.METRICS_SUITE ?? "e2e",
+                  phase: process.env.METRICS_PHASE,
+                  address: (contract as { address?: Address }).address,
+                  functionName,
+                });
                 return receipt.transactionHash;
               };
             },
@@ -525,7 +536,10 @@ export async function setupDevnet({
     async function sync({
       blocks = 1,
       warpSec = "local",
-    }: { blocks?: number; warpSec?: number | "local" } = {}) {
+    }: {
+      blocks?: number;
+      warpSec?: number | "local";
+    } = {}) {
       const block = await client.getBlock();
       let timestamp = Number(block.timestamp);
       if (warpSec === "local") {
@@ -598,6 +612,7 @@ export async function setupDevnet({
           walletClient: createClient(account),
           factoryAddress: v2.VerifiableFactory.address,
           implAddress: v2.PermissionedResolverImpl.address,
+          contractName: "PermissionedResolverProxy",
           abi: v2.PermissionedResolverImpl.abi,
           functionName: "initialize",
           args: [admin, roles],
@@ -626,6 +641,7 @@ export async function setupDevnet({
           walletClient: createClient(account),
           factoryAddress: v2.VerifiableFactory.address,
           implAddress,
+          contractName: "UserRegistryProxy",
           abi: v2.UserRegistryImpl.abi,
           functionName: "initialize",
           args: [admin, roles],

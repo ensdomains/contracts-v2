@@ -13,6 +13,7 @@ import {
 } from "viem";
 import { getTransactionCount } from "viem/actions";
 import { waitForSuccessfulTransactionReceipt } from "../../utils/waitForSuccessfulTransactionReceipt.ts";
+import { recordReceipt } from "../../utils/gasMetrics.ts";
 
 type LinkReferences = Record<
   string,
@@ -74,7 +75,14 @@ export async function deployArtifact(
     bytecode,
     args: options.args,
   });
-  await waitForSuccessfulTransactionReceipt(walletClient, { hash, ensureDeployment: true });
+  const receipt = await waitForSuccessfulTransactionReceipt(walletClient, {
+    hash,
+    ensureDeployment: true,
+  });
+  await recordReceipt({
+    receipt,
+    phase: process.env.METRICS_PHASE,
+  });
   return getContractAddress({
     from: walletClient.account.address,
     nonce,
