@@ -98,7 +98,7 @@ export interface PreMigrationConfig {
   dryRun: boolean;
   continue?: boolean;
   disableCheckpoint?: boolean;
-  expiryAddDays: number;
+  bonusPeriodDays: number;
   v1ResolverAddress: Address;
   v1BaseRegistrarAddress: Address;
 }
@@ -595,7 +595,7 @@ export interface VerificationResult {
   /// Whether the original v1 owner still has renewal rights — i.e., the name
   /// is currently registered or within the v1 90-day grace period. Names that
   /// pass this gate are candidates for migration; the v2 expiry is computed
-  /// separately by adding the configurable `--expiry-add-days`.
+  /// separately by adding the configurable `--bonus-period-days`.
   v1IsClaimable: boolean;
   v1Expiry: bigint;
   error?: string;
@@ -831,7 +831,7 @@ async function processBatch(
   const alreadyReservedNames = new Set<string>();
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
 
-  const expiryAddSeconds = BigInt(config.expiryAddDays) * 86400n;
+  const bonusPeriodSeconds = BigInt(config.bonusPeriodDays) * 86400n;
 
   const verificationResults = await batchVerifyRegistrations(
     registrations,
@@ -888,7 +888,7 @@ async function processBatch(
       continue;
     }
 
-    const effectiveExpiry = result.v1Expiry + expiryAddSeconds;
+    const effectiveExpiry = result.v1Expiry + bonusPeriodSeconds;
 
     const expiryDateFormatted = new Date(Number(effectiveExpiry) * 1000)
       .toISOString()
@@ -1062,7 +1062,7 @@ export async function main(argv = process.argv): Promise<void> {
       false,
     )
     .option(
-      "--expiry-add-days <days>",
+      "--bonus-period-days <days>",
       "Days added to each name's v1 expiry to compute its v2 expiry",
       "62",
     )
@@ -1100,9 +1100,9 @@ export async function main(argv = process.argv): Promise<void> {
     limit: opts.limit ? parseInt(opts.limit) : null,
     dryRun: opts.dryRun,
     continue: opts.continue,
-    expiryAddDays: Number.isNaN(parseInt(opts.expiryAddDays))
+    bonusPeriodDays: Number.isNaN(parseInt(opts.bonusPeriodDays))
       ? 62
-      : parseInt(opts.expiryAddDays),
+      : parseInt(opts.bonusPeriodDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
   };
@@ -1122,7 +1122,7 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config("Mainnet RPC (v1)", config.mainnetRpcUrl);
     logger.config("CSV File", config.csvFilePath);
     logger.config("Batch Size", config.batchSize);
-    logger.config("Expiry Add Days", config.expiryAddDays);
+    logger.config("Bonus Period Days", config.bonusPeriodDays);
     logger.config(
       "V1 Grace Period Days (hard-coded)",
       Number(V1_GRACE_PERIOD_DAYS),

@@ -121,13 +121,13 @@ describe("PreMigration", () => {
     await setTimeout(2000);
 
     createCSVFile(csvFilePath, [label]);
-    const expiryAddDays = 62;
-    const args = buildMainArgs(env, csvFilePath, { expiryAddDays });
+    const bonusPeriodDays = 62;
+    const args = buildMainArgs(env, csvFilePath, { bonusPeriodDays });
     await main(args);
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-    expect(state.expiry).toBe(v1Expiry + BigInt(expiryAddDays) * 86400n);
+    expect(state.expiry).toBe(v1Expiry + BigInt(bonusPeriodDays) * 86400n);
   });
 
   it("handles already-reserved names (same expiry)", async () => {
@@ -228,13 +228,13 @@ describe("PreMigration", () => {
     );
 
     createCSVFile(csvFilePath, [label]);
-    const expiryAddDays = 90;
-    const args = buildMainArgs(env, csvFilePath, { expiryAddDays });
+    const bonusPeriodDays = 90;
+    const args = buildMainArgs(env, csvFilePath, { bonusPeriodDays });
     await main(args);
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-    expect(state.expiry).toBe(v1Expiry + BigInt(expiryAddDays) * 86400n);
+    expect(state.expiry).toBe(v1Expiry + BigInt(bonusPeriodDays) * 86400n);
   });
 
   it("adds expiry buffer to long v1 expiries", async () => {
@@ -249,13 +249,13 @@ describe("PreMigration", () => {
     );
 
     createCSVFile(csvFilePath, [label]);
-    const expiryAddDays = 90;
-    const args = buildMainArgs(env, csvFilePath, { expiryAddDays });
+    const bonusPeriodDays = 90;
+    const args = buildMainArgs(env, csvFilePath, { bonusPeriodDays });
     await main(args);
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-    expect(state.expiry).toBe(v1Expiry + BigInt(expiryAddDays) * 86400n);
+    expect(state.expiry).toBe(v1Expiry + BigInt(bonusPeriodDays) * 86400n);
   });
 
   it("handles checkpoint resumption", async () => {
