@@ -5,16 +5,9 @@ pragma solidity >=0.8.13;
 
 import {Test} from "forge-std/Test.sol";
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {
-    StandardRentPriceOracle,
-    IRentPriceOracle,
-    PaymentRatio,
-    DiscountPoint
-} from "~src/registrar/StandardRentPriceOracle.sol";
+import {StandardRentPriceOracle, PaymentRatio} from "~src/registrar/StandardRentPriceOracle.sol";
 import {
     MockERC20,
     MockERC20Blacklist,

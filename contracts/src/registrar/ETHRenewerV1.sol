@@ -22,6 +22,7 @@ interface IWrappedETHRegistrarController {
     function renew(string calldata label, uint256 duration) external payable;
 }
 
+
 /// @notice .eth registrar that only renews premigrated ENSv2 reservations
 /// and syncs with ENSv1.
 ///
@@ -70,7 +71,9 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
         uint64 bonusPeriod,
         BaseRegistrarImplementation baseRegistrar,
         address wrappedController
-    ) AbstractETHRegistrar(owner_, hcaFactory, ethRegistry, beneficiary, oracle) {
+    )
+        AbstractETHRegistrar(owner_, hcaFactory, ethRegistry, beneficiary, oracle)
+    {
         GRACE_PERIOD = bonusPeriod + gracePeriod;
         _GRACE_PERIOD_V2 = gracePeriod;
         BASE_REGISTRAR = baseRegistrar;
@@ -121,9 +124,12 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
     }
 
     /// @dev Determine if `RESERVED` or in grace was `RESERVED`.
-    function _isRenewable(
-        IPermissionedRegistry.State memory state
-    ) internal view override returns (bool) {
+    function _isRenewable(IPermissionedRegistry.State memory state)
+        internal
+        view
+        override
+        returns (bool)
+    {
         return
             state.status == IPermissionedRegistry.Status.RESERVED ||
             (state.status == IPermissionedRegistry.Status.AVAILABLE &&

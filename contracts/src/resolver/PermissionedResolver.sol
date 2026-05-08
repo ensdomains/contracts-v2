@@ -3,67 +3,29 @@ pragma solidity ^0.8.13;
 
 import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
 import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
-import {
-    IAddressResolver
-} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
-import {
-    IAddrResolver
-} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
-import {
-    IContentHashResolver
-} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
-import {
-    IDataResolver
-} from "@ens/contracts/resolvers/profiles/IDataResolver.sol";
-import {
-    IExtendedResolver
-} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
-import {
-    IHasAddressResolver
-} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
-import {
-    IInterfaceResolver
-} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
-import {
-    INameResolver
-} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
-import {
-    IPubkeyResolver
-} from "@ens/contracts/resolvers/profiles/IPubkeyResolver.sol";
-import {
-    ITextResolver
-} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
-import {
-    IVersionableResolver
-} from "@ens/contracts/resolvers/profiles/IVersionableResolver.sol";
+import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
+import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
+import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
+import {IDataResolver} from "@ens/contracts/resolvers/profiles/IDataResolver.sol";
+import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
+import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
+import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
+import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
+import {IPubkeyResolver} from "@ens/contracts/resolvers/profiles/IPubkeyResolver.sol";
+import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
+import {IVersionableResolver} from "@ens/contracts/resolvers/profiles/IVersionableResolver.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
-import {
-    ENSIP19,
-    COIN_TYPE_ETH,
-    COIN_TYPE_DEFAULT
-} from "@ens/contracts/utils/ENSIP19.sol";
+import {ENSIP19, COIN_TYPE_ETH, COIN_TYPE_DEFAULT} from "@ens/contracts/utils/ENSIP19.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {
-    IProxyAuthorization
-} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
-import {
-    UUPSUpgradeable
-} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {
-    ContextUpgradeable
-} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
-import {
-    ERC165Checker
-} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
-import {
-    EnhancedAccessControl
-} from "../access-control/EnhancedAccessControl.sol";
-import {
-    IEnhancedAccessControl
-} from "../access-control/interfaces/IEnhancedAccessControl.sol";
+import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
+import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
 import {InvalidOwner} from "../CommonErrors.sol";
 import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAContextUpgradeable} from "../hca/HCAContextUpgradeable.sol";
@@ -72,9 +34,7 @@ import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 
 import {IPermissionedResolver} from "./interfaces/IPermissionedResolver.sol";
 import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
-import {
-    ResolverProfileRewriterLib
-} from "./libraries/ResolverProfileRewriterLib.sol";
+import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib.sol";
 
 /// @notice A resolver that supports many profiles, multiple names, internal aliasing, and fine-grained permissions.
 ///
@@ -176,8 +136,7 @@ contract PermissionedResolver is
     mapping(bytes32 node => uint64 version) internal _versions;
 
     /// @dev Records for nodes.
-    mapping(bytes32 node => mapping(uint64 version => Record))
-        internal _records;
+    mapping(bytes32 node => mapping(uint64 version => Record)) internal _records;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -216,11 +175,7 @@ contract PermissionedResolver is
     /// @param resource The EAC resource.
     /// @param name The name.
     /// @param coinType The coin type.
-    event NamedAddrResource(
-        uint256 indexed resource,
-        bytes name,
-        uint256 indexed coinType
-    );
+    event NamedAddrResource(uint256 indexed resource, bytes name, uint256 indexed coinType);
 
     ////////////////////////////////////////////////////////////////////////
     // Modifiers
@@ -230,22 +185,10 @@ contract PermissionedResolver is
         address sender = _msgSender();
         if (
             part == bytes32(0) ||
-            (!hasRoles(
-                PermissionedResolverLib.resource(node, part),
-                roleBitmap,
-                sender
-            ) &&
-                !hasRoles(
-                    PermissionedResolverLib.resource(0, part),
-                    roleBitmap,
-                    sender
-                ))
+            (!hasRoles(PermissionedResolverLib.resource(node, part), roleBitmap, sender) &&
+                !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, sender))
         ) {
-            _checkRoles(
-                PermissionedResolverLib.resource(node, 0),
-                roleBitmap,
-                sender
-            ); // reverts using "widest" resource
+            _checkRoles(PermissionedResolverLib.resource(node, 0), roleBitmap, sender); // reverts using "widest" resource
         }
         _;
     }
@@ -260,9 +203,7 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc EnhancedAccessControl
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             type(IPermissionedResolver).interfaceId == interfaceId ||
             type(IExtendedResolver).interfaceId == interfaceId ||
@@ -290,10 +231,7 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IPermissionedResolver
-    function initialize(
-        address admin,
-        uint256 roleBitmap
-    ) external initializer {
+    function initialize(address admin, uint256 roleBitmap) external initializer {
         if (admin == address(0)) {
             revert InvalidOwner();
         }
@@ -307,18 +245,19 @@ contract PermissionedResolver is
 
     /// @notice Clear all records for `node`.
     /// @param node The node to update.
-    function clearRecords(
-        bytes32 node
-    ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_CLEAR) {
+    function clearRecords(bytes32 node)
+        external
+        onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_CLEAR)
+    {
         uint64 version = ++_versions[node];
         emit VersionChanged(node, version);
     }
 
     /// @inheritdoc IPermissionedResolver
-    function setAlias(
-        bytes calldata fromName,
-        bytes calldata toName
-    ) external onlyRootRoles(PermissionedResolverLib.ROLE_SET_ALIAS) {
+    function setAlias(bytes calldata fromName, bytes calldata toName)
+        external
+        onlyRootRoles(PermissionedResolverLib.ROLE_SET_ALIAS)
+    {
         _aliases[NameCoder.namehash(fromName, 0)] = toName;
         emit AliasChanged(fromName, toName, fromName, toName);
     }
@@ -335,7 +274,10 @@ contract PermissionedResolver is
         uint256 roleBitmap,
         address account,
         bool grant
-    ) external returns (bool) {
+    )
+        external
+        returns (bool)
+    {
         bytes32 node = NameCoder.namehash(toName, 0);
         uint256 resource = PermissionedResolverLib.resource(node, 0);
         if (grant) {
@@ -362,26 +304,19 @@ contract PermissionedResolver is
         string calldata key,
         address account,
         bool grant
-    ) external returns (bool) {
+    )
+        external
+        returns (bool)
+    {
         bytes32 node = NameCoder.namehash(toName, 0);
         uint256 roleBit = PermissionedResolverLib.ROLE_SET_TEXT;
-        uint256 nodeResource = PermissionedResolverLib.resource(
-            node,
-            bytes32(0)
-        );
-        uint256 partResource = PermissionedResolverLib.resource(
-            node,
-            PermissionedResolverLib.partHash(key)
-        );
+        uint256 nodeResource = PermissionedResolverLib.resource(node, bytes32(0));
+        uint256 partResource =
+            PermissionedResolverLib.resource(node, PermissionedResolverLib.partHash(key));
         if (grant) {
             _checkCanGrantRoles(nodeResource, roleBit, _msgSender());
             if (roleCount(partResource) == 0) {
-                emit NamedTextResource(
-                    partResource,
-                    toName,
-                    keccak256(bytes(key)),
-                    key
-                );
+                emit NamedTextResource(partResource, toName, keccak256(bytes(key)), key);
             }
             return _grantRoles(partResource, roleBit, account, true);
         } else {
@@ -402,26 +337,19 @@ contract PermissionedResolver is
         string calldata key,
         address account,
         bool grant
-    ) external returns (bool) {
+    )
+        external
+        returns (bool)
+    {
         bytes32 node = NameCoder.namehash(toName, 0);
         uint256 roleBit = PermissionedResolverLib.ROLE_SET_DATA;
-        uint256 nodeResource = PermissionedResolverLib.resource(
-            node,
-            bytes32(0)
-        );
-        uint256 partResource = PermissionedResolverLib.resource(
-            node,
-            PermissionedResolverLib.partHash(key)
-        );
+        uint256 nodeResource = PermissionedResolverLib.resource(node, bytes32(0));
+        uint256 partResource =
+            PermissionedResolverLib.resource(node, PermissionedResolverLib.partHash(key));
         if (grant) {
             _checkCanGrantRoles(nodeResource, roleBit, _msgSender());
             if (roleCount(partResource) == 0) {
-                emit NamedDataResource(
-                    partResource,
-                    toName,
-                    keccak256(bytes(key)),
-                    key
-                );
+                emit NamedDataResource(partResource, toName, keccak256(bytes(key)), key);
             }
             return _grantRoles(partResource, roleBit, account, true);
         } else {
@@ -437,22 +365,15 @@ contract PermissionedResolver is
     /// @param account The account to authorize roles to.
     /// @param grant If `true`, grants, otherwise, revokes.
     /// @return updated `true` if the roles were updated.
-    function authorizeAddrRoles(
-        bytes calldata toName,
-        uint256 coinType,
-        address account,
-        bool grant
-    ) external returns (bool updated) {
+    function authorizeAddrRoles(bytes calldata toName, uint256 coinType, address account, bool grant)
+        external
+        returns (bool updated)
+    {
         bytes32 node = NameCoder.namehash(toName, 0);
         uint256 roleBit = PermissionedResolverLib.ROLE_SET_ADDR;
-        uint256 nodeResource = PermissionedResolverLib.resource(
-            node,
-            bytes32(0)
-        );
-        uint256 partResource = PermissionedResolverLib.resource(
-            node,
-            PermissionedResolverLib.partHash(coinType)
-        );
+        uint256 nodeResource = PermissionedResolverLib.resource(node, bytes32(0));
+        uint256 partResource =
+            PermissionedResolverLib.resource(node, PermissionedResolverLib.partHash(coinType));
         if (grant) {
             _checkCanGrantRoles(nodeResource, roleBit, _msgSender());
             if (roleCount(partResource) == 0) {
@@ -469,11 +390,10 @@ contract PermissionedResolver is
     /// @param node The node to update.
     /// @param contentType The content type of the ABI.
     /// @param value The ABI data.
-    function setABI(
-        bytes32 node,
-        uint256 contentType,
-        bytes calldata value
-    ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_ABI) {
+    function setABI(bytes32 node, uint256 contentType, bytes calldata value)
+        external
+        onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_ABI)
+    {
         if (!_isPowerOf2(contentType)) {
             revert InvalidContentType(contentType);
         }
@@ -492,10 +412,7 @@ contract PermissionedResolver is
     /// @notice Set the contenthash of the associated ENS node.
     /// @param node The node to update.
     /// @param hash The contenthash to set.
-    function setContenthash(
-        bytes32 node,
-        bytes calldata hash
-    )
+    function setContenthash(bytes32 node, bytes calldata hash)
         external
         onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_CONTENTHASH)
     {
@@ -507,11 +424,7 @@ contract PermissionedResolver is
     /// @param node The node to update.
     /// @param key The data key.
     /// @param value The data value.
-    function setData(
-        bytes32 node,
-        string calldata key,
-        bytes calldata value
-    )
+    function setData(bytes32 node, string calldata key, bytes calldata value)
         external
         onlyPartRoles(
             node,
@@ -527,11 +440,7 @@ contract PermissionedResolver is
     /// @param node The node to update.
     /// @param interfaceId The EIP-165 interface ID.
     /// @param implementer The address of the contract that implements this interface for this node.
-    function setInterface(
-        bytes32 node,
-        bytes4 interfaceId,
-        address implementer
-    )
+    function setInterface(bytes32 node, bytes4 interfaceId, address implementer)
         external
         onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_INTERFACE)
     {
@@ -543,11 +452,10 @@ contract PermissionedResolver is
     /// @param node The node to update.
     /// @param x The x coordinate of the public key.
     /// @param y The y coordinate of the public key.
-    function setPubkey(
-        bytes32 node,
-        bytes32 x,
-        bytes32 y
-    ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_PUBKEY) {
+    function setPubkey(bytes32 node, bytes32 x, bytes32 y)
+        external
+        onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_PUBKEY)
+    {
         _record(node).pubkey = [x, y];
         emit PubkeyChanged(node, x, y);
     }
@@ -555,10 +463,10 @@ contract PermissionedResolver is
     /// @notice Set the name of the associated ENS node.
     /// @param node The node to update.
     /// @param primary The primary name.
-    function setName(
-        bytes32 node,
-        string calldata primary
-    ) external onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_NAME) {
+    function setName(bytes32 node, string calldata primary)
+        external
+        onlyPartRoles(node, 0, PermissionedResolverLib.ROLE_SET_NAME)
+    {
         _record(node).name = primary;
         emit NameChanged(node, primary);
     }
@@ -567,11 +475,7 @@ contract PermissionedResolver is
     /// @param node The node to update.
     /// @param key The text key.
     /// @param value The text value.
-    function setText(
-        bytes32 node,
-        string calldata key,
-        string calldata value
-    )
+    function setText(bytes32 node, string calldata key, string calldata value)
         external
         onlyPartRoles(
             node,
@@ -592,20 +496,25 @@ contract PermissionedResolver is
     function multicallWithNodeCheck(
         bytes32 /* node */,
         bytes[] calldata calls
-    ) external returns (bytes[] memory) {
+    )
+        external
+        returns (bytes[] memory)
+    {
         return multicall(calls);
     }
 
     /// @inheritdoc IExtendedResolver
-    function resolve(
-        bytes calldata fromName,
-        bytes calldata fromData
-    ) external view returns (bytes memory) {
+    function resolve(bytes calldata fromName, bytes calldata fromData)
+        external
+        view
+        returns (bytes memory)
+    {
         bytes memory toName = getAlias(fromName);
-        bytes memory toData = ResolverProfileRewriterLib.replaceNode(
-            fromData,
-            NameCoder.namehash(toName.length == 0 ? fromName : toName, 0) // always rewrite node
-        );
+        bytes memory toData =
+            ResolverProfileRewriterLib.replaceNode(
+                fromData,
+                NameCoder.namehash(toName.length == 0 ? fromName : toName, 0) // always rewrite node
+            );
         if (bytes4(toData) == IMulticallable.multicall.selector) {
             // note: cannot staticcall multicall() because it reverts with first error
             assembly {
@@ -617,10 +526,7 @@ contract PermissionedResolver is
                 toData = m[i];
                 (, bytes memory v) = address(this).staticcall(toData);
                 if (v.length == 0) {
-                    v = abi.encodeWithSelector(
-                        UnsupportedResolverProfile.selector,
-                        bytes4(toData)
-                    );
+                    v = abi.encodeWithSelector(UnsupportedResolverProfile.selector, bytes4(toData));
                 }
                 m[i] = v;
             }
@@ -646,16 +552,13 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IABIResolver
-    function ABI(
-        bytes32 node,
-        uint256 contentTypes
-    ) external view returns (uint256 contentType, bytes memory value) {
+    function ABI(bytes32 node, uint256 contentTypes)
+        external
+        view
+        returns (uint256 contentType, bytes memory value)
+    {
         Record storage r = _record(node);
-        for (
-            contentType = 1;
-            contentType > 0 && contentType <= contentTypes;
-            contentType <<= 1
-        ) {
+        for (contentType = 1; contentType > 0 && contentType <= contentTypes; contentType <<= 1) {
             if ((contentType & contentTypes) != 0) {
                 value = r.abis[contentType];
                 if (value.length > 0) {
@@ -667,10 +570,7 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IHasAddressResolver
-    function hasAddr(
-        bytes32 node,
-        uint256 coinType
-    ) external view returns (bool) {
+    function hasAddr(bytes32 node, uint256 coinType) external view returns (bool) {
         return _record(node).addresses[coinType].length > 0;
     }
 
@@ -680,18 +580,16 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IDataResolver
-    function data(
-        bytes32 node,
-        string calldata key
-    ) external view returns (bytes memory) {
+    function data(bytes32 node, string calldata key) external view returns (bytes memory) {
         return _record(node).datas[key];
     }
 
     /// @inheritdoc IInterfaceResolver
-    function interfaceImplementer(
-        bytes32 node,
-        bytes4 interfaceId
-    ) external view returns (address implementer) {
+    function interfaceImplementer(bytes32 node, bytes4 interfaceId)
+        external
+        view
+        returns (address implementer)
+    {
         implementer = _record(node).interfaces[interfaceId];
         if (implementer == address(0)) {
             address pointer = addr(node);
@@ -714,10 +612,7 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc ITextResolver
-    function text(
-        bytes32 node,
-        string calldata key
-    ) external view returns (string memory) {
+    function text(bytes32 node, string calldata key) external view returns (string memory) {
         return _record(node).texts[key];
     }
 
@@ -728,7 +623,13 @@ contract PermissionedResolver is
     /// @return allowed Always `true` for implementations in this resolver family.
     function canUpgradeFrom(
         address /* previousImplementation */
-    ) external pure virtual override returns (bool allowed) {
+    )
+        external
+        pure
+        virtual
+        override
+        returns (bool allowed)
+    {
         return true;
     }
 
@@ -736,9 +637,7 @@ contract PermissionedResolver is
     /// @dev Reverts with first error.
     /// @param calls The calls to make.
     /// @return results The results of the calls.
-    function multicall(
-        bytes[] calldata calls
-    ) public returns (bytes[] memory results) {
+    function multicall(bytes[] calldata calls) public returns (bytes[] memory results) {
         results = new bytes[](calls.length);
         for (uint256 i; i < calls.length; ++i) {
             (bool ok, bytes memory v) = address(this).delegatecall(calls[i]);
@@ -757,11 +656,7 @@ contract PermissionedResolver is
     /// @param node The node to update.
     /// @param coinType The coin type.
     /// @param addressBytes The encoded address.
-    function setAddr(
-        bytes32 node,
-        uint256 coinType,
-        bytes memory addressBytes
-    )
+    function setAddr(bytes32 node, uint256 coinType, bytes memory addressBytes)
         public
         onlyPartRoles(
             node,
@@ -770,9 +665,7 @@ contract PermissionedResolver is
         )
     {
         if (
-            addressBytes.length != 0 &&
-            addressBytes.length != 20 &&
-            ENSIP19.isEVMCoinType(coinType)
+            addressBytes.length != 0 && addressBytes.length != 20 && ENSIP19.isEVMCoinType(coinType)
         ) {
             revert InvalidEVMAddress(addressBytes);
         }
@@ -784,15 +677,10 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IAddressResolver
-    function addr(
-        bytes32 node,
-        uint256 coinType
-    ) public view returns (bytes memory addressBytes) {
+    function addr(bytes32 node, uint256 coinType) public view returns (bytes memory addressBytes) {
         Record storage r = _record(node);
         addressBytes = r.addresses[coinType];
-        if (
-            addressBytes.length == 0 && ENSIP19.chainFromCoinType(coinType) > 0
-        ) {
+        if (addressBytes.length == 0 && ENSIP19.chainFromCoinType(coinType) > 0) {
             addressBytes = r.addresses[COIN_TYPE_DEFAULT];
         }
     }
@@ -803,16 +691,16 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IPermissionedResolver
-    function getAlias(
-        bytes memory fromName
-    ) public view returns (bytes memory toName) {
+    function getAlias(bytes memory fromName) public view returns (bytes memory toName) {
         bytes32 prev;
         for (;;) {
             bytes memory matchName;
             (matchName, fromName) = _resolveAlias(fromName);
-            if (fromName.length == 0) break; // no alias
+            if (fromName.length == 0)
+                break; // no alias
             bytes32 next = keccak256(matchName);
-            if (next == prev) break; // same alias
+            if (next == prev)
+                break; // same alias
             toName = fromName;
             prev = next;
         }
@@ -823,11 +711,7 @@ contract PermissionedResolver is
     /// @param roleBitmap Ignored.
     /// @param account Ignored.
     /// @return success Ignored, always reverts.
-    function grantRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    )
+    function grantRoles(uint256 resource, uint256 roleBitmap, address account)
         public
         pure
         override(EnhancedAccessControl, IEnhancedAccessControl)
@@ -841,11 +725,7 @@ contract PermissionedResolver is
     /// @param roleBitmap Ignored.
     /// @param account Ignored.
     /// @return success Ignored, always reverts.
-    function revokeRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    )
+    function revokeRoles(uint256 resource, uint256 roleBitmap, address account)
         public
         pure
         override(EnhancedAccessControl, IEnhancedAccessControl)
@@ -859,9 +739,11 @@ contract PermissionedResolver is
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Allow `ROLE_UPGRADE` to upgrade.
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyRootRoles(PermissionedResolverLib.ROLE_UPGRADE) {
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyRootRoles(PermissionedResolverLib.ROLE_UPGRADE)
+    {
         //
     }
 
@@ -904,9 +786,11 @@ contract PermissionedResolver is
     /// @param fromName The source DNS-encoded name.
     /// @return matchName The alias that matched.
     /// @return toName The destination DNS-encoded name or empty if no match.
-    function _resolveAlias(
-        bytes memory fromName
-    ) internal view returns (bytes memory matchName, bytes memory toName) {
+    function _resolveAlias(bytes memory fromName)
+        internal
+        view
+        returns (bytes memory matchName, bytes memory toName)
+    {
         uint256 offset;
         while (offset < fromName.length) {
             matchName = _aliases[NameCoder.namehash(fromName, offset)];

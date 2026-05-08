@@ -49,23 +49,18 @@ interface IETHRenewer {
     /// @param duration The duration extension, in seconds.
     /// @param paymentToken The payment token.
     /// @param referrer The referrer hash.
-    function renew(
-        string memory label,
-        uint64 duration,
-        IERC20 paymentToken,
-        bytes32 referrer
-    ) external;
+    function renew(string memory label, uint64 duration, IERC20 paymentToken, bytes32 referrer)
+        external;
 
     /// @notice Determine renew price for a name.
     /// @param label The name to renew.
     /// @param duration The duration extension, in seconds.
     /// @param paymentToken The payment token.
     /// @return The amount of `paymentToken`.
-    function getRenewPrice(
-        string calldata label,
-        uint64 duration,
-        IERC20 paymentToken
-    ) external view returns (uint256);
+    function getRenewPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+        external
+        view
+        returns (uint256);
 
     /// @notice Check if name is renewable.
     /// @param label The name to check.

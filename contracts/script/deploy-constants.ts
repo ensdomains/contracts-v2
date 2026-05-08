@@ -155,7 +155,7 @@ function discountNumer(numer: bigint, denom: bigint) {
   return (DISCOUNT_DENOMINATOR * numer) / denom;
 }
 export const DISCOUNT_POINTS: { duration: bigint; numer: bigint }[] = [
-  { duration: SEC_PER_YEAR, numer: discountNumer(7n, 8n) }, ///////// 1 - 14/16 = 12.50%
-  { duration: SEC_PER_YEAR * 2n, numer: discountNumer(11n, 16n) }, // 1 - 11/16 = 31.25%
-  { duration: SEC_PER_YEAR * 5n, numer: discountNumer(9n, 16n) }, /// 1 -  9/16 = 43.75%
+  { duration: SEC_PER_YEAR * 2n, numer: discountNumer(7n, 8n) }, //// 1 - 14/16 = 12.50%
+  { duration: SEC_PER_YEAR * 3n, numer: discountNumer(11n, 16n) }, // 1 - 11/16 = 31.25%
+  { duration: SEC_PER_YEAR * 6n, numer: discountNumer(9n, 16n) }, /// 1 -  9/16 = 43.75%
 ];

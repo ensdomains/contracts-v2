@@ -47,11 +47,7 @@ import {EACBaseRolesLib} from "./libraries/EACBaseRolesLib.sol";
 /// The same nybble-per-role layout is used for assignee counting: each nybble in the count
 /// bitmap tracks the number of accounts holding that role within a resource (4 bits = max 15).
 ///
-abstract contract EnhancedAccessControl is
-    HCAContext,
-    ERC165,
-    IEnhancedAccessControl
-{
+abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
@@ -65,8 +61,7 @@ abstract contract EnhancedAccessControl is
 
     /// @dev user roles within a resource stored as a bitmap.
     ///      Resource -> User -> RoleBitmap
-    mapping(uint256 resource => mapping(address account => uint256 roleBitmap))
-        private _roles;
+    mapping(uint256 resource => mapping(address account => uint256 roleBitmap)) private _roles;
 
     /// @dev The number of assignees for a given role in a given resource.
     ///
@@ -111,9 +106,7 @@ abstract contract EnhancedAccessControl is
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc ERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(IEnhancedAccessControl).interfaceId ||
             super.supportsInterface(interfaceId);
@@ -126,11 +119,12 @@ abstract contract EnhancedAccessControl is
     /// @inheritdoc IEnhancedAccessControl
     /// @dev The caller must have all the necessary admin roles for the roles being granted.
     ///      Cannot be used with ROOT_RESOURCE directly, use grantRootRoles instead.
-    function grantRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) public virtual canGrantRoles(resource, roleBitmap) returns (bool) {
+    function grantRoles(uint256 resource, uint256 roleBitmap, address account)
+        public
+        virtual
+        canGrantRoles(resource, roleBitmap)
+        returns (bool)
+    {
         if (resource == ROOT_RESOURCE) {
             revert EACRootResourceNotAllowed();
         }
@@ -139,21 +133,24 @@ abstract contract EnhancedAccessControl is
 
     /// @inheritdoc IEnhancedAccessControl
     /// @dev The caller must have all the necessary admin roles for the roles being granted.
-    function grantRootRoles(
-        uint256 roleBitmap,
-        address account
-    ) public virtual canGrantRoles(ROOT_RESOURCE, roleBitmap) returns (bool) {
+    function grantRootRoles(uint256 roleBitmap, address account)
+        public
+        virtual
+        canGrantRoles(ROOT_RESOURCE, roleBitmap)
+        returns (bool)
+    {
         return _grantRoles(ROOT_RESOURCE, roleBitmap, account, true);
     }
 
     /// @inheritdoc IEnhancedAccessControl
     /// @dev The caller must have all the necessary admin roles for the roles being revoked.
     ///      Cannot be used with ROOT_RESOURCE directly, use revokeRootRoles instead.
-    function revokeRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) public virtual canRevokeRoles(resource, roleBitmap) returns (bool) {
+    function revokeRoles(uint256 resource, uint256 roleBitmap, address account)
+        public
+        virtual
+        canRevokeRoles(resource, roleBitmap)
+        returns (bool)
+    {
         if (resource == ROOT_RESOURCE) {
             revert EACRootResourceNotAllowed();
         }
@@ -162,18 +159,17 @@ abstract contract EnhancedAccessControl is
 
     /// @inheritdoc IEnhancedAccessControl
     /// @dev The caller must have all the necessary admin roles for the roles being revoked.
-    function revokeRootRoles(
-        uint256 roleBitmap,
-        address account
-    ) public virtual canRevokeRoles(ROOT_RESOURCE, roleBitmap) returns (bool) {
+    function revokeRootRoles(uint256 roleBitmap, address account)
+        public
+        virtual
+        canRevokeRoles(ROOT_RESOURCE, roleBitmap)
+        returns (bool)
+    {
         return _revokeRoles(ROOT_RESOURCE, roleBitmap, account, true);
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function roles(
-        uint256 resource,
-        address account
-    ) public view virtual returns (uint256) {
+    function roles(uint256 resource, address account) public view virtual returns (uint256) {
         return _roles[resource][account];
     }
 
@@ -183,39 +179,34 @@ abstract contract EnhancedAccessControl is
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasRootRoles(
-        uint256 roleBitmap,
-        address account
-    ) public view virtual returns (bool) {
+    function hasRootRoles(uint256 roleBitmap, address account) public view virtual returns (bool) {
         return _roles[ROOT_RESOURCE][account] & roleBitmap == roleBitmap;
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) public view virtual returns (bool) {
+    function hasRoles(uint256 resource, uint256 roleBitmap, address account)
+        public
+        view
+        virtual
+        returns (bool)
+    {
         return
-            (_roles[ROOT_RESOURCE][account] | _roles[resource][account]) &
-                roleBitmap ==
-            roleBitmap;
+            (_roles[ROOT_RESOURCE][account] | _roles[resource][account]) & roleBitmap == roleBitmap;
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasAssignees(
-        uint256 resource,
-        uint256 roleBitmap
-    ) public view virtual returns (bool) {
+    function hasAssignees(uint256 resource, uint256 roleBitmap) public view virtual returns (bool) {
         (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);
         return counts != 0;
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function getAssigneeCount(
-        uint256 resource,
-        uint256 roleBitmap
-    ) public view virtual returns (uint256 counts, uint256 mask) {
+    function getAssigneeCount(uint256 resource, uint256 roleBitmap)
+        public
+        view
+        virtual
+        returns (uint256 counts, uint256 mask)
+    {
         mask = _roleBitmapToMask(roleBitmap);
         counts = _roleCount[resource] & mask;
     }
@@ -240,7 +231,10 @@ abstract contract EnhancedAccessControl is
         address srcAccount,
         address dstAccount,
         bool executeCallbacks
-    ) internal virtual {
+    )
+        internal
+        virtual
+    {
         uint256 srcRoles = _roles[resource][srcAccount];
         if (srcRoles != 0) {
             // First revoke roles from source account to free up assignee slots
@@ -261,7 +255,11 @@ abstract contract EnhancedAccessControl is
         uint256 roleBitmap,
         address account,
         bool executeCallbacks
-    ) internal virtual returns (bool) {
+    )
+        internal
+        virtual
+        returns (bool)
+    {
         if (roleBitmap == 0) {
             return false;
         }
@@ -278,13 +276,7 @@ abstract contract EnhancedAccessControl is
             _updateRoleCounts(resource, newlyAddedRoles, true);
             emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             if (executeCallbacks) {
-                _onRolesGranted(
-                    resource,
-                    account,
-                    currentRoles,
-                    updatedRoles,
-                    roleBitmap
-                );
+                _onRolesGranted(resource, account, currentRoles, updatedRoles, roleBitmap);
             }
             return true;
         } else {
@@ -303,7 +295,11 @@ abstract contract EnhancedAccessControl is
         uint256 roleBitmap,
         address account,
         bool executeCallbacks
-    ) internal virtual returns (bool) {
+    )
+        internal
+        virtual
+        returns (bool)
+    {
         _checkRoleBitmap(roleBitmap);
         uint256 currentRoles = _roles[resource][account];
         uint256 updatedRoles = currentRoles & ~roleBitmap;
@@ -314,13 +310,7 @@ abstract contract EnhancedAccessControl is
             _updateRoleCounts(resource, newlyRemovedRoles, false);
             emit EACRolesChanged(resource, account, currentRoles, updatedRoles);
             if (executeCallbacks) {
-                _onRolesRevoked(
-                    resource,
-                    account,
-                    currentRoles,
-                    updatedRoles,
-                    roleBitmap
-                );
+                _onRolesRevoked(resource, account, currentRoles, updatedRoles, roleBitmap);
             }
             return true;
         } else {
@@ -332,11 +322,7 @@ abstract contract EnhancedAccessControl is
     /// @param resource The resource to update counts for
     /// @param roleBitmap The roles being modified
     /// @param isGrant true for grant, false for revoke
-    function _updateRoleCounts(
-        uint256 resource,
-        uint256 roleBitmap,
-        bool isGrant
-    ) internal {
+    function _updateRoleCounts(uint256 resource, uint256 roleBitmap, bool isGrant) internal {
         uint256 roleMask = _roleBitmapToMask(roleBitmap);
 
         if (isGrant) {
@@ -366,7 +352,10 @@ abstract contract EnhancedAccessControl is
         uint256 oldRoles,
         uint256 newRoles,
         uint256 roleBitmap
-    ) internal virtual {}
+    )
+        internal
+        virtual
+    {}
 
     /// @dev Callback for when roles are revoked.
     /// @param resource The resource that the roles were revoked within.
@@ -380,25 +369,28 @@ abstract contract EnhancedAccessControl is
         uint256 oldRoles,
         uint256 newRoles,
         uint256 roleBitmap
-    ) internal virtual {}
+    )
+        internal
+        virtual
+    {}
 
     /// @dev Reverts if `account` does not have all the given roles.
-    function _checkRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) internal view virtual {
+    function _checkRoles(uint256 resource, uint256 roleBitmap, address account)
+        internal
+        view
+        virtual
+    {
         if (!hasRoles(resource, roleBitmap, account)) {
             revert EACUnauthorizedAccountRoles(resource, roleBitmap, account);
         }
     }
 
     /// @dev Reverts if `account` does not have the admin roles for all the given roles.
-    function _checkCanGrantRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) internal view virtual {
+    function _checkCanGrantRoles(uint256 resource, uint256 roleBitmap, address account)
+        internal
+        view
+        virtual
+    {
         uint256 settableRoles = _getSettableRoles(resource, account);
         if ((roleBitmap & ~settableRoles) != 0) {
             revert EACCannotGrantRoles(resource, roleBitmap, account);
@@ -406,11 +398,11 @@ abstract contract EnhancedAccessControl is
     }
 
     /// @dev Reverts if `account` does not have the admin roles for all the given roles that are being revoked.
-    function _checkCanRevokeRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) internal view virtual {
+    function _checkCanRevokeRoles(uint256 resource, uint256 roleBitmap, address account)
+        internal
+        view
+        virtual
+    {
         uint256 revokableRoles = _getRevokableRoles(resource, account);
         if ((roleBitmap & ~revokableRoles) != 0) {
             revert EACCannotRevokeRoles(resource, roleBitmap, account);
@@ -426,12 +418,14 @@ abstract contract EnhancedAccessControl is
     /// @param resource The resource to get settable roles for.
     /// @param account The account to get settable roles for.
     /// @return The settable roles for `account` within `resource`.
-    function _getSettableRoles(
-        uint256 resource,
-        address account
-    ) internal view virtual returns (uint256) {
-        uint256 roleBitmap = (_roles[resource][account] |
-            _roles[ROOT_RESOURCE][account]) >> 128;
+    function _getSettableRoles(uint256 resource, address account)
+        internal
+        view
+        virtual
+        returns (uint256)
+    {
+        uint256 roleBitmap =
+            (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
         return (roleBitmap << 128) | roleBitmap;
     }
 
@@ -442,12 +436,14 @@ abstract contract EnhancedAccessControl is
     /// @param resource The resource to get revokable roles for.
     /// @param account The account to get revokable roles for.
     /// @return The revokable roles for `account` within `resource`.
-    function _getRevokableRoles(
-        uint256 resource,
-        address account
-    ) internal view virtual returns (uint256) {
-        uint256 roleBitmap = (_roles[resource][account] |
-            _roles[ROOT_RESOURCE][account]) >> 128;
+    function _getRevokableRoles(uint256 resource, address account)
+        internal
+        view
+        virtual
+        returns (uint256)
+    {
+        uint256 roleBitmap =
+            (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
         return (roleBitmap << 128) | roleBitmap;
     }
 
@@ -469,9 +465,7 @@ abstract contract EnhancedAccessControl is
     ///
     /// @param roleBitmap The role bitmap to convert.
     /// @return roleMask The mask for the role bitmap.
-    function _roleBitmapToMask(
-        uint256 roleBitmap
-    ) private pure returns (uint256 roleMask) {
+    function _roleBitmapToMask(uint256 roleBitmap) private pure returns (uint256 roleMask) {
         _checkRoleBitmap(roleBitmap);
         roleMask = roleBitmap | (roleBitmap << 1);
         roleMask |= roleMask << 2;
@@ -485,8 +479,7 @@ abstract contract EnhancedAccessControl is
         uint256 hasZeroNybbles;
         unchecked {
             hasZeroNybbles =
-                (value -
-                    0x1111111111111111111111111111111111111111111111111111111111111111) &
+                (value - 0x1111111111111111111111111111111111111111111111111111111111111111) &
                 ~value &
                 0x8888888888888888888888888888888888888888888888888888888888888888;
         }

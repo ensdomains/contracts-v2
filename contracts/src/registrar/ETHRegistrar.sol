@@ -1,16 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {
-    SafeERC20,
-    IERC20
-} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
-import {
-    IPermissionedRegistry
-} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
@@ -21,7 +16,8 @@ import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
 /// @dev Roles assigned to owners at registration. Includes set-subregistry, set-resolver, and can-transfer (with admin variants).
-uint256 constant REGISTRATION_ROLE_BITMAP = 0 |
+uint256 constant REGISTRATION_ROLE_BITMAP =
+    0 |
     RegistryRolesLib.ROLE_SET_SUBREGISTRY |
     RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN |
     RegistryRolesLib.ROLE_SET_RESOLVER |
@@ -98,13 +94,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
         uint64 maxCommitmentAge,
         uint64 minRegisterDuration
     )
-        AbstractETHRegistrar(
-            owner_,
-            hcaFactory,
-            ethRegistry,
-            beneficiary,
-            oracle
-        )
+        AbstractETHRegistrar(owner_, hcaFactory, ethRegistry, beneficiary, oracle)
     {
         if (maxCommitmentAge <= minCommitmentAge) {
             revert MaxCommitmentAgeTooLow();
@@ -116,12 +106,9 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @inheritdoc AbstractETHRegistrar
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view override returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return
-            interfaceId == type(IETHRegistrar).interfaceId ||
-            super.supportsInterface(interfaceId);
+            interfaceId == type(IETHRegistrar).interfaceId || super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -147,37 +134,25 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
         uint64 duration,
         IERC20 paymentToken,
         bytes32 referrer
-    ) external returns (uint256 tokenId) {
+    )
+        external
+        returns (uint256 tokenId)
+    {
         if (owner == address(0)) {
             revert InvalidOwner();
         }
         _consumeCommitment(
-            makeCommitment(
-                label,
-                owner,
-                secret,
-                subregistry,
-                resolver,
-                duration,
-                referrer
-            )
+            makeCommitment(label, owner, secret, subregistry, resolver, duration, referrer)
         ); // reverts if no commitment
-        IPermissionedRegistry.State memory state = _requireAvailable(
-            label,
-            duration
-        ); // reverts if not
-        (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
-            label,
-            _availablePeriod(state.expiry),
-            duration,
-            paymentToken
-        ); // reverts if invalid
-        SafeERC20.safeTransferFrom(
-            paymentToken,
-            _msgSender(),
-            BENEFICIARY,
-            base + premium
-        ); // reverts if payment failed
+        IPermissionedRegistry.State memory state = _requireAvailable(label, duration); // reverts if not
+        (uint256 base, uint256 premium) =
+            rentPriceOracle.getRegisterPrice(
+                label,
+                _availablePeriod(state.expiry),
+                duration,
+                paymentToken
+            ); // reverts if invalid
+        SafeERC20.safeTransferFrom(paymentToken, _msgSender(), BENEFICIARY, base + premium); // reverts if payment failed
         tokenId = ETH_REGISTRY.register(
             label,
             owner,
@@ -206,11 +181,11 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @inheritdoc IETHRegistrar
-    function getRegisterPrice(
-        string calldata label,
-        uint64 duration,
-        IERC20 paymentToken
-    ) external view returns (uint256 bae, uint256 premium) {
+    function getRegisterPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+        external
+        view
+        returns (uint256 bae, uint256 premium)
+    {
         return
             rentPriceOracle.getRegisterPrice(
                 label,
@@ -221,12 +196,8 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @inheritdoc IETHRenewer
-    function getRemainingGracePeriod(
-        string calldata label
-    ) external view returns (uint64) {
-        IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(
-            LibLabel.id(label)
-        );
+    function getRemainingGracePeriod(string calldata label) external view returns (uint64) {
+        IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(label));
         return
             uint64(
                 _isRenewableGrace(state)
@@ -244,19 +215,14 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
         address resolver,
         uint64 duration,
         bytes32 referrer
-    ) public pure override returns (bytes32) {
+    )
+        public
+        pure
+        override
+        returns (bytes32)
+    {
         return
-            keccak256(
-                abi.encode(
-                    label,
-                    owner,
-                    secret,
-                    subregistry,
-                    resolver,
-                    duration,
-                    referrer
-                )
-            );
+            keccak256(abi.encode(label, owner, secret, subregistry, resolver, duration, referrer));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -281,10 +247,11 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @dev Ensure name is registerable.
-    function _requireAvailable(
-        string calldata label,
-        uint64 duration
-    ) internal view returns (IPermissionedRegistry.State memory state) {
+    function _requireAvailable(string calldata label, uint64 duration)
+        internal
+        view
+        returns (IPermissionedRegistry.State memory state)
+    {
         state = ETH_REGISTRY.getState(LibLabel.id(label));
         if (!_isAvailable(state)) {
             revert NameNotAvailable(label);
@@ -295,33 +262,35 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @dev Determine if `AVAILABLE` and not in grace.
-    function _isAvailable(
-        IPermissionedRegistry.State memory state
-    ) internal view returns (bool) {
+    function _isAvailable(IPermissionedRegistry.State memory state) internal view returns (bool) {
         return _checkGrace(state, false);
     }
 
     /// @dev Determine if `REGISTERED` or in grace was `REGISTERED`.
-    function _isRenewable(
-        IPermissionedRegistry.State memory state
-    ) internal view override returns (bool) {
-        return
-            state.status == IPermissionedRegistry.Status.REGISTERED ||
-            _isRenewableGrace(state);
+    function _isRenewable(IPermissionedRegistry.State memory state)
+        internal
+        view
+        override
+        returns (bool)
+    {
+        return state.status == IPermissionedRegistry.Status.REGISTERED || _isRenewableGrace(state);
     }
 
     /// @dev Determine if was `REGISTERED` and in grace.
-    function _isRenewableGrace(
-        IPermissionedRegistry.State memory state
-    ) internal view returns (bool) {
+    function _isRenewableGrace(IPermissionedRegistry.State memory state)
+        internal
+        view
+        returns (bool)
+    {
         return state.latestOwner != address(0) && _checkGrace(state, true);
     }
 
     /// @dev Check if `AVAILABLE` and conditionally in grace.
-    function _checkGrace(
-        IPermissionedRegistry.State memory state,
-        bool grace
-    ) internal view returns (bool) {
+    function _checkGrace(IPermissionedRegistry.State memory state, bool grace)
+        internal
+        view
+        returns (bool)
+    {
         return
             state.status == IPermissionedRegistry.Status.AVAILABLE &&
             (grace == (block.timestamp - state.expiry) < GRACE_PERIOD);

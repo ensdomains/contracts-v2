@@ -35,6 +35,7 @@ contract MockERC20 is ERC20 {
     }
 }
 
+
 contract MockERC20Blacklist is MockERC20 {
     ////////////////////////////////////////////////////////////////////////
     // Storage
@@ -62,16 +63,15 @@ contract MockERC20Blacklist is MockERC20 {
         isBlacklisted[account] = blacklisted;
     }
 
-    function transferFrom(
-        address from,
-        address to,
-        uint256 amount
-    ) public override returns (bool) {
-        if (isBlacklisted[from]) revert Blacklisted(from);
-        if (isBlacklisted[to]) revert Blacklisted(to);
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        if (isBlacklisted[from])
+            revert Blacklisted(from);
+        if (isBlacklisted[to])
+            revert Blacklisted(to);
         return super.transferFrom(from, to, amount);
     }
 }
+
 
 contract MockERC20VoidReturn is MockERC20 {
     ////////////////////////////////////////////////////////////////////////
@@ -84,17 +84,14 @@ contract MockERC20VoidReturn is MockERC20 {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    function transferFrom(
-        address from,
-        address to,
-        uint256 amount
-    ) public override returns (bool) {
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
         super.transferFrom(from, to, amount);
         assembly {
             return(0, 0) // return void
         }
     }
 }
+
 
 contract MockERC20FalseReturn is MockERC20 {
     ////////////////////////////////////////////////////////////////////////
@@ -113,11 +110,7 @@ contract MockERC20FalseReturn is MockERC20 {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    function transferFrom(
-        address,
-        address,
-        uint256
-    ) public pure override returns (bool) {
+    function transferFrom(address, address, uint256) public pure override returns (bool) {
         return false; // return false instead of revert
     }
 }

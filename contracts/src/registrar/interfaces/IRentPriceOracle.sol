@@ -34,7 +34,10 @@ interface IRentPriceOracle {
         uint64 available,
         uint64 duration,
         IERC20 paymentToken
-    ) external view returns (uint256 base, uint256 premium);
+    )
+        external
+        view
+        returns (uint256 base, uint256 premium);
 
     /// @notice Determine renewal price for `label`.
     /// @param label The name to price.
@@ -47,5 +50,8 @@ interface IRentPriceOracle {
         uint64 expiry,
         uint64 duration,
         IERC20 paymentToken
-    ) external view returns (uint256);
+    )
+        external
+        view
+        returns (uint256);
 }

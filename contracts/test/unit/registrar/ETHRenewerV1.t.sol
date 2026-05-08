@@ -1,19 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {Test, console} from "forge-std/Test.sol";
+import {console} from "forge-std/Test.sol";
+
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {
-    ETHRenewerV1,
-    IETHRenewer,
-    IPermissionedRegistry,
-    LibLabel
-} from "~src/registrar/ETHRenewerV1.sol";
+import {ETHRenewerV1, IETHRenewer, LibLabel} from "~src/registrar/ETHRenewerV1.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOracleFixture.sol";
 import {MockERC20} from "~test/mocks/MockERC20.sol";
@@ -181,8 +177,8 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
     function test_renew_duringGrace_stillInGrace(uint32 graceDebt, uint32 duration) external {
         vm.assume(
             duration >= ethRenewerV1.MIN_RENEW_DURATION() &&
-                graceDebt >= duration &&
-                graceDebt < gracePeriodV1
+            graceDebt >= duration &&
+            graceDebt < gracePeriodV1
         );
         (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
 
@@ -244,9 +240,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
         uint64 min = ethRenewerV1.MIN_RENEW_DURATION();
         uint64 duration = min - 1;
         registerUnwrapped(testLabel);
-        vm.expectRevert(
-            abi.encodeWithSelector(IETHRenewer.DurationTooShort.selector, duration, min)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IETHRenewer.DurationTooShort.selector, duration, min));
         vm.prank(testOwner);
         ethRenewerV1.renew(testLabel, duration, testPaymentToken, testReferrer);
     }

@@ -3,15 +3,9 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Test} from "forge-std/Test.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
-import {
-    ERC165Checker
-} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
-
-import {
-    IEnhancedAccessControl
-} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
+import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {
     StandardRentPriceOracle,
     IRentPriceOracle,
@@ -48,10 +42,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     }
 
     function test_constructor() external view {
-        assertTrue(
-            rentPriceOracle.hasRootRoles(DEFAULT_ROLE_BITMAP, address(this)),
-            "roles"
-        );
+        assertTrue(rentPriceOracle.hasRootRoles(DEFAULT_ROLE_BITMAP, address(this)), "roles");
         assertEq(
             abi.encode(rentPriceOracle.getBaseRates()),
             abi.encode(StandardRegistrar.getBaseRates())
@@ -81,10 +72,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
             "PREMIUM_PERIOD"
         );
         for (uint256 i; i < paymentTokens.length; ++i) {
-            assertTrue(
-                rentPriceOracle.isPaymentToken(paymentTokens[i]),
-                paymentTokens[i].name()
-            );
+            assertTrue(rentPriceOracle.isPaymentToken(paymentTokens[i]), paymentTokens[i].name());
         }
     }
 
@@ -106,11 +94,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     }
 
     function test_constructor_invalidBaseRates() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                StandardRentPriceOracle.InvalidBaseRates.selector
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(StandardRentPriceOracle.InvalidBaseRates.selector));
         new StandardRentPriceOracle(
             address(this),
             new uint256[](0), // wrong
@@ -123,17 +107,11 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         );
     }
 
-    function test_constructor_invalidDiscount_notIncreasingDurations()
-        external
-    {
+    function test_constructor_invalidDiscount_notIncreasingDurations() external {
         DiscountPoint[] memory v = new DiscountPoint[](2);
         v[0] = DiscountPoint(100, 2);
         v[1] = DiscountPoint(100, 1); // wrong: 100 -> 100 => no increase
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                StandardRentPriceOracle.InvalidDiscount.selector
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(StandardRentPriceOracle.InvalidDiscount.selector));
         new StandardRentPriceOracle(
             address(this),
             new uint256[](1),
@@ -146,17 +124,11 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         );
     }
 
-    function test_constructor_invalidDiscount_notDecreasingNumerators()
-        external
-    {
+    function test_constructor_invalidDiscount_notDecreasingNumerators() external {
         DiscountPoint[] memory v = new DiscountPoint[](2);
         v[0] = DiscountPoint(100, 1);
         v[1] = DiscountPoint(200, 1); // wrong: 1 -> 1 => no decrease
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                StandardRentPriceOracle.InvalidDiscount.selector
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(StandardRentPriceOracle.InvalidDiscount.selector));
         new StandardRentPriceOracle(
             address(this),
             new uint256[](1),
@@ -172,11 +144,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     function test_constructor_invalidDiscount_aboveDenominator() external {
         DiscountPoint[] memory v = new DiscountPoint[](1);
         v[0] = DiscountPoint(1, 3); // wrong: 3/3 => 0% discount
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                StandardRentPriceOracle.InvalidDiscount.selector
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(StandardRentPriceOracle.InvalidDiscount.selector));
         new StandardRentPriceOracle(
             address(this),
             new uint256[](1),
@@ -192,11 +160,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     function test_constructor_invalidDiscount_free() external {
         DiscountPoint[] memory v = new DiscountPoint[](1);
         v[0] = DiscountPoint(1, 0); // wrong: 0/3 => 100% discount
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                StandardRentPriceOracle.InvalidDiscount.selector
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(StandardRentPriceOracle.InvalidDiscount.selector));
         new StandardRentPriceOracle(
             address(this),
             new uint256[](1),
@@ -212,11 +176,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     function test_constructor_invalidRatio() external {
         PaymentRatio[] memory v = new PaymentRatio[](1);
         v[0] = PaymentRatio(tokenUSDC, 1, 0); // wrong
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                StandardRentPriceOracle.InvalidRatio.selector
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(StandardRentPriceOracle.InvalidRatio.selector));
         new StandardRentPriceOracle(
             address(this),
             new uint256[](1),
@@ -238,18 +198,14 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     }
 
     function test_getPaymentTokenRatio_exists() external view {
-        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(
-            tokenUSDC
-        );
+        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(tokenUSDC);
         PaymentRatio memory pr = StandardRegistrar.ratioFromStable(tokenUSDC);
         assertEq(numer, pr.numer, "numer");
         assertEq(denom, pr.denom, "denom");
     }
 
     function test_getPaymentTokenRatio_unknown() external view {
-        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(
-            invalidPaymentToken
-        );
+        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(invalidPaymentToken);
         assertEq(numer, 0, "numer");
         assertEq(denom, 0, "denom");
     }
@@ -257,15 +213,9 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     function test_updatePaymentToken_add() external {
         assertFalse(rentPriceOracle.isPaymentToken(invalidPaymentToken));
         vm.expectEmit();
-        emit StandardRentPriceOracle.PaymentTokenUpdated(
-            invalidPaymentToken,
-            1,
-            1
-        );
+        emit StandardRentPriceOracle.PaymentTokenUpdated(invalidPaymentToken, 1, 1);
         rentPriceOracle.updatePaymentToken(invalidPaymentToken, 1, 1);
-        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(
-            invalidPaymentToken
-        );
+        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(invalidPaymentToken);
         assertEq(numer, 1, "numer");
         assertEq(denom, 1, "denom");
         assertTrue(rentPriceOracle.isPaymentToken(invalidPaymentToken));
@@ -274,15 +224,9 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     function test_updatePaymentToken_edit() external {
         rentPriceOracle.updatePaymentToken(invalidPaymentToken, 1, 1);
         vm.expectEmit();
-        emit StandardRentPriceOracle.PaymentTokenUpdated(
-            invalidPaymentToken,
-            2,
-            2
-        );
+        emit StandardRentPriceOracle.PaymentTokenUpdated(invalidPaymentToken, 2, 2);
         rentPriceOracle.updatePaymentToken(invalidPaymentToken, 2, 2);
-        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(
-            invalidPaymentToken
-        );
+        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(invalidPaymentToken);
         assertEq(numer, 2, "numer");
         assertEq(denom, 2, "denom");
         assertTrue(rentPriceOracle.isPaymentToken(invalidPaymentToken));
@@ -305,11 +249,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     }
 
     function test_updatePaymentToken_invalidRatio() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                StandardRentPriceOracle.InvalidRatio.selector
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(StandardRentPriceOracle.InvalidRatio.selector));
         rentPriceOracle.updatePaymentToken(randomPaymentToken(), 0, 1);
     }
 
@@ -356,28 +296,18 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     // Discount
     ////////////////////////////////////////////////////////////////////////
 
-    function _applyDiscount(
-        uint256[3] memory v0,
-        uint64 t0,
-        uint64 t1,
-        uint256[3] memory v
-    ) internal view {
+    function _applyDiscount(uint256[3] memory v0, uint64 t0, uint64 t1, uint256[3] memory v)
+        internal
+        view
+    {
         for (uint256 i; i < v0.length; ++i) {
             if (t0 > 0) {
-                assertGt(
-                    rentPriceOracle.applyDiscount(v0[i], t0 - 1),
-                    v[i],
-                    "prev"
-                );
+                assertGt(rentPriceOracle.applyDiscount(v0[i], t0 - 1), v[i], "prev");
             }
             assertEq(rentPriceOracle.applyDiscount(v0[i], t0), v[i], "t0");
             assertEq(rentPriceOracle.applyDiscount(v0[i], t1), v[i], "t1");
             if (t1 < type(uint64).max) {
-                assertLt(
-                    rentPriceOracle.applyDiscount(v0[i], t1 + 1),
-                    v[i],
-                    "next"
-                );
+                assertLt(rentPriceOracle.applyDiscount(v0[i], t1 + 1), v[i], "next");
             }
         }
     }
@@ -389,12 +319,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         _applyDiscount(v0, 0, y - 1, v0);
         _applyDiscount(v0, y, 2 * y - 1, [uint256(700), 14000, 56000]);
         _applyDiscount(v0, 2 * y, 5 * y - 1, [uint256(550), 11000, 44000]);
-        _applyDiscount(
-            v0,
-            5 * y,
-            type(uint64).max,
-            [uint256(450), 9000, 36000]
-        );
+        _applyDiscount(v0, 5 * y, type(uint64).max, [uint256(450), 9000, 36000]);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -404,8 +329,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     function test_getPremiumPriceAfter_start() external view {
         assertEq(
             rentPriceOracle.getPremiumPriceAfter(0),
-            rentPriceOracle.PREMIUM_PRICE_INITIAL() -
-                rentPriceOracle.PREMIUM_PRICE_OFFSET()
+            rentPriceOracle.PREMIUM_PRICE_INITIAL() - rentPriceOracle.PREMIUM_PRICE_OFFSET()
         );
     }
 
@@ -416,16 +340,17 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     }
 
     function test_getPremiumPriceAfter_calc() external {
-        StandardRentPriceOracle oracle = new StandardRentPriceOracle(
-            address(this),
-            new uint256[](1),
-            new DiscountPoint[](0),
-            0,
-            256000,
-            1,
-            8,
-            new PaymentRatio[](0)
-        );
+        StandardRentPriceOracle oracle =
+            new StandardRentPriceOracle(
+                address(this),
+                new uint256[](1),
+                new DiscountPoint[](0),
+                0,
+                256000,
+                1,
+                8,
+                new PaymentRatio[](0)
+            );
         assertEq(oracle.getPremiumPriceAfter(0), 255000, "0");
         assertEq(oracle.getPremiumPriceAfter(1), 127000, "1");
         assertEq(oracle.getPremiumPriceAfter(2), 63000, "2");
@@ -444,43 +369,25 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     function test_getRegisterPrice_calc(uint256) external {
         string memory label = new string(vm.randomUint(3, 255));
         uint64 duration = uint64(vm.randomUint(0, 10000 days));
-        uint64 available = uint64(
-            vm.randomUint(0, rentPriceOracle.PREMIUM_PERIOD() * 2)
-        );
+        uint64 available = uint64(vm.randomUint(0, rentPriceOracle.PREMIUM_PERIOD() * 2));
         IERC20 paymentToken = randomPaymentToken();
-        (uint256 base, uint256 premium) = rentPriceOracle.getRegisterPrice(
-            label,
-            available,
-            duration,
-            paymentToken
-        );
+        (uint256 base, uint256 premium) =
+            rentPriceOracle.getRegisterPrice(label, available, duration, paymentToken);
         uint256 baseUnits = rentPriceOracle.getBasePrice(label, duration);
         uint256 premiumUnits = rentPriceOracle.getPremiumPriceAfter(available);
         assertEq(
             base + premium,
-            rentPriceOracle.convertUnits(
-                baseUnits + premiumUnits,
-                paymentToken
-            ),
+            rentPriceOracle.convertUnits(baseUnits + premiumUnits, paymentToken),
             "total"
         );
-        assertEq(
-            premium,
-            rentPriceOracle.convertUnits(premiumUnits, paymentToken),
-            "premium"
-        );
+        assertEq(premium, rentPriceOracle.convertUnits(premiumUnits, paymentToken), "premium");
     }
 
     function test_getRegisterPrice_notValid() external {
         uint256[5] memory v = [uint256(0), 1, 2, 256, 1000];
         for (uint256 i; i < v.length; ++i) {
             string memory label = new string(v[i]);
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    IRentPriceOracle.NotValid.selector,
-                    label
-                )
-            );
+            vm.expectRevert(abi.encodeWithSelector(IRentPriceOracle.NotValid.selector, label));
             rentPriceOracle.getRegisterPrice(label, 0, 1, tokenUSDC);
         }
     }
@@ -509,16 +416,8 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         uint64 duration = uint64(vm.randomUint(1, 10000 days));
         IERC20 paymentToken = randomPaymentToken();
         assertEq(
-            rentPriceOracle.getRenewPrice(
-                label,
-                UNUSED_EXPIRY,
-                duration,
-                paymentToken
-            ),
-            rentPriceOracle.convertUnits(
-                rentPriceOracle.getBasePrice(label, duration),
-                paymentToken
-            )
+            rentPriceOracle.getRenewPrice(label, UNUSED_EXPIRY, duration, paymentToken),
+            rentPriceOracle.convertUnits(rentPriceOracle.getBasePrice(label, duration), paymentToken)
         );
     }
 
@@ -526,18 +425,8 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         uint256[5] memory v = [uint256(0), 1, 2, 256, 1000];
         for (uint256 i; i < v.length; ++i) {
             string memory label = new string(v[i]);
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    IRentPriceOracle.NotValid.selector,
-                    label
-                )
-            );
-            rentPriceOracle.getRenewPrice(
-                label,
-                UNUSED_EXPIRY,
-                0,
-                randomPaymentToken()
-            );
+            vm.expectRevert(abi.encodeWithSelector(IRentPriceOracle.NotValid.selector, label));
+            rentPriceOracle.getRenewPrice(label, UNUSED_EXPIRY, 0, randomPaymentToken());
         }
     }
 
@@ -579,56 +468,27 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         assertFalse(rentPriceOracle.isValid(""));
         assertEq(rentPriceOracle.isValid("a"), StandardRegistrar.RATE_1CP > 0);
         assertEq(rentPriceOracle.isValid("ab"), StandardRegistrar.RATE_2CP > 0);
-        assertEq(
-            rentPriceOracle.isValid("abc"),
-            StandardRegistrar.RATE_3CP > 0
-        );
-        assertEq(
-            rentPriceOracle.isValid("abce"),
-            StandardRegistrar.RATE_4CP > 0
-        );
-        assertEq(
-            rentPriceOracle.isValid("abcde"),
-            StandardRegistrar.RATE_5CP > 0
-        );
-        assertEq(
-            rentPriceOracle.isValid(new string(255)),
-            StandardRegistrar.RATE_5CP > 0
-        );
+        assertEq(rentPriceOracle.isValid("abc"), StandardRegistrar.RATE_3CP > 0);
+        assertEq(rentPriceOracle.isValid("abce"), StandardRegistrar.RATE_4CP > 0);
+        assertEq(rentPriceOracle.isValid("abcde"), StandardRegistrar.RATE_5CP > 0);
+        assertEq(rentPriceOracle.isValid(new string(255)), StandardRegistrar.RATE_5CP > 0);
     }
 
     function test_getBasePrice_1sec() external view {
         assertEq(rentPriceOracle.getBasePrice(new string(0), 1), 0);
-        assertEq(
-            rentPriceOracle.getBasePrice(new string(1), 1),
-            StandardRegistrar.RATE_1CP
-        );
-        assertEq(
-            rentPriceOracle.getBasePrice(new string(2), 1),
-            StandardRegistrar.RATE_2CP
-        );
-        assertEq(
-            rentPriceOracle.getBasePrice(new string(3), 1),
-            StandardRegistrar.RATE_3CP
-        );
-        assertEq(
-            rentPriceOracle.getBasePrice(new string(4), 1),
-            StandardRegistrar.RATE_4CP
-        );
+        assertEq(rentPriceOracle.getBasePrice(new string(1), 1), StandardRegistrar.RATE_1CP);
+        assertEq(rentPriceOracle.getBasePrice(new string(2), 1), StandardRegistrar.RATE_2CP);
+        assertEq(rentPriceOracle.getBasePrice(new string(3), 1), StandardRegistrar.RATE_3CP);
+        assertEq(rentPriceOracle.getBasePrice(new string(4), 1), StandardRegistrar.RATE_4CP);
         for (uint256 i = 5; i <= 255; ++i) {
-            assertEq(
-                rentPriceOracle.getBasePrice(new string(i), 1),
-                StandardRegistrar.RATE_5CP
-            );
+            assertEq(rentPriceOracle.getBasePrice(new string(i), 1), StandardRegistrar.RATE_5CP);
         }
         assertEq(rentPriceOracle.getBasePrice(new string(256), 1), 0);
     }
 
     function test_convertUnits_calc(uint192 x) external view {
         IERC20 paymentToken = randomPaymentToken();
-        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(
-            paymentToken
-        );
+        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(paymentToken);
         assertEq(
             rentPriceOracle.convertUnits(x, paymentToken),
             Math.mulDiv(x, numer, denom, Math.Rounding.Ceil)

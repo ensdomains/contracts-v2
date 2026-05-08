@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {Test} from "forge-std/Test.sol";
-
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {
@@ -66,6 +64,7 @@ contract AbstractETHRegistrarTest is MigrationControllerFixture, StandardRentPri
     }
 }
 
+
 contract MockRegistrar is AbstractETHRegistrar {
     uint64 public constant GRACE_PERIOD = 0;
     constructor(
@@ -74,10 +73,10 @@ contract MockRegistrar is AbstractETHRegistrar {
         IPermissionedRegistry ethRegistry,
         address beneficiary,
         IRentPriceOracle oracle
-    ) AbstractETHRegistrar(owner_, hcaFactory, ethRegistry, beneficiary, oracle) {}
-    function _isRenewable(
-        IPermissionedRegistry.State memory
-    ) internal pure override returns (bool) {
+    )
+        AbstractETHRegistrar(owner_, hcaFactory, ethRegistry, beneficiary, oracle)
+    {}
+    function _isRenewable(IPermissionedRegistry.State memory) internal pure override returns (bool) {
         return false;
     }
     function getRemainingGracePeriod(string calldata) external pure returns (uint64) {

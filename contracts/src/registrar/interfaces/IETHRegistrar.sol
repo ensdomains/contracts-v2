@@ -90,7 +90,9 @@ interface IETHRegistrar is IETHRenewer {
         uint64 duration,
         IERC20 paymentToken,
         bytes32 referrer
-    ) external returns (uint256);
+    )
+        external
+        returns (uint256);
 
     /// @notice Get timestamp of a prior commitment.
     /// @param commitment The commitment hash.
@@ -103,11 +105,10 @@ interface IETHRegistrar is IETHRenewer {
     /// @param paymentToken The payment token.
     /// @return base The amount of `paymentToken` for registration.
     /// @return premium The amount of `paymentToken` due to premium.
-    function getRegisterPrice(
-        string calldata label,
-        uint64 duration,
-        IERC20 paymentToken
-    ) external view returns (uint256 base, uint256 premium);
+    function getRegisterPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+        external
+        view
+        returns (uint256 base, uint256 premium);
 
     /// @notice Check if name is available.
     /// @param label The name to check.
@@ -131,5 +132,8 @@ interface IETHRegistrar is IETHRenewer {
         address resolver,
         uint64 duration,
         bytes32 referrer
-    ) external pure returns (bytes32);
+    )
+        external
+        pure
+        returns (bytes32);
 }

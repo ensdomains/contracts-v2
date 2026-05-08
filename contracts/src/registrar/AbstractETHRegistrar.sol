@@ -61,7 +61,10 @@ abstract contract AbstractETHRegistrar is Ownable, HCAContext, ERC165, IETHRenew
         IPermissionedRegistry ethRegistry,
         address beneficiary,
         IRentPriceOracle oracle
-    ) Ownable(owner_) HCAEquivalence(hcaFactory) {
+    )
+        Ownable(owner_)
+        HCAEquivalence(hcaFactory)
+    {
         ETH_REGISTRY = ethRegistry;
         BENEFICIARY = beneficiary;
 
@@ -86,12 +89,9 @@ abstract contract AbstractETHRegistrar is Ownable, HCAContext, ERC165, IETHRenew
     }
 
     /// @inheritdoc IETHRenewer
-    function renew(
-        string calldata label,
-        uint64 duration,
-        IERC20 paymentToken,
-        bytes32 referrer
-    ) external {
+    function renew(string calldata label, uint64 duration, IERC20 paymentToken, bytes32 referrer)
+        external
+    {
         IPermissionedRegistry.State memory state = _requireRenewable(label, duration); // reverts if not
         uint64 newExpiry = state.expiry + duration; // reverts if overflow
         uint256 amount = rentPriceOracle.getRenewPrice(label, state.expiry, duration, paymentToken); // reverts if invalid
@@ -107,11 +107,11 @@ abstract contract AbstractETHRegistrar is Ownable, HCAContext, ERC165, IETHRenew
     }
 
     /// @inheritdoc IETHRenewer
-    function getRenewPrice(
-        string calldata label,
-        uint64 duration,
-        IERC20 paymentToken
-    ) public view returns (uint256) {
+    function getRenewPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+        public
+        view
+        returns (uint256)
+    {
         return
             rentPriceOracle.getRenewPrice(
                 label,
@@ -131,15 +131,18 @@ abstract contract AbstractETHRegistrar is Ownable, HCAContext, ERC165, IETHRenew
     }
 
     /// @dev Returns whether the name is renewable by this contract.
-    function _isRenewable(
-        IPermissionedRegistry.State memory state
-    ) internal view virtual returns (bool);
+    function _isRenewable(IPermissionedRegistry.State memory state)
+        internal
+        view
+        virtual
+        returns (bool);
 
     /// @dev Ensure name is renewable.
-    function _requireRenewable(
-        string calldata label,
-        uint64 duration
-    ) internal view returns (IPermissionedRegistry.State memory state) {
+    function _requireRenewable(string calldata label, uint64 duration)
+        internal
+        view
+        returns (IPermissionedRegistry.State memory state)
+    {
         state = ETH_REGISTRY.getState(LibLabel.id(label));
         if (!_isRenewable(state)) {
             revert NameNotRenewable(label);
