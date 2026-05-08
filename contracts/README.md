@@ -146,7 +146,7 @@ Roles granted during core deployment.
 
 Legend: A = admin only, R = regular only, AR = admin and regular
 
-*ETHRegistrar, ETHRenewerV1, and ApprovedUpgradeGate use Ownable, not EAC. Implementation contracts (PermissionedResolver,  WrapperRegistry) grant no roles at deployment; proxies receive roles via `initialize()` when created.*
+_ETHRegistrar, ETHRenewerV1, and ApprovedUpgradeGate use Ownable, not EAC. Implementation contracts (UserRegistryImpl, WrapperRegistryImpl, PermissionedResolverImpl) grant no roles at deployment; proxies receive roles via `initialize()` when created._
 
 _The tokens for .eth, .reverse and .addr.reverse are owned by the deployer._
 

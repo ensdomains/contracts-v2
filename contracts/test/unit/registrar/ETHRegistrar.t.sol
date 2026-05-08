@@ -164,6 +164,12 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         ethRegistrar.commit(commitment);
     }
 
+    function test_commit_consumed() external {
+        bytes32 commitment = _makeCommitment();
+        this.register();
+        assertEq(ethRegistrar.commitmentAt(commitment), 0);
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // register()
     ////////////////////////////////////////////////////////////////////////

@@ -55,7 +55,6 @@ import {MetadataMixin} from "./MetadataMixin.sol";
 ///                  +ROLE_UNREGISTER
 ///
 contract PermissionedRegistry is
-    IRegistry,
     ERC1155Singleton,
     EnhancedAccessControl,
     IPermissionedRegistry,

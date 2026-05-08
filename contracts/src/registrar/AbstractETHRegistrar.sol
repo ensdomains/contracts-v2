@@ -15,7 +15,7 @@ import {LibLabel} from "../utils/LibLabel.sol";
 import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
-/// @dev Abstract ETHRegistrar implementation shared between `ETHRegistrar` and `ETHRenewerV1`.
+/// @dev Abstract registrar implementation shared between `ETHRegistrar` and `ETHRenewerV1`.
 abstract contract AbstractETHRegistrar is Ownable, HCAContext, ERC165, IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Constants & Immutables
@@ -126,9 +126,7 @@ abstract contract AbstractETHRegistrar is Ownable, HCAContext, ERC165, IETHRenew
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Callback for when a name is renewed.
-    function _onRenew(string calldata label, uint64 duration) internal virtual {
-        // solhint-disable-previous-line no-empty-blocks
-    }
+    function _onRenew(string calldata label, uint64 duration) internal virtual {}
 
     /// @dev Returns whether the name is renewable by this contract.
     function _isRenewable(IPermissionedRegistry.State memory state)

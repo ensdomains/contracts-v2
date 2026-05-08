@@ -886,7 +886,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     }
 
     function _deployWrapperRegistryProxy(address rootAccount) internal returns (WrapperRegistry) {
-        bytes memory name = NameCoder.encode(string.concat(testLabel, ".eth"));
+        bytes memory name = NameCoder.ethName(testLabel);
         bytes32 node = NameCoder.namehash(name, 0);
         uint256 salt = uint256(node);
         address proxyAddress =
