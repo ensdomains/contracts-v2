@@ -10,26 +10,24 @@ import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
+import {LibLabel} from "~src/utils/LibLabel.sol";
+import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
-import {
-    PermissionedRegistry,
-    IPermissionedRegistry,
-    IEnhancedAccessControl,
-    IRegistry,
-    ITokenizedRegistry,
-    ITemporalRegistry,
-    IStandardRegistry,
-    IRegistryMetadata,
-    IHCAFactoryBasic,
-    RegistryRolesLib,
-    LibLabel
-} from "~src/registry/PermissionedRegistry.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
+import {IOwnedRegistry} from "~src/registry/interfaces/IOwnedRegistry.sol";
+import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
+import {ITemporalRegistry} from "~src/registry/interfaces/ITemporalRegistry.sol";
+import {ITokenizedRegistry} from "~src/registry/interfaces/ITokenizedRegistry.sol";
+import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
+import {PermissionedRegistry, IPermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
-uint256 constant ROOT_ROLES = EACBaseRolesLib.ALL_ROLES;
+uint256 constant DEFAULT_ROLE_BITMAP = EACBaseRolesLib.ALL_ROLES;
 
 contract PermissionedRegistryTest is Test, ERC1155Holder {
     MockPermissionedRegistry registry;
@@ -48,7 +46,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     uint64 testExpiry = uint64(block.timestamp + 1000);
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
 
-    function setUp() public {
+    function setUp() external {
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new SimpleRegistryMetadata(hcaFactory);
         labelStore = new LabelStore();
@@ -60,7 +58,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             metadata,
             labelStore,
             address(this),
-            ROOT_ROLES
+            DEFAULT_ROLE_BITMAP
         );
     }
 
@@ -75,7 +73,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(address(registry.METADATA_PROVIDER()), address(metadata), "METADATA_PROVIDER");
         assertEq(address(registry.LABEL_STORE()), address(labelStore), "LABEL_STORE");
 
-        assertTrue(registry.hasRootRoles(ROOT_ROLES, address(this)));
+        assertTrue(registry.hasRootRoles(DEFAULT_ROLE_BITMAP, address(this)));
     }
 
     function test_supportsInterface() external view {
@@ -84,6 +82,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             registry.supportsInterface(type(IStandardRegistry).interfaceId),
             "IStandardRegistry"
         );
+        assertTrue(registry.supportsInterface(type(IOwnedRegistry).interfaceId), "IOwnedRegistry");
         assertTrue(
             registry.supportsInterface(type(ITokenizedRegistry).interfaceId),
             "ITokenizedRegistry"
@@ -235,11 +234,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_reserve_canSetPastExpiry() external {
         vm.warp(2);
-        testExpiry = uint64(block.timestamp) - 1;
+        testExpiry = 1;
         this._reserve();
     }
 
-    function test_reserve_cannotSetPastExpiry() external {
+    function test_reserve_cannotSetPastExpiryAtGenesis() external {
         testExpiry = 0; // genesis
         vm.expectRevert(
             abi.encodeWithSelector(IStandardRegistry.CannotSetPastExpiry.selector, testExpiry)
