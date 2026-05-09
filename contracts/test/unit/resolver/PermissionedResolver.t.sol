@@ -327,6 +327,12 @@ contract PermissionedResolverTest is Test {
         resolver.authorizeRecordRoles(name1, roleBitmap, owner, true);
     }
 
+    function test_authorizeRecordRoles_revokeInvalidRecord() external {
+        vm.expectRevert(abi.encodeWithSelector(IRecordResolver.InvalidRecord.selector));
+        vm.prank(owner);
+        resolver.authorizeRecordRoles(name1, EACBaseRolesLib.ALL_ROLES, friend, false);
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // authorizeSetterRoles()
     ////////////////////////////////////////////////////////////////////////
@@ -393,6 +399,16 @@ contract PermissionedResolverTest is Test {
             abi.encodeCall(IResolverSetters.setText, (EMPTY_NAME, "<key>", "<ignored>")),
             owner,
             true
+        );
+    }
+
+    function test_authorizeSetterRoles_revokeInvalidRecord() external {
+        vm.expectRevert(abi.encodeWithSelector(IRecordResolver.InvalidRecord.selector));
+        vm.prank(owner);
+        resolver.authorizeSetterRoles(
+            abi.encodeCall(IResolverSetters.setText, (name1, "<key>", "<ignored>")),
+            friend,
+            false
         );
     }
 

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
+import {ENSIP19, COIN_TYPE_ETH, COIN_TYPE_DEFAULT} from "@ens/contracts/utils/ENSIP19.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
@@ -12,8 +15,6 @@ import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceRe
 import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
 import {IPubkeyResolver} from "@ens/contracts/resolvers/profiles/IPubkeyResolver.sol";
 import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
-import {ENSIP19, COIN_TYPE_ETH, COIN_TYPE_DEFAULT} from "@ens/contracts/utils/ENSIP19.sol";
-import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
@@ -124,7 +125,8 @@ contract PermissionedResolver is
     HCAContextUpgradeable,
     IPermissionedResolver,
     IMulticallable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    IProxyAuthorization
 {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -177,6 +179,7 @@ contract PermissionedResolver is
             type(IResolverSetters).interfaceId == interfaceId ||
             type(IMulticallable).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
+            type(IProxyAuthorization).interfaceId == interfaceId ||
             type(IABIResolver).interfaceId == interfaceId ||
             type(IAddrResolver).interfaceId == interfaceId ||
             type(IAddressResolver).interfaceId == interfaceId ||
@@ -198,7 +201,6 @@ contract PermissionedResolver is
         external
         initializer
     {
-        __UUPSUpgradeable_init();
         _grantRoles(ROOT_RESOURCE, roleBitmap, initialAccount, false);
         multicall(setters);
     }
@@ -361,15 +363,27 @@ contract PermissionedResolver is
         external
         returns (bool)
     {
-        uint256 recordId = _ensureRecordExceptDefault(name_);
-        uint256 resource = PermissionedResolverLib.resource(recordId);
+        (uint8 size, ) = NameCoder.nextLabel(name_, 0);
+        uint256 recordId;
         if (grant) {
+            if (size > 0) {
+                recordId = _ensureRecord(name_);
+            }
+            uint256 resource = PermissionedResolverLib.resource(recordId);
             _checkCanGrantRoles(resource, roleBitmap, _msgSender());
             if (resource != ROOT_RESOURCE && roleCount(resource) == 0) {
                 emit RecordResource(recordId, resource, PermissionedResolverLib.anySetter(name_));
             }
             return _grantRoles(resource, roleBitmap, account, true);
         } else {
+            if (size > 0) {
+                bytes32 node = NameCoder.namehash(name_, 0);
+                recordId = _recordIds[node];
+                if (recordId == 0) {
+                    revert InvalidRecord();
+                }
+            }
+            uint256 resource = PermissionedResolverLib.resource(recordId);
             _checkCanRevokeRoles(resource, roleBitmap, _msgSender());
             return _revokeRoles(resource, roleBitmap, account, true);
         }
@@ -419,15 +433,26 @@ contract PermissionedResolver is
             revert UnsupportedResolverProfile(selector);
         }
         assert(part != bytes32(0));
-        uint256 recordId = _ensureRecordExceptDefault(name_);
-        uint256 resource = PermissionedResolverLib.resource(recordId, part);
+        (uint8 size, ) = NameCoder.nextLabel(name_, 0);
+        uint256 recordId;
         if (grant) {
+            if (size > 0) {
+                recordId = _ensureRecord(name_);
+            }
+            uint256 resource = PermissionedResolverLib.resource(recordId, part);
             _checkCanGrantRoles(PermissionedResolverLib.resource(recordId), roleBitmap, _msgSender());
             if (roleCount(resource) == 0) {
                 emit RecordResource(recordId, resource, compactSetter);
             }
             return _grantRoles(resource, roleBitmap, account, true);
         } else {
+            if (size > 0) {
+                recordId = _recordIds[NameCoder.namehash(name_, 0)];
+                if (recordId == 0) {
+                    revert InvalidRecord();
+                }
+            }
+            uint256 resource = PermissionedResolverLib.resource(recordId, part);
             _checkCanRevokeRoles(
                 PermissionedResolverLib.resource(recordId),
                 roleBitmap,
@@ -537,6 +562,23 @@ contract PermissionedResolver is
         return _recordIds[node];
     }
 
+    /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
+    /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
+    ///      upgrade call.
+    /// @param {previousImplementation} Ignored.
+    /// @return allowed Always `true` for implementations in this resolver family.
+    function canUpgradeFrom(
+        address /*previousImplementation*/
+    )
+        external
+        pure
+        virtual
+        override
+        returns (bool allowed)
+    {
+        return true;
+    }
+
     /// @notice Perform multiple write operations.
     /// @dev Reverts with first error.
     /// @param calls The calls to make.
@@ -594,15 +636,6 @@ contract PermissionedResolver is
         }
     }
 
-    /// @dev Same as `_ensureRecord()` but doesn't create the default record.
-    function _ensureRecordExceptDefault(bytes memory name_) internal returns (uint256) {
-        (uint8 size, ) = NameCoder.nextLabel(name_, 0);
-        if (size == 0) {
-            return 0; // empty name => use default
-        }
-        return _ensureRecord(name_);
-    }
-
     /// @dev Allow `ROLE_UPGRADE` to upgrade.
     function _authorizeUpgrade(address newImplementation)
         internal
@@ -637,7 +670,7 @@ contract PermissionedResolver is
         }
     }
 
-    /// @dev HCA-compatible `_msgSender()`.
+    /// @dev Needed to resolve HCAContext/HCAContextUpgradeable inheritance.
     function _msgSender()
         internal
         view
@@ -645,11 +678,10 @@ contract PermissionedResolver is
         override(HCAContext, HCAContextUpgradeable)
         returns (address)
     {
-        return HCAContextUpgradeable._msgSender();
+        return super._msgSender();
     }
 
-    /// @dev Returns the original `msg.data`.
-    ///      Needed to resolve Context/ContextUpgradable inheritance.
+    /// @dev Needed to resolve Context/ContextUpgradable inheritance.
     function _msgData()
         internal
         view
@@ -657,11 +689,10 @@ contract PermissionedResolver is
         override(Context, ContextUpgradeable)
         returns (bytes calldata)
     {
-        return msg.data;
+        return super._msgData();
     }
 
-    /// @dev Returns 0.
-    ///      Needed to resolve Context/ContextUpgradable inheritance.
+    /// @dev Needed to resolve Context/ContextUpgradable inheritance.
     function _contextSuffixLength()
         internal
         view
@@ -669,7 +700,7 @@ contract PermissionedResolver is
         override(Context, ContextUpgradeable)
         returns (uint256)
     {
-        return 0;
+        return super._contextSuffixLength();
     }
 
     /// @dev Get the active storage record.
