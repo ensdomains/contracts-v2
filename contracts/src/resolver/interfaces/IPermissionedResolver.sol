@@ -11,7 +11,7 @@ bytes4 constant PERMISSIONED_RESOLVER_INTERFACE_ID =
     type(IPermissionedResolver).interfaceId ^
     type(IEnhancedAccessControl).interfaceId;
 
-/// @dev Interface selector: `0x8d85298b`
+/// @dev Interface selector: `0x6edb72dc`
 interface IPermissionedResolver is IEnhancedAccessControl, IRecordResolver {
     ////////////////////////////////////////////////////////////////////////
     // Events

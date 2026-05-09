@@ -14,8 +14,9 @@ import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol
 
 import {IResolverSetters} from "./IResolverSetters.sol";
 
-/// @dev The complete interface selector: `0xff38f248`
+/// @dev The complete interface selector: `0x6c1b7635`
 bytes4 constant RECORD_RESOLVER_INTERFACE_ID =
+    type(IRecordResolver).interfaceId ^
     type(IResolverSetters).interfaceId ^
     type(IABIResolver).interfaceId ^
     type(IAddressResolver).interfaceId ^
