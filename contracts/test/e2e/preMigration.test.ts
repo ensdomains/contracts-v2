@@ -95,22 +95,27 @@ describe("PreMigration", () => {
     }
   });
 
-  it("fails to migrate when v2 expiry would be in the past", async () => {
+  it("reserves v1-grace-period names even when v2 expiry would already be in the past", async () => {
     const label = "expiredname";
     const { user } = env.namedAccounts;
 
-    await registerV1Name(env, label, user.address, 1);
+    const v1Expiry = await registerV1Name(env, label, user.address, 1);
     await setTimeout(2000);
 
     createCSVFile(csvFilePath, [label]);
     const args = buildMainArgs(env, csvFilePath);
     await main(args);
 
+    // Past expiry on a reservation is allowed by the contract; getState
+    // still reports AVAILABLE because _constructStatus treats expired
+    // entries as such.
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.AVAILABLE);
+    expect(state.expiry).toBe(v1Expiry);
 
     const checkpoint = readTestCheckpoint();
-    expect(checkpoint!.failureCount).toBe(1);
+    expect(checkpoint!.successCount).toBe(1);
+    expect(checkpoint!.failureCount).toBe(0);
   });
 
   it("reserves names that are expired but within v1 grace period", async () => {
@@ -607,9 +612,9 @@ describe("PreMigration", () => {
 
     const checkpoint = readTestCheckpoint();
     expect(checkpoint).not.toBeNull();
-    expect(checkpoint!.successCount).toBe(1);
+    expect(checkpoint!.successCount).toBe(2);
     expect(checkpoint!.skippedCount).toBe(1);
-    expect(checkpoint!.failureCount).toBe(1);
+    expect(checkpoint!.failureCount).toBe(0);
     expect(checkpoint!.totalProcessed).toBe(3);
   });
 
@@ -827,9 +832,9 @@ describe("PreMigration", () => {
     }
 
     const checkpoint = readTestCheckpoint();
-    expect(checkpoint!.successCount).toBe(3);
+    expect(checkpoint!.successCount).toBe(5);
     expect(checkpoint!.skippedCount).toBe(1);
-    expect(checkpoint!.failureCount).toBe(2);
+    expect(checkpoint!.failureCount).toBe(0);
   });
 
   it("multiple registered names in batch are all counted as failures", async () => {
