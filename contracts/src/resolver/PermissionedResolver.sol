@@ -6,6 +6,7 @@ import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
+import {IDataResolver} from "@ens/contracts/resolvers/profiles/IDataResolver.sol";
 import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
 import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
 import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
@@ -13,7 +14,6 @@ import {IPubkeyResolver} from "@ens/contracts/resolvers/profiles/IPubkeyResolver
 import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
 import {ENSIP19, COIN_TYPE_ETH, COIN_TYPE_DEFAULT} from "@ens/contracts/utils/ENSIP19.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
@@ -26,7 +26,6 @@ import {HCAContextUpgradeable} from "../hca/HCAContextUpgradeable.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 
-import {IDataResolver} from "./interfaces/IDataResolver.sol";
 import {
     IPermissionedResolver,
     PERMISSIONED_RESOLVER_INTERFACE_ID
@@ -85,7 +84,7 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// They can be granted with `grantSetterRoles()` and are annotated
 /// using truncated ABI-encoded calldata:
 /// * w/data: `abi.encodeCall(setAddr, (name, coinType, "..."))`
-/// * w/o data: `abi.encodeCall(setAddr, (name coinType, ""))`
+/// * w/o data: `abi.encodeCall(setAddr, (name, coinType, ""))`
 /// * truncated: `abi.encodeWithSelector(setAddr.selector, name, coinType)`
 /// The `roleBitmap` can be derived from the setter selector.
 ///
@@ -138,8 +137,7 @@ contract PermissionedResolver is
         mapping(uint256 coinType => bytes addressBytes) addresses;
         mapping(string key => bytes data) datas;
         mapping(string key => string value) texts;
-        mapping(string key => bytes value) datas;
-        mapping(uint256 contentType => bytes value) abis;
+        mapping(uint256 contentType => bytes data) abis;
         mapping(bytes4 interfaceId => address implementer) interfaces;
     }
 
@@ -163,15 +161,14 @@ contract PermissionedResolver is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Creates the PermissionedResolver implementation.
     /// @param hcaFactory The HCA factory.
     constructor(IHCAFactoryBasic hcaFactory) HCAEquivalence(hcaFactory) {
         _disableInitializers();
     }
 
-    /// @inheritdoc IERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(IERC165, EnhancedAccessControl) returns (bool) {
+    /// @inheritdoc EnhancedAccessControl
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             PERMISSIONED_RESOLVER_INTERFACE_ID == interfaceId ||
             RECORD_RESOLVER_INTERFACE_ID == interfaceId ||
@@ -180,7 +177,6 @@ contract PermissionedResolver is
             type(IResolverSetters).interfaceId == interfaceId ||
             type(IMulticallable).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
-            // profiles
             type(IABIResolver).interfaceId == interfaceId ||
             type(IAddrResolver).interfaceId == interfaceId ||
             type(IAddressResolver).interfaceId == interfaceId ||
@@ -198,11 +194,10 @@ contract PermissionedResolver is
     /// @param initialAccount The account granted roles.
     /// @param roleBitmap The roles granted to `initialAccount` on root.
     /// @param setters The setter calldata that avoids permission checks.
-    function initialize(
-        address initialAccount,
-        uint256 roleBitmap,
-        bytes[] calldata setters
-    ) external initializer {
+    function initialize(address initialAccount, uint256 roleBitmap, bytes[] calldata setters)
+        external
+        initializer
+    {
         __UUPSUpgradeable_init();
         _grantRoles(ROOT_RESOURCE, roleBitmap, initialAccount, false);
         multicall(setters);
@@ -230,11 +225,9 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IResolverSetters
-    function setAddress(
-        bytes calldata name_,
-        uint256 coinType,
-        bytes calldata addressBytes
-    ) external {
+    function setAddress(bytes calldata name_, uint256 coinType, bytes calldata addressBytes)
+        external
+    {
         if (
             addressBytes.length != 0 && addressBytes.length != 20 && ENSIP19.isEVMCoinType(coinType)
         ) {
@@ -256,12 +249,7 @@ contract PermissionedResolver is
     function setContentHash(bytes calldata name_, bytes calldata contentHash) external {
         uint256 recordId = _ensureRecord(name_);
         address sender = _msgSender();
-        _checkRecordRoles(
-            recordId,
-            PermissionedResolverLib.ROLE_SET_CONTENTHASH,
-            bytes32(0),
-            sender
-        );
+        _checkRecordRoles(recordId, PermissionedResolverLib.ROLE_SET_CONTENTHASH, bytes32(0), sender);
         _record(recordId).contentHash = contentHash;
         emit ContentHashUpdated(recordId, contentHash, sender);
     }
@@ -343,10 +331,10 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IRecordResolver
-    function link(
-        bytes calldata sourceName,
-        bytes32 targetNode
-    ) external onlyRootRoles(PermissionedResolverLib.ROLE_LINK_RECORD) {
+    function link(bytes calldata sourceName, bytes32 targetNode)
+        external
+        onlyRootRoles(PermissionedResolverLib.ROLE_LINK_RECORD)
+    {
         bytes32 sourceNode = NameCoder.namehash(sourceName, 0);
         uint256 recordId;
         if (targetNode == bytes32(0)) {
@@ -364,22 +352,34 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IPermissionedResolver
-    function grantRecordRoles(
-        uint256 recordId,
+    function authorizeRecordRoles(
+        bytes calldata name_,
         uint256 roleBitmap,
-        address account
-    ) external returns (bool) {
+        address account,
+        bool grant
+    )
+        external
+        returns (bool)
+    {
         uint256 recordId = _ensureRecordExceptDefault(name_);
         uint256 resource = PermissionedResolverLib.resource(recordId);
-        _checkCanGrantRoles(resource, roleBitmap, _msgSender());
-        if (roleCount(resource) == 0) {
-            emit RecordResource(recordId, resource, PermissionedResolverLib.anySetter(name_));
+        if (grant) {
+            _checkCanGrantRoles(resource, roleBitmap, _msgSender());
+            if (resource != ROOT_RESOURCE && roleCount(resource) == 0) {
+                emit RecordResource(recordId, resource, PermissionedResolverLib.anySetter(name_));
+            }
+            return _grantRoles(resource, roleBitmap, account, true);
+        } else {
+            _checkCanRevokeRoles(resource, roleBitmap, _msgSender());
+            return _revokeRoles(resource, roleBitmap, account, true);
         }
-        return _grantRoles(resource, roleBitmap, account, true);
     }
 
     /// @inheritdoc IPermissionedResolver
-    function grantSetterRoles(bytes calldata setter, address account) external returns (bool) {
+    function authorizeSetterRoles(bytes calldata setter, address account, bool grant)
+        external
+        returns (bool)
+    {
         bytes memory name_;
         bytes32 part;
         uint256 roleBitmap;
@@ -421,11 +421,20 @@ contract PermissionedResolver is
         assert(part != bytes32(0));
         uint256 recordId = _ensureRecordExceptDefault(name_);
         uint256 resource = PermissionedResolverLib.resource(recordId, part);
-        _checkCanGrantRoles(PermissionedResolverLib.resource(recordId), roleBitmap, _msgSender());
-        if (roleCount(resource) == 0) {
-            emit RecordResource(recordId, resource, compactSetter);
+        if (grant) {
+            _checkCanGrantRoles(PermissionedResolverLib.resource(recordId), roleBitmap, _msgSender());
+            if (roleCount(resource) == 0) {
+                emit RecordResource(recordId, resource, compactSetter);
+            }
+            return _grantRoles(resource, roleBitmap, account, true);
+        } else {
+            _checkCanRevokeRoles(
+                PermissionedResolverLib.resource(recordId),
+                roleBitmap,
+                _msgSender()
+            );
+            return _revokeRoles(resource, roleBitmap, account, true);
         }
-        return _grantRoles(resource, roleBitmap, account, true);
     }
 
     /// @notice Same as `multicall()`.
@@ -445,11 +454,11 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IABIResolver
-    // solhint-disable-next-line func-name-mixedcase
-    function ABI(
-        bytes32 node,
-        uint256 contentTypes
-    ) external view returns (uint256 contentType, bytes memory encodedData) {
+    function ABI(bytes32 node, uint256 contentTypes)
+        external
+        view
+        returns (uint256 contentType, bytes memory encodedData)
+    {
         Record storage record = _record(node);
         for (uint256 bit = 1; bit > 0 && bit <= contentTypes; bit <<= 1) {
             if ((bit & contentTypes) != 0) {
@@ -467,10 +476,7 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IAddressResolver
-    function addr(
-        bytes32 node,
-        uint256 coinType
-    ) external view returns (bytes memory addressBytes) {
+    function addr(bytes32 node, uint256 coinType) external view returns (bytes memory addressBytes) {
         return _getAddress(_record(node), coinType);
     }
 
@@ -490,10 +496,11 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IInterfaceResolver
-    function interfaceImplementer(
-        bytes32 node,
-        bytes4 interfaceId
-    ) external view returns (address implementer) {
+    function interfaceImplementer(bytes32 node, bytes4 interfaceId)
+        external
+        view
+        returns (address implementer)
+    {
         Record storage record = _record(node);
         implementer = record.interfaces[interfaceId];
         if (implementer == address(0)) {
@@ -549,20 +556,18 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc EnhancedAccessControl
-    /// @notice Function is disabled.  Use `grant{Record|Setter}Roles()` instead.
-    function grantRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) public pure override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
+    /// @notice Function is disabled.  Use `authorize{Record|Setter}Roles()` instead.
+    function grantRoles(uint256 resource, uint256 roleBitmap, address account)
+        public
+        pure
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (bool)
+    {
         revert EACCannotGrantRoles(resource, roleBitmap, account);
     }
 
-    /// @notice Function is disabled.  Use `authorize(Name|Text|Addr)Roles()` instead.
-    /// @param resource Ignored.
-    /// @param roleBitmap Ignored.
-    /// @param account Ignored.
-    /// @return success Ignored, always reverts.
+    /// @inheritdoc EnhancedAccessControl
+    /// @notice Function is disabled.  Use `authorize{Record|Setter}Roles()` instead.
     function revokeRoles(uint256 resource, uint256 roleBitmap, address account)
         public
         pure
@@ -608,12 +613,10 @@ contract PermissionedResolver is
     }
 
     /// @dev Assert `sender` has necessary roles to update record.
-    function _checkRecordRoles(
-        uint256 recordId,
-        uint256 roleBitmap,
-        bytes32 part,
-        address sender
-    ) internal view {
+    function _checkRecordRoles(uint256 recordId, uint256 roleBitmap, bytes32 part, address sender)
+        internal
+        view
+    {
         if (
             part == bytes32(0) ||
             (!hasRoles(PermissionedResolverLib.resource(recordId, part), roleBitmap, sender) &&
@@ -624,11 +627,11 @@ contract PermissionedResolver is
     }
 
     /// @dev Avoid permission checks during initialization.
-    function _checkRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) internal view override {
+    function _checkRoles(uint256 resource, uint256 roleBitmap, address account)
+        internal
+        view
+        override
+    {
         if (!_isInitializing()) {
             super._checkRoles(resource, roleBitmap, account);
         }
@@ -669,21 +672,33 @@ contract PermissionedResolver is
         return 0;
     }
 
-    /// @dev Shorthand to convert `node` to record.
-    function _record(bytes32 node) internal view returns (Record storage) {
-        return _records[_recordIds[node]];
+    /// @dev Get the active storage record.
+    function _record(uint256 recordId) internal view returns (Record storage) {
+        return _records[recordId][_versions[recordId]];
     }
 
-    function _getAddress(
-        Record storage record,
-        uint256 coinType
-    ) internal view returns (bytes memory addressBytes) {
+    /// @dev Determine the active storage record for `node`.
+    function _record(bytes32 node) internal view returns (Record storage) {
+        uint256 recordId = _recordIds[node];
+        if (recordId == 0) {
+            recordId = _recordIds[bytes32(0)]; // use default
+        }
+        return _record(recordId);
+    }
+
+    /// @dev Determine address according to ENSIP-19.
+    function _getAddress(Record storage record, uint256 coinType)
+        internal
+        view
+        returns (bytes memory addressBytes)
+    {
         addressBytes = record.addresses[coinType];
         if (addressBytes.length == 0 && ENSIP19.chainFromCoinType(coinType) > 0) {
             addressBytes = record.addresses[COIN_TYPE_DEFAULT];
         }
     }
 
+    /// @dev Convenience for mainnet address.
     function _getAddr(Record storage record) internal view returns (address) {
         return address(bytes20(_getAddress(record, COIN_TYPE_ETH)));
     }

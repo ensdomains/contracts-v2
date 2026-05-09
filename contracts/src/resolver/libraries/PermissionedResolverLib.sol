@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 /// @dev Roles for PermissionedResolver.
 library PermissionedResolverLib {
-    /// @dev Nybble 0 — authorizes setting address records. Root or name.
+    /// @dev Nybble 0: authorizes setting address records. Root or name.
     uint256 internal constant ROLE_SET_ADDRESS = 1 << 0;
     /// @dev Nybble 32: authorizes setting ROLE_SET_ADDRESS.
     uint256 internal constant ROLE_SET_ADDRESS_ADMIN = ROLE_SET_ADDRESS << 128;
@@ -16,7 +16,8 @@ library PermissionedResolverLib {
     /// @dev Nybble 2: authorizes setting the contenthash record. Root or name.
     uint256 internal constant ROLE_SET_CONTENTHASH = 1 << 8;
     /// @dev Nybble 34: authorizes setting ROLE_SET_CONTENTHASH.
-    uint256 internal constant ROLE_SET_CONTENTHASH_ADMIN = ROLE_SET_CONTENTHASH << 128;
+    uint256 internal constant ROLE_SET_CONTENTHASH_ADMIN =
+        ROLE_SET_CONTENTHASH << 128;
 
     /// @dev Nybble 3: authorizes setting the public key record. Root or name.
     uint256 internal constant ROLE_SET_PUBKEY = 1 << 12;
@@ -31,21 +32,23 @@ library PermissionedResolverLib {
     /// @dev Nybble 5: authorizes setting interface implementer records. Root or name.
     uint256 internal constant ROLE_SET_INTERFACE = 1 << 20;
     /// @dev Nybble 37: authorizes setting ROLE_SET_INTERFACE.
-    uint256 internal constant ROLE_SET_INTERFACE_ADMIN = ROLE_SET_INTERFACE << 128;
+    uint256 internal constant ROLE_SET_INTERFACE_ADMIN =
+        ROLE_SET_INTERFACE << 128;
 
     /// @dev Nybble 6: authorizes setting the reverse name record. Root or name.
     uint256 internal constant ROLE_SET_NAME = 1 << 24;
     /// @dev Nybble 38: authorizes setting ROLE_SET_NAME.
     uint256 internal constant ROLE_SET_NAME_ADMIN = ROLE_SET_NAME << 128;
 
-    /// @dev Nybble 7 — authorizes setting data records. Root or name.
+    /// @dev Nybble 7: authorizes setting data records. Root or name.
     uint256 internal constant ROLE_SET_DATA = 1 << 28;
     /// @dev Nybble 39: authorizes setting ROLE_SET_DATA.
     uint256 internal constant ROLE_SET_DATA_ADMIN = ROLE_SET_DATA << 128;
 
-    /// @dev Nybble 8 — authorizes linking records to names.  Root only.
-    uint256 internal constant ROLE_RECORDS = 1 << 32;
-    uint256 internal constant ROLE_RECORDS_ADMIN = ROLE_RECORDS << 128;
+    /// @dev Nybble 8: authorizes creating records.  Root only.
+    uint256 internal constant ROLE_NEW_RECORD = 1 << 32;
+    /// @dev Nybble 40: authorizes setting ROLE_NEW_RECORD.
+    uint256 internal constant ROLE_NEW_RECORD_ADMIN = ROLE_NEW_RECORD << 128;
 
     /// @dev Nybble 9: authorizes creating records.  Root only.
     uint256 internal constant ROLE_LINK_RECORD = 1 << 36;
@@ -55,7 +58,8 @@ library PermissionedResolverLib {
     /// @dev Nybble 10: authorizes clearing records.  Root only.
     uint256 internal constant ROLE_CLEAR_RECORD = 1 << 40;
     /// @dev Nybble 42: authorizes setting ROLE_CLEAR_RECORD.
-    uint256 internal constant ROLE_CLEAR_RECORD_ADMIN = ROLE_CLEAR_RECORD << 128;
+    uint256 internal constant ROLE_CLEAR_RECORD_ADMIN =
+        ROLE_CLEAR_RECORD << 128;
 
     /// @dev Nybble 31: authorizes UUPS proxy upgrades. Root-only.
     uint256 internal constant ROLE_UPGRADE = 1 << 124;

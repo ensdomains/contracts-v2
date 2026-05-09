@@ -7,11 +7,8 @@ interface IResolverSetters {
     /// @param name The DNS-encoded name.
     /// @param coinType The coin type.
     /// @param addressBytes The encoded address.
-    function setAddress(
-        bytes calldata name,
-        uint256 coinType,
-        bytes calldata addressBytes
-    ) external;
+    function setAddress(bytes calldata name, uint256 coinType, bytes calldata addressBytes)
+        external;
 
     /// @notice Set data for `key`.
     /// @param name The DNS-encoded name.

@@ -14,7 +14,6 @@ import {
   type Hex,
   hexToString,
   keccak256,
-  namehash,
   publicActions,
   slice,
   stringToHex,
@@ -29,7 +28,7 @@ import {
   computeVerifiableProxyAddress as computeVerifiableProxyAddress_,
   deployVerifiableProxy,
 } from "../test/integration/fixtures/deployVerifiableProxy.js";
-import { dnsEncodeName, splitName } from "../test/utils/utils.js";
+import { dnsEncodeName, namehash, splitName } from "../test/utils/utils.js";
 import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
 import {
   LOCAL_BATCH_GATEWAY_URL,

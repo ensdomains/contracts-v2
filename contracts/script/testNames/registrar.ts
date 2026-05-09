@@ -66,13 +66,11 @@ export async function registerTestNames(
   // Step 3: Approve total payment
   let totalPrice = 0n;
   for (const label of labels) {
-    const [base, premium] =
-      await env.v2.StandardRentPriceOracle.read.getRegisterPrice([
-        label,
-        MAX_EXPIRY,
-        duration,
-        paymentToken,
-      ]);
+    const [base, premium] = await env.v2.ETHRegistrar.read.getRegisterPrice([
+      label,
+      duration,
+      paymentToken,
+    ]);
     totalPrice += base + premium;
   }
 

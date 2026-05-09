@@ -1,14 +1,27 @@
-// note: viem's labelhash() has long-label support, which ENSv2 is not using
-// we should eventually replace all labelhash(*) usage with keccak256(toBytes(*)).
-import { keccak256, stringToBytes } from "viem";
+import { concat, type Hex, keccak256, stringToBytes, zeroHash } from "viem";
 
 export { dnsEncodeName } from "../../lib/ens-contracts/test/fixtures/dnsEncodeName.js";
 export { dnsDecodeName } from "../../lib/ens-contracts/test/fixtures/dnsDecodeName.js";
 export * from "../../lib/ens-contracts/test/fixtures/ensip19.js";
 
+// NOTE: viem's {name,label}hash() has long-label support, which ENSv2 is not using
+// use the following replacements nstead
+
+export function labelhash(label: string): Hex {
+  return keccak256(stringToBytes(label));
+}
+
+// NameCoder.namehash()
+export function namehash(name: string): Hex {
+  return splitName(name).reduceRight<Hex>(
+    (a, x) => keccak256(concat([a, labelhash(x)])),
+    zeroHash,
+  );
+}
+
 // LibLabel.id()
 export function idFromLabel(label: string): bigint {
-  return BigInt(keccak256(stringToBytes(label)));
+  return BigInt(labelhash(label));
 }
 
 // LibLabel.withVersion()

@@ -120,9 +120,8 @@ export async function testNames(env: DevnetEnvironment) {
   await env.sync({ warpSec: Number(minAge) + 1 });
 
   const [aliasBase, aliasPremium] =
-    await env.v2.StandardRentPriceOracle.read.getRegisterPrice([
+    await env.v2.ETHRegistrar.read.getRegisterPrice([
       "alias",
-      MAX_EXPIRY,
       aliasDuration,
       aliasPaymentToken,
     ]);

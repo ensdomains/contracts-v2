@@ -1,13 +1,8 @@
-import {
-  decodeFunctionResult,
-  encodeFunctionData,
-  namehash,
-  zeroAddress,
-} from "viem";
+import { decodeFunctionResult, encodeFunctionData, zeroAddress } from "viem";
 
 import type { DevnetEnvironment } from "../setup.js";
 import { MAX_EXPIRY, STATUS } from "../deploy-constants.js";
-import { dnsEncodeName } from "../../test/utils/utils.js";
+import { dnsEncodeName, namehash } from "../../test/utils/utils.js";
 import { getNameData } from "./registry.js";
 
 /**

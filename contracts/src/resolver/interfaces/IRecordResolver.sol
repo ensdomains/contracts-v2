@@ -5,6 +5,7 @@ import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
+import {IDataResolver} from "@ens/contracts/resolvers/profiles/IDataResolver.sol";
 import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
 import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
 import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
@@ -14,7 +15,8 @@ import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol
 import {IResolverSetters} from "./IResolverSetters.sol";
 
 /// @dev The complete interface selector: `0xff38f248`
-bytes4 constant RECORD_RESOLVER_INTERFACE_ID = type(IResolverSetters).interfaceId ^
+bytes4 constant RECORD_RESOLVER_INTERFACE_ID =
+    type(IResolverSetters).interfaceId ^
     type(IABIResolver).interfaceId ^
     type(IAddressResolver).interfaceId ^
     type(IAddrResolver).interfaceId ^

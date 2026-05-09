@@ -6,7 +6,6 @@ import {
   type Address,
   encodeAbiParameters,
   type Hex,
-  namehash,
   zeroAddress,
 } from "viem";
 import {
@@ -24,7 +23,7 @@ import {
   getLabelAt,
   getParentName,
   idFromLabel,
-  COIN_TYPE_ETH,
+  namehash
 } from "../utils/utils.js";
 import {
   bundleCalls,
