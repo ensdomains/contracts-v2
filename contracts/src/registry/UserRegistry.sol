@@ -25,10 +25,7 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
 
     /// @param hcaFactory The HCA factory.
     /// @param labelStore The shared label database.
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        ILabelStore labelStore
-    )
+    constructor(IHCAFactoryBasic hcaFactory, ILabelStore labelStore)
         PermissionedRegistry(hcaFactory, labelStore, address(0), 0)
     {
         // This disables initialization for the implementation contract

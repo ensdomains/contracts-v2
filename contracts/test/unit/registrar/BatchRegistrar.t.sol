@@ -232,9 +232,7 @@ contract BatchRegistrarTest is V2Fixture {
         batchRegistrar.batchRegister(IRegistry(address(0)), resolver, labels, expires);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        bytes32 labelReservedSig = keccak256(
-            "LabelReserved(uint256,bytes32,string,uint64,address)"
-        );
+        bytes32 labelReservedSig = keccak256("LabelReserved(uint256,bytes32,string,uint64,address)");
         bool foundLabelReserved = false;
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == labelReservedSig) {

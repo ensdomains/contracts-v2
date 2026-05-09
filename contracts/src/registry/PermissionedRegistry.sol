@@ -55,11 +55,7 @@ import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 ///                     unregister()
 ///                  +ROLE_UNREGISTER
 ///
-contract PermissionedRegistry is
-    ERC1155Singleton,
-    EnhancedAccessControl,
-    IPermissionedRegistry
-{
+contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermissionedRegistry {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -93,7 +89,7 @@ contract PermissionedRegistry is
 
     /// @dev The child label of this registry.
     string internal _childLabel;
-    
+
     /// @dev The metadata URI.
     string internal _uri;
 
@@ -165,10 +161,11 @@ contract PermissionedRegistry is
     /// @notice Set the URI for the registry.
     /// @param uri_ The new URI.
     /// @param renderer The new renderer address.
-    function setURI(
-        string calldata uri_,
-        IRegistryURIRenderer renderer
-    ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_SET_URI) {
+    function setURI(string calldata uri_, IRegistryURIRenderer renderer)
+        public
+        virtual
+        onlyRootRoles(RegistryRolesLib.ROLE_SET_URI)
+    {
         _uri = uri_;
         _uriRenderer = renderer;
         emit URIUpdated(uri_, address(renderer), _msgSender());

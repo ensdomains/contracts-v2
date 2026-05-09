@@ -255,8 +255,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
     // Test for contract upgradeability
     function test_upgrade() public {
         // Deploy a new implementation
-        UserRegistryV2Mock newImplementation =
-            new UserRegistryV2Mock(hcaFactory, labelStore);
+        UserRegistryV2Mock newImplementation = new UserRegistryV2Mock(hcaFactory, labelStore);
 
         // Upgrade the proxy
         vm.prank(admin);
@@ -269,8 +268,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
     function test_Revert_unauthorized_upgrade() public {
         // Deploy a new implementation
-        UserRegistryV2Mock newImplementation =
-            new UserRegistryV2Mock(hcaFactory, labelStore);
+        UserRegistryV2Mock newImplementation = new UserRegistryV2Mock(hcaFactory, labelStore);
 
         // User1 tries to upgrade without permission
         vm.expectRevert(
@@ -332,11 +330,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
 // Mock V2 contract for testing upgrades
 contract UserRegistryV2Mock is UserRegistry {
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        ILabelStore labelStore
-    )
-        UserRegistry(hcaFactory,  labelStore)
+    constructor(IHCAFactoryBasic hcaFactory, ILabelStore labelStore)
+        UserRegistry(hcaFactory, labelStore)
     {}
     function version() public pure returns (uint256) {
         return 2;

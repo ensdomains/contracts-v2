@@ -50,12 +50,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        registry = new MockPermissionedRegistry(
-            hcaFactory,
-            labelStore,
-            address(this),
-            ROOT_ROLES
-        );
+        registry = new MockPermissionedRegistry(hcaFactory, labelStore, address(this), ROOT_ROLES);
     }
 
     function test_initForProxyImplementation() external {
@@ -1258,7 +1253,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256 tokenId = this._register();
         assertEq(registry.uri(0), uri);
         assertEq(registry.uri(tokenId), renderer.renderURI(registry, tokenId));
-
     }
 
     function test_setURI_notAuthorized() external {
@@ -1524,7 +1518,7 @@ contract MockPermissionedRegistry is PermissionedRegistry {
         address rootAccount,
         uint256 roleBitmap
     )
-        PermissionedRegistry(hcaFactory,  labelStore, rootAccount, roleBitmap)
+        PermissionedRegistry(hcaFactory, labelStore, rootAccount, roleBitmap)
     {}
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
