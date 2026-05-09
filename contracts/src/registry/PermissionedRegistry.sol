@@ -12,6 +12,7 @@ import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
+import {IOwnedRegistry} from "./interfaces/IOwnedRegistry.sol";
 import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
@@ -150,6 +151,12 @@ contract PermissionedRegistry is
     /// @inheritdoc ITemporalRegistry
     function findExpiry(string calldata label) external view returns (uint64) {
         return getExpiry(LibLabel.id(label));
+    }
+
+    /// @inheritdoc IOwnedRegistry
+    function findOwner(string calldata label) external view returns (address) {
+        uint256 labelId = LibLabel.id(label);
+        return ownerOf(_constructTokenId(labelId, _entry(labelId)));
     }
 
     /// @inheritdoc ITokenizedRegistry
