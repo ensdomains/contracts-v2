@@ -1043,6 +1043,16 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(registry.findTokenId(testLabel), tokenId, "again");
     }
 
+    function test_findOwner() external {
+        assertEq(registry.findOwner(testLabel), address(0));
+        uint256 tokenId = this._register();
+        assertEq(registry.findOwner(testLabel), testOwner);
+        registry.unregister(tokenId);
+        assertEq(registry.findOwner(testLabel), address(0), "burn");
+        tokenId = this._register();
+        assertEq(registry.findOwner(testLabel), testOwner, "again");
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Token Regeneration
     ////////////////////////////////////////////////////////////////////////
