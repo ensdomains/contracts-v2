@@ -220,17 +220,18 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     /// @dev Returns false if the target is not a contract or doesn't implement `Ownable` or `IContractNamer`.
     /// @param contractAddr The address of the contract to check.
     /// @param addr The address to check ownership against.
-    /// @return True if addr is the owner of contractAddr, false otherwise.
-    function _canNameContract(address contractAddr, address addr) internal view returns (bool) {
+    /// @return canName `true` if addr is the owner of contractAddr, false otherwise.
+    function _canNameContract(address contractAddr, address addr) internal view returns (bool canName) {
         if (contractAddr.code.length > 0) {
             try Ownable(contractAddr).owner() returns (address owner) {
-                return owner == addr;
+                canName = owner == addr;
             } catch {}
-            try IContractNamer(contractAddr).isContractNamer(addr) returns (bool can) {
-                return can;
-            } catch {}
+            if (!canName) {
+                try IContractNamer(contractAddr).isContractNamer(addr) returns (bool can) {
+                    canName = can;
+                } catch {}
+            }
         }
-        return false;
     }
 
     /// @dev Creates the EIP-191 message hash for signature-based name claims.
