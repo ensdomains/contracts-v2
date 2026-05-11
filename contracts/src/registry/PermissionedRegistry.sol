@@ -9,11 +9,8 @@ import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
-<<<<<<< HEAD
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
-=======
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
->>>>>>> 52c67112 (poc)
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
