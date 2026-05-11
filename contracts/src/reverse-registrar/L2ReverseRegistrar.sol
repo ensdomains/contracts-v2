@@ -221,7 +221,11 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     /// @param contractAddr The address of the contract to check.
     /// @param addr The address to check ownership against.
     /// @return canName `true` if addr is the owner of contractAddr, false otherwise.
-    function _canNameContract(address contractAddr, address addr) internal view returns (bool canName) {
+    function _canNameContract(address contractAddr, address addr)
+        internal
+        view
+        returns (bool canName)
+    {
         if (contractAddr.code.length > 0) {
             try Ownable(contractAddr).owner() returns (address owner) {
                 canName = owner == addr;
