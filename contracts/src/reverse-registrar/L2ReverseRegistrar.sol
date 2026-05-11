@@ -226,7 +226,7 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
             try Ownable(contractAddr).owner() returns (address owner) {
                 return owner == addr;
             } catch {}
-            try IContractNamer(contractAddr).isContractNamer(namer) returns (bool can) {
+            try IContractNamer(contractAddr).isContractNamer(addr) returns (bool can) {
                 return can;
             } catch {}
         }
