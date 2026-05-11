@@ -63,7 +63,7 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 ///
 /// `clear(name)` reset the record and requires `ROLE_CLEAR_RECORD` on the name or root.
 ///
-/// Names without a record fall back to the default record, which can be updated using the empty name (`0x00`).
+/// Names without a record fall back to the default record, which can be updated using the root name (`0x00`).
 ///
 /// Every record setter has the form: `f(name, ...)`
 ///
@@ -78,11 +78,11 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// | `setName()`        | `ROLE_SET_NAME`        |
 /// | `setText()`        | `ROLE_SET_TEXT`        |
 ///
-/// Record setters can be granted with `getRecordRoles()` and are annotated
+/// Record setters can be granted with `authorizeRecordRoles()` and are annotated
 /// using ABI-encoded calldata: `abi.encodeWithSelector(bytes4(0), name)`.
 ///
 /// Fine-grained record setters have the form: `f(name, <arg>, ...)`
-/// They can be granted with `grantSetterRoles()` and are annotated
+/// They can be granted with `authorizeSetterRoles()` and are annotated
 /// using truncated ABI-encoded calldata:
 /// * w/data: `abi.encodeCall(setAddr, (name, coinType, "..."))`
 /// * w/o data: `abi.encodeCall(setAddr, (name, coinType, ""))`
@@ -641,9 +641,7 @@ contract PermissionedResolver is
         internal
         override
         onlyRootRoles(PermissionedResolverLib.ROLE_UPGRADE)
-    {
-        //
-    }
+    {}
 
     /// @dev Assert `sender` has necessary roles to update record.
     function _checkRecordRoles(uint256 recordId, uint256 roleBitmap, bytes32 part, address sender)
