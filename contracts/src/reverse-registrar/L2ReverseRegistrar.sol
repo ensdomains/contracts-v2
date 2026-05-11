@@ -10,6 +10,7 @@ import {LibISO8601} from "../utils/LibISO8601.sol";
 import {LibString} from "../utils/LibString.sol";
 
 import {IContractName} from "./interfaces/IContractName.sol";
+import {IContractNamer} from "./interfaces/IContractNamer.sol";
 import {IL2ReverseRegistrar} from "./interfaces/IL2ReverseRegistrar.sol";
 import {ChainIdsBuilderLib} from "./libraries/ChainIdsBuilderLib.sol";
 import {StandaloneReverseRegistrar} from "./StandaloneReverseRegistrar.sol";
@@ -83,7 +84,7 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     /// @dev Authorized if caller is the address itself, or if caller owns the contract at addr.
     /// @param addr The address to check authorisation for.
     modifier authorized(address addr) {
-        if (addr != msg.sender && !_ownsContract(addr, msg.sender)) {
+        if (addr != msg.sender && !_canNameContract(addr, msg.sender)) {
             revert Unauthorized();
         }
         _;
@@ -151,7 +152,7 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     {
         string memory chainIdsString = ChainIdsBuilderLib.validateAndBuild(claim.chainIds, CHAIN_ID);
 
-        if (!_ownsContract(claim.addr, owner))
+        if (!_canNameContract(claim.addr, owner))
             revert NotOwnerOfContract();
 
         bytes32 message = _createClaimMessageHash(claim, chainIdsString, owner);
@@ -215,19 +216,21 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
         }
     }
 
-    /// @notice Checks if the provided address owns the contract via the Ownable interface.
-    /// @dev Returns false if the target is not a contract or doesn't implement Ownable.
+    /// @notice Checks if the provided address can name the contract.
+    /// @dev Returns false if the target is not a contract or doesn't implement `Ownable` or `IContractNamer`.
     /// @param contractAddr The address of the contract to check.
     /// @param addr The address to check ownership against.
     /// @return True if addr is the owner of contractAddr, false otherwise.
-    function _ownsContract(address contractAddr, address addr) internal view returns (bool) {
-        if (contractAddr.code.length == 0)
-            return false;
-        try Ownable(contractAddr).owner() returns (address owner) {
-            return owner == addr;
-        } catch {
-            return false;
+    function _canNameContract(address contractAddr, address addr) internal view returns (bool) {
+        if (contractAddr.code.length > 0) {
+            try Ownable(contractAddr).owner() returns (address owner) {
+                return owner == addr;
+            } catch {}
+            try IContractNamer(contractAddr).isContractNamer(namer) returns (bool can) {
+                return can;
+            } catch {}
         }
+        return false;
     }
 
     /// @dev Creates the EIP-191 message hash for signature-based name claims.
