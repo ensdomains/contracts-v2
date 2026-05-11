@@ -141,6 +141,7 @@ contract PermissionedRegistry is
             interfaceId == type(IPermissionedRegistry).interfaceId ||
             interfaceId == type(IStandardRegistry).interfaceId ||
             interfaceId == type(IRegistry).interfaceId ||
+            interfaceId == type(IContractNamer).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 

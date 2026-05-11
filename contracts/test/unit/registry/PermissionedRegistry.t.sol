@@ -22,6 +22,7 @@ import {
     RegistryRolesLib,
     LibLabel
 } from "~src/registry/PermissionedRegistry.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
@@ -86,6 +87,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
             "IPermissionedRegistry"
         );
+        assertTrue(registry.supportsInterface(type(IContractNamer).interfaceId), "IContractNamer");
     }
 
     ////////////////////////////////////////////////////////////////////////
