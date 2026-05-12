@@ -30,15 +30,34 @@ contract V1FixtureTest is V1Fixture {
         assertEq(baseRegistrar.ownerOf(tokenId), testOwner, "owner");
     }
 
+    function test_registerUnwrapped_pranked() external {
+        vm.prank(friend);
+        (, uint256 tokenId) = this.registerUnwrapped("test");
+        assertEq(baseRegistrar.ownerOf(tokenId), friend, "owner");
+    }
+
     function test_registerWrappedETH2LD() external {
         bytes memory name = registerWrappedETH2LD("test", 0);
         assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), testOwner, "owner");
     }
 
+    function test_registerWrappedETH2LD_pranked() external {
+        vm.prank(friend);
+        bytes memory name = this.registerWrappedETH2LD("test", 0);
+        assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), friend, "owner");
+    }
+
     function test_registerWrappedETH3LD() external {
         bytes memory parentName = registerWrappedETH2LD("test", 0);
-        bytes memory name = createWrappedChild(parentName, "sub", address(0), 0);
+        bytes memory name = createWrappedChild(parentName, "sub", 0);
         assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), testOwner, "owner");
+    }
+
+    function test_registerWrappedETH3LD_pranked() external {
+        bytes memory parentName = registerWrappedETH2LD("test", 0);
+        vm.prank(friend);
+        bytes memory name = this.createWrappedChild(parentName, "sub", 0);
+        assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), friend, "owner");
     }
 
     function test_registerWrappedDNS2LD() external {
@@ -48,7 +67,7 @@ contract V1FixtureTest is V1Fixture {
 
     function test_registerWrappedDNS3LD() external {
         bytes memory parentName = createWrappedName("ens.domains", 0);
-        bytes memory name = createWrappedChild(parentName, "sub", address(0), 0);
+        bytes memory name = createWrappedChild(parentName, "sub", 0);
         assertEq(nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))), testOwner, "owner");
     }
 
@@ -72,7 +91,9 @@ contract V1FixtureTest is V1Fixture {
         (, uint256 tokenId) = registerUnwrapped("test");
         assertEq(uint256(getStatusV1(tokenId)), uint8(StatusV1.REGISTERED), "REGISTERED");
         vm.warp(baseRegistrar.nameExpires(tokenId));
-        assertEq(uint256(getStatusV1(tokenId)), uint8(StatusV1.GRACE), "GRACE");
+        assertEq(uint256(getStatusV1(tokenId)), uint8(StatusV1.GRACE), "GRACE:start");
+        vm.warp(baseRegistrar.nameExpires(tokenId) + gracePeriodV1 - 1);
+        assertEq(uint256(getStatusV1(tokenId)), uint8(StatusV1.GRACE), "GRACE:end");
         vm.warp(baseRegistrar.nameExpires(tokenId) + gracePeriodV1);
         assertEq(uint256(getStatusV1(tokenId)), uint8(StatusV1.AVAILABLE), "AVAILABLE");
     }
@@ -82,7 +103,7 @@ contract V1FixtureTest is V1Fixture {
     ////////////////////////////////////////////////////////////////////////
 
     function test_nameWrapper_wrapRootReverts() external {
-        vm.expectRevert(abi.encodeWithSignature("Error(string)", "readLabel: Index out of bounds"));
+        vm.expectRevert("readLabel: Index out of bounds");
         nameWrapper.wrap(hex"00", address(1), address(0));
     }
 
@@ -145,10 +166,10 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL() external {
         bytes memory name = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        createWrappedChild(name, "1", address(0), PARENT_CANNOT_CONTROL);
-        createWrappedChild(name, "2", address(0), PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
+        createWrappedChild(name, "1", PARENT_CANNOT_CONTROL);
+        createWrappedChild(name, "2", PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
         vm.expectRevert();
-        this.createWrappedChild(name, "3", address(0), CANNOT_UNWRAP);
+        this.createWrappedChild(name, "3", CANNOT_UNWRAP);
     }
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_setFuses() external {
@@ -162,7 +183,7 @@ contract V1FixtureTest is V1Fixture {
 
     function test_nameWrapper_PARENT_CANNOT_CONTROL_via_wrap() external {
         bytes memory parentName = registerWrappedETH2LD("test", CANNOT_UNWRAP);
-        bytes memory name = createWrappedChild(parentName, "sub", address(0), PARENT_CANNOT_CONTROL);
+        bytes memory name = createWrappedChild(parentName, "sub", PARENT_CANNOT_CONTROL);
         (bytes32 labelhash, ) = NameCoder.readLabel(name, 0);
         vm.prank(testOwner);
         nameWrapper.unwrap(NameCoder.namehash(parentName, 0), labelhash, testOwner);
@@ -171,7 +192,7 @@ contract V1FixtureTest is V1Fixture {
     function test_nameWrapper_PARENT_CANNOT_CONTROL_withoutParent() external {
         bytes memory parentName = registerWrappedETH2LD("test", 0);
         vm.expectRevert();
-        this.createWrappedChild(parentName, "sub", address(0), PARENT_CANNOT_CONTROL);
+        this.createWrappedChild(parentName, "sub", PARENT_CANNOT_CONTROL);
     }
 
     function test_nameWrapper_CANNOT_BURN_FUSES_via_wrap() external {
@@ -187,7 +208,7 @@ contract V1FixtureTest is V1Fixture {
     function test_nameWrapper_CANNOT_BURN_FUSES_via_setChildFuses() external {
         bytes memory parentName = registerWrappedETH2LD("test", CANNOT_UNWRAP);
         bytes memory name =
-            createWrappedChild(parentName, "sub", address(0), CANNOT_UNWRAP | PARENT_CANNOT_CONTROL);
+            createWrappedChild(parentName, "sub", CANNOT_UNWRAP | PARENT_CANNOT_CONTROL);
         // setChildFuses() does not allow fuse changes if PCC
         // _setFuses() requires CU + PCC if child fuses as burned
         vm.expectRevert();
@@ -220,7 +241,7 @@ contract V1FixtureTest is V1Fixture {
         // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L146-L149
         vm.prank(friend);
         vm.expectRevert("ERC1155: caller is not owner nor approved");
-        nameWrapper.safeTransferFrom(user, friend, uint256(node), 1, "");
+        nameWrapper.safeTransferFrom(testOwner, friend, uint256(node), 1, "");
     }
 
     ////////////////////////////////////////////////////////////////////////

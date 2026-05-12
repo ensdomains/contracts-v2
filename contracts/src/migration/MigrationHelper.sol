@@ -72,7 +72,9 @@ contract MigrationHelper is HCAEquivalence {
         IRegistry rootRegistry,
         AbstractWrapperReceiver unlockedController,
         AbstractWrapperReceiver lockedController
-    ) HCAEquivalence(hcaFactory) {
+    )
+        HCAEquivalence(hcaFactory)
+    {
         ROOT_REGISTRY = rootRegistry;
         UNLOCKED_CONTROLLER = unlockedController;
         LOCKED_CONTROLLER = lockedController;
@@ -95,7 +97,9 @@ contract MigrationHelper is HCAEquivalence {
         LibMigration.Data[][] calldata unlockedGroups,
         LibMigration.Data[][] calldata lockedGroups,
         LockedChildren[] calldata lockedChildrenGroups
-    ) external {
+    )
+        external
+    {
         address sender = _msgSenderWithHcaEquivalence();
         for (uint256 i; i < unwrapped.length; ++i) {
             LibMigration.Data calldata md = unwrapped[i];
@@ -118,12 +122,7 @@ contract MigrationHelper is HCAEquivalence {
             );
         }
         for (uint256 i; i < lockedGroups.length; ++i) {
-            _transferWrapped(
-                sender,
-                NameCoder.ETH_NODE,
-                address(LOCKED_CONTROLLER),
-                lockedGroups[i]
-            );
+            _transferWrapped(sender, NameCoder.ETH_NODE, address(LOCKED_CONTROLLER), lockedGroups[i]);
         }
         for (uint256 j; j < lockedChildrenGroups.length; ++j) {
             LockedChildren calldata lc = lockedChildrenGroups[j];
@@ -152,9 +151,12 @@ contract MigrationHelper is HCAEquivalence {
         bytes32 parentNode,
         address receiver,
         LibMigration.Data[] memory mds
-    ) internal {
+    )
+        internal
+    {
         uint256 n = mds.length;
-        if (n == 0) return;
+        if (n == 0)
+            return;
         address from;
         uint256[] memory ids = new uint256[](n);
         for (uint256 i; i < n; ++i) {

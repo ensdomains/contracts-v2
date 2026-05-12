@@ -217,7 +217,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_unwrapped_nameDataMismatch() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         md.label = "wrong";
         vm.expectRevert(abi.encodeWithSelector(LibMigration.NameDataMismatch.selector, tokenIdV1));
         vm.prank(testOwner);
@@ -313,7 +313,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_checkIfMigrated() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
 
         assertFalse(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, testOwner));
 
@@ -390,7 +390,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_wrapped_migrate() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         uint256 tokenIdV1 = LibLabel.id(md.label);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
         uint64 expectedExpiry =
@@ -560,10 +560,8 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         uint256[] memory amounts = new uint256[](count);
         LibMigration.Data[] memory mds = new LibMigration.Data[](count);
         for (uint256 i; i < count; ++i) {
-            bytes memory name = registerWrappedETH2LD(
-                _label(i),
-                i == count - 1 ? CANNOT_UNWRAP : CAN_DO_EVERYTHING
-            );
+            bytes memory name =
+                registerWrappedETH2LD(_label(i), i == count - 1 ? CANNOT_UNWRAP : CAN_DO_EVERYTHING);
             LibMigration.Data memory md = _unlockedData(name);
             mds[i] = md;
             ids[i] = uint256(NameCoder.namehash(name, 0));

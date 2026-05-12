@@ -85,10 +85,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             publicResolverSet,
             address(publicResolver)
         );
-<<<<<<< HEAD
 
-=======
->>>>>>> 660da567 (poc)
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
             address(migrationController)
@@ -532,10 +529,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         uint256[] memory amounts = new uint256[](count);
         LibMigration.Data[] memory mds = new LibMigration.Data[](count);
         for (uint256 i; i < count; ++i) {
-            bytes memory name = registerWrappedETH2LD(
-                _label(i),
-                i == count - 1 ? CAN_DO_EVERYTHING : CANNOT_UNWRAP
-            );
+            bytes memory name =
+                registerWrappedETH2LD(_label(i), i == count - 1 ? CAN_DO_EVERYTHING : CANNOT_UNWRAP);
             LibMigration.Data memory md = _lockedData(name);
             mds[i] = md;
             ids[i] = uint256(NameCoder.namehash(name, 0));
@@ -668,11 +663,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_migrate_lockedChildren() external {
-        bytes memory name = registerWrappedETH2LD(
-            testLabel,
-            CANNOT_UNWRAP | CANNOT_CREATE_SUBDOMAIN
-        );
+    function test_migrate_cannotCreateChildren() external {
+        bytes memory name =
+            registerWrappedETH2LD(testLabel, CANNOT_UNWRAP | CANNOT_CREATE_SUBDOMAIN);
         LibMigration.Data memory md = _lockedData(name);
 
         vm.prank(testOwner);
@@ -708,11 +701,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_migrate_canExtendExpiry() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        vm.prank(friend);
         bytes memory name3 =
-            createWrappedChild(
+            this.createWrappedChild(
                 name2,
                 "sub",
-                friend,
                 CANNOT_UNWRAP | PARENT_CANNOT_CONTROL | CAN_EXTEND_EXPIRY
             );
 
@@ -750,10 +743,12 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_migrate_lockedChildren() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        vm.prank(friend);
         bytes memory name3 =
-            createWrappedChild(name2, "sub", friend, CANNOT_UNWRAP | PARENT_CANNOT_CONTROL);
+            this.createWrappedChild(name2, "sub", CANNOT_UNWRAP | PARENT_CANNOT_CONTROL);
+        vm.prank(friend);
         bytes memory name3unmigrated =
-            createWrappedChild(name2, "unmigrated", friend, CANNOT_UNWRAP | PARENT_CANNOT_CONTROL);
+            this.createWrappedChild(name2, "unmigrated", CANNOT_UNWRAP | PARENT_CANNOT_CONTROL);
 
         // migrate 2LD
         LibMigration.Data memory data2 = _lockedData(name2);
@@ -826,9 +821,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_migrate_detachedChildren() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        bytes memory name3 = createWrappedChild(name2, "sub", friend, PARENT_CANNOT_CONTROL);
+        vm.prank(friend);
+        bytes memory name3 = this.createWrappedChild(name2, "sub", PARENT_CANNOT_CONTROL);
+        vm.prank(friend);
         bytes memory name3unmigrated =
-            createWrappedChild(name2, "unmigrated", friend, PARENT_CANNOT_CONTROL);
+            this.createWrappedChild(name2, "unmigrated", PARENT_CANNOT_CONTROL);
 
         // migrate 2LD
         LibMigration.Data memory data2 = _lockedData(name2);

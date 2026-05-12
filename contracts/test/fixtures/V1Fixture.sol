@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
@@ -76,20 +76,20 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         name = NameCoder.ethName(label);
         address registrant = _determineRegistrant();
         tokenId = uint256(keccak256(bytes(label)));
-        vm.prank(ensV1Controller);
-        ethRegistrarV1.register(tokenId, registrant, testDuration);
+        vm.prank(ethControllerV1);
+        baseRegistrar.register(tokenId, registrant, testDuration);
     }
 
-    function registerWrappedETH2LD(
-        string memory label,
-        uint32 ownerFuses
-    ) public returns (bytes memory name) {
+    function registerWrappedETH2LD(string memory label, uint32 ownerFuses)
+        public
+        returns (bytes memory name)
+    {
         address wrappedOwner = _determineRegistrant();
         uint256 tokenId;
         (name, tokenId) = registerUnwrapped(label);
         address owner = baseRegistrar.ownerOf(tokenId);
         vm.prank(owner);
-        ethRegistrarV1.safeTransferFrom(
+        baseRegistrar.safeTransferFrom(
             owner,
             address(nameWrapper),
             tokenId,
@@ -102,23 +102,16 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         );
     }
 
-    function createWrappedChild(
-        bytes memory parentName,
-        string memory label,
-        address newOwner,
-        uint32 fuses
-    )
+    function createWrappedChild(bytes memory parentName, string memory label, uint32 fuses)
         public
         returns (bytes memory name)
     {
+        address wrappedOwner = _determineRegistrant();
         bytes32 parentNode = NameCoder.namehash(parentName, 0);
         (address owner, , uint64 expiry) = nameWrapper.getData(uint256(parentNode));
-        name = NameCoder.addLabel(parentName, label);
-        if (newOwner == address(0)) {
-            newOwner = owner;
-        }
         vm.prank(owner);
-        nameWrapper.setSubnodeOwner(parentNode, label, newOwner, fuses, expiry);
+        nameWrapper.setSubnodeOwner(parentNode, label, wrappedOwner, fuses, expiry);
+        name = NameCoder.addLabel(parentName, label);
     }
 
     function createWrappedName(string memory domain, uint32 fuses)

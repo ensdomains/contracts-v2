@@ -64,9 +64,6 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();
-
-        ethRegistrarV1.setResolver(address(ensV2Resolver));
-        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
     }
 
     /// @dev Ensure premigration has occurred.
@@ -117,12 +114,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 
     function _unlockedData(bytes memory name) internal view returns (LibMigration.Data memory) {
         return
-            LibMigration.Data({
-                label: NameCoder.firstLabel(name),
-                owner: user,
-                subregistry: testRegistry,
-                resolver: testResolver
-            });
+            LibMigration.Data({label: NameCoder.firstLabel(name), owner: testOwner, subregistry: testRegistry, resolver: testResolver});
     }
 
     function _lockedData(bytes memory name) internal view returns (LibMigration.Data memory) {
