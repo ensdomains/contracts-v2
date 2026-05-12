@@ -95,6 +95,7 @@ contract ReverseRegistrarHCAAdapterTest is Test {
     }
 }
 
+
 contract MockContractNamer is IContractNamer {
     address internal immutable NAMER;
     constructor(address namer) {
