@@ -18,16 +18,37 @@ const args = parseArgs({
     chainId: {
       type: "string",
     },
+    forkUrl: {
+      type: "string",
+    },
+    forkBlock: {
+      type: "string",
+    },
   },
   strict: true,
 });
 
+if (args.values.forkUrl && args.values.testNames) {
+  console.error("--testNames is incompatible with --forkUrl");
+  process.exit(2);
+}
+
 const env = await setupDevnet({
   port: 8545,
-  chainId: Number(args.values.chainId) || undefined,
+  chainId: args.values.forkUrl
+    ? undefined
+    : Number(args.values.chainId) || undefined,
   saveDeployments: true,
   procLog: args.values.procLog,
-  extraTime: args.values.testNames ? 86_401 : 60,
+  extraTime: args.values.forkUrl
+    ? 0
+    : args.values.testNames
+      ? 86_401
+      : 60,
+  forkUrl: args.values.forkUrl,
+  forkBlockNumber: args.values.forkBlock
+    ? BigInt(args.values.forkBlock)
+    : undefined,
 });
 
 // handler for shell
