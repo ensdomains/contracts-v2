@@ -23,7 +23,7 @@ import {
   getLabelAt,
   getParentName,
   idFromLabel,
-  namehash
+  namehash,
 } from "../utils/utils.js";
 import {
   bundleCalls,
@@ -115,8 +115,12 @@ describe("Migration", () => {
     async setupPublicResolver() {
       await this.setResolver(env.v1.PublicResolver.address);
       await env.v1.PublicResolver.write.multicall(
-        [makeResolutions({ name, ...defaultProfile }).map((x) => x.writeV1)],
-        { account },
+        [
+          makeResolutions({ name: this.name, ...defaultProfile }).map(
+            (x) => x.writeV1,
+          ),
+        ],
+        { account: this.account },
       );
     }
     async checkMigrated({
