@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {COIN_TYPE_ETH} from "@ens/contracts/utils/ENSIP19.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
-import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 
 contract RegistryResolver is ERC165, IExtendedResolver {
     ////////////////////////////////////////////////////////////////////////
