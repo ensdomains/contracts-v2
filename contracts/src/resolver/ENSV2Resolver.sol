@@ -4,7 +4,7 @@ pragma solidity >=0.8.13;
 import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
-import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 
 import {AbstractMirrorResolver} from "./AbstractMirrorResolver.sol";
@@ -15,9 +15,6 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     // Immutables
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The ENSv2 root registry used to traverse the registry hierarchy and locate resolvers.
-    IRegistry public immutable ROOT_REGISTRY;
-
     /// @notice The ENSv1 resolver for "eth".
     address public immutable ETH_RESOLVER;
 
@@ -25,13 +22,16 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param rootRegistry The root registry.
+    /// @param rootRegistry The ENSv2 root registry.
     /// @param batchGatewayProvider The batch gateway provider.
     /// @param ethResolver The override resolver for "eth" or null to use ENSv2.
-    constructor(IRegistry rootRegistry, IGatewayProvider batchGatewayProvider, address ethResolver)
-        AbstractMirrorResolver(batchGatewayProvider)
+    constructor(
+        IPermissionedRegistry rootRegistry,
+        IGatewayProvider batchGatewayProvider,
+        address ethResolver
+    )
+        AbstractMirrorResolver(rootRegistry, batchGatewayProvider)
     {
-        ROOT_REGISTRY = rootRegistry;
         ETH_RESOLVER = ethResolver;
     }
 

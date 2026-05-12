@@ -4,6 +4,8 @@ pragma solidity >=0.8.13;
 import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {RegistryUtils, ENS} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 
+import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+
 import {AbstractMirrorResolver} from "./AbstractMirrorResolver.sol";
 
 /// @notice Resolver that performs resolutions using ENSv1.
@@ -19,10 +21,15 @@ contract ENSV1Resolver is AbstractMirrorResolver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param registryV1 The ENSv1 registry.
+    /// @param rootRegistry The ENSv2 root registry.
     /// @param batchGatewayProvider The batch gateway provider.
-    constructor(ENS registryV1, IGatewayProvider batchGatewayProvider)
-        AbstractMirrorResolver(batchGatewayProvider)
+    /// @param registryV1 The ENSv1 registry.
+    constructor(
+        IPermissionedRegistry rootRegistry,
+        IGatewayProvider batchGatewayProvider,
+        ENS registryV1
+    )
+        AbstractMirrorResolver(rootRegistry, batchGatewayProvider)
     {
         REGISTRY_V1 = registryV1;
     }

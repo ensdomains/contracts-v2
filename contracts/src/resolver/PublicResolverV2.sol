@@ -14,6 +14,7 @@ import {TextResolver} from "@ens/contracts/resolvers/profiles/TextResolver.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
@@ -32,7 +33,8 @@ contract PublicResolverV2 is
     NameResolver,
     PubkeyResolver,
     TextResolver,
-    HCAContext
+    HCAContext,
+    IContractNamer
 {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
@@ -117,7 +119,8 @@ contract PublicResolverV2 is
         )
         returns (bool)
     {
-        return super.supportsInterface(interfaceId);
+        return
+            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -143,6 +146,11 @@ contract PublicResolverV2 is
         require(sender != delegate, "Setting delegate status for self");
         _tokenApprovals[sender][node][delegate] = approved;
         emit Approved(sender, node, delegate, approved);
+    }
+
+    /// @inheritdoc IContractNamer
+    function isContractNamer(address namer) external view returns (bool) {
+        return ROOT_REGISTRY.isContractNamer(namer);
     }
 
     /// @notice Check if `operator` is approved for all nodes owned by `account`.

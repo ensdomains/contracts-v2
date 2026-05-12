@@ -59,7 +59,6 @@ contract PermissionedRegistry is
     ERC1155Singleton,
     EnhancedAccessControl,
     IPermissionedRegistry,
-    IContractNamer,
     MetadataMixin
 {
     ////////////////////////////////////////////////////////////////////////

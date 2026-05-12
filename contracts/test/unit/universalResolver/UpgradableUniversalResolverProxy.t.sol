@@ -15,7 +15,7 @@ import {
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
 import {
     UpgradableUniversalResolverProxy
@@ -48,7 +48,7 @@ contract ProxyTest is Test {
 
         // Deploy the implementations
         urV1 = new UniversalResolverV1(address(0), ENS(address(this)), batchGatewayProvider);
-        urV2 = new UniversalResolverV2(IRegistry(address(0)), batchGatewayProvider);
+        urV2 = new UniversalResolverV2(IPermissionedRegistry(address(0)), batchGatewayProvider);
 
         // Deploy the proxy with V1 implementation
         proxy = new UpgradableUniversalResolverProxy(ADMIN, address(urV1));
