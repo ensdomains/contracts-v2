@@ -275,11 +275,11 @@ describe("L2ReverseRegistrar", () => {
       await expect(
         l2ReverseRegistrar.write.setNameForAddr(
           [mockOwnableEoa.address, name],
-          {
-            account: accounts[1],
-          },
+          { account: accounts[1] },
         ),
-      ).toBeRevertedWithCustomError("Unauthorized");
+      )
+        .toBeRevertedWithCustomError("UnauthorizedNamer")
+        .withArgs([getAddress(accounts[1].address)]);
     });
 
     it("reverts if caller tries to set name for another EOA", async () => {
@@ -288,7 +288,9 @@ describe("L2ReverseRegistrar", () => {
 
       await expect(
         l2ReverseRegistrar.write.setNameForAddr([accounts[1].address, name]),
-      ).toBeRevertedWithCustomError("Unauthorized");
+      )
+        .toBeRevertedWithCustomError("UnauthorizedNamer")
+        .withArgs([getAddress(accounts[0].address)]);
     });
 
     it("reverts if caller is not owner of the target contract (via Ownable)", async () => {
@@ -298,7 +300,9 @@ describe("L2ReverseRegistrar", () => {
       // mockOwnableSca is owned by mockSmartContractAccount, not accounts[0]
       await expect(
         l2ReverseRegistrar.write.setNameForAddr([mockOwnableSca.address, name]),
-      ).toBeRevertedWithCustomError("Unauthorized");
+      )
+        .toBeRevertedWithCustomError("UnauthorizedNamer")
+        .withArgs([getAddress(accounts[0].address)]);
     });
   });
 
@@ -1165,7 +1169,9 @@ describe("L2ReverseRegistrar", () => {
           [claim, accounts[1].address, signature],
           { account: accounts[9] },
         ),
-      ).toBeRevertedWithCustomError("NotOwnerOfContract");
+      )
+        .toBeRevertedWithCustomError("UnauthorizedNamer")
+        .withArgs([getAddress(accounts[1].address)]);
     });
 
     it("reverts if the target address is not a contract (is an EOA)", async () => {
@@ -1199,7 +1205,9 @@ describe("L2ReverseRegistrar", () => {
           [claim, accounts[0].address, signature],
           { account: accounts[9] },
         ),
-      ).toBeRevertedWithCustomError("NotOwnerOfContract");
+      )
+        .toBeRevertedWithCustomError("UnauthorizedNamer")
+        .withArgs([getAddress(accounts[0].address)]);
     });
 
     it("reverts if the target address does not implement Ownable", async () => {
@@ -1233,7 +1241,9 @@ describe("L2ReverseRegistrar", () => {
           [claim, accounts[0].address, signature],
           { account: accounts[9] },
         ),
-      ).toBeRevertedWithCustomError("NotOwnerOfContract");
+      )
+        .toBeRevertedWithCustomError("UnauthorizedNamer")
+        .withArgs([getAddress(accounts[0].address)]);
     });
 
     it("reverts if the signature is invalid", async () => {
