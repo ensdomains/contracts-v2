@@ -14,11 +14,11 @@ import {TextResolver} from "@ens/contracts/resolvers/profiles/TextResolver.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 
-import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 
 /// @notice PublicResolver that respects the ENSv2 registry.

@@ -8,8 +8,8 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
-import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 

@@ -41,6 +41,7 @@ describe("ENSV2Resolver", () => {
       "IERC7996",
       "IExtendedResolver",
       "ICompositeResolver",
+      "IContractNamer",
     ],
   });
 

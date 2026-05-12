@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {
     AbstractUniversalResolver,
     ERC165
 } from "@ens/contracts/universalResolver/AbstractUniversalResolver.sol";
-import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 
-import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
 import {LibRegistry} from "./libraries/LibRegistry.sol";
 
