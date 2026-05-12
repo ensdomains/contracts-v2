@@ -11,6 +11,7 @@ import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistr
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 
+/// @notice Resolver that resolves to corresponding registry address.
 contract RegistryResolver is ERC165, IExtendedResolver {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
@@ -57,8 +58,12 @@ contract RegistryResolver is ERC165, IExtendedResolver {
         if (resolver != address(this)) {
             revert UnreachableName(name);
         }
-        (IRegistry registry, , , ) =
-            LibRegistry.findResolver(ROOT_REGISTRY, abi.encodePacked(name[:offset], uint8(0)), 0);
+        IRegistry registry =
+            LibRegistry.findExactRegistry(
+                ROOT_REGISTRY,
+                abi.encodePacked(name[:offset], uint8(0)),
+                0
+            );
         if (bytes4(data) == IAddrResolver.addr.selector) {
             return abi.encode(registry);
         } else if (bytes4(data) == IAddressResolver.addr.selector) {
