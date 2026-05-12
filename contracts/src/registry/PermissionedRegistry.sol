@@ -271,13 +271,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
 
     /// @inheritdoc ERC1155Singleton
     function uri(uint256 tokenId) public view override returns (string memory) {
-        if (address(_uriRenderer) != address(0)) {
-            Entry storage entry = _entry(tokenId);
-            if (tokenId == _constructTokenId(tokenId, entry) && !_isExpired(entry.expiry)) {
-                return _uriRenderer.renderURI(this, tokenId);
-            }
-        }
-        return _uri;
+        return address(_uriRenderer) != address(0) ? _uriRenderer.renderURI(this, tokenId) : _uri;
     }
 
     /// @inheritdoc IStandardRegistry

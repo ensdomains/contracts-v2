@@ -1219,9 +1219,9 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     // setURI() and uri()
     ////////////////////////////////////////////////////////////////////////
 
-    // IRegistryURIRenderer
-    function renderURI(IRegistry, uint256 tokenId) external pure returns (string memory) {
-        return vm.toString(tokenId);
+    function test_uri_unset() external view {
+        assertEq(registry.uri(0), "");
+        assertEq(registry.uri(1), "");
     }
 
     function test_setURI_onlyURI() external {
@@ -1233,25 +1233,17 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(registry.uri(tokenId), uri);
     }
 
-    function test_setURI_onlyRenderer() external {
-        IRegistryURIRenderer renderer = IRegistryURIRenderer(address(this));
-        registry.setURI("", renderer);
-
-        uint256 tokenId = this._register();
-        assertEq(registry.uri(0), "");
-        assertEq(registry.uri(tokenId), renderer.renderURI(registry, tokenId));
+    // IRegistryURIRenderer
+    function renderURI(IRegistry, uint256 tokenId) external pure returns (string memory) {
+        return vm.toString(tokenId);
     }
 
-    function test_setURI_both() external {
-        string memory uri = "ipfs://base/{id}";
-        IRegistryURIRenderer renderer = IRegistryURIRenderer(address(this));
-
-        vm.expectEmit();
-        emit IRegistryEvents.URIUpdated(uri, address(renderer), address(this));
-        registry.setURI(uri, renderer);
+    function test_setURI_withRenderer() external {
+        IRegistryURIRenderer renderer = IRegistryURIRenderer(address(this)); // see: renderURI()
+        registry.setURI("<ignored>", renderer);
 
         uint256 tokenId = this._register();
-        assertEq(registry.uri(0), uri);
+        assertEq(registry.uri(0), renderer.renderURI(registry, 0));
         assertEq(registry.uri(tokenId), renderer.renderURI(registry, tokenId));
     }
 
