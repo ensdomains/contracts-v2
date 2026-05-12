@@ -15,13 +15,12 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-import {
-    L2ReverseRegistrar,
-    IL2ReverseRegistrar,
-    IContractName,
-    LibISO8601,
-    LibString
-} from "~src/reverse-registrar/L2ReverseRegistrar.sol";
+import {LibString} from "~src/utils/LibString.sol";
+import {LibISO8601} from "~src/utils/LibISO8601.sol";
+import {L2ReverseRegistrar} from "~src/reverse-registrar/L2ReverseRegistrar.sol";
+import {IL2ReverseRegistrar} from "~src/reverse-registrar/interfaces/IL2ReverseRegistrar.sol";
+import {IContractName} from "~src/reverse-registrar/interfaces/IContractName.sol";
+import {AddressNamerLib} from "~src/reverse-registrar/libraries/AddressNamerLib.sol";
 import {ChainIdsBuilderLib} from "~src/reverse-registrar/libraries/ChainIdsBuilderLib.sol";
 
 contract L2ReverseRegistrarTest is Test {
@@ -456,14 +455,14 @@ contract L2ReverseRegistrarTest is Test {
             abi.encodeWithSelector(L2ReverseRegistrar.StaleSignature.selector, signedAt, directSetAt)
         );
         vm.prank(relayer);
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 
     function test_setNameForAddr_revert_callerNotOwnerOfTargetAddress() public {
         string memory name_ = "myname.eth";
 
         vm.prank(user2);
-        vm.expectRevert(L2ReverseRegistrar.Unauthorized.selector);
+        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user2));
         registrar.setNameForAddr(address(mockOwnableEoa), name_);
     }
 
@@ -471,7 +470,7 @@ contract L2ReverseRegistrarTest is Test {
         string memory name_ = "myname.eth";
 
         vm.prank(user1);
-        vm.expectRevert(L2ReverseRegistrar.Unauthorized.selector);
+        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user1));
         registrar.setNameForAddr(user2, name_);
     }
 
@@ -480,7 +479,7 @@ contract L2ReverseRegistrarTest is Test {
 
         // mockOwnableSca is owned by mockSca, not user1
         vm.prank(user1);
-        vm.expectRevert(L2ReverseRegistrar.Unauthorized.selector);
+        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user1));
         registrar.setNameForAddr(address(mockOwnableSca), name_);
     }
 
@@ -974,10 +973,10 @@ contract L2ReverseRegistrarTest is Test {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // setNameForOwnableWithSignature Tests
+    // setNameForContractWithSignature Tests
     ////////////////////////////////////////////////////////////////////////
 
-    function test_setNameForOwnableWithSignature_allowsEoaOwner() public {
+    function test_setNameForContractWithSignature_allowsEoaOwner() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _singleChainIdArray();
@@ -991,13 +990,13 @@ contract L2ReverseRegistrarTest is Test {
             IL2ReverseRegistrar.NameClaim({name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
 
         bytes32 node = _getNode(address(mockOwnableEoa));
         assertEq(registrar.name(node), name_, "Name should be set for ownable contract");
     }
 
-    function test_setNameForOwnableWithSignature_allowsScaOwner() public {
+    function test_setNameForContractWithSignature_allowsScaOwner() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _singleChainIdArray();
@@ -1018,13 +1017,13 @@ contract L2ReverseRegistrarTest is Test {
             IL2ReverseRegistrar.NameClaim({name: name_, addr: address(mockOwnableSca), chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        registrar.setNameForOwnableWithSignature(claim, address(mockSca), signature);
+        registrar.setNameForContractWithSignature(claim, address(mockSca), signature);
 
         bytes32 node = _getNode(address(mockOwnableSca));
         assertEq(registrar.name(node), name_, "Name should be set for ownable contract via SCA");
     }
 
-    function test_setNameForOwnableWithSignature_revert_ownerAddressNotOwnerOfContract() public {
+    function test_setNameForContractWithSignature_revert_ownerAddressNotOwnerOfContract() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _singleChainIdArray();
@@ -1039,11 +1038,11 @@ contract L2ReverseRegistrarTest is Test {
             IL2ReverseRegistrar.NameClaim({name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        vm.expectRevert(L2ReverseRegistrar.NotOwnerOfContract.selector);
-        registrar.setNameForOwnableWithSignature(claim, user2, signature);
+        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user2));
+        registrar.setNameForContractWithSignature(claim, user2, signature);
     }
 
-    function test_setNameForOwnableWithSignature_revert_targetAddressIsEOA() public {
+    function test_setNameForContractWithSignature_revert_targetAddressIsEOA() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _singleChainIdArray();
@@ -1057,11 +1056,11 @@ contract L2ReverseRegistrarTest is Test {
             IL2ReverseRegistrar.NameClaim({name: name_, addr: user2, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        vm.expectRevert(L2ReverseRegistrar.NotOwnerOfContract.selector);
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user1));
+        registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 
-    function test_setNameForOwnableWithSignature_revert_targetDoesNotImplementOwnable() public {
+    function test_setNameForContractWithSignature_revert_targetDoesNotImplementOwnable() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _singleChainIdArray();
@@ -1076,11 +1075,11 @@ contract L2ReverseRegistrarTest is Test {
             IL2ReverseRegistrar.NameClaim({name: name_, addr: address(registrar), chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        vm.expectRevert(L2ReverseRegistrar.NotOwnerOfContract.selector);
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user1));
+        registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 
-    function test_setNameForOwnableWithSignature_revert_invalidSignature() public {
+    function test_setNameForContractWithSignature_revert_invalidSignature() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _singleChainIdArray();
@@ -1102,10 +1101,10 @@ contract L2ReverseRegistrarTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(L2ReverseRegistrar.InvalidSignature.selector);
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 
-    function test_setNameForOwnableWithSignature_revert_signedAtInFuture() public {
+    function test_setNameForContractWithSignature_revert_signedAtInFuture() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp + 1; // In the future
         uint256[] memory chainIds = _singleChainIdArray();
@@ -1126,10 +1125,10 @@ contract L2ReverseRegistrarTest is Test {
                 block.timestamp
             )
         );
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 
-    function test_setNameForOwnableWithSignature_revert_signedAtNotAfterInception() public {
+    function test_setNameForContractWithSignature_revert_signedAtNotAfterInception() public {
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _singleChainIdArray();
 
@@ -1149,7 +1148,7 @@ contract L2ReverseRegistrarTest is Test {
                 IL2ReverseRegistrar.NameClaim({name: "ownable.eth", addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt});
 
             vm.prank(relayer);
-            registrar.setNameForOwnableWithSignature(claim, user1, abi.encodePacked(r, s, v));
+            registrar.setNameForContractWithSignature(claim, user1, abi.encodePacked(r, s, v));
         }
 
         // Now try to use a signature with signedAt equal to the inception (should fail)
@@ -1175,11 +1174,11 @@ contract L2ReverseRegistrarTest is Test {
                     signedAt
                 )
             );
-            registrar.setNameForOwnableWithSignature(claim, user1, abi.encodePacked(r, s, v));
+            registrar.setNameForContractWithSignature(claim, user1, abi.encodePacked(r, s, v));
         }
     }
 
-    function test_setNameForOwnableWithSignature_allowsMultipleChainIds() public {
+    function test_setNameForContractWithSignature_allowsMultipleChainIds() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _multipleChainIdArray();
@@ -1193,13 +1192,13 @@ contract L2ReverseRegistrarTest is Test {
             IL2ReverseRegistrar.NameClaim({name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
 
         bytes32 node = _getNode(address(mockOwnableEoa));
         assertEq(registrar.name(node), name_, "Name should be set with multiple chain IDs");
     }
 
-    function test_setNameForOwnableWithSignature_allowsLargeChainIdArray() public {
+    function test_setNameForContractWithSignature_allowsLargeChainIdArray() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _largeChainIdArray(50);
@@ -1213,13 +1212,13 @@ contract L2ReverseRegistrarTest is Test {
             IL2ReverseRegistrar.NameClaim({name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
 
         bytes32 node = _getNode(address(mockOwnableEoa));
         assertEq(registrar.name(node), name_, "Name should be set with large chain ID array");
     }
 
-    function test_setNameForOwnableWithSignature_revert_currentChainIdNotInArray() public {
+    function test_setNameForContractWithSignature_revert_currentChainIdNotInArray() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _chainIdArrayWithoutOptimism();
@@ -1239,10 +1238,10 @@ contract L2ReverseRegistrarTest is Test {
                 OPTIMISM_CHAIN_ID
             )
         );
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 
-    function test_setNameForOwnableWithSignature_revert_emptyChainIdArray() public {
+    function test_setNameForContractWithSignature_revert_emptyChainIdArray() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _emptyChainIdArray();
@@ -1262,10 +1261,10 @@ contract L2ReverseRegistrarTest is Test {
                 OPTIMISM_CHAIN_ID
             )
         );
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 
-    function test_setNameForOwnableWithSignature_revert_chainIdsNotAscending() public {
+    function test_setNameForContractWithSignature_revert_chainIdsNotAscending() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _unsortedChainIdArray();
@@ -1280,10 +1279,10 @@ contract L2ReverseRegistrarTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(ChainIdsBuilderLib.ChainIdsNotAscending.selector);
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 
-    function test_setNameForOwnableWithSignature_revert_duplicateChainIds() public {
+    function test_setNameForContractWithSignature_revert_duplicateChainIds() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _duplicateChainIdArray();
@@ -1298,10 +1297,10 @@ contract L2ReverseRegistrarTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(ChainIdsBuilderLib.ChainIdsNotAscending.selector);
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 
-    function test_setNameForOwnableWithSignature_revert_replayProtection() public {
+    function test_setNameForContractWithSignature_revert_replayProtection() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _singleChainIdArray();
@@ -1316,17 +1315,17 @@ contract L2ReverseRegistrarTest is Test {
 
         // First call should succeed
         vm.prank(relayer);
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
 
         // Second call should fail (same signedAt is not after inception)
         vm.prank(relayer);
         vm.expectRevert(
             abi.encodeWithSelector(L2ReverseRegistrar.StaleSignature.selector, signedAt, signedAt)
         );
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 
-    function test_setNameForOwnableWithSignature_updatesInception() public {
+    function test_setNameForContractWithSignature_updatesInception() public {
         string memory name_ = "ownable.eth";
         uint256 signedAt = block.timestamp;
         uint256[] memory chainIds = _singleChainIdArray();
@@ -1343,7 +1342,7 @@ contract L2ReverseRegistrarTest is Test {
             IL2ReverseRegistrar.NameClaim({name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        registrar.setNameForOwnableWithSignature(claim, user1, signature);
+        registrar.setNameForContractWithSignature(claim, user1, signature);
 
         // Check inception is updated
         assertEq(

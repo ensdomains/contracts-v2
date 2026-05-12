@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
@@ -10,8 +9,8 @@ import {LibISO8601} from "../utils/LibISO8601.sol";
 import {LibString} from "../utils/LibString.sol";
 
 import {IContractName} from "./interfaces/IContractName.sol";
-import {IContractNamer} from "./interfaces/IContractNamer.sol";
 import {IL2ReverseRegistrar} from "./interfaces/IL2ReverseRegistrar.sol";
+import {AddressNamerLib} from "./libraries/AddressNamerLib.sol";
 import {ChainIdsBuilderLib} from "./libraries/ChainIdsBuilderLib.sol";
 import {StandaloneReverseRegistrar} from "./StandaloneReverseRegistrar.sol";
 
@@ -47,14 +46,6 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Thrown when the caller is not authorized to perform the action.
-    /// @dev Error selector: `0x82b42900`
-    error Unauthorized();
-
-    /// @notice Thrown when the specified address is not the owner of the target contract.
-    /// @dev Error selector: `0x4570a024`
-    error NotOwnerOfContract();
-
     /// @notice Thrown when the signature's signedAt is not after the current inception.
     /// @dev Error selector: `0xbdc2d236`
     error StaleSignature(uint256 signedAt, uint256 inception);
@@ -75,20 +66,6 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     /// the library reverts it via `revert CurrentChainNotFound(...)` so its type propagates 
     /// automatically.
     error ChainIdsNotAscending();
-
-    ////////////////////////////////////////////////////////////////////////
-    // Modifiers
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Checks if the caller is authorized to act on behalf of the given address.
-    /// @dev Authorized if caller is the address itself, or if caller owns the contract at addr.
-    /// @param addr The address to check authorisation for.
-    modifier authorized(address addr) {
-        if (addr != msg.sender && !_canNameContract(addr, msg.sender)) {
-            revert Unauthorized();
-        }
-        _;
-    }
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -124,7 +101,8 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     }
 
     /// @inheritdoc IL2ReverseRegistrar
-    function setNameForAddr(address addr, string calldata name) external authorized(addr) {
+    function setNameForAddr(address addr, string calldata name) external {
+        AddressNamerLib.requireNamer(addr, msg.sender);
         _setName(addr, name);
         _advanceInception(addr);
     }
@@ -143,7 +121,7 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     }
 
     /// @inheritdoc IL2ReverseRegistrar
-    function setNameForOwnableWithSignature(
+    function setNameForContractWithSignature(
         NameClaim calldata claim,
         address owner,
         bytes calldata signature
@@ -152,8 +130,7 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     {
         string memory chainIdsString = ChainIdsBuilderLib.validateAndBuild(claim.chainIds, CHAIN_ID);
 
-        if (!_canNameContract(claim.addr, owner))
-            revert NotOwnerOfContract();
+        AddressNamerLib.requireNamer(claim.addr, owner);
 
         bytes32 message = _createClaimMessageHash(claim, chainIdsString, owner);
         _validateSignature(signature, owner, message);
@@ -213,28 +190,6 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     function _advanceInception(address addr) internal {
         if (block.timestamp > inceptionOf[addr]) {
             inceptionOf[addr] = block.timestamp;
-        }
-    }
-
-    /// @notice Checks if the provided address can name the contract.
-    /// @dev Returns false if the target is not a contract or doesn't implement `Ownable` or `IContractNamer`.
-    /// @param contractAddr The address of the contract to check.
-    /// @param addr The address to check ownership against.
-    /// @return canName `true` if addr is the owner of contractAddr, false otherwise.
-    function _canNameContract(address contractAddr, address addr)
-        internal
-        view
-        returns (bool canName)
-    {
-        if (contractAddr.code.length > 0) {
-            try Ownable(contractAddr).owner() returns (address owner) {
-                canName = owner == addr;
-            } catch {}
-            if (!canName) {
-                try IContractNamer(contractAddr).isContractNamer(addr) returns (bool can) {
-                    canName = can;
-                } catch {}
-            }
         }
     }
 
