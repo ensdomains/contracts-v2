@@ -5,6 +5,7 @@ import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 
+import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
@@ -22,7 +23,7 @@ struct LockedChildren {
 }
 
 /// @notice Migration helper for mixed (ERC-721 and ERC-1155) batch migration using approval.
-contract MigrationHelper is HCAEquivalence {
+contract MigrationHelper is HCAContext {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -40,7 +41,7 @@ contract MigrationHelper is HCAEquivalence {
     INameWrapper public immutable NAME_WRAPPER;
 
     /// @dev The ENSv1 `BaseRegistrar` contract.
-    IBaseRegistrar internal immutable _REGISTRAR_V1;
+    IBaseRegistrar internal immutable _BASE_REGISTRAR;
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -80,7 +81,7 @@ contract MigrationHelper is HCAEquivalence {
         LOCKED_CONTROLLER = lockedController;
 
         NAME_WRAPPER = unlockedController.NAME_WRAPPER();
-        _REGISTRAR_V1 = NAME_WRAPPER.registrar();
+        _BASE_REGISTRAR = NAME_WRAPPER.registrar();
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -100,13 +101,13 @@ contract MigrationHelper is HCAEquivalence {
     )
         external
     {
-        address sender = _msgSenderWithHcaEquivalence();
+        address sender = _msgSender();
         for (uint256 i; i < unwrapped.length; ++i) {
             LibMigration.Data calldata md = unwrapped[i];
             uint256 tokenId = uint256(keccak256(bytes(md.label)));
-            address owner = _REGISTRAR_V1.ownerOf(tokenId);
-            _requireOperatorApproval(address(_REGISTRAR_V1), owner, sender);
-            _REGISTRAR_V1.safeTransferFrom(
+            address owner = _BASE_REGISTRAR.ownerOf(tokenId);
+            _requireOperatorApproval(address(_BASE_REGISTRAR), owner, sender);
+            _BASE_REGISTRAR.safeTransferFrom(
                 owner,
                 address(UNLOCKED_CONTROLLER),
                 tokenId,
