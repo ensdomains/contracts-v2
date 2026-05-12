@@ -108,10 +108,6 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
         return uint64(block.timestamp + 1000);
     }
 
-    function _enableController(address controller) internal {
-        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTER_RESERVED, address(controller));
-    }
-
     function _unlockedData(bytes memory name) internal view returns (LibMigration.Data memory) {
         return
             LibMigration.Data({label: NameCoder.firstLabel(name), owner: testOwner, subregistry: testRegistry, resolver: testResolver});

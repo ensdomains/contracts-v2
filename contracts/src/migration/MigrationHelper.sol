@@ -24,7 +24,7 @@ struct LockedChildren {
 /// @notice Migration helper for mixed (ERC-721 and ERC-1155) batch migration using approval.
 contract MigrationHelper is HCAEquivalence {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv2 root registry.
@@ -155,8 +155,9 @@ contract MigrationHelper is HCAEquivalence {
         internal
     {
         uint256 n = mds.length;
-        if (n == 0)
+        if (n == 0) {
             return;
+        }
         address from;
         uint256[] memory ids = new uint256[](n);
         for (uint256 i; i < n; ++i) {
