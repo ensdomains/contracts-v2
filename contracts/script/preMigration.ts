@@ -98,7 +98,7 @@ export interface PreMigrationConfig {
   dryRun: boolean;
   continue?: boolean;
   disableCheckpoint?: boolean;
-  gracePeriodDays: number;
+  bonusPeriodDays: number;
   v1ResolverAddress: Address;
   v1BaseRegistrarAddress: Address;
 }
@@ -125,6 +125,14 @@ const RPC_TIMEOUT_MS = 30000;
 // ENS v1 BaseRegistrar on Ethereum mainnet
 const BASE_REGISTRAR_ADDRESS =
   "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85" as Address;
+
+/// Hard-coded ENSv1 grace period (in days). Defines the window after a name's
+/// v1 expiry during which the original owner retains exclusive renewal rights
+/// on v1. Sourced from `BaseRegistrarImplementation.GRACE_PERIOD = 90 days`.
+/// Used as the v1-side eligibility gate for migration: a name is migratable
+/// only while its v1 owner can still renew it.
+export const V1_GRACE_PERIOD_DAYS = 90n;
+export const V1_GRACE_PERIOD_SECONDS = V1_GRACE_PERIOD_DAYS * 86400n;
 
 export function createFreshCheckpoint(): Checkpoint {
   return {
@@ -272,8 +280,8 @@ class PreMigrationLogger extends Logger {
 
   v1NotRegistered(name: string, reason: string): void {
     this.raw(
-      yellow(`  → ⊘ Not registered on v1: ${reason}`),
-      `  → ⊘ Not registered on v1: ${reason}`,
+      yellow(`  → ⊘ Not claimable on v1: ${reason}`),
+      `  → ⊘ Not claimable on v1: ${reason}`,
     );
   }
 
@@ -584,7 +592,11 @@ export interface VerificationResult {
   registration: ENSRegistration;
   v2Status: number;
   v2LatestOwner: string;
-  v1IsRegistered: boolean;
+  /// Whether the original v1 owner still has renewal rights — i.e., the name
+  /// is currently registered or within the v1 90-day grace period. Names that
+  /// pass this gate are candidates for migration; the v2 expiry is computed
+  /// separately by adding the configurable `--bonus-period-days`.
+  v1IsClaimable: boolean;
   v1Expiry: bigint;
   error?: string;
 }
@@ -650,7 +662,7 @@ export async function batchVerifyRegistrations(
         registration: reg,
         v2Status: -1,
         v2LatestOwner: zeroAddress,
-        v1IsRegistered: false,
+        v1IsClaimable: false,
         v1Expiry: 0n,
         error: v2.status === "failure" ? String(v2.error) : String(v1.error),
       };
@@ -661,7 +673,8 @@ export async function batchVerifyRegistrations(
       registration: reg,
       v2Status: (v2.result as any).status,
       v2LatestOwner: (v2.result as any).latestOwner,
-      v1IsRegistered: expiry > 0n && expiry > currentTimestamp,
+      v1IsClaimable:
+        expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > currentTimestamp,
       v1Expiry: expiry,
     };
   });
@@ -818,7 +831,7 @@ async function processBatch(
   const alreadyReservedNames = new Set<string>();
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
 
-  const gracePeriodSeconds = BigInt(config.gracePeriodDays) * 86400n;
+  const bonusPeriodSeconds = BigInt(config.bonusPeriodDays) * 86400n;
 
   const verificationResults = await batchVerifyRegistrations(
     registrations,
@@ -863,11 +876,11 @@ async function processBatch(
       alreadyReservedNames.add(registration.labelName);
     }
 
-    if (!result.v1IsRegistered) {
+    if (!result.v1IsClaimable) {
       const reason =
         result.v1Expiry === 0n
-          ? "never registered or fully expired"
-          : "expired";
+          ? "never registered on v1"
+          : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
       logger.v1NotRegistered(registration.labelName, reason);
       checkpoint.skippedCount++;
       checkpoint.totalProcessed++;
@@ -875,7 +888,7 @@ async function processBatch(
       continue;
     }
 
-    const effectiveExpiry = result.v1Expiry + gracePeriodSeconds;
+    const effectiveExpiry = result.v1Expiry + bonusPeriodSeconds;
 
     const expiryDateFormatted = new Date(Number(effectiveExpiry) * 1000)
       .toISOString()
@@ -1049,9 +1062,9 @@ export async function main(argv = process.argv): Promise<void> {
       false,
     )
     .option(
-      "--grace-period-days <days>",
-      "Days of grace period to add on top of each name's v1 expiry",
-      "90",
+      "--bonus-period-days <days>",
+      "Days added to each name's v1 expiry to compute its v2 expiry",
+      "62",
     )
     .requiredOption(
       "--v1-resolver <address>",
@@ -1087,9 +1100,9 @@ export async function main(argv = process.argv): Promise<void> {
     limit: opts.limit ? parseInt(opts.limit) : null,
     dryRun: opts.dryRun,
     continue: opts.continue,
-    gracePeriodDays: Number.isNaN(parseInt(opts.gracePeriodDays))
-      ? 90
-      : parseInt(opts.gracePeriodDays),
+    bonusPeriodDays: Number.isNaN(parseInt(opts.bonusPeriodDays))
+      ? 62
+      : parseInt(opts.bonusPeriodDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
   };
@@ -1109,7 +1122,11 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config("Mainnet RPC (v1)", config.mainnetRpcUrl);
     logger.config("CSV File", config.csvFilePath);
     logger.config("Batch Size", config.batchSize);
-    logger.config("Grace Period Days", config.gracePeriodDays);
+    logger.config("Bonus Period Days", config.bonusPeriodDays);
+    logger.config(
+      "V1 Grace Period Days (hard-coded)",
+      Number(V1_GRACE_PERIOD_DAYS),
+    );
     logger.config("V1 Resolver", config.v1ResolverAddress);
     logger.config("Limit", config.limit ?? "none");
     logger.config("Dry Run", config.dryRun);
