@@ -67,7 +67,7 @@ contract V2Fixture is Test, ERC1155Holder {
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new BaseUriRegistryMetadata(hcaFactory);
         labelStore = new LabelStore();
-        userRegistryImpl = new UserRegistry(hcaFactory, metadata, labelStore);
+        userRegistryImpl = new UserRegistry(hcaFactory, metadata, labelStore, address(this));
         rootRegistry = new PermissionedRegistry(
             hcaFactory,
             metadata,

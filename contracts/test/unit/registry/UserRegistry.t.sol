@@ -46,7 +46,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
         // Deploy the implementation
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        implementation = new UserRegistry(hcaFactory, metadata, labelStore);
+        implementation = new UserRegistry(hcaFactory, metadata, labelStore, address(this));
 
         // Create initialization data
         bytes memory initData =
@@ -260,7 +260,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
     function test_upgrade() public {
         // Deploy a new implementation
         UserRegistryV2Mock newImplementation =
-            new UserRegistryV2Mock(hcaFactory, metadata, labelStore);
+            new UserRegistryV2Mock(hcaFactory, metadata, labelStore, address(this));
 
         // Upgrade the proxy
         vm.prank(admin);
@@ -274,7 +274,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
     function test_Revert_unauthorized_upgrade() public {
         // Deploy a new implementation
         UserRegistryV2Mock newImplementation =
-            new UserRegistryV2Mock(hcaFactory, metadata, labelStore);
+            new UserRegistryV2Mock(hcaFactory, metadata, labelStore, address(this));
 
         // User1 tries to upgrade without permission
         vm.expectRevert(
@@ -339,9 +339,10 @@ contract UserRegistryV2Mock is UserRegistry {
     constructor(
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider,
-        ILabelStore labelStore
+        ILabelStore labelStore,
+        address namer
     )
-        UserRegistry(hcaFactory, metadataProvider, labelStore)
+        UserRegistry(hcaFactory, metadataProvider, labelStore, namer)
     {}
     function version() public pure returns (uint256) {
         return 2;

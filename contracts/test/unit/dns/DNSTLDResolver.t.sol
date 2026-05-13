@@ -5,19 +5,25 @@ pragma solidity >=0.8.13;
 
 import {Test} from "forge-std/Test.sol";
 
+import {ENS} from "@ens/contracts/registry/ENS.sol";
+import {DNSSEC} from "@ens/contracts/dnssec-oracle/DNSSEC.sol";
+import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
-import {PermissionedRegistry, IRegistryMetadata} from "~src/registry/PermissionedRegistry.sol";
-import {DNSTLDResolver, ENS, IRegistry, DNSSEC, HexUtils} from "~src/dns/DNSTLDResolver.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
+import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {DNSTLDResolver} from "~src/dns/DNSTLDResolver.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 
 // coverage:ignore-next-line
 contract MockDNS is DNSTLDResolver {
-    constructor(IRegistry rootRegistry)
+    constructor(IPermissionedRegistry rootRegistry)
         DNSTLDResolver(
             ENS(address(0)),
             address(0),

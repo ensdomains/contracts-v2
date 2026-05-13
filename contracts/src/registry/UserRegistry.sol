@@ -27,12 +27,20 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
     /// @param hcaFactory The HCA factory.
     /// @param metadataProvider The metadata provider.
     /// @param labelStore The shared label database.
+    /// @param namer The implementation namer.
     constructor(
         IHCAFactoryBasic hcaFactory,
         IRegistryMetadata metadataProvider,
-        ILabelStore labelStore
+        ILabelStore labelStore,
+        address namer
     )
-        PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0)
+        PermissionedRegistry(
+            hcaFactory,
+            metadataProvider,
+            labelStore,
+            namer,
+            RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN
+        )
     {
         // This disables initialization for the implementation contract
         _disableInitializers();

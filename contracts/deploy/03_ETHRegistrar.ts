@@ -28,7 +28,7 @@ export default execute(
       account: deployer,
       artifact: artifacts.ETHRegistrar,
       args: [
-        owner,
+        deployer,
         hcaFactory.address,
         ethRegistry.address,
         owner, // beneficiary,

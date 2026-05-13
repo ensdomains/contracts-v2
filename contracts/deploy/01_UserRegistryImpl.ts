@@ -14,7 +14,12 @@ export default execute(
     await deploy("UserRegistryImpl", {
       account: deployer,
       artifact: artifacts.UserRegistry,
-      args: [hcaFactory.address, registryMetadata.address, labelStore.address],
+      args: [
+        hcaFactory.address,
+        registryMetadata.address,
+        labelStore.address,
+        deployer,
+      ],
     });
   },
   {

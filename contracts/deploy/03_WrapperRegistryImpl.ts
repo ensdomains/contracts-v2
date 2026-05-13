@@ -46,6 +46,7 @@ export default execute(
         labelStore.address,
         publicResolverSet.address,
         publicResolverV2.address,
+        deployer,
       ],
     });
   },

@@ -22,7 +22,9 @@ import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-import {LibRegistry, IRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 
 /// @dev DNS resource-record class for the Internet (`IN`), as defined in RFC 1035 section 3.2.4.
 uint16 constant CLASS_INET = 1;
@@ -50,6 +52,7 @@ contract DNSTLDResolver is
     IERC7996,
     ICompositeResolver,
     IVerifiableResolver,
+    IContractNamer,
     ResolverCaller,
     ERC165
 {
@@ -66,7 +69,7 @@ contract DNSTLDResolver is
     address public immutable DNS_TLD_RESOLVER_V1;
 
     /// @notice The ENSv2 root registry, used to resolve names parsed from `ENS1` TXT records.
-    IRegistry public immutable ROOT_REGISTRY;
+    IPermissionedRegistry public immutable ROOT_REGISTRY;
 
     /// @notice The DNSSEC oracle contract that verifies signed DNS resource-record sets.
     DNSSEC public immutable DNSSEC_ORACLE;
@@ -99,7 +102,7 @@ contract DNSTLDResolver is
     constructor(
         ENS ensRegistryV1,
         address dnsTLDResolverV1,
-        IRegistry rootRegistry,
+        IPermissionedRegistry rootRegistry,
         DNSSEC dnssecOracle,
         IGatewayProvider oracleGatewayProvider,
         IGatewayProvider batchGatewayProvider
@@ -127,6 +130,7 @@ contract DNSTLDResolver is
             type(ICompositeResolver).interfaceId == interfaceId ||
             type(IVerifiableResolver).interfaceId == interfaceId ||
             type(IERC7996).interfaceId == interfaceId ||
+            type(IContractNamer).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -138,6 +142,11 @@ contract DNSTLDResolver is
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
+
+    /// @inheritdoc IContractNamer
+    function isContractNamer(address namer) external view returns (bool) {
+        return ROOT_REGISTRY.isContractNamer(namer);
+    }
 
     /// @notice Fetch the DNSSEC TXT record.
     ///         Callers should enable EIP-3668.

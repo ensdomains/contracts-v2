@@ -34,7 +34,7 @@ export default execute(
       account: deployer,
       artifact: artifacts.ETHRenewerV1,
       args: [
-        owner,
+        deployer,
         hcaFactory.address,
         ethRegistry.address,
         owner, // beneficiary,

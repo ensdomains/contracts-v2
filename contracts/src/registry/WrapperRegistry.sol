@@ -73,6 +73,7 @@ contract WrapperRegistry is
     /// @param labelStore The shared label database.
     /// @param publicResolverSet The approved list of `PublicResolver` contracts.
     /// @param publicResolver The replacement `PublicResolver`.
+    /// @param namer The implementation namer.
     constructor(
         INameWrapper nameWrapper,
         address graveyard,
@@ -83,9 +84,16 @@ contract WrapperRegistry is
         ApprovedUpgradeGate upgradeGate,
         ILabelStore labelStore,
         IAddressSet publicResolverSet,
-        address publicResolver
+        address publicResolver,
+        address namer
     )
-        PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0) // no roles are granted
+        PermissionedRegistry(
+            hcaFactory,
+            metadataProvider,
+            labelStore,
+            namer,
+            RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN
+        )
         LockedWrapperReceiver(
             nameWrapper,
             graveyard,

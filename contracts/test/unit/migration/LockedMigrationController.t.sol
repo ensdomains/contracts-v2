@@ -73,7 +73,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             approvedUpgradeGate,
             labelStore,
             publicResolverSet,
-            address(publicResolver)
+            address(publicResolver),
+            address(this)
         );
 
         migrationController = new LockedMigrationController(
@@ -961,7 +962,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 approvedUpgradeGate,
                 labelStore,
                 publicResolverSet,
-                address(publicResolver)
+                address(publicResolver),
+                address(this)
             );
     }
 }
@@ -978,7 +980,8 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
         ApprovedUpgradeGate upgradeGate,
         ILabelStore labelStore,
         IAddressSet publicResolverSet,
-        address publicResolver
+        address publicResolver,
+        address namer
     )
         WrapperRegistry(
             nameWrapper,
@@ -990,7 +993,8 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
             upgradeGate,
             labelStore,
             publicResolverSet,
-            publicResolver
+            publicResolver,
+            namer
         )
     {}
 

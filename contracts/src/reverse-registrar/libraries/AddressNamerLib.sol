@@ -15,9 +15,8 @@ library AddressNamerLib {
     /// @param namer The address of the namer.
     /// @return canName `true` if `namer` can name `addr`.
     function isNamer(address addr, address namer) internal view returns (bool canName) {
-        if (addr.code.length == 0) {
-            canName = addr == namer;
-        } else {
+        canName = addr == namer;
+        if (!canName && addr.code.length > 0) {
             try Ownable(addr).owner() returns (address owner) {
                 canName = owner == namer;
             } catch {}
