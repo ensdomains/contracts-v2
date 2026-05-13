@@ -58,6 +58,7 @@ console.table(
   })),
 );
 
+const tags = ["v2", "shared", "erc20"] as const;
 console.table(
   await Promise.all(
     Object.entries(env.rocketh.deployments).map(async ([name, { address }]) => {
@@ -68,7 +69,10 @@ console.table(
       return {
         "Contract Name": name,
         "Contract Address": getAddress(address),
-        "Primary Name": primary,
+        "Primary Name":
+          !primary && (name in env.v2 || name in env.shared)
+            ? undefined
+            : primary,
       };
     }),
   ),

@@ -5,14 +5,17 @@ export default execute(
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
+    const rootRegistry =
+      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
+
     await deploy("Graveyard", {
       account: deployer,
       artifact: artifacts.Graveyard,
-      args: [nameWrapper.address],
+      args: [nameWrapper.address, rootRegistry.address],
     });
   },
   {
     tags: ["Graveyard", "v2"],
-    dependencies: ["NameWrapper"],
+    dependencies: ["NameWrapper", "RootRegistry"],
   },
 );

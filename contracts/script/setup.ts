@@ -440,7 +440,7 @@ export async function setupDevnet({
         address: rocketh.get("ENSV2Resolver").address,
         client,
       }),
-      PublicResolver: getContract({
+      PublicResolverV2: getContract({
         abi: artifacts.PublicResolverV2.abi,
         address: rocketh.get("PublicResolverV2").address,
         client,
@@ -831,14 +831,18 @@ export async function setupDevnet({
       // PermissionedResolver (impl)
       // await setName("universal", v2.UniversalResolver.address);
       await setName("impl.universal", v2.UniversalResolver.address);
-      await setName("public.resolver", v2.PublicResolver.address);
+      await setName("public.resolver", v2.PublicResolverV2.address);
       await setName("dns.resolver", v2.DNSTLDResolver.address);
       await setName("dnstxt", v2.DNSTXTResolver.address);
       await setName("dnsalias", v2.DNSAliasResolver.address);
 
-      await setName("registrar", v2.ETHRegistrar.address);
-      await setName("renewer", v2.ETHRenewerV1.address);
-      await setName("oracle", v2.StandardRentPriceOracle.address);
+      await setName("registrar", v2.ETHRegistrar.address, namedAccounts.owner);
+      await setName("renewer", v2.ETHRenewerV1.address, namedAccounts.owner);
+      await setName(
+        "oracle",
+        v2.StandardRentPriceOracle.address,
+        namedAccounts.owner,
+      );
       // BatchRegistrar
       await setName("addr.reverse", shared.ReverseRegistrarHCAAdapter.address);
       await setName(
@@ -853,7 +857,11 @@ export async function setupDevnet({
       await setName("locked.migration", v2.LockedMigrationController.address);
       await setName("graveyard", v2.Graveyard.address);
       // MigrationHelper
-      await setName("gate.wrapper-registry", v2.ApprovedUpgradeGate.address);
+      await setName(
+        "gate.wrapper-registry",
+        v2.ApprovedUpgradeGate.address,
+        namedAccounts.owner,
+      );
       await setName("prset.migration", v2.PublicResolverSet.address);
 
       await setName("hca", v2.HCAFactory.address);

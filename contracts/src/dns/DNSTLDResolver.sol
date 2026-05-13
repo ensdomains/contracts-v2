@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.24;
 
+import {ENS} from "@ens/contracts/registry/ENS.sol";
 import {CCIPReader, OffchainLookup} from "@ens/contracts/ccipRead/CCIPBatcher.sol";
 import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {DNSSEC} from "@ens/contracts/dnssec-oracle/DNSSEC.sol";
@@ -12,8 +13,7 @@ import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedReso
 import {IVerifiableResolver} from "@ens/contracts/resolvers/profiles/IVerifiableResolver.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {
-    RegistryUtils as RegistryUtilsV1,
-    ENS
+    RegistryUtils as RegistryUtilsV1
 } from "@ens/contracts/universalResolver/RegistryUtils.sol";
 import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.sol";
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
@@ -122,7 +122,7 @@ contract DNSTLDResolver is
         public
         view
         virtual
-        override(ERC165)
+        override
         returns (bool)
     {
         return

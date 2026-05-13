@@ -9,16 +9,16 @@ export default execute(
       "BatchGatewayProvider",
     );
 
-    const ensRegistryV1 =
+    const ensRegistry =
       get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
     await deploy("ENSV1Resolver", {
       account: deployer,
       artifact: artifacts.ENSV1Resolver,
       args: [
-        ensRegistryV1.address,
+        rootRegistry.address,
         batchGatewayProvider.address,
-        ensRegistryV1.address,
+        ensRegistry.address,
       ],
     });
   },

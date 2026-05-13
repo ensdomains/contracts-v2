@@ -1,8 +1,7 @@
 import { artifacts, execute } from "@rocketh";
-import { zeroAddress } from "viem";
 import { MAX_EXPIRY, DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
+import { zeroAddress } from "viem";
 
-// TODO: ownership
 export default execute(
   async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
     const rootRegistry =
@@ -17,8 +16,13 @@ export default execute(
 
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
-    console.log("Deploying ETHRegistry");
-    const ethRegistry = await deploy("ETHRegistry", {
+    const ensV1Resolver =
+      get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
+
+    const label = "reverse";
+
+    console.log(`Deploying ReverseRegistry`);
+    const reverseRegistry = await deploy("ReverseRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
       args: [
@@ -26,7 +30,7 @@ export default execute(
         registryMetadata.address,
         labelStore.address,
         deployer,
-        DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+        DEPLOYMENT_ROLES.REVERSE_REGISTRY_ROOT,
       ],
     });
 
@@ -35,20 +39,20 @@ export default execute(
       account: deployer,
       functionName: "register",
       args: [
-        "eth",
-        deployer,
-        ethRegistry.address,
+        label,
         zeroAddress,
-        DEPLOYMENT_ROLES.ETH_TOKEN,
+        reverseRegistry.address,
+        ensV1Resolver.address,
+        0n,
         MAX_EXPIRY,
       ],
     });
 
     console.log("  - Setting canonical parent");
-    await write(ethRegistry, {
+    await write(reverseRegistry, {
       account: deployer,
       functionName: "setParent",
-      args: [rootRegistry.address, "eth"],
+      args: [rootRegistry.address, label],
     });
   },
   {
@@ -58,6 +62,7 @@ export default execute(
       "HCAFactory",
       "RegistryMetadata",
       "LabelStore",
+      "ENSV1Resolver",
     ],
   },
 );

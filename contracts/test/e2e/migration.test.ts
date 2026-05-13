@@ -625,7 +625,7 @@ describe("Migration", () => {
       ]);
       expectVar({ resolver }).toEqualAddress(
         whitelisted
-          ? env.v2.PublicResolver.address
+          ? env.v2.PublicResolverV2.address
           : env.v1.PublicResolver.address,
       );
     }

@@ -24,7 +24,7 @@ export default execute(
     namedAccounts: { deployer },
     network,
   }) => {
-    const ensRegistryV1 =
+    const ensRegistry =
       get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
     const dnsTLDResolverV1 = get<(typeof artifacts.OffchainDNSResolver)["abi"]>(
@@ -52,7 +52,7 @@ export default execute(
       account: deployer,
       artifact: artifacts.DNSTLDResolver,
       args: [
-        ensRegistryV1.address,
+        ensRegistry.address,
         dnsTLDResolverV1.address,
         rootRegistry.address,
         dnssecOracle.address,

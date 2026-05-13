@@ -34,10 +34,10 @@ export default execute(
       account: deployer,
       artifact: artifacts.ETHRenewerV1,
       args: [
-        deployer,
+        owner,
         hcaFactory.address,
         ethRegistry.address,
-        owner, // beneficiary,
+        owner, // TODO: beneficiary,
         rentPriceOracle.address,
         GRACE_PERIOD_V2,
         PREMIGRATION_BONUS_PERIOD,

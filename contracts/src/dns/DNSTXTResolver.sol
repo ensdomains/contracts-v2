@@ -68,7 +68,7 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
         public
         view
         virtual
-        override(ERC165)
+        override
         returns (bool)
     {
         return
