@@ -316,11 +316,6 @@ export async function setupDevnet({
         address: rocketh.get("LabelStore").address,
         client,
       }),
-      SimpleRegistryMetadata: getContract({
-        abi: artifacts.SimpleRegistryMetadata.abi,
-        address: rocketh.get("SimpleRegistryMetadata").address,
-        client,
-      }),
       HCAFactory: getContract({
         abi: artifacts.MockHCAFactoryBasic.abi,
         address: rocketh.get("HCAFactory").address,

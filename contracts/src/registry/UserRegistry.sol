@@ -10,7 +10,6 @@ import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
-import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
@@ -25,14 +24,9 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
     ////////////////////////////////////////////////////////////////////////
 
     /// @param hcaFactory The HCA factory.
-    /// @param metadataProvider The metadata provider.
     /// @param labelStore The shared label database.
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadataProvider,
-        ILabelStore labelStore
-    )
-        PermissionedRegistry(hcaFactory, metadataProvider, labelStore, address(0), 0)
+    constructor(IHCAFactoryBasic hcaFactory, ILabelStore labelStore)
+        PermissionedRegistry(hcaFactory, labelStore, address(0), 0)
     {
         // This disables initialization for the implementation contract
         _disableInitializers();

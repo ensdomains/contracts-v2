@@ -2,7 +2,6 @@ import { artifacts, execute } from "@rocketh";
 import { zeroAddress } from "viem";
 import { MAX_EXPIRY, DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
 
-// TODO: ownership
 export default execute(
   async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
     const rootRegistry =
@@ -10,10 +9,6 @@ export default execute(
 
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
-
-    const registryMetadata = get<
-      (typeof artifacts.SimpleRegistryMetadata)["abi"]
-    >("SimpleRegistryMetadata");
 
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
@@ -23,7 +18,6 @@ export default execute(
       artifact: artifacts.PermissionedRegistry,
       args: [
         hcaFactory.address,
-        registryMetadata.address,
         labelStore.address,
         deployer,
         DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
@@ -59,11 +53,6 @@ export default execute(
   },
   {
     tags: ["ETHRegistry", "v2"],
-    dependencies: [
-      "RootRegistry",
-      "HCAFactory",
-      "RegistryMetadata",
-      "LabelStore",
-    ],
+    dependencies: ["RootRegistry", "HCAFactory", "LabelStore"],
   },
 );
