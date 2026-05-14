@@ -166,7 +166,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc ITokenizedRegistry
-    function findTokenId(string calldata label) public view returns (uint256 tokenId) {
+    function findTokenId(string calldata label) external view returns (uint256 tokenId) {
         return getTokenId(LibLabel.id(label));
     }
 

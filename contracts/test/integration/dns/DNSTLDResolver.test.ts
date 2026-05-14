@@ -79,7 +79,9 @@ async function fixture() {
     name: "com",
     resolverAddress: dnsTLDResolver.address,
   });
-  const dnsTXTResolver = await network.viem.deployContract("DNSTXTResolver");
+  const dnsTXTResolver = await network.viem.deployContract("DNSTXTResolver", [
+    v2.contractNamer.address,
+  ]);
   await setupNamedResolver(dnsTXTResolverName, dnsTXTResolver.address);
   const dnsAliasResolver = await network.viem.deployContract(
     "DNSAliasResolver",

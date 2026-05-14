@@ -631,10 +631,10 @@ describe("Migration", () => {
     }
 
     it("locked resolver", async () => {
-      await env.v2.PublicResolverSet.write.approve([
-        env.v1.PublicResolver.address,
-        false,
-      ]); // remove from set
+      await env.v2.PublicResolverSet.write.approve(
+        [env.v1.PublicResolver.address, false], // remove from set
+        { account: env.namedAccounts.owner },
+      );
       await testLockedResolver(false);
     });
 
