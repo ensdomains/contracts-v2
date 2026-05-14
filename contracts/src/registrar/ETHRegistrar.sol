@@ -72,7 +72,6 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the contract.
     /// @param owner_ Contract owner.
     /// @param hcaFactory HCA factory.
     /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.

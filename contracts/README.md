@@ -142,13 +142,12 @@ Roles granted during core deployment.
 | ETHRegistry     | Root     | `UnlockedMigrationController` |           | R                 |            |            |       |                 |              |                    |          |         |
 | ETHRegistry     | Root     | `LockedMigrationController`   |           | R                 |            |            |       |                 |              |                    |          |         |
 | ReverseRegistry | Root     | Deployer                      | AR        | AR                | AR         | AR         | AR    | AR              | AR           | AR                 | AR       | AR      |
-| ReverseRegistry | .addr    | Deployer                      |           |                   |            | AR         | AR    | AR              | AR           | AR                 |          |         |
 
 Legend: A = admin only, R = regular only, AR = admin and regular
 
-_StandardRentPriceOracle and ApprovedUpgradeGate use Ownable, not EAC. Implementation contracts (PermissionedResolverImpl, UserRegistryImpl, WrapperRegistryImpl) grant no roles at deployment; proxies receive roles via `initialize()` when created._
+_`ETHRegistrar`, `ETHRenewerV1`, and `ApprovedUpgradeGate` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
 
-_The tokens for .eth, .reverse and .addr.reverse are owned by the deployer._
+_The token for `eth` is registered to the deployer; `reverse` and `addr.reverse` are reserved._
 
 #### Usage Examples
 

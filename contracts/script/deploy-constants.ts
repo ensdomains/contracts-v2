@@ -80,7 +80,6 @@ export const DEPLOYMENT_ROLES = {
   // .reverse token: full role bitmap.
   // Granting all roles is harmless; some (e.g. REGISTRAR) are root-only and don't apply to tokens.
   REVERSE_REGISTRY_ROOT: FLAGS.ALL,
-  REVERSE_TOKEN: FLAGS.ALL,
   // ETHRegistry root deployer: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓, RENEW✓
   ETH_REGISTRY_ROOT:
     ROLES.ADMIN.REGISTRY.REGISTRAR |

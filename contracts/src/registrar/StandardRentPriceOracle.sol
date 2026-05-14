@@ -148,7 +148,6 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes StandardRentPriceOracle.
     /// @param rootAccount Account granted root roles.
     /// @param baseRatePerCp Base rates, in standard units per second.
     /// @param discountPoints List of discount points.
