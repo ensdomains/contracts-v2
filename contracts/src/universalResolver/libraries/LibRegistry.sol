@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.24;
 
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
+import {IOwnedRegistry} from "../../registry/interfaces/IOwnedRegistry.sol";
 
 /// @dev Recursive traversal helpers for the namechain registry tree — resolver lookup, registry
 ///      discovery, canonical name construction, and ancestry enumeration.
@@ -40,6 +42,25 @@ library LibRegistry {
             exactRegistry = exactRegistry.getSubregistry(label);
         }
         node = NameCoder.namehash(node, labelHash); // update namehash
+    }
+
+    /// @dev Find the owner for `name[offset:]`.
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name to search.
+    /// @return owner The owner address or null if unowned or not found.
+    function findOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)
+        internal
+        view
+        returns (address owner)
+    {
+        IRegistry registry = findParentRegistry(rootRegistry, name, offset);
+        if (
+            address(registry) != address(0) &&
+            ERC165Checker.supportsInterface(address(registry), type(IOwnedRegistry).interfaceId)
+        ) {
+            (string memory label, ) = NameCoder.extractLabel(name, offset);
+            owner = IOwnedRegistry(address(registry)).findOwner(label);
+        }
     }
 
     /// @dev Construct the canonical name for `registry`.

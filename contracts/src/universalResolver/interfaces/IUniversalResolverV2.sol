@@ -6,6 +6,11 @@ import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 /// @notice Interface for ENSv2-specific UniversalResolver helper functions.
 /// @dev Interface selector: `0x6e37653d`
 interface IUniversalResolverV2 {
+    /// @notice Find the owner for `name`.
+    /// @param name The DNS-encoded name.
+    /// @return The owner address or null if unowned or not found.
+    function findOwner(bytes calldata name) external view returns (address);
+
     /// @notice Construct the canonical name for `registry`.
     /// @param registry The registry to name.
     /// @return The DNS-encoded name or empty if not canonical.
