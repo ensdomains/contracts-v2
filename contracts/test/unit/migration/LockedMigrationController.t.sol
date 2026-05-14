@@ -39,7 +39,6 @@ import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {WrapperRegistry, IWrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
-import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
 import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
@@ -69,7 +68,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             verifiableFactory,
             address(ensV1Resolver),
             hcaFactory,
-            metadata,
             approvedUpgradeGate,
             labelStore,
             publicResolverSet,
@@ -156,7 +154,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_implemenationIsNameable() external view {
+    function test_implementationIsNameable() external view {
         assertTrue(wrapperRegistryImpl.isContractNamer(address(this)));
     }
 
@@ -968,7 +966,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 verifiableFactory,
                 address(ensV1Resolver),
                 hcaFactory,
-                metadata,
                 approvedUpgradeGate,
                 labelStore,
                 publicResolverSet,
@@ -986,7 +983,6 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
         IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
         IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadataProvider,
         ApprovedUpgradeGate upgradeGate,
         ILabelStore labelStore,
         IAddressSet publicResolverSet,
@@ -999,7 +995,6 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
             verifiableFactory,
             ensV1Resolver,
             hcaFactory,
-            metadataProvider,
             upgradeGate,
             labelStore,
             publicResolverSet,

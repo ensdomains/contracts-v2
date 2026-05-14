@@ -37,6 +37,7 @@ export default execute(
       ],
     });
 
+    console.log("  - Reserving in parent");
     await write(reverseRegistry, {
       account: deployer,
       functionName: "register",

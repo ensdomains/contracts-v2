@@ -11,11 +11,16 @@ import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
+import {IUniversalResolverV2} from "./interfaces/IUniversalResolverV2.sol";
 import {LibRegistry} from "./libraries/LibRegistry.sol";
 
-/// @notice ENS Universal Resolver that traverses the namechain registry hierarchy to locate
+/// @notice Universal Resolver that traverses the namechain registry hierarchy to locate
 ///         resolvers and registries for any DNS-encoded name.
-contract UniversalResolverV2 is AbstractUniversalResolver, DelegatedContractNamer {
+contract UniversalResolverV2 is
+    AbstractUniversalResolver,
+    DelegatedContractNamer,
+    IUniversalResolverV2
+{
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -49,42 +54,38 @@ contract UniversalResolverV2 is AbstractUniversalResolver, DelegatedContractName
         override(AbstractUniversalResolver, DelegatedContractNamer)
         returns (bool)
     {
-        return super.supportsInterface(interfaceId);
+        // note: this is some kind of compiler bug probably due to oz v4/v5
+        return
+            type(IUniversalResolverV2).interfaceId == interfaceId ||
+            AbstractUniversalResolver.supportsInterface(interfaceId) ||
+            DelegatedContractNamer.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Construct the canonical name for `registry`.
-    /// @param registry The registry to name.
-    /// @return The DNS-encoded name or empty if not canonical.
+    /// @inheritdoc IUniversalResolverV2
     function findCanonicalName(IRegistry registry) external view returns (bytes memory) {
         return LibRegistry.findCanonicalName(ROOT_REGISTRY, registry);
     }
 
-    /// @notice Find the canonical registry for `name`.
-    /// @param name The DNS-encoded name.
-    /// @return The canonical registry or null if not canonical.
+    /// @inheritdoc IUniversalResolverV2
     function findCanonicalRegistry(bytes calldata name) external view returns (IRegistry) {
         return LibRegistry.findCanonicalRegistry(ROOT_REGISTRY, name);
     }
 
-    /// @notice Find the exact registry for `name`.
-    /// @param name The DNS-encoded name.
-    /// @return The canonical registry or null if not found.
+    /// @inheritdoc IUniversalResolverV2
     function findExactRegistry(bytes calldata name) external view returns (IRegistry) {
         return LibRegistry.findExactRegistry(ROOT_REGISTRY, name, 0);
     }
 
-    /// @notice Find all registries in the ancestry of `name`.
-    /// * `findRegistries("") = [<root>]`
-    /// * `findRegistries("eth") = [<eth>, <root>]`
-    /// * `findRegistries("nick.eth") = [<nick>, <eth>, <root>]`
-    /// * `findRegistries("sub.nick.eth") = [null, <nick>, <eth>, <root>]`
-    ///
-    /// @param name The DNS-encoded name.
-    /// @return Array of registries in label-order.
+    /// @inheritdoc IUniversalResolverV2
+    function findParentRegistry(bytes calldata name) external view returns (IRegistry) {
+        return LibRegistry.findParentRegistry(ROOT_REGISTRY, name, 0);
+    }
+
+    /// @inheritdoc IUniversalResolverV2
     function findRegistries(bytes calldata name) external view returns (IRegistry[] memory) {
         return LibRegistry.findRegistries(ROOT_REGISTRY, name, 0);
     }

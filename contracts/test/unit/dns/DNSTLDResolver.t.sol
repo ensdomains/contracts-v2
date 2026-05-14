@@ -15,7 +15,6 @@ import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
-import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
@@ -57,7 +56,6 @@ contract DNSTLDResolverTest is Test, ERC1155Holder, IAddrResolver {
     function setUp() external {
         rootRegistry = new PermissionedRegistry(
             IHCAFactoryBasic(address(0)),
-            IRegistryMetadata(address(0)),
             new LabelStore(IContractNamer(address(0))),
             address(this),
             EACBaseRolesLib.ALL_ROLES

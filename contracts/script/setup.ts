@@ -1,5 +1,6 @@
 import { artifacts } from "@rocketh";
 import { rm } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { anvil as createAnvil } from "prool/instances";
 import { executeDeployScripts, resolveConfig } from "rocketh";
 import {
@@ -7,6 +8,7 @@ import {
   type Address,
   ContractFunctionExecutionError,
   ContractFunctionRevertedError,
+  createPublicClient,
   createWalletClient,
   decodeAbiParameters,
   encodeAbiParameters,
@@ -42,7 +44,7 @@ import {
 } from "./deploy-constants.js";
 import { deployArtifact } from "../test/integration/fixtures/deployArtifact.js";
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
-import { getL1BatchBlockRange } from "viem/zksync";
+import { bootstrapForkDeployments, ENS_DAO_MULTISIG } from "./forkBootstrap.js";
 
 const NAMED_ACCOUNTS = ["deployer", "owner", "user", "user2"] as const;
 
@@ -63,6 +65,8 @@ export async function setupDevnet({
   quiet = !saveDeployments,
   procLog = false,
   extraTime = 0,
+  forkUrl,
+  forkBlockNumber,
 }: {
   port?: number;
   chainId?: number;
@@ -71,7 +75,10 @@ export async function setupDevnet({
   quiet?: boolean;
   procLog?: boolean; // show anvil process logs
   extraTime?: number; // extra time to subtract from genesis timestamp
+  forkUrl?: string; // when set, anvil forks from this RPC URL
+  forkBlockNumber?: bigint; // optional fork block; defaults to latest
 } = {}) {
+  const isFork = !!forkUrl;
   // shutdown functions for partial initialization
   const finalizers: (() => unknown | Promise<unknown>)[] = [];
   async function shutdown() {
@@ -95,9 +102,16 @@ export async function setupDevnet({
     const anvilInstance = createAnvil({
       accounts: NAMED_ACCOUNTS.length,
       mnemonic,
-      chainId,
+      // when forking, anvil derives chainId from the upstream RPC; the bare
+      // `chainId` flag is omitted so anvil takes the upstream value
+      ...(isFork ? {} : { chainId }),
       port,
-      ...(extraTime
+      // autoImpersonate lets the deploy flow sign as any address (e.g. the DAO
+      // multisig mapped to `owner` on chainId 1) without explicit unlocking.
+      // omitted in non-fork mode — prool encodes `false` as a positional arg
+      // rather than dropping the flag, which trips anvil's subcommand parser.
+      ...(isFork ? { autoImpersonate: true, forkUrl, forkBlockNumber } : {}),
+      ...(extraTime && !isFork
         ? { timestamp: Math.floor(Date.now() / 1000) - extraTime }
         : {}),
     });
@@ -153,8 +167,15 @@ export async function setupDevnet({
     })();
 
     const httpURL = `http://${hostPort}`;
+
+    // when forking, anvil reports the upstream chainId — pull it from the live
+    // node so downstream chain definition + deployments dir name reflect reality
+    const activeChainId = isFork
+      ? await createPublicClient({ transport: http(httpURL) }).getChainId()
+      : chainId;
+
     const chain = defineChain({
-      id: chainId,
+      id: activeChainId,
       name: "ENSv2",
       nativeCurrency: {
         decimals: 18,
@@ -203,11 +224,25 @@ export async function setupDevnet({
     });
 
     console.log("Deploying contracts");
-    const deploymentName = `devnet-${chainId}`;
+    const deploymentName = `devnet-${activeChainId}`;
+    const deploymentsDirURL = new URL(
+      `../deployments/${deploymentName}`,
+      import.meta.url,
+    );
     if (saveDeployments) {
-      await rm(new URL(`../deployments/${deploymentName}`, import.meta.url), {
+      await rm(deploymentsDirURL, {
         recursive: true,
         force: true,
+      });
+    }
+    if (isFork) {
+      await bootstrapForkDeployments({
+        client,
+        deploymentsDir: fileURLToPath(deploymentsDirURL),
+        canonicalDir: fileURLToPath(
+          new URL("../lib/ens-contracts/deployments/mainnet", import.meta.url),
+        ),
+        chainId: activeChainId,
       });
     }
     process.env.BATCH_GATEWAY_URLS = JSON.stringify([LOCAL_BATCH_GATEWAY_URL]);
@@ -224,7 +259,9 @@ export async function setupDevnet({
             "legacy", // legacy registry
           ],
           fork: false,
-          scripts: ["lib/ens-contracts/deploy", "deploy"],
+          // on fork, v1 contracts come from the live mainnet state we just
+          // pre-populated; only the v2 deploy scripts run on top
+          scripts: isFork ? ["deploy"] : ["lib/ens-contracts/deploy", "deploy"],
           pollingInterval: 0.001, // cannot be zero
         },
         askBeforeProceeding: false,
@@ -329,11 +366,6 @@ export async function setupDevnet({
       LabelStore: getContract({
         abi: artifacts.LabelStore.abi,
         address: rocketh.get("LabelStore").address,
-        client,
-      }),
-      SimpleRegistryMetadata: getContract({
-        abi: artifacts.SimpleRegistryMetadata.abi,
-        address: rocketh.get("SimpleRegistryMetadata").address,
         client,
       }),
       HCAFactory: getContract({
@@ -495,8 +527,12 @@ export async function setupDevnet({
     >;
     console.log("Created PermissionedResolver for each account");
 
-    await setupEnsDotEth();
-    console.log("Setup ens.eth");
+    // on fork, ens.eth already exists on canonical v1 with real subdomains;
+    // skip the synthetic register-and-seed step to avoid colliding with state
+    if (!isFork) {
+      await setupEnsDotEth();
+      console.log("Setup ens.eth");
+    }
 
     console.log("Deployed ENSv2");
     return {
@@ -766,22 +802,45 @@ export async function setupDevnet({
     }
 
     async function activateV2() {
-      const account = namedAccounts.owner;
-      // lock NameWrapper
-      await v1.NameWrapper.write.renounceOwnership({ account });
-      // disable v1 eth controllers
-      await v1.RegistrarSecurityController.write.removeRegistrarController(
-        [rocketh.get("ETHRegistrarController").address],
-        { account },
-      );
-      await v1.RegistrarSecurityController.write.removeRegistrarController(
-        [rocketh.get("WrappedETHRegistrarController").address],
-        { account },
-      );
-      await v1.RegistrarSecurityController.write.removeRegistrarController(
-        [rocketh.get("LegacyETHRegistrarController").address],
-        { account },
-      );
+      // on fork the canonical v1 contracts are owned by the DAO multisig, not
+      // by the mnemonic-derived `owner` account — anvil autoImpersonate lets us
+      // call onlyOwner functions by passing the DAO address as a JSON-RPC
+      // account directly.
+      const account: Account | Address = isFork
+        ? ENS_DAO_MULTISIG
+        : namedAccounts.owner;
+      // lock NameWrapper if still owned (idempotent across fork + synthetic)
+      if ((await v1.NameWrapper.read.owner()) !== zeroAddress) {
+        await v1.NameWrapper.write.renounceOwnership({ account });
+      }
+      // disable every v1 path that can register .eth 2LDs by revoking it as
+      // a BaseRegistrarImplementation controller (routed via
+      // RegistrarSecurityController, which is BaseRegistrar's owner):
+      //   - ETHRegistrarController / LegacyETHRegistrarController: direct
+      //     controllers of BaseRegistrar.
+      //   - NameWrapper: BaseRegistrar controller through which the
+      //     WrappedETHRegistrarController registers wrapped 2LDs.
+      //   - WrappedETHRegistrarController: not actually a BaseRegistrar
+      //     controller on canonical mainnet (it routes through NameWrapper),
+      //     but is on the synthetic devnet; included for parity.
+      // BaseRegistrarImplementation.removeController is idempotent (sets
+      // controllers[x]=false and emits an event), so revoking an address
+      // that isn't currently registered is a harmless no-op. The
+      // LegacyETHRegistrarController rocketh artifact is pre-populated by
+      // `bootstrapForkDeployments` in fork mode and by the v1 deploy scripts
+      // in synthetic-devnet mode.
+      const v1ControllerNames = [
+        "ETHRegistrarController",
+        "WrappedETHRegistrarController",
+        "LegacyETHRegistrarController",
+        "NameWrapper",
+      ] as const;
+      for (const name of v1ControllerNames) {
+        await v1.RegistrarSecurityController.write.removeRegistrarController(
+          [rocketh.get(name).address],
+          { account },
+        );
+      }
       // add v2 eth controllers
       await v1.RegistrarSecurityController.write.addRegistrarController(
         [v2.Graveyard.address],
@@ -791,6 +850,15 @@ export async function setupDevnet({
         [v2.ETHRenewerV1.address],
         { account },
       );
+      // on fork, also grant deployer registrar-controller rights so morticia's
+      // e2e harness can call into v1.BaseRegistrar from the test mnemonic
+      // (matches the synthetic devnet's implicit "deployer can register" stance)
+      if (isFork) {
+        await v1.RegistrarSecurityController.write.addRegistrarController(
+          [namedAccounts.deployer.address],
+          { account },
+        );
+      }
       // transfer to syncer for juggling
       await v1.RegistrarSecurityController.write.transferRegistrarOwnership(
         [v2.ETHRenewerV1.address],

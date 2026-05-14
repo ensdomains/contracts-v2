@@ -10,10 +10,6 @@ export default execute(
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
-    const registryMetadata = get<
-      (typeof artifacts.SimpleRegistryMetadata)["abi"]
-    >("SimpleRegistryMetadata");
-
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
     const ensV1Resolver =
@@ -27,20 +23,19 @@ export default execute(
       artifact: artifacts.PermissionedRegistry,
       args: [
         hcaFactory.address,
-        registryMetadata.address,
         labelStore.address,
         deployer,
         DEPLOYMENT_ROLES.REVERSE_REGISTRY_ROOT,
       ],
     });
 
-    console.log("  - Registering in parent");
+    console.log("  - Reserving in parent");
     await write(rootRegistry, {
       account: deployer,
       functionName: "register",
       args: [
         label,
-        zeroAddress,
+        zeroAddress, // owner
         reverseRegistry.address,
         ensV1Resolver.address,
         0n,
@@ -56,13 +51,7 @@ export default execute(
     });
   },
   {
-    tags: ["ETHRegistry", "v2"],
-    dependencies: [
-      "RootRegistry",
-      "HCAFactory",
-      "RegistryMetadata",
-      "LabelStore",
-      "ENSV1Resolver",
-    ],
+    tags: ["ReverseRegistry", "v2"],
+    dependencies: ["RootRegistry", "HCAFactory", "LabelStore", "ENSV1Resolver"],
   },
 );

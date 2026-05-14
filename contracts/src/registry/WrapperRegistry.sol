@@ -18,7 +18,6 @@ import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {ApprovedUpgradeGate} from "./ApprovedUpgradeGate.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
-import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
@@ -68,7 +67,6 @@ contract WrapperRegistry is
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.
     /// @param hcaFactory The HCA factory.
-    /// @param metadataProvider The metadata provider.
     /// @param upgradeGate The upgrade target allowlist.
     /// @param labelStore The shared label database.
     /// @param publicResolverSet The approved list of `PublicResolver` contracts.
@@ -80,7 +78,6 @@ contract WrapperRegistry is
         IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
         IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadataProvider,
         ApprovedUpgradeGate upgradeGate,
         ILabelStore labelStore,
         IAddressSet publicResolverSet,
@@ -89,7 +86,6 @@ contract WrapperRegistry is
     )
         PermissionedRegistry(
             hcaFactory,
-            metadataProvider,
             labelStore,
             namer,
             RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN

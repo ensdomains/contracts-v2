@@ -6,7 +6,6 @@ import {
   ROLES,
 } from "../script/deploy-constants.js";
 
-// TODO: ownership
 export default execute(
   async ({
     deploy,
@@ -20,10 +19,6 @@ export default execute(
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
-    const registryMetadata = get<
-      (typeof artifacts.SimpleRegistryMetadata)["abi"]
-    >("SimpleRegistryMetadata");
-
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
     console.log("Deploying ETHRegistry");
@@ -32,7 +27,6 @@ export default execute(
       artifact: artifacts.PermissionedRegistry,
       args: [
         hcaFactory.address,
-        registryMetadata.address,
         labelStore.address,
         deployer,
         DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
@@ -69,11 +63,6 @@ export default execute(
   },
   {
     tags: ["ETHRegistry", "v2"],
-    dependencies: [
-      "RootRegistry",
-      "HCAFactory",
-      "RegistryMetadata",
-      "LabelStore",
-    ],
+    dependencies: ["RootRegistry", "HCAFactory", "LabelStore"],
   },
 );

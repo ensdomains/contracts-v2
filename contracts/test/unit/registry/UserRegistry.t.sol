@@ -13,9 +13,7 @@ import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAc
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
-import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
@@ -29,7 +27,6 @@ contract UserRegistryTest is Test, ERC1155Holder {
     VerifiableFactory factory;
     MockHCAFactoryBasic hcaFactory;
     LabelStore labelStore;
-    SimpleRegistryMetadata metadata;
     UserRegistry implementation;
     UserRegistry proxy;
 
@@ -41,13 +38,12 @@ contract UserRegistryTest is Test, ERC1155Holder {
     function setUp() public {
         factory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
-        metadata = new SimpleRegistryMetadata(hcaFactory);
         labelStore = new LabelStore(IContractNamer(address(0)));
 
         // Deploy the implementation
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        implementation = new UserRegistry(hcaFactory, metadata, labelStore, address(this));
+        implementation = new UserRegistry(hcaFactory, labelStore, address(this));
 
         // Create initialization data
         bytes memory initData =
@@ -63,7 +59,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
         proxy = UserRegistry(proxyAddress);
     }
 
-    function test_implemenationIsNameable() external view {
+    function test_implementationIsNameable() external view {
         assertTrue(implementation.isContractNamer(address(this)));
     }
 
@@ -265,7 +261,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
     function test_upgrade() public {
         // Deploy a new implementation
         UserRegistryV2Mock newImplementation =
-            new UserRegistryV2Mock(hcaFactory, metadata, labelStore, address(this));
+            new UserRegistryV2Mock(hcaFactory, labelStore, address(this));
 
         // Upgrade the proxy
         vm.prank(admin);
@@ -279,7 +275,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
     function test_Revert_unauthorized_upgrade() public {
         // Deploy a new implementation
         UserRegistryV2Mock newImplementation =
-            new UserRegistryV2Mock(hcaFactory, metadata, labelStore, address(this));
+            new UserRegistryV2Mock(hcaFactory, labelStore, address(this));
 
         // User1 tries to upgrade without permission
         vm.expectRevert(
@@ -341,13 +337,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
 // Mock V2 contract for testing upgrades
 contract UserRegistryV2Mock is UserRegistry {
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadataProvider,
-        ILabelStore labelStore,
-        address namer
-    )
-        UserRegistry(hcaFactory, metadataProvider, labelStore, namer)
+    constructor(IHCAFactoryBasic hcaFactory, ILabelStore labelStore, address namer)
+        UserRegistry(hcaFactory, labelStore, namer)
     {}
     function version() public pure returns (uint256) {
         return 2;

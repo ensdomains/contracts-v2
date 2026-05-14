@@ -19,12 +19,10 @@ const FLAGS = {
     SET_SUBREGISTRY: 1n << 20n,
     SET_RESOLVER: 1n << 24n,
     CAN_TRANSFER: 1n << 28n,
+    WAS_RESERVED: 1n << 32n,
+    SET_URI: 1n << 36n,
     CAN_NAME: 1n << 120n,
     UPGRADE: 1n << 124n,
-  },
-  // see: ETHRegistrar.sol
-  REGISTRAR: {
-    SET_ORACLE: 1n << 0n,
   },
   // see: PermissionedResolver.sol / PermissionedResolverLib.sol
   RESOLVER: {
@@ -38,6 +36,11 @@ const FLAGS = {
     SET_ALIAS: 1n << 28n,
     CLEAR: 1n << 32n,
     UPGRADE: 1n << 124n,
+  },
+  // see: StandardRentPriceOracle.sol
+  ORACLE: {
+    UPDATE_TOKEN: 1n << 0n,
+    DISABLE_TOKEN: 1n << 4n,
   },
 } as const satisfies Flags;
 
@@ -70,7 +73,9 @@ export const DEPLOYMENT_ROLES = {
     ROLES.REGISTRY.RENEW |
     ROLES.ADMIN.REGISTRY.RENEW |
     ROLES.REGISTRY.CAN_NAME |
-    ROLES.ADMIN.REGISTRY.CAN_NAME,
+    ROLES.ADMIN.REGISTRY.CAN_NAME |
+    ROLES.REGISTRY.SET_URI |
+    ROLES.ADMIN.REGISTRY.SET_URI,
   // .eth token: SET_SUBREGISTRY AR, SET_RESOLVER AR
   ETH_TOKEN:
     ROLES.REGISTRY.SET_SUBREGISTRY |
@@ -88,9 +93,10 @@ export const DEPLOYMENT_ROLES = {
     ROLES.ADMIN.REGISTRY.SET_PARENT |
     ROLES.ADMIN.REGISTRY.RENEW |
     ROLES.REGISTRY.CAN_NAME |
-    ROLES.ADMIN.REGISTRY.CAN_NAME,
-  // ETHRegistrar and BatchRegistrar are granted REGISTRAR and RENEW at the
-  // ETHRegistry root at static deploy.
+    ROLES.ADMIN.REGISTRY.CAN_NAME |
+    ROLES.REGISTRY.SET_URI |
+    ROLES.ADMIN.REGISTRY.SET_URI,
+  // ETHRegistrar and BatchRegistrar are granted REGISTRAR and RENEW on ETHRegistry root at static deploy.
   ETH_REGISTRAR_ROOT: ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
   ETH_RENEWER_V1_ROOT: ROLES.REGISTRY.RENEW,
   // UnlockedMigrationController and LockedMigrationController

@@ -10,7 +10,6 @@ import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
-import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
@@ -25,18 +24,11 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
     ////////////////////////////////////////////////////////////////////////
 
     /// @param hcaFactory The HCA factory.
-    /// @param metadataProvider The metadata provider.
     /// @param labelStore The shared label database.
     /// @param namer The implementation namer.
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadataProvider,
-        ILabelStore labelStore,
-        address namer
-    )
+    constructor(IHCAFactoryBasic hcaFactory, ILabelStore labelStore, address namer)
         PermissionedRegistry(
             hcaFactory,
-            metadataProvider,
             labelStore,
             namer,
             RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN
