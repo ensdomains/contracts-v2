@@ -4,7 +4,7 @@ pragma solidity >=0.8.13;
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
 /// @notice Interface for ENSv2-specific UniversalResolver helper functions.
-/// @dev Interface selector: `0x6e37653d`
+/// @dev Interface selector: `0xf99a5e06`
 interface IUniversalResolverV2 {
     /// @notice Find the owner for `name`.
     /// @param name The DNS-encoded name.

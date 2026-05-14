@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.24;
 
-import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
-import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 import {IOwnedRegistry} from "../../registry/interfaces/IOwnedRegistry.sol";
+import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
 /// @dev Recursive traversal helpers for the namechain registry tree — resolver lookup, registry
 ///      discovery, canonical name construction, and ancestry enumeration.
