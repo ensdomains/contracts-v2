@@ -57,7 +57,7 @@ describe("PrepareMigration", () => {
     const pk =
       overrides.privateKey ??
       toHex(env.namedAccounts.deployer.getHdKey().privateKey!);
-    if (pk !== null) args.push("--private-key", pk);
+    if (pk) args.push("--private-key", pk);
     if (overrides.execute) args.push("--execute");
     return args;
   }
@@ -171,8 +171,8 @@ describe("PrepareMigration", () => {
 
   it("rejects --execute without --private-key", async () => {
     const addrs = getAddresses();
-    await expect(main(buildArgs(addrs, { execute: true }))).rejects.toThrow(
-      /--execute requires --private-key/,
-    );
+    await expect(
+      main(buildArgs(addrs, { privateKey: "", execute: true })),
+    ).rejects.toThrow(/--execute requires --private-key/);
   });
 });
