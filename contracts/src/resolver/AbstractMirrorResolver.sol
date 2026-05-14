@@ -10,23 +10,19 @@ import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.so
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @dev Resolver that mirrors resolution of the same name to a different registry.
 abstract contract AbstractMirrorResolver is
     ICompositeResolver,
     IERC7996,
     ResolverCaller,
-    ERC165,
-    IContractNamer
+    DelegatedContractNamer
 {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice The ENSv2 root registry used to traverse the registry hierarchy and locate resolvers.
-    IPermissionedRegistry public immutable ROOT_REGISTRY;
 
     /// @notice Shared batch gateway provider.
     IGatewayProvider public immutable BATCH_GATEWAY_PROVIDER;
@@ -35,12 +31,12 @@ abstract contract AbstractMirrorResolver is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param rootRegistry The ENSv2 root registry.
     /// @param batchGatewayProvider The batch gateway provider.
-    constructor(IPermissionedRegistry rootRegistry, IGatewayProvider batchGatewayProvider)
+    /// @param contractNamer Delegated contract namer.
+    constructor(IGatewayProvider batchGatewayProvider, IContractNamer contractNamer)
         CCIPReader(DEFAULT_UNSAFE_CALL_GAS)
+        DelegatedContractNamer(contractNamer)
     {
-        ROOT_REGISTRY = rootRegistry;
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
     }
 
@@ -49,14 +45,13 @@ abstract contract AbstractMirrorResolver is
         public
         view
         virtual
-        override(ERC165)
+        override(DelegatedContractNamer)
         returns (bool)
     {
         return
             type(IExtendedResolver).interfaceId == interfaceId ||
             type(ICompositeResolver).interfaceId == interfaceId ||
             type(IERC7996).interfaceId == interfaceId ||
-            type(IContractNamer).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -68,11 +63,6 @@ abstract contract AbstractMirrorResolver is
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
-
-    /// @inheritdoc IContractNamer
-    function isContractNamer(address namer) external view returns (bool) {
-        return ROOT_REGISTRY.isContractNamer(namer);
-    }
 
     /// @inheritdoc IExtendedResolver
     function resolve(bytes calldata name, bytes calldata data) external view returns (bytes memory) {

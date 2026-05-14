@@ -20,8 +20,9 @@ async function fixture() {
   const v2 = await deployV2Fixture(network, true);
   const ethResolver = v1.ownedResolver.address;
   const ensV2Resolver = await network.viem.deployContract("ENSV2Resolver", [
-    v2.rootRegistry.address,
     v2.batchGatewayProvider.address,
+    v2.contractNamer.address,
+    v2.rootRegistry.address,
     ethResolver,
   ]);
   // setup fallback resolver

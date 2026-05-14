@@ -20,6 +20,7 @@ import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @notice PublicResolver that respects the ENSv2 registry.
 contract PublicResolverV2 is
@@ -34,7 +35,7 @@ contract PublicResolverV2 is
     PubkeyResolver,
     TextResolver,
     HCAContext,
-    IContractNamer
+    DelegatedContractNamer
 {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
@@ -90,12 +91,15 @@ contract PublicResolverV2 is
     /// @param hcaFactory The HCA factory.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param rootRegistry The ENSv2 Root Registry contract.
+    /// @param contractNamer Delegated contract namer.
     constructor(
         IHCAFactoryBasic hcaFactory,
         INameWrapper nameWrapper,
-        IPermissionedRegistry rootRegistry
+        IPermissionedRegistry rootRegistry,
+        IContractNamer contractNamer
     )
         HCAEquivalence(hcaFactory)
+        DelegatedContractNamer(contractNamer)
     {
         NAME_WRAPPER = nameWrapper;
         ROOT_REGISTRY = rootRegistry;
@@ -115,12 +119,12 @@ contract PublicResolverV2 is
             InterfaceResolver,
             NameResolver,
             PubkeyResolver,
-            TextResolver
+            TextResolver,
+            DelegatedContractNamer
         )
         returns (bool)
     {
-        return
-            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);
+        return super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -146,11 +150,6 @@ contract PublicResolverV2 is
         require(sender != delegate, "Setting delegate status for self");
         _tokenApprovals[sender][node][delegate] = approved;
         emit Approved(sender, node, delegate, approved);
-    }
-
-    /// @inheritdoc IContractNamer
-    function isContractNamer(address namer) external view returns (bool) {
-        return ROOT_REGISTRY.isContractNamer(namer);
     }
 
     /// @notice Check if `operator` is approved for all nodes owned by `account`.

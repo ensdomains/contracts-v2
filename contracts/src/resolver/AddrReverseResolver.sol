@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity >=0.8.13;
 
 import {ENS} from "@ens/contracts/registry/ENS.sol";
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
@@ -11,13 +11,15 @@ import {INameReverser} from "@ens/contracts/reverseResolver/INameReverser.sol";
 import {ENSIP19, COIN_TYPE_ETH, CHAIN_ID_ETH} from "@ens/contracts/utils/ENSIP19.sol";
 import {LibABI} from "@ens/contracts/utils/LibABI.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-import {LibString} from "../utils/LibString.sol";
 import {IContractName} from "../reverse-registrar/interfaces/IContractName.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
+import {LibString} from "../utils/LibString.sol";
 
 /// @dev Namehash of "addr.reverse"
-bytes32 constant ADDR_REVERSE_NODE = 0x91d1777781884d03a6757a803996e38de2a42967fb37eeaca72729271025a9e2;
+bytes32 constant ADDR_REVERSE_NODE =
+    0x91d1777781884d03a6757a803996e38de2a42967fb37eeaca72729271025a9e2;
 
 /// @notice Reverses an EVM address using the first non-null response from the following sources:
 ///
@@ -25,9 +27,9 @@ bytes32 constant ADDR_REVERSE_NODE = 0x91d1777781884d03a6757a803996e38de2a42967f
 /// 2. `IContractName(addr).ensContractName()`
 /// 3. `IStandaloneReverseRegistrar` for "default.reverse"
 ///
-contract AddrReverseResolver is ERC165, IExtendedResolver, INameReverser {
+contract AddrReverseResolver is DelegatedContractNamer, IExtendedResolver, INameReverser {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev The ENS registry contract.
@@ -36,7 +38,7 @@ contract AddrReverseResolver is ERC165, IExtendedResolver, INameReverser {
     /// @notice The reverse registrar contract for "default.reverse".
     IStandaloneReverseRegistrar public immutable DEFAULT_REGISTRAR;
 
-    /// @dev The ENSv2 reverse registrar contract for "addr.reverse".
+    /// @dev The reverse registrar contract for "addr.reverse".
     address internal immutable _ADDR_REGISTRAR;
 
     ////////////////////////////////////////////////////////////////////////
@@ -55,13 +57,24 @@ contract AddrReverseResolver is ERC165, IExtendedResolver, INameReverser {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor(ENS registryV1, IStandaloneReverseRegistrar defaultRegistrar, address addrRegistrar) {
+    /// @param registryV1 The ENSv1 registry.
+    /// @param defaultRegistrar The reverse registrar contract for "default.reverse".
+    /// @param addrRegistrar The reverse registrar contract for "addr.reverse".
+    /// @param contractNamer Delegated contract namer.
+    constructor(
+        ENS registryV1,
+        IStandaloneReverseRegistrar defaultRegistrar,
+        address addrRegistrar,
+        IContractNamer contractNamer
+    )
+        DelegatedContractNamer(contractNamer)
+    {
         _REGISTRY_V1 = registryV1;
         DEFAULT_REGISTRAR = defaultRegistrar;
         _ADDR_REGISTRAR = addrRegistrar;
     }
 
-    /// @inheritdoc ERC165
+    /// @inheritdoc DelegatedContractNamer
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(IExtendedResolver).interfaceId ||
@@ -78,10 +91,11 @@ contract AddrReverseResolver is ERC165, IExtendedResolver, INameReverser {
     /// @param name The reverse name to resolve, in normalised and DNS-encoded form.
     /// @param data The resolution data, as specified in ENSIP-10.
     /// @return result The encoded response for the requested profile.
-    function resolve(
-        bytes calldata name,
-        bytes calldata data
-    ) external view returns (bytes memory result) {
+    function resolve(bytes calldata name, bytes calldata data)
+        external
+        view
+        returns (bytes memory result)
+    {
         bytes4 selector = bytes4(data);
         if (selector != INameResolver.name.selector) {
             revert UnsupportedResolverProfile(selector);
@@ -124,16 +138,13 @@ contract AddrReverseResolver is ERC165, IExtendedResolver, INameReverser {
     /// @dev Determine `name` for `addr`.
     function _resolveName(address addr) internal view returns (string memory name) {
         // #1
-        bytes32 node = NameCoder.namehash(
-            ADDR_REVERSE_NODE,
-            keccak256(bytes(LibString.toAddressString(addr)))
-        );
+        bytes32 node =
+            NameCoder.namehash(ADDR_REVERSE_NODE, keccak256(bytes(LibString.toAddressString(addr))));
         address resolver = _REGISTRY_V1.resolver(node);
         if (resolver != address(0)) {
             // note: this only supports onchain direct calls (no extended, no offchain)
-            (bool ok, bytes memory v) = resolver.staticcall{gas: 100_000}(
-                abi.encodeCall(INameResolver.name, (node))
-            );
+            (bool ok, bytes memory v) =
+                resolver.staticcall{gas: 100_000}(abi.encodeCall(INameResolver.name, (node)));
             if (ok) {
                 (ok, v) = LibABI.tryDecodeBytes(v);
             }
@@ -146,9 +157,8 @@ contract AddrReverseResolver is ERC165, IExtendedResolver, INameReverser {
         }
         // #2
         if (addr.code.length > 0) {
-            (bool ok, bytes memory v) = addr.staticcall{gas: 100_000}(
-                abi.encodeCall(IContractName.contractName, ())
-            );
+            (bool ok, bytes memory v) =
+                addr.staticcall{gas: 100_000}(abi.encodeCall(IContractName.contractName, ()));
             if (ok) {
                 (ok, v) = LibABI.tryDecodeBytes(v);
                 if (ok && v.length > 0) {

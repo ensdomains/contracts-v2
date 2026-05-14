@@ -59,7 +59,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         approvedUpgradeGate = new ApprovedUpgradeGate(address(this));
 
         publicResolverSet = new PermissionedAddressSet(hcaFactory, address(this));
-        publicResolver = new PublicResolverV2(hcaFactory, nameWrapper, rootRegistry);
+        publicResolver = new PublicResolverV2(hcaFactory, nameWrapper, rootRegistry, contractNamer);
 
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
@@ -84,7 +84,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             verifiableFactory,
             address(wrapperRegistryImpl),
             publicResolverSet,
-            address(publicResolver)
+            address(publicResolver),
+            contractNamer
         );
 
         ethRegistry.grantRootRoles(
@@ -106,6 +107,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             migrationController.WRAPPER_REGISTRY_IMPL(),
             address(wrapperRegistryImpl),
             "WRAPPER_REGISTRY_IMPL"
+        );
+        assertEq(
+            address(migrationController.CONTRACT_NAMER()),
+            address(contractNamer),
+            "CONTRACT_NAMER"
         );
 
         assertEq(migrationController.getWrappedName(), NameCoder.encode("eth"), "getWrappedName");
@@ -148,6 +154,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ),
             "IWrapperRegistry"
         );
+    }
+
+    function test_implemenationIsNameable() external view {
+        assertTrue(wrapperRegistryImpl.isContractNamer(address(this)));
     }
 
     function test_wrapperRegistryUpgrade_revertsForUnapprovedTarget() external {

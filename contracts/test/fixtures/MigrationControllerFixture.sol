@@ -53,10 +53,15 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
             premigrationController
         );
 
-        ensV1Resolver = new ENSV1Resolver(rootRegistry, batchGatewayProvider, registryV1);
-        ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
+        ensV1Resolver = new ENSV1Resolver(batchGatewayProvider, contractNamer, registryV1);
+        ensV2Resolver = new ENSV2Resolver(
+            batchGatewayProvider,
+            contractNamer,
+            rootRegistry,
+            address(0)
+        );
 
-        graveyard = new Graveyard(nameWrapper, rootRegistry);
+        graveyard = new Graveyard(nameWrapper, contractNamer);
 
         baseRegistrar.setResolver(address(ensV2Resolver));
         baseRegistrar.addController(address(graveyard));

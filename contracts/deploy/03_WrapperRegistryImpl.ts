@@ -1,7 +1,7 @@
 import { artifacts, execute } from "@rocketh";
 
 export default execute(
-  async ({ deploy, get, namedAccounts: { deployer } }) => {
+  async ({ deploy, get, namedAccounts: { deployer, owner } }) => {
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
@@ -46,7 +46,7 @@ export default execute(
         labelStore.address,
         publicResolverSet.address,
         publicResolverV2.address,
-        deployer,
+        owner,
       ],
     });
   },

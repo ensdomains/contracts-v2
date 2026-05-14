@@ -17,7 +17,6 @@ import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
 /// @dev Roles assigned to owners at registration. Includes set-subregistry, set-resolver, and can-transfer (with admin variants).
 uint256 constant REGISTRATION_ROLE_BITMAP =
-    0 |
     RegistryRolesLib.ROLE_SET_SUBREGISTRY |
     RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN |
     RegistryRolesLib.ROLE_SET_RESOLVER |

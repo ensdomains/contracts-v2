@@ -19,6 +19,7 @@ import {
 import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 
 contract SimpleRegistryMetadataTest is Test, ERC1155Holder {
     MockHCAFactoryBasic hcaFactory;
@@ -35,7 +36,7 @@ contract SimpleRegistryMetadataTest is Test, ERC1155Holder {
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new SimpleRegistryMetadata(hcaFactory);
-        labelStore = new LabelStore();
+        labelStore = new LabelStore(IContractNamer(address(0)));
         // Use the valid ALL_ROLES value for deployer roles
         uint256 deployerRoles = EACBaseRolesLib.ALL_ROLES;
         registry = new PermissionedRegistry(

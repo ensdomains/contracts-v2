@@ -3,19 +3,19 @@ pragma solidity >=0.8.13;
 
 import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {
-    AbstractUniversalResolver,
-    ERC165
+    AbstractUniversalResolver
 } from "@ens/contracts/universalResolver/AbstractUniversalResolver.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {LibRegistry} from "./libraries/LibRegistry.sol";
 
 /// @notice ENS Universal Resolver that traverses the namechain registry hierarchy to locate
 ///         resolvers and registries for any DNS-encoded name.
-contract UniversalResolverV2 is AbstractUniversalResolver, IContractNamer {
+contract UniversalResolverV2 is AbstractUniversalResolver, DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -29,26 +29,32 @@ contract UniversalResolverV2 is AbstractUniversalResolver, IContractNamer {
 
     /// @param rootRegistry The root registry.
     /// @param batchGatewayProvider The batch gateway provider.
-    constructor(IPermissionedRegistry rootRegistry, IGatewayProvider batchGatewayProvider)
+    /// @param contractNamer Delegated contract namer.
+    constructor(
+        IPermissionedRegistry rootRegistry,
+        IGatewayProvider batchGatewayProvider,
+        IContractNamer contractNamer
+    )
         AbstractUniversalResolver(batchGatewayProvider)
+        DelegatedContractNamer(contractNamer)
     {
         ROOT_REGISTRY = rootRegistry;
     }
 
-    /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return
-            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);
+    /// @inheritdoc AbstractUniversalResolver
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(AbstractUniversalResolver, DelegatedContractNamer)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
-
-    /// @inheritdoc IContractNamer
-    function isContractNamer(address namer) external view returns (bool) {
-        return ROOT_REGISTRY.isContractNamer(namer);
-    }
 
     /// @notice Construct the canonical name for `registry`.
     /// @param registry The registry to name.

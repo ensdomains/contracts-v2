@@ -18,6 +18,7 @@ import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {DNSTLDResolver} from "~src/dns/DNSTLDResolver.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 
@@ -30,7 +31,8 @@ contract MockDNS is DNSTLDResolver {
             rootRegistry,
             DNSSEC(address(0)),
             new GatewayProvider(address(1), new string[](0)),
-            new GatewayProvider(address(1), new string[](0))
+            new GatewayProvider(address(1), new string[](0)),
+            IContractNamer(address(0))
         )
     {}
     function readTXT(bytes memory v) external pure returns (bytes memory) {
@@ -56,7 +58,7 @@ contract DNSTLDResolverTest is Test, ERC1155Holder, IAddrResolver {
         rootRegistry = new PermissionedRegistry(
             IHCAFactoryBasic(address(0)),
             IRegistryMetadata(address(0)),
-            new LabelStore(),
+            new LabelStore(IContractNamer(address(0))),
             address(this),
             EACBaseRolesLib.ALL_ROLES
         );

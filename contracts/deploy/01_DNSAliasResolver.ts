@@ -9,14 +9,21 @@ export default execute(
       "BatchGatewayProvider",
     );
 
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+
     const dnsAliasResolver = await deploy("DNSAliasResolver", {
       account: deployer,
       artifact: artifacts.DNSAliasResolver,
-      args: [rootRegistry.address, batchGatewayProvider.address],
+      args: [
+        rootRegistry.address,
+        batchGatewayProvider.address,
+        contractNamer.address,
+      ],
     });
   },
   {
     tags: ["DNSAliasResolver", "v2"],
-    dependencies: ["RootRegistry", "BatchGatewayProvider"],
+    dependencies: ["RootRegistry", "BatchGatewayProvider", "ContractNamer"],
   },
 );

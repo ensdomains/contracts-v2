@@ -42,6 +42,7 @@ contract PermissionedResolverTest is Test {
     uint256 constant DEFAULT_ROLES = EACBaseRolesLib.ALL_ROLES;
 
     MockHCAFactoryBasic hcaFactory;
+    PermissionedResolver resolverImpl;
     PermissionedResolver resolver;
 
     address owner = makeAddr("owner");
@@ -57,7 +58,7 @@ contract PermissionedResolverTest is Test {
     function setUp() external {
         VerifiableFactory factory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
-        PermissionedResolver resolverImpl = new PermissionedResolver(hcaFactory);
+        resolverImpl = new PermissionedResolver(hcaFactory, address(this));
         testName = NameCoder.encode("test.eth");
         testNode = NameCoder.namehash(testName, 0);
 
@@ -78,6 +79,10 @@ contract PermissionedResolverTest is Test {
 
     function test_initialize() external view {
         assertTrue(resolver.hasRootRoles(DEFAULT_ROLES, owner), "roles");
+    }
+
+    function test_implemenationIsNameable() external view {
+        assertTrue(resolverImpl.isContractNamer(address(this)));
     }
 
     function test_upgrade() external {

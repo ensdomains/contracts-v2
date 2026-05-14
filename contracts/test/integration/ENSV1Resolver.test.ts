@@ -19,8 +19,8 @@ async function fixture() {
   const v1 = await deployV1Fixture(network, true);
   const v2 = await deployV2Fixture(network, true);
   const ensV1Resolver = await network.viem.deployContract("ENSV1Resolver", [
-    v2.rootRegistry.address,
     v1.batchGatewayProvider.address,
+    v2.contractNamer.address,
     v1.ensRegistry.address,
   ]);
   return { v1, v2, ensV1Resolver };

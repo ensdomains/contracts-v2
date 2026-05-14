@@ -50,7 +50,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new SimpleRegistryMetadata(hcaFactory);
-        labelStore = new LabelStore();
+        labelStore = new LabelStore(IContractNamer(address(0)));
 
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();

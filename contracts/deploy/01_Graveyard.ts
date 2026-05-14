@@ -5,17 +5,17 @@ export default execute(
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
-    const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
 
     await deploy("Graveyard", {
       account: deployer,
       artifact: artifacts.Graveyard,
-      args: [nameWrapper.address, rootRegistry.address],
+      args: [nameWrapper.address, contractNamer.address],
     });
   },
   {
     tags: ["Graveyard", "v2"],
-    dependencies: ["NameWrapper", "RootRegistry"],
+    dependencies: ["NameWrapper", "ContractNamer"],
   },
 );

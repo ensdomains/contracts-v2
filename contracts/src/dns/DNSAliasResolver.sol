@@ -9,12 +9,12 @@ import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.so
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
-import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {ResolverProfileRewriterLib} from "../resolver/libraries/ResolverProfileRewriterLib.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @notice Gasless DNSSEC resolver that rewrites DNS names according to an alias rule encoded in
 /// a TXT record's context field. Supports two modes:
@@ -29,7 +29,12 @@ import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 ///
 /// Only invoked indirectly by `DNSTLDResolver` when processing an `ENS1` TXT record.
 ///
-contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResolver, IContractNamer {
+contract DNSAliasResolver is
+    DelegatedContractNamer,
+    ResolverCaller,
+    IERC7996,
+    IExtendedDNSResolver
+{
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -57,25 +62,24 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
 
     /// @param rootRegistry The ENSv2 root registry.
     /// @param batchGatewayProvider The batch gateway provider.
-    constructor(IPermissionedRegistry rootRegistry, IGatewayProvider batchGatewayProvider)
+    /// @param contractNamer Delegated contract namer.
+    constructor(
+        IPermissionedRegistry rootRegistry,
+        IGatewayProvider batchGatewayProvider,
+        IContractNamer contractNamer
+    )
         CCIPReader(DEFAULT_UNSAFE_CALL_GAS)
+        DelegatedContractNamer(contractNamer)
     {
         ROOT_REGISTRY = rootRegistry;
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
     }
 
-    /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        virtual
-        override
-        returns (bool)
-    {
+    /// @inheritdoc DelegatedContractNamer
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             type(IExtendedDNSResolver).interfaceId == interfaceId ||
             type(IERC7996).interfaceId == interfaceId ||
-            type(IContractNamer).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -87,11 +91,6 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
-
-    /// @inheritdoc IContractNamer
-    function isContractNamer(address namer) external view returns (bool) {
-        return ROOT_REGISTRY.isContractNamer(namer);
-    }
 
     /// @notice Apply rewrite rule to name and resolve it instead.
     /// @dev The operating assumption is that this contract is never called directly,

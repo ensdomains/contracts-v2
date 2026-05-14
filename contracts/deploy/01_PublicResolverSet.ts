@@ -2,14 +2,19 @@ import { artifacts, execute } from "@rocketh";
 import type { Address } from "viem";
 
 export default execute(
-  async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
+  async ({
+    deploy,
+    execute: write,
+    get,
+    namedAccounts: { deployer, owner },
+  }) => {
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
     const publicResolverSet = await deploy("PublicResolverSet", {
       account: deployer,
       artifact: artifacts.PermissionedAddressSet,
-      args: [hcaFactory.address, deployer], // TODO: ownership
+      args: [hcaFactory.address, owner],
     });
 
     const publicResolverV1 =
@@ -25,7 +30,7 @@ export default execute(
     ];
     for (const addr of wrapperAwarePublicResolvers) {
       await write(publicResolverSet, {
-        account: deployer,
+        account: owner,
         functionName: "approve",
         args: [addr, true],
       });

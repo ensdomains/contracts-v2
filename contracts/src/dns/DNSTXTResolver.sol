@@ -14,8 +14,10 @@ import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {ENSIP19, COIN_TYPE_ETH} from "@ens/contracts/utils/ENSIP19.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {DNSTXTParserLib} from "./libraries/DNSTXTParserLib.sol";
 
@@ -41,7 +43,7 @@ import {DNSTXTParserLib} from "./libraries/DNSTXTParserLib.sol";
 /// * `contenthash()`: `c=0x...` (see: ENSIP-7)
 /// * `pubkey()`: `xy=0x...`
 ///
-contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
+contract DNSTXTResolver is DelegatedContractNamer, IERC7996, IExtendedDNSResolver {
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
@@ -63,14 +65,11 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        virtual
-        override
-        returns (bool)
-    {
+    /// @param contractNamer Delegated contract namer.
+    constructor(IContractNamer contractNamer) DelegatedContractNamer(contractNamer) {}
+
+    /// @inheritdoc DelegatedContractNamer
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             type(IExtendedDNSResolver).interfaceId == interfaceId ||
             type(IERC7996).interfaceId == interfaceId ||

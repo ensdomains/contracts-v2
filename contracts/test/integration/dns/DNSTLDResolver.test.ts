@@ -69,6 +69,7 @@ async function fixture() {
     mockDNSSEC.address,
     oracleGatewayProvider.address,
     v2.batchGatewayProvider.address,
+    v2.contractNamer.address,
   ]);
   await v1.setupName({
     name: "com",
@@ -82,7 +83,11 @@ async function fixture() {
   await setupNamedResolver(dnsTXTResolverName, dnsTXTResolver.address);
   const dnsAliasResolver = await network.viem.deployContract(
     "DNSAliasResolver",
-    [v2.rootRegistry.address, v2.batchGatewayProvider.address],
+    [
+      v2.rootRegistry.address,
+      v2.batchGatewayProvider.address,
+      v2.contractNamer.address,
+    ],
   );
   const extendedDNSResolverAddress = await deployArtifact(v2.walletClient, {
     file: new URL(

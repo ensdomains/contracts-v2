@@ -1,22 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+
+import {DelegatedContractNamer} from "./DelegatedContractNamer.sol";
 import {ILabelStore} from "./interfaces/ILabelStore.sol";
 import {LibLabel} from "./LibLabel.sol";
 
 /// @notice Shared label database.
-contract LabelStore is ERC165, ILabelStore, IContractNamer {
-    ////////////////////////////////////////////////////////////////////////
-    // Immutables
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Delegated contract namer.
-    IContractNamer internal immutable _NAMER;
-
+contract LabelStore is DelegatedContractNamer, ILabelStore {
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
@@ -28,15 +22,12 @@ contract LabelStore is ERC165, ILabelStore, IContractNamer {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    constructor(IContractNamer namer) {
-        _NAMER = namer;
-    }
+    /// @param contractNamer Delegated contract namer.
+    constructor(IContractNamer contractNamer) DelegatedContractNamer(contractNamer) {}
 
-    /// @inheritdoc ERC165
+    /// @inheritdoc DelegatedContractNamer
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
-        return
-        interfaceId == type(ILabelStore).interfaceId || 
-            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);
+        return interfaceId == type(ILabelStore).interfaceId || super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -57,11 +48,6 @@ contract LabelStore is ERC165, ILabelStore, IContractNamer {
     /// @inheritdoc ILabelStore
     function getLabel(uint256 anyId) public view returns (string memory) {
         return _labels[_storageId(anyId)];
-    }
-
-    /// @inheritdoc IContractNamer
-    function isContractNamer(address namer) external view returns (bool) {
-        return _NAMER.isContractNamer(namer);
     }
 
     ////////////////////////////////////////////////////////////////////////

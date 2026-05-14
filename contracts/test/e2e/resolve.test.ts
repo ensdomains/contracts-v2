@@ -32,7 +32,7 @@ describe("Resolve", () => {
   }
 
   describe("Protocol", () => {
-    function named(name: string, fn: () => Address) {
+    function expectNamed(name: string, fn: () => Address) {
       it(name, async () => {
         const [resolver] = await env.v2.UniversalResolver.read.findResolver([
           dnsEncodeName(name),
@@ -41,16 +41,16 @@ describe("Resolve", () => {
       });
     }
 
-    named("reverse", () => env.v2.ENSV1Resolver.address);
-    named(
+    expectNamed("reverse", () => env.v2.ENSV1Resolver.address);
+    expectNamed(
       getReverseNamespace(COIN_TYPE_ETH),
-      () => env.v2.ENSV1Resolver.address,
+      () => env.v2.AddrReverseResolver.address,
     );
-    named(
+    expectNamed(
       getReverseNamespace(COIN_TYPE_DEFAULT),
       () => env.v2.ENSV1Resolver.address,
     );
-    named(
+    expectNamed(
       getReverseNamespace(COIN_TYPE_OPTIMISM),
       () => env.v2.ENSV1Resolver.address,
     );

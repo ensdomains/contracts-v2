@@ -4,13 +4,14 @@ pragma solidity >=0.8.13;
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
+import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 
 /// @notice Migration controller for handling locked .eth names.
@@ -18,7 +19,7 @@ import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 /// Assumes premigration has `RESERVED` existing ENSv1 names.
 /// Requires `ROLE_REGISTER_RESERVED` on .eth registry to perform migration.
 ///
-contract LockedMigrationController is LockedWrapperReceiver, IContractNamer {
+contract LockedMigrationController is LockedWrapperReceiver, DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -37,6 +38,7 @@ contract LockedMigrationController is LockedWrapperReceiver, IContractNamer {
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
     /// @param publicResolverSet The list of `PublicResolver` contracts that require replacement.
     /// @param publicResolver The replacement `PublicResolver`.
+    /// @param contractNamer Delegated contract namer.
     constructor(
         INameWrapper nameWrapper,
         address graveyard,
@@ -44,7 +46,8 @@ contract LockedMigrationController is LockedWrapperReceiver, IContractNamer {
         VerifiableFactory verifiableFactory,
         address wrapperRegistryImpl,
         IAddressSet publicResolverSet,
-        address publicResolver
+        address publicResolver,
+        IContractNamer contractNamer
     )
         LockedWrapperReceiver(
             nameWrapper,
@@ -54,24 +57,25 @@ contract LockedMigrationController is LockedWrapperReceiver, IContractNamer {
             publicResolverSet,
             publicResolver
         )
+        DelegatedContractNamer(contractNamer)
     {
         ETH_REGISTRY = ethRegistry;
     }
 
-    /// @inheritdoc IERC165
-    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return
-            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);
+    /// @inheritdoc DelegatedContractNamer
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(AbstractWrapperReceiver, DelegatedContractNamer)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
-
-    /// @inheritdoc IContractNamer
-    function isContractNamer(address namer) external view returns (bool) {
-        return ETH_REGISTRY.isContractNamer(namer);
-    }
 
     /// @notice Returns the DNS-encoded name for "eth".
     function getWrappedNode() public pure override returns (bytes32) {

@@ -48,6 +48,9 @@ export default execute(
       (typeof artifacts.GatewayProvider)["abi"]
     >("DNSSECGatewayProvider");
 
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+
     const dnsTLDResolver = await deploy("DNSTLDResolver", {
       account: deployer,
       artifact: artifacts.DNSTLDResolver,
@@ -58,6 +61,7 @@ export default execute(
         dnssecOracle.address,
         dnssecGatewayProvider.address,
         batchGatewayProvider.address,
+        contractNamer.address,
       ],
     });
 
@@ -97,10 +101,13 @@ export default execute(
     tags: ["DNSTLDResolver", "v2"],
     dependencies: [
       "RootRegistry",
-      "OffchainDNSResolver", // "ENSRegistry" + "DNSSECImpl"
+      "ENSRegistry",
+      "DNSSECImpl",
+      "OffchainDNSResolver",
       "SimplePublicSuffixList",
       "BatchGatewayProvider",
       "DNSSECGatewayProvider",
+      "ContractNamer",
     ],
   },
 );

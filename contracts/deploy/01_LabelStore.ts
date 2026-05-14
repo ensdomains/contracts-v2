@@ -2,17 +2,17 @@ import { artifacts, execute } from "@rocketh";
 
 export default execute(
   async ({ get, deploy, namedAccounts: { deployer } }) => {
-    const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
 
     await deploy("LabelStore", {
       account: deployer,
       artifact: artifacts.LabelStore,
-      args: [rootRegistry.address],
+      args: [contractNamer.address],
     });
   },
   {
     tags: ["LabelStore", "v2"],
-    dependencies: ["RootRegistry"],
+    dependencies: ["ContractNamer"],
   },
 );

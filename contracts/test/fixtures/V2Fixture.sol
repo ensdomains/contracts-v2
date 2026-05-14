@@ -12,12 +12,14 @@ import {BaseUriRegistryMetadata} from "~src/registry/BaseUriRegistryMetadata.sol
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
+import {ContractNamer} from "~src/utils/ContractNamer.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 /// @dev Reusable testing fixture for ENSv2 with a basic ".eth" deployment.
 contract V2Fixture is Test, ERC1155Holder {
+    ContractNamer contractNamer;
     VerifiableFactory verifiableFactory;
     MockHCAFactoryBasic hcaFactory;
     BaseUriRegistryMetadata metadata;
@@ -63,10 +65,11 @@ contract V2Fixture is Test, ERC1155Holder {
     }
 
     function deployV2Fixture() public {
+        contractNamer = new ContractNamer(address(this));
         verifiableFactory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new BaseUriRegistryMetadata(hcaFactory);
-        labelStore = new LabelStore();
+        labelStore = new LabelStore(contractNamer);
         userRegistryImpl = new UserRegistry(hcaFactory, metadata, labelStore, address(this));
         rootRegistry = new PermissionedRegistry(
             hcaFactory,
@@ -93,7 +96,11 @@ contract V2Fixture is Test, ERC1155Holder {
         ethRegistry.setParent(rootRegistry, "eth");
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(this));
         batchGatewayProvider = new GatewayProvider(address(this), new string[](0));
-        universalResolver = new UniversalResolverV2(rootRegistry, batchGatewayProvider);
+        universalResolver = new UniversalResolverV2(
+            rootRegistry,
+            batchGatewayProvider,
+            contractNamer
+        );
     }
 
     function findResolverV2(bytes memory name) public view returns (address resolver) {

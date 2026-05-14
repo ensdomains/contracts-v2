@@ -18,6 +18,7 @@ import {
 } from "~src/registry/PermissionedRegistry.sol";
 import {LibRegistry, NameCoder} from "~src/universalResolver/libraries/LibRegistry.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 
 contract LibRegistryTest is Test, ERC1155Holder {
     PermissionedRegistry rootRegistry;
@@ -56,7 +57,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
     }
 
     function setUp() external {
-        labelStore = new LabelStore();
+        labelStore = new LabelStore(IContractNamer(address(0)));
         rootRegistry = _createRegistry();
     }
 

@@ -19,6 +19,7 @@ import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 
 contract UserRegistryTest is Test, ERC1155Holder {
     // Test constants
@@ -41,7 +42,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
         factory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
         metadata = new SimpleRegistryMetadata(hcaFactory);
-        labelStore = new LabelStore();
+        labelStore = new LabelStore(IContractNamer(address(0)));
 
         // Deploy the implementation
         vm.expectEmit();
@@ -60,6 +61,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Get the proxy contract
         proxy = UserRegistry(proxyAddress);
+    }
+
+    function test_implemenationIsNameable() external view {
+        assertTrue(implementation.isContractNamer(address(this)));
     }
 
     function test_initialization() public view {

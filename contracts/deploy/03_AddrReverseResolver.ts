@@ -23,6 +23,9 @@ export default execute(
     const reverseRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ReverseRegistry");
 
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+
     const addrReverseResolver = await deploy("AddrReverseResolver", {
       account: deployer,
       artifact: artifacts.AddrReverseResolver,
@@ -30,6 +33,7 @@ export default execute(
         ensRegistry.address,
         defaultReverseRegistrar.address,
         addrReverseRegistrar.address,
+        contractNamer.address,
       ],
     });
 
@@ -53,6 +57,7 @@ export default execute(
       "DefaultReverseRegistrar",
       "ReverseRegistrarHCAAdapter",
       "ReverseRegistry",
+      "ContractNamer",
     ],
   },
 );

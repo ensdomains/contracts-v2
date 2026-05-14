@@ -17,8 +17,13 @@ export async function deployV2Fixture(
     ccipRead: enableCcipRead ? undefined : false,
   });
   const [walletClient] = await network.viem.getWalletClients();
+  const contractNamer = await network.viem.deployContract("ContractNamer", [
+    walletClient.account.address,
+  ]);
   const hcaFactory = await network.viem.deployContract("MockHCAFactoryBasic");
-  const labelStore = await network.viem.deployContract("LabelStore");
+  const labelStore = await network.viem.deployContract("LabelStore", [
+    contractNamer.address,
+  ]);
   const rootRegistry = await network.viem.deployContract(
     "PermissionedRegistry",
     [
@@ -45,7 +50,7 @@ export async function deployV2Fixture(
   );
   const universalResolver = await network.viem.deployContract(
     "UniversalResolverV2",
-    [rootRegistry.address, batchGatewayProvider.address],
+    [rootRegistry.address, batchGatewayProvider.address, contractNamer.address],
     { client: { public: publicClient } },
   );
   await rootRegistry.write.register([
@@ -67,12 +72,13 @@ export async function deployV2Fixture(
     await network.viem.deployContract("VerifiableFactory");
   const PermissionedResolverImpl = await network.viem.deployContract(
     "PermissionedResolver",
-    [hcaFactory.address],
+    [hcaFactory.address, contractNamer.address],
   );
   return {
     network,
     publicClient,
     walletClient,
+    contractNamer,
     hcaFactory,
     labelStore,
     rootRegistry,

@@ -321,6 +321,11 @@ export async function setupDevnet({
       (x) => x.type === "error",
     );
     const v2 = {
+      ContractNamer: getContract({
+        abi: artifacts.ContractNamer.abi,
+        address: rocketh.get("ContractNamer").address,
+        client,
+      }),
       LabelStore: getContract({
         abi: artifacts.LabelStore.abi,
         address: rocketh.get("LabelStore").address,
@@ -440,9 +445,14 @@ export async function setupDevnet({
         address: rocketh.get("ENSV2Resolver").address,
         client,
       }),
-      PublicResolverV2: getContract({
+      PublicResolver: getContract({
         abi: artifacts.PublicResolverV2.abi,
         address: rocketh.get("PublicResolverV2").address,
+        client,
+      }),
+      AddrReverseResolver: getContract({
+        abi: artifacts.AddrReverseResolver.abi,
+        address: rocketh.get("AddrReverseResolver").address,
         client,
       }),
     };
@@ -821,6 +831,8 @@ export async function setupDevnet({
         }),
       );
 
+      await setName("namer", v2.ContractNamer.address);
+
       await setName("root", v2.RootRegistry.address);
       await setName("registry", v2.ETHRegistry.address);
       await setName("impl.registry", v2.UserRegistryImpl.address);
@@ -828,21 +840,17 @@ export async function setupDevnet({
 
       await setName("2to1.resolver", v2.ENSV1Resolver.address);
       await setName("1to2.resolver", v2.ENSV2Resolver.address);
-      // PermissionedResolver (impl)
-      // await setName("universal", v2.UniversalResolver.address);
+      await setName("impl.resolver", v2.PermissionedResolverImpl.address);
+      // await setName("universal", v2.UniversalResolver.address); // devnet doesn't deploy a proxy
       await setName("impl.universal", v2.UniversalResolver.address);
-      await setName("public.resolver", v2.PublicResolverV2.address);
+      await setName("public.resolver", v2.PublicResolver.address);
       await setName("dns.resolver", v2.DNSTLDResolver.address);
       await setName("dnstxt", v2.DNSTXTResolver.address);
       await setName("dnsalias", v2.DNSAliasResolver.address);
 
-      await setName("registrar", v2.ETHRegistrar.address, namedAccounts.owner);
-      await setName("renewer", v2.ETHRenewerV1.address, namedAccounts.owner);
-      await setName(
-        "oracle",
-        v2.StandardRentPriceOracle.address,
-        namedAccounts.owner,
-      );
+      await setName("registrar", v2.ETHRegistrar.address);
+      await setName("renewer", v2.ETHRenewerV1.address);
+      await setName("oracle", v2.StandardRentPriceOracle.address);
       // BatchRegistrar
       await setName("addr.reverse", shared.ReverseRegistrarHCAAdapter.address);
       await setName(
@@ -857,31 +865,19 @@ export async function setupDevnet({
       await setName("locked.migration", v2.LockedMigrationController.address);
       await setName("graveyard", v2.Graveyard.address);
       // MigrationHelper
-      await setName(
-        "gate.wrapper-registry",
-        v2.ApprovedUpgradeGate.address,
-        namedAccounts.owner,
-      );
+      await setName("gate.wrapper-registry", v2.ApprovedUpgradeGate.address);
       await setName("prset.migration", v2.PublicResolverSet.address);
 
       await setName("hca", v2.HCAFactory.address);
-      await setName(
-        "batch.gateways",
-        shared.BatchGatewayProvider.address,
-        namedAccounts.owner,
-      );
-      await setName(
-        "dnssec.gateways",
-        shared.DNSSECGatewayProvider.address,
-        namedAccounts.owner,
-      );
+      await setName("batch.gateways", shared.BatchGatewayProvider.address);
+      await setName("dnssec.gateways", shared.DNSSECGatewayProvider.address);
       await setName("labelstore", v2.LabelStore.address);
       await setName("verifiable-factory", v2.VerifiableFactory.address);
 
       async function setName(
         prefix: string,
         address: Address,
-        namer = namedAccounts.deployer,
+        namer = namedAccounts.owner,
       ) {
         const name = `${prefix}.ens.eth`;
         try {

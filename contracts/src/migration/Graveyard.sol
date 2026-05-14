@@ -8,11 +8,13 @@ import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {ENS} from "@ens/contracts/registry/ENS.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
+
 import {LibMigration} from "./libraries/LibMigration.sol";
 
 /// @notice The ENSv1 ETHRegistrarController for ENSv2 launch which becomes the burn address for migrated tokens.
@@ -20,7 +22,7 @@ import {LibMigration} from "./libraries/LibMigration.sol";
 /// 1. Claim any expired ENSv1 name and assign ownership to this contract.
 /// 2. Clear the registry for any owned token.
 ///
-contract Graveyard is ERC721Holder, ERC1155Holder, IContractNamer {
+contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -49,9 +51,6 @@ contract Graveyard is ERC721Holder, ERC1155Holder, IContractNamer {
     /// @dev Same as `BaseRegistrarImplementation.GRACE_PERIOD()`.
     uint256 internal immutable _GRACE_PERIOD;
 
-    /// @dev Delegated contract namer.
-    IContractNamer internal immutable _NAMER;
-
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
@@ -65,16 +64,23 @@ contract Graveyard is ERC721Holder, ERC1155Holder, IContractNamer {
 
     /// @notice Create a graveyard.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
-    constructor(INameWrapper nameWrapper, IContractNamer namer) {
+    /// @param contractNamer Delegated contract namer.
+    constructor(INameWrapper nameWrapper, IContractNamer contractNamer)
+        DelegatedContractNamer(contractNamer)
+    {
         NAME_WRAPPER = nameWrapper;
         _REGISTRY_V1 = nameWrapper.ens();
         _BASE_REGISTRAR = nameWrapper.registrar();
         _GRACE_PERIOD = BaseRegistrarImplementation(address(_BASE_REGISTRAR)).GRACE_PERIOD();
-        _NAMER = namer;
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC1155Holder, DelegatedContractNamer)
+        returns (bool)
+    {
         return
             interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);
     }
@@ -82,18 +88,13 @@ contract Graveyard is ERC721Holder, ERC1155Holder, IContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
- 
+
     /// @notice Clear registry for migrated names.
     /// @param names The array of names to clear.
     function clear(bytes[] calldata names) external {
         for (uint256 i; i < names.length; ++i) {
             _clear(names[i], 0);
         }
-    }
-   
-    /// @inheritdoc IContractNamer
-    function isContractNamer(address namer) external view returns (bool) {
-        return _NAMER.isContractNamer(namer);
     }
 
     ////////////////////////////////////////////////////////////////////////
