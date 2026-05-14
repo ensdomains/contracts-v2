@@ -797,20 +797,27 @@ export async function setupDevnet({
       if ((await v1.NameWrapper.read.owner()) !== zeroAddress) {
         await v1.NameWrapper.write.renounceOwnership({ account });
       }
-      // disable all three v1 .eth controllers via RegistrarSecurityController.
+      // disable every v1 path that can register .eth 2LDs by revoking it as
+      // a BaseRegistrarImplementation controller (routed via
+      // RegistrarSecurityController, which is BaseRegistrar's owner):
+      //   - ETHRegistrarController / LegacyETHRegistrarController: direct
+      //     controllers of BaseRegistrar.
+      //   - NameWrapper: BaseRegistrar controller through which the
+      //     WrappedETHRegistrarController registers wrapped 2LDs.
+      //   - WrappedETHRegistrarController: not actually a BaseRegistrar
+      //     controller on canonical mainnet (it routes through NameWrapper),
+      //     but is on the synthetic devnet; included for parity.
       // BaseRegistrarImplementation.removeController is idempotent (sets
-      // controllers[x]=false and emits an event), so this is safe even for
-      // addresses that aren't currently registered — e.g. on mainnet the
-      // WrappedETHRegistrarController routes through NameWrapper rather than
-      // directly controlling BaseRegistrar. The LegacyETHRegistrarController
-      // (deployed at mainnet block 9380471) IS still an authorised controller
-      // on canonical mainnet and must be removed; its rocketh artifact is
-      // pre-populated by `bootstrapForkDeployments` in fork mode and by the
-      // v1 deploy scripts in synthetic-devnet mode.
+      // controllers[x]=false and emits an event), so revoking an address
+      // that isn't currently registered is a harmless no-op. The
+      // LegacyETHRegistrarController rocketh artifact is pre-populated by
+      // `bootstrapForkDeployments` in fork mode and by the v1 deploy scripts
+      // in synthetic-devnet mode.
       const v1ControllerNames = [
         "ETHRegistrarController",
         "WrappedETHRegistrarController",
         "LegacyETHRegistrarController",
+        "NameWrapper",
       ] as const;
       for (const name of v1ControllerNames) {
         await v1.RegistrarSecurityController.write.removeRegistrarController(
