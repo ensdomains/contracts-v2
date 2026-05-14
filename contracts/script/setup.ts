@@ -797,15 +797,21 @@ export async function setupDevnet({
       if ((await v1.NameWrapper.read.owner()) !== zeroAddress) {
         await v1.NameWrapper.write.renounceOwnership({ account });
       }
-      // disable v1 eth controllers — LegacyETHRegistrarController only exists
-      // when the v1 deploy scripts were executed (i.e. non-fork devnet)
-      const v1ControllerNames = isFork
-        ? (["ETHRegistrarController", "WrappedETHRegistrarController"] as const)
-        : ([
-            "ETHRegistrarController",
-            "WrappedETHRegistrarController",
-            "LegacyETHRegistrarController",
-          ] as const);
+      // disable all three v1 .eth controllers via RegistrarSecurityController.
+      // BaseRegistrarImplementation.removeController is idempotent (sets
+      // controllers[x]=false and emits an event), so this is safe even for
+      // addresses that aren't currently registered — e.g. on mainnet the
+      // WrappedETHRegistrarController routes through NameWrapper rather than
+      // directly controlling BaseRegistrar. The LegacyETHRegistrarController
+      // (deployed at mainnet block 9380471) IS still an authorised controller
+      // on canonical mainnet and must be removed; its rocketh artifact is
+      // pre-populated by `bootstrapForkDeployments` in fork mode and by the
+      // v1 deploy scripts in synthetic-devnet mode.
+      const v1ControllerNames = [
+        "ETHRegistrarController",
+        "WrappedETHRegistrarController",
+        "LegacyETHRegistrarController",
+      ] as const;
       for (const name of v1ControllerNames) {
         await v1.RegistrarSecurityController.write.removeRegistrarController(
           [rocketh.get(name).address],

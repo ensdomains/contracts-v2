@@ -41,6 +41,21 @@ const V1_OWNABLE_NAMES = [
 export const ENS_DAO_MULTISIG: Address =
   "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7";
 
+// Original ETHRegistrarController deployed at mainnet block 9380471. Still
+// authorised on `BaseRegistrarImplementation.controllers` on canonical
+// mainnet, so `activateV2` must explicitly revoke it. The address is
+// hard-coded because `lib/ens-contracts/deployments/mainnet/` does not ship
+// a rocketh artifact for it (the canonical deploy scripts wire it in only
+// for the synthetic devnet); the ABI is recovered from the archive sibling.
+const LEGACY_ETH_REGISTRAR_CONTROLLER_ADDRESS: Address =
+  "0x283Af0B28c62C092C9727F1Ee09c02CA627EB7F5";
+const LEGACY_ETH_REGISTRAR_CONTROLLER_ARCHIVE = join(
+  "..",
+  "archive",
+  "ETHRegistrarController_mainnet_9380471.sol",
+  "ETHRegistrarController_mainnet_9380471.json",
+);
+
 const OWNER_ABI = [
   {
     type: "function",
@@ -83,6 +98,27 @@ export async function bootstrapForkDeployments({
       JSON.stringify(dst, null, 2),
     );
   }
+
+  // Synthesise the LegacyETHRegistrarController rocketh artifact from the
+  // hard-coded mainnet address + the archive ABI, so `rocketh.get(...)` in
+  // `setup.ts` resolves to the live contract during fork-mode activateV2.
+  const legacyArchive = JSON.parse(
+    await readFile(
+      join(canonicalDir, LEGACY_ETH_REGISTRAR_CONTROLLER_ARCHIVE),
+      "utf8",
+    ),
+  );
+  await writeFile(
+    join(deploymentsDir, "LegacyETHRegistrarController.json"),
+    JSON.stringify(
+      {
+        address: LEGACY_ETH_REGISTRAR_CONTROLLER_ADDRESS,
+        abi: legacyArchive.abi,
+      },
+      null,
+      2,
+    ),
+  );
 
   // Mirror the canonical `.chain` so rocketh's chainId/genesisHash checks pass
   // against the live forked node (which exposes the upstream genesis at block
