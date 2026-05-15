@@ -66,6 +66,7 @@ const config = {
         "./lib/openzeppelin-contracts/contracts/utils/introspection/",
         "./lib/openzeppelin-contracts/contracts/token/ERC721/",
         "./lib/openzeppelin-contracts/contracts/token/ERC1155/",
+        "./lib/openzeppelin-contracts/contracts/proxy/ERC1967/",
         // note: this increases artifact size by 25MB+ for 1 interface
         // "./lib/unruggable-gateways/contracts/",
       ],

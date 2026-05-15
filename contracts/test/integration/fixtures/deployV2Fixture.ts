@@ -19,23 +19,17 @@ export async function deployV2Fixture(
   });
   const [walletClient] = await network.viem.getWalletClients();
   const contractNamerImpl = await network.viem.deployContract("ContractNamer");
-  const contractNamerAddress = await deployArtifact(walletClient, {
-    file: new URL(
-      "../../../out/ERC1967Proxy.sol/ERC1967Proxy.json",
-      import.meta.url,
-    ),
-    args: [
-      contractNamerImpl.address,
-      encodeFunctionData({
-        abi: contractNamerImpl.abi,
-        functionName: "initialize",
-        args: [walletClient.account.address],
-      }),
-    ],
-  });
+  const contractNamerProxy = await network.viem.deployContract("ERC1967Proxy", [
+    contractNamerImpl.address,
+    encodeFunctionData({
+      abi: contractNamerImpl.abi,
+      functionName: "initialize",
+      args: [walletClient.account.address],
+    }),
+  ]);
   const contractNamer = await network.viem.getContractAt(
     "ContractNamer",
-    contractNamerAddress,
+    contractNamerProxy.address,
   );
   const hcaFactory = await network.viem.deployContract("MockHCAFactoryBasic");
   const labelStore = await network.viem.deployContract("LabelStore", [
