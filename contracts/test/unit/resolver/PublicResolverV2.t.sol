@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {PublicResolverV2, NameCoder} from "~src/resolver/PublicResolverV2.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
@@ -64,7 +65,7 @@ contract PublicResolverV2Test is V1Fixture, V2Fixture {
 
     function _register(string memory label) internal returns (bytes32 node) {
         // register wrapped name in v1
-        bytes memory name = this.registerWrappedETH2LD(label, 0);
+        bytes memory name = registerWrappedETH2LD(label, 0);
         node = NameCoder.namehash(name, 0);
 
         assertFalse(publicResolver.canModifyName(node, testOwner), "before");
