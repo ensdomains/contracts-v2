@@ -10,7 +10,7 @@ import {LibString} from "../utils/LibString.sol";
 
 import {IContractName} from "./interfaces/IContractName.sol";
 import {IL2ReverseRegistrar} from "./interfaces/IL2ReverseRegistrar.sol";
-import {AddressNamerLib} from "./libraries/AddressNamerLib.sol";
+import {AccountNamerLib} from "./libraries/AccountNamerLib.sol";
 import {ChainIdsBuilderLib} from "./libraries/ChainIdsBuilderLib.sol";
 import {StandaloneReverseRegistrar} from "./StandaloneReverseRegistrar.sol";
 
@@ -102,7 +102,7 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
 
     /// @inheritdoc IL2ReverseRegistrar
     function setNameForAddr(address addr, string calldata name) external {
-        AddressNamerLib.requireNamer(addr, msg.sender);
+        AccountNamerLib.requireNamer(addr, msg.sender);
         _setName(addr, name);
         _advanceInception(addr);
     }
@@ -130,7 +130,7 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     {
         string memory chainIdsString = ChainIdsBuilderLib.validateAndBuild(claim.chainIds, CHAIN_ID);
 
-        AddressNamerLib.requireNamer(claim.addr, owner);
+        AccountNamerLib.requireNamer(claim.addr, owner);
 
         bytes32 message = _createClaimMessageHash(claim, chainIdsString, owner);
         _validateSignature(signature, owner, message);

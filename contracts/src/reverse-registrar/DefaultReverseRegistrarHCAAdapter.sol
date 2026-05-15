@@ -9,7 +9,7 @@ import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 
-import {AddressNamerLib} from "./libraries/AddressNamerLib.sol";
+import {AccountNamerLib} from "./libraries/AccountNamerLib.sol";
 
 /// @title Default Reverse Registrar HCA Adapter
 /// @notice HCA-aware forwarder for v1 `default.reverse` registrar updates.
@@ -50,7 +50,7 @@ contract DefaultReverseRegistrarHCAAdapter is HCAContext {
     /// @param contractAddr The contract address.
     /// @param name The primary name to store.
     function setNameForContract(address contractAddr, string calldata name) external {
-        AddressNamerLib.requireNamer(contractAddr, _msgSender());
+        AccountNamerLib.requireNamer(contractAddr, _msgSender());
         DEFAULT_REVERSE_REGISTRAR.setNameForAddr(contractAddr, name);
     }
 }

@@ -20,7 +20,7 @@ import {LibISO8601} from "~src/utils/LibISO8601.sol";
 import {L2ReverseRegistrar} from "~src/reverse-registrar/L2ReverseRegistrar.sol";
 import {IL2ReverseRegistrar} from "~src/reverse-registrar/interfaces/IL2ReverseRegistrar.sol";
 import {IContractName} from "~src/reverse-registrar/interfaces/IContractName.sol";
-import {AddressNamerLib} from "~src/reverse-registrar/libraries/AddressNamerLib.sol";
+import {AccountNamerLib} from "~src/reverse-registrar/libraries/AccountNamerLib.sol";
 import {ChainIdsBuilderLib} from "~src/reverse-registrar/libraries/ChainIdsBuilderLib.sol";
 
 contract L2ReverseRegistrarTest is Test {
@@ -462,7 +462,7 @@ contract L2ReverseRegistrarTest is Test {
         string memory name_ = "myname.eth";
 
         vm.prank(user2);
-        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user2));
+        vm.expectRevert(abi.encodeWithSelector(AccountNamerLib.UnauthorizedNamer.selector, user2));
         registrar.setNameForAddr(address(mockOwnableEoa), name_);
     }
 
@@ -470,7 +470,7 @@ contract L2ReverseRegistrarTest is Test {
         string memory name_ = "myname.eth";
 
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user1));
+        vm.expectRevert(abi.encodeWithSelector(AccountNamerLib.UnauthorizedNamer.selector, user1));
         registrar.setNameForAddr(user2, name_);
     }
 
@@ -479,7 +479,7 @@ contract L2ReverseRegistrarTest is Test {
 
         // mockOwnableSca is owned by mockSca, not user1
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user1));
+        vm.expectRevert(abi.encodeWithSelector(AccountNamerLib.UnauthorizedNamer.selector, user1));
         registrar.setNameForAddr(address(mockOwnableSca), name_);
     }
 
@@ -1038,7 +1038,7 @@ contract L2ReverseRegistrarTest is Test {
             IL2ReverseRegistrar.NameClaim({name: name_, addr: address(mockOwnableEoa), chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user2));
+        vm.expectRevert(abi.encodeWithSelector(AccountNamerLib.UnauthorizedNamer.selector, user2));
         registrar.setNameForContractWithSignature(claim, user2, signature);
     }
 
@@ -1056,7 +1056,7 @@ contract L2ReverseRegistrarTest is Test {
             IL2ReverseRegistrar.NameClaim({name: name_, addr: user2, chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user1));
+        vm.expectRevert(abi.encodeWithSelector(AccountNamerLib.UnauthorizedNamer.selector, user1));
         registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 
@@ -1075,7 +1075,7 @@ contract L2ReverseRegistrarTest is Test {
             IL2ReverseRegistrar.NameClaim({name: name_, addr: address(registrar), chainIds: chainIds, signedAt: signedAt});
 
         vm.prank(relayer);
-        vm.expectRevert(abi.encodeWithSelector(AddressNamerLib.UnauthorizedNamer.selector, user1));
+        vm.expectRevert(abi.encodeWithSelector(AccountNamerLib.UnauthorizedNamer.selector, user1));
         registrar.setNameForContractWithSignature(claim, user1, signature);
     }
 

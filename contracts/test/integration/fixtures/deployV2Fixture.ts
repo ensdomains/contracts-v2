@@ -8,7 +8,6 @@ import {
 } from "../../../script/deploy-constants.js";
 import { splitName, idFromLabel } from "../../utils/utils.js";
 import { deployVerifiableProxy } from "./deployVerifiableProxy.js";
-import { deployArtifact } from "./deployArtifact.ts";
 
 export async function deployV2Fixture(
   network: NetworkConnection,
