@@ -2,6 +2,7 @@
 pragma solidity ^0.8.13;
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
