@@ -7,6 +7,7 @@ import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
 import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
@@ -63,7 +64,14 @@ contract V2Fixture is Test, ERC1155Holder {
     }
 
     function deployV2Fixture() public {
-        contractNamer = new ContractNamer(address(this));
+        contractNamer = ContractNamer(
+            address(
+                new ERC1967Proxy(
+                    address(new ContractNamer()),
+                    abi.encodeCall(ContractNamer.initialize, (address(this)))
+                )
+            )
+        );
         verifiableFactory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
         labelStore = new LabelStore(contractNamer);

@@ -64,7 +64,7 @@ const config = {
         "./lib/verifiable-factory/src/",
         "./lib/ens-contracts/contracts/",
         "./lib/openzeppelin-contracts/contracts/utils/introspection/",
-        "./lib/openzeppelin-contracts/contracts/token/ERC721",
+        "./lib/openzeppelin-contracts/contracts/token/ERC721/",
         "./lib/openzeppelin-contracts/contracts/token/ERC1155/",
         // note: this increases artifact size by 25MB+ for 1 interface
         // "./lib/unruggable-gateways/contracts/",

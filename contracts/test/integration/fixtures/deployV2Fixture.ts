@@ -1,5 +1,5 @@
 import type { NetworkConnection } from "hardhat/types/network";
-import { type Address, zeroAddress } from "viem";
+import { type Address, encodeFunctionData, zeroAddress } from "viem";
 import {
   DEPLOYMENT_ROLES,
   LOCAL_BATCH_GATEWAY_URL,
@@ -8,6 +8,7 @@ import {
 } from "../../../script/deploy-constants.js";
 import { splitName, idFromLabel } from "../../utils/utils.js";
 import { deployVerifiableProxy } from "./deployVerifiableProxy.js";
+import { deployArtifact } from "./deployArtifact.ts";
 
 export async function deployV2Fixture(
   network: NetworkConnection,
@@ -17,9 +18,25 @@ export async function deployV2Fixture(
     ccipRead: enableCcipRead ? undefined : false,
   });
   const [walletClient] = await network.viem.getWalletClients();
-  const contractNamer = await network.viem.deployContract("ContractNamer", [
-    walletClient.account.address,
-  ]);
+  const contractNamerImpl = await network.viem.deployContract("ContractNamer");
+  const contractNamerAddress = await deployArtifact(walletClient, {
+    file: new URL(
+      "../../../out/ERC1967Proxy.sol/ERC1967Proxy.json",
+      import.meta.url,
+    ),
+    args: [
+      contractNamerImpl.address,
+      encodeFunctionData({
+        abi: contractNamerImpl.abi,
+        functionName: "initialize",
+        args: [walletClient.account.address],
+      }),
+    ],
+  });
+  const contractNamer = await network.viem.getContractAt(
+    "ContractNamer",
+    contractNamerAddress,
+  );
   const hcaFactory = await network.viem.deployContract("MockHCAFactoryBasic");
   const labelStore = await network.viem.deployContract("LabelStore", [
     contractNamer.address,

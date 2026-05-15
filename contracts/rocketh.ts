@@ -46,6 +46,7 @@ export const config = {
 // We regroup all what is needed for the deploy scripts
 // so that they just need to import this file
 import * as deployFunctions from "@rocketh/deploy";
+import * as proxyFunctions from "@rocketh/proxy";
 import * as readExecuteFunctions from "@rocketh/read-execute";
 import * as viemFunctions from "@rocketh/viem";
 
@@ -63,6 +64,7 @@ import {
 
 const functions = {
   ...deployFunctions,
+  ...proxyFunctions,
   ...readExecuteFunctions,
   ...viemFunctions,
 };
