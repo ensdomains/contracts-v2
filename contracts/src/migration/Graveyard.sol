@@ -99,16 +99,17 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
         if (size == 0) {
             return (bytes32(0), State.ROOT);
         }
-        bytes32 labelHash;
-        bool valid;
-        if (encoded && size == 66 && name[offset + 1] == "[" && name[nextOffset - 1] == "]") {
-            (labelHash, valid) = HexUtils.hexStringToBytes32(name[offset + 2:offset + 66], 0, 64);
-        }
-        if (!valid) {
-            labelHash = keccak256(name[offset + 1:offset + 1 + size]);
-        }
         bytes32 parentNode;
         (parentNode, state) = _clear(name, nextOffset, encoded);
+        bytes32 labelHash;
+        if (encoded && size == 66 && name[offset + 1] == "[" && name[nextOffset - 1] == "]") {
+            (labelHash, encoded) = HexUtils.hexStringToBytes32(name[offset + 2:offset + 66], 0, 64);
+        } else {
+            encoded = false;
+        }
+        if (!encoded) {
+            labelHash = keccak256(name[offset + 1:offset + 1 + size]);
+        }
         node = NameCoder.namehash(parentNode, labelHash);
         if (state == State.ROOT) {
             if (node != NameCoder.ETH_NODE) {
