@@ -78,7 +78,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
     function clear(bytes[] calldata names) external {
         for (uint256 i; i < names.length; ++i) {
             bytes calldata name = names[i];
-            bool encoded = name.length >= 1 && uint8(name[name.length - 1]) != 0;
+            bool encoded = name.length > 0 && uint8(name[name.length - 1]) > 0;
             if (encoded) {
                 name = name[:name.length - 1]; // remove tail byte
             }
@@ -150,9 +150,10 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
                 // resolver is cleared by migration
                 if (LibMigration.isLocked(fuses)) {
                     return (node, State.LOCKED);
-                } else if (LibMigration.isEmancipatedChild(fuses)) {
-                    return (node, State.OWNED);
                 }
+                // } else if (LibMigration.isEmancipatedChild(fuses)) {
+                //    return (node, State.OWNED);
+                // }
             } else if (owner != address(0)) {
                 NAME_WRAPPER.setSubnodeRecord(
                     parentNode,
