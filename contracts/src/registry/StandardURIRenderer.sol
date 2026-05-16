@@ -8,9 +8,11 @@ import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
+import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryURIRendererLib} from "./libraries/RegistryURIRendererLib.sol";
 
-contract BasicURIRenderer is IRegistryURIRenderer {
+/// @notice An onchain metadata URI rendereder.
+contract StandardURIRenderer is IRegistryURIRenderer {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -25,6 +27,8 @@ contract BasicURIRenderer is IRegistryURIRenderer {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @param rootRegistry The ENSv2 root registry.
+    /// @param labelStore The shared label database.
     constructor(IRegistry rootRegistry, ILabelStore labelStore) {
         ROOT_REGISTRY = rootRegistry;
         LABEL_STORE = labelStore;
@@ -35,14 +39,25 @@ contract BasicURIRenderer is IRegistryURIRenderer {
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IRegistryURIRenderer
-    function renderURI(IRegistry registry, uint256 tokenId) external view returns (string memory) {
+    function renderURI(IStandardRegistry registry, uint256 tokenId)
+        external
+        view
+        returns (string memory)
+    {
         string memory label = LABEL_STORE.getLabel(tokenId);
-        bytes memory canonicalName = LibRegistry.findCanonicalName(ROOT_REGISTRY, registry);
+
         RegistryURIRendererLib.Data memory data;
+        data.tokenId = tokenId;
         data.label = label;
+
+        data.owner = registry.findOwner(label);
+        data.expiry = registry.findExpiry(label);
+
+        bytes memory canonicalName = LibRegistry.findCanonicalName(ROOT_REGISTRY, registry);
         if (canonicalName.length > 0) {
             data.canonicalName = NameCoder.decode(canonicalName);
         }
+
         return RegistryURIRendererLib.metadataURI(data);
     }
 }

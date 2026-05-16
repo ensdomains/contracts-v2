@@ -5,25 +5,29 @@ import {StringUtils} from "@ens/contracts/utils/StringUtils.sol";
 
 import {LibString} from "../../utils/LibString.sol";
 
+/// @dev Library for onchain URI rendering.
 library RegistryURIRendererLib {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
 
     struct Data {
+        uint256 tokenId;
         string label;
         string canonicalName;
+        address owner;
+        uint64 expiry;
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Library Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Create JSON metadata URI string.
+    /// @dev Create JSON metadata URI string.
     /// @param data The metadata.
     /// @return The data URI.
     function metadataURI(RegistryURIRendererLib.Data memory data)
-        public
+        internal
         pure
         returns (string memory)
     {
@@ -31,35 +35,62 @@ library RegistryURIRendererLib {
         if (bytes(data.canonicalName).length > 0) {
             fqdn = string.concat(data.label, ".", data.canonicalName);
         }
-        return
+        fqdn = StringUtils.escape(fqdn);
+
+        string memory attributes =
             string.concat(
-                "data:application/json;{\"name\":\"",
-                StringUtils.escape(fqdn),
-                "\",\"image\":\"",
-                imageURI(data),
-                "\",\"attributes\":[",
                 createAttribute(
                     "Length",
                     "number",
                     LibString.toString(StringUtils.strlen(data.label))
                 ),
                 ",",
-                createAttribute("Bytes", "number", LibString.toString(bytes(data.label).length)),
-                "]}"
+                createAttribute("Bytes", "number", LibString.toString(bytes(data.label).length))
+            );
+        if (data.owner != address(0)) {
+            attributes = string.concat(
+                attributes,
+                ",",
+                createAttribute(
+                    "Owner",
+                    "",
+                    string.concat("\"", LibString.toChecksumHexString(data.owner), "\"")
+                )
+            );
+        }
+        if (data.expiry > 0) {
+            attributes = string.concat(
+                attributes,
+                ",",
+                createAttribute("Expiration Date", "date", LibString.toString(data.expiry))
+            );
+        }
+
+        return
+            string.concat(
+                "data:application/json,{\"name\":\"",
+                fqdn,
+                "\",\"image\":\"",
+                imageURI(data),
+                "\",\"attributes\":[",
+                attributes,
+                "],\"external_url\":\"https://app.ens.domains/name/",
+                fqdn,
+                "\"}"
             );
     }
 
-    /// @notice Create SVG image URI string.
+    /// @dev Create SVG image URI string.
     /// @param data The metadata.
     /// @return The data URI.
-    function imageURI(Data memory data) public pure returns (string memory) {
+    function imageURI(Data memory data) internal pure returns (string memory) {
         return string.concat("data:image/svg+xml;base64,", toBase64(imageSVG(data)));
     }
 
-    /// @notice Create SVG image data string.
+    /// @dev Create SVG image data string.
     /// @param data The metadata.
     /// @return The SVG data.
-    function imageSVG(Data memory data) public pure returns (string memory) {
+    function imageSVG(Data memory data) internal pure returns (string memory) {
         return
             string.concat(
                 "<svg width=\"270\" height=\"270\" viewBox=\"0 0 270 270\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">",
@@ -70,6 +101,7 @@ library RegistryURIRendererLib {
             );
     }
 
+    /// @dev Create a metadata attribute.
     function createAttribute(
         string memory traitType,
         string memory displayType,
@@ -81,15 +113,18 @@ library RegistryURIRendererLib {
     {
         json = string.concat("{\"trait_type\":\"", traitType, "\"");
         if (bytes(displayType).length > 0) {
-            json = string.concat(",\"display_type\":\"", displayType, "\"");
+            json = string.concat(json, ",\"display_type\":\"", displayType, "\"");
         }
-        json = string.concat(",\"value\":", literalValue, "}");
+        json = string.concat(json, ",\"value\":", literalValue, "}");
     }
 
+    /// @dev Encode string as Base64.
     function toBase64(string memory s) internal pure returns (string memory) {
-        return s;
+        return ""; // TODO
     }
 }
+// bun run test:hardhat test/integration/registry/StandardURIRenderer.test.ts
+// https://docs.opensea.io/docs/metadata-standards
 // https://metadata.ens.domains/mainnet/0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85/0xcb0cbc8493baf4a7b1972914ba0be89040e56e4a3c98d60268fe37b8c8e546d9
 // {
 //   "is_normalized": true,

@@ -1283,7 +1283,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     // IRegistryURIRenderer
-    function renderURI(IRegistry, uint256 tokenId) external pure returns (string memory) {
+    function renderURI(IStandardRegistry, uint256 tokenId) external pure returns (string memory) {
         return vm.toString(tokenId);
     }
 
