@@ -6,6 +6,7 @@ import {
 } from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
 import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {ENS} from "@ens/contracts/registry/ENS.sol";
+import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
@@ -72,10 +73,16 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Clear registry for migrated names.
+    /// @dev Append non-zero byte to process encoded-labels.
     /// @param names The array of names to clear.
     function clear(bytes[] calldata names) external {
         for (uint256 i; i < names.length; ++i) {
-            _clear(names[i], 0);
+            bytes calldata name = names[i];
+            bool encoded = name.length >= 1 && uint8(name[name.length - 1]) != 0;
+            if (encoded) {
+                name = name[:name.length - 1]; // remove tail byte
+            }
+            _clear(name, 0, encoded);
         }
     }
 
@@ -84,16 +91,24 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Recursively clear ancestor namespace.
-    function _clear(bytes calldata name, uint256 offset)
+    function _clear(bytes calldata name, uint256 offset, bool encoded)
         internal
         returns (bytes32 node, State state)
     {
-        (bytes32 labelHash, uint256 nextOffset) = NameCoder.readLabel(name, offset);
-        if (labelHash == bytes32(0)) {
+        (uint8 size, uint256 nextOffset) = NameCoder.nextLabel(name, offset);
+        if (size == 0) {
             return (bytes32(0), State.ROOT);
         }
+        bytes32 labelHash;
+        bool valid;
+        if (encoded && size == 66 && name[offset + 1] == "[" && name[nextOffset - 1] == "]") {
+            (labelHash, valid) = HexUtils.hexStringToBytes32(name[offset + 2:offset + 66], 0, 64);
+        }
+        if (!valid) {
+            labelHash = keccak256(name[offset + 1:offset + 1 + size]);
+        }
         bytes32 parentNode;
-        (parentNode, state) = _clear(name, nextOffset);
+        (parentNode, state) = _clear(name, nextOffset, encoded);
         node = NameCoder.namehash(parentNode, labelHash);
         if (state == State.ROOT) {
             if (node != NameCoder.ETH_NODE) {
