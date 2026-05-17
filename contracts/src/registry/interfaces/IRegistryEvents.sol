@@ -69,6 +69,12 @@ interface IRegistryEvents {
         address indexed sender
     );
 
+    /// @notice URI was changed.
+    /// @param uri The new URI.
+    /// @param renderer The new render address.
+    /// @param sender The sender of the call to update the URI.
+    event URIUpdated(string uri, address renderer, address indexed sender);
+
     /// @notice Token was regenerated with a new token ID.
     ///         This occurs when roles are granted or revoked to maintain ERC1155 compliance.
     /// @param oldTokenId The old token ID.
