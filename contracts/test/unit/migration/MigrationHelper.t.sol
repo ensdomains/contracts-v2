@@ -51,7 +51,6 @@ contract MigrationHelperTest is MigrationControllerFixture {
             verifiableFactory,
             address(ensV1Resolver),
             hcaFactory,
-            metadata,
             approvedUpgradeGate,
             labelStore,
             publicResolverSet,
