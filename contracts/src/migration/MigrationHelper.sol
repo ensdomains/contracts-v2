@@ -114,37 +114,45 @@ contract MigrationHelper is HCAContext {
                 abi.encode(md)
             );
         }
-        for (uint256 i; i < unlockedGroups.length; ++i) {
-            _transferWrapped(
-                sender,
-                NameCoder.ETH_NODE,
-                address(UNLOCKED_CONTROLLER),
-                unlockedGroups[i]
-            );
-        }
-        for (uint256 i; i < lockedGroups.length; ++i) {
-            _transferWrapped(sender, NameCoder.ETH_NODE, address(LOCKED_CONTROLLER), lockedGroups[i]);
-        }
+        _transferWrappedGroups(
+            sender,
+            NameCoder.ETH_NODE,
+            address(UNLOCKED_CONTROLLER),
+            unlockedGroups
+        );
+        _transferWrappedGroups(sender, NameCoder.ETH_NODE, address(LOCKED_CONTROLLER), lockedGroups);
         for (uint256 j; j < lockedChildrenGroups.length; ++j) {
             LockedChildren calldata lc = lockedChildrenGroups[j];
             IRegistry registry = LibRegistry.findExactRegistry(ROOT_REGISTRY, lc.parentName, 0);
             if (address(registry) == address(0)) {
                 revert ParentNotMigrated(lc.parentName);
             }
-            for (uint256 i; i < lc.groups.length; ++i) {
-                _transferWrapped(
-                    sender,
-                    NameCoder.namehash(lc.parentName, 0),
-                    address(registry),
-                    lc.groups[i]
-                );
-            }
+            _transferWrappedGroups(
+                sender,
+                NameCoder.namehash(lc.parentName, 0),
+                address(registry),
+                lc.groups
+            );
         }
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Batch transfer groups of NameWrapper tokens.
+    function _transferWrappedGroups(
+        address sender,
+        bytes32 parentNode,
+        address receiver,
+        LibMigration.Data[][] calldata groups
+    )
+        internal
+    {
+        for (uint256 i; i < groups.length; ++i) {
+            _transferWrapped(sender, parentNode, receiver, groups[i]);
+        }
+    }
 
     /// @dev Batch transfer NameWrapper tokens.
     function _transferWrapped(
