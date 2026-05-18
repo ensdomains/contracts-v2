@@ -82,18 +82,19 @@ contract GraveyardTest is MigrationControllerFixture {
         bytes32 node = NameCoder.namehash(name, 0);
 
         string memory label = _encodedLabelHash(labelHash);
+        bytes32 actualLabelHash = keccak256(bytes(label));
+
         vm.prank(testOwner);
-        registryV1.setSubnodeRecord(node, keccak256(bytes(label)), friend, address(1), 0);
+        registryV1.setSubnodeRecord(node, actualLabelHash, friend, address(1), 0);
 
         _simulateMigration(name);
 
-        name = NameCoder.addLabel(name, label);
-        node = NameCoder.namehash(name, 0);
+        node = NameCoder.namehash(node, actualLabelHash);
 
         assertEq(registryV1.resolver(node), address(1), "before");
-        graveyard.clear(_oneName(abi.encodePacked(name, uint8(1)))); // mark as encoded
+        graveyard.clear(_oneName(abi.encodePacked(uint8(0), labelHash, name))); // mark as encoded
         assertEq(registryV1.resolver(node), address(1), "uncleared");
-        graveyard.clear(_oneName(name));
+        graveyard.clear(_oneName(NameCoder.addLabel(name, label)));
         assertEq(registryV1.resolver(node), address(0), "after");
     }
 
@@ -106,13 +107,12 @@ contract GraveyardTest is MigrationControllerFixture {
 
         _simulateMigration(name);
 
-        name = NameCoder.addLabel(name, _encodedLabelHash(labelHash));
         node = NameCoder.namehash(node, labelHash);
 
         assertEq(registryV1.resolver(node), address(1), "before");
-        graveyard.clear(_oneName(name));
+        graveyard.clear(_oneName(NameCoder.addLabel(name, _encodedLabelHash(labelHash))));
         assertEq(registryV1.resolver(node), address(1), "uncleared");
-        graveyard.clear(_oneName(abi.encodePacked(name, uint8(1)))); // mark as encoded
+        graveyard.clear(_oneName(abi.encodePacked(uint8(0), labelHash, name))); // mark as encoded
         assertEq(registryV1.resolver(node), address(0), "after");
     }
 
