@@ -99,26 +99,25 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
         uint256 nextOffset;
         // modified DNS-encoding: interpret zero-length labels differently
         if (offset + 1 < name.length && uint8(name[offset]) == 0) {
-            ++offset; // skip length byte
-            nextOffset = offset + 32; // ensure next 32 bytes exist
+            nextOffset = offset + 33; // skip length and ensure next 32 bytes exist
             if (nextOffset >= name.length) {
                 revert NameCoder.DNSDecodingFailed(name);
             }
-            labelHash = bytes32(name[offset:nextOffset]); // cast as literal bytes32
+            labelHash = bytes32(name[offset + 1:nextOffset]); // cast as literal bytes32
         } else {
             (labelHash, nextOffset) = NameCoder.readLabel(name, offset); // use standard logic
             if (labelHash == bytes32(0)) {
                 return (bytes32(0), State.ROOT);
             }
         }
-        (bytes32 parentNode, State state) = _clear(name, nextOffset);
+        (bytes32 parentNode, State parentState) = _clear(name, nextOffset);
         node = NameCoder.namehash(parentNode, labelHash);
-        if (state == State.ROOT) {
+        if (parentState == State.ROOT) {
             if (node != NameCoder.ETH_NODE) {
                 revert NameNotClearable();
             }
             return (node, State.ETH);
-        } else if (state == State.ETH) {
+        } else if (parentState == State.ETH) {
             address owner = _REGISTRY_V1.owner(node);
             if (owner == address(this)) {
                 // resolver is cleared by migration
@@ -143,7 +142,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
                 _REGISTRY_V1.setResolver(node, address(0));
             }
             return (node, State.OWNED);
-        } else if (state == State.OWNED) {
+        } else if (parentState == State.OWNED) {
             _REGISTRY_V1.setSubnodeRecord(parentNode, labelHash, address(this), address(0), 0);
             return (node, State.OWNED);
         } else {
@@ -159,7 +158,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
             } else if (owner != address(0)) {
                 NAME_WRAPPER.setSubnodeRecord(
                     parentNode,
-                    string(name[offset:nextOffset]),
+                    string(name[offset + 1:nextOffset]),
                     address(this), // owner
                     address(0), // resolver
                     0, // ttl

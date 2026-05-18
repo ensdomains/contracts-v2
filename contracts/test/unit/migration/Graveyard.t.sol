@@ -77,7 +77,15 @@ contract GraveyardTest is MigrationControllerFixture {
         );
     }
 
-    function test_clear_encodedLabel_literal(bytes32 labelHash) external {
+    function test_clear_prehashedLabel_invalid() external {
+        bytes memory name = NameCoder.encode("eth");
+        for (uint256 i; i < 32; ++i) {
+            vm.expectRevert();
+            graveyard.clear(_oneName(abi.encodePacked(uint8(0), new bytes(i), name)));
+        }
+    }
+
+    function test_clear_prehashedLabel_literal(bytes32 labelHash) external {
         (bytes memory name, ) = registerUnwrapped(testLabel);
         bytes32 node = NameCoder.namehash(name, 0);
 
@@ -92,13 +100,13 @@ contract GraveyardTest is MigrationControllerFixture {
         node = NameCoder.namehash(node, actualLabelHash);
 
         assertEq(registryV1.resolver(node), address(1), "before");
-        graveyard.clear(_oneName(abi.encodePacked(uint8(0), labelHash, name))); // mark as encoded
+        graveyard.clear(_oneName(abi.encodePacked(uint8(0), labelHash, name))); // mark as prehashed
         assertEq(registryV1.resolver(node), address(1), "uncleared");
         graveyard.clear(_oneName(NameCoder.addLabel(name, label)));
         assertEq(registryV1.resolver(node), address(0), "after");
     }
 
-    function test_clear_encodedLabelHash(bytes32 labelHash) external {
+    function test_clear_prehashedLabel_hashed(bytes32 labelHash) external {
         (bytes memory name, ) = registerUnwrapped(testLabel);
         bytes32 node = NameCoder.namehash(name, 0);
 
@@ -112,7 +120,7 @@ contract GraveyardTest is MigrationControllerFixture {
         assertEq(registryV1.resolver(node), address(1), "before");
         graveyard.clear(_oneName(NameCoder.addLabel(name, _encodedLabelHash(labelHash))));
         assertEq(registryV1.resolver(node), address(1), "uncleared");
-        graveyard.clear(_oneName(abi.encodePacked(uint8(0), labelHash, name))); // mark as encoded
+        graveyard.clear(_oneName(abi.encodePacked(uint8(0), labelHash, name))); // mark as prehashed
         assertEq(registryV1.resolver(node), address(0), "after");
     }
 
