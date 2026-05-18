@@ -72,8 +72,6 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Clear registry for migrated names.
-    /// @dev Uses special encoding where each label is prefixed with a byte
-    ///      that determines if it is a label or labelhash.
     /// @param names The array of names to clear.
     function clear(bytes[] calldata names) external {
         for (uint256 i; i < names.length; ++i) {
@@ -86,18 +84,29 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Recursively clear ancestor namespace.
+    ///
+    /// Wrapped labels are 1-255 bytes and always have a preimage.
+    /// see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort` and `test_nameWrapper_labelTooLong`
+    /// see: https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/NameWrapper.sol#L865-L876
+    /// 
+    /// This function supports a modified DNS-encoding where zero-length labels 
+    /// in the middle of name must be followed with exactly 32 bytes of labelhash.
+    ///
+    /// This is safe because zero-length non-terminating labels normally revert.
+    /// 
     function _clear(bytes calldata name, uint256 offset) internal returns (bytes32 node, State) {
         bytes32 labelHash;
         uint256 nextOffset;
+        // modified DNS-encoding: interpret zero-length labels differently
         if (offset + 1 < name.length && uint8(name[offset]) == 0) {
-            ++offset;
-            nextOffset = offset + 32;
+            ++offset; // skip length byte
+            nextOffset = offset + 32; // ensure next 32 bytes exist
             if (nextOffset >= name.length) {
                 revert NameCoder.DNSDecodingFailed(name);
             }
-            labelHash = bytes32(name[offset:nextOffset]);
+            labelHash = bytes32(name[offset:nextOffset]); // cast as literal bytes32
         } else {
-            (labelHash, nextOffset) = NameCoder.readLabel(name, offset);
+            (labelHash, nextOffset) = NameCoder.readLabel(name, offset); // use standard logic
             if (labelHash == bytes32(0)) {
                 return (bytes32(0), State.ROOT);
             }
@@ -150,7 +159,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
             } else if (owner != address(0)) {
                 NAME_WRAPPER.setSubnodeRecord(
                     parentNode,
-                    string(name[offset + 1:nextOffset]),
+                    string(name[offset:nextOffset]),
                     address(this), // owner
                     address(0), // resolver
                     0, // ttl
