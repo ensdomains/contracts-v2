@@ -33,6 +33,21 @@ contract UniversalResolverV2Test is V2Fixture {
         );
     }
 
+    function test_findOwner() external {
+        assertEq(universalResolver.findOwner(NameCoder.encode("")), address(0));
+        assertEq(universalResolver.findOwner(NameCoder.encode("eth")), address(this));
+
+        ethRegistry.register(
+            "test",
+            address(1),
+            IRegistry(address(0)),
+            address(0),
+            0,
+            type(uint64).max
+        );
+        assertEq(universalResolver.findOwner(NameCoder.encode("test.eth")), address(1));
+    }
+
     function test_findCanonicalName() external view {
         assertEq(universalResolver.findCanonicalName(rootRegistry), NameCoder.encode(""));
         assertEq(universalResolver.findCanonicalName(ethRegistry), NameCoder.encode("eth"));
