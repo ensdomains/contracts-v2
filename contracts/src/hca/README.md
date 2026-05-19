@@ -31,35 +31,30 @@ Library for HCA proxy deployment operations.
 
 ## Architecture
 
-```
-┌─────────────┐ deploys ┌──────────────┐
-│ HCAFactory  │ ─────── CREATE3 ───────▶ │ NexusProxy   │
-│             │                          │ (per-user)   │
-│ approveImpl │                          │ ──────────   │
-│ createAcct()│                          │ delegatecall │
-│ setAccount()│                          │              │
-└──────┬──────┘                          └──────┬───────┘
-       │ verifies designated SCAs via           │
-       ▼                                        │
-┌──────────────┐                                │
-│ Verifiable   │                                │
-│ Factory      │                                │
-└──────┬───────┘                                │
-       │ owns reference to                      │
-       ▼                                        ▼
-┌──────────────┐                        ┌──────────────┐
-│ HCA (impl)   │ ◀── delegated calls ── │              │
-│ extends Nexus│                        │              │
-│              │                        │              │
-│ • locked-down│                        └──────────────┘
-│   module cfg │
-│ • NFT reject │
-│ • upgrade    │
-│   guard      │
-└──────┬───────┘
-       │ immutable refs
-       ├──▶ HCAModule (default validator)
-       └──▶ IntentExecutor (default executor)
+```mermaid
+flowchart TD
+    Owner["User / account owner"]
+    HCAFactory["HCAFactory"]
+    VerifiableFactory["VerifiableFactory"]
+    ImplAllowlist["approvedImplementations"]
+    NexusProxy["NexusProxy<br/>(factory-created HCA)"]
+    ExistingSCA["Existing SCA<br/>(verifiable proxy)"]
+    HCAImpl["HCA implementation<br/>extends Nexus"]
+    HCAModule["HCAModule<br/>default validator"]
+    IntentExecutor["IntentExecutor<br/>default executor"]
+
+    Owner -->|"createAccount(implementation, initData)"| HCAFactory
+    HCAFactory -->|"deploys via CREATE3"| NexusProxy
+    NexusProxy -->|"delegatecall"| HCAImpl
+
+    Owner -->|"setAccount(sca, implementation)"| HCAFactory
+    HCAFactory -->|"checks"| ImplAllowlist
+    HCAFactory -->|"verifyContract(sca, implementation)"| VerifiableFactory
+    VerifiableFactory -->|"verifies deployment + implementation"| ExistingSCA
+    ExistingSCA -->|"delegatecall"| HCAImpl
+
+    HCAImpl -->|"uses"| HCAModule
+    HCAImpl -->|"uses"| IntentExecutor
 ```
 
 ## Development
