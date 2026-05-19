@@ -817,7 +817,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         checkResolution(name3unmigrated, testResolver, address(ensV1Resolver));
     }
 
-    function test_migrate_detachedChildren() external {
+    function test_migrate_detachedChildren_wrapped() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         vm.prank(friend);
         bytes memory name3 = this.createWrappedChild(name2, "sub", PARENT_CANNOT_CONTROL);
@@ -892,9 +892,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         checkResolution(name3unmigrated, testResolver, address(ensV1Resolver));
     }
 
-    function test_migrate_detachedChildren_unwrappedBeforeParentMigration() external {
+    function test_migrate_detachedChildren_unwrapped() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        bytes memory name3 = createWrappedChild(name2, "sub", friend, PARENT_CANNOT_CONTROL);
+        vm.prank(friend);
+        bytes memory name3 = this.createWrappedChild(name2, "sub", PARENT_CANNOT_CONTROL);
         bytes32 parentNode = NameCoder.namehash(name2, 0);
         bytes32 subNode = NameCoder.namehash(name3, 0);
         bytes32 subLabelHash = keccak256(bytes("sub"));
@@ -913,7 +914,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         assertEq(registryV1.owner(subNode), friend, "v1 registry owner is friend after unwrap");
 
         // migrate 2LD parent
-        LibMigration.Data memory data2 = _makeData(name2);
+        LibMigration.Data memory data2 = _lockedData(name2);
         vm.prank(testOwner);
         nameWrapper.safeTransferFrom(
             testOwner,
@@ -928,11 +929,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         // testOwner (parent's root account) holds ROLE_REGISTRAR on registry2 by default,
         // so they could otherwise re-register the unwrapped emancipated subname in v2
         assertTrue(
-            IEnhancedAccessControl(address(registry2)).hasRoles(
-                0, // ROOT_RESOURCE
-                RegistryRolesLib.ROLE_REGISTRAR,
-                testOwner
-            ),
+            registry2.hasRoles(registry2.ROOT_RESOURCE(), RegistryRolesLib.ROLE_REGISTRAR, testOwner),
             "testOwner has ROLE_REGISTRAR on registry2"
         );
         vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));
@@ -959,8 +956,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "re-wrap restores PCC from preserved storage"
         );
 
-        LibMigration.Data memory data3 =
-            LibMigration.Data({label: "sub", owner: friend, subregistry: testRegistry, resolver: testResolver});
+        LibMigration.Data memory data3 = _unlockedData(name3);
+        data3.owner = friend; // override
         vm.prank(friend);
         nameWrapper.safeTransferFrom(
             friend,
@@ -985,7 +982,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_migrate_detachedChildren_unwrappedAndAbandoned() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        bytes memory name3 = createWrappedChild(name2, "sub", friend, PARENT_CANNOT_CONTROL);
+        vm.prank(friend);
+        bytes memory name3 = this.createWrappedChild(name2, "sub", PARENT_CANNOT_CONTROL);
         bytes32 parentNode = NameCoder.namehash(name2, 0);
         bytes32 subNode = NameCoder.namehash(name3, 0);
         bytes32 subLabelHash = keccak256(bytes("sub"));
@@ -1005,7 +1003,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
 
         // migrate parent
-        LibMigration.Data memory data2 = _makeData(name2);
+        LibMigration.Data memory data2 = _lockedData(name2);
         vm.prank(testOwner);
         nameWrapper.safeTransferFrom(
             testOwner,
@@ -1017,12 +1015,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         IWrapperRegistry registry2 =
             IWrapperRegistry(address(ethRegistry.getSubregistry(data2.label)));
 
-        // abandoned orphan must not lock the label forever — guard treats the empty
-        // v1 record as relinquishment and allows fresh registration in v2
+        // abandoned name still cannot be registered
+        vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));
         vm.prank(testOwner);
-        uint256 tokenId =
-            registry2.register("sub", testOwner, IRegistry(address(0)), address(0), 0, _soon());
-        assertEq(registry2.ownerOf(tokenId), testOwner, "label registered to new owner");
+        registry2.register("sub", testOwner, IRegistry(address(0)), address(0), 0, _soon());
     }
 
     function test_migrate_frozenTokenApproval() external {
