@@ -979,6 +979,48 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         assertEq(registryV1.owner(subNode), address(graveyard), "v1 graveyarded after migration");
     }
 
+    function test_migrate_detachedChildren_unwrappedAndAbandoned() external {
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes memory name3 = createWrappedChild(name2, "sub", friend, PARENT_CANNOT_CONTROL);
+        bytes32 parentNode = NameCoder.namehash(name2, 0);
+        bytes32 subNode = NameCoder.namehash(name3, 0);
+        bytes32 subLabelHash = keccak256(bytes("sub"));
+
+        // friend unwraps the emancipated child to themselves, then abandons it
+        // by clearing the v1 registry record
+        vm.prank(friend);
+        nameWrapper.unwrap(parentNode, subLabelHash, friend);
+        vm.prank(friend);
+        registryV1.setOwner(subNode, address(0));
+        assertEq(registryV1.owner(subNode), address(0), "v1 record cleared");
+        (, uint32 fusesAfterAbandon, ) = nameWrapper.getData(uint256(subNode));
+        assertEq(
+            fusesAfterAbandon & PARENT_CANNOT_CONTROL,
+            PARENT_CANNOT_CONTROL,
+            "PCC fuse still set even after abandonment"
+        );
+
+        // migrate parent
+        LibMigration.Data memory data2 = _makeData(name2);
+        vm.prank(testOwner);
+        nameWrapper.safeTransferFrom(
+            testOwner,
+            address(migrationController),
+            uint256(parentNode),
+            1,
+            abi.encode(data2)
+        );
+        IWrapperRegistry registry2 =
+            IWrapperRegistry(address(ethRegistry.getSubregistry(data2.label)));
+
+        // abandoned orphan must not lock the label forever — guard treats the empty
+        // v1 record as relinquishment and allows fresh registration in v2
+        vm.prank(testOwner);
+        uint256 tokenId =
+            registry2.register("sub", testOwner, IRegistry(address(0)), address(0), 0, _soon());
+        assertEq(registry2.ownerOf(tokenId), testOwner, "label registered to new owner");
+    }
+
     function test_migrate_frozenTokenApproval() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes32 node = NameCoder.namehash(name, 0);
