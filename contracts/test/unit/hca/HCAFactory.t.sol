@@ -51,7 +51,6 @@ contract HCAFactoryTest is Test {
 
     function test_constructor_setsOwner() external view {
         assertEq(factory.owner(), owner, "owner");
-        assertEq(factory.getImplementation(), address(0), "implementation");
         assertFalse(factory.approvedImplementations(address(implementation)), "approved");
     }
 
@@ -77,37 +76,17 @@ contract HCAFactoryTest is Test {
         factory.setImplementationApproval(address(implementation), true);
     }
 
-    function test_setImplementation_revertsWhenImplementationNotApproved() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(HCAFactory.HCAImplementationNotApproved.selector, address(implementation))
-        );
-        vm.prank(owner);
-        factory.setImplementation(address(implementation));
-    }
-
-    function test_setImplementation_setsApprovedUpgradeTarget() external {
+    function test_setImplementationApproval_revokesImplementation() external {
         vm.prank(owner);
         factory.setImplementationApproval(address(implementation), true);
 
         vm.expectEmit(true, false, false, true, address(factory));
-        emit HCAFactory.NewHCAImplementation(address(implementation));
+        emit HCAFactory.HCAImplementationApprovalChanged(address(implementation), false);
 
         vm.prank(owner);
-        factory.setImplementation(address(implementation));
-
-        assertEq(factory.getImplementation(), address(implementation), "implementation");
-    }
-
-    function test_setImplementationApproval_revertsWhenRevokingCurrentImplementation() external {
-        vm.startPrank(owner);
-        factory.setImplementationApproval(address(implementation), true);
-        factory.setImplementation(address(implementation));
-
-        vm.expectRevert(
-            abi.encodeWithSelector(HCAFactory.CannotRevokeCurrentHCAImplementation.selector, address(implementation))
-        );
         factory.setImplementationApproval(address(implementation), false);
-        vm.stopPrank();
+
+        assertFalse(factory.approvedImplementations(address(implementation)), "approved");
     }
 
     function test_createAccount_revertsWhenImplementationNotApproved() external {

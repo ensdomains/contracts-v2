@@ -2,16 +2,13 @@
 pragma solidity ^0.8.27;
 
 /// @notice Interface for the HCA factory.
-/// @dev Interface selector: `0x519b41ac`
+/// @dev Interface selector: `0xfb6a4eee`
 interface IHCAFactory {
     /// @notice Designates an existing SCA as the caller's HCA.
     /// @param hca The existing SCA to designate.
     function setAccount(address hca) external;
 
-    /// @notice Returns the implementation accepted by HCA upgrade guards.
-    function getImplementation() external view returns (address);
-
-    /// @notice Returns whether an implementation is approved for HCA deployment and upgrades.
+    /// @notice Returns whether an implementation is approved for HCA deployment and designation.
     /// @param implementation The implementation address to check.
     /// @return approved Whether the implementation is approved.
     function approvedImplementations(address implementation) external view returns (bool approved);

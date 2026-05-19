@@ -22,13 +22,10 @@ contract HCAFactory is Ownable, IHCAFactory {
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The current HCA implementation contract used as the approved upgrade target.
-    address internal _implementation;
-
     /// @dev Maps each deployed HCA proxy address to its owner.
     mapping(address hca => address owner) internal _hcaOwners;
 
-    /// @notice Returns whether an implementation is approved for HCA deployment and upgrades.
+    /// @notice Returns whether an implementation is approved for HCA deployment and designation.
     mapping(address implementation => bool approved) public approvedImplementations;
 
     ////////////////////////////////////////////////////////////////////////
@@ -55,10 +52,6 @@ contract HCAFactory is Ownable, IHCAFactory {
         address indexed implementation
     );
 
-    /// @notice Emitted when the implementation used as the HCA upgrade target changes.
-    /// @param accountImplementation The implementation contract accepted by HCA upgrade guards.
-    event NewHCAImplementation(address indexed accountImplementation);
-
     /// @notice Emitted when an HCA implementation approval changes.
     /// @param accountImplementation The implementation whose approval changed.
     /// @param approved Whether the implementation is approved.
@@ -79,11 +72,6 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @param implementation The implementation that is not approved.
     /// @dev Error selector: `0x1a127e84`
     error HCAImplementationNotApproved(address implementation);
-
-    /// @notice Thrown when revoking the active HCA upgrade implementation.
-    /// @param implementation The active implementation that cannot be revoked.
-    /// @dev Error selector: `0x8be8f94d`
-    error CannotRevokeCurrentHCAImplementation(address implementation);
 
     /// @notice Thrown when an HCA account address is zero.
     /// @dev Error selector: `0xfc7354e5`
@@ -112,22 +100,11 @@ contract HCAFactory is Ownable, IHCAFactory {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Updates the implementation accepted by HCA upgrade guards.
-    /// @param implementation The approved implementation address.
-    function setImplementation(address implementation) external onlyOwner {
-        _requireApprovedImplementation(implementation);
-        _implementation = implementation;
-        emit NewHCAImplementation(implementation);
-    }
-
-    /// @notice Sets whether an implementation may be used for HCA deployment and upgrades.
+    /// @notice Sets whether an implementation may be used for HCA deployment and designation.
     /// @param implementation The implementation address to update.
     /// @param approved Whether the implementation is approved.
     function setImplementationApproval(address implementation, bool approved) external onlyOwner {
         if (implementation == address(0)) revert HCAImplementationCannotBeZero();
-        if (!approved && implementation == _implementation) {
-            revert CannotRevokeCurrentHCAImplementation(implementation);
-        }
         approvedImplementations[implementation] = approved;
         emit HCAImplementationApprovalChanged(implementation, approved);
     }
@@ -158,11 +135,6 @@ contract HCAFactory is Ownable, IHCAFactory {
     function setAccount(address hca) external {
         address implementation = _designateAccount(msg.sender, hca);
         emit AccountDesignated(msg.sender, hca, implementation);
-    }
-
-    /// @inheritdoc IHCAFactory
-    function getImplementation() external view returns (address) {
-        return _implementation;
     }
 
     /// @inheritdoc IHCAFactory

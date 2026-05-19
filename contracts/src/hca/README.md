@@ -13,8 +13,7 @@ The factory that deploys HCA proxies:
 - Deploys `NexusProxy` instances via CREATE3, deriving deterministic addresses from the caller.
 - Lets a caller designate an already-deployed SCA as their HCA with `setAccount`.
 - Requires the caller to be the recorded HCA owner; ownership is no longer extracted from init data.
-- Uses an implementation allowlist for HCA deployments, HCA designations, and upgrade targets.
-- The factory owner can update the active upgrade target with `setImplementation` after approving it.
+- Uses an implementation allowlist for HCA deployments and HCA designations.
 - `createAccount` is idempotent for the caller — calling it again forwards ETH to the existing account.
 
 ### `HCAContext` / `HCAContextUpgradeable`
@@ -36,7 +35,6 @@ Library for HCA proxy deployment operations.
 │ HCAFactory  │ ─────── CREATE3 ───────▶ │ NexusProxy   │
 │             │                          │ (per-user)   │
 │ approveImpl │                          │ ──────────   │
-│ setImpl()   │                          │              │
 │ createAcct()│                          │ delegatecall │
 │ setAccount()│                          │              │
 └──────┬──────┘                          └──────┬───────┘
