@@ -3,7 +3,7 @@
     "rev": "82cc81935de1d1a82e021cf1030d902c5248982b"
   },
   "lib/ens-contracts": {
-    "rev": "91c966febd7b55494269df830fc6775f040b927b"
+    "rev": "5787a5fd9eaff6cdba3d9d23d3ce4ec2b50d4e4d"
   },
   "lib/forge-std": {
     "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
