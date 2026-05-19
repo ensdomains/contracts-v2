@@ -502,6 +502,22 @@ describe("DNSTLDResolver", () => {
         ]);
     });
 
+    it("og: just addr(60)", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      const name = "og.com";
+      await F.mockDNSSEC.write.setResponse([
+        encodeRRs([makeTXT(name, `ENS1 ${dnsTXTResolverName} ${testAddress}`)]),
+      ]);
+      await F.expectTXT({
+        name,
+        addresses: [
+          { coinType: COIN_TYPE_ETH, value: testAddress },
+          { coinType: COIN_TYPE_DEFAULT, value: "0x" },
+          { coinType: 0n, value: "0x" },
+        ],
+      });
+    });
+
     it("addr()", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.mockDNSSEC.write.setResponse([encodedRRs]);
