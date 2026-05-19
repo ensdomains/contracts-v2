@@ -8,14 +8,12 @@ For full documentation, architecture details, and usage instructions, see the [H
 
 ### `HCAFactory`
 
-The factory that deploys HCA proxies:
+The registry that records user-designated HCA proxies:
 
-- Deploys `NexusProxy` instances via CREATE3, deriving deterministic addresses from the caller.
 - Lets a caller designate an already-deployed SCA as their HCA with `setAccount`.
-- Requires the caller to be the recorded HCA owner; ownership is no longer extracted from init data.
-- Uses an implementation allowlist for HCA deployments and verifiable HCA designations.
+- Records `msg.sender` as the HCA owner for each designation.
+- Uses an implementation allowlist for HCA designations.
 - Verifies designated SCAs through the shared `VerifiableFactory`.
-- `createAccount` is idempotent for the caller — calling it again forwards ETH to the existing account.
 
 ### `HCAContext` / `HCAContextUpgradeable`
 
@@ -25,10 +23,6 @@ Context contracts providing HCA factory references and upgrade guards for HCA ac
 
 Equivalence checking utilities for HCA deployments.
 
-### `ProxyLib`
-
-Library for HCA proxy deployment operations.
-
 ## Architecture
 
 ```mermaid
@@ -37,15 +31,10 @@ flowchart TD
     HCAFactory["HCAFactory"]
     VerifiableFactory["VerifiableFactory"]
     ImplAllowlist["approvedImplementations"]
-    NexusProxy["NexusProxy<br/>(factory-created HCA)"]
     ExistingSCA["Existing SCA<br/>(verifiable proxy)"]
     HCAImpl["HCA implementation<br/>extends Nexus"]
     HCAModule["HCAModule<br/>default validator"]
     IntentExecutor["IntentExecutor<br/>default executor"]
-
-    Owner -->|"createAccount(implementation, initData)"| HCAFactory
-    HCAFactory -->|"deploys via CREATE3"| NexusProxy
-    NexusProxy -->|"delegatecall"| HCAImpl
 
     Owner -->|"setAccount(sca, implementation)"| HCAFactory
     HCAFactory -->|"checks"| ImplAllowlist

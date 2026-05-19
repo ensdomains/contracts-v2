@@ -5,12 +5,10 @@ import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFact
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {IHCAFactory} from "./interfaces/IHCAFactory.sol";
-import {ProxyLib} from "./ProxyLib.sol";
 
 /// @title HCAFactory
-/// @notice Factory for deploying and designating Hardware Contract Accounts (HCAs).
-/// @dev Uses CREATE3 via ProxyLib to deploy deterministic NexusProxy instances and records
-///      existing approved verifiable proxies when users designate them as HCAs.
+/// @notice Registry for designating Hardware Contract Accounts (HCAs).
+/// @dev Records existing approved verifiable proxies when users designate them as HCAs.
 contract HCAFactory is Ownable, IHCAFactory {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
@@ -23,25 +21,15 @@ contract HCAFactory is Ownable, IHCAFactory {
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Maps each deployed HCA proxy address to its owner.
+    /// @dev Maps each designated HCA proxy address to its owner.
     mapping(address hca => address owner) internal _hcaOwners;
 
-    /// @notice Returns whether an implementation is approved for HCA deployment and designation.
+    /// @notice Returns whether an implementation is approved for HCA designation.
     mapping(address implementation => bool approved) public approvedImplementations;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Emitted when a new HCA is deployed.
-    /// @param hcaOwner The owner of the newly created account.
-    /// @param hca The address of the deployed HCA proxy.
-    /// @param implementation The implementation used by the deployed HCA proxy.
-    event AccountCreated(
-        address indexed hcaOwner,
-        address indexed hca,
-        address indexed implementation
-    );
 
     /// @notice Emitted when an existing SCA is designated as an HCA.
     /// @param hcaOwner The owner that designated the account.
@@ -107,7 +95,8 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @param verifiableFactory The factory used to verify designated HCA proxy deployments.
     /// @param owner_ The owner of this factory (receives `onlyOwner` privileges).
     constructor(IVerifiableFactory verifiableFactory, address owner_) Ownable(owner_) {
-        if (address(verifiableFactory) == address(0)) revert VerifiableFactoryCannotBeZero();
+        if (address(verifiableFactory) == address(0))
+            revert VerifiableFactoryCannotBeZero();
         VERIFIABLE_FACTORY = verifiableFactory;
     }
 
@@ -115,33 +104,14 @@ contract HCAFactory is Ownable, IHCAFactory {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Sets whether an implementation may be used for HCA deployment and designation.
+    /// @notice Sets whether an implementation may be used for HCA designation.
     /// @param implementation The implementation address to update.
     /// @param approved Whether the implementation is approved.
     function setImplementationApproval(address implementation, bool approved) external onlyOwner {
-        if (implementation == address(0)) revert HCAImplementationCannotBeZero();
+        if (implementation == address(0))
+            revert HCAImplementationCannotBeZero();
         approvedImplementations[implementation] = approved;
         emit HCAImplementationApprovalChanged(implementation, approved);
-    }
-
-    /// @notice Deploys a new HCA proxy for the caller, or forwards ETH if already deployed.
-    /// @dev The proxy address is deterministic based on `msg.sender`. If the account already
-    ///      exists, any attached ETH is forwarded to the existing account.
-    /// @param implementation The approved implementation for the HCA proxy.
-    /// @param initData The initialization data used to initialize the HCA proxy.
-    /// @return hca The deployed or existing HCA proxy address.
-    function createAccount(
-        address implementation,
-        bytes calldata initData
-    ) external payable returns (address payable hca) {
-        _requireApprovedImplementation(implementation);
-        address hcaOwner = msg.sender;
-        bool alreadyDeployed;
-        (alreadyDeployed, hca) = ProxyLib.deployProxy(implementation, hcaOwner, initData);
-        if (!alreadyDeployed) {
-            _recordAccountOwner(hcaOwner, hca);
-            emit AccountCreated(hcaOwner, hca, implementation);
-        }
     }
 
     /// @notice Designates an existing verifiable proxy SCA as the caller's HCA.
@@ -159,13 +129,6 @@ contract HCAFactory is Ownable, IHCAFactory {
         hcaOwner = _hcaOwners[hca];
     }
 
-    /// @notice Computes the deterministic address of an HCA proxy for the given owner.
-    /// @param owner_ The owner whose HCA address to predict.
-    /// @return The deterministic proxy address.
-    function computeAccountAddress(address owner_) external view returns (address) {
-        return ProxyLib.predictProxyAddress(owner_);
-    }
-
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
@@ -174,11 +137,7 @@ contract HCAFactory is Ownable, IHCAFactory {
     ///      and verifiable deployment.
     /// @param hcaOwner The owner to record for the account.
     /// @param hca The account to designate.
-    function _designateAccount(
-        address hcaOwner,
-        address hca,
-        address implementation
-    ) internal {
+    function _designateAccount(address hcaOwner, address hca, address implementation) internal {
         _requireRecordableAccount(hca);
         _requireApprovedImplementation(implementation);
         if (!VERIFIABLE_FACTORY.verifyContract(hca, implementation)) {
@@ -187,26 +146,20 @@ contract HCAFactory is Ownable, IHCAFactory {
         _hcaOwners[hca] = hcaOwner;
     }
 
-    /// @dev Records the account owner after validating account code and uniqueness.
-    /// @param hcaOwner The owner to record for the account.
-    /// @param hca The account to record.
-    function _recordAccountOwner(address hcaOwner, address hca) internal {
-        _requireRecordableAccount(hca);
-        _hcaOwners[hca] = hcaOwner;
-    }
-
     /// @dev Reverts unless the account can be recorded as an HCA.
     /// @param hca The account to check.
     function _requireRecordableAccount(address hca) internal view {
-        if (hca == address(0)) revert HCAAccountCannotBeZero();
-        if (hca.code.length == 0) revert HCAAccountHasNoCode(hca);
+        if (hca == address(0))
+            revert HCAAccountCannotBeZero();
+        if (hca.code.length == 0)
+            revert HCAAccountHasNoCode(hca);
         address currentOwner = _hcaOwners[hca];
         if (currentOwner != address(0)) {
             revert HCAAccountAlreadyDesignated(hca, currentOwner);
         }
     }
 
-    /// @dev Reverts unless the implementation is approved for HCA use.
+    /// @dev Reverts unless the implementation is approved for HCA designation.
     /// @param implementation The implementation address to check.
     function _requireApprovedImplementation(address implementation) internal view {
         if (!approvedImplementations[implementation]) {

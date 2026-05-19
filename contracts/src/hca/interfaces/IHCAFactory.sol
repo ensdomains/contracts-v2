@@ -9,12 +9,12 @@ interface IHCAFactory {
     /// @param implementation The expected approved implementation for the HCA.
     function setAccount(address hca, address implementation) external;
 
-    /// @notice Returns whether an implementation is approved for HCA deployment and designation.
+    /// @notice Returns whether an implementation is approved for HCA designation.
     /// @param implementation The implementation address to check.
     /// @return approved Whether the implementation is approved.
     function approvedImplementations(address implementation) external view returns (bool approved);
 
-    /// @notice Returns the owner recorded for a deployed HCA proxy.
+    /// @notice Returns the owner recorded for a designated HCA proxy.
     /// @param hca The HCA proxy address to look up.
     /// @return hcaOwner The owner address, or `address(0)` if the HCA is not registered.
     function getAccountOwner(address hca) external view returns (address hcaOwner);
