@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {IHCAFactory} from "./interfaces/IHCAFactory.sol";
 import {ProxyLib} from "./ProxyLib.sol";
 
-/// @notice Minimal account surface used to verify a designated HCA implementation.
-/// @dev Interface selector: `0xaaf10f42`
-interface IHCAImplementationProvider {
-    /// @notice Returns the current implementation for the account.
-    function getImplementation() external view returns (address);
-}
-
 /// @title HCAFactory
 /// @notice Factory for deploying and designating Hardware Contract Accounts (HCAs).
 /// @dev Uses CREATE3 via ProxyLib to deploy deterministic NexusProxy instances and records
-///      existing approved SCAs when users designate them as HCAs.
+///      existing approved verifiable proxies when users designate them as HCAs.
 contract HCAFactory is Ownable, IHCAFactory {
+    ////////////////////////////////////////////////////////////////////////
+    // Immutables
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice The factory used to verify designated HCA proxy deployments.
+    IVerifiableFactory public immutable VERIFIABLE_FACTORY;
+
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
@@ -64,6 +65,10 @@ contract HCAFactory is Ownable, IHCAFactory {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Thrown when the verifiable factory address is zero.
+    /// @dev Error selector: `0xbc0ff6a0`
+    error VerifiableFactoryCannotBeZero();
+
     /// @notice Thrown when an HCA implementation address is zero.
     /// @dev Error selector: `0x30eb1e65`
     error HCAImplementationCannotBeZero();
@@ -82,6 +87,12 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @dev Error selector: `0xed080fb2`
     error HCAAccountHasNoCode(address hca);
 
+    /// @notice Thrown when an HCA account is not a verified proxy for the expected implementation.
+    /// @param hca The account that could not be verified.
+    /// @param implementation The expected implementation.
+    /// @dev Error selector: `0xcc26dd93`
+    error HCAAccountNotVerifiable(address hca, address implementation);
+
     /// @notice Thrown when an HCA account has already been designated.
     /// @param hca The already-designated HCA account.
     /// @param hcaOwner The owner currently recorded for the account.
@@ -93,8 +104,12 @@ contract HCAFactory is Ownable, IHCAFactory {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Initializes the factory with its owner.
+    /// @param verifiableFactory The factory used to verify designated HCA proxy deployments.
     /// @param owner_ The owner of this factory (receives `onlyOwner` privileges).
-    constructor(address owner_) Ownable(owner_) {}
+    constructor(IVerifiableFactory verifiableFactory, address owner_) Ownable(owner_) {
+        if (address(verifiableFactory) == address(0)) revert VerifiableFactoryCannotBeZero();
+        VERIFIABLE_FACTORY = verifiableFactory;
+    }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
@@ -129,11 +144,13 @@ contract HCAFactory is Ownable, IHCAFactory {
         }
     }
 
-    /// @notice Designates an existing SCA as the caller's HCA.
-    /// @dev The account must already be deployed and use an approved implementation.
+    /// @notice Designates an existing verifiable proxy SCA as the caller's HCA.
+    /// @dev The account must already be deployed through the verifiable factory and use an
+    ///      approved implementation.
     /// @param hca The existing SCA to designate as the caller's HCA.
-    function setAccount(address hca) external {
-        address implementation = _designateAccount(msg.sender, hca);
+    /// @param implementation The expected approved implementation for the HCA.
+    function setAccount(address hca, address implementation) external {
+        _designateAccount(msg.sender, hca, implementation);
         emit AccountDesignated(msg.sender, hca, implementation);
     }
 
@@ -153,30 +170,40 @@ contract HCAFactory is Ownable, IHCAFactory {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Records the account owner after validating account code and implementation approval.
+    /// @dev Records the account owner after validating account code, implementation approval,
+    ///      and verifiable deployment.
     /// @param hcaOwner The owner to record for the account.
     /// @param hca The account to designate.
-    /// @return implementation The account implementation that was validated.
     function _designateAccount(
         address hcaOwner,
-        address hca
-    ) internal returns (address implementation) {
-        _recordAccountOwner(hcaOwner, hca);
-        implementation = IHCAImplementationProvider(hca).getImplementation();
+        address hca,
+        address implementation
+    ) internal {
+        _requireRecordableAccount(hca);
         _requireApprovedImplementation(implementation);
+        if (!VERIFIABLE_FACTORY.verifyContract(hca, implementation)) {
+            revert HCAAccountNotVerifiable(hca, implementation);
+        }
+        _hcaOwners[hca] = hcaOwner;
     }
 
     /// @dev Records the account owner after validating account code and uniqueness.
     /// @param hcaOwner The owner to record for the account.
     /// @param hca The account to record.
     function _recordAccountOwner(address hcaOwner, address hca) internal {
+        _requireRecordableAccount(hca);
+        _hcaOwners[hca] = hcaOwner;
+    }
+
+    /// @dev Reverts unless the account can be recorded as an HCA.
+    /// @param hca The account to check.
+    function _requireRecordableAccount(address hca) internal view {
         if (hca == address(0)) revert HCAAccountCannotBeZero();
         if (hca.code.length == 0) revert HCAAccountHasNoCode(hca);
         address currentOwner = _hcaOwners[hca];
         if (currentOwner != address(0)) {
             revert HCAAccountAlreadyDesignated(hca, currentOwner);
         }
-        _hcaOwners[hca] = hcaOwner;
     }
 
     /// @dev Reverts unless the implementation is approved for HCA use.

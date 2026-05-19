@@ -4,6 +4,7 @@ pragma solidity >=0.8.27;
 import {Test} from "forge-std/Test.sol";
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {HCAFactory} from "~src/hca/HCAFactory.sol";
 
@@ -22,19 +23,10 @@ contract MockHCAImplementation {
     }
 }
 
-contract MockSCA {
-    address internal immutable IMPLEMENTATION;
-
-    constructor(address implementation_) {
-        IMPLEMENTATION = implementation_;
-    }
-
-    function getImplementation() external view returns (address) {
-        return IMPLEMENTATION;
-    }
-}
+contract MockSCA {}
 
 contract HCAFactoryTest is Test {
+    VerifiableFactory verifiableFactory;
     HCAFactory factory;
     MockHCAImplementation implementation;
 
@@ -45,13 +37,20 @@ contract HCAFactoryTest is Test {
     bytes initData = abi.encode(uint256(1), user);
 
     function setUp() public {
-        factory = new HCAFactory(owner);
+        verifiableFactory = new VerifiableFactory();
+        factory = new HCAFactory(verifiableFactory, owner);
         implementation = new MockHCAImplementation();
     }
 
     function test_constructor_setsOwner() external view {
+        assertEq(address(factory.VERIFIABLE_FACTORY()), address(verifiableFactory), "verifiable factory");
         assertEq(factory.owner(), owner, "owner");
         assertFalse(factory.approvedImplementations(address(implementation)), "approved");
+    }
+
+    function test_constructor_revertsWhenVerifiableFactoryIsZero() external {
+        vm.expectRevert(HCAFactory.VerifiableFactoryCannotBeZero.selector);
+        new HCAFactory(VerifiableFactory(address(0)), owner);
     }
 
     function test_setImplementationApproval_approvesImplementation() external {
@@ -133,21 +132,21 @@ contract HCAFactoryTest is Test {
     function test_setAccount_designatesExistingApprovedAccount() external {
         vm.prank(owner);
         factory.setImplementationApproval(address(implementation), true);
-        MockSCA sca = new MockSCA(address(implementation));
+        address sca = _deployVerifiableAccount(address(implementation));
 
         vm.expectEmit(true, true, true, true, address(factory));
-        emit HCAFactory.AccountDesignated(user, address(sca), address(implementation));
+        emit HCAFactory.AccountDesignated(user, sca, address(implementation));
 
         vm.prank(user);
-        factory.setAccount(address(sca));
+        factory.setAccount(sca, address(implementation));
 
-        assertEq(factory.getAccountOwner(address(sca)), user, "hca owner");
+        assertEq(factory.getAccountOwner(sca), user, "hca owner");
     }
 
     function test_setAccount_revertsWhenAccountIsZero() external {
         vm.expectRevert(HCAFactory.HCAAccountCannotBeZero.selector);
         vm.prank(user);
-        factory.setAccount(address(0));
+        factory.setAccount(address(0), address(implementation));
     }
 
     function test_setAccount_revertsWhenAccountHasNoCode() external {
@@ -155,29 +154,58 @@ contract HCAFactoryTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(HCAFactory.HCAAccountHasNoCode.selector, sca));
         vm.prank(user);
-        factory.setAccount(sca);
+        factory.setAccount(sca, address(implementation));
     }
 
     function test_setAccount_revertsWhenImplementationNotApproved() external {
-        MockSCA sca = new MockSCA(address(implementation));
+        address sca = _deployVerifiableAccount(address(implementation));
 
         vm.expectRevert(
             abi.encodeWithSelector(HCAFactory.HCAImplementationNotApproved.selector, address(implementation))
         );
         vm.prank(user);
-        factory.setAccount(address(sca));
+        factory.setAccount(sca, address(implementation));
+    }
+
+    function test_setAccount_revertsWhenAccountIsNotVerifiable() external {
+        vm.prank(owner);
+        factory.setImplementationApproval(address(implementation), true);
+        address sca = address(new MockSCA());
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFactory.HCAAccountNotVerifiable.selector, sca, address(implementation))
+        );
+        vm.prank(user);
+        factory.setAccount(sca, address(implementation));
+    }
+
+    function test_setAccount_revertsWhenVerifiedForDifferentImplementation() external {
+        vm.prank(owner);
+        factory.setImplementationApproval(address(implementation), true);
+        MockHCAImplementation otherImplementation = new MockHCAImplementation();
+        address sca = _deployVerifiableAccount(address(otherImplementation));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFactory.HCAAccountNotVerifiable.selector, sca, address(implementation))
+        );
+        vm.prank(user);
+        factory.setAccount(sca, address(implementation));
     }
 
     function test_setAccount_revertsWhenAccountAlreadyDesignated() external {
         vm.prank(owner);
         factory.setImplementationApproval(address(implementation), true);
-        MockSCA sca = new MockSCA(address(implementation));
+        address sca = _deployVerifiableAccount(address(implementation));
 
         vm.prank(user);
-        factory.setAccount(address(sca));
+        factory.setAccount(sca, address(implementation));
 
-        vm.expectRevert(abi.encodeWithSelector(HCAFactory.HCAAccountAlreadyDesignated.selector, address(sca), user));
+        vm.expectRevert(abi.encodeWithSelector(HCAFactory.HCAAccountAlreadyDesignated.selector, sca, user));
         vm.prank(nonOwner);
-        factory.setAccount(address(sca));
+        factory.setAccount(sca, address(implementation));
+    }
+
+    function _deployVerifiableAccount(address implementation_) internal returns (address) {
+        return verifiableFactory.deployProxy(implementation_, uint256(uint160(implementation_)), "");
     }
 }
