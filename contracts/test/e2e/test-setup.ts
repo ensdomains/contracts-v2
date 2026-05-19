@@ -40,7 +40,11 @@ expect.extend({
 
 const t0 = Date.now();
 
-const env = await setupDevnet({ procLog: false, chainId: 1 });
+const env = await setupDevnet({
+  host: process.env.CI ? "0.0.0.0" : undefined,
+  chainId: 1,
+  procLog: false,
+});
 
 // save the initial state
 const resetInitialState = await env.saveState();

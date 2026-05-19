@@ -25,3 +25,47 @@
 [submodule "contracts/lib/unruggable-gateways"]
 	path = contracts/lib/unruggable-gateways
 	url = https://github.com/unruggable-labs/unruggable-gateways
+[submodule "contracts/lib/account-abstraction"]
+	path = contracts/lib/account-abstraction
+	url = https://github.com/eth-infinitism/account-abstraction
+[submodule "contracts/lib/solady"]
+	path = contracts/lib/solady
+	url = https://github.com/vectorized/solady
+[submodule "contracts/lib/ens-modules"]
+	path = contracts/lib/ens-modules
+	url = https://github.com/rhinestonewtf/ens-modules
+[submodule "contracts/lib/ExcessivelySafeCall"]
+	path = contracts/lib/ExcessivelySafeCall
+	url = https://github.com/rhinestonewtf/ExcessivelySafeCall
+[submodule "contracts/lib/composability"]
+	path = contracts/lib/composability
+	url = https://github.com/bcnmy/composability
+[submodule "contracts/lib/erc7739Validator"]
+	path = contracts/lib/erc7739Validator
+	url = https://github.com/erc7579/erc7739Validator
+[submodule "contracts/lib/sentinellist"]
+	path = contracts/lib/sentinellist
+	url = https://github.com/rhinestonewtf/sentinellist
+[submodule "contracts/lib/modulekit"]
+	path = contracts/lib/modulekit
+	url = https://github.com/rhinestonewtf/modulekit
+[submodule "contracts/lib/checknsignatures"]
+	path = contracts/lib/checknsignatures
+	url = https://github.com/rhinestonewtf/checknsignatures
+[submodule "contracts/lib/enumerablemap4337"]
+	path = contracts/lib/enumerablemap4337
+	url = https://github.com/erc7579/enumerablemap
+[submodule "contracts/lib/compact-utils"]
+	path = contracts/lib/compact-utils
+	url = https://github.com/rhinestonewtf/warp-router
+[submodule "contracts/lib/nexus"]
+	path = contracts/lib/nexus
+	url = https://github.com/rhinestonewtf/rhinestone-nexus
+	branch = feat/default-executor
+[submodule "contracts/lib/permit2"]
+	path = contracts/lib/permit2
+	url = https://github.com/Uniswap/permit2
+[submodule "contracts/lib/the-compact"]
+	path = contracts/lib/the-compact
+	url = https://github.com/Uniswap/the-compact
+	branch = v1
