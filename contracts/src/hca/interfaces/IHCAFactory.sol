@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.27;
+pragma solidity ^0.8.25;
 
 /// @notice Interface for the HCA factory.
 /// @dev Interface selector: `0xf15c4ffb`

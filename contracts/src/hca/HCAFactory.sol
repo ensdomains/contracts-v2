@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.27;
+pragma solidity ^0.8.25;
 
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
