@@ -49,7 +49,7 @@ contract HCAFactoryTest is Test {
             "verifiable factory"
         );
         assertEq(factory.owner(), owner, "owner");
-        assertFalse(factory.approvedImplementations(address(implementation)), "approved");
+        assertFalse(factory.isApprovedImplementation(address(implementation)), "approved");
     }
 
     function test_constructor_revertsWhenVerifiableFactoryIsZero() external {
@@ -64,7 +64,7 @@ contract HCAFactoryTest is Test {
         vm.prank(owner);
         factory.setImplementationApproval(address(implementation), true);
 
-        assertTrue(factory.approvedImplementations(address(implementation)), "approved");
+        assertTrue(factory.isApprovedImplementation(address(implementation)), "approved");
     }
 
     function test_setImplementationApproval_revertsWhenImplementationIsZero() external {
@@ -91,7 +91,7 @@ contract HCAFactoryTest is Test {
         vm.prank(owner);
         factory.setImplementationApproval(address(implementation), false);
 
-        assertFalse(factory.approvedImplementations(address(implementation)), "approved");
+        assertFalse(factory.isApprovedImplementation(address(implementation)), "approved");
     }
 
     function test_setAccount_designatesExistingApprovedAccount() external {

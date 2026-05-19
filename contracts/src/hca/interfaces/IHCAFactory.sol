@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 /// @notice Interface for the HCA factory.
-/// @dev Interface selector: `0x170d6937`
+/// @dev Interface selector: `0xf15c4ffb`
 interface IHCAFactory {
     /// @notice Designates an existing SCA as the caller's HCA.
     /// @param hca The existing SCA to designate.
@@ -12,7 +12,7 @@ interface IHCAFactory {
     /// @notice Returns whether an implementation is approved for HCA designation.
     /// @param implementation The implementation address to check.
     /// @return approved Whether the implementation is approved.
-    function approvedImplementations(address implementation) external view returns (bool approved);
+    function isApprovedImplementation(address implementation) external view returns (bool approved);
 
     /// @notice Returns the owner recorded for a designated HCA proxy.
     /// @param hca The HCA proxy address to look up.

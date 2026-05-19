@@ -24,8 +24,8 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @dev Maps each designated HCA proxy address to its owner.
     mapping(address hca => address owner) internal _hcaOwners;
 
-    /// @notice Returns whether an implementation is approved for HCA designation.
-    mapping(address implementation => bool approved) public approvedImplementations;
+    /// @dev Tracks implementations approved for HCA designation.
+    mapping(address implementation => bool approved) internal _approvedImplementations;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -110,7 +110,7 @@ contract HCAFactory is Ownable, IHCAFactory {
     function setImplementationApproval(address implementation, bool approved) external onlyOwner {
         if (implementation == address(0))
             revert HCAImplementationCannotBeZero();
-        approvedImplementations[implementation] = approved;
+        _approvedImplementations[implementation] = approved;
         emit HCAImplementationApprovalChanged(implementation, approved);
     }
 
@@ -127,6 +127,11 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @inheritdoc IHCAFactory
     function getAccountOwner(address hca) external view returns (address hcaOwner) {
         hcaOwner = _hcaOwners[hca];
+    }
+
+    /// @inheritdoc IHCAFactory
+    function isApprovedImplementation(address implementation) external view returns (bool approved) {
+        approved = _approvedImplementations[implementation];
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -162,7 +167,7 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @dev Reverts unless the implementation is approved for HCA designation.
     /// @param implementation The implementation address to check.
     function _requireApprovedImplementation(address implementation) internal view {
-        if (!approvedImplementations[implementation]) {
+        if (!_approvedImplementations[implementation]) {
             revert HCAImplementationNotApproved(implementation);
         }
     }

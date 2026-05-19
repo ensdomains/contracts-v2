@@ -30,7 +30,7 @@ flowchart TD
     Owner["User / account owner"]
     HCAFactory["HCAFactory"]
     VerifiableFactory["VerifiableFactory"]
-    ImplAllowlist["approvedImplementations"]
+    ImplAllowlist["approved implementation allowlist"]
     ExistingSCA["Existing SCA<br/>(verifiable proxy)"]
     HCAImpl["HCA implementation<br/>extends Nexus"]
     HCAModule["HCAModule<br/>default validator"]
