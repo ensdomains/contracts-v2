@@ -84,23 +84,40 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Recursively clear ancestor namespace.
-    function _clear(bytes calldata name, uint256 offset)
-        internal
-        returns (bytes32 node, State state)
-    {
-        (bytes32 labelHash, uint256 nextOffset) = NameCoder.readLabel(name, offset);
-        if (labelHash == bytes32(0)) {
-            return (bytes32(0), State.ROOT);
+    ///
+    /// Wrapped labels are 1-255 bytes and always have a preimage.
+    /// see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort` and `test_nameWrapper_labelTooLong`
+    /// see: https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/NameWrapper.sol#L865-L876
+    /// 
+    /// This function supports a modified DNS-encoding where zero-length labels 
+    /// in the middle of name must be followed with exactly 32 bytes of labelhash.
+    ///
+    /// This is safe because zero-length non-terminating labels normally revert.
+    /// 
+    function _clear(bytes calldata name, uint256 offset) internal returns (bytes32 node, State) {
+        bytes32 labelHash;
+        uint256 nextOffset;
+        // modified DNS-encoding: interpret zero-length labels differently
+        if (offset + 1 < name.length && uint8(name[offset]) == 0) {
+            nextOffset = offset + 33; // skip length and ensure next 32 bytes exist
+            if (nextOffset >= name.length) {
+                revert NameCoder.DNSDecodingFailed(name);
+            }
+            labelHash = bytes32(name[offset + 1:nextOffset]); // cast as literal bytes32
+        } else {
+            (labelHash, nextOffset) = NameCoder.readLabel(name, offset); // use standard logic
+            if (labelHash == bytes32(0)) {
+                return (bytes32(0), State.ROOT);
+            }
         }
-        bytes32 parentNode;
-        (parentNode, state) = _clear(name, nextOffset);
+        (bytes32 parentNode, State parentState) = _clear(name, nextOffset);
         node = NameCoder.namehash(parentNode, labelHash);
-        if (state == State.ROOT) {
+        if (parentState == State.ROOT) {
             if (node != NameCoder.ETH_NODE) {
                 revert NameNotClearable();
             }
             return (node, State.ETH);
-        } else if (state == State.ETH) {
+        } else if (parentState == State.ETH) {
             address owner = _REGISTRY_V1.owner(node);
             if (owner == address(this)) {
                 // resolver is cleared by migration
@@ -125,7 +142,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
                 _REGISTRY_V1.setResolver(node, address(0));
             }
             return (node, State.OWNED);
-        } else if (state == State.OWNED) {
+        } else if (parentState == State.OWNED) {
             _REGISTRY_V1.setSubnodeRecord(parentNode, labelHash, address(this), address(0), 0);
             return (node, State.OWNED);
         } else {
@@ -134,9 +151,10 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
                 // resolver is cleared by migration
                 if (LibMigration.isLocked(fuses)) {
                     return (node, State.LOCKED);
-                } else if (LibMigration.isEmancipatedChild(fuses)) {
-                    return (node, State.OWNED);
                 }
+                // } else if (LibMigration.isEmancipatedChild(fuses)) {
+                //    return (node, State.OWNED);
+                // }
             } else if (owner != address(0)) {
                 NAME_WRAPPER.setSubnodeRecord(
                     parentNode,

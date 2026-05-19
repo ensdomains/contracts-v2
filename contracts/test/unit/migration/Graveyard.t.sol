@@ -7,8 +7,10 @@ import {
     CANNOT_UNWRAP,
     PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 
-import {MigrationControllerFixture, NameCoder} from "~test/fixtures/MigrationControllerFixture.sol";
+import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract GraveyardTest is MigrationControllerFixture {
     uint256 constant N = 10;
@@ -62,6 +64,64 @@ contract GraveyardTest is MigrationControllerFixture {
 
         vm.expectRevert();
         graveyard.clear(_oneName(name));
+    }
+
+    function test_encodeLabelHash() external pure {
+        assertEq(
+            _encodedLabelHash(bytes32(0)),
+            "[0000000000000000000000000000000000000000000000000000000000000000]"
+        );
+        assertEq(
+            _encodedLabelHash(0x5cee339e13375638553bdf5a6e36ba80fb9f6a4f0783680884d92b558aa471da),
+            "[5cee339e13375638553bdf5a6e36ba80fb9f6a4f0783680884d92b558aa471da]"
+        );
+    }
+
+    function test_clear_prehashedLabel_invalid() external {
+        bytes memory name = NameCoder.encode("eth");
+        for (uint256 i; i < 32; ++i) {
+            vm.expectRevert();
+            graveyard.clear(_oneName(abi.encodePacked(uint8(0), new bytes(i), name)));
+        }
+    }
+
+    function test_clear_prehashedLabel_literal(bytes32 labelHash) external {
+        (bytes memory name, ) = registerUnwrapped(testLabel);
+        bytes32 node = NameCoder.namehash(name, 0);
+
+        string memory label = _encodedLabelHash(labelHash);
+        bytes32 actualLabelHash = keccak256(bytes(label));
+
+        vm.prank(testOwner);
+        registryV1.setSubnodeRecord(node, actualLabelHash, friend, address(1), 0);
+
+        _simulateMigration(name);
+
+        node = NameCoder.namehash(node, actualLabelHash);
+
+        assertEq(registryV1.resolver(node), address(1), "before");
+        graveyard.clear(_oneName(abi.encodePacked(uint8(0), labelHash, name))); // mark as prehashed
+        assertEq(registryV1.resolver(node), address(1), "uncleared");
+        graveyard.clear(_oneName(NameCoder.addLabel(name, label)));
+        assertEq(registryV1.resolver(node), address(0), "after");
+    }
+
+    function test_clear_prehashedLabel_hashed(bytes32 labelHash) external {
+        (bytes memory name, ) = registerUnwrapped(testLabel);
+        bytes32 node = NameCoder.namehash(name, 0);
+
+        vm.prank(testOwner);
+        registryV1.setSubnodeRecord(node, labelHash, friend, address(1), 0);
+
+        _simulateMigration(name);
+
+        node = NameCoder.namehash(node, labelHash);
+
+        assertEq(registryV1.resolver(node), address(1), "before");
+        graveyard.clear(_oneName(NameCoder.addLabel(name, _encodedLabelHash(labelHash))));
+        assertEq(registryV1.resolver(node), address(1), "uncleared");
+        graveyard.clear(_oneName(abi.encodePacked(uint8(0), labelHash, name))); // mark as prehashed
+        assertEq(registryV1.resolver(node), address(0), "after");
     }
 
     function test_clear_unregistered(uint256) external {
@@ -144,7 +204,7 @@ contract GraveyardTest is MigrationControllerFixture {
 
         // set resolvers
         vm.startPrank(testOwner);
-        nameWrapper.setResolver(NameCoder.namehash(name3, 0), address(1));
+        nameWrapper.setResolver(NameCoder.namehash(name2, 0), address(1));
         nameWrapper.setResolver(NameCoder.namehash(name3, 0), address(1));
         vm.stopPrank();
 
@@ -168,7 +228,7 @@ contract GraveyardTest is MigrationControllerFixture {
 
         // set resolvers
         vm.startPrank(testOwner);
-        nameWrapper.setResolver(NameCoder.namehash(name3, 0), address(1));
+        nameWrapper.setResolver(NameCoder.namehash(name2, 0), address(1));
         nameWrapper.setResolver(NameCoder.namehash(name3, 0), address(1));
         vm.stopPrank();
 
@@ -335,6 +395,8 @@ contract GraveyardTest is MigrationControllerFixture {
             );
             vm.prank(owner);
             baseRegistrar.safeTransferFrom(owner, address(graveyard), uint256(labelHash));
+        } else {
+            revert("migrated failed");
         }
     }
 
@@ -358,6 +420,11 @@ contract GraveyardTest is MigrationControllerFixture {
         for (uint256 n = vm.randomUint(1, 10); n > 0; --n) {
             name = NameCoder.addLabel(name, new string(vm.randomUint(1, 255)));
         }
+    }
+
+    /// @dev Convert labelhash to encoded form.
+    function _encodedLabelHash(bytes32 labelHash) internal pure returns (string memory) {
+        return string(abi.encodePacked("[", HexUtils.bytesToHex(abi.encodePacked(labelHash)), "]"));
     }
 
     function _oneName(bytes memory name) internal pure returns (bytes[] memory names) {
