@@ -947,8 +947,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         registryV1.setApprovalForAll(address(nameWrapper), true);
         vm.prank(friend);
         nameWrapper.wrap(name3, friend, address(0));
-        (address rewrappedOwner, uint32 rewrappedFuses, ) =
-            nameWrapper.getData(uint256(subNode));
+        (address rewrappedOwner, uint32 rewrappedFuses, ) = nameWrapper.getData(uint256(subNode));
         assertEq(rewrappedOwner, friend, "re-wrap restores wrapper ownership");
         assertEq(
             rewrappedFuses & PARENT_CANNOT_CONTROL,
@@ -956,12 +955,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "re-wrap restores PCC from preserved storage"
         );
 
-        LibMigration.Data memory data3 = LibMigration.Data({
-            label: "sub",
-            owner: friend,
-            subregistry: testRegistry,
-            resolver: testResolver
-        });
+        LibMigration.Data memory data3 =
+            LibMigration.Data({label: "sub", owner: friend, subregistry: testRegistry, resolver: testResolver});
         vm.prank(friend);
         nameWrapper.safeTransferFrom(
             friend,
