@@ -9,6 +9,7 @@ import {Graveyard} from "~src/migration/Graveyard.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
@@ -105,6 +106,21 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 
     function _soon() internal view returns (uint64) {
         return uint64(block.timestamp + 1000);
+    }
+
+    function _unlockedData(bytes memory name) internal view returns (LibMigration.Data memory) {
+        return
+            LibMigration.Data({label: NameCoder.firstLabel(name), owner: testOwner, subregistry: testRegistry, resolver: testResolver});
+    }
+
+    function _lockedData(bytes memory name) internal view returns (LibMigration.Data memory) {
+        return
+            LibMigration.Data({
+                label: NameCoder.firstLabel(name),
+                owner: nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))),
+                subregistry: IRegistry(address(0)), // ignored by LockedMigrationController
+                resolver: testResolver
+            });
     }
 }
 

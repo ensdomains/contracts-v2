@@ -124,7 +124,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         uint256[] memory amounts = new uint256[](1);
         LibMigration.Data[] memory mds = new LibMigration.Data[](1);
         ids[0] = uint256(NameCoder.namehash(name, 0));
-        mds[0] = _makeData(name);
+        mds[0] = _unlockedData(name);
         amounts[0] = 1;
         bytes memory payload = abi.encode(mds);
         uint256 fakeLength = 0;
@@ -152,7 +152,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_unwrapped_invalidOwner() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         md.owner = address(0); // wrong
         vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
         vm.prank(testOwner);
@@ -166,7 +166,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_wrapped_invalidOwner() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         md.owner = address(0); // wrong
         vm.expectRevert(WrappedErrorLib.wrap(abi.encodeWithSelector(InvalidOwner.selector)));
         vm.prank(testOwner);
@@ -181,7 +181,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_unwrapped_invalidReceiver() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         md.owner = address(ethRegistry); // not a IERC1155Receiver
         vm.expectRevert(
             abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
@@ -197,7 +197,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_wrapped_invalidReceiver() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         md.owner = address(ethRegistry); // not a IERC1155Receiver
 
         vm.expectRevert(
@@ -217,7 +217,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_unwrapped_nameDataMismatch() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         md.label = "wrong";
         vm.expectRevert(abi.encodeWithSelector(LibMigration.NameDataMismatch.selector, tokenIdV1));
         vm.prank(testOwner);
@@ -232,7 +232,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     function test_wrapped_nameDataMismatch() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
         bytes32 node = NameCoder.namehash(name, 0);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         md.label = "wrong";
         vm.expectRevert(
             WrappedErrorLib.wrap(
@@ -252,7 +252,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     function test_wrapped_nameIsLocked() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes32 node = NameCoder.namehash(name, 0);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         vm.expectRevert(
             WrappedErrorLib.wrap(abi.encodeWithSelector(LibMigration.NameIsLocked.selector, node))
         );
@@ -269,7 +269,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     function test_unwrapped_notReserved() external {
         premigrationController = address(0); // disable premigration
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -290,7 +290,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     function test_wrapped_notReserved() external {
         premigrationController = address(0); // disable premigration
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         vm.expectRevert(
             WrappedErrorLib.wrap(
                 abi.encodeWithSelector(
@@ -313,7 +313,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_checkIfMigrated() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
 
         assertFalse(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, testOwner));
 
@@ -330,7 +330,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_unwrapped_migrate() external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
         uint64 expectedExpiry =
             uint64(baseRegistrar.nameExpires(tokenIdV1)) + premigrationBonusPeriod;
@@ -390,7 +390,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_wrapped_migrate() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         uint256 tokenIdV1 = LibLabel.id(md.label);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
         uint64 expectedExpiry =
@@ -459,7 +459,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_unwrapped_migrateViaApproval(bool all) external {
         (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
 
         // give friend approval
         vm.prank(testOwner);
@@ -485,7 +485,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     function test_wrapped_migrateViaApproval() external {
         /* bool all */
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
-        LibMigration.Data memory md = _makeData(name);
+        LibMigration.Data memory md = _unlockedData(name);
         bytes32 node = NameCoder.namehash(name, 0);
 
         // give friend approval
@@ -520,7 +520,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         for (uint256 i; i < count; ++i) {
             testDuration = uint64(vm.randomUint(1, 1000 days));
             bytes memory name = registerWrappedETH2LD(_label(i), CAN_DO_EVERYTHING);
-            LibMigration.Data memory md = _makeData(name);
+            LibMigration.Data memory md = _unlockedData(name);
             md.resolver = address(uint160(i));
             mds[i] = md;
             ids[i] = uint256(NameCoder.namehash(name, 0));
@@ -562,7 +562,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         for (uint256 i; i < count; ++i) {
             bytes memory name =
                 registerWrappedETH2LD(_label(i), i == count - 1 ? CANNOT_UNWRAP : CAN_DO_EVERYTHING);
-            LibMigration.Data memory md = _makeData(name);
+            LibMigration.Data memory md = _unlockedData(name);
             mds[i] = md;
             ids[i] = uint256(NameCoder.namehash(name, 0));
             amounts[i] = 1;
@@ -580,10 +580,5 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             amounts,
             abi.encode(mds)
         );
-    }
-
-    function _makeData(bytes memory name) internal view returns (LibMigration.Data memory) {
-        return
-            LibMigration.Data({label: NameCoder.firstLabel(name), owner: testOwner, subregistry: testRegistry, resolver: testResolver});
     }
 }

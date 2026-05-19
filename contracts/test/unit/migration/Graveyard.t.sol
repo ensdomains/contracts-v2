@@ -200,7 +200,7 @@ contract GraveyardTest is MigrationControllerFixture {
     function test_clear_nestedLocked_migrateBoth() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes memory name3 =
-            createWrappedChild(name2, testLabel, testOwner, PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
+            createWrappedChild(name2, testLabel, PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
 
         // set resolvers
         vm.startPrank(testOwner);
@@ -224,7 +224,7 @@ contract GraveyardTest is MigrationControllerFixture {
     function test_clear_nestedLocked_migrateParent_expiredChild() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes memory name3 =
-            createWrappedChild(name2, testLabel, testOwner, PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
+            createWrappedChild(name2, testLabel, PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
 
         // set resolvers
         vm.startPrank(testOwner);
@@ -248,7 +248,7 @@ contract GraveyardTest is MigrationControllerFixture {
     function test_clear_nestedLocked_bothExpired() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes memory name3 =
-            createWrappedChild(name2, testLabel, testOwner, PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
+            createWrappedChild(name2, testLabel, PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
 
         // set resolvers
         vm.startPrank(testOwner);
@@ -278,7 +278,7 @@ contract GraveyardTest is MigrationControllerFixture {
 
     function test_clear_detached(bool unwrapped) external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        bytes memory name3 = createWrappedChild(name2, testLabel, testOwner, PARENT_CANNOT_CONTROL);
+        bytes memory name3 = createWrappedChild(name2, testLabel, PARENT_CANNOT_CONTROL);
 
         // set resolvers
         vm.startPrank(testOwner);
@@ -307,12 +307,7 @@ contract GraveyardTest is MigrationControllerFixture {
         bytes memory name0 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes memory name = name0;
         for (uint256 i; i < N; ++i) {
-            name = createWrappedChild(
-                name,
-                testLabel,
-                testOwner,
-                PARENT_CANNOT_CONTROL | CANNOT_UNWRAP
-            );
+            name = createWrappedChild(name, testLabel, PARENT_CANNOT_CONTROL | CANNOT_UNWRAP);
             vm.prank(testOwner);
             nameWrapper.setResolver(NameCoder.namehash(name, 0), address(1));
         }
@@ -333,8 +328,8 @@ contract GraveyardTest is MigrationControllerFixture {
 
     function test_clear_complex() external {
         bytes memory name2 = registerWrappedETH2LD("2", CANNOT_UNWRAP);
-        bytes memory name3 = createWrappedChild(name2, "3", testOwner, PARENT_CANNOT_CONTROL);
-        bytes memory name4 = createWrappedChild(name3, "4", testOwner, CAN_DO_EVERYTHING);
+        bytes memory name3 = createWrappedChild(name2, "3", PARENT_CANNOT_CONTROL);
+        bytes memory name4 = createWrappedChild(name3, "4", CAN_DO_EVERYTHING);
 
         // set resolvers
         vm.startPrank(testOwner);
