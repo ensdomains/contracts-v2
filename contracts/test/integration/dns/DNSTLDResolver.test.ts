@@ -132,9 +132,6 @@ async function fixture() {
     ]);
     expectVar({ directAnswer }).toStrictEqual(answer);
     await expect(
-      dnsTLDResolver.read.requiresOffchain([dnsEncodeName(kp.name)]),
-    ).resolves.toStrictEqual(gasless);
-    await expect(
       dnsTLDResolver.read.getResolver([dnsEncodeName(kp.name)]),
     ).resolves.toStrictEqual([getAddress(resolverAddress), gasless]);
   }
