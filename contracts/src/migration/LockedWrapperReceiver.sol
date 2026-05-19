@@ -213,10 +213,16 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     function _isMigratableChild(string memory label) internal view returns (bool) {
         bytes32 node = NameCoder.namehash(getWrappedNode(), keccak256(bytes(label)));
         (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
+        // NameWrapper preserves fuses across `_burn`, so the PARENT_CANNOT_CONTROL bit 
+        // remains readable after an emancipated child is unwrapped, making fuses the 
+        // primary signal.
+        // GRAVEYARD ownership marks completed migrations: the locked path graveyards
+        // the wrapper token, the emancipated path graveyards the v1 registry record
+        // via unwrap.
         return
-            ownerV1 != address(0) &&
+            LibMigration.isEmancipatedChild(fuses) &&
             ownerV1 != address(GRAVEYARD) &&
-            LibMigration.isEmancipatedChild(fuses);
+            _REGISTRY_V1.owner(node) != address(GRAVEYARD);
     }
 
     /// @dev Convert fuses to equivalent subregistry root roles.

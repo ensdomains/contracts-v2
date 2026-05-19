@@ -888,6 +888,102 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         checkResolution(name3unmigrated, testResolver, address(ensV1Resolver));
     }
 
+    function test_migrate_detachedChildren_unwrappedBeforeParentMigration() external {
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes memory name3 = createWrappedChild(name2, "sub", friend, PARENT_CANNOT_CONTROL);
+        bytes32 parentNode = NameCoder.namehash(name2, 0);
+        bytes32 subNode = NameCoder.namehash(name3, 0);
+        bytes32 subLabelHash = keccak256(bytes("sub"));
+
+        // unwrap the emancipated child before the parent is migrated
+        vm.prank(friend);
+        nameWrapper.unwrap(parentNode, subLabelHash, friend);
+        (address ownerAfterUnwrap, uint32 fusesAfterUnwrap, ) =
+            nameWrapper.getData(uint256(subNode));
+        assertEq(ownerAfterUnwrap, address(0), "wrapper owner cleared on unwrap");
+        assertEq(
+            fusesAfterUnwrap & PARENT_CANNOT_CONTROL,
+            PARENT_CANNOT_CONTROL,
+            "PCC fuse persists across burn"
+        );
+        assertEq(registryV1.owner(subNode), friend, "v1 registry owner is friend after unwrap");
+
+        // migrate 2LD parent
+        LibMigration.Data memory data2 = _makeData(name2);
+        vm.prank(testOwner);
+        nameWrapper.safeTransferFrom(
+            testOwner,
+            address(migrationController),
+            uint256(parentNode),
+            1,
+            abi.encode(data2)
+        );
+        IWrapperRegistry registry2 =
+            IWrapperRegistry(address(ethRegistry.getSubregistry(data2.label)));
+
+        // testOwner (parent's root account) holds ROLE_REGISTRAR on registry2 by default,
+        // so they could otherwise re-register the unwrapped emancipated subname in v2
+        assertTrue(
+            IEnhancedAccessControl(address(registry2)).hasRoles(
+                0, // ROOT_RESOURCE
+                RegistryRolesLib.ROLE_REGISTRAR,
+                testOwner
+            ),
+            "testOwner has ROLE_REGISTRAR on registry2"
+        );
+        vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));
+        vm.prank(testOwner);
+        registry2.register("sub", testOwner, IRegistry(address(0)), address(0), 0, _soon());
+
+        // resolver lookup falls through to v1
+        assertEq(
+            registry2.getResolver("sub"),
+            address(ensV1Resolver),
+            "unwrapped emancipated subname resolves through V1"
+        );
+
+        // legitimate subname owner can still migrate via re-wrap (preserves PCC automatically)
+        vm.prank(friend);
+        registryV1.setApprovalForAll(address(nameWrapper), true);
+        vm.prank(friend);
+        nameWrapper.wrap(name3, friend, address(0));
+        (address rewrappedOwner, uint32 rewrappedFuses, ) =
+            nameWrapper.getData(uint256(subNode));
+        assertEq(rewrappedOwner, friend, "re-wrap restores wrapper ownership");
+        assertEq(
+            rewrappedFuses & PARENT_CANNOT_CONTROL,
+            PARENT_CANNOT_CONTROL,
+            "re-wrap restores PCC from preserved storage"
+        );
+
+        LibMigration.Data memory data3 = LibMigration.Data({
+            label: "sub",
+            owner: friend,
+            subregistry: testRegistry,
+            resolver: testResolver
+        });
+        vm.prank(friend);
+        nameWrapper.safeTransferFrom(
+            friend,
+            address(registry2),
+            uint256(subNode),
+            1,
+            abi.encode(data3)
+        );
+        assertEq(registry2.getResolver(data3.label), data3.resolver, "resolver3 after migration");
+        assertEq(
+            registry2.ownerOf(registry2.getTokenId(LibLabel.id(data3.label))),
+            friend,
+            "owner3 after migration"
+        );
+        assertEq(
+            address(registry2.getSubregistry(data3.label)),
+            address(testRegistry),
+            "subregistry3 after migration"
+        );
+        assertEq(registryV1.owner(subNode), address(graveyard), "v1 graveyarded after migration");
+    }
+
     function test_migrate_frozenTokenApproval() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes32 node = NameCoder.namehash(name, 0);
