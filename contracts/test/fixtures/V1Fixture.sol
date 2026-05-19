@@ -74,41 +74,44 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         returns (bytes memory name, uint256 tokenId)
     {
         name = NameCoder.ethName(label);
+        address registrant = _determineRegistrant();
         tokenId = uint256(keccak256(bytes(label)));
         vm.prank(ethControllerV1);
-        baseRegistrar.register(tokenId, testOwner, testDuration);
+        baseRegistrar.register(tokenId, registrant, testDuration);
     }
 
     function registerWrappedETH2LD(string memory label, uint32 ownerFuses)
         public
         returns (bytes memory name)
     {
+        address wrappedOwner = _determineRegistrant();
         uint256 tokenId;
         (name, tokenId) = registerUnwrapped(label);
         address owner = baseRegistrar.ownerOf(tokenId);
         vm.prank(owner);
-        baseRegistrar.setApprovalForAll(address(nameWrapper), true);
-        vm.prank(owner);
-        nameWrapper.wrapETH2LD(label, owner, uint16(ownerFuses), address(0));
+        baseRegistrar.safeTransferFrom(
+            owner,
+            address(nameWrapper),
+            tokenId,
+            abi.encode(
+                label, // label
+                wrappedOwner,
+                uint16(ownerFuses), // fuses
+                address(0) // resolver
+            )
+        );
     }
 
-    function createWrappedChild(
-        bytes memory parentName,
-        string memory label,
-        address newOwner,
-        uint32 fuses
-    )
+    function createWrappedChild(bytes memory parentName, string memory label, uint32 fuses)
         public
         returns (bytes memory name)
     {
+        address wrappedOwner = _determineRegistrant();
         bytes32 parentNode = NameCoder.namehash(parentName, 0);
         (address owner, , uint64 expiry) = nameWrapper.getData(uint256(parentNode));
-        name = NameCoder.addLabel(parentName, label);
-        if (newOwner == address(0)) {
-            newOwner = owner;
-        }
         vm.prank(owner);
-        nameWrapper.setSubnodeOwner(parentNode, label, newOwner, fuses, expiry);
+        nameWrapper.setSubnodeOwner(parentNode, label, wrappedOwner, fuses, expiry);
+        name = NameCoder.addLabel(parentName, label);
     }
 
     function createWrappedName(string memory domain, uint32 fuses)
@@ -116,15 +119,16 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
         returns (bytes memory name)
     {
         name = NameCoder.encode(domain);
-        _claimNodes(name, 0, testOwner);
+        address registrant = _determineRegistrant();
+        _claimNodes(name, 0, registrant);
         (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
         bytes32 parentNode = NameCoder.namehash(name, offset);
-        vm.prank(testOwner);
+        vm.prank(registrant);
         registryV1.setApprovalForAll(address(nameWrapper), true);
-        vm.prank(testOwner);
-        nameWrapper.wrap(name, testOwner, address(0));
+        vm.prank(registrant);
+        nameWrapper.wrap(name, registrant, address(0));
         if (fuses != 0) {
-            vm.prank(testOwner);
+            vm.prank(registrant);
             nameWrapper.setFuses(NameCoder.namehash(parentNode, labelHash), uint16(fuses));
         }
     }
@@ -139,6 +143,13 @@ contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
 
     function findResolverV1(bytes memory name) public view returns (address resolver) {
         (resolver, , ) = RegistryUtils.findResolver(registryV1, name, 0);
+    }
+
+    function _determineRegistrant() internal view returns (address registrant) {
+        registrant = msg.sender;
+        if (registrant == DEFAULT_SENDER) {
+            registrant = testOwner;
+        }
     }
 }
 

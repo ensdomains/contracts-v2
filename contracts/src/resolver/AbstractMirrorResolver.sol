@@ -62,11 +62,6 @@ abstract contract AbstractMirrorResolver is ICompositeResolver, IERC7996, Resolv
         return (_findResolver(name), false);
     }
 
-    /// @inheritdoc ICompositeResolver
-    function requiresOffchain(bytes calldata) external pure returns (bool) {
-        return false;
-    }
-
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////

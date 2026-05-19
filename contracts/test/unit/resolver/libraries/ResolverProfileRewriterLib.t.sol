@@ -92,6 +92,28 @@ contract ResolverProfileRewriterLibTest is Test {
         assertEq(v0, v); // unchanged
     }
 
+    function test_replaceNode_multicall_underflow(bytes32 node) external view {
+        bytes[] memory m = new bytes[](1);
+        m[0] = vMin;
+        bytes memory v0 = abi.encodeCall(IMulticallable.multicall, (m));
+        assembly {
+            mstore(add(v0, 36), not(0)) // jump backwards
+        }
+        bytes memory v = this.replaceNode(v0, node);
+        assertEq(v0, v); // unchanged
+    }
+
+    function test_replaceNode_multicall_underflow_arrayStart(bytes32 node) external view {
+        bytes[] memory m = new bytes[](1);
+        m[0] = vMin;
+        bytes memory v0 = abi.encodeCall(IMulticallable.multicall, (m));
+        assembly {
+            mstore(add(v0, 100), not(0)) // jump backwards
+        }
+        bytes memory v = this.replaceNode(v0, node);
+        assertEq(v0, v); // unchanged
+    }
+
     function testFuzz_replaceNode_nestedMulticall(bytes32 node, uint8 depth) external view {
         vm.assume(depth < 10);
         bytes memory v = abi.encodeCall(this.resolverProfile, (keccak256("a")));

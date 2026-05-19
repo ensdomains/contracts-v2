@@ -132,9 +132,6 @@ async function fixture() {
     ]);
     expectVar({ directAnswer }).toStrictEqual(answer);
     await expect(
-      dnsTLDResolver.read.requiresOffchain([dnsEncodeName(kp.name)]),
-    ).resolves.toStrictEqual(gasless);
-    await expect(
       dnsTLDResolver.read.getResolver([dnsEncodeName(kp.name)]),
     ).resolves.toStrictEqual([getAddress(resolverAddress), gasless]);
   }
@@ -500,6 +497,22 @@ describe("DNSTLDResolver", () => {
             args: [dummyBytes4, 64n],
           }),
         ]);
+    });
+
+    it("og: just addr(60)", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      const name = "og.com";
+      await F.mockDNSSEC.write.setResponse([
+        encodeRRs([makeTXT(name, `ENS1 ${dnsTXTResolverName} ${testAddress}`)]),
+      ]);
+      await F.expectTXT({
+        name,
+        addresses: [
+          { coinType: COIN_TYPE_ETH, value: testAddress },
+          { coinType: COIN_TYPE_DEFAULT, value: "0x" },
+          { coinType: 0n, value: "0x" },
+        ],
+      });
     });
 
     it("addr()", async () => {

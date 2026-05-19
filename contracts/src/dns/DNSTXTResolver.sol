@@ -170,6 +170,16 @@ contract DNSTXTResolver is ERC165, IERC7996, IExtendedDNSResolver {
         pure
         returns (bytes memory v)
     {
+        // support ExtendedDNSResolver syntax
+        if (context.length == 42 && bytes2(context) == "0x") {
+            (address a, bool valid) = HexUtils.hexToAddress(context, 2, 42);
+            if (valid) {
+                if (coinType == COIN_TYPE_ETH) {
+                    v = abi.encodePacked(a);
+                }
+                return v;
+            }
+        }
         if (ENSIP19.isEVMCoinType(coinType)) {
             v = DNSTXTParserLib.find(
                 context,
