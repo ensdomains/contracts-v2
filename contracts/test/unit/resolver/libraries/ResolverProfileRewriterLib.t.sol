@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {Test, stdError} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
 
@@ -89,6 +89,28 @@ contract ResolverProfileRewriterLibTest is Test {
         assembly {
             mstore(add(v, offset), save) // unmangle
         }
+        assertEq(v0, v); // unchanged
+    }
+
+    function test_replaceNode_multicall_underflow(bytes32 node) external view {
+        bytes[] memory m = new bytes[](1);
+        m[0] = vMin;
+        bytes memory v0 = abi.encodeCall(IMulticallable.multicall, (m));
+        assembly {
+            mstore(add(v0, 36), not(0)) // jump backwards
+        }
+        bytes memory v = this.replaceNode(v0, node);
+        assertEq(v0, v); // unchanged
+    }
+
+    function test_replaceNode_multicall_underflow_arrayStart(bytes32 node) external view {
+        bytes[] memory m = new bytes[](1);
+        m[0] = vMin;
+        bytes memory v0 = abi.encodeCall(IMulticallable.multicall, (m));
+        assembly {
+            mstore(add(v0, 100), not(0)) // jump backwards
+        }
+        bytes memory v = this.replaceNode(v0, node);
         assertEq(v0, v); // unchanged
     }
 

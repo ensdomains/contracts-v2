@@ -36,12 +36,19 @@ library ResolverProfileRewriterLib {
                 switch shr(224, mload(sub(ptr, 4))) // read selector
                 case 0xac9650d8 {
                     // multicall(bytes[])
+                    let lower := ptr
                     ptr := add(ptr, mload(ptr)) // follow jump
+                    if lt(ptr, lower) {
+                        leave // underflow
+                    }
                     let size := shl(5, mload(ptr)) // read word count as size
                     // prettier-ignore
                     for { } size { size := sub(size, 32) } { // backwards
-                        let p := mload(add(ptr, size)) // jump[i]
-                        p := add(add(ptr, 32), p) // local ptr
+                        lower := add(ptr, 32)
+                        let p := add(lower, mload(add(ptr, size))) // local ptr
+                        if lt(p, lower) {
+                            continue // underflow
+                        }
                         let b := add(p, mload(p)) // local bound w/room for 1 word
                         if lt(bound, b) {
                             b := bound // global bound is smaller
