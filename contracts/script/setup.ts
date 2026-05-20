@@ -482,11 +482,6 @@ export async function setupDevnet({
         address: rocketh.get("PublicResolverV2").address,
         client,
       }),
-      AddrReverseResolver: getContract({
-        abi: artifacts.AddrReverseResolver.abi,
-        address: rocketh.get("AddrReverseResolver").address,
-        client,
-      }),
     };
 
     const erc20 = {

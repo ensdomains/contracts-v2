@@ -44,7 +44,7 @@ describe("Resolve", () => {
     expectNamed("reverse", () => env.v2.ENSV1Resolver.address);
     expectNamed(
       getReverseNamespace(COIN_TYPE_ETH),
-      () => env.v2.AddrReverseResolver.address,
+      () => env.v2.ENSV1Resolver.address,
     );
     expectNamed(
       getReverseNamespace(COIN_TYPE_DEFAULT),
