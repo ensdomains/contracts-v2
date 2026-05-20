@@ -1017,7 +1017,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         // abandoned orphan must not lock the label forever — guard treats the empty
         // v1 record as relinquishment and allows fresh registration in v2
-        // abandoned name still cannot be registered
         vm.prank(testOwner);
         uint256 tokenId =
             registry2.register("sub", testOwner, IRegistry(address(0)), address(0), 0, _soon());
