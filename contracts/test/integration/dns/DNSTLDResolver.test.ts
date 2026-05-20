@@ -32,7 +32,6 @@ import { FEATURES } from "../../../lib/ens-contracts/test/utils/features.js";
 const network = await hre.network.connect();
 
 const dnsTXTResolverName = "dnstxt.ens.eth";
-const extendedDNSResolverName = "dnsname.ens.eth";
 const dummyBytes4 = "0x12345678";
 const testAddress = "0x8000000000000000000000000000000000000001";
 const testData = "0xabcdef";
@@ -84,13 +83,6 @@ async function fixture() {
     "DNSAliasResolver",
     [v2.rootRegistry.address, v2.batchGatewayProvider.address],
   );
-  const extendedDNSResolverAddress = await deployArtifact(v2.walletClient, {
-    file: new URL(
-      "./ExtendedDNSResolver_53f64de872aad627467a34836be1e2b63713a438.json",
-      import.meta.url,
-    ),
-  });
-  await setupNamedResolver(extendedDNSResolverName, extendedDNSResolverAddress);
   return {
     v1,
     v2,
@@ -102,7 +94,6 @@ async function fixture() {
     dnsTLDResolver,
     dnsTXTResolver,
     dnsAliasResolver,
-    extendedDNSResolverAddress,
     expectTXT,
     expectGasless,
     expectResolution,
@@ -292,33 +283,6 @@ describe("DNSTLDResolver", () => {
     );
     expectVar({ resolverAddress }).toEqualAddress(F.myResolver.address);
     bundle.expect(answer);
-  });
-
-  describe("ExtendedDNSResolver (original deployment)", () => {
-    // this ensures MockDNSSEC is working as expected
-    it("addr(60)", async () => {
-      const F = await network.networkHelpers.loadFixture(fixture);
-      await F.mockDNSSEC.write.setResponse([
-        encodeRRs([
-          makeTXT(
-            basicProfile.name,
-            `ENS1 ${extendedDNSResolverName} ${testAddress}`,
-          ),
-        ]),
-      ]);
-      await F.expectGasless(
-        {
-          name: basicProfile.name,
-          addresses: [
-            {
-              coinType: COIN_TYPE_ETH,
-              value: testAddress,
-            },
-          ],
-        },
-        F.extendedDNSResolverAddress,
-      );
-    });
   });
 
   describe("DNSSEC", () => {
