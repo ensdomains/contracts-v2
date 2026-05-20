@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
@@ -15,6 +16,7 @@ import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
+import {LibLabel} from "../utils/LibLabel.sol";
 
 import {ApprovedUpgradeGate} from "./ApprovedUpgradeGate.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
@@ -239,5 +241,21 @@ contract WrapperRegistry is
     /// @inheritdoc LockedWrapperReceiver
     function _getRegistry() internal view override returns (IRegistry) {
         return this;
+    }
+
+    /// @dev Determine if `label` is emancipated but not-yet migrated.
+    function _isMigratableChild(string memory label) internal view returns (bool) {
+        uint256 labelId = LibLabel.id(label);
+        if (getExpiry(labelId) > 0) {
+            return false; // has been registered before, v2 is authority
+        }
+        bytes32 node = NameCoder.namehash(_node, bytes32(labelId));
+        (, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
+        // NameWrapper preserves fuses across `_burn()`, so the PARENT_CANNOT_CONTROL
+        // bit stays readable after unwrap and is the primary signal. Require an
+        // active v1 registry owner.  A null owner means the subname was ABANDONED
+        // and reserving the label would lock it forever; positive expiry on either
+        // side marks a completed migration.
+        return LibMigration.isEmancipatedChild(fuses) && _REGISTRY_V1.owner(node) != address(0);
     }
 }
