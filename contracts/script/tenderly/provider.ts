@@ -1,5 +1,4 @@
 import {
-  type Account,
   type Address,
   type Chain,
   createPublicClient,
@@ -8,30 +7,24 @@ import {
 } from "viem";
 
 /**
- * EIP-1193 provider for Rocketh. Exposes `deployer` and impersonated addresses
- * via `eth_accounts`; all transactions are sent through the Tenderly RPC (remote
- * signers), so enable impersonation on the VNet before running.
+ * EIP-1193 provider for Rocketh on Tenderly. All named accounts are remote:
+ * transactions are sent via `eth_sendTransaction` on the VNet after the
+ * addresses have been impersonated (no local private keys).
  */
 export function createTenderlyProvider({
   rpcUrl,
   chain,
-  deployer,
-  impersonate = [],
+  accounts,
 }: {
   rpcUrl: string;
   chain: Chain;
-  deployer: Account;
-  impersonate?: Address[];
+  /** Addresses exposed via `eth_accounts` (must be impersonated on the VNet). */
+  accounts: Address[];
 }) {
   const publicClient = createPublicClient({
     chain,
     transport: http(rpcUrl, { retryCount: 2, timeout: 120_000 }),
   });
-
-  const accounts = [
-    deployer.address,
-    ...impersonate.filter((a) => a !== deployer.address),
-  ];
 
   return custom({
     request: async ({ method, params }) => {

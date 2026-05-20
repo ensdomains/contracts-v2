@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { executeDeployScripts, resolveConfig } from "rocketh";
 import {
-  type Account,
   type Address,
   createPublicClient,
   createWalletClient,
@@ -14,7 +13,6 @@ import {
   publicActions,
   zeroAddress,
 } from "viem";
-import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
 import { LOCAL_BATCH_GATEWAY_URL } from "../deploy-constants.js";
 import { patchArtifactsV1 } from "../patchArtifactsV1.js";
@@ -31,18 +29,18 @@ import {
 } from "./rpc.js";
 
 const SEPOLIA_CHAIN_ID = 11155111;
-const DEFAULT_MNEMONIC =
-  "test test test test test test test test test test test junk";
+
+/** On-chain owner of Sepolia ENS v1 contracts (Root, BaseRegistrar, NameWrapper). */
+const SEPOLIA_V1_OWNER = SEPOLIA_OPERATIONS_OWNER;
 
 export type TenderlyDeployOptions = {
   /** Tenderly Virtual TestNet RPC URL (required). */
   rpcUrl: string;
-  /** BIP-39 mnemonic for the `deployer` named account. */
-  mnemonic?: string;
-  /** Optional hex private key; overrides mnemonic for `deployer`. */
-  deployerPrivateKey?: `0x${string}`;
-  /** Sepolia operational owner to impersonate (default: ENS Sepolia ops EOA). */
-  operationsOwner?: Address;
+  /**
+   * Your test wallet address. Impersonated on the VNet for all deploy txs.
+   * Used as Rocketh `deployer` and `owner` for ENSv2 (no private key needed).
+   */
+  wallet: Address;
   /** Clear `deployments/tenderly-sepolia-*` before deploying. */
   resetDeployments?: boolean;
   /** Skip v1.7 RegistrarSecurityController upgrade (if already done). */
@@ -59,6 +57,7 @@ export type TenderlyDeployResult = {
   namedAccounts: {
     deployer: Address;
     owner: Address;
+    sepoliaV1Owner: Address;
   };
   rocketh: Awaited<ReturnType<typeof executeDeployScripts>>;
 };
@@ -66,30 +65,20 @@ export type TenderlyDeployResult = {
 /**
  * Deploy ENSv2 on a Tenderly Virtual TestNet that forks Sepolia.
  *
- * High-level pipeline:
- * 1. Connect to the VNet RPC and verify chain id 11155111.
- * 2. Fund + impersonate the deployer and Sepolia operational owner (admin RPC).
- * 3. Seed Rocketh with existing Sepolia v1 deployment addresses.
- * 4. Install missing v1.7 contracts (RegistrarSecurityController, WrappedETHRegistrarController).
- * 5. Run ENSv2 deploy scripts only.
- * 6. Run `activateV2` so v2 Graveyard / ETHRenewerV1 control .eth registration.
+ * Signing is entirely via Tenderly impersonation — pass your wallet address,
+ * not a private key. The Sepolia v1 operational owner (`0x0F32…`) is also
+ * impersonated automatically for the few fork steps that must run as that address.
  */
 export async function deployToTenderlySepoliaFork(
   options: TenderlyDeployOptions,
 ): Promise<TenderlyDeployResult> {
   const {
     rpcUrl,
-    mnemonic = DEFAULT_MNEMONIC,
-    deployerPrivateKey,
-    operationsOwner = SEPOLIA_OPERATIONS_OWNER,
+    wallet,
     resetDeployments = true,
     skipV17Upgrade = false,
     skipActivate = false,
   } = options;
-
-  const deployerAccount: Account = deployerPrivateKey
-    ? privateKeyToAccount(deployerPrivateKey)
-    : mnemonicToAccount(mnemonic, { addressIndex: 0 });
 
   const transport = http(rpcUrl, { retryCount: 2, timeout: 120_000 });
   const publicClient = createPublicClient({ transport });
@@ -108,18 +97,17 @@ export async function deployToTenderlySepoliaFork(
     rpcUrls: { default: { http: [rpcUrl] } },
   });
 
+  const request = publicClient.request.bind(publicClient);
+
   console.log("Preparing Tenderly Sepolia fork…");
+  console.log(`  Wallet (deployer + owner): ${wallet}`);
+  console.log(`  Sepolia v1 owner (fork only): ${SEPOLIA_V1_OWNER}`);
+
   await patchArtifactsV1();
 
-  await fundAddresses(publicClient.request.bind(publicClient), [
-    deployerAccount.address,
-    operationsOwner,
-  ]);
-  await impersonateAddresses(publicClient.request.bind(publicClient), [
-    deployerAccount.address,
-    operationsOwner,
-  ]);
-  await tryMockP256Precompile(publicClient.request.bind(publicClient));
+  await fundAddresses(request, [wallet, SEPOLIA_V1_OWNER]);
+  await impersonateAddresses(request, [wallet, SEPOLIA_V1_OWNER]);
+  await tryMockP256Precompile(request);
 
   const deploymentName = `tenderly-sepolia-${chainId}`;
   const deploymentsRoot = fileURLToPath(
@@ -127,10 +115,7 @@ export async function deployToTenderlySepoliaFork(
   );
   const deploymentsDir = join(deploymentsRoot, deploymentName);
   const canonicalDir = fileURLToPath(
-    new URL(
-      "../../lib/ens-contracts/deployments/sepolia",
-      import.meta.url,
-    ),
+    new URL("../../lib/ens-contracts/deployments/sepolia", import.meta.url),
   );
 
   if (resetDeployments) {
@@ -138,14 +123,8 @@ export async function deployToTenderlySepoliaFork(
   }
 
   const bootstrapClient = Object.assign(publicClient, {
-    setBalance: async ({
-      address,
-      value,
-    }: {
-      address: Address;
-      value: bigint;
-    }) => {
-      await fundAddresses(publicClient.request.bind(publicClient), [address]);
+    setBalance: async ({ address }: { address: Address; value: bigint }) => {
+      await fundAddresses(request, [address]);
     },
   });
 
@@ -156,38 +135,47 @@ export async function deployToTenderlySepoliaFork(
     canonicalDir,
     chainId,
     skipMissingArtifacts: true,
-    extraFundAddresses: [operationsOwner],
+    extraFundAddresses: [wallet, SEPOLIA_V1_OWNER],
   });
 
-  const provider = createTenderlyProvider({
-    rpcUrl,
-    chain,
-    deployer: deployerAccount,
-    impersonate: [operationsOwner],
-  });
+  const rockethAccounts = [wallet, SEPOLIA_V1_OWNER].filter(
+    (a, i, arr) => arr.indexOf(a) === i,
+  );
 
   process.env.BATCH_GATEWAY_URLS = JSON.stringify([LOCAL_BATCH_GATEWAY_URL]);
 
   if (!skipV17Upgrade) {
     console.log("Installing Sepolia v1.7 registrar stack (if missing)…");
+    const v17Provider = createTenderlyProvider({
+      rpcUrl,
+      chain,
+      accounts: rockethAccounts,
+    });
     await installSepoliaV17({
-      provider,
+      provider: v17Provider,
       deploymentName,
       deploymentsRoot,
       deploymentsDir,
-      deployer: deployerAccount.address,
-      owner: operationsOwner,
+      deployer: wallet,
+      v1Owner: SEPOLIA_V1_OWNER,
+      wallet,
       chain,
       rpcUrl,
     });
   }
+
+  const v2Provider = createTenderlyProvider({
+    rpcUrl,
+    chain,
+    accounts: [wallet],
+  });
 
   console.log("Deploying ENSv2 contracts…");
   const rocketh = await executeDeployScripts(
     resolveConfig({
       deployments: deploymentsRoot,
       network: {
-        provider,
+        provider: v2Provider,
         name: deploymentName,
         tags: [
           "v2",
@@ -205,8 +193,8 @@ export async function deployToTenderlySepoliaFork(
       askBeforeProceeding: false,
       saveDeployments: true,
       accounts: {
-        deployer: deployerAccount.address,
-        owner: operationsOwner,
+        deployer: wallet,
+        owner: wallet,
       },
     }),
   );
@@ -217,8 +205,8 @@ export async function deployToTenderlySepoliaFork(
       rocketh,
       rpcUrl,
       chain,
-      operationsOwner,
-      deployer: deployerAccount.address,
+      wallet,
+      v1Owner: SEPOLIA_V1_OWNER,
     });
   }
 
@@ -228,8 +216,9 @@ export async function deployToTenderlySepoliaFork(
     deploymentsDir,
     rpcUrl,
     namedAccounts: {
-      deployer: deployerAccount.address,
-      owner: operationsOwner,
+      deployer: wallet,
+      owner: wallet,
+      sepoliaV1Owner: SEPOLIA_V1_OWNER,
     },
     rocketh,
   };
@@ -242,7 +231,8 @@ async function installSepoliaV17({
   deploymentsRoot,
   deploymentsDir,
   deployer,
-  owner,
+  v1Owner,
+  wallet,
   chain,
   rpcUrl,
 }: {
@@ -251,7 +241,8 @@ async function installSepoliaV17({
   deploymentsRoot: string;
   deploymentsDir: string;
   deployer: Address;
-  owner: Address;
+  v1Owner: Address;
+  wallet: Address;
   chain: ReturnType<typeof defineChain>;
   rpcUrl: string;
 }) {
@@ -271,7 +262,12 @@ async function installSepoliaV17({
       },
       askBeforeProceeding: false,
       saveDeployments: true,
-      accounts: { deployer, owner },
+      accounts: {
+        deployer,
+        // Wrapped controller wiring touches NameWrapper, which on Sepolia is
+        // owned by the historical ops EOA — not your wallet.
+        owner: v1Owner,
+      },
     }),
   );
 
@@ -279,10 +275,10 @@ async function installSepoliaV17({
     chain,
     transport: http(rpcUrl),
   });
-  const ownerClient = createWalletClient({
+  const v1OwnerClient = createWalletClient({
     chain,
     transport: http(rpcUrl),
-    account: owner,
+    account: v1Owner,
   }).extend(publicActions);
 
   const readDep = async (name: string) => {
@@ -303,7 +299,7 @@ async function installSepoliaV17({
     console.log(
       `  - Transferring BaseRegistrar ownership to RegistrarSecurityController (from ${liveOwner})`,
     );
-    await ownerClient.writeContract({
+    await v1OwnerClient.writeContract({
       chain,
       address: baseAddr,
       abi: artifacts.BaseRegistrarImplementation.abi,
@@ -311,28 +307,62 @@ async function installSepoliaV17({
       args: [scAddr],
     });
   } else {
-    console.log("  - BaseRegistrar already owned by RegistrarSecurityController");
+    console.log(
+      "  - BaseRegistrar already owned by RegistrarSecurityController",
+    );
+  }
+
+  const scOwner = await publicClient.readContract({
+    address: scAddr,
+    abi: artifacts.RegistrarSecurityController.abi,
+    functionName: "owner",
+  });
+
+  if (scOwner.toLowerCase() !== wallet.toLowerCase()) {
+    console.log(
+      `  - Transferring RegistrarSecurityController ownership to your wallet (from ${scOwner})`,
+    );
+    const transferFrom =
+      scOwner.toLowerCase() === v1Owner.toLowerCase() ? v1Owner : wallet;
+    const transferClient = createWalletClient({
+      chain,
+      transport: http(rpcUrl),
+      account: transferFrom,
+    }).extend(publicActions);
+    await transferClient.writeContract({
+      chain,
+      address: scAddr,
+      abi: artifacts.RegistrarSecurityController.abi,
+      functionName: "transferOwnership",
+      args: [wallet],
+    });
   }
 }
 
-/** Mirror of devnet `activateV2` for Sepolia-fork operational owner. */
+/** Post-deploy controller handoff (Sepolia v1 owner + your wallet on the SC). */
 async function activateV2({
   rocketh,
   rpcUrl,
   chain,
-  operationsOwner,
-  deployer,
+  wallet,
+  v1Owner,
 }: {
   rocketh: Awaited<ReturnType<typeof executeDeployScripts>>;
   rpcUrl: string;
   chain: ReturnType<typeof defineChain>;
-  operationsOwner: Address;
-  deployer: Address;
+  wallet: Address;
+  v1Owner: Address;
 }) {
-  const client = createWalletClient({
+  const v1Client = createWalletClient({
     chain,
     transport: http(rpcUrl),
-    account: operationsOwner,
+    account: v1Owner,
+  }).extend(publicActions);
+
+  const walletClient = createWalletClient({
+    chain,
+    transport: http(rpcUrl),
+    account: wallet,
   }).extend(publicActions);
 
   const v1ControllerNames = [
@@ -345,13 +375,13 @@ async function activateV2({
   const registrarSecurityController = getContract({
     abi: artifacts.RegistrarSecurityController.abi,
     address: rocketh.get("RegistrarSecurityController").address,
-    client,
+    client: walletClient,
   });
 
   const nameWrapper = getContract({
     abi: artifacts.NameWrapper.abi,
     address: rocketh.get("NameWrapper").address,
-    client,
+    client: v1Client,
   });
 
   const txOpts = { chain } as const;
@@ -379,10 +409,7 @@ async function activateV2({
     [rocketh.get("ETHRenewerV1").address],
     txOpts,
   );
-  await registrarSecurityController.write.addRegistrarController(
-    [deployer],
-    txOpts,
-  );
+  await registrarSecurityController.write.addRegistrarController([wallet], txOpts);
   await registrarSecurityController.write.transferRegistrarOwnership(
     [rocketh.get("ETHRenewerV1").address],
     txOpts,
