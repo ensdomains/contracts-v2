@@ -247,12 +247,15 @@ contract WrapperRegistry is
     function _isMigratableChild(string memory label) internal view returns (bool) {
         uint256 labelId = LibLabel.id(label);
         if (getExpiry(labelId) > 0) {
-            return false; // has been registered before
+            return false; // has been registered before, v2 is authority
         }
         bytes32 node = NameCoder.namehash(_node, bytes32(labelId));
         (, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
-        // NameWrapper preserves fuses across `_burn`, so the PARENT_CANNOT_CONTROL
-        // bit stays readable after an unwrap and is the primary signal.
-        return LibMigration.isEmancipatedChild(fuses);
+        // NameWrapper preserves fuses across `_burn()`, so the PARENT_CANNOT_CONTROL
+        // bit stays readable after unwrap and is the primary signal. Require an
+        // active v1 registry owner.  A null owner means the subname was ABANDONED
+        // and reserving the label would lock it forever; positive expiry on either
+        // side marks a completed migration.
+        return LibMigration.isEmancipatedChild(fuses) && _REGISTRY_V1.owner(node) != address(0);
     }
 }
