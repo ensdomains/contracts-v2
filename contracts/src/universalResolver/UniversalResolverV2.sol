@@ -66,6 +66,11 @@ contract UniversalResolverV2 is
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IUniversalResolverV2
+    function findOwner(bytes calldata name) external view returns (address) {
+        return LibRegistry.findOwner(ROOT_REGISTRY, name, 0);
+    }
+
+    /// @inheritdoc IUniversalResolverV2
     function findCanonicalName(IRegistry registry) external view returns (bytes memory) {
         return LibRegistry.findCanonicalName(ROOT_REGISTRY, registry);
     }

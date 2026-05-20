@@ -303,6 +303,17 @@ contract LibRegistryTest is Test, ERC1155Holder {
         );
     }
 
+    function test_findOwner() external {
+        PermissionedRegistry ethRegistry = _createRegistry();
+        PermissionedRegistry testRegistry = _createRegistry();
+        _register(rootRegistry, "eth", ethRegistry, address(0));
+        _register(ethRegistry, "test", testRegistry, address(0));
+
+        assertEq(LibRegistry.findOwner(rootRegistry, NameCoder.encode(""), 0), address(0));
+        assertEq(LibRegistry.findOwner(rootRegistry, NameCoder.encode("eth"), 0), address(this));
+        assertEq(LibRegistry.findOwner(rootRegistry, NameCoder.encode("test.eth"), 0), address(this));
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Helpers
     ////////////////////////////////////////////////////////////////////////

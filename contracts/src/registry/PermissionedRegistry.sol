@@ -150,26 +150,6 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc IContractNamer
-    function isContractNamer(address namer) external view returns (bool) {
-        return hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, namer);
-    }
-
-    /// @inheritdoc ITemporalRegistry
-    function findExpiry(string calldata label) external view returns (uint64) {
-        return getExpiry(LibLabel.id(label));
-    }
-
-    /// @inheritdoc IOwnedRegistry
-    function findOwner(string calldata label) external view returns (address) {
-        return ownerOf(getTokenId(LibLabel.id(label)));
-    }
-
-    /// @inheritdoc ITokenizedRegistry
-    function findTokenId(string calldata label) external view returns (uint256 tokenId) {
-        return getTokenId(LibLabel.id(label));
-    }
-
     /// @inheritdoc IStandardRegistry
     function setSubregistry(uint256 anyId, IRegistry registry) public virtual {
         (uint256 tokenId, Entry storage entry) =
@@ -283,7 +263,10 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// @inheritdoc IRegistry
     function getSubregistry(string calldata label) public view virtual returns (IRegistry) {
         Entry storage entry = _entry(LibLabel.id(label));
-        return _isExpired(entry.expiry) ? IRegistry(address(0)) : entry.subregistry;
+        return
+            _isExpired(entry.expiry)
+                ? IRegistry(address(0))
+                : entry.subregistry;
     }
 
     /// @inheritdoc IRegistry
@@ -297,9 +280,32 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         return (_parentRegistry, _childLabel);
     }
 
+    /// @inheritdoc IContractNamer
+    function isContractNamer(address namer) public view returns (bool) {
+        return hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, namer);
+    }
+
+    /// @inheritdoc ITemporalRegistry
+    function findExpiry(string calldata label) public view returns (uint64) {
+        return getExpiry(LibLabel.id(label));
+    }
+
+    /// @inheritdoc IOwnedRegistry
+    function findOwner(string calldata label) public view returns (address) {
+        return ownerOf(findTokenId(label));
+    }
+
+    /// @inheritdoc ITokenizedRegistry
+    function findTokenId(string calldata label) public view returns (uint256) {
+        return getTokenId(LibLabel.id(label));
+    }
+
     /// @inheritdoc ERC1155Singleton
     function uri(uint256 tokenId) public view override returns (string memory) {
-        return address(_uriRenderer) != address(0) ? _uriRenderer.renderURI(this, tokenId) : _uri;
+        return
+            address(_uriRenderer) != address(0)
+                ? _uriRenderer.renderURI(this, tokenId)
+                : _uri;
     }
 
     /// @inheritdoc IStandardRegistry
@@ -631,7 +637,9 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         return
             LibLabel.withVersion(
                 anyId,
-                _isExpired(entry.expiry) ? entry.eacVersionId + 1 : entry.eacVersionId
+                _isExpired(entry.expiry)
+                    ? entry.eacVersionId + 1
+                    : entry.eacVersionId
             );
     }
 

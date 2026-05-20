@@ -130,13 +130,6 @@ describe("ENSV2Resolver", () => {
         expectVar({ resolver }).toEqualAddress(myResolver.address);
         expectVar({ offchain }).toStrictEqual(false);
       }
-      // check requiresOffchain
-      {
-        const offchain = await F.ensV2Resolver.read.requiresOffchain([
-          dnsEncodeName(name),
-        ]);
-        expectVar({ offchain }).toStrictEqual(false);
-      }
     });
   }
 });

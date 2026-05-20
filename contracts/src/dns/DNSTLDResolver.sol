@@ -203,11 +203,6 @@ contract DNSTLDResolver is
     }
 
     /// @inheritdoc ICompositeResolver
-    function requiresOffchain(bytes calldata name) external view returns (bool offchain) {
-        offchain = _determineMainnetResolver(name) == address(0);
-    }
-
-    /// @inheritdoc ICompositeResolver
     /// @dev This function executes over multiple steps.
     function getResolver(bytes calldata name) external view returns (address, bool) {
         address resolver = _determineMainnetResolver(name);

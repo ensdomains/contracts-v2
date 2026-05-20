@@ -47,13 +47,6 @@ describe("ENSV1Resolver", () => {
     },
   });
 
-  it("requiresOffchain", async () => {
-    const F = await network.networkHelpers.loadFixture(fixture);
-    await expect(
-      F.ensV1Resolver.read.requiresOffchain([dnsEncodeName("any.eth")]),
-    ).resolves.toStrictEqual(false);
-  });
-
   for (const name of [
     "test.eth",
     "sub.test.eth",
@@ -95,12 +88,6 @@ describe("ENSV1Resolver", () => {
           dnsEncodeName(name),
         ]);
         expectVar({ resolver }).toEqualAddress(F.v1.publicResolver.address);
-        expectVar({ offchain }).toStrictEqual(false);
-      }
-      {
-        const offchain = await F.ensV1Resolver.read.requiresOffchain([
-          dnsEncodeName(name),
-        ]);
         expectVar({ offchain }).toStrictEqual(false);
       }
     });

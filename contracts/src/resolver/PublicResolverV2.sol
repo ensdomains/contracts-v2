@@ -11,7 +11,6 @@ import {InterfaceResolver} from "@ens/contracts/resolvers/profiles/InterfaceReso
 import {NameResolver} from "@ens/contracts/resolvers/profiles/NameResolver.sol";
 import {PubkeyResolver} from "@ens/contracts/resolvers/profiles/PubkeyResolver.sol";
 import {TextResolver} from "@ens/contracts/resolvers/profiles/TextResolver.sol";
-import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 
 import {HCAContext} from "../hca/HCAContext.sol";
@@ -182,20 +181,7 @@ contract PublicResolverV2 is
         if (name.length == 0) {
             return false;
         }
-        (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
-        if (labelHash == bytes32(0)) {
-            return false;
-        }
-        address parent = address(LibRegistry.findExactRegistry(ROOT_REGISTRY, name, offset));
-        if (parent == address(0)) {
-            return false;
-        }
-        IPermissionedRegistry.State memory state =
-            IPermissionedRegistry(parent).getState(uint256(labelHash));
-        if (state.status != IPermissionedRegistry.Status.REGISTERED) {
-            return false;
-        }
-        address owner = state.latestOwner;
+        address owner = LibRegistry.findOwner(ROOT_REGISTRY, name, 0);
         return
             owner == operator ||
             isApprovedForAll(owner, operator) ||

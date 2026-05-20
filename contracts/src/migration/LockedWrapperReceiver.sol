@@ -209,16 +209,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @dev The ENSv2 registry being migrated to.
     function _getRegistry() internal view virtual returns (IRegistry);
 
-    /// @dev Determine if `label` is emancipated but not-yet migrated.
-    function _isMigratableChild(string memory label) internal view returns (bool) {
-        bytes32 node = NameCoder.namehash(getWrappedNode(), keccak256(bytes(label)));
-        (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
-        return
-            ownerV1 != address(0) &&
-            ownerV1 != address(GRAVEYARD) &&
-            LibMigration.isEmancipatedChild(fuses);
-    }
-
     /// @dev Convert fuses to equivalent subregistry root roles.
     function _subregistryRoleBitmapFromFuses(uint32 fuses)
         internal
