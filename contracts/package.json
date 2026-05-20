@@ -59,6 +59,7 @@
     "coverage": "bun run coverage:forge && bun run coverage:hardhat && bun run coverage:reports",
     "clean": "forge clean && hardhat clean && rm -rf coverage/",
     "devnet": "bun run compile && bun ./script/runDevnet.ts",
+    "tenderly": "bun run compile && bun ./script/runTenderly.ts",
     "aakit": "bun ./script/deployAAkit.ts"
   },
   "type": "module"

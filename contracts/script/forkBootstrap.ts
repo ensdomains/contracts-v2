@@ -1,6 +1,15 @@
-import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
+import { access, readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type Address, parseEther } from "viem";
+
+async function fileExists(path: string) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // v1 contracts on canonical mainnet that v2 deploys and `setup.ts` reference
 // by name through rocketh's `get()`. Pre-populated into the devnet deployments
@@ -41,6 +50,14 @@ const V1_OWNABLE_NAMES = [
 export const ENS_DAO_MULTISIG: Address =
   "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7";
 
+/** Operational owner for Sepolia ENS contracts (Root, BaseRegistrar, NameWrapper, …). */
+export const SEPOLIA_OPERATIONS_OWNER: Address =
+  "0x0F32b753aFc8ABad9Ca6fE589F707755f4df2353";
+
+/** ENS testnet Safe referenced in ens-contracts docs (funded for privileged txs). */
+export const ENS_TESTNET_SAFE: Address =
+  "0x343431e9CEb7C19cC8d3eA0EE231bfF82B584910";
+
 // Original ETHRegistrarController deployed at mainnet block 9380471. Still
 // authorised on `BaseRegistrarImplementation.controllers` on canonical
 // mainnet, so `activateV2` must explicitly revoke it. The address is
@@ -80,45 +97,78 @@ export async function bootstrapForkDeployments({
   deploymentsDir,
   canonicalDir,
   chainId,
+  extraFundAddresses = [],
+  skipMissingArtifacts = false,
 }: {
   client: ClientLike;
   deploymentsDir: string;
   canonicalDir: string;
   chainId: number;
+  /** Additional EOAs/contracts to fund for impersonated writes on forks. */
+  extraFundAddresses?: Address[];
+  /** When true, skip v1 artifacts absent from `canonicalDir` (e.g. Sepolia). */
+  skipMissingArtifacts?: boolean;
 }) {
   await mkdir(deploymentsDir, { recursive: true });
 
+  const bootstrapped = new Set<string>();
   for (const name of V1_DEPLOYMENT_NAMES) {
-    const src = JSON.parse(
-      await readFile(join(canonicalDir, `${name}.json`), "utf8"),
-    );
+    const artifactPath = join(canonicalDir, `${name}.json`);
+    if (!(await fileExists(artifactPath))) {
+      if (!skipMissingArtifacts) {
+        throw new Error(`missing canonical deployment artifact: ${name}`);
+      }
+      console.warn(
+        `  - skipping ${name}: no artifact in ${canonicalDir} (will deploy on fork if needed)`,
+      );
+      continue;
+    }
+    const src = JSON.parse(await readFile(artifactPath, "utf8"));
     const dst = { address: src.address, abi: src.abi };
     await writeFile(
       join(deploymentsDir, `${name}.json`),
       JSON.stringify(dst, null, 2),
     );
+    bootstrapped.add(name);
   }
 
-  // Synthesise the LegacyETHRegistrarController rocketh artifact from the
-  // hard-coded mainnet address + the archive ABI, so `rocketh.get(...)` in
-  // `setup.ts` resolves to the live contract during fork-mode activateV2.
-  const legacyArchive = JSON.parse(
-    await readFile(
-      join(canonicalDir, LEGACY_ETH_REGISTRAR_CONTROLLER_ARCHIVE),
-      "utf8",
-    ),
+  // LegacyETHRegistrarController: prefer the canonical network artifact when
+  // present (Sepolia ships one); otherwise fall back to the mainnet archive.
+  const legacyCanonicalPath = join(
+    canonicalDir,
+    "LegacyETHRegistrarController.json",
   );
-  await writeFile(
-    join(deploymentsDir, "LegacyETHRegistrarController.json"),
-    JSON.stringify(
-      {
-        address: LEGACY_ETH_REGISTRAR_CONTROLLER_ADDRESS,
-        abi: legacyArchive.abi,
-      },
-      null,
-      2,
-    ),
-  );
+  if (await fileExists(legacyCanonicalPath)) {
+    const legacy = JSON.parse(await readFile(legacyCanonicalPath, "utf8"));
+    await writeFile(
+      join(deploymentsDir, "LegacyETHRegistrarController.json"),
+      JSON.stringify(
+        { address: legacy.address, abi: legacy.abi },
+        null,
+        2,
+      ),
+    );
+    bootstrapped.add("LegacyETHRegistrarController");
+  } else {
+    const legacyArchive = JSON.parse(
+      await readFile(
+        join(canonicalDir, LEGACY_ETH_REGISTRAR_CONTROLLER_ARCHIVE),
+        "utf8",
+      ),
+    );
+    await writeFile(
+      join(deploymentsDir, "LegacyETHRegistrarController.json"),
+      JSON.stringify(
+        {
+          address: LEGACY_ETH_REGISTRAR_CONTROLLER_ADDRESS,
+          abi: legacyArchive.abi,
+        },
+        null,
+        2,
+      ),
+    );
+    bootstrapped.add("LegacyETHRegistrarController");
+  }
 
   // Mirror the canonical `.chain` so rocketh's chainId/genesisHash checks pass
   // against the live forked node (which exposes the upstream genesis at block
@@ -138,8 +188,12 @@ export async function bootstrapForkDeployments({
     );
   }
 
-  const ownerAddrs = new Set<Address>([ENS_DAO_MULTISIG]);
+  const ownerAddrs = new Set<Address>([
+    ENS_DAO_MULTISIG,
+    ...extraFundAddresses,
+  ]);
   for (const name of V1_OWNABLE_NAMES) {
+    if (!bootstrapped.has(name)) continue;
     const src = JSON.parse(
       await readFile(join(canonicalDir, `${name}.json`), "utf8"),
     );
