@@ -1,30 +1,9 @@
 {
-  "contracts/lib/buffer": {
-    "rev": "82cc81935de1d1a82e021cf1030d902c5248982b"
-  },
-  "contracts/lib/forge-std": {
-    "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
-  },
-  "contracts/lib/openzeppelin-contracts": {
-    "rev": "e4f70216d759d8e6a64144a9e1f7bbeed78e7079"
-  },
-  "contracts/lib/openzeppelin-contracts-upgradeable": {
-    "rev": "5fc3fee14043035097ae718387200f4f4daaa982"
-  },
-  "contracts/lib/openzeppelin-contracts-v4": {
-    "rev": "54b3f14346da01ba0d159114b399197fea8b7cda"
-  },
-  "contracts/lib/solsha1": {
-    "rev": "c4fbe97cf5e8c1b8d607001588fd23abb5bfb923"
-  },
-  "contracts/lib/verifiable-factory": {
-    "rev": "04ec76f4c211bff795235feae90ad01882477ca1"
-  },
   "lib/buffer": {
     "rev": "82cc81935de1d1a82e021cf1030d902c5248982b"
   },
   "lib/ens-contracts": {
-    "rev": "6d877523e11f647ed62e8ee159f48f288c9cd9e9"
+    "rev": "5787a5fd9eaff6cdba3d9d23d3ce4ec2b50d4e4d"
   },
   "lib/forge-std": {
     "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
@@ -48,10 +27,7 @@
     "rev": "c4fbe97cf5e8c1b8d607001588fd23abb5bfb923"
   },
   "lib/unruggable-gateways": {
-    "tag": {
-      "name": "v1.3.5",
-      "rev": "7426ac57509e2023a673956439eed29998d2e371"
-    }
+    "rev": "7426ac57509e2023a673956439eed29998d2e371"
   },
   "lib/verifiable-factory": {
     "rev": "04ec76f4c211bff795235feae90ad01882477ca1"

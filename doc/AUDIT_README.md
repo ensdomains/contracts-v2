@@ -1,5 +1,11 @@
 # ENSv2 Audit Scope
 
+## 0. Changelog
+
+- Audit fix commit (6th May 2026): [ffe4a731c5489a2cc032639b205f36341d7ac660](https://github.com/ensdomains/contracts-v2/commit/ffe4a731c5489a2cc032639b205f36341d7ac660). 14 files touched in `contracts/src/**.sol` (1 added, 13 modified) and +370 LoC additions/modifications (`cloc --diff`, code-only). [diff](https://github.com/ensdomains/contracts-v2/compare/41b67f10d8a62151e67649d98b92bc2317fa56a8...ffe4a731c5489a2cc032639b205f36341d7ac660)
+- Initial audit commit (16th March 2026): [41b67f10d8a62151e67649d98b92bc2317fa56a8](https://github.com/ensdomains/contracts-v2/commit/41b67f10d8a62151e67649d98b92bc2317fa56a8)
+
+
 ## 1. Project Overview
 
 ENSv2 is the next-generation Ethereum Name Service, transitioning from a flat registry to a hierarchical system with cross-chain support.
@@ -41,7 +47,9 @@ All Solidity source files under `contracts/src/`. To generate the current file l
 tree src -P '*.sol' --prune -I '*.t.sol'
 ```
 
-At time of writing: **48 files, ~6,500 lines** (subject to change until scope is frozen).
+At current `main` (`ffe4a73`): **61 files, 4,410 code lines** (8,057 raw lines incl. comments + blanks; subject to change until scope is frozen).
+
+LoC differences between each audit interval are measured using `cloc --diff` on `contracts/src/**.sol` (code-only; comments and blanks excluded). `+code` is the canonical sizing metric: `added.code + modified.code`.
 
 ### Secondary repository: `ensdomains/verifiable-factory`
 
@@ -58,14 +66,6 @@ At time of writing: **48 files, ~6,500 lines** (subject to change until scope is
 
 ## 4. Open PRs Pending Merge
 
-The following PRs modify in-scope `.sol` files and may merge before the audit commit is frozen:
-
-| PR | Title | Author | Status | Reviewers | .sol files |
-|----|-------|--------|--------|-----------|------------|
-| #229 | chore: documentation consistency | TateB | Draft | -- | `DNSAliasResolver`, `ERC1155Singleton`, +9 |
-| #235 | More Migration Tests | adraffy | Review | Arachnid | `LockedMigrationController`, `UnlockedMigrationController`, +10 |
-| #213 | BET 559: add pre migration script | hiddentao | Review | adraffy, Arachnid | `BatchRegistrar`, +1 |
-| #215 | feat: l2 reverse registrar | TateB | Review | -- | `L2ReverseRegistrar`, `ChainIdsBuilderLib`, +14 |
 
 ## 5. Key Areas of Concern
 

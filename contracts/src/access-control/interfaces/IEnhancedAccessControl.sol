@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-
 /// @notice Interface for Enhanced Access Control system that allows for:
 /// * Resource-based roles
 /// * Obtaining assignee count for each role in each resource
@@ -11,7 +9,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 /// * Up to 15 assignees per role
 ///
 /// @dev Interface selector: `0x8f452d62`
-interface IEnhancedAccessControl is IERC165 {
+interface IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////

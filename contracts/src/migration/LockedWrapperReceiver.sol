@@ -5,20 +5,19 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {
     INameWrapper,
     CAN_EXTEND_EXPIRY,
-    CANNOT_BURN_FUSES,
-    CANNOT_TRANSFER,
-    CANNOT_SET_RESOLVER,
+    CANNOT_APPROVE,
     CANNOT_CREATE_SUBDOMAIN,
-    IS_DOT_ETH,
-    PARENT_CANNOT_CONTROL
+    CANNOT_SET_RESOLVER,
+    CANNOT_TRANSFER
 } from "@ens/contracts/wrapper/INameWrapper.sol";
-import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
@@ -48,27 +47,41 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The shared factory for verifiable deployments.
-    VerifiableFactory public immutable VERIFIABLE_FACTORY;
+    IVerifiableFactory public immutable VERIFIABLE_FACTORY;
 
     /// @notice The `WrapperRegistry` implementation contract.
     address public immutable WRAPPER_REGISTRY_IMPL;
+
+    /// @notice The list of `PublicResolver` contracts that require replacement.
+    IAddressSet public immutable PUBLIC_RESOLVER_SET;
+
+    /// @notice The replacement `PublicResolver`.
+    address public immutable PUBLIC_RESOLVER;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
+    /// @param publicResolverSet The list of `PublicResolver` contracts that require replacement.
+    /// @param publicResolver The replacement `PublicResolver`.
     constructor(
         INameWrapper nameWrapper,
-        VerifiableFactory verifiableFactory,
-        address wrapperRegistryImpl
+        address graveyard,
+        IVerifiableFactory verifiableFactory,
+        address wrapperRegistryImpl,
+        IAddressSet publicResolverSet,
+        address publicResolver
     )
-        AbstractWrapperReceiver(nameWrapper)
+        AbstractWrapperReceiver(nameWrapper, graveyard)
     {
         VERIFIABLE_FACTORY = verifiableFactory;
         WRAPPER_REGISTRY_IMPL = wrapperRegistryImpl;
+        PUBLIC_RESOLVER_SET = publicResolverSet;
+        PUBLIC_RESOLVER = publicResolver;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -109,17 +122,26 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             // same as NameCoder.assertLabelSize()
             // see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort()` and `test_nameWrapper_labelTooLong()`.
 
+            address resolver = md.resolver;
             (, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
-            if (_isLocked(fuses)) {
-                if (NAME_WRAPPER.getApproved(uint256(node)) != address(0)) {
+            if (LibMigration.isLocked(fuses)) {
+                if (
+                    (fuses & CANNOT_APPROVE) != 0 &&
+                    NAME_WRAPPER.getApproved(uint256(node)) != address(0)
+                ) {
                     revert LibMigration.FrozenTokenApproval(uint256(node));
                 }
 
                 if ((fuses & CANNOT_SET_RESOLVER) == 0) {
                     NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
                 } else {
-                    md.resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
+                    resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
+                    if (PUBLIC_RESOLVER_SET.includes(resolver)) {
+                        resolver = PUBLIC_RESOLVER; // replace with new PublicResolver
+                    }
                 }
+
+                NAME_WRAPPER.safeTransferFrom(address(this), GRAVEYARD, uint256(node), 1, ""); // transfer to graveyard
 
                 // create subregistry
                 IRegistry subregistry =
@@ -148,21 +170,20 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                     md.label,
                     md.owner,
                     subregistry,
-                    md.resolver,
+                    resolver,
                     _tokenRoleBitmapFromFuses(fuses),
                     expiry
                 );
-            } else if (_isEmancipatedChild(fuses)) {
-                NAME_WRAPPER.unwrap(parentNode, labelHash, address(this));
+            } else if (LibMigration.isEmancipatedChild(fuses)) {
+                NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
+                NAME_WRAPPER.unwrap(parentNode, labelHash, GRAVEYARD); // unwrap and transfer to graveyard
 
-                _REGISTRY_V1.setResolver(node, address(0)); // clear ENSv1 resolver
-
-                // same as UnlockedMigrationController
+                // add name to ENSv2 (same as UnlockedMigrationController)
                 _inject(
                     md.label,
                     md.owner,
                     md.subregistry,
-                    md.resolver,
+                    resolver,
                     REGISTRATION_ROLE_BITMAP,
                     expiry
                 );
@@ -188,25 +209,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     /// @dev The ENSv2 registry being migrated to.
     function _getRegistry() internal view virtual returns (IRegistry);
 
-    /// @dev Determine if `label` is emancipated but not-yet migrated.
-    function _isMigratableChild(string memory label) internal view returns (bool) {
-        bytes32 node = NameCoder.namehash(getWrappedNode(), keccak256(bytes(label)));
-        (address ownerV1, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
-        return ownerV1 != address(0) && ownerV1 != address(this) && _isEmancipatedChild(fuses);
-    }
-
-    /// @dev Returns `true` if the NameWrapper token fuses are not frozen.
-    function _notFrozen(uint32 fuses) internal pure returns (bool) {
-        return (fuses & CANNOT_BURN_FUSES) == 0;
-    }
-
-    /// @dev Returns `true` if the NameWrapper token is emancipated and not 2LD .eth.
-    function _isEmancipatedChild(uint32 fuses) internal pure returns (bool) {
-        // PARENT_CANNOT_CONTROL must be set for the entire ancestory.
-        // see: V1Fixture.t.sol: `test_nameWrapper_PARENT_CANNOT_CONTROL_withoutParent()`
-        return (fuses & (IS_DOT_ETH | PARENT_CANNOT_CONTROL)) == PARENT_CANNOT_CONTROL;
-    }
-
     /// @dev Convert fuses to equivalent subregistry root roles.
     function _subregistryRoleBitmapFromFuses(uint32 fuses)
         internal
@@ -216,10 +218,14 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR;
         }
-        if (_notFrozen(fuses)) {
+        if (LibMigration.notFrozen(fuses)) {
             roleBitmap |= roleBitmap << 128; // give admin
         }
-        roleBitmap |= RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN;
+        roleBitmap |=
+            RegistryRolesLib.ROLE_RENEW |
+            RegistryRolesLib.ROLE_RENEW_ADMIN |
+            RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN;
     }
 
     /// @dev Convert fuses to equivalent token roles.
@@ -230,7 +236,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         if ((fuses & CANNOT_SET_RESOLVER) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_SET_RESOLVER;
         }
-        if (_notFrozen(fuses)) {
+        if (LibMigration.notFrozen(fuses)) {
             roleBitmap |= roleBitmap << 128; // give admin
         }
         if ((fuses & CANNOT_TRANSFER) == 0) {

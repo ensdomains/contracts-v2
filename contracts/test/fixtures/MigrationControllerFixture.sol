@@ -5,20 +5,34 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
+import {Graveyard} from "~src/migration/Graveyard.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
+import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 
-// initial gas analysis
+// forge test test/unit/migration/UnlockedMigrationController.t.sol -vv
+// forge test test/unit/migration/LockedMigrationController.t.sol -vv
+
+// [initial gas analysis]
 // * Unwrapped: 160300
 // * Unlocked: 179367
 // * Locked: 658489 (~500k for VerifiedFactory => WrapperRegistry)
 
+// [after graveyard]
+// * Unwrapped: 193011 (+32K)
+// * Unlocked: 183292 (+4K)
+// * Locked: 665863 (+7K)
+
+/// @dev Reusable testing fixture for migration.
 contract MigrationControllerFixture is V1Fixture, V2Fixture {
     ENSV1Resolver ensV1Resolver;
     ENSV2Resolver ensV2Resolver;
+    Graveyard graveyard;
     MockERC721 dummy721;
     MockERC1155 dummy1155;
 
@@ -26,16 +40,30 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     address testResolver = makeAddr("resolver");
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address premigrationController = makeAddr("premigrationController");
+    uint64 premigrationBonusPeriod = StandardRegistrar.BONUS_PERIOD;
+
+    address actor = makeAddr("actor");
     address friend = makeAddr("friend");
 
-    function setUp() public virtual {
+    function deployMigrationControllerFixture() public {
         deployV1Fixture();
         deployV2Fixture();
+
+        ethRegistry.grantRootRoles(
+            RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW,
+            premigrationController
+        );
+
         ensV1Resolver = new ENSV1Resolver(registryV1, batchGatewayProvider);
         ensV2Resolver = new ENSV2Resolver(rootRegistry, batchGatewayProvider, address(0));
+
+        graveyard = new Graveyard(nameWrapper);
+
+        baseRegistrar.setResolver(address(ensV2Resolver));
+        baseRegistrar.addController(address(graveyard));
+
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();
-        ethRegistrarV1.setResolver(address(ensV2Resolver));
     }
 
     /// @dev Ensure premigration has occurred.
@@ -53,7 +81,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
                 IRegistry(address(0)),
                 address(ensV1Resolver), // fallback
                 0,
-                uint64(ethRegistrarV1.nameExpires(tokenId))
+                uint64(baseRegistrar.nameExpires(tokenId)) + premigrationBonusPeriod
             );
         }
     }
@@ -78,6 +106,21 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 
     function _soon() internal view returns (uint64) {
         return uint64(block.timestamp + 1000);
+    }
+
+    function _unlockedData(bytes memory name) internal view returns (LibMigration.Data memory) {
+        return
+            LibMigration.Data({label: NameCoder.firstLabel(name), owner: testOwner, subregistry: testRegistry, resolver: testResolver});
+    }
+
+    function _lockedData(bytes memory name) internal view returns (LibMigration.Data memory) {
+        return
+            LibMigration.Data({
+                label: NameCoder.firstLabel(name),
+                owner: nameWrapper.ownerOf(uint256(NameCoder.namehash(name, 0))),
+                subregistry: IRegistry(address(0)), // ignored by LockedMigrationController
+                resolver: testResolver
+            });
     }
 }
 

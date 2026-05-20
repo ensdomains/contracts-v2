@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
-import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
@@ -13,10 +14,12 @@ import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol"
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
+import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
+import {LibLabel} from "../utils/LibLabel.sol";
 
 import {ApprovedUpgradeGate} from "./ApprovedUpgradeGate.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
-import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
@@ -62,21 +65,34 @@ contract WrapperRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @param nameWrapper The ENSv1 NameWrapper.
+    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.
     /// @param hcaFactory The HCA factory.
-    /// @param metadataProvider The metadata provider.
     /// @param upgradeGate The upgrade target allowlist.
+    /// @param labelStore The shared label database.
+    /// @param publicResolverSet The approved list of `PublicResolver` contracts.
+    /// @param publicResolver The replacement `PublicResolver`.
     constructor(
         INameWrapper nameWrapper,
-        VerifiableFactory verifiableFactory,
+        address graveyard,
+        IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
         IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadataProvider,
-        ApprovedUpgradeGate upgradeGate
+        ApprovedUpgradeGate upgradeGate,
+        ILabelStore labelStore,
+        IAddressSet publicResolverSet,
+        address publicResolver
     )
-        PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0) // no roles are granted
-        LockedWrapperReceiver(nameWrapper, verifiableFactory, address(this))
+        PermissionedRegistry(hcaFactory, labelStore, address(0), 0) // no roles are granted
+        LockedWrapperReceiver(
+            nameWrapper,
+            graveyard,
+            verifiableFactory,
+            address(this),
+            publicResolverSet,
+            publicResolver
+        )
     {
         V1_RESOLVER = ensV1Resolver;
         UPGRADE_GATE = upgradeGate;
@@ -103,7 +119,7 @@ contract WrapperRegistry is
         bytes32 node,
         IRegistry parentRegistry,
         string calldata childLabel,
-        address admin,
+        address rootAccount,
         uint256 roleBitmap
     )
         public
@@ -113,12 +129,8 @@ contract WrapperRegistry is
         // setup canonical parent (ROLE_SET_PARENT is not granted)
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
-        _grantRoles(
-            ROOT_RESOURCE,
-            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN | roleBitmap,
-            admin,
-            false
-        );
+        emit RegistryCreated();
+        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -229,5 +241,21 @@ contract WrapperRegistry is
     /// @inheritdoc LockedWrapperReceiver
     function _getRegistry() internal view override returns (IRegistry) {
         return this;
+    }
+
+    /// @dev Determine if `label` is emancipated but not-yet migrated.
+    function _isMigratableChild(string memory label) internal view returns (bool) {
+        uint256 labelId = LibLabel.id(label);
+        if (getExpiry(labelId) > 0) {
+            return false; // has been registered before, v2 is authority
+        }
+        bytes32 node = NameCoder.namehash(_node, bytes32(labelId));
+        (, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
+        // NameWrapper preserves fuses across `_burn()`, so the PARENT_CANNOT_CONTROL
+        // bit stays readable after unwrap and is the primary signal. Require an
+        // active v1 registry owner.  A null owner means the subname was ABANDONED
+        // and reserving the label would lock it forever; positive expiry on either
+        // side marks a completed migration.
+        return LibMigration.isEmancipatedChild(fuses) && _REGISTRY_V1.owner(node) != address(0);
     }
 }

@@ -4,7 +4,6 @@
 pragma solidity ^0.8.20;
 
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {HCAContext} from "../hca/HCAContext.sol";
 
@@ -106,14 +105,8 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc IERC165
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        virtual
-        override(ERC165, IERC165)
-        returns (bool)
-    {
+    /// @inheritdoc ERC165
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(IEnhancedAccessControl).interfaceId ||
             super.supportsInterface(interfaceId);
@@ -362,9 +355,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     )
         internal
         virtual
-    {
-        // solhint-disable-previous-line no-empty-blocks
-    }
+    {}
 
     /// @dev Callback for when roles are revoked.
     /// @param resource The resource that the roles were revoked within.
@@ -381,9 +372,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     )
         internal
         virtual
-    {
-        // solhint-disable-previous-line no-empty-blocks
-    }
+    {}
 
     /// @dev Reverts if `account` does not have all the given roles.
     function _checkRoles(uint256 resource, uint256 roleBitmap, address account)
@@ -435,7 +424,8 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
-        uint256 roleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
+        uint256 roleBitmap =
+            (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
         return (roleBitmap << 128) | roleBitmap;
     }
 
@@ -452,7 +442,8 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
-        uint256 roleBitmap = (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
+        uint256 roleBitmap =
+            (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
         return (roleBitmap << 128) | roleBitmap;
     }
 

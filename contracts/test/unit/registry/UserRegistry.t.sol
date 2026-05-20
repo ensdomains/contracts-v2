@@ -12,11 +12,11 @@ import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
-import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
+import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
+import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 
 contract UserRegistryTest is Test, ERC1155Holder {
     // Test constants
@@ -25,7 +25,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
     // Contracts
     VerifiableFactory factory;
     MockHCAFactoryBasic hcaFactory;
-    SimpleRegistryMetadata metadata;
+    LabelStore labelStore;
     UserRegistry implementation;
     UserRegistry proxy;
 
@@ -35,23 +35,22 @@ contract UserRegistryTest is Test, ERC1155Holder {
     address user2 = makeAddr("user2");
 
     function setUp() public {
-        // Deploy the factory
         factory = new VerifiableFactory();
-
-        // Deploy the HCA factory
         hcaFactory = new MockHCAFactoryBasic();
-
-        // Deploy metadata provider
-        metadata = new SimpleRegistryMetadata(hcaFactory);
+        labelStore = new LabelStore();
 
         // Deploy the implementation
-        implementation = new UserRegistry(hcaFactory, metadata);
+        vm.expectEmit();
+        emit IRegistryEvents.RegistryCreated();
+        implementation = new UserRegistry(hcaFactory, labelStore);
 
         // Create initialization data
         bytes memory initData =
             abi.encodeCall(UserRegistry.initialize, (admin, EACBaseRolesLib.ALL_ROLES));
 
         // Deploy the proxy using the factory
+        vm.expectEmit();
+        emit IRegistryEvents.RegistryCreated();
         vm.prank(admin);
         address proxyAddress = factory.deployProxy(address(implementation), SALT, initData);
 
@@ -256,7 +255,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
     // Test for contract upgradeability
     function test_upgrade() public {
         // Deploy a new implementation
-        UserRegistryV2Mock newImplementation = new UserRegistryV2Mock(hcaFactory, metadata);
+        UserRegistryV2Mock newImplementation = new UserRegistryV2Mock(hcaFactory, labelStore);
 
         // Upgrade the proxy
         vm.prank(admin);
@@ -269,7 +268,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
     function test_Revert_unauthorized_upgrade() public {
         // Deploy a new implementation
-        UserRegistryV2Mock newImplementation = new UserRegistryV2Mock(hcaFactory, metadata);
+        UserRegistryV2Mock newImplementation = new UserRegistryV2Mock(hcaFactory, labelStore);
 
         // User1 tries to upgrade without permission
         vm.expectRevert(
@@ -331,8 +330,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
 // Mock V2 contract for testing upgrades
 contract UserRegistryV2Mock is UserRegistry {
-    constructor(IHCAFactoryBasic _hcaFactory, IRegistryMetadata _metadataProvider)
-        UserRegistry(_hcaFactory, _metadataProvider)
+    constructor(IHCAFactoryBasic hcaFactory, ILabelStore labelStore)
+        UserRegistry(hcaFactory, labelStore)
     {}
     function version() public pure returns (uint256) {
         return 2;

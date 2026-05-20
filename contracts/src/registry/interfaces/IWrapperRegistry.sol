@@ -11,13 +11,13 @@ interface IWrapperRegistry is IPermissionedRegistry {
     /// @param node Namehash of this registry.
     /// @param parentRegistry The parent of this registry.
     /// @param childLabel The subdomain for this registry.
-    /// @param admin Address that will control this registry.
-    /// @param roleBitmap The roles assigned to `admin`.
+    /// @param rootAccount Account granted root roles.
+    /// @param roleBitmap The role bitmap granted to `rootAccount`.
     function initialize(
         bytes32 node,
         IRegistry parentRegistry,
         string calldata childLabel,
-        address admin,
+        address rootAccount,
         uint256 roleBitmap
     )
         external;

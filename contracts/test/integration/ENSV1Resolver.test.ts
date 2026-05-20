@@ -3,13 +3,12 @@ import hre from "hardhat";
 import { describe, expect, it } from "vitest";
 
 import {
-  COIN_TYPE_ETH,
   type KnownProfile,
   bundleCalls,
   makeResolutions,
 } from "../utils/resolutions.js";
 import { shouldSupportFeatures } from "../utils/supportsFeatures.js";
-import { dnsEncodeName } from "../utils/utils.js";
+import { dnsEncodeName, COIN_TYPE_ETH } from "../utils/utils.js";
 import { deployV1Fixture } from "./fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "./fixtures/deployV2Fixture.js";
 import { expectVar } from "../utils/expectVar.js";
@@ -44,13 +43,6 @@ describe("ENSV1Resolver", () => {
     features: {
       RESOLVER: ["RESOLVE_MULTICALL"],
     },
-  });
-
-  it("requiresOffchain", async () => {
-    const F = await network.networkHelpers.loadFixture(fixture);
-    await expect(
-      F.ensV1Resolver.read.requiresOffchain([dnsEncodeName("any.eth")]),
-    ).resolves.toStrictEqual(false);
   });
 
   for (const name of [
@@ -94,12 +86,6 @@ describe("ENSV1Resolver", () => {
           dnsEncodeName(name),
         ]);
         expectVar({ resolver }).toEqualAddress(F.v1.publicResolver.address);
-        expectVar({ offchain }).toStrictEqual(false);
-      }
-      {
-        const offchain = await F.ensV1Resolver.read.requiresOffchain([
-          dnsEncodeName(name),
-        ]);
         expectVar({ offchain }).toStrictEqual(false);
       }
     });

@@ -19,11 +19,9 @@ const FLAGS = {
     SET_SUBREGISTRY: 1n << 20n,
     SET_RESOLVER: 1n << 24n,
     CAN_TRANSFER: 1n << 28n,
+    WAS_RESERVED: 1n << 32n,
+    SET_URI: 1n << 36n,
     UPGRADE: 1n << 124n,
-  },
-  // see: ETHRegistrar.sol
-  REGISTRAR: {
-    SET_ORACLE: 1n << 0n,
   },
   // see: PermissionedResolver.sol / PermissionedResolverLib.sol
   RESOLVER: {
@@ -37,6 +35,11 @@ const FLAGS = {
     SET_ALIAS: 1n << 28n,
     CLEAR: 1n << 32n,
     UPGRADE: 1n << 124n,
+  },
+  // see: StandardRentPriceOracle.sol
+  ORACLE: {
+    UPDATE_TOKEN: 1n << 0n,
+    DISABLE_TOKEN: 1n << 4n,
   },
 } as const satisfies Flags;
 
@@ -67,26 +70,30 @@ export const DEPLOYMENT_ROLES = {
     ROLES.REGISTRY.SET_PARENT |
     ROLES.ADMIN.REGISTRY.SET_PARENT |
     ROLES.REGISTRY.RENEW |
-    ROLES.ADMIN.REGISTRY.RENEW,
+    ROLES.ADMIN.REGISTRY.RENEW |
+    ROLES.REGISTRY.SET_URI |
+    ROLES.ADMIN.REGISTRY.SET_URI,
   // .eth token: SET_SUBREGISTRY AR, SET_RESOLVER AR
   ETH_TOKEN:
     ROLES.REGISTRY.SET_SUBREGISTRY |
     ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
     ROLES.REGISTRY.SET_RESOLVER |
     ROLES.ADMIN.REGISTRY.SET_RESOLVER,
-  // Full registry role bitmap for ReverseRegistry root, .reverse token, and .addr token.
+  // .reverse token: full role bitmap.
   // Granting all roles is harmless; some (e.g. REGISTRAR) are root-only and don't apply to tokens.
-  REVERSE_AND_ADDR: FLAGS.ALL,
+  REVERSE_TOKEN: FLAGS.ALL,
   // ETHRegistry root deployer: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓, RENEW✓
   ETH_REGISTRY_ROOT:
     ROLES.ADMIN.REGISTRY.REGISTRAR |
     ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
     ROLES.REGISTRY.SET_PARENT |
     ROLES.ADMIN.REGISTRY.SET_PARENT |
-    ROLES.ADMIN.REGISTRY.RENEW,
-  // ETHRegistrar and BatchRegistrar are granted REGISTRAR and RENEW at the
-  // ETHRegistry root at static deploy.
+    ROLES.ADMIN.REGISTRY.RENEW |
+    ROLES.REGISTRY.SET_URI |
+    ROLES.ADMIN.REGISTRY.SET_URI,
+  // ETHRegistrar and BatchRegistrar are granted REGISTRAR and RENEW on ETHRegistry root at static deploy.
   ETH_REGISTRAR_ROOT: ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
+  ETH_RENEWER_V1_ROOT: ROLES.REGISTRY.RENEW,
   // UnlockedMigrationController and LockedMigrationController
   // only need to register() pre-migrated reservations on ETHRegistry (see: "ENSv2 Migration Case Study")
   MIGRATION_CONTROLLER_ROOT: ROLES.REGISTRY.REGISTER_RESERVED,
@@ -119,3 +126,43 @@ export const FUSE_MASKS = {
   PARENT_RESERVED: 0x0000ff80, // bits 7-15 (docs say 17-32)
   USER_SETTABLE: 0xfffdffff, // ~IS_DOT_ETH
 } as const;
+
+// see: StandardRegistrar.sol
+export const SEC_PER_YEAR = 31_557_600n;
+export const SEC_PER_DAY = 86400n;
+
+export const MIN_COMMITMENT_AGE = 60n; // 1 minute
+export const MAX_COMMITMENT_AGE = SEC_PER_DAY;
+
+export const GRACE_PERIOD_V1 = 90n * SEC_PER_DAY;
+export const GRACE_PERIOD_V2 = 28n * SEC_PER_DAY;
+export const PREMIGRATION_BONUS_PERIOD =
+  1n + (GRACE_PERIOD_V1 - GRACE_PERIOD_V2);
+
+export const PRICE_DECIMALS = 12;
+export const PRICE_SCALE = 10n ** BigInt(PRICE_DECIMALS);
+
+export const MIN_REGISTER_DURATION = 28n * SEC_PER_DAY;
+export const MIN_RENEW_DURATION = 1n;
+
+export const PREMIUM_PRICE_INITIAL = PRICE_SCALE * 100_000_000n;
+export const PREMIUM_HALVING_PERIOD = SEC_PER_DAY;
+export const PREMIUM_PERIOD = SEC_PER_DAY * 21n;
+
+export const BASE_RATE_PER_CP = [
+  0n,
+  0n,
+  PRICE_SCALE * 640n,
+  PRICE_SCALE * 160n,
+  PRICE_SCALE * 8n,
+].map((x) => (x + SEC_PER_YEAR - 1n) / SEC_PER_YEAR);
+
+export const DISCOUNT_DENOMINATOR = 10n ** 38n;
+function discountNumer(numer: bigint, denom: bigint) {
+  return (DISCOUNT_DENOMINATOR * numer) / denom;
+}
+export const DISCOUNT_POINTS: { duration: bigint; numer: bigint }[] = [
+  { duration: SEC_PER_YEAR * 2n, numer: discountNumer(7n, 8n) }, //// 1 - 14/16 = 12.50%
+  { duration: SEC_PER_YEAR * 3n, numer: discountNumer(11n, 16n) }, // 1 - 11/16 = 31.25%
+  { duration: SEC_PER_YEAR * 6n, numer: discountNumer(9n, 16n) }, /// 1 -  9/16 = 43.75%
+];

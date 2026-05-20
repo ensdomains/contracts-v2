@@ -2,7 +2,9 @@
 pragma solidity >=0.8.24;
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
+import {IOwnedRegistry} from "../../registry/interfaces/IOwnedRegistry.sol";
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
 /// @dev Recursive traversal helpers for the namechain registry tree — resolver lookup, registry
@@ -40,6 +42,25 @@ library LibRegistry {
             exactRegistry = exactRegistry.getSubregistry(label);
         }
         node = NameCoder.namehash(node, labelHash); // update namehash
+    }
+
+    /// @dev Find the owner for `name[offset:]`.
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name to search.
+    /// @return owner The owner address or null if unowned or not found.
+    function findOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)
+        internal
+        view
+        returns (address owner)
+    {
+        IRegistry registry = findParentRegistry(rootRegistry, name, offset);
+        if (
+            address(registry) != address(0) &&
+            ERC165Checker.supportsInterface(address(registry), type(IOwnedRegistry).interfaceId)
+        ) {
+            (string memory label, ) = NameCoder.extractLabel(name, offset);
+            owner = IOwnedRegistry(address(registry)).findOwner(label);
+        }
     }
 
     /// @dev Construct the canonical name for `registry`.
@@ -106,6 +127,21 @@ library LibRegistry {
         if (address(parent) != address(0)) {
             (string memory label, ) = NameCoder.extractLabel(name, offset);
             exactRegistry = parent.getSubregistry(label);
+        }
+    }
+
+    /// @dev Find the parent registry for `name[offset:]`.
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name to search.
+    /// @return parentRegistry The parent registry or null if not found.
+    function findParentRegistry(IRegistry rootRegistry, bytes memory name, uint256 offset)
+        internal
+        view
+        returns (IRegistry parentRegistry)
+    {
+        (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, offset);
+        if (labelHash != bytes32(0)) {
+            parentRegistry = findExactRegistry(rootRegistry, name, next);
         }
     }
 

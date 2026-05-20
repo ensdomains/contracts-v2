@@ -6,16 +6,14 @@ export default execute(
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
-    const registryMetadata = get<
-      (typeof artifacts.SimpleRegistryMetadata)["abi"]
-    >("SimpleRegistryMetadata");
+    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
     await deploy("RootRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
       args: [
         hcaFactory.address,
-        registryMetadata.address,
+        labelStore.address,
         deployer,
         DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
       ],
@@ -23,6 +21,6 @@ export default execute(
   },
   {
     tags: ["RootRegistry", "v2"],
-    dependencies: ["HCAFactory", "RegistryMetadata"],
+    dependencies: ["HCAFactory", "LabelStore"],
   },
 );

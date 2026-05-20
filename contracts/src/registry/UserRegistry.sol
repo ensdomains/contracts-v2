@@ -8,8 +8,8 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
-import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
@@ -24,24 +24,25 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
     ////////////////////////////////////////////////////////////////////////
 
     /// @param hcaFactory The HCA factory.
-    /// @param metadataProvider The metadata provider.
-    constructor(IHCAFactoryBasic hcaFactory, IRegistryMetadata metadataProvider)
-        PermissionedRegistry(hcaFactory, metadataProvider, address(0), 0)
+    /// @param labelStore The shared label database.
+    constructor(IHCAFactoryBasic hcaFactory, ILabelStore labelStore)
+        PermissionedRegistry(hcaFactory, labelStore, address(0), 0)
     {
         // This disables initialization for the implementation contract
         _disableInitializers();
     }
 
     /// @notice Initializes a proxy instance of `UserRegistry`.
-    /// @dev Grants the supplied role bitmap to `admin` on the root resource. Reverts if `admin`
-    ///      is the zero address.
-    /// @param admin The address that will receive the specified roles.
-    /// @param roleBitmap The role bitmap to grant to `admin`.
-    function initialize(address admin, uint256 roleBitmap) public initializer {
-        if (admin == address(0)) {
+    /// @dev Grants the supplied role bitmap to `rootAccount` on the root resource.
+    ///      Reverts if the zero address.
+    /// @param rootAccount Account granted root roles.
+    /// @param roleBitmap The role bitmap granted to `rootAccount`.
+    function initialize(address rootAccount, uint256 roleBitmap) public initializer {
+        if (rootAccount == address(0)) {
             revert InvalidOwner();
         }
-        _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
+        emit RegistryCreated();
+        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
     }
 
     /// @inheritdoc IERC165

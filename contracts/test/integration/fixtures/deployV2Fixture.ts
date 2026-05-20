@@ -18,11 +18,12 @@ export async function deployV2Fixture(
   });
   const [walletClient] = await network.viem.getWalletClients();
   const hcaFactory = await network.viem.deployContract("MockHCAFactoryBasic");
+  const labelStore = await network.viem.deployContract("LabelStore");
   const rootRegistry = await network.viem.deployContract(
     "PermissionedRegistry",
     [
       hcaFactory.address,
-      zeroAddress,
+      labelStore.address,
       walletClient.account.address,
       DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
     ],
@@ -31,7 +32,7 @@ export async function deployV2Fixture(
     "PermissionedRegistry",
     [
       hcaFactory.address,
-      zeroAddress,
+      labelStore.address,
       walletClient.account.address,
       DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
     ],
@@ -71,6 +72,7 @@ export async function deployV2Fixture(
     publicClient,
     walletClient,
     hcaFactory,
+    labelStore,
     rootRegistry,
     ethRegistry,
     batchGatewayProvider,
@@ -105,7 +107,6 @@ export async function deployV2Fixture(
     expiry = MAX_EXPIRY,
     roles = ROLES.ALL,
     resolverAddress,
-    metadataAddress = zeroAddress,
     exact,
   }: {
     name: string;
@@ -113,7 +114,6 @@ export async function deployV2Fixture(
     expiry?: bigint;
     roles?: bigint;
     resolverAddress?: Address;
-    metadataAddress?: Address;
     exact?: exact_;
   }) {
     const labels = splitName(name);
@@ -133,7 +133,7 @@ export async function deployV2Fixture(
             "PermissionedRegistry",
             [
               hcaFactory.address,
-              metadataAddress,
+              labelStore.address,
               walletClient.account.address,
               roles,
             ],

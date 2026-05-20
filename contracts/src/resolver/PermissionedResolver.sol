@@ -23,7 +23,6 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
@@ -204,13 +203,7 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc EnhancedAccessControl
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        virtual
-        override(IERC165, EnhancedAccessControl)
-        returns (bool)
-    {
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             type(IPermissionedResolver).interfaceId == interfaceId ||
             type(IExtendedResolver).interfaceId == interfaceId ||
@@ -564,11 +557,10 @@ contract PermissionedResolver is
         view
         returns (uint256 contentType, bytes memory value)
     {
-        // solgrid-disable-next-line naming/var-name-mixedcase
-        Record storage R = _record(node);
+        Record storage r = _record(node);
         for (contentType = 1; contentType > 0 && contentType <= contentTypes; contentType <<= 1) {
             if ((contentType & contentTypes) != 0) {
-                value = R.abis[contentType];
+                value = r.abis[contentType];
                 if (value.length > 0) {
                     return (contentType, value);
                 }
@@ -614,10 +606,9 @@ contract PermissionedResolver is
 
     /// @inheritdoc IPubkeyResolver
     function pubkey(bytes32 node) external view returns (bytes32 x, bytes32 y) {
-        // solgrid-disable-next-line naming/var-name-mixedcase
-        Record storage R = _record(node);
-        x = R.pubkey[0];
-        y = R.pubkey[1];
+        Record storage r = _record(node);
+        x = r.pubkey[0];
+        y = r.pubkey[1];
     }
 
     /// @inheritdoc ITextResolver
@@ -687,11 +678,10 @@ contract PermissionedResolver is
 
     /// @inheritdoc IAddressResolver
     function addr(bytes32 node, uint256 coinType) public view returns (bytes memory addressBytes) {
-        // solgrid-disable-next-line naming/var-name-mixedcase
-        Record storage R = _record(node);
-        addressBytes = R.addresses[coinType];
+        Record storage r = _record(node);
+        addressBytes = r.addresses[coinType];
         if (addressBytes.length == 0 && ENSIP19.chainFromCoinType(coinType) > 0) {
-            addressBytes = R.addresses[COIN_TYPE_DEFAULT];
+            addressBytes = r.addresses[COIN_TYPE_DEFAULT];
         }
     }
 
@@ -810,7 +800,11 @@ contract PermissionedResolver is
                     toName = new bytes(offset + matchName.length);
                     assembly {
                         mcopy(add(toName, 32), add(fromName, 32), offset) // copy prefix
-                        mcopy(add(toName, add(32, offset)), add(matchName, 32), mload(matchName)) // copy suffix
+                        mcopy(
+                            add(toName, add(32, offset)),
+                            add(matchName, 32),
+                            mload(matchName)
+                        ) // copy suffix
                     }
                 } else {
                     toName = matchName;
@@ -822,7 +816,7 @@ contract PermissionedResolver is
     }
 
     /// @dev Access record storage pointer.
-    function _record(bytes32 node) internal view returns (Record storage R) {
+    function _record(bytes32 node) internal view returns (Record storage) {
         return _records[node][_versions[node]];
     }
 
