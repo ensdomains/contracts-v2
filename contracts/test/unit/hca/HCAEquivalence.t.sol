@@ -5,7 +5,10 @@ pragma solidity ^0.8.25;
 
 import {Test} from "forge-std/Test.sol";
 
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+
 import {HCAEquivalence} from "~src/hca/HCAEquivalence.sol";
+import {HCAFactory} from "~src/hca/HCAFactory.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
@@ -73,5 +76,42 @@ contract HCAEquivalenceTest is Test {
         vm.prank(hca);
         address sender = harness.exposedMsgSender();
         assertEq(sender, hca, "When owner == HCA, _msgSender should be the HCA address");
+    }
+}
+
+
+contract HCAEquivalenceWithFactoryTest is Test {
+    VerifiableFactory verifiableFactory;
+    HCAFactory factory;
+    HCAEquivalenceHarness harness;
+
+    address owner = address(0xCAFE);
+    address user = address(0x1111);
+    address implementation = address(0xBEEF);
+
+    function setUp() public {
+        verifiableFactory = new VerifiableFactory();
+        factory = new HCAFactory(verifiableFactory, owner);
+        harness = new HCAEquivalenceHarness(IHCAFactoryBasic(address(factory)));
+    }
+
+    function test_msgSender_reverts_when_account_implementation_not_set() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFactory.HCAImplementationNotSet.selector, user)
+        );
+        vm.prank(user);
+        harness.exposedMsgSender();
+    }
+
+    function test_msgSender_returns_original_when_account_implementation_is_set() public {
+        vm.prank(owner);
+        factory.setImplementationApproval(implementation, true);
+
+        vm.prank(user);
+        factory.setAccountImplementation(implementation);
+
+        vm.prank(user);
+        address sender = harness.exposedMsgSender();
+        assertEq(sender, user);
     }
 }

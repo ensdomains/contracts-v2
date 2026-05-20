@@ -7,5 +7,6 @@ interface IHCAFactoryBasic {
     /// @notice Returns the account owner of the given HCA
     /// @param hca The HCA to get the account owner of
     /// @return The account owner of the given HCA
+    /// @dev Reverts if `hca` is not registered and has not explicitly pinned an implementation.
     function getAccountOwner(address hca) external view returns (address);
 }

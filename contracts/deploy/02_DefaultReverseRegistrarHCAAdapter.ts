@@ -9,8 +9,9 @@ export default execute(
     namedAccounts: { deployer, owner },
     network,
   }) => {
-    const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+    const hcaFactory = get<(typeof artifacts.HCAFactory)["abi"]>(
+      "HCAFactory",
+    );
 
     const defaultReverseRegistrar = get<
       (typeof artifacts.DefaultReverseRegistrar)["abi"]

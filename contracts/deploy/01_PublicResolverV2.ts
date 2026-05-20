@@ -5,8 +5,9 @@ export default execute(
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
-    const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+    const hcaFactory = get<(typeof artifacts.HCAFactory)["abi"]>(
+      "HCAFactory",
+    );
 
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");

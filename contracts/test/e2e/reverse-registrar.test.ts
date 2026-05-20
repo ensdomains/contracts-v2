@@ -33,10 +33,12 @@ describe("Reverse registrars", () => {
     const name = `${label}.eth`;
     const resolver = account.resolver;
 
-    await env.v2.HCAFactory.write.setAccountOwner([
-      hca.address,
-      account.address,
-    ]);
+    const deferredImplementation =
+      await env.v2.HCAFactory.read.deferredImplementation();
+    await env.v2.HCAFactory.write.setAccountImplementation(
+      [deferredImplementation],
+      { account: hca },
+    );
     await resolver.write.setAddr([namehash(name), coinType, account.address], {
       account: hca,
     });

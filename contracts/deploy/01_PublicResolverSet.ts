@@ -3,8 +3,9 @@ import type { Address } from "viem";
 
 export default execute(
   async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
-    const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+    const hcaFactory = get<(typeof artifacts.HCAFactory)["abi"]>(
+      "HCAFactory",
+    );
 
     const publicResolverSet = await deploy("PublicResolverSet", {
       account: deployer,
@@ -36,6 +37,6 @@ export default execute(
   },
   {
     tags: ["PublicResolverSet", "v2"],
-    dependencies: ["HCAFactory", "PublicResolver"],
+    dependencies: ["SetupHCAFactory", "PublicResolver"],
   },
 );

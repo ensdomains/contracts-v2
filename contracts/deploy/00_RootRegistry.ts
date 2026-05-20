@@ -3,8 +3,9 @@ import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
 
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer } }) => {
-    const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+    const hcaFactory = get<(typeof artifacts.HCAFactory)["abi"]>(
+      "HCAFactory",
+    );
 
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 

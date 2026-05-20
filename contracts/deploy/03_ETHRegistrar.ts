@@ -14,8 +14,9 @@ export default execute(
     get,
     namedAccounts: { deployer, owner },
   }) => {
-    const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+    const hcaFactory = get<(typeof artifacts.HCAFactory)["abi"]>(
+      "HCAFactory",
+    );
 
     const ethRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
@@ -48,6 +49,6 @@ export default execute(
   },
   {
     tags: ["ETHRegistrar", "v2"],
-    dependencies: ["HCAFactory", "ETHRegistry", "StandardRentPriceOracle"],
+    dependencies: ["SetupHCAFactory", "ETHRegistry", "StandardRentPriceOracle"],
   },
 );

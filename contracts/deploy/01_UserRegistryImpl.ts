@@ -2,8 +2,9 @@ import { artifacts, execute } from "@rocketh";
 
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer } }) => {
-    const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+    const hcaFactory = get<(typeof artifacts.HCAFactory)["abi"]>(
+      "HCAFactory",
+    );
 
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
