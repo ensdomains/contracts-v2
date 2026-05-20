@@ -6,6 +6,7 @@
 @ensdomains/buffer/=lib/buffer/
 @unruggable/gateways/=lib/unruggable-gateways/
 @ensdomains/verifiable-factory/=lib/verifiable-factory/src/
+ens-modules/=lib/ens-modules/src/
 forge-std/=lib/forge-std/src/
 solady/=lib/solady/src/
 nexus/=lib/nexus/contracts/
