@@ -16,6 +16,12 @@ ignored_warnings_from = [
     "lib/ens-contracts/contracts/reverseRegistrar/ReverseRegistrar.sol",
     "lib/ens-contracts/contracts/wrapper/NameWrapper.sol",
     "lib/verifiable-factory/src/UUPSProxyLogic.sol",
+    "src/hca/HCAProxyInitCode.yul",
+]
+
+fs_permissions = [
+    { access = "read", path = "./out/HCAProxyInitCode.yul/HCAProxyInitCode.json" },
+    { access = "read", path = "./out/HCAProxyNoInitCode.yul/HCAProxyNoInitCode.json" },
 ]
 
 [fuzz]
