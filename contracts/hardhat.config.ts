@@ -9,6 +9,7 @@ import HardhatIgnoreWarningsPlugin from "./plugins/ignore-warnings/index.ts";
 import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
 const version = "0.8.25";
+const hcaVersion = "0.8.27";
 const outputSelection = {
   "*": {
     "*": ["storageLayout"],
@@ -19,6 +20,17 @@ const config = {
     compilers: [
       {
         version,
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1000,
+          },
+          evmVersion: "cancun",
+          outputSelection,
+        },
+      },
+      {
+        version: hcaVersion,
         settings: {
           optimizer: {
             enabled: true,

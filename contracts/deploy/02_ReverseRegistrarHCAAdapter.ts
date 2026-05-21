@@ -10,7 +10,7 @@ export default execute(
     network,
   }) => {
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
 
     const reverseRegistrar =
       get<(typeof artifacts.ReverseRegistrar)["abi"]>("ReverseRegistrar");

@@ -2,17 +2,18 @@ import { artifacts, execute } from "@rocketh";
 
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer } }) => {
-    const hcaFactory =
-      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
+    const hcaFactory = get<(typeof artifacts.HCAFactory)["abi"]>(
+      "HCAFactory",
+    );
 
-    await deploy("PermissionedResolverImpl", {
+    await deploy("HCADeferredImplementation", {
       account: deployer,
-      artifact: artifacts["PermissionedResolver"],
+      artifact: artifacts.HCADeferredImplementation,
       args: [hcaFactory.address],
     });
   },
   {
-    tags: ["PermissionedResolverImpl", "v2"],
+    tags: ["HCADeferredImplementation", "v2"],
     dependencies: ["HCAFactory"],
   },
 );

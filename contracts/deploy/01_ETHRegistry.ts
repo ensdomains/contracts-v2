@@ -8,7 +8,7 @@ export default execute(
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
 
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
@@ -53,6 +53,6 @@ export default execute(
   },
   {
     tags: ["ETHRegistry", "v2"],
-    dependencies: ["RootRegistry", "HCAFactory", "LabelStore"],
+    dependencies: ["RootRegistry", "SetupHCAFactory", "LabelStore"],
   },
 );

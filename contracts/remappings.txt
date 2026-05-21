@@ -7,6 +7,8 @@
 @unruggable/gateways/=lib/unruggable-gateways/
 @ensdomains/verifiable-factory/=lib/verifiable-factory/src/
 forge-std/=lib/forge-std/src/
+solady/=lib/solady/src/
+nexus/=lib/nexus/contracts/
 lib/ens-contracts/contracts/utils/LibMem/=src/utils/
 lib/ens-contracts/:@openzeppelin/contracts=lib/openzeppelin-contracts-v4/contracts
 lib/ens-contracts/:@openzeppelin/contracts-v5=lib/openzeppelin-contracts/contracts
