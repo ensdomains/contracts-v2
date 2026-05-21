@@ -28,7 +28,3 @@
 [submodule "contracts/lib/solady"]
 	path = contracts/lib/solady
 	url = https://github.com/vectorized/solady
-[submodule "contracts/lib/nexus"]
-	path = contracts/lib/nexus
-	url = https://github.com/rhinestonewtf/rhinestone-nexus
-	branch = feat/default-executor
