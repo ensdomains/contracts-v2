@@ -439,6 +439,10 @@ async function* readCSVInBatches(
       continue;
     }
 
+    if (limit !== null && processedCount >= limit) {
+      break;
+    }
+
     if (line === "") {
       if (pendingBlankLineNumber === null) {
         pendingBlankLineNumber = rawLineNumber;
@@ -487,10 +491,6 @@ async function* readCSVInBatches(
     if (dataLineNumber <= startLineNumber) {
       dataLineNumber++;
       continue;
-    }
-
-    if (limit !== null && processedCount >= limit) {
-      break;
     }
 
     batch.push({ labelName, lineNumber: dataLineNumber });

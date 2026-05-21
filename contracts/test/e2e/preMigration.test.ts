@@ -956,6 +956,90 @@ describe("PreMigration", () => {
     }
   });
 
+  it("--limit N does not validate a wrong-column-count row at position N+1", async () => {
+    const validLabels = ["lcap1", "lcap2"];
+    const { user } = env.namedAccounts;
+
+    for (const label of validLabels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,${validLabels[0]},,`,
+      `,,,,,,${validLabels[1]},,`,
+      `,,,short,row`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { limit: 2 });
+    await main(args);
+
+    for (const label of validLabels) {
+      const state = await verifyV2State(env, label);
+      expect(state.status).toBe(STATUS.RESERVED);
+    }
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(2);
+  });
+
+  it("--limit N does not validate an unbalanced-quotes row at position N+1", async () => {
+    const validLabels = ["lqcap1", "lqcap2"];
+    const { user } = env.namedAccounts;
+
+    for (const label of validLabels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,${validLabels[0]},,`,
+      `,,,,,,${validLabels[1]},,`,
+      `,,,,,,"unterminated,,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { limit: 2 });
+    await main(args);
+
+    for (const label of validLabels) {
+      const state = await verifyV2State(env, label);
+      expect(state.status).toBe(STATUS.RESERVED);
+    }
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(2);
+  });
+
+  it("--dry-run --limit N tolerates malformed rows beyond the cap", async () => {
+    const validLabels = ["dryc1", "dryc2"];
+    const { user } = env.namedAccounts;
+
+    for (const label of validLabels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,${validLabels[0]},,`,
+      `,,,,,,${validLabels[1]},,`,
+      `,,,short,row`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { limit: 2, dryRun: true });
+    await main(args);
+
+    for (const label of validLabels) {
+      const state = await verifyV2State(env, label);
+      expect(state.status).toBe(STATUS.AVAILABLE);
+    }
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(2);
+  });
+
   it("dry run with batch size 1 does not create state", async () => {
     const labels = ["dryb1", "dryb2", "dryb3"];
     const { user } = env.namedAccounts;
