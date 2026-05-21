@@ -439,6 +439,13 @@ async function* readCSVInBatches(
       continue;
     }
 
+    if (dataLineNumber <= startLineNumber) {
+      if (line !== "") {
+        dataLineNumber++;
+      }
+      continue;
+    }
+
     if (limit !== null && processedCount >= limit) {
       break;
     }
@@ -486,11 +493,6 @@ async function* readCSVInBatches(
         `CSV row at ${csvFilePath}:${rawLineNumber} has empty "labelName". ` +
           `Row: ${previewCSVLine(line)}`,
       );
-    }
-
-    if (dataLineNumber <= startLineNumber) {
-      dataLineNumber++;
-      continue;
     }
 
     batch.push({ labelName, lineNumber: dataLineNumber });

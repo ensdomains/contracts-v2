@@ -32,8 +32,10 @@ import {
   verifyV2State,
 } from "../utils/mockPreMigration.js";
 import {
+  createTestCheckpoint,
   deleteTestCheckpoint,
   readTestCheckpoint,
+  writeTestCheckpoint,
 } from "../utils/preMigrationTestUtils.js";
 
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
@@ -1038,6 +1040,94 @@ describe("PreMigration", () => {
 
     const checkpoint = readTestCheckpoint();
     expect(checkpoint!.successCount).toBe(2);
+  });
+
+  it("--continue does not validate a wrong-column-count row before the resume point", async () => {
+    const label = "resumecols";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    writeTestCheckpoint(
+      createTestCheckpoint({
+        lastProcessedLineNumber: 0,
+        totalProcessed: 1,
+        totalExpected: 1,
+        successCount: 1,
+      }),
+    );
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,short,row`,
+      `,,,,,,${label},,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { continue: true });
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+  });
+
+  it("--continue does not validate an unbalanced-quotes row before the resume point", async () => {
+    const label = "resumequotes";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    writeTestCheckpoint(
+      createTestCheckpoint({
+        lastProcessedLineNumber: 0,
+        totalProcessed: 1,
+        totalExpected: 1,
+        successCount: 1,
+      }),
+    );
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,"unterminated,,`,
+      `,,,,,,${label},,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { continue: true });
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+  });
+
+  it("--continue tolerates a blank line in the pre-resume range", async () => {
+    const label = "resumeblank";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    writeTestCheckpoint(
+      createTestCheckpoint({
+        lastProcessedLineNumber: 0,
+        totalProcessed: 1,
+        totalExpected: 1,
+        successCount: 1,
+      }),
+    );
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      "",
+      `,,,,,,already,,`,
+      `,,,,,,${label},,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { continue: true });
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
   });
 
   it("dry run with batch size 1 does not create state", async () => {
