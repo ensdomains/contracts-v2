@@ -3,7 +3,9 @@ pragma solidity ^0.8.27;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
+import {HCADeferredImplementation} from "./HCADeferredImplementation.sol";
 import {IHCAFactory} from "./interfaces/IHCAFactory.sol";
+import {IHCAFactoryBasic} from "./interfaces/IHCAFactoryBasic.sol";
 import {IHCAInitDataParser} from "./interfaces/IHCAInitDataParser.sol";
 import {ProxyLib} from "./ProxyLib.sol";
 
@@ -12,6 +14,13 @@ import {ProxyLib} from "./ProxyLib.sol";
 /// @dev HCA-aware protocol calls require EOAs to explicitly select an implementation before lookup
 ///      succeeds for non-HCA callers.
 contract HCAFactory is Ownable, IHCAFactory {
+    ////////////////////////////////////////////////////////////////////////
+    // Immutables
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev The implementation that lets an HCA owner defer the final account upgrade target.
+    address internal immutable _DEFERRED_IMPLEMENTATION;
+
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
@@ -27,9 +36,6 @@ contract HCAFactory is Ownable, IHCAFactory {
 
     /// @dev Maps an account to the implementation selected for its deterministic HCA.
     mapping(address account => address implementation) internal _accountImplementations;
-
-    /// @notice The implementation that lets an HCA owner defer the final account upgrade target.
-    address public deferredImplementation;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -47,10 +53,6 @@ contract HCAFactory is Ownable, IHCAFactory {
         address indexed accountImplementation,
         address indexed initDataGenerator
     );
-
-    /// @notice Emitted when the deferred implementation changes.
-    /// @param implementation The new deferred implementation address.
-    event DeferredImplementationSet(address indexed implementation);
 
     /// @notice Emitted when an account selects its HCA implementation.
     /// @param account The account selecting the implementation.
@@ -71,15 +73,11 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @dev Error selector: `0xa97a8217`
     error HCAImplementationNotSet(address account);
 
-    /// @notice Thrown when setting the deferred implementation to the zero address.
-    /// @dev Error selector: `0xb74391a3`
-    error DeferredImplementationCannotBeZero();
-
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the factory with an implementation, init data parser, and owner.
+    /// @notice Initializes the factory with an implementation, init data parser, owner, and deferred implementation.
     /// @param implementation_ The HCA implementation contract to proxy to.
     /// @param initDataGenerator_ The generator used to parse account-specific init data.
     /// @param owner_ The owner of this factory.
@@ -88,6 +86,9 @@ contract HCAFactory is Ownable, IHCAFactory {
     {
         _implementation = implementation_;
         _initDataGenerator = initDataGenerator_;
+        _DEFERRED_IMPLEMENTATION = address(
+            new HCADeferredImplementation(IHCAFactoryBasic(address(this)))
+        );
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -106,15 +107,6 @@ contract HCAFactory is Ownable, IHCAFactory {
         emit NewHCAImplementation(implementation, address(initDataGenerator));
     }
 
-    /// @notice Updates the deferred implementation selectable by accounts.
-    /// @param implementation The new deferred implementation address.
-    function setDeferredImplementation(address implementation) external onlyOwner {
-        if (implementation == address(0))
-            revert DeferredImplementationCannotBeZero();
-        deferredImplementation = implementation;
-        emit DeferredImplementationSet(implementation);
-    }
-
     /// @notice Selects the implementation used when deploying the sender's deterministic HCA.
     /// @param implementation The implementation to select.
     function setAccountImplementation(address implementation) external {
@@ -131,7 +123,7 @@ contract HCAFactory is Ownable, IHCAFactory {
         address hcaOwner = getOwnerFromHCAInitdata(initData);
         address implementation = _accountImplementationOf(hcaOwner);
         bool alreadyDeployed;
-        if (implementation == deferredImplementation) {
+        if (implementation == _DEFERRED_IMPLEMENTATION) {
             (alreadyDeployed, hca) = ProxyLib.deployProxyWithoutInitialization(
                 implementation,
                 hcaOwner
@@ -153,6 +145,11 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @inheritdoc IHCAFactory
     function getInitDataGenerator() external view returns (IHCAInitDataParser) {
         return _initDataGenerator;
+    }
+
+    /// @inheritdoc IHCAFactory
+    function deferredImplementation() external view returns (address) {
+        return _DEFERRED_IMPLEMENTATION;
     }
 
     /// @notice Returns the owner recorded for a deployed HCA proxy.
@@ -212,7 +209,7 @@ contract HCAFactory is Ownable, IHCAFactory {
     function _requireSelectableImplementation(address implementation) internal view {
         if (implementation == _implementation && implementation != address(0))
             return;
-        if (implementation == deferredImplementation && implementation != address(0))
+        if (implementation == _DEFERRED_IMPLEMENTATION && implementation != address(0))
             return;
         revert HCAImplementationNotSelectable(implementation);
     }

@@ -6,7 +6,7 @@ import {IHCAInitDataParser} from "./IHCAInitDataParser.sol";
 
 /// @title IHCAFactory
 /// @notice Full interface for deterministic Hidden Contract Account deployment and lookup.
-/// @dev Interface selector: `0xdc93ac58`
+/// @dev Interface selector: `0x7d175182`
 interface IHCAFactory is IHCAFactoryBasic {
     ////////////////////////////////////////////////////////////////////////
     // Functions
@@ -27,17 +27,13 @@ interface IHCAFactory is IHCAFactoryBasic {
     function setImplementation(address implementation, IHCAInitDataParser initDataGenerator)
         external;
 
-    /// @notice Updates the deferred implementation selectable by accounts.
-    /// @param implementation The new deferred implementation address.
-    function setDeferredImplementation(address implementation) external;
-
     /// @notice Returns the implementation selectable for newly deployed HCA proxies.
     function getImplementation() external view returns (address);
 
     /// @notice Returns the parser used to extract account ownership from initialization data.
     function getInitDataGenerator() external view returns (IHCAInitDataParser);
 
-    /// @notice Returns the implementation that lets an owner defer their HCA upgrade target.
+    /// @notice Returns the immutable implementation that lets an owner defer their HCA upgrade target.
     function deferredImplementation() external view returns (address);
 
     /// @notice Returns the implementation explicitly selected by an account.

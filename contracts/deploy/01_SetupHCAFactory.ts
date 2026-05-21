@@ -6,22 +6,11 @@ export default execute(
     const hcaFactory = get<(typeof artifacts.HCAFactory)["abi"]>(
       "HCAFactory",
     );
-    const deferredImplementation = get<
-      (typeof artifacts.HCADeferredImplementation)["abi"]
-    >("HCADeferredImplementation");
 
-    const currentDeferredImplementation = await read(hcaFactory, {
+    const deferredImplementation = await read(hcaFactory, {
       functionName: "deferredImplementation",
       args: [],
     });
-
-    if (currentDeferredImplementation !== deferredImplementation.address) {
-      await write(hcaFactory, {
-        account: owner || deployer,
-        functionName: "setDeferredImplementation",
-        args: [deferredImplementation.address],
-      });
-    }
 
     const setupAccounts = Array.from(new Set([deployer, owner || deployer]));
     for (const account of setupAccounts) {
@@ -34,13 +23,13 @@ export default execute(
         await write(hcaFactory, {
           account,
           functionName: "setAccountImplementation",
-          args: [deferredImplementation.address],
+          args: [deferredImplementation],
         });
       }
     }
   },
   {
     tags: ["SetupHCAFactory", "v2"],
-    dependencies: ["HCAFactory", "HCADeferredImplementation"],
+    dependencies: ["HCAFactory"],
   },
 );

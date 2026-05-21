@@ -9,7 +9,6 @@ import {Test} from "forge-std/Test.sol";
 
 import {HCADeferredImplementation} from "~src/hca/HCADeferredImplementation.sol";
 import {HCAFactory} from "~src/hca/HCAFactory.sol";
-import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {IHCAInitDataParser} from "~src/hca/interfaces/IHCAInitDataParser.sol";
 
 contract MockHCAInitDataParser is IHCAInitDataParser {
@@ -42,7 +41,6 @@ contract MockHCAImplementation {
 contract HCAFactoryTest is Test {
     event AccountCreated(address indexed hcaOwner, address indexed hca);
     event NewHCAImplementation(address indexed accountImplementation, address indexed initDataGenerator);
-    event DeferredImplementationSet(address indexed implementation);
     event AccountImplementationSet(address indexed account, address indexed implementation);
     event Upgraded(address indexed implementation);
 
@@ -58,14 +56,15 @@ contract HCAFactoryTest is Test {
         parser = new MockHCAInitDataParser();
         implementation = new MockHCAImplementation();
         factory = new HCAFactory(address(implementation), parser, address(this));
-        deferredImplementation = new HCADeferredImplementation(IHCAFactoryBasic(address(factory)));
+        deferredImplementation = HCADeferredImplementation(factory.deferredImplementation());
     }
 
     function test_constructor_sets_initial_configuration() public view {
         assertEq(factory.owner(), address(this));
         assertEq(factory.getImplementation(), address(implementation));
         assertEq(address(factory.getInitDataGenerator()), address(parser));
-        assertEq(factory.deferredImplementation(), address(0));
+        assertEq(factory.deferredImplementation(), address(deferredImplementation));
+        assertEq(address(deferredImplementation.HCA_FACTORY()), address(factory));
     }
 
     function test_setImplementation_updates_current_configuration() public {
@@ -89,19 +88,6 @@ contract HCAFactoryTest is Test {
         factory.setImplementation(address(newImplementation), newParser);
     }
 
-    function test_setDeferredImplementation_updates_deferred_configuration() public {
-        vm.expectEmit(true, false, false, true, address(factory));
-        emit DeferredImplementationSet(address(deferredImplementation));
-        factory.setDeferredImplementation(address(deferredImplementation));
-
-        assertEq(factory.deferredImplementation(), address(deferredImplementation));
-    }
-
-    function test_setDeferredImplementation_reverts_for_zero_address() public {
-        vm.expectRevert(HCAFactory.DeferredImplementationCannotBeZero.selector);
-        factory.setDeferredImplementation(address(0));
-    }
-
     function test_setAccountImplementation_selects_current_implementation() public {
         vm.expectEmit(true, true, false, true, address(factory));
         emit AccountImplementationSet(user, address(implementation));
@@ -112,8 +98,6 @@ contract HCAFactoryTest is Test {
     }
 
     function test_setAccountImplementation_selects_deferred_implementation() public {
-        factory.setDeferredImplementation(address(deferredImplementation));
-
         vm.expectEmit(true, true, false, true, address(factory));
         emit AccountImplementationSet(user, address(deferredImplementation));
         vm.prank(user);
@@ -189,7 +173,6 @@ contract HCAFactoryTest is Test {
 
     function test_createAccount_deploys_deferred_account_that_owner_can_upgrade() public {
         bytes memory initData = abi.encode(user);
-        factory.setDeferredImplementation(address(deferredImplementation));
         vm.prank(user);
         factory.setAccountImplementation(address(deferredImplementation));
 
@@ -208,7 +191,6 @@ contract HCAFactoryTest is Test {
 
     function test_deferredUpgrade_reverts_when_not_owner() public {
         bytes memory initData = abi.encode(user);
-        factory.setDeferredImplementation(address(deferredImplementation));
         vm.prank(user);
         factory.setAccountImplementation(address(deferredImplementation));
         address payable hca = factory.createAccount(initData);
@@ -225,7 +207,6 @@ contract HCAFactoryTest is Test {
 
     function test_deferredUpgrade_reverts_when_new_implementation_has_no_code() public {
         bytes memory initData = abi.encode(user);
-        factory.setDeferredImplementation(address(deferredImplementation));
         vm.prank(user);
         factory.setAccountImplementation(address(deferredImplementation));
         address payable hca = factory.createAccount(initData);
