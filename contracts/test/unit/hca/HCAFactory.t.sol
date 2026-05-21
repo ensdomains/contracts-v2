@@ -17,6 +17,7 @@ contract MockHCAInitDataParser is IHCAInitDataParser {
     }
 }
 
+
 contract MockHCAImplementation {
     bytes32 internal _lastInitDataHash;
     uint256 internal _value;
@@ -38,9 +39,13 @@ contract MockHCAImplementation {
     }
 }
 
+
 contract HCAFactoryTest is Test {
     event AccountCreated(address indexed hcaOwner, address indexed hca);
-    event NewHCAImplementation(address indexed accountImplementation, address indexed initDataGenerator);
+    event NewHCAImplementation(
+        address indexed accountImplementation,
+        address indexed initDataGenerator
+    );
     event AccountImplementationSet(address indexed account, address indexed implementation);
     event Upgraded(address indexed implementation);
 
@@ -113,7 +118,9 @@ contract HCAFactoryTest is Test {
         vm.prank(user);
         factory.setAccountImplementation(address(0));
 
-        vm.expectRevert(abi.encodeWithSelector(HCAFactory.HCAImplementationNotSelectable.selector, other));
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFactory.HCAImplementationNotSelectable.selector, other)
+        );
         vm.prank(user);
         factory.setAccountImplementation(other);
     }
@@ -128,7 +135,10 @@ contract HCAFactoryTest is Test {
         assertEq(factory.getAccountOwner(user), address(0));
     }
 
-    function test_getAccountOwner_returns_zero_for_contract_without_implementation_selection() public view {
+    function test_getAccountOwner_returns_zero_for_contract_without_implementation_selection()
+        public
+        view
+    {
         assertEq(factory.getAccountOwner(address(this)), address(0));
     }
 
@@ -198,7 +208,9 @@ contract HCAFactoryTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                HCADeferredImplementation.HCADeferredUpgradeUnauthorized.selector, other, user
+                HCADeferredImplementation.HCADeferredUpgradeUnauthorized.selector,
+                other,
+                user
             )
         );
         vm.prank(other);
@@ -213,7 +225,8 @@ contract HCAFactoryTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                HCADeferredImplementation.HCADeferredImplementationHasNoCode.selector, other
+                HCADeferredImplementation.HCADeferredImplementationHasNoCode.selector,
+                other
             )
         );
         vm.prank(user);

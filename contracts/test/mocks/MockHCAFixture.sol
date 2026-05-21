@@ -7,14 +7,11 @@ import {IHCAInitDataParser} from "~src/hca/interfaces/IHCAInitDataParser.sol";
 /// @notice Decodes a single owner address from HCA initialization data.
 contract MockHCAInitDataParser is IHCAInitDataParser {
     /// @inheritdoc IHCAInitDataParser
-    function getOwnerFromInitData(bytes calldata initData)
-        external
-        pure
-        returns (address hcaOwner)
-    {
+    function getOwnerFromInitData(bytes calldata initData) external pure returns (address hcaOwner) {
         hcaOwner = abi.decode(initData, (address));
     }
 }
+
 
 /// @title Mock HCA Executor Implementation
 /// @notice Minimal owner-controlled account implementation for HCA end-to-end tests.
@@ -46,10 +43,7 @@ contract MockHCAExecutorImplementation {
     /// @param target The target contract to call.
     /// @param data The calldata to forward.
     /// @return result The data returned by the target call.
-    function execute(address target, bytes calldata data)
-        external
-        returns (bytes memory result)
-    {
+    function execute(address target, bytes calldata data) external returns (bytes memory result) {
         address currentOwner = owner;
         if (msg.sender != currentOwner)
             revert HCAExecutorUnauthorized(msg.sender, currentOwner);
