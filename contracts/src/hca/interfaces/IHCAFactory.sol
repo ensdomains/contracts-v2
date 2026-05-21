@@ -6,7 +6,7 @@ import {IHCAInitDataParser} from "./IHCAInitDataParser.sol";
 
 /// @title IHCAFactory
 /// @notice Full interface for deterministic Hidden Contract Account deployment and lookup.
-/// @dev Interface selector: `0x7d175182`
+/// @dev Interface selector: `0xb16756da`
 interface IHCAFactory is IHCAFactoryBasic {
     ////////////////////////////////////////////////////////////////////////
     // Functions
@@ -18,20 +18,20 @@ interface IHCAFactory is IHCAFactoryBasic {
     function createAccount(bytes calldata initData) external payable returns (address payable hca);
 
     /// @notice Selects the implementation used when deploying this account's HCA.
-    /// @param implementation The implementation to select.
-    function setAccountImplementation(address implementation) external;
+    /// @param accountImplementation The implementation to select.
+    function setAccountImplementation(address accountImplementation) external;
 
     /// @notice Updates the implementation and init data parser selectable for new HCA proxies.
-    /// @param implementation The new implementation address.
-    /// @param initDataGenerator The parser used to extract account ownership from initialization data.
-    function setImplementation(address implementation, IHCAInitDataParser initDataGenerator)
+    /// @param implementation_ The new implementation address.
+    /// @param initDataParser_ The parser used to extract account ownership from initialization data.
+    function setImplementation(address implementation_, IHCAInitDataParser initDataParser_)
         external;
 
     /// @notice Returns the implementation selectable for newly deployed HCA proxies.
-    function getImplementation() external view returns (address);
+    function implementation() external view returns (address);
 
     /// @notice Returns the parser used to extract account ownership from initialization data.
-    function getInitDataGenerator() external view returns (IHCAInitDataParser);
+    function initDataParser() external view returns (IHCAInitDataParser);
 
     /// @notice Returns the immutable implementation that lets an owner defer their HCA upgrade target.
     function deferredImplementation() external view returns (address);

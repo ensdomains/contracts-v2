@@ -55,7 +55,7 @@ export default execute(
   {
     tags: ["ETHRenewerV1", "v2"],
     dependencies: [
-      "SetupHCAFactory",
+      "setup:HCAFactory",
       "ETHRegistry",
       "StandardRentPriceOracle",
       "BaseRegistrarImplementation",

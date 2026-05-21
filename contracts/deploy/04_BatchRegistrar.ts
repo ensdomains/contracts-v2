@@ -20,6 +20,6 @@ export default execute(
   },
   {
     tags: ["BatchRegistrar", "l1"],
-    dependencies: ["ETHRegistry", "SetupHCAFactory"],
+    dependencies: ["ETHRegistry", "setup:HCAFactory"],
   },
 );

@@ -48,6 +48,6 @@ export default execute(
   },
   {
     tags: ["ETHRegistrar", "v2"],
-    dependencies: ["SetupHCAFactory", "ETHRegistry", "StandardRentPriceOracle"],
+    dependencies: ["setup:HCAFactory", "ETHRegistry", "StandardRentPriceOracle"],
   },
 );

@@ -53,6 +53,6 @@ export default execute(
   },
   {
     tags: ["ETHRegistry", "v2"],
-    dependencies: ["RootRegistry", "SetupHCAFactory", "LabelStore"],
+    dependencies: ["RootRegistry", "setup:HCAFactory", "LabelStore"],
   },
 );

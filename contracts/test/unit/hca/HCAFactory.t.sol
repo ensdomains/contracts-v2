@@ -44,7 +44,7 @@ contract HCAFactoryTest is Test {
     event AccountCreated(address indexed hcaOwner, address indexed hca);
     event NewHCAImplementation(
         address indexed accountImplementation,
-        address indexed initDataGenerator
+        address indexed initDataParser
     );
     event AccountImplementationSet(address indexed account, address indexed implementation);
     event Upgraded(address indexed implementation);
@@ -66,8 +66,8 @@ contract HCAFactoryTest is Test {
 
     function test_constructor_sets_initial_configuration() public view {
         assertEq(factory.owner(), address(this));
-        assertEq(factory.getImplementation(), address(implementation));
-        assertEq(address(factory.getInitDataGenerator()), address(parser));
+        assertEq(factory.implementation(), address(implementation));
+        assertEq(address(factory.initDataParser()), address(parser));
         assertEq(factory.deferredImplementation(), address(deferredImplementation));
         assertEq(address(deferredImplementation.HCA_FACTORY()), address(factory));
     }
@@ -80,8 +80,8 @@ contract HCAFactoryTest is Test {
         emit NewHCAImplementation(address(newImplementation), address(newParser));
         factory.setImplementation(address(newImplementation), newParser);
 
-        assertEq(factory.getImplementation(), address(newImplementation));
-        assertEq(address(factory.getInitDataGenerator()), address(newParser));
+        assertEq(factory.implementation(), address(newImplementation));
+        assertEq(address(factory.initDataParser()), address(newParser));
     }
 
     function test_setImplementation_reverts_when_not_owner() public {

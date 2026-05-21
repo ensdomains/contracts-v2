@@ -29,7 +29,7 @@ export default execute(
     }
   },
   {
-    tags: ["SetupHCAFactory", "v2"],
+    tags: ["setup:HCAFactory", "v2"],
     dependencies: ["HCAFactory"],
   },
 );

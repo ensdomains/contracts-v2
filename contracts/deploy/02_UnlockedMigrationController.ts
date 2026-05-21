@@ -29,6 +29,6 @@ export default execute(
   },
   {
     tags: ["UnlockedMigrationController", "v2"],
-    dependencies: ["NameWrapper", "Graveyard", "ETHRegistry", "SetupHCAFactory"],
+    dependencies: ["NameWrapper", "Graveyard", "ETHRegistry", "setup:HCAFactory"],
   },
 );

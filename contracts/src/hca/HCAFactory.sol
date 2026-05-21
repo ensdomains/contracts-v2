@@ -25,11 +25,11 @@ contract HCAFactory is Ownable, IHCAFactory {
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The current HCA implementation contract selectable by accounts.
-    address internal _implementation;
+    /// @notice The current HCA implementation contract selectable by accounts.
+    address public implementation;
 
-    /// @dev The parser contract that extracts account ownership from HCA initialization data.
-    IHCAInitDataParser internal _initDataGenerator;
+    /// @notice The parser contract that extracts account ownership from HCA initialization data.
+    IHCAInitDataParser public initDataParser;
 
     /// @dev Maps each deployed HCA proxy address to its owner.
     mapping(address hca => address owner) internal _hcaOwners;
@@ -48,10 +48,10 @@ contract HCAFactory is Ownable, IHCAFactory {
 
     /// @notice Emitted when the implementation and init data parser selectable for new HCA proxies change.
     /// @param accountImplementation The implementation contract selectable for newly deployed HCA proxies.
-    /// @param initDataGenerator The parser used to extract account ownership from initialization data.
+    /// @param initDataParser The parser used to extract account ownership from initialization data.
     event NewHCAImplementation(
         address indexed accountImplementation,
-        address indexed initDataGenerator
+        address indexed initDataParser
     );
 
     /// @notice Emitted when an account selects its HCA implementation.
@@ -79,13 +79,13 @@ contract HCAFactory is Ownable, IHCAFactory {
 
     /// @notice Initializes the factory with an implementation, init data parser, owner, and deferred implementation.
     /// @param implementation_ The HCA implementation contract to proxy to.
-    /// @param initDataGenerator_ The generator used to parse account-specific init data.
+    /// @param initDataParser_ The parser used to parse account-specific init data.
     /// @param owner_ The owner of this factory.
-    constructor(address implementation_, IHCAInitDataParser initDataGenerator_, address owner_)
+    constructor(address implementation_, IHCAInitDataParser initDataParser_, address owner_)
         Ownable(owner_)
     {
-        _implementation = implementation_;
-        _initDataGenerator = initDataGenerator_;
+        implementation = implementation_;
+        initDataParser = initDataParser_;
         _DEFERRED_IMPLEMENTATION = address(
             new HCADeferredImplementation(IHCAFactoryBasic(address(this)))
         );
@@ -96,23 +96,23 @@ contract HCAFactory is Ownable, IHCAFactory {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Updates the implementation and init data parser selectable for new HCA proxies.
-    /// @param implementation The new implementation address.
-    /// @param initDataGenerator The new parser used to extract account ownership from initialization data.
-    function setImplementation(address implementation, IHCAInitDataParser initDataGenerator)
+    /// @param implementation_ The new implementation address.
+    /// @param initDataParser_ The new parser used to extract account ownership from initialization data.
+    function setImplementation(address implementation_, IHCAInitDataParser initDataParser_)
         external
         onlyOwner
     {
-        _implementation = implementation;
-        _initDataGenerator = initDataGenerator;
-        emit NewHCAImplementation(implementation, address(initDataGenerator));
+        implementation = implementation_;
+        initDataParser = initDataParser_;
+        emit NewHCAImplementation(implementation_, address(initDataParser_));
     }
 
     /// @notice Selects the implementation used when deploying the sender's deterministic HCA.
-    /// @param implementation The implementation to select.
-    function setAccountImplementation(address implementation) external {
-        _requireSelectableImplementation(implementation);
-        _accountImplementations[msg.sender] = implementation;
-        emit AccountImplementationSet(msg.sender, implementation);
+    /// @param accountImplementation The implementation to select.
+    function setAccountImplementation(address accountImplementation) external {
+        _requireSelectableImplementation(accountImplementation);
+        _accountImplementations[msg.sender] = accountImplementation;
+        emit AccountImplementationSet(msg.sender, accountImplementation);
     }
 
     /// @notice Deploys a new HCA proxy for the owner encoded in the initialization data, or forwards ETH if already deployed.
@@ -121,30 +121,20 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @return hca The deployed or existing HCA proxy address.
     function createAccount(bytes calldata initData) external payable returns (address payable hca) {
         address hcaOwner = getOwnerFromHCAInitdata(initData);
-        address implementation = _accountImplementationOf(hcaOwner);
+        address accountImplementation = _accountImplementationOf(hcaOwner);
         bool alreadyDeployed;
-        if (implementation == _DEFERRED_IMPLEMENTATION) {
+        if (accountImplementation == _DEFERRED_IMPLEMENTATION) {
             (alreadyDeployed, hca) = ProxyLib.deployProxyWithoutInitialization(
-                implementation,
+                accountImplementation,
                 hcaOwner
             );
         } else {
-            (alreadyDeployed, hca) = ProxyLib.deployProxy(implementation, hcaOwner, initData);
+            (alreadyDeployed, hca) = ProxyLib.deployProxy(accountImplementation, hcaOwner, initData);
         }
         if (!alreadyDeployed) {
             _hcaOwners[hca] = hcaOwner;
             emit AccountCreated(hcaOwner, hca);
         }
-    }
-
-    /// @inheritdoc IHCAFactory
-    function getImplementation() external view returns (address) {
-        return _implementation;
-    }
-
-    /// @inheritdoc IHCAFactory
-    function getInitDataGenerator() external view returns (IHCAInitDataParser) {
-        return _initDataGenerator;
     }
 
     /// @inheritdoc IHCAFactory
@@ -171,9 +161,9 @@ contract HCAFactory is Ownable, IHCAFactory {
     function accountImplementationOf(address account)
         external
         view
-        returns (address implementation)
+        returns (address accountImplementation)
     {
-        implementation = _accountImplementations[account];
+        accountImplementation = _accountImplementations[account];
     }
 
     /// @inheritdoc IHCAFactory
@@ -187,7 +177,7 @@ contract HCAFactory is Ownable, IHCAFactory {
         view
         returns (address hcaOwner)
     {
-        hcaOwner = _initDataGenerator.getOwnerFromInitData(initData);
+        hcaOwner = initDataParser.getOwnerFromInitData(initData);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -198,19 +188,21 @@ contract HCAFactory is Ownable, IHCAFactory {
     function _accountImplementationOf(address account)
         internal
         view
-        returns (address implementation)
+        returns (address accountImplementation)
     {
-        implementation = _accountImplementations[account];
-        if (implementation == address(0))
+        accountImplementation = _accountImplementations[account];
+        if (accountImplementation == address(0))
             revert HCAImplementationNotSet(account);
     }
 
     /// @dev Reverts unless the implementation is selectable under the current factory configuration.
-    function _requireSelectableImplementation(address implementation) internal view {
-        if (implementation == _implementation && implementation != address(0))
+    function _requireSelectableImplementation(address accountImplementation) internal view {
+        if (accountImplementation == implementation && accountImplementation != address(0))
             return;
-        if (implementation == _DEFERRED_IMPLEMENTATION && implementation != address(0))
+        if (
+            accountImplementation == _DEFERRED_IMPLEMENTATION && accountImplementation != address(0)
+        )
             return;
-        revert HCAImplementationNotSelectable(implementation);
+        revert HCAImplementationNotSelectable(accountImplementation);
     }
 }

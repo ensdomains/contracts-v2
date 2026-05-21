@@ -36,6 +36,6 @@ export default execute(
   },
   {
     tags: ["PublicResolverSet", "v2"],
-    dependencies: ["SetupHCAFactory", "PublicResolver"],
+    dependencies: ["setup:HCAFactory", "PublicResolver"],
   },
 );
