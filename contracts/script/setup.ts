@@ -40,10 +40,7 @@ import {
 } from "./deploy-constants.js";
 import { deployArtifact } from "../test/integration/fixtures/deployArtifact.js";
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
-import {
-  bootstrapForkDeployments,
-  ENS_DAO_MULTISIG,
-} from "./forkBootstrap.js";
+import { bootstrapForkDeployments, ENS_DAO_MULTISIG } from "./forkBootstrap.js";
 
 const NAMED_ACCOUNTS = ["deployer", "owner", "user", "user2"] as const;
 
@@ -109,9 +106,7 @@ export async function setupDevnet({
       // multisig mapped to `owner` on chainId 1) without explicit unlocking.
       // omitted in non-fork mode — prool encodes `false` as a positional arg
       // rather than dropping the flag, which trips anvil's subcommand parser.
-      ...(isFork
-        ? { autoImpersonate: true, forkUrl, forkBlockNumber }
-        : {}),
+      ...(isFork ? { autoImpersonate: true, forkUrl, forkBlockNumber } : {}),
       ...(extraTime && !isFork
         ? { timestamp: Math.floor(Date.now() / 1000) - extraTime }
         : {}),
@@ -241,10 +236,7 @@ export async function setupDevnet({
         client,
         deploymentsDir: fileURLToPath(deploymentsDirURL),
         canonicalDir: fileURLToPath(
-          new URL(
-            "../lib/ens-contracts/deployments/mainnet",
-            import.meta.url,
-          ),
+          new URL("../lib/ens-contracts/deployments/mainnet", import.meta.url),
         ),
         chainId: activeChainId,
       });
@@ -871,22 +863,8 @@ export async function setupDevnet({
         MAX_EXPIRY,
       ]);
 
-      // create "dnsname.ens.eth"
-      // https://etherscan.io/address/0x08769D484a7Cd9c4A98E928D9E270221F3E8578c#code
-      await setupNamedResolver(
-        "dnsname",
-        await deployArtifact(client, {
-          file: new URL(
-            "../test/integration/dns/ExtendedDNSResolver_53f64de872aad627467a34836be1e2b63713a438.json",
-            import.meta.url,
-          ),
-        }),
-      );
-
-      // create "dnstxt.ens.eth"
-      await setupNamedResolver("dnstxt", v2.DNSTXTResolver.address);
-
-      // create "dnsalias.ens.eth"
+      await setupNamedResolver("dnsname", v2.DNSTXTResolver.address); // remap v1 ExtendedDNSResolver
+      await setupNamedResolver("dnstxt", v2.DNSTXTResolver.address); // TODO: could just use "dnsname"?
       await setupNamedResolver("dnsalias", v2.DNSAliasResolver.address);
 
       function setupNamedResolver(label: string, address: Address) {
