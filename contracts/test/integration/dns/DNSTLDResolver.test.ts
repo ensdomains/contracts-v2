@@ -25,7 +25,6 @@ import {
 } from "../../utils/utils.js";
 import { deployV1Fixture } from "../fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "../fixtures/deployV2Fixture.js";
-import { deployArtifact } from "../fixtures/deployArtifact.js";
 import { encodeRRs, makeTXT } from "./rr.js";
 import { FEATURES } from "../../../lib/ens-contracts/test/utils/features.js";
 
