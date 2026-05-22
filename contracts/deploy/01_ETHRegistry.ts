@@ -38,12 +38,6 @@ export default execute(
       ],
     });
 
-    await write(ethRegistry, {
-      account: deployer,
-      functionName: "setParent",
-      args: [rootRegistry.address, "eth"],
-    });
-
     console.log("  - Setting canonical parent");
     await write(ethRegistry, {
       account: deployer,
