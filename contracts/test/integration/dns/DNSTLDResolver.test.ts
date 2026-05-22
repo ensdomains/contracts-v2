@@ -5,7 +5,6 @@ import {
   concat,
   encodeErrorResult,
   getAddress,
-  namehash,
   stringToHex,
   zeroAddress,
 } from "viem";
@@ -130,7 +129,12 @@ async function fixture() {
       name,
       resolverAddress: myResolver.address,
     });
-    await myResolver.write.setAddr([namehash(name), resolver]);
+    await myResolver.write.multicall([
+      makeResolutions({
+        name,
+        addresses: [{ coinType: COIN_TYPE_ETH, value: resolver }],
+      }).map((x) => x.writeV2),
+    ]);
   }
 }
 
@@ -234,7 +238,7 @@ describe("DNSTLDResolver", () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.v1.setupName(kp);
       for (const res of makeResolutions(kp)) {
-        await F.v1.publicResolver.write.multicall([[res.write]]);
+        await F.v1.publicResolver.write.multicall([[res.writeV1]]);
       }
       await F.expectResolution(kp, F.v1.publicResolver.address);
     });
@@ -275,7 +279,7 @@ describe("DNSTLDResolver", () => {
       resolverAddress: F.myResolver.address,
     });
     await F.myResolver.write.multicall([
-      bundle.resolutions.map((x) => x.write),
+      bundle.resolutions.map((x) => x.writeV2),
     ]);
     const [answer, resolverAddress] = await F.v2.universalResolver.read.resolve(
       [dnsEncodeName(basicProfile.name), bundle.call],
@@ -310,7 +314,7 @@ describe("DNSTLDResolver", () => {
           encodeRRs([makeTXT(kp.name, `ENS1 ${F.myResolver.address}`)]),
         ]);
         await F.myResolver.write.multicall([
-          makeResolutions(kp).map((x) => x.write),
+          makeResolutions(kp).map((x) => x.writeV2),
         ]);
         await F.expectGasless(kp, F.myResolver.address);
       });

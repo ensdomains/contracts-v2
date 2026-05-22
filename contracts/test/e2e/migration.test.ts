@@ -6,7 +6,6 @@ import {
   type Address,
   encodeAbiParameters,
   type Hex,
-  namehash,
   zeroAddress,
 } from "viem";
 import {
@@ -24,6 +23,7 @@ import {
   getLabelAt,
   getParentName,
   idFromLabel,
+  namehash,
 } from "../utils/utils.js";
 import {
   bundleCalls,
@@ -117,7 +117,7 @@ describe("Migration", () => {
       await env.v1.PublicResolver.write.multicall(
         [
           makeResolutions({ name: this.name, ...defaultProfile }).map(
-            (x) => x.write,
+            (x) => x.writeV1,
           ),
         ],
         { account: this.account },
@@ -487,7 +487,7 @@ describe("Migration", () => {
       await unwrapped.checkMigrated();
       await resolver.write.multicall([
         makeResolutions({ name: unwrapped.name, ...defaultProfile }).map(
-          (x) => x.write,
+          (x) => x.writeV2,
         ),
       ]);
       await unwrapped.checkResolution();

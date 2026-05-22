@@ -1,5 +1,5 @@
 import { describe, it } from "bun:test";
-import { namehash, zeroAddress } from "viem";
+import { zeroAddress } from "viem";
 
 import { MAX_EXPIRY } from "../../script/deploy-constants.js";
 import { expectVar } from "../utils/expectVar.js";
@@ -7,7 +7,9 @@ import {
   COIN_TYPE_DEFAULT,
   COIN_TYPE_ETH,
   coinTypeFromChain,
+  dnsEncodeName,
   getReverseName,
+  namehash,
 } from "../utils/utils.js";
 
 const COIN_TYPE_OPTIMISM = coinTypeFromChain(10);
@@ -33,9 +35,12 @@ describe("Reverse registrars", () => {
       hca.address,
       account.address,
     ]);
-    await resolver.write.setAddr([namehash(name), coinType, account.address], {
-      account: hca,
-    });
+    await resolver.write.setAddress(
+      [dnsEncodeName(name), coinType, account.address],
+      {
+        account: hca,
+      },
+    );
     await env.v2.ETHRegistry.write.register([
       label,
       account.address,
@@ -69,7 +74,9 @@ describe("Reverse registrars", () => {
       expectVar({ owner }).toEqualAddress(account.address);
       expectVar({ reverseResolver }).toEqualAddress(resolver.address);
 
-      await resolver.write.setName([reverseNode, name], { account: hca });
+      await resolver.write.setName([dnsEncodeName(reverseName), name], {
+        account: hca,
+      });
 
       const [primary] = await env.v2.UniversalResolver.read.reverse([
         account.address,

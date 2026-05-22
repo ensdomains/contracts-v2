@@ -3,11 +3,9 @@ import {
   type Account,
   type Address,
   getAddress,
-  labelhash,
-  namehash,
   zeroAddress,
 } from "viem";
-import { splitName } from "../../utils/utils.js";
+import { labelhash, namehash, splitName } from "../../utils/utils.js";
 import {
   LOCAL_BATCH_GATEWAY_URL,
   MAX_EXPIRY,
