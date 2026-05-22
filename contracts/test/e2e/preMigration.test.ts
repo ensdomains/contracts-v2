@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, setDefaultTimeout } from "bun:test";
 setDefaultTimeout(60_000);
 
-import { existsSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -20,6 +20,7 @@ import {
   verifyNameOnV1,
   batchVerifyRegistrations,
   InvalidLabelNameError,
+  CSVFormatError,
   isValidLabel,
 } from "../../script/preMigration.js";
 import {
@@ -31,8 +32,10 @@ import {
   verifyV2State,
 } from "../utils/mockPreMigration.js";
 import {
+  createTestCheckpoint,
   deleteTestCheckpoint,
   readTestCheckpoint,
+  writeTestCheckpoint,
 } from "../utils/preMigrationTestUtils.js";
 
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
@@ -65,6 +68,41 @@ describe("PreMigration", () => {
       }
     }
   });
+
+  async function expectMainToExitWithCsvError(
+    args: string[],
+    expectedFragments: string[],
+  ): Promise<void> {
+    const originalExit = process.exit;
+    let exitCode: number | undefined;
+    process.exit = ((code?: number) => {
+      exitCode = code;
+      throw new Error(`process.exit(${code})`);
+    }) as never;
+
+    let returnedNormally = false;
+    try {
+      await main(args);
+      returnedNormally = true;
+    } catch (e: any) {
+      if (e.message !== "process.exit(1)") {
+        throw e;
+      }
+    } finally {
+      process.exit = originalExit;
+    }
+
+    if (returnedNormally) {
+      throw new Error("expected main() to exit with code 1 but it returned");
+    }
+    expect(exitCode).toBe(1);
+
+    const log = readFileSync("preMigration-errors.log", "utf-8");
+    expect(log).toContain("CSVFormatError");
+    for (const fragment of expectedFragments) {
+      expect(log).toContain(fragment);
+    }
+  }
 
   // ─── Core reservation flow ─────────────────────────────────────────
 
@@ -671,29 +709,164 @@ describe("PreMigration", () => {
 
   // ─── Invalid label handling ────────────────────────────────────────
 
-  it("skips invalid/empty labels in CSV without failing the batch", async () => {
-    const validLabel = "validlabel";
-    const { user } = env.namedAccounts;
-
-    await registerV1Name(env, validLabel, user.address, ONE_YEAR_SECONDS);
-
+  it("fails fast on empty labelName cell", async () => {
     const csvContent = [
       "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
-      `,,,,,,${validLabel},,`,
+      `,,,,,,validfirst,,`,
       ",,,,,,,,",
-      `,,,,,,,,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await expectMainToExitWithCsvError(args, [
+      `${csvFilePath}:3`,
+      `empty "labelName"`,
+    ]);
+  });
+
+  it("accepts the 6-column exporter header (label alias)", async () => {
+    const label = "exporterfmt";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    const csvContent = [
+      "name,label,labelhash,registrant,expiryDate,registrationDate",
+      `,${label},,,,`,
     ].join("\n");
     writeFileSync(csvFilePath, csvContent);
 
     const args = buildMainArgs(env, csvFilePath);
     await main(args);
 
-    const state = await verifyV2State(env, validLabel);
+    const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
+  });
 
-    const checkpoint = readTestCheckpoint();
-    expect(checkpoint).not.toBeNull();
-    expect(checkpoint!.successCount).toBe(1);
+  it("fails fast when header has no labelName or label column", async () => {
+    const csvContent = [
+      "node,name,owner",
+      "n,foo,0x00",
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await expectMainToExitWithCsvError(args, [
+      `${csvFilePath}:1`,
+      `no "labelName" or "label" column`,
+      "Found columns: [node, name, owner]",
+    ]);
+  });
+
+  it("fails fast when a row's column count differs from the header", async () => {
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,validlbl,,`,
+      `,,,,short,row`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await expectMainToExitWithCsvError(args, [
+      `${csvFilePath}:3`,
+      "6 columns but header declared 9",
+    ]);
+  });
+
+  it("fails fast on unbalanced quotes in a data row", async () => {
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,"unterminated,,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await expectMainToExitWithCsvError(args, [
+      `${csvFilePath}:2`,
+      "unbalanced quotes",
+    ]);
+  });
+
+  it("tolerates a trailing blank line at end of file", async () => {
+    const label = "trailblank";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    const csvContent =
+      [
+        "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+        `,,,,,,${label},,`,
+        "",
+        "",
+      ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+  });
+
+  it("tolerates a UTF-8 BOM on the header line", async () => {
+    const label = "bomlabel";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    const csvContent =
+      "﻿" +
+      [
+        "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+        `,,,,,,${label},,`,
+      ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+  });
+
+  it("prefers labelName over label when both columns are present", async () => {
+    const winning = "winnerlbl";
+    const losing = "loserlbl";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, winning, user.address, ONE_YEAR_SECONDS);
+
+    const csvContent = [
+      "label,labelName,extra",
+      `${losing},${winning},x`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    const winnerState = await verifyV2State(env, winning);
+    expect(winnerState.status).toBe(STATUS.RESERVED);
+
+    const loserState = await verifyV2State(env, losing);
+    expect(loserState.status).toBe(STATUS.AVAILABLE);
+  });
+
+  it("fails fast on a blank line in the middle of the file", async () => {
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,first,,`,
+      ``,
+      `,,,,,,second,,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await expectMainToExitWithCsvError(args, [
+      `${csvFilePath}:3`,
+      "is blank",
+    ]);
   });
 
   it("skips labels exceeding 255 bytes and encoded labelhashes in CSV", async () => {
@@ -783,6 +956,178 @@ describe("PreMigration", () => {
       const state = await verifyV2State(env, label);
       expect(state.status).toBe(STATUS.RESERVED);
     }
+  });
+
+  it("--limit N does not validate a wrong-column-count row at position N+1", async () => {
+    const validLabels = ["lcap1", "lcap2"];
+    const { user } = env.namedAccounts;
+
+    for (const label of validLabels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,${validLabels[0]},,`,
+      `,,,,,,${validLabels[1]},,`,
+      `,,,short,row`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { limit: 2 });
+    await main(args);
+
+    for (const label of validLabels) {
+      const state = await verifyV2State(env, label);
+      expect(state.status).toBe(STATUS.RESERVED);
+    }
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(2);
+  });
+
+  it("--limit N does not validate an unbalanced-quotes row at position N+1", async () => {
+    const validLabels = ["lqcap1", "lqcap2"];
+    const { user } = env.namedAccounts;
+
+    for (const label of validLabels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,${validLabels[0]},,`,
+      `,,,,,,${validLabels[1]},,`,
+      `,,,,,,"unterminated,,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { limit: 2 });
+    await main(args);
+
+    for (const label of validLabels) {
+      const state = await verifyV2State(env, label);
+      expect(state.status).toBe(STATUS.RESERVED);
+    }
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(2);
+  });
+
+  it("--dry-run --limit N tolerates malformed rows beyond the cap", async () => {
+    const validLabels = ["dryc1", "dryc2"];
+    const { user } = env.namedAccounts;
+
+    for (const label of validLabels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,${validLabels[0]},,`,
+      `,,,,,,${validLabels[1]},,`,
+      `,,,short,row`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { limit: 2, dryRun: true });
+    await main(args);
+
+    for (const label of validLabels) {
+      const state = await verifyV2State(env, label);
+      expect(state.status).toBe(STATUS.AVAILABLE);
+    }
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(2);
+  });
+
+  it("--continue does not validate a wrong-column-count row before the resume point", async () => {
+    const label = "resumecols";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    writeTestCheckpoint(
+      createTestCheckpoint({
+        lastProcessedLineNumber: 0,
+        totalProcessed: 1,
+        totalExpected: 1,
+        successCount: 1,
+      }),
+    );
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,short,row`,
+      `,,,,,,${label},,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { continue: true });
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+  });
+
+  it("--continue does not validate an unbalanced-quotes row before the resume point", async () => {
+    const label = "resumequotes";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    writeTestCheckpoint(
+      createTestCheckpoint({
+        lastProcessedLineNumber: 0,
+        totalProcessed: 1,
+        totalExpected: 1,
+        successCount: 1,
+      }),
+    );
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,"unterminated,,`,
+      `,,,,,,${label},,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { continue: true });
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+  });
+
+  it("--continue tolerates a blank line in the pre-resume range", async () => {
+    const label = "resumeblank";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    writeTestCheckpoint(
+      createTestCheckpoint({
+        lastProcessedLineNumber: 0,
+        totalProcessed: 1,
+        totalExpected: 1,
+        successCount: 1,
+      }),
+    );
+
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      "",
+      `,,,,,,already,,`,
+      `,,,,,,${label},,`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath, { continue: true });
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
   });
 
   it("dry run with batch size 1 does not create state", async () => {
