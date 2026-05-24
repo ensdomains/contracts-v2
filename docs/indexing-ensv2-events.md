@@ -28,10 +28,10 @@ Resolvers are separate contracts (`PermissionedResolver`) deployed per-owner, no
 
 These events are emitted by any registry contract (`PermissionedRegistry` / `UserRegistry`).
 
-### NameRegistered
+### LabelRegistered
 
 ```solidity
-event NameRegistered(
+event LabelRegistered(
     uint256 indexed tokenId,
     bytes32 indexed labelHash,
     string label,
@@ -41,16 +41,16 @@ event NameRegistered(
 );
 ```
 
-**Emitted by**: `IRegistry` (on `PermissionedRegistry`, `UserRegistry`)
+**Emitted by**: `IRegistryEvents` (on `PermissionedRegistry`, `UserRegistry`)
 
-**When**: A new name is registered via `register()`. The full name is constructed by appending the parent name (e.g., label `"test"` under ETHRegistry = `"test.eth"`). The registry contract address that emitted this event identifies which level of the hierarchy this name belongs to.
+**When**: A new label is registered via `register()`. The full name is constructed by appending the parent name (e.g., label `"test"` under ETHRegistry = `"test.eth"`). The registry contract address that emitted this event identifies which level of the hierarchy this label belongs to.
 
 ---
 
-### NameReserved
+### LabelReserved
 
 ```solidity
-event NameReserved(
+event LabelReserved(
     uint256 indexed tokenId,
     bytes32 indexed labelHash,
     string label,
@@ -59,21 +59,21 @@ event NameReserved(
 );
 ```
 
-**Emitted by**: `IRegistry` (on `PermissionedRegistry`)
+**Emitted by**: `IRegistryEvents` (on `PermissionedRegistry`)
 
-**When**: A name is reserved via `register()` with `owner = address(0)` and `roleBitmap = 0`. No token is minted and no owner is set. A reserved name can be promoted to REGISTERED by calling `register()` again with a real owner, which requires `ROLE_REGISTER_RESERVED`.
+**When**: A label is reserved via `register()` with `owner = address(0)` and `roleBitmap = 0`. No token is minted and no owner is set. A reserved label can be promoted to REGISTERED by calling `register()` again with a real owner, which requires `ROLE_REGISTER_RESERVED`.
 
 ---
 
-### NameUnregistered
+### LabelUnregistered
 
 ```solidity
-event NameUnregistered(uint256 indexed tokenId, address indexed sender);
+event LabelUnregistered(uint256 indexed tokenId, address indexed sender);
 ```
 
-**Emitted by**: `IRegistry` (on `PermissionedRegistry`, `UserRegistry`)
+**Emitted by**: `IRegistryEvents` (on `PermissionedRegistry`, `UserRegistry`)
 
-**When**: A name is explicitly deleted via `unregister()`. The ERC1155 token is burned and the expiry is set to `block.timestamp`.
+**When**: A label is explicitly deleted via `unregister()`. The ERC1155 token is burned and the expiry is set to `block.timestamp`.
 
 ---
 
@@ -226,7 +226,7 @@ event NameRegistered(
 
 **Emitted by**: `IETHRegistrar`
 
-**When**: Step 2 of the commit-reveal registration via `register()`. This is distinct from the `IRegistry.NameRegistered` event — the registrar emits its own event with pricing information, and the underlying `ETHRegistry` also emits `IRegistry.NameRegistered`.
+**When**: Step 2 of the commit-reveal registration via `register()`. This is distinct from the registry's `LabelRegistered` event — the registrar emits its own event with pricing information, and the underlying `ETHRegistry` also emits `LabelRegistered`.
 
 > **Note**: Both events fire for the same registration. The registrar event has pricing data; the registry event has the canonical registration data.
 
@@ -372,7 +372,7 @@ event AliasChanged(
 );
 ```
 
-**Emitted by**: `PermissionedResolver`
+**Emitted by**: `IPermissionedResolver` (on `PermissionedResolver`)
 
 **When**: An alias is set via `setAlias(fromName, toName)`. Names are DNS-encoded. Setting `toName` to empty bytes removes the alias. The resolver rewrites the suffix during resolution (e.g., if `alias.eth -> test.eth`, then `sub.alias.eth` resolves records for `sub.test.eth`). Aliases are resolver-level constructs — the registry does not know about them.
 
@@ -443,9 +443,9 @@ Use the `TokenResource` event to maintain the mapping. The `resource` should be 
 
 The indexer must track the registry hierarchy to construct full names:
 
-1. **ETHRegistry** emits `NameRegistered` with `label = "test"` -> full name is `"test.eth"`
+1. **ETHRegistry** emits `LabelRegistered` with `label = "test"` -> full name is `"test.eth"`
 2. A `SubregistryUpdated` on `test.eth` points to `UserRegistry` at address `0xABC`
-3. That `UserRegistry` emits `NameRegistered` with `label = "sub"` -> full name is `"sub.test.eth"`
+3. That `UserRegistry` emits `LabelRegistered` with `label = "sub"` -> full name is `"sub.test.eth"`
 
 The indexer must map each registry address to its parent name to build the complete DNS name.
 
@@ -484,7 +484,7 @@ After expiry, names return to `AVAILABLE`. Re-registration creates a new `tokenI
 For a single registration via `ETHRegistrar.register()`, events fire in this order:
 
 1. `IETHRegistrar.NameRegistered` — registrar-level event with pricing
-2. `IRegistry.NameRegistered` — registry-level event with registration details
+2. `IRegistryEvents.LabelRegistered` — registry-level event with registration details
 3. `TokenResource` — tokenId-to-resource mapping
 4. `TransferSingle` (mint) — ERC1155 token creation
 5. `SubregistryUpdated` — if a subregistry was provided
@@ -492,7 +492,7 @@ For a single registration via `ETHRegistrar.register()`, events fire in this ord
 
 For a direct `IStandardRegistry.register()` call (e.g., on a UserRegistry):
 
-1. `IRegistry.NameRegistered`
+1. `IRegistryEvents.LabelRegistered`
 2. `TokenResource`
 3. `TransferSingle` (mint)
 4. `SubregistryUpdated` — if a subregistry was provided
@@ -504,7 +504,7 @@ For a direct `IStandardRegistry.register()` call (e.g., on a UserRegistry):
 
 | Contract | Role | Events to Watch |
 |----------|------|----------------|
-| `PermissionedRegistry` (ETHRegistry) | Manages `.eth` names | All `IRegistry` events (incl. `ParentUpdated`), `TokenResource`, ERC1155 transfers |
+| `PermissionedRegistry` (ETHRegistry) | Manages `.eth` names | All `IRegistryEvents` events (incl. `ParentUpdated`), `TokenResource`, ERC1155 transfers |
 | `PermissionedRegistry` (RootRegistry) | Manages TLDs | Same as above |
 | `UserRegistry` | Manages subnames (dynamically deployed) | Same as above |
 | `ETHRegistrar` | User-facing `.eth` registration | `CommitmentMade`, `NameRegistered`, `NameRenewed` |
