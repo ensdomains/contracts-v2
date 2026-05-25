@@ -19,7 +19,6 @@ import {LibLabel} from "~src/utils/LibLabel.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
-
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract WrapperRegistryRoleTransferTest is MigrationControllerFixture {
@@ -147,34 +146,20 @@ contract WrapperRegistryRoleTransferTest is MigrationControllerFixture {
         vm.prank(testOwner);
         sub.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, delegate);
 
-        assertTrue(
-            sub.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, delegate),
-            "delegate pre"
-        );
+        assertTrue(sub.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, delegate), "delegate pre");
 
         vm.prank(testOwner);
         ethRegistry.safeTransferFrom(testOwner, buyer, tokenId, 1, "");
 
-        assertTrue(
-            sub.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, delegate),
-            "delegate post"
-        );
-        assertTrue(
-            sub.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, buyer),
-            "buyer post"
-        );
-        assertFalse(
-            sub.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, testOwner),
-            "seller post"
-        );
+        assertTrue(sub.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, delegate), "delegate post");
+        assertTrue(sub.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, buyer), "buyer post");
+        assertFalse(sub.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, testOwner), "seller post");
     }
 
     function test_transferRootRoles_unauthorizedDirectCall() external {
         WrapperRegistry sub = _migrateLocked("nick");
 
-        vm.expectRevert(
-            abi.encodeWithSelector(UnauthorizedCaller.selector, address(this))
-        );
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, address(this)));
         sub.transferRootRoles(0, testOwner, buyer);
     }
 
@@ -199,15 +184,10 @@ contract WrapperRegistryRoleTransferTest is MigrationControllerFixture {
         ethRegistry.setSubregistry(evilTokenId, sub);
 
         // Sanity: getResource of evilTokenId differs from nick's labelhash.
-        assertTrue(
-            LibLabel.withVersion(evilTokenId, 0) != LibLabel.id("nick"),
-            "labelhash differs"
-        );
+        assertTrue(LibLabel.withVersion(evilTokenId, 0) != LibLabel.id("nick"), "labelhash differs");
 
         address mallory = makeAddr("mallory");
-        vm.expectRevert(
-            abi.encodeWithSelector(WrongParentToken.selector, evilTokenId)
-        );
+        vm.expectRevert(abi.encodeWithSelector(WrongParentToken.selector, evilTokenId));
         vm.prank(attacker);
         ethRegistry.safeTransferFrom(attacker, mallory, evilTokenId, 1, "");
     }
@@ -231,24 +211,14 @@ contract WrapperRegistryRoleTransferTest is MigrationControllerFixture {
     function test_transfer_nonWrapperSubregistryNoOp() external {
         address owner = makeAddr("userOwner");
         UserRegistry userSub = deployUserRegistry(owner, 0, 1);
-        ethRegistry.register(
-            "user",
-            owner,
-            userSub,
-            address(0),
-            REGISTRATION_ROLE_BITMAP,
-            _soon()
-        );
+        ethRegistry.register("user", owner, userSub, address(0), REGISTRATION_ROLE_BITMAP, _soon());
         uint256 tokenId = ethRegistry.findTokenId("user");
         vm.prank(owner);
         ethRegistry.safeTransferFrom(owner, buyer, tokenId, 1, "");
         assertEq(ethRegistry.ownerOf(ethRegistry.findTokenId("user")), buyer);
         // sanity: userSub does not implement IWrapperRegistry so the hook is a no-op
         assertFalse(
-            ERC165Checker.supportsInterface(
-                address(userSub),
-                type(IWrapperRegistry).interfaceId
-            ),
+            ERC165Checker.supportsInterface(address(userSub), type(IWrapperRegistry).interfaceId),
             "not a WrapperRegistry"
         );
     }
