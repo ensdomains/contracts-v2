@@ -17,7 +17,9 @@ import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @notice PublicResolver that respects the ENSv2 registry.
 contract PublicResolverV2 is
@@ -31,7 +33,8 @@ contract PublicResolverV2 is
     NameResolver,
     PubkeyResolver,
     TextResolver,
-    HCAContext
+    HCAContext,
+    DelegatedContractNamer
 {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
@@ -87,12 +90,15 @@ contract PublicResolverV2 is
     /// @param hcaFactory The HCA factory.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param rootRegistry The ENSv2 Root Registry contract.
+    /// @param contractNamer Delegated contract namer.
     constructor(
         IHCAFactoryBasic hcaFactory,
         INameWrapper nameWrapper,
-        IPermissionedRegistry rootRegistry
+        IPermissionedRegistry rootRegistry,
+        IContractNamer contractNamer
     )
         HCAEquivalence(hcaFactory)
+        DelegatedContractNamer(contractNamer)
     {
         NAME_WRAPPER = nameWrapper;
         ROOT_REGISTRY = rootRegistry;
@@ -112,7 +118,8 @@ contract PublicResolverV2 is
             InterfaceResolver,
             NameResolver,
             PubkeyResolver,
-            TextResolver
+            TextResolver,
+            DelegatedContractNamer
         )
         returns (bool)
     {

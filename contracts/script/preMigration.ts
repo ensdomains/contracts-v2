@@ -67,6 +67,13 @@ export class InvalidLabelNameError extends Error {
   }
 }
 
+export class CSVFormatError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CSVFormatError";
+  }
+}
+
 const ENCODED_LABELHASH_RE = /^\[[0-9a-fA-F]{64}\]$/;
 
 export function isValidLabel(label: any): label is string {
@@ -363,10 +370,19 @@ async function validateBatchRegistrar(
   logger.success(`Using BatchRegistrar at ${address}`);
 }
 
+const CSV_ROW_PREVIEW_LIMIT = 200;
+const UTF8_BOM = "﻿";
+
+function previewCSVLine(line: string): string {
+  return line.length <= CSV_ROW_PREVIEW_LIMIT
+    ? line
+    : `${line.slice(0, CSV_ROW_PREVIEW_LIMIT)}...`;
+}
+
 async function* readCSVInBatches(
   csvFilePath: string,
   batchSize: number,
-  startLineNumber: number = 0,
+  startLineNumber: number = -1,
   limit: number | null = null,
 ): AsyncGenerator<ENSRegistration[]> {
   const readline = await import("node:readline");
@@ -377,41 +393,123 @@ async function* readCSVInBatches(
     crlfDelay: Infinity,
   });
 
-  let lineNumber = 0;
+  let dataLineNumber = 0;
   let processedCount = 0;
   let batch: ENSRegistration[] = [];
-  let headerSkipped = false;
 
-  for await (const line of rl) {
-    if (!headerSkipped) {
-      headerSkipped = true;
+  let rawLineNumber = 0;
+  let headerParsed = false;
+  let labelColumnIndex = -1;
+  let expectedColumnCount = 0;
+  let pendingBlankLineNumber: number | null = null;
+
+  for await (const rawLine of rl) {
+    rawLineNumber++;
+
+    let line = rawLine;
+    if (rawLineNumber === 1 && line.startsWith(UTF8_BOM)) {
+      line = line.slice(UTF8_BOM.length);
+    }
+
+    if (!headerParsed) {
+      let headerFields: string[];
+      try {
+        headerFields = parseCSVLine(line);
+      } catch {
+        throw new CSVFormatError(
+          `CSV header at ${csvFilePath}:1 has unbalanced quotes. Row: ${previewCSVLine(line)}`,
+        );
+      }
+
+      const normalized = headerFields.map((f) => f.trim().toLowerCase());
+      const labelNameIdx = normalized.indexOf("labelname");
+      const labelIdx = normalized.indexOf("label");
+      const resolvedIdx = labelNameIdx !== -1 ? labelNameIdx : labelIdx;
+      if (resolvedIdx === -1) {
+        const found = headerFields.map((f) => f.trim()).join(", ");
+        throw new CSVFormatError(
+          `CSV header at ${csvFilePath}:1 has no "labelName" or "label" column. ` +
+            `Found columns: [${found}]. ` +
+            `Expected one of "labelName" or "label" (case-insensitive).`,
+        );
+      }
+      labelColumnIndex = resolvedIdx;
+      expectedColumnCount = headerFields.length;
+      headerParsed = true;
       continue;
     }
 
-    if (lineNumber <= startLineNumber) {
-      lineNumber++;
+    if (dataLineNumber <= startLineNumber) {
+      if (line !== "") {
+        dataLineNumber++;
+      }
       continue;
     }
 
-    if (limit && processedCount >= limit) {
+    if (limit !== null && processedCount >= limit) {
       break;
     }
 
-    const parts = parseCSVLine(line);
-    if (parts.length >= 7) {
-      const labelName = parts[6].trim();
-      if (labelName && labelName !== "") {
-        batch.push({ labelName, lineNumber });
-        processedCount++;
-
-        if (batch.length >= batchSize) {
-          yield batch;
-          batch = [];
-        }
+    if (line === "") {
+      if (pendingBlankLineNumber === null) {
+        pendingBlankLineNumber = rawLineNumber;
+      } else {
+        throw new CSVFormatError(
+          `CSV row at ${csvFilePath}:${pendingBlankLineNumber} is blank. ` +
+            `Blank lines are only tolerated at end of file.`,
+        );
       }
+      continue;
     }
 
-    lineNumber++;
+    if (pendingBlankLineNumber !== null) {
+      throw new CSVFormatError(
+        `CSV row at ${csvFilePath}:${pendingBlankLineNumber} is blank. ` +
+          `Blank lines are only tolerated at end of file.`,
+      );
+    }
+
+    let parts: string[];
+    try {
+      parts = parseCSVLine(line);
+    } catch {
+      throw new CSVFormatError(
+        `CSV row at ${csvFilePath}:${rawLineNumber} has unbalanced quotes. ` +
+          `Row: ${previewCSVLine(line)}`,
+      );
+    }
+
+    if (parts.length !== expectedColumnCount) {
+      throw new CSVFormatError(
+        `CSV row at ${csvFilePath}:${rawLineNumber} has ${parts.length} columns ` +
+          `but header declared ${expectedColumnCount}. ` +
+          `Row: ${previewCSVLine(line)}`,
+      );
+    }
+
+    const labelName = parts[labelColumnIndex].trim();
+    if (labelName === "") {
+      throw new CSVFormatError(
+        `CSV row at ${csvFilePath}:${rawLineNumber} has empty "labelName". ` +
+          `Row: ${previewCSVLine(line)}`,
+      );
+    }
+
+    batch.push({ labelName, lineNumber: dataLineNumber });
+    processedCount++;
+
+    if (batch.length >= batchSize) {
+      yield batch;
+      batch = [];
+    }
+
+    dataLineNumber++;
+  }
+
+  if (!headerParsed) {
+    throw new CSVFormatError(
+      `CSV file at ${csvFilePath} is empty (no header row).`,
+    );
   }
 
   if (batch.length > 0) {
@@ -440,6 +538,10 @@ function parseCSVLine(line: string): string[] {
     } else {
       current += char;
     }
+  }
+
+  if (inQuotes) {
+    throw new Error("unbalanced quotes");
   }
 
   result.push(current);

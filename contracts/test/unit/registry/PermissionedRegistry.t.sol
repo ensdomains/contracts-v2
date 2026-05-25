@@ -13,6 +13,7 @@ import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155
 import {LibLabel} from "~src/utils/LibLabel.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {IOwnedRegistry} from "~src/registry/interfaces/IOwnedRegistry.sol";
@@ -47,7 +48,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
     function setUp() external {
         hcaFactory = new MockHCAFactoryBasic();
-        labelStore = new LabelStore();
+        labelStore = new LabelStore(IContractNamer(address(0)));
 
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
@@ -91,6 +92,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
             "IPermissionedRegistry"
         );
+        assertTrue(registry.supportsInterface(type(IContractNamer).interfaceId), "IContractNamer");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1262,6 +1264,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             )
         );
         registry.revokeRoles(tokenId, roleBitmap, testOwner);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // IContractNamer
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_isContractNamer() external {
+        assertTrue(registry.isContractNamer(address(this)));
+
+        assertFalse(registry.isContractNamer(user1), "before");
+        registry.grantRootRoles(RegistryRolesLib.ROLE_CAN_NAME, user1);
+        assertTrue(registry.isContractNamer(user1), "granted");
+        registry.revokeRootRoles(RegistryRolesLib.ROLE_CAN_NAME, user1);
+        assertFalse(registry.isContractNamer(user1), "revoked");
     }
 
     ////////////////////////////////////////////////////////////////////////

@@ -49,7 +49,6 @@ abstract contract AbstractETHRegistrar is Ownable, HCAContext, ERC165, IETHRenew
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the contract.
     /// @param owner_ Contract owner.
     /// @param hcaFactory HCA factory.
     /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.

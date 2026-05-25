@@ -24,6 +24,9 @@ export default execute(
     const publicResolverV2 =
       get<(typeof artifacts.PublicResolverV2)["abi"]>("PublicResolverV2");
 
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+
     const migrationController = await deploy("LockedMigrationController", {
       account: deployer,
       artifact: artifacts.LockedMigrationController,
@@ -35,6 +38,7 @@ export default execute(
         wrapperRegistryImpl.address,
         publicResolverSet.address,
         publicResolverV2.address,
+        contractNamer.address,
       ],
     });
 
@@ -59,6 +63,7 @@ export default execute(
       "WrapperRegistryImpl",
       "PublicResolverSet",
       "PublicResolverV2",
+      "ContractNamer",
     ],
   },
 );

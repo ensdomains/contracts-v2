@@ -11,14 +11,27 @@ export default execute(
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+
     await deploy("PublicResolverV2", {
       account: deployer,
       artifact: artifacts.PublicResolverV2,
-      args: [hcaFactory.address, nameWrapper.address, rootRegistry.address],
+      args: [
+        hcaFactory.address,
+        nameWrapper.address,
+        rootRegistry.address,
+        contractNamer.address,
+      ],
     });
   },
   {
     tags: ["PublicResolverV2", "v2"],
-    dependencies: ["NameWrapper", "HCAFactory", "RootRegistry"],
+    dependencies: [
+      "NameWrapper",
+      "HCAFactory",
+      "RootRegistry",
+      "ContractNamer",
+    ],
   },
 );

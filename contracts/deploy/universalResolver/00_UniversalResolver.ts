@@ -9,14 +9,21 @@ export default execute(
       "BatchGatewayProvider",
     );
 
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+
     await deploy("UniversalResolverV2", {
       account: deployer,
       artifact: artifacts.UniversalResolverV2,
-      args: [rootRegistry.address, batchGatewayProvider.address],
+      args: [
+        rootRegistry.address,
+        batchGatewayProvider.address,
+        contractNamer.address,
+      ],
     });
   },
   {
     tags: ["UniversalResolverV2", "v2"],
-    dependencies: ["RootRegistry", "BatchGatewayProvider"],
+    dependencies: ["RootRegistry", "BatchGatewayProvider", "ContractNamer"],
   },
 );

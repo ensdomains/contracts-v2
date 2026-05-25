@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-/// @dev Interface selector: `0xe9fe30a0`
+/// @dev Interface selector: `0xd037477f`
 interface IL2ReverseRegistrar {
     struct NameClaim {
         string name;
@@ -25,13 +25,13 @@ interface IL2ReverseRegistrar {
     function setNameForAddrWithSignature(NameClaim calldata claim, bytes calldata signature)
         external;
 
-    /// @notice Sets the `nameForAddr()` record for the contract provided that is owned with `Ownable`.
+    /// @notice Sets the `nameForAddr()` record for the contract provided using a signature.
     /// @param claim The claim to set the name for.
-    /// @param owner The owner of the contract (via Ownable).
+    /// @param namer The namer of the contract (via `Ownable` or `IContractNamer`).
     /// @param signature The signature of an address that will return true on isValidSignature for the owner.
-    function setNameForOwnableWithSignature(
+    function setNameForContractWithSignature(
         NameClaim calldata claim,
-        address owner,
+        address namer,
         bytes calldata signature
     )
         external;

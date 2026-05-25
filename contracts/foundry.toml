@@ -19,6 +19,7 @@ ignored_warnings_from = [
     "lib/ens-contracts/contracts/ethregistrar/BaseRegistrarImplementation.sol",
     "lib/ens-contracts/contracts/reverseRegistrar/ReverseRegistrar.sol",
     "lib/ens-contracts/contracts/wrapper/NameWrapper.sol",
+    "lib/ens-contracts/contracts/reverseRegistrar/ReverseRegistrar.sol",
     "lib/verifiable-factory/src/UUPSProxyLogic.sol",
     "src/hca/HCAProxyInitCode.yul",
 ]

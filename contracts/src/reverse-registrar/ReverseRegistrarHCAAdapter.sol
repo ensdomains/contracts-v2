@@ -7,6 +7,8 @@ import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 
+import {AccountNamerLib} from "./libraries/AccountNamerLib.sol";
+
 /// @title Reverse Registrar HCA Adapter
 /// @notice HCA-aware forwarder for v1 `addr.reverse` registrar updates.
 /// @dev The adapter must be configured as a controller on the reverse registrar.
@@ -37,10 +39,20 @@ contract ReverseRegistrarHCAAdapter is HCAContext {
 
     /// @notice Claims the caller's `addr.reverse` node and sets its resolver.
     /// @dev The resolved HCA owner is used as both the reverse address and node owner.
-    /// @param resolver The resolver to set on the caller's reverse node.
-    /// @return node The ENS node hash for the caller's reverse record.
-    function claimForAddr(address resolver) external returns (bytes32 node) {
+    /// @param resolver The resolver to set.
+    /// @return The ENS node hash for the caller's reverse record.
+    function claimForAddr(address resolver) external returns (bytes32) {
         address sender = _msgSender();
-        node = REVERSE_REGISTRAR.claimForAddr(sender, sender, resolver);
+        return REVERSE_REGISTRAR.claimForAddr(sender, sender, resolver);
+    }
+
+    /// @notice Claims the contract's `addr.reverse` node and sets its resolver.
+    /// @param contractAddr The contract address.
+    /// @param resolver The resolver to set.
+    /// @return The ENS node hash for the contract's reverse record.
+    function claimForContract(address contractAddr, address resolver) external returns (bytes32) {
+        address sender = _msgSender();
+        AccountNamerLib.requireNamer(contractAddr, sender);
+        return REVERSE_REGISTRAR.claimForAddr(contractAddr, sender, resolver);
     }
 }

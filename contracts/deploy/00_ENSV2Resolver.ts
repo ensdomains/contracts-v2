@@ -9,12 +9,15 @@ export default execute(
     read,
     namedAccounts: { deployer, owner },
   }) => {
-    const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-
     const batchGatewayProvider = get<(typeof artifacts.GatewayProvider)["abi"]>(
       "BatchGatewayProvider",
     );
+
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+
+    const rootRegistry =
+      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
     const ensRegistry =
       get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
@@ -34,7 +37,12 @@ export default execute(
     const ensV2Resolver = await deploy("ENSV2Resolver", {
       account: deployer,
       artifact: artifacts.ENSV2Resolver,
-      args: [rootRegistry.address, batchGatewayProvider.address, ethResolver],
+      args: [
+        batchGatewayProvider.address,
+        contractNamer.address,
+        rootRegistry.address,
+        ethResolver,
+      ],
     });
 
     console.log("  - Setting ENSv1 .eth resolver to ENSV2Resolver");
@@ -47,8 +55,9 @@ export default execute(
   {
     tags: ["ENSV2Resolver", "v2"],
     dependencies: [
-      "RootRegistry",
       "BatchGatewayProvider",
+      "ContractNamer",
+      "RootRegistry",
       "EthOwnedResolver", // BaseRegistrarImplementation:setup => eventually setup as OwnedResolver
       "RegistrarSecurityController",
     ],

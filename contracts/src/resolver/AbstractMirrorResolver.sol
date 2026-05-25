@@ -10,8 +10,16 @@ import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.so
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
+
 /// @dev Resolver that mirrors resolution of the same name to a different registry.
-abstract contract AbstractMirrorResolver is ICompositeResolver, IERC7996, ResolverCaller, ERC165 {
+abstract contract AbstractMirrorResolver is
+    ICompositeResolver,
+    IERC7996,
+    ResolverCaller,
+    DelegatedContractNamer
+{
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -24,7 +32,11 @@ abstract contract AbstractMirrorResolver is ICompositeResolver, IERC7996, Resolv
     ////////////////////////////////////////////////////////////////////////
 
     /// @param batchGatewayProvider The batch gateway provider.
-    constructor(IGatewayProvider batchGatewayProvider) CCIPReader(DEFAULT_UNSAFE_CALL_GAS) {
+    /// @param contractNamer Delegated contract namer.
+    constructor(IGatewayProvider batchGatewayProvider, IContractNamer contractNamer)
+        CCIPReader(DEFAULT_UNSAFE_CALL_GAS)
+        DelegatedContractNamer(contractNamer)
+    {
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
     }
 
@@ -33,7 +45,7 @@ abstract contract AbstractMirrorResolver is ICompositeResolver, IERC7996, Resolv
         public
         view
         virtual
-        override(ERC165)
+        override(DelegatedContractNamer)
         returns (bool)
     {
         return

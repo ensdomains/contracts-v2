@@ -98,17 +98,18 @@ In registry contracts, EAC is used with these specific behaviors:
 
 **Registry-Specific Roles**: From [`RegistryRolesLib.sol`](src/registry/libraries/RegistryRolesLib.sol):
 
-| Role                      | Bit  | Admin Bit | Scope         | Description                                                       |
-| ------------------------- | ---- | --------- | ------------- | ----------------------------------------------------------------- |
-| `ROLE_REGISTRAR`          | 0    | 128       | Root-only     | Register and reserve new names                                    |
-| `ROLE_REGISTER_RESERVED`  | 4    | 132       | Root-only     | Promote reserved name to registered                               |
-| `ROLE_SET_PARENT`         | 8    | 136       | Root-only     | Set parent registry                                               |
-| `ROLE_UNREGISTER`         | 12   | 140       | Root or token | Unregister names                                                  |
-| `ROLE_RENEW`              | 16   | 144       | Root or token | Extend name expiry                                                |
-| `ROLE_SET_SUBREGISTRY`    | 20   | 148       | Root or token | Change child registry                                             |
-| `ROLE_SET_RESOLVER`       | 24   | 152       | Root or token | Change resolver address                                           |
-| `ROLE_CAN_TRANSFER_ADMIN` | 28\* | 156       | Root or token | Admin-only. Auto-granted to name owner. Revoke to make soulbound. |
-| `ROLE_UPGRADE`            | 124  | 252       | Root-only     | UUPS proxy upgrades                                               |
+| Role                      | Bit  | Admin Bit | Scope         | Description                                                            |
+| ------------------------- | ---- | --------- | ------------- | ---------------------------------------------------------------------- |
+| `ROLE_REGISTRAR`          | 0    | 128       | Root-only     | Register and reserve new names                                         |
+| `ROLE_REGISTER_RESERVED`  | 4    | 132       | Root-only     | Promote reserved name to registered                                    |
+| `ROLE_SET_PARENT`         | 8    | 136       | Root-only     | Set parent registry                                                    |
+| `ROLE_UNREGISTER`         | 12   | 140       | Root or token | Unregister names                                                       |
+| `ROLE_RENEW`              | 16   | 144       | Root or token | Extend name expiry                                                     |
+| `ROLE_SET_SUBREGISTRY`    | 20   | 148       | Root or token | Change child registry                                                  |
+| `ROLE_SET_RESOLVER`       | 24   | 152       | Root or token | Change resolver address                                                |
+| `ROLE_CAN_TRANSFER_ADMIN` | 28\* | 156       | Root or token | Admin-only. Auto-granted to name owner. Revoke to make soulbound.      |
+| `ROLE_CAN_NAME`           | 120  | 248       | Root-only     | Name contract                                                          |
+| `ROLE_UPGRADE`            | 124  | 252       | Root-only     | UUPS proxy upgrades. WrapperRegistry targets must also be DAO-approved |
 
 \*`ROLE_CAN_TRANSFER_ADMIN` has no base role; it is admin-only (upper 128 bits).
 
@@ -130,25 +131,23 @@ In registry contracts, EAC is used with these specific behaviors:
 
 Roles granted during core deployment.
 
-| Contract        | Scope    | Target                        | REGISTRAR | REGISTER_RESERVED | SET_PARENT | UNREGISTER | RENEW | SET_SUBREGISTRY | SET_RESOLVER | CAN_TRANSFER_ADMIN | UPGRADE |
-| --------------- | -------- | ----------------------------- | --------- | ----------------- | ---------- | ---------- | ----- | --------------- | ------------ | ------------------ | ------- |
-| RootRegistry    | Root     | Deployer                      | AR        | AR                | AR         |            | AR    |                 |              |                    |         |
-| RootRegistry    | .eth     | Deployer                      |           |                   |            |            |       |                 | AR           | AR                 |         |
-| RootRegistry    | .reverse | Deployer                      |           |                   |            | AR         | AR    | AR              | AR           | AR                 |         |
-| ETHRegistry     | Root     | Deployer                      | A         | A                 | AR         |            | A     |                 |              |                    |         |
-| ETHRegistry     | Root     | `ETHRegistrar`                | R         |                   |            |            | R     |                 |              |                    |         |
-| ETHRegistry     | Root     | `ETHRenewerV1`                |           |                   |            |            | R     |                 |              |                    |         |
-| ETHRegistry     | Root     | `BatchRegistrar`              | R         |                   |            |            | R     |                 |              |                    |         |
-| ETHRegistry     | Root     | `UnlockedMigrationController` |           | R                 |            |            |       |                 |              |                    |         |
-| ETHRegistry     | Root     | `LockedMigrationController`   |           | R                 |            |            |       |                 |              |                    |         |
-| ReverseRegistry | Root     | Deployer                      | AR        | AR                | AR         | AR         | AR    | AR              | AR           | AR                 | AR      |
-| ReverseRegistry | .addr    | Deployer                      |           |                   |            | AR         | AR    | AR              | AR           | AR                 |         |
+| Contract        | Scope    | Target                        | REGISTRAR | REGISTER_RESERVED | SET_PARENT | UNREGISTER | RENEW | SET_SUBREGISTRY | SET_RESOLVER | CAN_TRANSFER_ADMIN | CAN_NAME | UPGRADE |
+| --------------- | -------- | ----------------------------- | --------- | ----------------- | ---------- | ---------- | ----- | --------------- | ------------ | ------------------ | -------- | ------- |
+| RootRegistry    | Root     | Deployer                      | AR        | AR                | AR         |            | AR    |                 |              |                    | AR       |         |
+| RootRegistry    | .eth     | Deployer                      |           |                   |            |            |       |                 | AR           | AR                 |          |         |
+| RootRegistry    | .reverse | Deployer                      |           |                   |            | AR         | AR    | AR              | AR           | AR                 |          |         |
+| ETHRegistry     | Root     | Deployer                      | A         | A                 | AR         |            | A     |                 |              |                    | AR       |         |
+| ETHRegistry     | Root     | `ETHRegistrar`                | R         |                   |            |            | R     |                 |              |                    |          |         |
+| ETHRegistry     | Root     | `BatchRegistrar`              | R         |                   |            |            | R     |                 |              |                    |          |         |
+| ETHRegistry     | Root     | `UnlockedMigrationController` |           | R                 |            |            |       |                 |              |                    |          |         |
+| ETHRegistry     | Root     | `LockedMigrationController`   |           | R                 |            |            |       |                 |              |                    |          |         |
+| ReverseRegistry | Root     | Deployer                      | AR        | AR                | AR         | AR         | AR    | AR              | AR           | AR                 | AR       | AR      |
 
 Legend: A = admin only, R = regular only, AR = admin and regular
 
-_ETHRegistrar, ETHRenewerV1, and ApprovedUpgradeGate use Ownable, not EAC. Implementation contracts (UserRegistryImpl, WrapperRegistryImpl, PermissionedResolverImpl) grant no roles at deployment; proxies receive roles via `initialize()` when created._
+_`ETHRegistrar`, `ETHRenewerV1`, and `ApprovedUpgradeGate` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
 
-_The tokens for .eth, .reverse and .addr.reverse are owned by the deployer._
+_The token for `eth` is registered to the deployer; `reverse` and `addr.reverse` are reserved._
 
 #### Usage Examples
 

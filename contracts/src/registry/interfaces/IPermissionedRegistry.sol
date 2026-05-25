@@ -2,11 +2,12 @@
 pragma solidity >=0.8.13;
 
 import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedAccessControl.sol";
+import {IContractNamer} from "../../reverse-registrar/interfaces/IContractNamer.sol";
 
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
 /// @dev Interface selector: `0xafff3a63`
-interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
+interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////

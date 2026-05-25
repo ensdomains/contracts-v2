@@ -7,16 +7,19 @@ import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
 import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
+import {ContractNamer} from "~src/utils/ContractNamer.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 /// @dev Reusable testing fixture for ENSv2 with a basic ".eth" deployment.
 contract V2Fixture is Test, ERC1155Holder {
+    ContractNamer contractNamer;
     VerifiableFactory verifiableFactory;
     MockHCAFactoryBasic hcaFactory;
     LabelStore labelStore;
@@ -36,7 +39,9 @@ contract V2Fixture is Test, ERC1155Holder {
             RegistryRolesLib.ROLE_SET_PARENT |
             RegistryRolesLib.ROLE_SET_PARENT_ADMIN |
             RegistryRolesLib.ROLE_RENEW |
-            RegistryRolesLib.ROLE_RENEW_ADMIN;
+            RegistryRolesLib.ROLE_RENEW_ADMIN |
+            RegistryRolesLib.ROLE_CAN_NAME |
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN;
     }
 
     function _ethRegistryRootRoles() internal pure returns (uint256) {
@@ -45,7 +50,9 @@ contract V2Fixture is Test, ERC1155Holder {
             RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN |
             RegistryRolesLib.ROLE_SET_PARENT |
             RegistryRolesLib.ROLE_SET_PARENT_ADMIN |
-            RegistryRolesLib.ROLE_RENEW_ADMIN;
+            RegistryRolesLib.ROLE_RENEW_ADMIN |
+            RegistryRolesLib.ROLE_CAN_NAME |
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN;
     }
 
     function _ethTokenRoles() internal pure returns (uint256) {
@@ -57,10 +64,18 @@ contract V2Fixture is Test, ERC1155Holder {
     }
 
     function deployV2Fixture() public {
+        contractNamer = ContractNamer(
+            address(
+                new ERC1967Proxy(
+                    address(new ContractNamer()),
+                    abi.encodeCall(ContractNamer.initialize, (address(this)))
+                )
+            )
+        );
         verifiableFactory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
-        labelStore = new LabelStore();
-        userRegistryImpl = new UserRegistry(hcaFactory, labelStore);
+        labelStore = new LabelStore(contractNamer);
+        userRegistryImpl = new UserRegistry(hcaFactory, labelStore, address(this));
         rootRegistry = new PermissionedRegistry(
             hcaFactory,
             labelStore,
@@ -84,7 +99,11 @@ contract V2Fixture is Test, ERC1155Holder {
         ethRegistry.setParent(rootRegistry, "eth");
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(this));
         batchGatewayProvider = new GatewayProvider(address(this), new string[](0));
-        universalResolver = new UniversalResolverV2(rootRegistry, batchGatewayProvider);
+        universalResolver = new UniversalResolverV2(
+            rootRegistry,
+            batchGatewayProvider,
+            contractNamer
+        );
     }
 
     function findResolverV2(bytes memory name) public view returns (address resolver) {

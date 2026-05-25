@@ -7,8 +7,10 @@ import {Test} from "forge-std/Test.sol";
 
 import {ENSRegistry} from "@ens/contracts/registry/ENSRegistry.sol";
 import {ReverseRegistrar} from "@ens/contracts/reverseRegistrar/ReverseRegistrar.sol";
+import {MockOwnable} from "@ens/contracts/test/mocks/MockOwnable.sol";
 
 import {ReverseRegistrarHCAAdapter} from "~src/reverse-registrar/ReverseRegistrarHCAAdapter.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 contract ReverseRegistrarHCAAdapterTest is Test {
@@ -64,5 +66,42 @@ contract ReverseRegistrarHCAAdapterTest is Test {
         assertEq(node, reverseRegistrar.node(owner), "node");
         assertEq(registry.owner(node), owner, "owner");
         assertEq(registry.resolver(node), resolver, "resolver");
+    }
+
+    function test_claimForContract_Ownable() external {
+        hcaFactory.setAccountOwner(hca, owner);
+
+        MockOwnable c = new MockOwnable(owner);
+
+        vm.prank(hca);
+        bytes32 node = reverseAdapter.claimForContract(address(c), resolver);
+
+        assertEq(node, reverseRegistrar.node(address(c)), "node");
+        assertEq(registry.owner(node), owner, "owner");
+        assertEq(registry.resolver(node), resolver, "resolver");
+    }
+
+    function test_claimForContract_IContractNamer() external {
+        hcaFactory.setAccountOwner(hca, owner);
+
+        MockContractNamer c = new MockContractNamer(owner);
+
+        vm.prank(hca);
+        bytes32 node = reverseAdapter.claimForContract(address(c), resolver);
+
+        assertEq(node, reverseRegistrar.node(address(c)), "node");
+        assertEq(registry.owner(node), owner, "owner");
+        assertEq(registry.resolver(node), resolver, "resolver");
+    }
+}
+
+
+contract MockContractNamer is IContractNamer {
+    address internal immutable NAMER;
+    constructor(address namer) {
+        NAMER = namer;
+    }
+    function isContractNamer(address namer) external view returns (bool) {
+        return namer == NAMER;
     }
 }

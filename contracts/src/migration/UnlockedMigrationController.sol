@@ -5,11 +5,12 @@ import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {InvalidOwner, UnauthorizedCaller} from "../CommonErrors.sol";
 import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
@@ -29,7 +30,11 @@ import {LibMigration} from "./libraries/LibMigration.sol";
 /// performed.  The name is registered in the .eth registry with the roles and subregistry
 /// specified in the caller-provided `LibMigration.Data`.
 ///
-contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver {
+contract UnlockedMigrationController is
+    AbstractWrapperReceiver,
+    IERC721Receiver,
+    DelegatedContractNamer
+{
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -47,15 +52,28 @@ contract UnlockedMigrationController is AbstractWrapperReceiver, IERC721Receiver
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
-    constructor(INameWrapper nameWrapper, address graveyard, IPermissionedRegistry ethRegistry)
+    /// @param contractNamer Delegated contract namer.
+    constructor(
+        INameWrapper nameWrapper,
+        address graveyard,
+        IPermissionedRegistry ethRegistry,
+        IContractNamer contractNamer
+    )
         AbstractWrapperReceiver(nameWrapper, graveyard)
+        DelegatedContractNamer(contractNamer)
     {
         ETH_REGISTRY = ethRegistry;
         _BASE_REGISTRAR = nameWrapper.registrar();
     }
 
-    /// @inheritdoc IERC165
-    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    /// @inheritdoc DelegatedContractNamer
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(AbstractWrapperReceiver, DelegatedContractNamer)
+        returns (bool)
+    {
         return
             interfaceId == type(IERC721Receiver).interfaceId || super.supportsInterface(interfaceId);
     }

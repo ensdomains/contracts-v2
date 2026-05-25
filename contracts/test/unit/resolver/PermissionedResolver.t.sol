@@ -42,6 +42,7 @@ contract PermissionedResolverTest is Test {
     uint256 constant DEFAULT_ROLES = EACBaseRolesLib.ALL_ROLES;
 
     MockHCAFactoryBasic hcaFactory;
+    PermissionedResolver resolverImpl;
     PermissionedResolver resolver;
 
     address owner = makeAddr("owner");
@@ -57,7 +58,7 @@ contract PermissionedResolverTest is Test {
     function setUp() external {
         VerifiableFactory factory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
-        PermissionedResolver resolverImpl = new PermissionedResolver(hcaFactory);
+        resolverImpl = new PermissionedResolver(hcaFactory, address(this));
         testName = NameCoder.encode("test.eth");
         testNode = NameCoder.namehash(testName, 0);
 
@@ -982,6 +983,28 @@ contract PermissionedResolverTest is Test {
         );
         vm.prank(friend);
         resolver.setAddr(~testNode, coinType, hex"03");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // IContractNamer
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_implementationIsNameable() external view {
+        assertTrue(resolverImpl.isContractNamer(address(this)));
+    }
+
+    function test_isContractNamer() external {
+        assertTrue(resolver.isContractNamer(owner));
+
+        assertFalse(resolver.isContractNamer(friend), "before");
+        vm.prank(owner);
+
+        resolver.grantRootRoles(PermissionedResolverLib.ROLE_CAN_NAME, friend);
+        assertTrue(resolver.isContractNamer(friend), "granted");
+
+        vm.prank(owner);
+        resolver.revokeRootRoles(PermissionedResolverLib.ROLE_CAN_NAME, friend);
+        assertFalse(resolver.isContractNamer(friend), "revoked");
     }
 }
 

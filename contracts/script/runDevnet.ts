@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { getAddress } from "viem";
 import { setupDevnet } from "./setup.js";
 import { testNames } from "./testNames.js";
+import { COIN_TYPE_ETH } from "../test/utils/utils.js";
 
 const t0 = Date.now();
 
@@ -81,11 +82,26 @@ if (!quiet) {
     })),
   );
 
+  const tags = ["v2", "shared", "erc20"] as const;
   console.table(
-    Object.entries(env.rocketh.deployments).map(([name, { address }]) => ({
-      "Contract Name": name,
-      "Contract Address": getAddress(address),
-    })),
+    await Promise.all(
+      Object.entries(env.rocketh.deployments).map(
+        async ([name, { address }]) => {
+          const [primary] = await env.v2.UniversalResolver.read.reverse([
+            address,
+            COIN_TYPE_ETH,
+          ]);
+          return {
+            "Contract Name": name,
+            "Contract Address": getAddress(address),
+            "Primary Name":
+              !primary && (name in env.v2 || name in env.shared)
+                ? undefined
+                : primary,
+          };
+        },
+      ),
+    ),
   );
 
   console.log({
