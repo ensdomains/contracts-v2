@@ -20,12 +20,12 @@ library ProxyLib {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Init-code prefix compiled from `src/hca/HCAProxyInitCode.yul`.
-    ///      Regenerate with `forge inspect src/hca/HCAProxyInitCode.yul:HCAProxyInitCode bytecode`.
+    ///      Regenerate with `FOUNDRY_PROFILE=yul forge inspect src/hca/HCAProxyInitCode.yul:HCAProxyInitCode bytecode`.
     bytes internal constant INITIALIZED_HCA_PROXY_INIT_CODE_PREFIX =
         hex"60426100c0818101601481600c395f5190813b1560ac5760145f8381949382947f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc55817fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b8480a260017f90b772c2cb8a51aa7a8a65fc23543c6d022d5b3f8e2b92eed79fba7eef8293005d601319813803019384910183395af43d5f803e1560a85781905f395ff35b3d5ffd5b50634c9c8ce360e01b5f5260045260245ffdfe3615604057365f80375f8036817f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d5f803e15603c573d5ff35b3d5ffd5b00";
 
     /// @dev Init-code prefix compiled from `src/hca/HCAProxyNoInitCode.yul`.
-    ///      Regenerate with `forge inspect src/hca/HCAProxyNoInitCode.yul:HCAProxyNoInitCode bytecode`.
+    ///      Regenerate with `FOUNDRY_PROFILE=yul forge inspect src/hca/HCAProxyNoInitCode.yul:HCAProxyNoInitCode bytecode`.
     bytes internal constant UNINITIALIZED_HCA_PROXY_INIT_CODE_PREFIX =
         hex"607660426014828201600c395f5191823b156062578282937f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc557fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b5f80a25f395ff35b82634c9c8ce360e01b5f5260045260245ffdfe3615604057365f80375f8036817f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d5f803e15603c573d5ff35b3d5ffd5b00";
 

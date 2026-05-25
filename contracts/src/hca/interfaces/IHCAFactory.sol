@@ -13,6 +13,7 @@ interface IHCAFactory is IHCAFactoryBasic {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Deploys or funds the deterministic HCA for the owner encoded in `initData`.
+    /// @dev Deploys with the owner's selected implementation when present, otherwise with the current implementation.
     /// @param initData Initialization data used to identify and initialize the HCA owner.
     /// @return hca The deployed or existing HCA proxy address.
     function createAccount(bytes calldata initData) external payable returns (address payable hca);
@@ -24,8 +25,7 @@ interface IHCAFactory is IHCAFactoryBasic {
     /// @notice Updates the implementation and init data parser selectable for new HCA proxies.
     /// @param implementation_ The new implementation address.
     /// @param initDataParser_ The parser used to extract account ownership from initialization data.
-    function setImplementation(address implementation_, IHCAInitDataParser initDataParser_)
-        external;
+    function setImplementation(address implementation_, IHCAInitDataParser initDataParser_) external;
 
     /// @notice Returns the implementation selectable for newly deployed HCA proxies.
     function implementation() external view returns (address);
@@ -39,10 +39,7 @@ interface IHCAFactory is IHCAFactoryBasic {
     /// @notice Returns the implementation explicitly selected by an account.
     /// @param account The account to inspect.
     /// @return implementation The selected implementation.
-    function accountImplementationOf(address account)
-        external
-        view
-        returns (address implementation);
+    function accountImplementationOf(address account) external view returns (address implementation);
 
     /// @notice Computes the deterministic HCA proxy address for an owner.
     /// @param owner The owner whose HCA address to predict.
@@ -52,8 +49,5 @@ interface IHCAFactory is IHCAFactoryBasic {
     /// @notice Extracts the HCA owner from initialization data.
     /// @param initData The initialization data to parse.
     /// @return hcaOwner The owner encoded in the initialization data.
-    function getOwnerFromHCAInitdata(bytes calldata initData)
-        external
-        view
-        returns (address hcaOwner);
+    function getOwnerFromHCAInitdata(bytes calldata initData) external view returns (address hcaOwner);
 }

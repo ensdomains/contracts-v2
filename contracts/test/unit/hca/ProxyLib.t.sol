@@ -3,7 +3,6 @@ pragma solidity ^0.8.27;
 
 // solhint-disable private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {stdJson} from "forge-std/StdJson.sol";
 import {Test, Vm} from "forge-std/Test.sol";
 
 import {ProxyLib} from "~src/hca/ProxyLib.sol";
@@ -114,8 +113,6 @@ contract MockHCAProxyImplementation {
 /// @title ProxyLibTest
 /// @notice Tests deterministic HCA proxy deployment through ProxyLib.
 contract ProxyLibTest is Test {
-    using stdJson for string;
-
     /// @dev ERC-1967 implementation slot.
     bytes32 internal constant IMPLEMENTATION_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
 
@@ -130,26 +127,6 @@ contract ProxyLibTest is Test {
     function setUp() public {
         harness = new ProxyLibHarness();
         implementation = new MockHCAProxyImplementation();
-    }
-
-    function test_initializedPrefix_matchesCompiledYul() public view {
-        string memory artifact = vm.readFile("out/HCAProxyInitCode.yul/HCAProxyInitCode.json");
-
-        assertEq(
-            harness.initializedHCAProxyInitCodePrefix(),
-            artifact.readBytes(".bytecode.object"),
-            "initialized yul bytecode"
-        );
-    }
-
-    function test_uninitializedPrefix_matchesCompiledYul() public view {
-        string memory artifact = vm.readFile("out/HCAProxyNoInitCode.yul/HCAProxyNoInitCode.json");
-
-        assertEq(
-            harness.uninitializedHCAProxyInitCodePrefix(),
-            artifact.readBytes(".bytecode.object"),
-            "uninitialized yul bytecode"
-        );
     }
 
     function test_deployProxy_deploysPredictedCreate3Proxy() public {

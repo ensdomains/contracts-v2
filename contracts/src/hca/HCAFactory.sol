@@ -11,8 +11,8 @@ import {ProxyLib} from "./ProxyLib.sol";
 
 /// @title HCAFactory
 /// @notice Factory for deploying Hidden Contract Accounts as deterministic ERC-1967 proxies.
-/// @dev HCA-aware protocol calls require EOAs to explicitly select an implementation before lookup
-///      succeeds for non-HCA callers.
+/// @dev HCA-aware protocol calls require EOAs to explicitly interact with the factory before
+///      lookup succeeds for non-HCA callers.
 contract HCAFactory is Ownable, IHCAFactory {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
@@ -106,12 +106,12 @@ contract HCAFactory is Ownable, IHCAFactory {
     }
 
     /// @notice Deploys a new HCA proxy for the owner encoded in the initialization data, or forwards ETH if already deployed.
-    /// @dev The deployment implementation must have been explicitly selected by the encoded owner.
+    /// @dev Uses the owner's selected implementation when set, otherwise the current implementation.
     /// @param initData The initialization data used to initialize the HCA proxy and identify its owner.
     /// @return hca The deployed or existing HCA proxy address.
     function createAccount(bytes calldata initData) external payable returns (address payable hca) {
         address hcaOwner = getOwnerFromHCAInitdata(initData);
-        address accountImplementation = _accountImplementationOf(hcaOwner);
+        address accountImplementation = _deploymentImplementationOf(hcaOwner);
         bool alreadyDeployed;
         if (accountImplementation == _DEFERRED_IMPLEMENTATION) {
             (alreadyDeployed, hca) = ProxyLib.deployProxyWithoutInitialization(accountImplementation, hcaOwner);
@@ -159,11 +159,11 @@ contract HCAFactory is Ownable, IHCAFactory {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Reverts unless an account has explicitly selected an implementation.
-    function _accountImplementationOf(address account) internal view returns (address accountImplementation) {
+    /// @dev Returns an account's selected implementation, or the current implementation when unset.
+    function _deploymentImplementationOf(address account) internal view returns (address accountImplementation) {
         accountImplementation = _accountImplementations[account];
         if (accountImplementation == address(0)) {
-            revert HCAImplementationNotSet(account);
+            accountImplementation = implementation;
         }
     }
 

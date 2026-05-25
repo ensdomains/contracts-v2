@@ -17,7 +17,6 @@ contract MockHCAInitDataParser is IHCAInitDataParser {
     }
 }
 
-
 contract MockHCAImplementation {
     bytes32 internal _lastInitDataHash;
     uint256 internal _value;
@@ -39,13 +38,11 @@ contract MockHCAImplementation {
     }
 }
 
-
 contract HCAFactoryTest is Test {
+    bytes32 internal constant IMPLEMENTATION_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+
     event AccountCreated(address indexed hcaOwner, address indexed hca);
-    event NewHCAImplementation(
-        address indexed accountImplementation,
-        address indexed initDataParser
-    );
+    event NewHCAImplementation(address indexed accountImplementation, address indexed initDataParser);
     event AccountImplementationSet(address indexed account, address indexed implementation);
     event Upgraded(address indexed implementation);
 
@@ -112,15 +109,11 @@ contract HCAFactoryTest is Test {
     }
 
     function test_setAccountImplementation_reverts_for_unselectable_implementation() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(HCAFactory.HCAImplementationNotSelectable.selector, address(0))
-        );
+        vm.expectRevert(abi.encodeWithSelector(HCAFactory.HCAImplementationNotSelectable.selector, address(0)));
         vm.prank(user);
         factory.setAccountImplementation(address(0));
 
-        vm.expectRevert(
-            abi.encodeWithSelector(HCAFactory.HCAImplementationNotSelectable.selector, other)
-        );
+        vm.expectRevert(abi.encodeWithSelector(HCAFactory.HCAImplementationNotSelectable.selector, other));
         vm.prank(user);
         factory.setAccountImplementation(other);
     }
@@ -135,26 +128,13 @@ contract HCAFactoryTest is Test {
         assertEq(factory.getAccountOwner(user), address(0));
     }
 
-    function test_getAccountOwner_returns_zero_for_contract_without_implementation_selection()
-        public
-        view
-    {
+    function test_getAccountOwner_returns_zero_for_contract_without_implementation_selection() public view {
         assertEq(factory.getAccountOwner(address(this)), address(0));
     }
 
-    function test_createAccount_reverts_until_owner_selects_implementation() public {
-        bytes memory initData = abi.encode(user);
-
-        vm.expectRevert(abi.encodeWithSelector(HCAFactory.HCAImplementationNotSet.selector, user));
-        factory.createAccount(initData);
-    }
-
-    function test_createAccount_deploys_initialized_account_with_selected_implementation() public {
+    function test_createAccount_deploys_initialized_account_with_current_implementation() public {
         bytes memory initData = abi.encode(user);
         address payable predicted = factory.computeAccountAddress(user);
-
-        vm.prank(user);
-        factory.setAccountImplementation(address(implementation));
 
         vm.expectEmit(true, true, false, true, address(factory));
         emit AccountCreated(user, predicted);
@@ -162,15 +142,33 @@ contract HCAFactoryTest is Test {
 
         assertEq(hca, predicted);
         assertEq(factory.getAccountOwner(hca), user);
+        assertEq(_proxyImplementation(hca), address(implementation));
+        assertEq(MockHCAImplementation(hca).lastInitDataHash(), keccak256(initData));
+        assertEq(factory.accountImplementationOf(user), address(0));
+    }
+
+    function test_createAccount_uses_selected_implementation_over_current() public {
+        bytes memory initData = abi.encode(user);
+        address payable predicted = factory.computeAccountAddress(user);
+        MockHCAImplementation newImplementation = new MockHCAImplementation();
+
+        vm.prank(user);
+        factory.setAccountImplementation(address(implementation));
+        factory.setImplementation(address(newImplementation), parser);
+
+        vm.expectEmit(true, true, false, true, address(factory));
+        emit AccountCreated(user, predicted);
+        address payable hca = factory.createAccount(initData);
+
+        assertEq(hca, predicted);
+        assertEq(factory.getAccountOwner(hca), user);
+        assertEq(_proxyImplementation(hca), address(implementation));
         assertEq(MockHCAImplementation(hca).lastInitDataHash(), keccak256(initData));
     }
 
     function test_createAccount_funds_existing_account() public {
         bytes memory initData = abi.encode(user);
         vm.deal(address(this), 1 ether);
-
-        vm.prank(user);
-        factory.setAccountImplementation(address(implementation));
 
         address payable hca = factory.createAccount(initData);
         assertEq(hca.balance, 0);
@@ -207,11 +205,7 @@ contract HCAFactoryTest is Test {
         MockHCAImplementation newImplementation = new MockHCAImplementation();
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                HCADeferredImplementation.HCADeferredUpgradeUnauthorized.selector,
-                other,
-                user
-            )
+            abi.encodeWithSelector(HCADeferredImplementation.HCADeferredUpgradeUnauthorized.selector, other, user)
         );
         vm.prank(other);
         HCADeferredImplementation(hca).upgradeToAndCall(address(newImplementation), "");
@@ -224,12 +218,13 @@ contract HCAFactoryTest is Test {
         address payable hca = factory.createAccount(initData);
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                HCADeferredImplementation.HCADeferredImplementationHasNoCode.selector,
-                other
-            )
+            abi.encodeWithSelector(HCADeferredImplementation.HCADeferredImplementationHasNoCode.selector, other)
         );
         vm.prank(user);
         HCADeferredImplementation(hca).upgradeToAndCall(other, "");
+    }
+
+    function _proxyImplementation(address hca) internal view returns (address) {
+        return address(uint160(uint256(vm.load(hca, IMPLEMENTATION_SLOT))));
     }
 }
