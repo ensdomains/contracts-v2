@@ -217,7 +217,7 @@ async function loadFixture() {
   return loadedFixture;
 }
 
-describe("HCAFactory integration", () => {
+describe("HCAFactoryIntegration", () => {
   it("allows relayed deployment and records HCA recognition", async () => {
     const F = await loadFixture();
     const initData = encodeAbiParameters(
