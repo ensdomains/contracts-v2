@@ -37,9 +37,6 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @dev Maps an account to the implementation selected for its deterministic HCA.
     mapping(address account => address implementation) internal _accountImplementations;
 
-    /// @notice The deterministic HCA address recorded for each account.
-    mapping(address account => address hca) public accountHCAOf;
-
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
@@ -115,7 +112,6 @@ contract HCAFactory is Ownable, IHCAFactory {
 
     /// @notice Deploys a new HCA proxy for the owner encoded in the initialization data, or forwards ETH if already deployed.
     /// @dev Uses the owner's selected implementation when set, otherwise the current implementation.
-    ///      Records the deterministic HCA address for protocol recognition.
     /// @param initData The initialization data used to initialize the HCA proxy and identify its owner.
     /// @return hca The deployed or existing HCA proxy address.
     function createAccount(bytes calldata initData) external payable returns (address payable hca) {
@@ -134,7 +130,6 @@ contract HCAFactory is Ownable, IHCAFactory {
             _hcaOwners[hca] = hcaOwner;
             emit AccountCreated(hcaOwner, hca);
         }
-        accountHCAOf[hcaOwner] = hca;
     }
 
     /// @notice Returns the owner recorded for a deployed HCA proxy.
@@ -143,7 +138,18 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @return hcaOwner The recorded HCA owner, or zero when the caller has no recorded HCA mapping.
     function getAccountOwner(address hca) external view returns (address hcaOwner) {
         hcaOwner = _hcaOwners[hca];
-        if (hcaOwner == address(0) || accountHCAOf[hcaOwner] != hca) {
+        if (hcaOwner == address(0) || ProxyLib.predictProxyAddress(hcaOwner) != hca) {
+            return address(0);
+        }
+    }
+
+    /// @inheritdoc IHCAFactory
+    function accountHCAOf(address account) external view returns (address hca) {
+        if (account == address(0)) {
+            return address(0);
+        }
+        hca = ProxyLib.predictProxyAddress(account);
+        if (_hcaOwners[hca] != account) {
             return address(0);
         }
     }
