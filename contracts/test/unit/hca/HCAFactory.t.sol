@@ -103,6 +103,7 @@ contract HCAFactoryTest is Test {
         factory.setAccountImplementation(address(implementation));
 
         assertEq(factory.accountImplementationOf(user), address(implementation));
+        assertEq(factory.accountHCAOf(user), address(0));
     }
 
     function test_setAccountImplementation_selects_deferred_implementation() public {
@@ -112,6 +113,7 @@ contract HCAFactoryTest is Test {
         factory.setAccountImplementation(address(deferredImplementation));
 
         assertEq(factory.accountImplementationOf(user), address(deferredImplementation));
+        assertEq(factory.accountHCAOf(user), address(0));
     }
 
     function test_setAccountImplementation_reverts_for_unselectable_implementation() public {
@@ -128,24 +130,19 @@ contract HCAFactoryTest is Test {
         factory.setAccountImplementation(other);
     }
 
-    function test_getAccountOwner_reverts_until_account_selects_implementation() public {
-        vm.expectRevert(abi.encodeWithSelector(HCAFactory.HCAImplementationNotSet.selector, user));
-        factory.getAccountOwner(user);
-
+    function test_getAccountOwner_returns_zero_for_direct_account_lookup_after_selection() public {
+        assertEq(factory.getAccountOwner(user), address(0));
         vm.prank(user);
         factory.setAccountImplementation(address(implementation));
 
         assertEq(factory.getAccountOwner(user), address(0));
     }
 
-    function test_getAccountOwner_returns_zero_for_contract_without_implementation_selection()
-        public
-        view
-    {
+    function test_getAccountOwner_returns_zero_for_contract_without_recorded_hca() public view {
         assertEq(factory.getAccountOwner(address(this)), address(0));
     }
 
-    function test_createAccount_deploys_initialized_account_with_current_implementation() public {
+    function test_createAccount_deploys_initialized_account_and_records_hca() public {
         bytes memory initData = abi.encode(user);
         address payable predicted = factory.computeAccountAddress(user);
 
@@ -158,6 +155,7 @@ contract HCAFactoryTest is Test {
         assertEq(_proxyImplementation(hca), address(implementation));
         assertEq(MockHCAImplementation(hca).lastInitDataHash(), keccak256(initData));
         assertEq(factory.accountImplementationOf(user), address(0));
+        assertEq(factory.accountHCAOf(user), predicted);
     }
 
     function test_createAccount_uses_selected_implementation_over_current() public {
@@ -177,6 +175,16 @@ contract HCAFactoryTest is Test {
         assertEq(factory.getAccountOwner(hca), user);
         assertEq(_proxyImplementation(hca), address(implementation));
         assertEq(MockHCAImplementation(hca).lastInitDataHash(), keccak256(initData));
+    }
+
+    function test_setAccountImplementation_preserves_existing_account_recognition() public {
+        bytes memory initData = abi.encode(user);
+        address payable hca = factory.createAccount(initData);
+
+        vm.prank(user);
+        factory.setAccountImplementation(address(implementation));
+
+        assertEq(factory.getAccountOwner(hca), user);
     }
 
     function test_createAccount_funds_existing_account() public {

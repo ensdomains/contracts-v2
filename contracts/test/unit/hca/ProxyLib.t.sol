@@ -40,22 +40,35 @@ contract ProxyLibHarness {
     /// @notice Predicts the proxy address for an owner.
     /// @param owner The owner used to derive the deterministic proxy salt.
     /// @return predictedAddress The deterministic proxy address.
-    function predictProxyAddress(address owner) external view returns (address payable predictedAddress) {
+    function predictProxyAddress(address owner)
+        external
+        view
+        returns (address payable predictedAddress)
+    {
         return ProxyLib.predictProxyAddress(owner);
     }
 
     /// @notice Returns the initialized proxy init-code prefix embedded in ProxyLib.
     /// @return initCodePrefix The Yul-derived init-code prefix.
-    function initializedHCAProxyInitCodePrefix() external pure returns (bytes memory initCodePrefix) {
+    function initializedHCAProxyInitCodePrefix()
+        external
+        pure
+        returns (bytes memory initCodePrefix)
+    {
         return ProxyLib.initializedHCAProxyInitCodePrefix();
     }
 
     /// @notice Returns the uninitialized proxy init-code prefix embedded in ProxyLib.
     /// @return initCodePrefix The Yul-derived init-code prefix.
-    function uninitializedHCAProxyInitCodePrefix() external pure returns (bytes memory initCodePrefix) {
+    function uninitializedHCAProxyInitCodePrefix()
+        external
+        pure
+        returns (bytes memory initCodePrefix)
+    {
         return ProxyLib.uninitializedHCAProxyInitCodePrefix();
     }
 }
+
 
 /// @title MockHCAProxyImplementation
 /// @notice Implementation used to verify HCA proxy initialization and delegation.
@@ -110,14 +123,17 @@ contract MockHCAProxyImplementation {
     }
 }
 
+
 /// @title ProxyLibTest
 /// @notice Tests deterministic HCA proxy deployment through ProxyLib.
 contract ProxyLibTest is Test {
     /// @dev ERC-1967 implementation slot.
-    bytes32 internal constant IMPLEMENTATION_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+    bytes32 internal constant IMPLEMENTATION_SLOT =
+        0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
 
     /// @dev ERC-1967 Upgraded(address) event topic.
-    bytes32 internal constant UPGRADED_TOPIC = 0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b;
+    bytes32 internal constant UPGRADED_TOPIC =
+        0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b;
 
     ProxyLibHarness harness;
     MockHCAProxyImplementation implementation;
@@ -178,7 +194,8 @@ contract ProxyLibTest is Test {
     }
 
     function test_delegatesRuntimeCallsToImplementation() public {
-        (, address payable account) = harness.deployProxyWithoutInitialization(address(implementation), owner);
+        (, address payable account) =
+            harness.deployProxyWithoutInitialization(address(implementation), owner);
 
         MockHCAProxyImplementation(account).setValue(42);
 
@@ -189,13 +206,19 @@ contract ProxyLibTest is Test {
         implementation_ = address(uint160(uint256(vm.load(account, IMPLEMENTATION_SLOT))));
     }
 
-    function _assertUpgradedLog(Vm.Log[] memory logs, address emitter, address implementation_) private pure {
+    function _assertUpgradedLog(Vm.Log[] memory logs, address emitter, address implementation_)
+        private
+        pure
+    {
         bool found;
         bytes32 implementationTopic = bytes32(uint256(uint160(implementation_)));
         for (uint256 i; i < logs.length; ++i) {
             if (
-                logs[i].emitter == emitter && logs[i].topics.length == 2 && logs[i].topics[0] == UPGRADED_TOPIC
-                    && logs[i].topics[1] == implementationTopic && logs[i].data.length == 0
+                logs[i].emitter == emitter &&
+                logs[i].topics.length == 2 &&
+                logs[i].topics[0] == UPGRADED_TOPIC &&
+                logs[i].topics[1] == implementationTopic &&
+                logs[i].data.length == 0
             ) {
                 found = true;
                 break;

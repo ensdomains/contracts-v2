@@ -20,6 +20,18 @@ contract HCAEquivalenceHarness is HCAEquivalence {
 }
 
 
+contract HCAEquivalenceInitDataParser is IHCAInitDataParser {
+    function getOwnerFromInitData(bytes calldata initData) external pure returns (address hcaOwner) {
+        hcaOwner = abi.decode(initData, (address));
+    }
+}
+
+
+contract HCAEquivalenceImplementation {
+    function initializeAccount(bytes calldata) external payable {}
+}
+
+
 contract HCAEquivalenceTest is Test {
     MockHCAFactoryBasic factory;
     HCAEquivalenceHarness harness;
@@ -77,26 +89,26 @@ contract HCAEquivalenceTest is Test {
         assertEq(sender, hca, "When owner == HCA, _msgSender should be the HCA address");
     }
 
-    function test_msgSender_with_real_factory_requires_account_implementation_selection() public {
-        address implementation = address(0x1234);
-        HCAFactory realFactory =
-            new HCAFactory(implementation, IHCAInitDataParser(address(0)), address(this));
+    function test_msgSender_with_real_factory_resolves_deployed_hca() public {
+        HCAEquivalenceImplementation implementation = new HCAEquivalenceImplementation();
+        HCAEquivalenceInitDataParser parser = new HCAEquivalenceInitDataParser();
+        HCAFactory realFactory = new HCAFactory(address(implementation), parser, address(this));
         HCAEquivalenceHarness realHarness =
             new HCAEquivalenceHarness(IHCAFactoryBasic(address(realFactory)));
 
-        vm.expectRevert(abi.encodeWithSelector(HCAFactory.HCAImplementationNotSet.selector, user));
-        vm.prank(user);
-        realHarness.exposedMsgSender();
+        address deployedHca = realFactory.createAccount(abi.encode(user));
 
         vm.prank(user);
-        realFactory.setAccountImplementation(implementation);
+        assertEq(realHarness.exposedMsgSender(), user);
 
-        vm.prank(user);
+        vm.prank(deployedHca);
         address sender = realHarness.exposedMsgSender();
         assertEq(sender, user);
     }
 
-    function test_msgSender_with_real_factory_allows_contract_fallback_without_selection() public {
+    function test_msgSender_with_real_factory_allows_contract_fallback_without_recorded_hca()
+        public
+    {
         HCAFactory realFactory =
             new HCAFactory(address(0x1234), IHCAInitDataParser(address(0)), address(this));
         HCAEquivalenceHarness realHarness =

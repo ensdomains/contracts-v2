@@ -11,8 +11,8 @@ import {ProxyLib} from "./ProxyLib.sol";
 
 /// @title HCAFactory
 /// @notice Factory for deploying Hidden Contract Accounts as deterministic ERC-1967 proxies.
-/// @dev HCA-aware protocol calls require EOAs to explicitly interact with the factory before
-///      lookup succeeds for non-HCA callers.
+/// @dev HCA-aware protocol calls resolve deployed HCAs after the deterministic account is recorded
+///      for its owner.
 contract HCAFactory is Ownable, IHCAFactory {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
@@ -36,6 +36,9 @@ contract HCAFactory is Ownable, IHCAFactory {
 
     /// @dev Maps an account to the implementation selected for its deterministic HCA.
     mapping(address account => address implementation) internal _accountImplementations;
+
+    /// @notice The deterministic HCA address recorded for each account.
+    mapping(address account => address hca) public accountHCAOf;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -67,11 +70,6 @@ contract HCAFactory is Ownable, IHCAFactory {
     /// @param implementation The rejected implementation address.
     /// @dev Error selector: `0xbf4480a4`
     error HCAImplementationNotSelectable(address implementation);
-
-    /// @notice Thrown when an account has not explicitly selected an implementation.
-    /// @param account The account missing an implementation selection.
-    /// @dev Error selector: `0xa97a8217`
-    error HCAImplementationNotSet(address account);
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -117,6 +115,7 @@ contract HCAFactory is Ownable, IHCAFactory {
 
     /// @notice Deploys a new HCA proxy for the owner encoded in the initialization data, or forwards ETH if already deployed.
     /// @dev Uses the owner's selected implementation when set, otherwise the current implementation.
+    ///      Records the deterministic HCA address for protocol recognition.
     /// @param initData The initialization data used to initialize the HCA proxy and identify its owner.
     /// @return hca The deployed or existing HCA proxy address.
     function createAccount(bytes calldata initData) external payable returns (address payable hca) {
@@ -135,20 +134,17 @@ contract HCAFactory is Ownable, IHCAFactory {
             _hcaOwners[hca] = hcaOwner;
             emit AccountCreated(hcaOwner, hca);
         }
+        accountHCAOf[hcaOwner] = hca;
     }
 
     /// @notice Returns the owner recorded for a deployed HCA proxy.
-    /// @dev Reverts for no-code callers that are neither registered HCAs nor accounts with an implementation selection.
+    /// @dev Returns zero for non-HCA callers and for HCAs that are not recorded for their owner.
     /// @param hca The HCA or caller address to look up.
-    /// @return hcaOwner The recorded HCA owner, or zero for opted-in non-HCA accounts.
+    /// @return hcaOwner The recorded HCA owner, or zero when the caller has no recorded HCA mapping.
     function getAccountOwner(address hca) external view returns (address hcaOwner) {
         hcaOwner = _hcaOwners[hca];
-        if (
-            hcaOwner == address(0) &&
-            _accountImplementations[hca] == address(0) &&
-            hca.code.length == 0
-        ) {
-            revert HCAImplementationNotSet(hca);
+        if (hcaOwner == address(0) || accountHCAOf[hcaOwner] != hca) {
+            return address(0);
         }
     }
 

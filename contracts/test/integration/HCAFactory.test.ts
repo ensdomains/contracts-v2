@@ -216,16 +216,17 @@ async function loadFixture() {
 }
 
 describe("HCAFactory integration", () => {
-  it("requires account implementation selection before no-code lookup but not deployment", async () => {
+  it("allows relayed deployment and records HCA recognition", async () => {
     const F = await loadFixture();
     const initData = encodeAbiParameters(
       [{ type: "address" }],
       [F.user.account.address],
     );
 
-    await expect(
-      F.hcaFactory.read.getAccountOwner([F.user.account.address]),
-    ).toBeRevertedWithCustomError("HCAImplementationNotSet");
+    const accountOwnerBeforeDeployment = await F.hcaFactory.read.getAccountOwner(
+      [F.user.account.address],
+    );
+    expectVar({ accountOwnerBeforeDeployment }).toEqualAddress(zeroAddress);
 
     const hca = await F.hcaFactory.read.computeAccountAddress([
       F.user.account.address,
@@ -238,7 +239,9 @@ describe("HCAFactory integration", () => {
     const selectedImplementation = await F.hcaFactory.read.accountImplementationOf(
       [F.user.account.address],
     );
-    const hcaOwner = await F.hcaFactory.read.getAccountOwner([hca]);
+    const selectedHCA = await F.hcaFactory.read.accountHCAOf([
+      F.user.account.address,
+    ]);
     const account = await network.viem.getContractAt(
       "MockHCAAccountImplementation",
       hca,
@@ -246,15 +249,18 @@ describe("HCAFactory integration", () => {
     const initializedOwner = await account.read.owner();
 
     expectVar({ selectedImplementation }).toEqualAddress(zeroAddress);
-    expectVar({ hcaOwner }).toEqualAddress(F.user.account.address);
+    expectVar({ selectedHCA }).toEqualAddress(hca);
     expectVar({ initializedOwner }).toEqualAddress(F.user.account.address);
-    await expect(
-      F.hcaFactory.read.getAccountOwner([F.user.account.address]),
-    ).toBeRevertedWithCustomError("HCAImplementationNotSet");
+    const hcaOwner = await F.hcaFactory.read.getAccountOwner([hca]);
+    const directOwner = await F.hcaFactory.read.getAccountOwner([
+      F.user.account.address,
+    ]);
+    expectVar({ hcaOwner }).toEqualAddress(F.user.account.address);
+    expectVar({ directOwner }).toEqualAddress(zeroAddress);
     F.printGasReport("default HCA deployment flow");
   });
 
-  it("returns zero for no-code lookup after explicit implementation selection", async () => {
+  it("returns zero for direct account lookup after explicit implementation selection", async () => {
     const F = await loadFixture();
 
     await F.selectImplementation({
@@ -266,7 +272,11 @@ describe("HCAFactory integration", () => {
     const hcaOwner = await F.hcaFactory.read.getAccountOwner([
       F.user.account.address,
     ]);
+    const selectedHCA = await F.hcaFactory.read.accountHCAOf([
+      F.user.account.address,
+    ]);
     expectVar({ hcaOwner }).toEqualAddress(zeroAddress);
+    expectVar({ selectedHCA }).toEqualAddress(zeroAddress);
   });
 
   it("deploys an initialized HCA and uses HCA equivalence through registry permissions", async () => {

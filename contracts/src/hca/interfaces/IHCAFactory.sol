@@ -6,7 +6,7 @@ import {IHCAInitDataParser} from "./IHCAInitDataParser.sol";
 
 /// @title IHCAFactory
 /// @notice Full interface for deterministic Hidden Contract Account deployment and lookup.
-/// @dev Interface selector: `0xcb1d76f5`
+/// @dev Interface selector: `0x21f79415`
 interface IHCAFactory is IHCAFactoryBasic {
     ////////////////////////////////////////////////////////////////////////
     // Functions
@@ -44,6 +44,11 @@ interface IHCAFactory is IHCAFactoryBasic {
         external
         view
         returns (address implementation);
+
+    /// @notice Returns the deterministic HCA address recorded for an account.
+    /// @param account The account to inspect.
+    /// @return hca The recorded HCA address.
+    function accountHCAOf(address account) external view returns (address hca);
 
     /// @notice Computes the deterministic HCA proxy address for an owner.
     /// @param owner The owner whose HCA address to predict.

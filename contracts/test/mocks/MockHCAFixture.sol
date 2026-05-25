@@ -12,6 +12,7 @@ contract MockHCAInitDataParser is IHCAInitDataParser {
     }
 }
 
+
 /// @title Mock HCA Account Implementation
 /// @notice Minimal initialized account implementation for HCA integration tests.
 contract MockHCAAccountImplementation {
@@ -69,6 +70,7 @@ contract MockHCAAccountImplementation {
         result = returndata;
     }
 }
+
 
 /// @title Mock HCA Executor Implementation
 /// @notice Minimal owner-controlled account implementation for HCA end-to-end tests.
