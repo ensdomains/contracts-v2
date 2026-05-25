@@ -181,7 +181,7 @@ contract WrapperRegistry is
         return super.register(label, owner, registry, resolver, roleBitmap, expiry);
     }
 
-    /// @inheritdoc PermissionedRegistry
+    /// @inheritdoc AbstractWrapperReceiver
     /// @dev Support canonical token ownership.
     function onERC1155Received(
         address operator,

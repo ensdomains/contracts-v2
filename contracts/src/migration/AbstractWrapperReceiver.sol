@@ -92,6 +92,26 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Convert NameWrapper tokens to their equivalent ENSv2 form.
+    /// @dev Only callable by ourself and invoked by our `IERC1155Receiver` handlers.
+    ///
+    /// TODO: gas analysis and optimization
+    /// NOTE: converting this to an internal call requires catching many reverts
+    ///
+    /// @param ids The NameWrapper token IDs (namehashes) of the names being migrated.
+    /// @param mds The migration parameters for each name, indexed in parallel with `ids`.
+    function finishERC1155Migration(uint256[] calldata ids, LibMigration.Data[] calldata mds)
+        external
+    {
+        if (msg.sender != address(this)) {
+            revert UnauthorizedCaller(msg.sender);
+        }
+        if (ids.length != mds.length) {
+            revert IERC1155Errors.ERC1155InvalidArrayLength(ids.length, mds.length);
+        }
+        _migrateWrapped(ids, mds);
+    }
+
     /// @inheritdoc IERC1155Receiver
     /// @notice Migrate multiple NameWrapper tokens via `safeBatchTransferFrom()`.
     /// @dev Only callable by NameWrapper.
@@ -120,26 +140,6 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
         } catch (bytes memory reason) {
             WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
         }
-    }
-
-    /// @notice Convert NameWrapper tokens to their equivalent ENSv2 form.
-    /// @dev Only callable by ourself and invoked by our `IERC1155Receiver` handlers.
-    ///
-    /// TODO: gas analysis and optimization
-    /// NOTE: converting this to an internal call requires catching many reverts
-    ///
-    /// @param ids The NameWrapper token IDs (namehashes) of the names being migrated.
-    /// @param mds The migration parameters for each name, indexed in parallel with `ids`.
-    function finishERC1155Migration(uint256[] calldata ids, LibMigration.Data[] calldata mds)
-        external
-    {
-        if (msg.sender != address(this)) {
-            revert UnauthorizedCaller(msg.sender);
-        }
-        if (ids.length != mds.length) {
-            revert IERC1155Errors.ERC1155InvalidArrayLength(ids.length, mds.length);
-        }
-        _migrateWrapped(ids, mds);
     }
 
     /// @inheritdoc IERC1155Receiver
