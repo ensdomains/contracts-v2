@@ -1,22 +1,19 @@
 import { artifacts, execute } from "@rocketh";
-import type { Abi } from "abitype";
 
 export default execute(
-  async ({ deploy, deployViaProxy, namedAccounts: { deployer, owner } }) => {
-    await deployViaProxy<Abi>(
+  async ({ deployViaProxy, namedAccounts: { deployer, owner } }) => {
+    await deployViaProxy(
       "ContractNamer",
       {
         account: deployer,
-        artifact: (name) =>
-          deploy(name, {
-            account: deployer,
-            artifact: artifacts.ContractNamer,
-          }),
-        args: [owner || deployer],
+        artifact: artifacts.ContractNamer,
       },
       {
         proxyContract: "UUPS",
-        execute: "initialize",
+        execute: {
+          methodName: "initialize",
+          args: [owner],
+        },
       },
     );
   },

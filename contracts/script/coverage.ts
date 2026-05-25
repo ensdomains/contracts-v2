@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readdirSync, rmSync } from "node:fs";
 
 const SUFFIX = ".lcov";
@@ -24,8 +24,19 @@ console.table(found);
 
 // generate individual reports
 for (const name of found) {
-  execSync(
-    `lcov --ignore-errors unused,unused --remove ${DIR}${name} "lib/*" "*test*" "*mock*" --output-file ${DIR}${PREFIX}${name}`,
+  execFileSync(
+    "lcov",
+    [
+      "--ignore-errors",
+      "unused,unused",
+      "--remove",
+      `${DIR}${name}`,
+      "lib/*",
+      "*test*",
+      "*mock*",
+      "--output-file",
+      `${DIR}${PREFIX}${name}`,
+    ],
     { cwd: rootDir },
   );
 }
