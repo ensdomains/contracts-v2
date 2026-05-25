@@ -368,7 +368,7 @@ export async function setupDevnet({
         client,
       }),
       HCAFactory: getContract({
-        abi: artifacts.MockHCAFactoryBasic.abi,
+        abi: artifacts.HCAFactory.abi,
         address: rocketh.get("HCAFactory").address,
         client,
       }),
@@ -502,6 +502,19 @@ export async function setupDevnet({
       .flatMap((x) => Object.values(x))
       .forEach(patchContractWrite);
     console.log("Linked contracts");
+
+    const hcaDeferredImplementation =
+      await v2.HCAFactory.read.DEFERRED_IMPLEMENTATION();
+    for (const account of accounts) {
+      const currentImplementation =
+        await v2.HCAFactory.read.accountImplementationOf([account.address]);
+      if (currentImplementation !== zeroAddress) continue;
+      await v2.HCAFactory.write.setAccountImplementation(
+        [hcaDeferredImplementation],
+        { account },
+      );
+    }
+    console.log("Configured HCA implementation for dev accounts");
 
     const namedAccounts = Object.fromEntries(
       await Promise.all(

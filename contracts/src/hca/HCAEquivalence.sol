@@ -7,9 +7,9 @@ import {IHCAFactoryBasic} from "./interfaces/IHCAFactoryBasic.sol";
 /// contract-based account whose actions should be attributed to its registered owner rather
 /// than to the contract address itself.
 ///
-/// Queries the HCA factory to resolve `msg.sender` to the real owner. If the factory is not
-/// configured (address zero), or the caller is not a registered HCA (returns address zero),
-/// `msg.sender` is returned unchanged.
+/// Queries the HCA factory to resolve `msg.sender` to the real owner. If the factory address is
+/// zero, `msg.sender` is returned unchanged. The HCA factory returns zero for non-HCA callers and
+/// HCAs that are not recorded for their owner, which makes them use the original-sender fallback.
 ///
 /// This enables transparent proxy wallet support: contracts using HCA-aware `_msgSender()`
 /// automatically attribute actions to the account owner regardless of whether the caller is
@@ -37,12 +37,15 @@ abstract contract HCAEquivalence {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Returns the HCA owner if `msg.sender` is a registered HCA, otherwise returns `msg.sender`.
+    ///      Reverts if the HCA factory rejects lookup for the caller.
     function _msgSenderWithHcaEquivalence() internal view returns (address) {
-        if (address(HCA_FACTORY) == address(0))
+        if (address(HCA_FACTORY) == address(0)) {
             return msg.sender;
+        }
         address accountOwner = HCA_FACTORY.getAccountOwner(msg.sender);
-        if (accountOwner == address(0))
+        if (accountOwner == address(0)) {
             return msg.sender;
+        }
         return accountOwner;
     }
 }

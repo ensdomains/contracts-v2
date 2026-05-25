@@ -9,7 +9,7 @@ export default execute(
     namedAccounts: { deployer, owner },
   }) => {
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
 
     const publicResolverSet = await deploy("PublicResolverSet", {
       account: deployer,
@@ -41,6 +41,6 @@ export default execute(
   },
   {
     tags: ["PublicResolverSet", "v2"],
-    dependencies: ["HCAFactory", "PublicResolver"],
+    dependencies: ["setup:HCAFactory", "PublicResolver"],
   },
 );

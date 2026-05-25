@@ -14,7 +14,7 @@ export default execute(
       get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
 
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
 
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 

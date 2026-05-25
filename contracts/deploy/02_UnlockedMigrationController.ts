@@ -37,6 +37,12 @@ export default execute(
   },
   {
     tags: ["UnlockedMigrationController", "v2"],
-    dependencies: ["NameWrapper", "Graveyard", "ETHRegistry", "ContractNamer"],
+    dependencies: [
+      "NameWrapper",
+      "Graveyard",
+      "ETHRegistry",
+      "setup:HCAFactory",
+      "ContractNamer",
+    ],
   },
 );
