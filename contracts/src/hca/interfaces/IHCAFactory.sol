@@ -6,7 +6,7 @@ import {IHCAInitDataParser} from "./IHCAInitDataParser.sol";
 
 /// @title IHCAFactory
 /// @notice Full interface for deterministic Hidden Contract Account deployment and lookup.
-/// @dev Interface selector: `0x21f79415`
+/// @dev Interface selector: `0x65dc8339`
 interface IHCAFactory is IHCAFactoryBasic {
     ////////////////////////////////////////////////////////////////////////
     // Functions
