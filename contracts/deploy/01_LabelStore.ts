@@ -5,14 +5,14 @@ export default execute(
     const contractNamer =
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
 
-    await deploy("DNSTXTResolver", {
+    await deploy("LabelStore", {
       account: deployer,
-      artifact: artifacts.DNSTXTResolver,
+      artifact: artifacts.LabelStore,
       args: [contractNamer.address],
     });
   },
   {
-    tags: ["DNSTXTResolver", "v2"],
+    tags: ["LabelStore", "v2"],
     dependencies: ["ContractNamer"],
   },
 );

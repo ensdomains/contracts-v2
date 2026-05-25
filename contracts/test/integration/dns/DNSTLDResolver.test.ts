@@ -67,6 +67,7 @@ async function fixture() {
     mockDNSSEC.address,
     oracleGatewayProvider.address,
     v2.batchGatewayProvider.address,
+    v2.contractNamer.address,
   ]);
   await v1.setupName({
     name: "com",
@@ -76,11 +77,17 @@ async function fixture() {
     name: "com",
     resolverAddress: dnsTLDResolver.address,
   });
-  const dnsTXTResolver = await network.viem.deployContract("DNSTXTResolver");
+  const dnsTXTResolver = await network.viem.deployContract("DNSTXTResolver", [
+    v2.contractNamer.address,
+  ]);
   await setupNamedResolver(dnsTXTResolverName, dnsTXTResolver.address);
   const dnsAliasResolver = await network.viem.deployContract(
     "DNSAliasResolver",
-    [v2.rootRegistry.address, v2.batchGatewayProvider.address],
+    [
+      v2.rootRegistry.address,
+      v2.batchGatewayProvider.address,
+      v2.contractNamer.address,
+    ],
   );
   return {
     v1,

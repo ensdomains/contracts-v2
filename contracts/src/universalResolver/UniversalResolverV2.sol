@@ -6,20 +6,27 @@ import {
     AbstractUniversalResolver
 } from "@ens/contracts/universalResolver/AbstractUniversalResolver.sol";
 
+import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {IUniversalResolverV2} from "./interfaces/IUniversalResolverV2.sol";
 import {LibRegistry} from "./libraries/LibRegistry.sol";
 
-/// @notice ENS Universal Resolver that traverses the namechain registry hierarchy to locate
+/// @notice Universal Resolver that traverses the namechain registry hierarchy to locate
 ///         resolvers and registries for any DNS-encoded name.
-contract UniversalResolverV2 is AbstractUniversalResolver, IUniversalResolverV2 {
+contract UniversalResolverV2 is
+    AbstractUniversalResolver,
+    DelegatedContractNamer,
+    IUniversalResolverV2
+{
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv2 root registry.
-    IRegistry public immutable ROOT_REGISTRY;
+    IPermissionedRegistry public immutable ROOT_REGISTRY;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -27,17 +34,31 @@ contract UniversalResolverV2 is AbstractUniversalResolver, IUniversalResolverV2 
 
     /// @param rootRegistry The root registry.
     /// @param batchGatewayProvider The batch gateway provider.
-    constructor(IRegistry rootRegistry, IGatewayProvider batchGatewayProvider)
+    /// @param contractNamer Delegated contract namer.
+    constructor(
+        IPermissionedRegistry rootRegistry,
+        IGatewayProvider batchGatewayProvider,
+        IContractNamer contractNamer
+    )
         AbstractUniversalResolver(batchGatewayProvider)
+        DelegatedContractNamer(contractNamer)
     {
         ROOT_REGISTRY = rootRegistry;
     }
 
     /// @inheritdoc AbstractUniversalResolver
-    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(AbstractUniversalResolver, DelegatedContractNamer)
+        returns (bool)
+    {
+        // note: this is some kind of compiler bug probably due to oz v4/v5
         return
             type(IUniversalResolverV2).interfaceId == interfaceId ||
-            super.supportsInterface(interfaceId);
+            AbstractUniversalResolver.supportsInterface(interfaceId) ||
+            DelegatedContractNamer.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////

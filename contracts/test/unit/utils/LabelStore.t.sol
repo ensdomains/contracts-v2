@@ -3,13 +3,18 @@ pragma solidity ^0.8.13;
 
 import {Test, Vm} from "forge-std/Test.sol";
 
-import {LabelStore, ILabelStore, LibLabel, NameCoder} from "~src/utils/LabelStore.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {ILabelStore} from "~src/utils/interfaces/ILabelStore.sol";
+import {LabelStore} from "~src/utils/LabelStore.sol";
+import {LibLabel} from "~src/utils/LibLabel.sol";
 
 contract LabelStoreTest is Test {
     LabelStore labelStore;
 
     function setUp() external {
-        labelStore = new LabelStore();
+        labelStore = new LabelStore(IContractNamer(address(0)));
     }
 
     function test_setLabel(string calldata label, uint32 version) external {

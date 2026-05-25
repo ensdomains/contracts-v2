@@ -9,6 +9,7 @@ import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
@@ -141,6 +142,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             interfaceId == type(ITemporalRegistry).interfaceId ||
             interfaceId == type(IOwnedRegistry).interfaceId ||
             interfaceId == type(IRegistry).interfaceId ||
+            interfaceId == type(IContractNamer).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -278,6 +280,11 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         return (_parentRegistry, _childLabel);
     }
 
+    /// @inheritdoc IContractNamer
+    function isContractNamer(address namer) public view returns (bool) {
+        return hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, namer);
+    }
+
     /// @inheritdoc ITemporalRegistry
     function findExpiry(string calldata label) public view returns (uint64) {
         return getExpiry(LibLabel.id(label));
@@ -289,9 +296,8 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc ITokenizedRegistry
-    function findTokenId(string calldata label) public view returns (uint256 tokenId) {
-        tokenId = LibLabel.id(label);
-        tokenId = _constructTokenId(tokenId, _entry(tokenId));
+    function findTokenId(string calldata label) public view returns (uint256) {
+        return getTokenId(LibLabel.id(label));
     }
 
     /// @inheritdoc ERC1155Singleton

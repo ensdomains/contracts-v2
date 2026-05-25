@@ -17,6 +17,7 @@ import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 
 contract UserRegistryTest is Test, ERC1155Holder {
     // Test constants
@@ -37,12 +38,12 @@ contract UserRegistryTest is Test, ERC1155Holder {
     function setUp() public {
         factory = new VerifiableFactory();
         hcaFactory = new MockHCAFactoryBasic();
-        labelStore = new LabelStore();
+        labelStore = new LabelStore(IContractNamer(address(0)));
 
         // Deploy the implementation
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        implementation = new UserRegistry(hcaFactory, labelStore);
+        implementation = new UserRegistry(hcaFactory, labelStore, address(this));
 
         // Create initialization data
         bytes memory initData =
@@ -56,6 +57,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Get the proxy contract
         proxy = UserRegistry(proxyAddress);
+    }
+
+    function test_implementationIsNameable() external view {
+        assertTrue(implementation.isContractNamer(address(this)));
     }
 
     function test_initialization() public view {
@@ -255,7 +260,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
     // Test for contract upgradeability
     function test_upgrade() public {
         // Deploy a new implementation
-        UserRegistryV2Mock newImplementation = new UserRegistryV2Mock(hcaFactory, labelStore);
+        UserRegistryV2Mock newImplementation =
+            new UserRegistryV2Mock(hcaFactory, labelStore, address(this));
 
         // Upgrade the proxy
         vm.prank(admin);
@@ -268,7 +274,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
     function test_Revert_unauthorized_upgrade() public {
         // Deploy a new implementation
-        UserRegistryV2Mock newImplementation = new UserRegistryV2Mock(hcaFactory, labelStore);
+        UserRegistryV2Mock newImplementation =
+            new UserRegistryV2Mock(hcaFactory, labelStore, address(this));
 
         // User1 tries to upgrade without permission
         vm.expectRevert(
@@ -330,8 +337,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
 // Mock V2 contract for testing upgrades
 contract UserRegistryV2Mock is UserRegistry {
-    constructor(IHCAFactoryBasic hcaFactory, ILabelStore labelStore)
-        UserRegistry(hcaFactory, labelStore)
+    constructor(IHCAFactoryBasic hcaFactory, ILabelStore labelStore, address namer)
+        UserRegistry(hcaFactory, labelStore, namer)
     {}
     function version() public pure returns (uint256) {
         return 2;

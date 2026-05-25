@@ -1,14 +1,19 @@
 import { artifacts, execute } from "@rocketh";
-import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
+import { DEPLOYMENT_ROLES, ROLES } from "../script/deploy-constants.js";
 
 export default execute(
-  async ({ deploy, get, namedAccounts: { deployer } }) => {
+  async ({
+    deploy,
+    get,
+    execute: write,
+    namedAccounts: { deployer, owner },
+  }) => {
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
-    await deploy("RootRegistry", {
+    const rootRegistry = await deploy("RootRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
       args: [
@@ -17,6 +22,13 @@ export default execute(
         deployer,
         DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
       ],
+    });
+
+    console.log("  - Granting CAN_NAME to owner");
+    await write(rootRegistry, {
+      functionName: "grantRootRoles",
+      args: [ROLES.REGISTRY.CAN_NAME, owner],
+      account: deployer,
     });
   },
   {

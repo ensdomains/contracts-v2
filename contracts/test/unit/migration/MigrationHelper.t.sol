@@ -33,7 +33,8 @@ contract MigrationHelperTest is MigrationControllerFixture {
         unlockedController = new UnlockedMigrationController(
             nameWrapper,
             address(graveyard),
-            ethRegistry
+            ethRegistry,
+            contractNamer
         );
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         ethRegistry.grantRootRoles(
@@ -54,7 +55,8 @@ contract MigrationHelperTest is MigrationControllerFixture {
             approvedUpgradeGate,
             labelStore,
             publicResolverSet,
-            address(0) // publicResolver
+            address(0), // publicResolver
+            address(this) // namer
         );
         lockedController = new LockedMigrationController(
             nameWrapper,
@@ -63,7 +65,8 @@ contract MigrationHelperTest is MigrationControllerFixture {
             verifiableFactory,
             address(wrapperRegistryImpl),
             publicResolverSet,
-            address(0) // publicResolver
+            address(0), // publicResolver
+            contractNamer
         );
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         ethRegistry.grantRootRoles(

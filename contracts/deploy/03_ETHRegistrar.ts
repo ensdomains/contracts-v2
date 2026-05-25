@@ -31,7 +31,7 @@ export default execute(
         owner,
         hcaFactory.address,
         ethRegistry.address,
-        owner, // beneficiary,
+        owner, // TODO: beneficiary,
         rentPriceOracle.address,
         GRACE_PERIOD_V2,
         MIN_COMMITMENT_AGE,

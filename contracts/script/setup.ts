@@ -31,14 +31,17 @@ import {
   computeVerifiableProxyAddress as computeVerifiableProxyAddress_,
   deployVerifiableProxy,
 } from "../test/integration/fixtures/deployVerifiableProxy.js";
-import { dnsEncodeName, splitName } from "../test/utils/utils.js";
+import {
+  dnsEncodeName,
+  getReverseName,
+  splitName,
+} from "../test/utils/utils.js";
 import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
 import {
   LOCAL_BATCH_GATEWAY_URL,
   MAX_EXPIRY,
   ROLES,
 } from "./deploy-constants.js";
-import { deployArtifact } from "../test/integration/fixtures/deployArtifact.js";
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
 import { bootstrapForkDeployments, ENS_DAO_MULTISIG } from "./forkBootstrap.js";
 
@@ -274,6 +277,11 @@ export async function setupDevnet({
         address: rocketh.get("BatchGatewayProvider").address,
         client,
       }),
+      DNSSECGatewayProvider: getContract({
+        abi: artifacts.GatewayProvider.abi,
+        address: rocketh.get("DNSSECGatewayProvider").address,
+        client,
+      }),
       DefaultReverseRegistrar: getContract({
         abi: artifacts.DefaultReverseRegistrar.abi,
         address: rocketh.get("DefaultReverseRegistrar").address,
@@ -349,6 +357,11 @@ export async function setupDevnet({
       (x) => x.type === "error",
     );
     const v2 = {
+      ContractNamer: getContract({
+        abi: artifacts.ContractNamer.abi,
+        address: rocketh.get("ContractNamer").address,
+        client,
+      }),
       LabelStore: getContract({
         abi: artifacts.LabelStore.abi,
         address: rocketh.get("LabelStore").address,
@@ -425,6 +438,11 @@ export async function setupDevnet({
       PublicResolverSet: getContract({
         abi: artifacts.PermissionedAddressSet.abi,
         address: rocketh.get("PublicResolverSet").address,
+        client,
+      }),
+      ApprovedUpgradeGate: getContract({
+        abi: artifacts.ApprovedUpgradeGate.abi,
+        address: rocketh.get("ApprovedUpgradeGate").address,
         client,
       }),
       // resolvers
@@ -863,16 +881,70 @@ export async function setupDevnet({
         MAX_EXPIRY,
       ]);
 
-      await setupNamedResolver("dnsname", v2.DNSTXTResolver.address); // remap v1 ExtendedDNSResolver
-      await setupNamedResolver("dnstxt", v2.DNSTXTResolver.address); // TODO: could just use "dnsname"?
-      await setupNamedResolver("dnsalias", v2.DNSAliasResolver.address);
+      await setName("namer", v2.ContractNamer.address);
 
-      function setupNamedResolver(label: string, address: Address) {
-        return resolver.write.setAddr([
-          namehash(`${label}.ens.eth`),
-          60n,
-          address,
-        ]);
+      await setName("root", v2.RootRegistry.address);
+      await setName("registry", v2.ETHRegistry.address);
+      await setName("impl.registry", v2.UserRegistryImpl.address);
+      await setName("impl.wrapper-registry", v2.WrapperRegistryImpl.address);
+
+      await setName("2to1.resolver", v2.ENSV1Resolver.address);
+      await setName("1to2.resolver", v2.ENSV2Resolver.address);
+      await setName("impl.resolver", v2.PermissionedResolverImpl.address);
+      // await setName("universal", v2.UniversalResolver.address); // devnet doesn't deploy a proxy
+      await setName("impl.universal", v2.UniversalResolver.address);
+      await setName("public.resolver", v2.PublicResolver.address);
+      await setName("dns.resolver", v2.DNSTLDResolver.address);
+
+      await setName("dnsname", v2.DNSTXTResolver.address); // remap v1 ExtendedDNSResolver
+      await setName("dnstxt", v2.DNSTXTResolver.address); // TODO: could just use "dnsname"?
+      await setName("dnsalias", v2.DNSAliasResolver.address);
+
+      await setName("registrar", v2.ETHRegistrar.address);
+      await setName("renewer", v2.ETHRenewerV1.address);
+      await setName("oracle", v2.StandardRentPriceOracle.address);
+      // BatchRegistrar
+      await setName("addr.reverse", shared.ReverseRegistrarHCAAdapter.address);
+      await setName(
+        "default.reverse",
+        shared.DefaultReverseRegistrarHCAAdapter.address,
+      );
+
+      await setName(
+        "unlocked.migration",
+        v2.UnlockedMigrationController.address,
+      );
+      await setName("locked.migration", v2.LockedMigrationController.address);
+      await setName("graveyard", v2.Graveyard.address);
+      // MigrationHelper
+      await setName("gate.wrapper-registry", v2.ApprovedUpgradeGate.address);
+      await setName("prset.migration", v2.PublicResolverSet.address);
+
+      await setName("hca", v2.HCAFactory.address);
+      await setName("batch.gateways", shared.BatchGatewayProvider.address);
+      await setName("dnssec.gateways", shared.DNSSECGatewayProvider.address);
+      await setName("labelstore", v2.LabelStore.address);
+      await setName("verifiable-factory", v2.VerifiableFactory.address);
+
+      async function setName(
+        prefix: string,
+        address: Address,
+        namer = namedAccounts.owner,
+      ) {
+        const name = `${prefix}.ens.eth`;
+        try {
+          await shared.ReverseRegistrarHCAAdapter.write.claimForContract(
+            [address, resolver.address],
+            { account: namer },
+          );
+          await resolver.write.setName([
+            namehash(getReverseName(address)),
+            name,
+          ]);
+        } catch (err) {
+          console.log(`Cannot name: ${name}`);
+        }
+        await resolver.write.setAddr([namehash(name), 60n, address]);
       }
     }
 

@@ -6,23 +6,23 @@ import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {DNSSEC} from "@ens/contracts/dnssec-oracle/DNSSEC.sol";
 import {IDNSGateway} from "@ens/contracts/dnssec-oracle/IDNSGateway.sol";
 import {RRUtils} from "@ens/contracts/dnssec-oracle/RRUtils.sol";
+import {ENS} from "@ens/contracts/registry/ENS.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeResolver.sol";
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {IVerifiableResolver} from "@ens/contracts/resolvers/profiles/IVerifiableResolver.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
-import {
-    RegistryUtils as RegistryUtilsV1,
-    ENS
-} from "@ens/contracts/universalResolver/RegistryUtils.sol";
+import {RegistryUtils as RegistryUtilsV1} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.sol";
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-import {LibRegistry, IRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @dev DNS resource-record class for the Internet (`IN`), as defined in RFC 1035 section 3.2.4.
 uint16 constant CLASS_INET = 1;
@@ -47,11 +47,11 @@ bytes constant TXT_PREFIX = "ENS1 ";
 /// verification.
 ///
 contract DNSTLDResolver is
+    DelegatedContractNamer,
+    ResolverCaller,
     IERC7996,
     ICompositeResolver,
-    IVerifiableResolver,
-    ResolverCaller,
-    ERC165
+    IVerifiableResolver
 {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
@@ -66,7 +66,7 @@ contract DNSTLDResolver is
     address public immutable DNS_TLD_RESOLVER_V1;
 
     /// @notice The ENSv2 root registry, used to resolve names parsed from `ENS1` TXT records.
-    IRegistry public immutable ROOT_REGISTRY;
+    IPermissionedRegistry public immutable ROOT_REGISTRY;
 
     /// @notice The DNSSEC oracle contract that verifies signed DNS resource-record sets.
     DNSSEC public immutable DNSSEC_ORACLE;
@@ -96,15 +96,18 @@ contract DNSTLDResolver is
     /// @param dnssecOracle The DNSSEC oracle contract.
     /// @param oracleGatewayProvider The gateway provider for the DNSSEC oracle CCIP-Read queries.
     /// @param batchGatewayProvider The gateway provider for batch CCIP-Read calls when forwarding resolution to downstream resolvers.
+    /// @param contractNamer Delegated contract namer.
     constructor(
         ENS ensRegistryV1,
         address dnsTLDResolverV1,
-        IRegistry rootRegistry,
+        IPermissionedRegistry rootRegistry,
         DNSSEC dnssecOracle,
         IGatewayProvider oracleGatewayProvider,
-        IGatewayProvider batchGatewayProvider
+        IGatewayProvider batchGatewayProvider,
+        IContractNamer contractNamer
     )
         CCIPReader(DEFAULT_UNSAFE_CALL_GAS)
+        DelegatedContractNamer(contractNamer)
     {
         ENS_REGISTRY_V1 = ensRegistryV1;
         DNS_TLD_RESOLVER_V1 = dnsTLDResolverV1;
@@ -114,14 +117,8 @@ contract DNSTLDResolver is
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
     }
 
-    /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        virtual
-        override(ERC165)
-        returns (bool)
-    {
+    /// @inheritdoc DelegatedContractNamer
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             type(IExtendedResolver).interfaceId == interfaceId ||
             type(ICompositeResolver).interfaceId == interfaceId ||

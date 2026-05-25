@@ -10,6 +10,10 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {LibMigration} from "./libraries/LibMigration.sol";
 
@@ -18,7 +22,7 @@ import {LibMigration} from "./libraries/LibMigration.sol";
 /// 1. Claim any expired ENSv1 name and assign ownership to this contract.
 /// 2. Clear the registry for any owned token.
 ///
-contract Graveyard is ERC721Holder, ERC1155Holder {
+contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -60,11 +64,25 @@ contract Graveyard is ERC721Holder, ERC1155Holder {
 
     /// @notice Create a graveyard.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
-    constructor(INameWrapper nameWrapper) {
+    /// @param contractNamer Delegated contract namer.
+    constructor(INameWrapper nameWrapper, IContractNamer contractNamer)
+        DelegatedContractNamer(contractNamer)
+    {
         NAME_WRAPPER = nameWrapper;
         _REGISTRY_V1 = nameWrapper.ens();
         _BASE_REGISTRAR = nameWrapper.registrar();
         _GRACE_PERIOD = BaseRegistrarImplementation(address(_BASE_REGISTRAR)).GRACE_PERIOD();
+    }
+
+    /// @inheritdoc IERC165
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC1155Holder, DelegatedContractNamer)
+        returns (bool)
+    {
+        return
+            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////

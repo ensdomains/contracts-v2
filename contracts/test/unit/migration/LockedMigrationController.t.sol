@@ -58,7 +58,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         approvedUpgradeGate = new ApprovedUpgradeGate(address(this));
 
         publicResolverSet = new PermissionedAddressSet(hcaFactory, address(this));
-        publicResolver = new PublicResolverV2(hcaFactory, nameWrapper, rootRegistry);
+        publicResolver = new PublicResolverV2(hcaFactory, nameWrapper, rootRegistry, contractNamer);
 
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
@@ -71,7 +71,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             approvedUpgradeGate,
             labelStore,
             publicResolverSet,
-            address(publicResolver)
+            address(publicResolver),
+            address(this) // namer
         );
 
         migrationController = new LockedMigrationController(
@@ -81,7 +82,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             verifiableFactory,
             address(wrapperRegistryImpl),
             publicResolverSet,
-            address(publicResolver)
+            address(publicResolver),
+            contractNamer
         );
 
         ethRegistry.grantRootRoles(
@@ -103,6 +105,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             migrationController.WRAPPER_REGISTRY_IMPL(),
             address(wrapperRegistryImpl),
             "WRAPPER_REGISTRY_IMPL"
+        );
+        assertEq(
+            address(migrationController.CONTRACT_NAMER()),
+            address(contractNamer),
+            "CONTRACT_NAMER"
         );
 
         assertEq(migrationController.getWrappedName(), NameCoder.encode("eth"), "getWrappedName");
@@ -145,6 +152,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ),
             "IWrapperRegistry"
         );
+    }
+
+    function test_implementationIsNameable() external view {
+        assertTrue(wrapperRegistryImpl.isContractNamer(address(this)));
     }
 
     function test_wrapperRegistryUpgrade_revertsForUnapprovedTarget() external {
@@ -402,12 +413,14 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             0 /*ROOT_RESOURCE*/,
             md.owner,
             0 /*old roles*/,
-            RegistryRolesLib.ROLE_UPGRADE_ADMIN |
             RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN |
             RegistryRolesLib.ROLE_REGISTRAR |
             RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
             RegistryRolesLib.ROLE_RENEW |
-            RegistryRolesLib.ROLE_RENEW_ADMIN
+            RegistryRolesLib.ROLE_RENEW_ADMIN |
+            RegistryRolesLib.ROLE_CAN_NAME |
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN
         );
         // emit Initializable.Initialized()
         vm.expectEmit();
@@ -656,7 +669,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
         assertEq(
             registry.roles(registry.ROOT_RESOURCE(), testOwner) & EACBaseRolesLib.ADMIN_ROLES,
-            RegistryRolesLib.ROLE_UPGRADE_ADMIN | RegistryRolesLib.ROLE_RENEW_ADMIN,
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN |
+            RegistryRolesLib.ROLE_RENEW_ADMIN |
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN,
             "registry"
         );
     }
@@ -1079,7 +1094,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 approvedUpgradeGate,
                 labelStore,
                 publicResolverSet,
-                address(publicResolver)
+                address(publicResolver),
+                address(this)
             );
     }
 }
@@ -1095,7 +1111,8 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
         ApprovedUpgradeGate upgradeGate,
         ILabelStore labelStore,
         IAddressSet publicResolverSet,
-        address publicResolver
+        address publicResolver,
+        address namer
     )
         WrapperRegistry(
             nameWrapper,
@@ -1106,7 +1123,8 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
             upgradeGate,
             labelStore,
             publicResolverSet,
-            publicResolver
+            publicResolver,
+            namer
         )
     {}
 

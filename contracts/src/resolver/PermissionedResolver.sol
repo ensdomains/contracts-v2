@@ -31,6 +31,7 @@ import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAContextUpgradeable} from "../hca/HCAContextUpgradeable.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
 import {IPermissionedResolver} from "./interfaces/IPermissionedResolver.sol";
 import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
@@ -108,7 +109,8 @@ contract PermissionedResolver is
     IPubkeyResolver,
     ITextResolver,
     IVersionableResolver,
-    IProxyAuthorization
+    IProxyAuthorization,
+    IContractNamer
 {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -198,7 +200,14 @@ contract PermissionedResolver is
     ////////////////////////////////////////////////////////////////////////
 
     /// @param hcaFactory The HCA factory.
-    constructor(IHCAFactoryBasic hcaFactory) HCAEquivalence(hcaFactory) {
+    /// @param namer The implementation namer.
+    constructor(IHCAFactoryBasic hcaFactory, address namer) HCAEquivalence(hcaFactory) {
+        _grantRoles(
+            ROOT_RESOURCE,
+            PermissionedResolverLib.ROLE_CAN_NAME | PermissionedResolverLib.ROLE_CAN_NAME_ADMIN,
+            namer,
+            false
+        );
         _disableInitializers();
     }
 
@@ -222,6 +231,7 @@ contract PermissionedResolver is
             type(IVersionableResolver).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
             type(IProxyAuthorization).interfaceId == interfaceId ||
+            type(IContractNamer).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -542,6 +552,11 @@ contract PermissionedResolver is
             }
             return v;
         }
+    }
+
+    /// @inheritdoc IContractNamer
+    function isContractNamer(address namer) external view returns (bool) {
+        return hasRootRoles(PermissionedResolverLib.ROLE_CAN_NAME, namer);
     }
 
     /// @notice Get the current version.

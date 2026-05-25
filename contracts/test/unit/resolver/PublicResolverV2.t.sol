@@ -17,7 +17,7 @@ contract PublicResolverV2Test is V1Fixture, V2Fixture {
     function setUp() external {
         deployV1Fixture();
         deployV2Fixture();
-        publicResolver = new PublicResolverV2(hcaFactory, nameWrapper, rootRegistry);
+        publicResolver = new PublicResolverV2(hcaFactory, nameWrapper, rootRegistry, contractNamer);
     }
 
     function test_canModifyName() external {

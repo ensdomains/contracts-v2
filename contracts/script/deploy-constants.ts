@@ -21,6 +21,7 @@ const FLAGS = {
     CAN_TRANSFER: 1n << 28n,
     WAS_RESERVED: 1n << 32n,
     SET_URI: 1n << 36n,
+    CAN_NAME: 1n << 120n,
     UPGRADE: 1n << 124n,
   },
   // see: PermissionedResolver.sol / PermissionedResolverLib.sol
@@ -71,6 +72,8 @@ export const DEPLOYMENT_ROLES = {
     ROLES.ADMIN.REGISTRY.SET_PARENT |
     ROLES.REGISTRY.RENEW |
     ROLES.ADMIN.REGISTRY.RENEW |
+    ROLES.REGISTRY.CAN_NAME |
+    ROLES.ADMIN.REGISTRY.CAN_NAME |
     ROLES.REGISTRY.SET_URI |
     ROLES.ADMIN.REGISTRY.SET_URI,
   // .eth token: SET_SUBREGISTRY AR, SET_RESOLVER AR
@@ -81,7 +84,7 @@ export const DEPLOYMENT_ROLES = {
     ROLES.ADMIN.REGISTRY.SET_RESOLVER,
   // .reverse token: full role bitmap.
   // Granting all roles is harmless; some (e.g. REGISTRAR) are root-only and don't apply to tokens.
-  REVERSE_TOKEN: FLAGS.ALL,
+  REVERSE_REGISTRY_ROOT: FLAGS.ALL,
   // ETHRegistry root deployer: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓, RENEW✓
   ETH_REGISTRY_ROOT:
     ROLES.ADMIN.REGISTRY.REGISTRAR |
@@ -89,6 +92,8 @@ export const DEPLOYMENT_ROLES = {
     ROLES.REGISTRY.SET_PARENT |
     ROLES.ADMIN.REGISTRY.SET_PARENT |
     ROLES.ADMIN.REGISTRY.RENEW |
+    ROLES.REGISTRY.CAN_NAME |
+    ROLES.ADMIN.REGISTRY.CAN_NAME |
     ROLES.REGISTRY.SET_URI |
     ROLES.ADMIN.REGISTRY.SET_URI,
   // ETHRegistrar and BatchRegistrar are granted REGISTRAR and RENEW on ETHRegistry root at static deploy.

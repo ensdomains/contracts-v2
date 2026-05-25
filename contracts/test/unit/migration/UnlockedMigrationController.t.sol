@@ -36,7 +36,8 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         migrationController = new UnlockedMigrationController(
             nameWrapper,
             address(graveyard),
-            ethRegistry
+            ethRegistry,
+            contractNamer
         );
         ethRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTER_RESERVED,
@@ -48,6 +49,11 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         assertEq(address(migrationController.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
         assertEq(address(migrationController.GRAVEYARD()), address(graveyard), "GRAVEYARD");
         assertEq(address(migrationController.ETH_REGISTRY()), address(ethRegistry), "ETH_REGISTRY");
+        assertEq(
+            address(migrationController.CONTRACT_NAMER()),
+            address(contractNamer),
+            "CONTRACT_NAMER"
+        );
     }
 
     function test_supportsInterface() external view {

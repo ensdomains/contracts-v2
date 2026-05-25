@@ -1,9 +1,18 @@
 import { artifacts, execute } from "@rocketh";
 import { zeroAddress } from "viem";
-import { MAX_EXPIRY, DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
+import {
+  MAX_EXPIRY,
+  DEPLOYMENT_ROLES,
+  ROLES,
+} from "../script/deploy-constants.js";
 
 export default execute(
-  async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
+  async ({
+    deploy,
+    execute: write,
+    get,
+    namedAccounts: { deployer, owner },
+  }) => {
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
@@ -38,17 +47,18 @@ export default execute(
       ],
     });
 
+    console.log("  - Setting canonical parent");
     await write(ethRegistry, {
       account: deployer,
       functionName: "setParent",
       args: [rootRegistry.address, "eth"],
     });
 
-    console.log("  - Setting canonical parent");
+    console.log("  - Granting CAN_NAME to owner");
     await write(ethRegistry, {
+      functionName: "grantRootRoles",
+      args: [ROLES.REGISTRY.CAN_NAME, owner],
       account: deployer,
-      functionName: "setParent",
-      args: [rootRegistry.address, "eth"],
     });
   },
   {

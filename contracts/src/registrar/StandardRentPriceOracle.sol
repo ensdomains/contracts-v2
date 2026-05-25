@@ -9,6 +9,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 import {LibHalving} from "./libraries/LibHalving.sol";
@@ -25,9 +26,20 @@ uint256 constant ROLE_DISABLE_TOKEN = 1 << 4;
 /// @dev Nybble 33: authorizes setting `ROLE_DISABLE_TOKEN`.
 uint256 constant ROLE_DISABLE_TOKEN_ADMIN = ROLE_DISABLE_TOKEN << 128;
 
+/// @dev Nybble 2: authorizes contract naming. Root only.
+uint256 constant ROLE_SET_NAME = 1 << 8;
+
+/// @dev Nybble 34: authorizes setting `ROLE_SET_NAME`.
+uint256 constant ROLE_SET_NAME_ADMIN = ROLE_SET_NAME << 128;
+
 /// @dev Default root roles assigned at construction.
 uint256 constant DEFAULT_ROLE_BITMAP =
-    0 | ROLE_UPDATE_TOKEN | ROLE_UPDATE_TOKEN_ADMIN | ROLE_DISABLE_TOKEN | ROLE_DISABLE_TOKEN_ADMIN;
+    ROLE_UPDATE_TOKEN |
+    ROLE_UPDATE_TOKEN_ADMIN |
+    ROLE_DISABLE_TOKEN |
+    ROLE_DISABLE_TOKEN_ADMIN |
+    ROLE_SET_NAME |
+    ROLE_SET_NAME_ADMIN;
 
 /// @dev Initialization-time structure for a discount point.
 /// @param duration Duration threshold, in seconds.
@@ -63,7 +75,7 @@ struct PaymentRatio {
 ///    Since no external oracle is consulted, only stablecoins.
 ///    Accounts with `ROLE_DISABLE_TOKEN` can only disable payment tokens.
 ///
-contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
+contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, IContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -136,7 +148,6 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes StandardRentPriceOracle.
     /// @param rootAccount Account granted root roles.
     /// @param baseRatePerCp Base rates, in standard units per second.
     /// @param discountPoints List of discount points.
@@ -206,6 +217,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return
             interfaceId == type(IRentPriceOracle).interfaceId ||
+            interfaceId == type(IContractNamer).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -243,6 +255,11 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle {
             delete _paymentRatios[paymentToken];
             emit PaymentTokenUpdated(paymentToken, 0, 0);
         }
+    }
+
+    /// @inheritdoc IContractNamer
+    function isContractNamer(address namer) external view returns (bool) {
+        return hasRootRoles(ROLE_SET_NAME, namer);
     }
 
     /// @notice Get all base rates, in standard units per second.

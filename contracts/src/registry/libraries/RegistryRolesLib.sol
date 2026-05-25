@@ -47,10 +47,15 @@ library RegistryRolesLib {
     /// @dev Nybble 8: tags a name that was registered via `ROLE_REGISTER_RESERVED`. Token only. Not revokable.
     uint256 internal constant ROLE_WAS_RESERVED = (1 << 32);
 
-    /// @dev Nybble 9: authorizes setting the metadata.
+    /// @dev Nybble 9: authorizes setting the URI. Root-only.
     uint256 internal constant ROLE_SET_URI = 1 << 36;
     /// @dev Nybble 41: authorizes setting `ROLE_SET_URI`.
     uint256 internal constant ROLE_SET_URI_ADMIN = ROLE_SET_URI << 128;
+
+    /// @dev Nybble 30: authorizes contract naming. Root-only.
+    uint256 internal constant ROLE_CAN_NAME = 1 << 120;
+    /// @dev Nybble 63: authorizes setting ROLE_CAN_NAME.
+    uint256 internal constant ROLE_CAN_NAME_ADMIN = ROLE_CAN_NAME << 128;
 
     /// @dev Nybble 31: authorizes UUPS proxy upgrades. Root-only.
     uint256 internal constant ROLE_UPGRADE = 1 << 124;

@@ -1,7 +1,7 @@
 import { artifacts, execute } from "@rocketh";
 
 export default execute(
-  async ({ deploy, get, namedAccounts: { deployer } }) => {
+  async ({ deploy, get, namedAccounts: { deployer, owner } }) => {
     const hcaFactory =
       get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
 
@@ -10,7 +10,7 @@ export default execute(
     await deploy("UserRegistryImpl", {
       account: deployer,
       artifact: artifacts.UserRegistry,
-      args: [hcaFactory.address, labelStore.address],
+      args: [hcaFactory.address, labelStore.address, owner],
     });
   },
   {
