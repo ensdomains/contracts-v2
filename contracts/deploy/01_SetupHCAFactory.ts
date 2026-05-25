@@ -2,7 +2,13 @@ import { artifacts, execute } from "@rocketh";
 import { zeroAddress } from "viem";
 
 export default execute(
-  async ({ execute: write, get, read, namedAccounts: { deployer, owner } }) => {
+  async ({
+    execute: write,
+    get,
+    read,
+    namedAccounts: { deployer, owner },
+    network,
+  }) => {
     const hcaFactory = get<(typeof artifacts.HCAFactory)["abi"]>(
       "HCAFactory",
     );
@@ -12,7 +18,11 @@ export default execute(
       args: [],
     });
 
-    const setupAccounts = Array.from(new Set([deployer, owner || deployer]));
+    const setupAccounts = new Set([deployer]);
+    if (network.name !== "mainnet" || network.tags?.tenderly) {
+      setupAccounts.add(owner || deployer);
+    }
+
     for (const account of setupAccounts) {
       const currentAccountImplementation = await read(hcaFactory, {
         functionName: "accountImplementationOf",
