@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
@@ -19,6 +20,7 @@ import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {ITemporalRegistry} from "./interfaces/ITemporalRegistry.sol";
 import {ITokenizedRegistry} from "./interfaces/ITokenizedRegistry.sol";
+import {IWrapperRegistry} from "./interfaces/IWrapperRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 
 /// @notice A tokenized (ERC1155) registry with resource-scoped access control for subdomain management.
@@ -498,6 +500,19 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
                     revert TransferDisallowed(tokenId, from);
                 } else if (amounts[i] > 0) {
                     _transferRoles(getResource(tokenId), from, to, false);
+                    // When the subregistry is a `WrapperRegistry`, propagate its root-resource
+                    // role grants for the seller to the buyer so a locked-name buyer inherits
+                    // subdomain authority.
+                    IRegistry sub = _entry(tokenId).subregistry;
+                    if (
+                        address(sub) != address(0) &&
+                        ERC165Checker.supportsInterface(
+                            address(sub),
+                            type(IWrapperRegistry).interfaceId
+                        )
+                    ) {
+                        IWrapperRegistry(address(sub)).transferRootRoles(tokenId, from, to);
+                    }
                 }
             }
         }
