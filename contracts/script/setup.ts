@@ -494,7 +494,7 @@ export async function setupDevnet({
     console.log("Linked contracts");
 
     const hcaDeferredImplementation =
-      await v2.HCAFactory.read.deferredImplementation();
+      await v2.HCAFactory.read.DEFERRED_IMPLEMENTATION();
     for (const account of accounts) {
       const currentImplementation =
         await v2.HCAFactory.read.accountImplementationOf([account.address]);

@@ -8,7 +8,7 @@ export default execute(
     );
 
     const deferredImplementation = await read(hcaFactory, {
-      functionName: "deferredImplementation",
+      functionName: "DEFERRED_IMPLEMENTATION",
       args: [],
     });
 

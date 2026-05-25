@@ -64,7 +64,7 @@ describe("Reverse registrars", () => {
         ),
       });
       const deferredImplementation =
-        await env.v2.HCAFactory.read.deferredImplementation();
+        await env.v2.HCAFactory.read.DEFERRED_IMPLEMENTATION();
 
       await env.v2.HCAFactory.write.setImplementation(
         [deferredImplementation, parser],

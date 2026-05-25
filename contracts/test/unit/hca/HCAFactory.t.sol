@@ -17,6 +17,7 @@ contract MockHCAInitDataParser is IHCAInitDataParser {
     }
 }
 
+
 contract MockHCAImplementation {
     bytes32 internal _lastInitDataHash;
     uint256 internal _value;
@@ -38,11 +39,16 @@ contract MockHCAImplementation {
     }
 }
 
+
 contract HCAFactoryTest is Test {
-    bytes32 internal constant IMPLEMENTATION_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+    bytes32 internal constant IMPLEMENTATION_SLOT =
+        0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
 
     event AccountCreated(address indexed hcaOwner, address indexed hca);
-    event NewHCAImplementation(address indexed accountImplementation, address indexed initDataParser);
+    event NewHCAImplementation(
+        address indexed accountImplementation,
+        address indexed initDataParser
+    );
     event AccountImplementationSet(address indexed account, address indexed implementation);
     event Upgraded(address indexed implementation);
 
@@ -58,14 +64,14 @@ contract HCAFactoryTest is Test {
         parser = new MockHCAInitDataParser();
         implementation = new MockHCAImplementation();
         factory = new HCAFactory(address(implementation), parser, address(this));
-        deferredImplementation = HCADeferredImplementation(factory.deferredImplementation());
+        deferredImplementation = HCADeferredImplementation(factory.DEFERRED_IMPLEMENTATION());
     }
 
     function test_constructor_sets_initial_configuration() public view {
         assertEq(factory.owner(), address(this));
         assertEq(factory.implementation(), address(implementation));
         assertEq(address(factory.initDataParser()), address(parser));
-        assertEq(factory.deferredImplementation(), address(deferredImplementation));
+        assertEq(factory.DEFERRED_IMPLEMENTATION(), address(deferredImplementation));
         assertEq(address(deferredImplementation.HCA_FACTORY()), address(factory));
     }
 
@@ -109,11 +115,15 @@ contract HCAFactoryTest is Test {
     }
 
     function test_setAccountImplementation_reverts_for_unselectable_implementation() public {
-        vm.expectRevert(abi.encodeWithSelector(HCAFactory.HCAImplementationNotSelectable.selector, address(0)));
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFactory.HCAImplementationNotSelectable.selector, address(0))
+        );
         vm.prank(user);
         factory.setAccountImplementation(address(0));
 
-        vm.expectRevert(abi.encodeWithSelector(HCAFactory.HCAImplementationNotSelectable.selector, other));
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFactory.HCAImplementationNotSelectable.selector, other)
+        );
         vm.prank(user);
         factory.setAccountImplementation(other);
     }
@@ -128,7 +138,10 @@ contract HCAFactoryTest is Test {
         assertEq(factory.getAccountOwner(user), address(0));
     }
 
-    function test_getAccountOwner_returns_zero_for_contract_without_implementation_selection() public view {
+    function test_getAccountOwner_returns_zero_for_contract_without_implementation_selection()
+        public
+        view
+    {
         assertEq(factory.getAccountOwner(address(this)), address(0));
     }
 
@@ -205,7 +218,11 @@ contract HCAFactoryTest is Test {
         MockHCAImplementation newImplementation = new MockHCAImplementation();
 
         vm.expectRevert(
-            abi.encodeWithSelector(HCADeferredImplementation.HCADeferredUpgradeUnauthorized.selector, other, user)
+            abi.encodeWithSelector(
+                HCADeferredImplementation.HCADeferredUpgradeUnauthorized.selector,
+                other,
+                user
+            )
         );
         vm.prank(other);
         HCADeferredImplementation(hca).upgradeToAndCall(address(newImplementation), "");
@@ -218,7 +235,10 @@ contract HCAFactoryTest is Test {
         address payable hca = factory.createAccount(initData);
 
         vm.expectRevert(
-            abi.encodeWithSelector(HCADeferredImplementation.HCADeferredImplementationHasNoCode.selector, other)
+            abi.encodeWithSelector(
+                HCADeferredImplementation.HCADeferredImplementationHasNoCode.selector,
+                other
+            )
         );
         vm.prank(user);
         HCADeferredImplementation(hca).upgradeToAndCall(other, "");

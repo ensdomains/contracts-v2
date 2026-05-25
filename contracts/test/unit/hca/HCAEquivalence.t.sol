@@ -53,7 +53,7 @@ contract HCAEquivalenceTest is Test {
     }
 
     function test_msgSender_zero_owner_treated_as_eoa() public {
-        // Ensure no owner configured for `user`
+        // Ensure no owner is set for `user`
         vm.prank(user);
         address sender = harness.exposedMsgSender();
         assertEq(sender, user);

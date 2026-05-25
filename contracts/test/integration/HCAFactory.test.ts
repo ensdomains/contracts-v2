@@ -64,7 +64,7 @@ async function fixture() {
     deploymentReceipt.contractAddress,
   );
   const deferredImplementation =
-    await hcaFactory.read.deferredImplementation();
+    await hcaFactory.read.DEFERRED_IMPLEMENTATION();
 
   const labelStore = await network.viem.deployContract("LabelStore");
   const registry = await network.viem.deployContract("PermissionedRegistry", [
