@@ -53,13 +53,12 @@ bun run script/preMigration.ts [options]
 
 ## CSV Format
 
-The CSV must have a header row with the following columns:
+Parsing is **header-driven**. The script reads the first line as the header, locates the label column by name, and ignores everything else. Two column names are accepted (case-insensitive, leading/trailing whitespace trimmed):
 
-```
-node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate
-```
+- **`labelName`** — the v1 subgraph schema. Preferred when both names are present.
+- **`label`** — the name used by the `exportTheGraphRegistrations.ts` exporter.
 
-Only the **`labelName`** column (index 6, zero-based) is used by the script. All other columns can be empty. Example:
+Both of these inputs work without any flag:
 
 ```csv
 node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate
@@ -68,7 +67,33 @@ node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,
 ,,,,,,ens,,
 ```
 
-The script handles quoted fields and escaped quotes within CSV values.
+```csv
+name,label,labelhash,registrant,expiryDate,registrationDate
+vitalik.eth,vitalik,0x...,0x...,...,...
+nick.eth,nick,0x...,0x...,...,...
+```
+
+The parser handles quoted fields and `""`-escaped quotes within values. A UTF-8 BOM on the header line and a single trailing blank line at end of file are tolerated. CRLF line endings are normalized to LF.
+
+### Strict-mode behavior
+
+Any structural problem aborts the run with a clear error that includes the CSV path and 1-based line number (the header counts as line 1). The script does not try to recover — fix the file and re-run.
+
+| Condition | Behavior |
+|---|---|
+| Header has no `labelName` and no `label` column | Abort. Error lists the columns that were found. |
+| Header has unbalanced quotes | Abort. |
+| Data row column count does not match header column count | Abort. Error shows declared and actual counts and the first ~200 chars of the row. |
+| Data row has unbalanced quotes | Abort. |
+| Data row has an empty (or whitespace-only) value in the label column | Abort. |
+| Blank line in the middle of the file | Abort. Only a single trailing blank line is tolerated. |
+| File is empty (no header) | Abort. |
+
+Application-level filtering still applies *after* structural parsing — labels longer than 255 bytes and the bracketed-labelhash form (`[0x…]`) are skipped and counted as `invalidLabelCount` rather than aborting the run.
+
+### Known limitation
+
+`readline` splits on `\n`, so a field that contains a literal newline inside quotes will be misread. No exporter we control produces such fields. If you have one, pre-process the file to strip or escape the embedded newline.
 
 ## How It Works
 
@@ -214,7 +239,8 @@ Success rate:                   99%
 
 | Scenario | Behavior |
 |---|---|
-| Invalid/empty label in CSV | Filtered out before processing, counted as `invalidLabelCount` |
+| CSV structural problem (bad header, wrong column count, unbalanced quotes, empty label cell, mid-file blank line) | Abort the run. See [CSV Format](#csv-format) for the full list. |
+| Label longer than 255 bytes or in the `[0x…]` bracketed-labelhash form | Filtered out before processing, counted as `invalidLabelCount` |
 | Name not registered on v1 | Skipped, counted as `skippedCount` |
 | Name already fully registered on v2 | Counted as failure |
 | Batch transaction reverts | Binary-search split: recursively halves the batch until individual failures are isolated |

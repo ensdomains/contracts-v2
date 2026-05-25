@@ -42,7 +42,6 @@ import {
   MAX_EXPIRY,
   ROLES,
 } from "./deploy-constants.js";
-import { deployArtifact } from "../test/integration/fixtures/deployArtifact.js";
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
 import { bootstrapForkDeployments, ENS_DAO_MULTISIG } from "./forkBootstrap.js";
 
@@ -882,18 +881,6 @@ export async function setupDevnet({
         MAX_EXPIRY,
       ]);
 
-      // create "dnsname.ens.eth"
-      // https://etherscan.io/address/0x08769D484a7Cd9c4A98E928D9E270221F3E8578c#code
-      await setName(
-        "dnsname",
-        await deployArtifact(client, {
-          file: new URL(
-            "../test/integration/dns/ExtendedDNSResolver_53f64de872aad627467a34836be1e2b63713a438.json",
-            import.meta.url,
-          ),
-        }),
-      );
-
       await setName("namer", v2.ContractNamer.address);
 
       await setName("root", v2.RootRegistry.address);
@@ -908,7 +895,9 @@ export async function setupDevnet({
       await setName("impl.universal", v2.UniversalResolver.address);
       await setName("public.resolver", v2.PublicResolver.address);
       await setName("dns.resolver", v2.DNSTLDResolver.address);
-      await setName("dnstxt", v2.DNSTXTResolver.address);
+
+      await setName("dnsname", v2.DNSTXTResolver.address); // remap v1 ExtendedDNSResolver
+      await setName("dnstxt", v2.DNSTXTResolver.address); // TODO: could just use "dnsname"?
       await setName("dnsalias", v2.DNSAliasResolver.address);
 
       await setName("registrar", v2.ETHRegistrar.address);
