@@ -168,7 +168,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 // ERC1155._safeTransferFrom() => ERC1155InvalidReceiver :: see owner check
                 _inject(
                     md.label,
-                    md.owner,
+                    address(subregistry),
                     subregistry,
                     resolver,
                     _tokenRoleBitmapFromFuses(fuses),
@@ -227,7 +227,11 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             RegistryRolesLib.ROLE_UPGRADE |
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
             RegistryRolesLib.ROLE_CAN_NAME |
-            RegistryRolesLib.ROLE_CAN_NAME_ADMIN;
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
+            RegistryRolesLib.ROLE_SET_PARENT_RESOLVER |
+            RegistryRolesLib.ROLE_SET_PARENT_RESOLVER_ADMIN |
+            RegistryRolesLib.ROLE_RENEW_PARENT |
+            RegistryRolesLib.ROLE_RENEW_PARENT_ADMIN;
     }
 
     /// @dev Convert fuses to equivalent token roles.

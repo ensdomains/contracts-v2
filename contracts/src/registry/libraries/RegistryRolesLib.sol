@@ -44,13 +44,23 @@ library RegistryRolesLib {
     ///      This role is only checked on the token owner, not the operator.
     uint256 internal constant ROLE_CAN_TRANSFER_ADMIN = (1 << 28) << 128;
 
-    /// @dev Nybble 8: tags a name that was registered via `ROLE_REGISTER_RESERVED`. Token only. Not revokable.
+    /// @dev Nybble 8: tags a name that was registered via `ROLE_REGISTER_RESERVED`. Token-only. Not revokable.
     uint256 internal constant ROLE_WAS_RESERVED = (1 << 32);
 
     /// @dev Nybble 9: authorizes setting the URI. Root-only.
     uint256 internal constant ROLE_SET_URI = 1 << 36;
     /// @dev Nybble 41: authorizes setting `ROLE_SET_URI`.
     uint256 internal constant ROLE_SET_URI_ADMIN = ROLE_SET_URI << 128;
+
+    /// @dev Nybble 10: authorizes setting the parent resolver. WrapperRegistry and Root-only.
+    uint256 internal constant ROLE_SET_PARENT_RESOLVER = 1 << 40;
+    /// @dev Nybble 42: authorizes setting `ROLE_SET_PARENT_RESOLVER`.
+    uint256 internal constant ROLE_SET_PARENT_RESOLVER_ADMIN = ROLE_SET_PARENT_RESOLVER << 128;
+
+    /// @dev Nybble 11: authorizes setting the parent resolver. WrapperRegistry and Root-only.
+    uint256 internal constant ROLE_RENEW_PARENT = 1 << 44;
+    /// @dev Nybble 43: authorizes setting `ROLE_RENEW_PARENT`.
+    uint256 internal constant ROLE_RENEW_PARENT_ADMIN = ROLE_RENEW_PARENT << 128;
 
     /// @dev Nybble 30: authorizes contract naming. Root-only.
     uint256 internal constant ROLE_CAN_NAME = 1 << 120;
