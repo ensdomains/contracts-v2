@@ -11,7 +11,6 @@ import {
 } from "viem";
 
 import { MAX_EXPIRY } from "../../script/deploy-constants.js";
-import { deployArtifact } from "../integration/fixtures/deployArtifact.js";
 import { expectVar } from "../utils/expectVar.js";
 import {
   COIN_TYPE_DEFAULT,
@@ -51,18 +50,25 @@ describe("Reverse registrars", () => {
   setupEnv({
     resetOnEach: true,
     initialize: async () => {
-      const parser = await deployArtifact(env.client, {
-        file: new URL(
-          "../../artifacts/test/mocks/MockHCAFixture.sol/MockHCAInitDataParser.json",
-          import.meta.url,
-        ),
-      });
-      const executorImplementation = await deployArtifact(env.client, {
-        file: new URL(
-          "../../artifacts/test/mocks/MockHCAFixture.sol/MockHCAExecutorImplementation.json",
-          import.meta.url,
-        ),
-      });
+      const parserReceipt = await env.waitFor(
+        env.client.deployContract({
+          abi: artifacts.MockHCAInitDataParser.abi,
+          bytecode: artifacts.MockHCAInitDataParser.bytecode,
+          account: env.namedAccounts.owner,
+        }),
+      );
+      const executorReceipt = await env.waitFor(
+        env.client.deployContract({
+          abi: artifacts.MockHCAExecutorImplementation.abi,
+          bytecode: artifacts.MockHCAExecutorImplementation.bytecode,
+          account: env.namedAccounts.owner,
+        }),
+      );
+      const parser = parserReceipt.contractAddress;
+      const executorImplementation = executorReceipt.contractAddress;
+      if (parser == null || executorImplementation == null) {
+        throw new Error("Mock HCA fixture deployment failed");
+      }
       const deferredImplementation =
         await env.v2.HCAFactory.read.DEFERRED_IMPLEMENTATION();
 
