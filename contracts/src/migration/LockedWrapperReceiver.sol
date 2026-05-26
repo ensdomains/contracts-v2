@@ -242,7 +242,10 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             roleBitmap |= roleBitmap << 128; // give admin
         }
         if ((fuses & CANNOT_TRANSFER) == 0) {
-            roleBitmap |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+            roleBitmap |=
+                RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
+                RegistryRolesLib.ROLE_WRAPPER_RECLAIM |
+                RegistryRolesLib.ROLE_WRAPPER_RECLAIM_ADMIN;
         }
     }
 }
