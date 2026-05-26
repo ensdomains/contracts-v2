@@ -137,6 +137,7 @@ contract WrapperRegistry is
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
         emit RegistryCreated();
+        emit ParentUpdated(parentRegistry, childLabel, rootAccount);
         _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
     }
 
