@@ -21,6 +21,24 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=8192
 
+      - name: Check Docker runtime imports
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+
+          mkdir -p "$tmp/contracts/generated"
+          cp package.json bun.lock "$tmp/"
+          cp contracts/package.json contracts/rocketh.ts "$tmp/contracts/"
+          printf 'export default {};\n' > "$tmp/contracts/generated/artifacts.ts"
+
+          cd "$tmp"
+          bun install --production --frozen-lockfile
+          cd contracts
+          bun --eval "await import('./rocketh.ts')"
+
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
@@ -102,21 +120,28 @@ jobs:
         run: bun --filter contracts format:check
 
   publish-docker:
-    name: Publish Docker Image
+    name: Build Docker Image (${{ matrix.platform }})
     if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
     needs: [check-types, e2e-tests, forge-tests, hardhat-tests, lint]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            artifact: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            artifact: linux-arm64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           submodules: "recursive"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -170,11 +195,104 @@ jobs:
             type=ref,event=tag
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
           build-args: GITHUB_SHA=${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-${{ matrix.artifact }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.artifact }}
+
+      - name: Export digest
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${RUNNER_TEMP}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-docker-manifest:
+    name: Publish Docker Manifest
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
+    needs: [publish-docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Github Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get branch name and short SHA for tagging
+        id: branch
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA_VALUE: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BRANCH_NAME="$HEAD_REF"
+            SOURCE_SHA="$PR_HEAD_SHA"
+          else
+            BRANCH_NAME="$REF_NAME"
+            SOURCE_SHA="$GITHUB_SHA_VALUE"
+          fi
+
+          SHORT_SHA=$(printf '%s' "$SOURCE_SHA" | cut -c1-7)
+          DOCKER_TAG=$(printf '%s' "$BRANCH_NAME" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^[.-]+//; s/[.-]+$//')
+
+          if [ -z "$DOCKER_TAG" ]; then
+            DOCKER_TAG="branch"
+          fi
+
+          DOCKER_TAG=$(printf '%s' "$DOCKER_TAG" | cut -c1-128)
+          DOCKER_TAG_PREFIX=$(printf '%s' "$DOCKER_TAG" | cut -c1-120)
+
+          echo "tag=$DOCKER_TAG" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$DOCKER_TAG_PREFIX-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ steps.branch.outputs.sha_tag }}
+            type=raw,value=${{ steps.branch.outputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && github.ref != 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=tag
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Create and push manifest
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
+          REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          cd "${RUNNER_TEMP}/digests"
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(for digest in *; do printf '%s@sha256:%s ' "$REGISTRY_IMAGE" "$digest"; done)
