@@ -1,0 +1,157 @@
+name: Publish Docker Image
+
+"on":
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  publish-docker:
+    name: Build Docker Image (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            artifact: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            artifact: linux-arm64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: "recursive"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Github Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Get branch name and short SHA for tagging
+        id: branch
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA_VALUE: ${{ github.sha }}
+        run: |
+          SHORT_SHA=$(printf '%s' "$GITHUB_SHA_VALUE" | cut -c1-7)
+          DOCKER_TAG=$(printf '%s' "$REF_NAME" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^[.-]+//; s/[.-]+$//')
+
+          if [ -z "$DOCKER_TAG" ]; then
+            DOCKER_TAG="branch"
+          fi
+
+          DOCKER_TAG=$(printf '%s' "$DOCKER_TAG" | cut -c1-128)
+          DOCKER_TAG_PREFIX=$(printf '%s' "$DOCKER_TAG" | cut -c1-120)
+
+          echo "tag=$DOCKER_TAG" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$DOCKER_TAG_PREFIX-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ steps.branch.outputs.sha_tag }}
+            type=raw,value=${{ steps.branch.outputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && github.ref != 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+          build-args: GITHUB_SHA=${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-${{ matrix.artifact }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.artifact }}
+
+      - name: Export digest
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${RUNNER_TEMP}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-docker-manifest:
+    name: Publish Docker Manifest
+    needs: [publish-docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Github Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Get branch name and short SHA for tagging
+        id: branch
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA_VALUE: ${{ github.sha }}
+        run: |
+          SHORT_SHA=$(printf '%s' "$GITHUB_SHA_VALUE" | cut -c1-7)
+          DOCKER_TAG=$(printf '%s' "$REF_NAME" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^[.-]+//; s/[.-]+$//')
+
+          if [ -z "$DOCKER_TAG" ]; then
+            DOCKER_TAG="branch"
+          fi
+
+          DOCKER_TAG=$(printf '%s' "$DOCKER_TAG" | cut -c1-128)
+          DOCKER_TAG_PREFIX=$(printf '%s' "$DOCKER_TAG" | cut -c1-120)
+
+          echo "tag=$DOCKER_TAG" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$DOCKER_TAG_PREFIX-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ steps.branch.outputs.sha_tag }}
+            type=raw,value=${{ steps.branch.outputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && github.ref != 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Create and push manifest
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
+          REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          cd "${RUNNER_TEMP}/digests"
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(for digest in *; do printf '%s@sha256:%s ' "$REGISTRY_IMAGE" "$digest"; done)
