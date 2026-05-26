@@ -561,6 +561,56 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
+    function test_migrate_transferNonCanonical() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes32 node = NameCoder.namehash(name, 0);
+        LibMigration.Data memory md = _lockedData(name);
+
+        vm.prank(testOwner);
+        nameWrapper.safeTransferFrom(
+            testOwner,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
+        );
+
+        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(testLabel)));
+
+        // transfer from same registry, diff label
+        uint256 tokenId1 =
+            ethRegistry.register(
+                "1",
+                testOwner,
+                testRegistry,
+                testResolver,
+                RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
+                _soon()
+            );
+        vm.expectRevert(abi.encodeWithSelector(WrapperRegistry.TokenNotCanonical.selector));
+        vm.prank(testOwner);
+        ethRegistry.safeTransferFrom(address(testOwner), address(registry), tokenId1, 1, "");
+
+        // transfer from diff registry, same label
+        vm.prank(testOwner);
+        uint256 tokenId2 =
+            registry.register(
+                testLabel,
+                testOwner,
+                testRegistry,
+                testResolver,
+                RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
+                _soon()
+            );
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(UnauthorizedCaller.selector, address(registry))
+            )
+        );
+        vm.prank(testOwner);
+        registry.safeTransferFrom(address(testOwner), address(registry), tokenId2, 1, "");
+    }
+
     function test_migrate_setParentResolver() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes32 node = NameCoder.namehash(name, 0);

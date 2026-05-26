@@ -60,6 +60,10 @@ contract WrapperRegistry is
     /// @param implementation The disallowed implementation address.
     error UpgradeTargetNotApproved(address implementation);
 
+    /// @notice Registry only accepts the canonical token.
+    /// @dev Error selector: `0xc7569e47`
+    error TokenNotCanonical();
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -196,7 +200,7 @@ contract WrapperRegistry is
     {
         if (msg.sender == address(_parentRegistry)) {
             if (LibLabel.withVersion(id, 0) != LibLabel.withVersion(LibLabel.id(_childLabel), 0)) {
-                revert("wtf"); // TODO
+                revert TokenNotCanonical();
             }
             return this.onERC1155Received.selector;
         } else {
