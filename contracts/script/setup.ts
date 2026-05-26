@@ -58,6 +58,7 @@ function ansi(c: unknown, s: unknown) {
 
 export async function setupDevnet({
   port = 0,
+  host,
   chainId = 31337,
   mnemonic = "test test test test test test test test test test test junk",
   saveDeployments = false,
@@ -68,6 +69,7 @@ export async function setupDevnet({
   forkBlockNumber,
 }: {
   port?: number;
+  host?: string;
   chainId?: number;
   mnemonic?: string;
   saveDeployments?: boolean;
@@ -105,6 +107,7 @@ export async function setupDevnet({
       // `chainId` flag is omitted so anvil takes the upstream value
       ...(isFork ? {} : { chainId }),
       port,
+      ...(host ? { host } : {}),
       // autoImpersonate lets the deploy flow sign as any address (e.g. the DAO
       // multisig mapped to `owner` on chainId 1) without explicit unlocking.
       // omitted in non-fork mode — prool encodes `false` as a positional arg
@@ -165,7 +168,8 @@ export async function setupDevnet({
       return match[1];
     })();
 
-    const httpURL = `http://${hostPort}`;
+    const clientHostPort = hostPort.replace(/^0\.0\.0\.0:/, "127.0.0.1:");
+    const httpURL = `http://${clientHostPort}`;
 
     // when forking, anvil reports the upstream chainId — pull it from the live
     // node so downstream chain definition + deployments dir name reflect reality
@@ -184,7 +188,7 @@ export async function setupDevnet({
       rpcUrls: {
         default: {
           http: [httpURL],
-          webSocket: [`ws://${hostPort}`],
+          webSocket: [`ws://${clientHostPort}`],
         },
       },
     });
