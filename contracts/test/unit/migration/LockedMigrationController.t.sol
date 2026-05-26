@@ -415,8 +415,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
             RegistryRolesLib.ROLE_SET_PARENT_RESOLVER |
             RegistryRolesLib.ROLE_SET_PARENT_RESOLVER_ADMIN |
-            RegistryRolesLib.ROLE_RENEW_PARENT |
-            RegistryRolesLib.ROLE_RENEW_PARENT_ADMIN
+            RegistryRolesLib.ROLE_EDIT_PUBLIC_RESOLVER |
+            RegistryRolesLib.ROLE_EDIT_PUBLIC_RESOLVER_ADMIN
         );
         // emit Initializable.Initialized()
         vm.expectEmit();
@@ -450,10 +450,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             tokenId,
             expectedRegistry,
             0 /*old roles*/,
-            RegistryRolesLib.ROLE_SET_RESOLVER |
-            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
-            RegistryRolesLib.ROLE_WAS_RESERVED
+            RegistryRolesLib.ROLE_SET_RESOLVER | RegistryRolesLib.ROLE_WAS_RESERVED
         );
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(
@@ -564,6 +561,55 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
+    function test_migrate_setParentResolver() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes32 node = NameCoder.namehash(name, 0);
+        LibMigration.Data memory md = _lockedData(name);
+
+        vm.prank(testOwner);
+        nameWrapper.safeTransferFrom(
+            testOwner,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
+        );
+
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
+
+        assertTrue(
+            registry.hasRootRoles(RegistryRolesLib.ROLE_SET_PARENT_RESOLVER, testOwner),
+            "setParent:owner"
+        );
+        assertFalse(
+            registry.hasRootRoles(RegistryRolesLib.ROLE_SET_PARENT_RESOLVER, address(registry)),
+            "setParent:registry"
+        );
+        assertFalse(
+            ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, testOwner),
+            "set:owner"
+        );
+        assertTrue(
+            ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, address(registry)),
+            "set:registry"
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_SET_PARENT_RESOLVER,
+                address(actor)
+            )
+        );
+        vm.prank(actor);
+        registry.setParentResolver(testResolver);
+
+        vm.prank(testOwner);
+        registry.setParentResolver(testResolver);
+    }
+
     function test_migrate_lockedResolver() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
         bytes32 node = NameCoder.namehash(name, 0);
@@ -585,20 +631,39 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(md)
         );
 
-        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
         assertEq(ethRegistry.getResolver(md.label), frozenResolver, "frozen");
         checkResolution(name, frozenResolver, frozenResolver);
-        assertFalse(ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, testOwner));
+
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
+
+        assertFalse(
+            registry.hasRootRoles(RegistryRolesLib.ROLE_SET_PARENT_RESOLVER, testOwner),
+            "setParent:owner"
+        );
+        assertFalse(
+            registry.hasRootRoles(RegistryRolesLib.ROLE_SET_PARENT_RESOLVER, address(registry)),
+            "setParent:registry"
+        );
+        assertFalse(
+            ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, testOwner),
+            "set:owner"
+        );
+        assertFalse(
+            ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, address(registry)),
+            "set:registry"
+        );
+
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                tokenId,
-                RegistryRolesLib.ROLE_SET_RESOLVER,
-                testOwner
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_SET_PARENT_RESOLVER,
+                address(testOwner)
             )
         );
         vm.prank(testOwner);
-        ethRegistry.setResolver(tokenId, testResolver);
+        registry.setParentResolver(testResolver);
     }
 
     function test_migrate_lockedResolver_publicResolver() external {
@@ -665,8 +730,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
         IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
         assertEq(
-            ethRegistry.roles(tokenId, address(registry)) & EACBaseRolesLib.ADMIN_ROLES,
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
+            ethRegistry.roles(tokenId, address(registry)),
+            RegistryRolesLib.ROLE_SET_RESOLVER | RegistryRolesLib.ROLE_WAS_RESERVED,
             "token"
         );
         assertEq(
@@ -674,8 +739,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
             RegistryRolesLib.ROLE_RENEW_ADMIN |
             RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
-            RegistryRolesLib.ROLE_SET_PARENT_RESOLVER_ADMIN |
-            RegistryRolesLib.ROLE_RENEW_PARENT_ADMIN,
+            RegistryRolesLib.ROLE_EDIT_PUBLIC_RESOLVER_ADMIN,
             "registry"
         );
     }
@@ -762,6 +826,18 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
 
         uint64 expiry = registry2.getExpiry(LibLabel.id(data3.label));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry2.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_RENEW_PARENT,
+                actor
+            )
+        );
+        vm.prank(actor);
+        registry3.renewParent(expiry + 1);
+
         vm.prank(friend);
         registry3.renewParent(expiry + 1);
     }

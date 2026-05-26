@@ -187,7 +187,7 @@ contract PublicResolverV2 is
         if (ERC165Checker.supportsInterface(owner, type(IPermissionedRegistry).interfaceId)) {
             return
                 IPermissionedRegistry(owner).hasRootRoles(
-                    RegistryRolesLib.ROLE_SET_PARENT_RESOLVER,
+                    RegistryRolesLib.ROLE_EDIT_PUBLIC_RESOLVER,
                     operator
                 );
         }

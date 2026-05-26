@@ -7,8 +7,7 @@ import {
     CAN_EXTEND_EXPIRY,
     CANNOT_APPROVE,
     CANNOT_CREATE_SUBDOMAIN,
-    CANNOT_SET_RESOLVER,
-    CANNOT_TRANSFER
+    CANNOT_SET_RESOLVER
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
@@ -218,6 +217,12 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR;
         }
+        if ((fuses & CANNOT_SET_RESOLVER) == 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_SET_PARENT_RESOLVER;
+        }
+        if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_RENEW_PARENT;
+        }
         if (LibMigration.notFrozen(fuses)) {
             roleBitmap |= roleBitmap << 128; // give admin
         }
@@ -228,10 +233,8 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
             RegistryRolesLib.ROLE_CAN_NAME |
             RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
-            RegistryRolesLib.ROLE_SET_PARENT_RESOLVER |
-            RegistryRolesLib.ROLE_SET_PARENT_RESOLVER_ADMIN |
-            RegistryRolesLib.ROLE_RENEW_PARENT |
-            RegistryRolesLib.ROLE_RENEW_PARENT_ADMIN;
+            RegistryRolesLib.ROLE_EDIT_PUBLIC_RESOLVER |
+            RegistryRolesLib.ROLE_EDIT_PUBLIC_RESOLVER_ADMIN;
     }
 
     /// @dev Convert fuses to equivalent token roles.
@@ -241,12 +244,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         }
         if ((fuses & CANNOT_SET_RESOLVER) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_SET_RESOLVER;
-        }
-        if (LibMigration.notFrozen(fuses)) {
-            roleBitmap |= roleBitmap << 128; // give admin
-        }
-        if ((fuses & CANNOT_TRANSFER) == 0) {
-            roleBitmap |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         }
     }
 }

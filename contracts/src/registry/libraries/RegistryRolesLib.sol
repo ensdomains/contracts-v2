@@ -57,9 +57,14 @@ library RegistryRolesLib {
     /// @dev Nybble 42: authorizes setting `ROLE_SET_PARENT_RESOLVER`.
     uint256 internal constant ROLE_SET_PARENT_RESOLVER_ADMIN = ROLE_SET_PARENT_RESOLVER << 128;
 
-    /// @dev Nybble 11: authorizes setting the parent resolver. WrapperRegistry and Root-only.
-    uint256 internal constant ROLE_RENEW_PARENT = 1 << 44;
-    /// @dev Nybble 43: authorizes setting `ROLE_RENEW_PARENT`.
+    /// @dev Nybble 11: authorizes editing PublicResolverV2. WrapperRegistry and Root-only.
+    uint256 internal constant ROLE_EDIT_PUBLIC_RESOLVER = 1 << 44;
+    /// @dev Nybble 43: authorizes setting `ROLE_EDIT_PUBLIC_RESOLVER`.
+    uint256 internal constant ROLE_EDIT_PUBLIC_RESOLVER_ADMIN = ROLE_EDIT_PUBLIC_RESOLVER << 128;
+
+    /// @dev Nybble 12: authorizes setting the parent resolver. WrapperRegistry and Root-only.
+    uint256 internal constant ROLE_RENEW_PARENT = 1 << 48;
+    /// @dev Nybble 44: authorizes setting `ROLE_RENEW_PARENT`.
     uint256 internal constant ROLE_RENEW_PARENT_ADMIN = ROLE_RENEW_PARENT << 128;
 
     /// @dev Nybble 30: authorizes contract naming. Root-only.
