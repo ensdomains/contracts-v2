@@ -1,10 +1,11 @@
 name: CI
 
-on:
+"on":
   push:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   check-types:
@@ -102,8 +103,8 @@ jobs:
 
   publish-docker:
     name: Publish Docker Image
-    if: github.ref == 'refs/heads/main'
-    needs: [check-types, forge-tests, hardhat-tests, lint]
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
+    needs: [check-types, e2e-tests, forge-tests, hardhat-tests, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -129,15 +130,33 @@ jobs:
 
       - name: Get branch name and short SHA for tagging
         id: branch
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA_VALUE: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "name=${{ github.head_ref }}" >> $GITHUB_OUTPUT
-            SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BRANCH_NAME="$HEAD_REF"
+            SOURCE_SHA="$PR_HEAD_SHA"
           else
-            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            BRANCH_NAME="$REF_NAME"
+            SOURCE_SHA="$GITHUB_SHA_VALUE"
           fi
-          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+          SHORT_SHA=$(printf '%s' "$SOURCE_SHA" | cut -c1-7)
+          DOCKER_TAG=$(printf '%s' "$BRANCH_NAME" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^[.-]+//; s/[.-]+$//')
+
+          if [ -z "$DOCKER_TAG" ]; then
+            DOCKER_TAG="branch"
+          fi
+
+          DOCKER_TAG=$(printf '%s' "$DOCKER_TAG" | cut -c1-128)
+          DOCKER_TAG_PREFIX=$(printf '%s' "$DOCKER_TAG" | cut -c1-120)
+
+          echo "tag=$DOCKER_TAG" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$DOCKER_TAG_PREFIX-$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Extract metadata for Docker
         id: meta
@@ -145,8 +164,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=${{ steps.branch.outputs.name }}-${{ steps.branch.outputs.short_sha }}
-            type=raw,value=latest,enable=${{ github.ref_name == github.event.repository.default_branch }}
+            type=raw,value=${{ steps.branch.outputs.sha_tag }}
+            type=raw,value=${{ steps.branch.outputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && github.ref != 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=ref,event=tag
 
       - name: Build and push Docker image
