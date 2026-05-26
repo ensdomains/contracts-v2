@@ -84,6 +84,35 @@ jobs:
           digest="${{ steps.build.outputs.digest }}"
           touch "${RUNNER_TEMP}/digests/${digest#sha256:}"
 
+      - name: Smoke test Docker image
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          container="contracts-v2-devnet-smoke-${{ matrix.artifact }}"
+          docker run -d --name "$container" -p 18545:8545 "${REGISTRY_IMAGE}@${IMAGE_DIGEST}"
+
+          cleanup() {
+            docker rm -f "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for _ in $(seq 1 90); do
+            response="$(curl -fsS -X POST http://127.0.0.1:18545 \
+              -H 'content-type: application/json' \
+              --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' || true)"
+            if echo "$response" | grep -q '"result":"0x'; then
+              echo "$response"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs --tail 120 "$container"
+          exit 1
+
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:

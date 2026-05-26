@@ -72,4 +72,5 @@ EXPOSE 8545
 # Run devnet
 WORKDIR /app/contracts
 ENV FOUNDRY_DISABLE_NIGHTLY_WARNING=true
+ENV ANVIL_IP_ADDR=0.0.0.0
 CMD ["bun", "./script/runDevnet.ts"]
