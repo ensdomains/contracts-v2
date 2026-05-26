@@ -10,6 +10,7 @@ name: CI
 jobs:
   check-types:
     name: Check Types
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       # setup
@@ -41,6 +42,7 @@ jobs:
 
   e2e-tests:
     name: E2E Tests
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       # setup
@@ -54,6 +56,7 @@ jobs:
 
   forge-tests:
     name: Forge Tests
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       # setup
@@ -80,6 +83,7 @@ jobs:
 
   hardhat-tests:
     name: Hardhat Tests
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       # setup
@@ -107,6 +111,7 @@ jobs:
 
   lint:
     name: Lint and Format
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       # setup
@@ -121,8 +126,20 @@ jobs:
 
   publish-docker:
     name: Build Docker Image (${{ matrix.platform }})
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
     needs: [check-types, e2e-tests, forge-tests, hardhat-tests, lint]
+    if: |
+      always() &&
+      (
+        (
+          github.ref == 'refs/heads/main' &&
+          needs.check-types.result == 'success' &&
+          needs.e2e-tests.result == 'success' &&
+          needs.forge-tests.result == 'success' &&
+          needs.hardhat-tests.result == 'success' &&
+          needs.lint.result == 'success'
+        ) ||
+        (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
+      )
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
