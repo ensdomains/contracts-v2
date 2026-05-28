@@ -11,6 +11,7 @@ import {
     DefaultReverseRegistrarHCAAdapter
 } from "~src/reverse-registrar/DefaultReverseRegistrarHCAAdapter.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 
 contract DefaultReverseRegistrarHCAAdapterTest is Test {
     MockHCAFactoryBasic hcaFactory;
@@ -23,7 +24,11 @@ contract DefaultReverseRegistrarHCAAdapterTest is Test {
     function setUp() public {
         hcaFactory = new MockHCAFactoryBasic();
         defaultReverseRegistrar = new DefaultReverseRegistrar();
-        defaultAdapter = new DefaultReverseRegistrarHCAAdapter(hcaFactory, defaultReverseRegistrar);
+        defaultAdapter = new DefaultReverseRegistrarHCAAdapter(
+            hcaFactory,
+            defaultReverseRegistrar,
+            IContractNamer(address(0))
+        );
 
         defaultReverseRegistrar.setController(address(defaultAdapter), true);
     }
