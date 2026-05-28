@@ -33,7 +33,7 @@ contract ContractNamerTest is Test {
         MockUpgrade c = new MockUpgrade();
         vm.prank(owner);
         contractNamer.upgradeToAndCall(address(c), "");
-        assertTrue(c.isContractNamer(address(1)));
+        assertTrue(contractNamer.isContractNamer(address(1)));
     }
 
     function test_upgrade_notAuthorized() external {
