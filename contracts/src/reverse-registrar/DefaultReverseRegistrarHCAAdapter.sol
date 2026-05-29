@@ -8,13 +8,15 @@ import {
 import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
+import {IContractNamer} from "./interfaces/IContractNamer.sol";
 import {AccountNamerLib} from "./libraries/AccountNamerLib.sol";
 
 /// @title Default Reverse Registrar HCA Adapter
 /// @notice HCA-aware forwarder for v1 `default.reverse` registrar updates.
 /// @dev The adapter must be configured as a controller on the default reverse registrar.
-contract DefaultReverseRegistrarHCAAdapter is HCAContext {
+contract DefaultReverseRegistrarHCAAdapter is DelegatedContractNamer, HCAContext {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -29,8 +31,14 @@ contract DefaultReverseRegistrarHCAAdapter is HCAContext {
     /// @notice Initializes the adapter with its HCA context and target registrar.
     /// @param hcaFactory The HCA factory used to resolve HCA callers to their owners.
     /// @param defaultReverseRegistrar The v1 default reverse registrar for `default.reverse`.
-    constructor(IHCAFactoryBasic hcaFactory, IDefaultReverseRegistrar defaultReverseRegistrar)
+    /// @param contractNamer Delegated contract namer.
+    constructor(
+        IHCAFactoryBasic hcaFactory,
+        IDefaultReverseRegistrar defaultReverseRegistrar,
+        IContractNamer contractNamer
+    )
         HCAEquivalence(hcaFactory)
+        DelegatedContractNamer(contractNamer)
     {
         DEFAULT_REVERSE_REGISTRAR = defaultReverseRegistrar;
     }

@@ -74,7 +74,13 @@ contract MigrationHelperTest is MigrationControllerFixture {
             address(lockedController)
         );
 
-        helper = new MigrationHelper(hcaFactory, rootRegistry, unlockedController, lockedController);
+        helper = new MigrationHelper(
+            hcaFactory,
+            rootRegistry,
+            unlockedController,
+            lockedController,
+            contractNamer
+        );
     }
 
     function test_migrate_unwrapped_notApproved() external {

@@ -31,7 +31,11 @@ contract ReverseRegistrarHCAAdapterTest is Test {
         hcaFactory = new MockHCAFactoryBasic();
         registry = new ENSRegistry();
         reverseRegistrar = new ReverseRegistrar(registry);
-        reverseAdapter = new ReverseRegistrarHCAAdapter(hcaFactory, reverseRegistrar);
+        reverseAdapter = new ReverseRegistrarHCAAdapter(
+            hcaFactory,
+            reverseRegistrar,
+            IContractNamer(address(0))
+        );
 
         registry.setSubnodeOwner(bytes32(0), REVERSE_LABELHASH, address(this));
         registry.setSubnodeOwner(REVERSE_NODE, ADDR_LABELHASH, address(reverseRegistrar));

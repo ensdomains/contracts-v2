@@ -9,20 +9,8 @@ gas_reports = ["*"]
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
-skip = [
-    "HCAProxyInitCode.yul",
-    "HCAProxyNoInitCode.yul",
-]
-
-ignored_warnings_from = [
-    "lib/ens-contracts/contracts/registry/ENSRegistry.sol",
-    "lib/ens-contracts/contracts/ethregistrar/BaseRegistrarImplementation.sol",
-    "lib/ens-contracts/contracts/reverseRegistrar/ReverseRegistrar.sol",
-    "lib/ens-contracts/contracts/wrapper/NameWrapper.sol",
-    "lib/ens-contracts/contracts/reverseRegistrar/ReverseRegistrar.sol",
-    "lib/verifiable-factory/src/UUPSProxyLogic.sol",
-    "src/hca/HCAProxyInitCode.yul",
-]
+skip = ["HCAProxyInitCode.yul", "HCAProxyNoInitCode.yul"]
+ignored_warnings_from = ["lib/", "src/hca/HCAProxyInitCode.yul"]
 
 [fuzz]
 runs = 4096
