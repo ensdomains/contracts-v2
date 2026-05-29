@@ -11,6 +11,10 @@ pragma solidity ^0.8.20;
 /// just the 32 admin role slots. Used to extract which admin roles an account holds.
 ///
 library EACBaseRolesLib {
+    ////////////////////////////////////////////////////////////////////////
+    // Constants
+    ////////////////////////////////////////////////////////////////////////
+
     /// @dev Mask with bit 0 set in every nybble — represents one unit per role slot across all 64 slots.
     uint256 internal constant ALL_ROLES =
         0x1111111111111111111111111111111111111111111111111111111111111111;
@@ -18,4 +22,17 @@ library EACBaseRolesLib {
     /// @dev Mask selecting only the 32 admin role nybbles (upper 128 bits).
     uint256 internal constant ADMIN_ROLES =
         0x1111111111111111111111111111111100000000000000000000000000000000;
+
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Derive roles bitmap from role counts for a resource.
+    function fromCounts(uint256 count) internal pure returns (uint256) {
+        return
+            (count & ALL_ROLES) |
+            ((count >> 1) & ALL_ROLES) |
+            ((count >> 2) & ALL_ROLES) |
+            ((count >> 3) & ALL_ROLES);
+    }
 }

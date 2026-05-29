@@ -9,6 +9,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
@@ -143,6 +144,30 @@ contract WrapperRegistry is
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
+
+    /// @inheritdoc IWrapperRegistry
+    function reclaim(address to, address[] calldata revokes) external {
+        address sender = _msgSender();
+        if (
+            !PermissionedRegistry(address(_parentRegistry)).hasRoles(
+                LibLabel.id(_childLabel),
+                RegistryRolesLib.ROLE_WRAPPER_RECLAIM,
+                sender
+            )
+        ) {
+            revert EACUnauthorizedAccountRoles(
+                PermissionedRegistry(address(_parentRegistry)).findTokenId(_childLabel),
+                RegistryRolesLib.ROLE_WRAPPER_RECLAIM,
+                sender
+            );
+        }
+        (uint256 counts, ) = getAssigneeCount(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES);
+        uint256 unionRoles = EACBaseRolesLib.fromCounts(counts);
+        for (uint256 i; i < revokes.length; ++i) {
+            _revokeRoles(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, revokes[i], false);
+        }
+        _grantRoles(ROOT_RESOURCE, unionRoles | (unionRoles >> 128), to, false);
+    }
 
     /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
     /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS

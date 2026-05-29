@@ -52,6 +52,11 @@ library RegistryRolesLib {
     /// @dev Nybble 41: authorizes setting `ROLE_SET_URI`.
     uint256 internal constant ROLE_SET_URI_ADMIN = ROLE_SET_URI << 128;
 
+    /// @dev Nybble 10: authorizes reclaiming the `WrapperRegistry`. Token-only.
+    uint256 internal constant ROLE_WRAPPER_RECLAIM = 1 << 40;
+    /// @dev Nybble 42: authorizes setting `ROLE_WRAPPER_RECLAIM`.
+    uint256 internal constant ROLE_WRAPPER_RECLAIM_ADMIN = ROLE_WRAPPER_RECLAIM << 128;
+
     /// @dev Nybble 30: authorizes contract naming. Root-only.
     uint256 internal constant ROLE_CAN_NAME = 1 << 120;
     /// @dev Nybble 63: authorizes setting ROLE_CAN_NAME.

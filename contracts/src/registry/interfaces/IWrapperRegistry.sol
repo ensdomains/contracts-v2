@@ -5,7 +5,7 @@ import {IPermissionedRegistry} from "./IPermissionedRegistry.sol";
 import {IRegistry} from "./IRegistry.sol";
 
 /// @notice Interface for a registry that manages a locked NameWrapper name.
-/// @dev Interface selector: `0x6b2f7339`
+/// @dev Interface selector: `0xf9fc8b9c`
 interface IWrapperRegistry is IPermissionedRegistry {
     /// @notice Initializes WrapperRegistry.
     /// @param node Namehash of this registry.
@@ -21,6 +21,12 @@ interface IWrapperRegistry is IPermissionedRegistry {
         uint256 roleBitmap
     )
         external;
+
+    /// @notice Reclaim the registry from a prior owner.
+    /// @dev Requires `ROLE_WRAPPER_RECLAIM` on token.
+    /// @param to The new root account.
+    /// @param revokes The old root accounts which get fully revoked.
+    function reclaim(address to, address[] calldata revokes) external;
 
     /// @notice Returns the DNS-encoded name for this registry.
     function getWrappedName() external view returns (bytes memory);

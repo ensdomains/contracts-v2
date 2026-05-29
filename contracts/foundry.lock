@@ -17,11 +17,11 @@
   "lib/openzeppelin-contracts-v4": {
     "rev": "54b3f14346da01ba0d159114b399197fea8b7cda"
   },
-  "lib/solsha1": {
-    "rev": "c4fbe97cf5e8c1b8d607001588fd23abb5bfb923"
-  },
   "lib/solady": {
     "rev": "90db92ce173856605d24a554969f2c67cadbc7e9"
+  },
+  "lib/solsha1": {
+    "rev": "c4fbe97cf5e8c1b8d607001588fd23abb5bfb923"
   },
   "lib/unruggable-gateways": {
     "rev": "7426ac57509e2023a673956439eed29998d2e371"
