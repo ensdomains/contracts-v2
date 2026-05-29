@@ -9,6 +9,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {UnauthorizedCaller, WrongParentToken} from "../CommonErrors.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
@@ -143,6 +144,25 @@ contract WrapperRegistry is
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
+
+    /// @inheritdoc IWrapperRegistry
+    function transferRootRoles(uint256 parentTokenId, address from, address to) external {
+        if (msg.sender != address(_parentRegistry)) {
+            revert UnauthorizedCaller(msg.sender);
+        }
+        // Defends against a cross-token role drain: any other token under the same parent
+        // registry can be re-pointed to use this contract as its subregistry, so an attacker
+        // could otherwise transfer that token and drain their own seller-side grants to an
+        // arbitrary recipient — letting a non-admin delegate effectively redelegate by routing
+        // through an unrelated token transfer.
+        if (
+            LibLabel.withVersion(parentTokenId, 0) !=
+            LibLabel.withVersion(LibLabel.id(_childLabel), 0)
+        ) {
+            revert WrongParentToken(parentTokenId);
+        }
+        _transferRoles(ROOT_RESOURCE, from, to, false);
+    }
 
     /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
     /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
