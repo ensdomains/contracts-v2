@@ -46,6 +46,7 @@ if (url) {
       DNSSEC.address,
       oracleGatewayProvider.address,
       v2.batchGatewayProvider.address,
+      v2.contractNamer.address,
     ]);
     for (const name of ["dnsname.ens.eth"]) {
       await v2.setupName({

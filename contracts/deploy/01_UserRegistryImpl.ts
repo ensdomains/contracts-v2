@@ -1,22 +1,20 @@
 import { artifacts, execute } from "@rocketh";
 
 export default execute(
-  async ({ deploy, get, namedAccounts: { deployer } }) => {
+  async ({ deploy, get, namedAccounts: { deployer, owner } }) => {
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
 
-    const registryMetadata = get<
-      (typeof artifacts.SimpleRegistryMetadata)["abi"]
-    >("SimpleRegistryMetadata");
+    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
     await deploy("UserRegistryImpl", {
       account: deployer,
       artifact: artifacts.UserRegistry,
-      args: [hcaFactory.address, registryMetadata.address],
+      args: [hcaFactory.address, labelStore.address, owner],
     });
   },
   {
     tags: ["UserRegistryImpl", "v2"],
-    dependencies: ["HCAFactory", "RegistryMetadata"],
+    dependencies: ["HCAFactory", "LabelStore"],
   },
 );

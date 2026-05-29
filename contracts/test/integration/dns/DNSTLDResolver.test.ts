@@ -13,26 +13,27 @@ import { describe, expect, it } from "vitest";
 
 import { expectVar } from "../../utils/expectVar.js";
 import {
-  type KnownProfile,
   bundleCalls,
+  type KnownProfile,
+  makeResolutions,
+} from "../../utils/resolutions.js";
+import { shouldSupportFeatures } from "../../utils/supportsFeatures.js";
+import {
+  dnsEncodeName,
   COIN_TYPE_DEFAULT,
   COIN_TYPE_ETH,
-  makeResolutions,
-} from "../../utils/resolutions.ts";
-import { shouldSupportFeatures } from "../../utils/supportsFeatures.js";
-import { dnsEncodeName } from "../../utils/utils.js";
+} from "../../utils/utils.js";
 import { deployV1Fixture } from "../fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "../fixtures/deployV2Fixture.js";
-import { deployArtifact } from "../fixtures/deployArtifact.js";
 import { encodeRRs, makeTXT } from "./rr.js";
 import { FEATURES } from "../../../lib/ens-contracts/test/utils/features.js";
 
 const network = await hre.network.connect();
 
 const dnsTXTResolverName = "dnstxt.ens.eth";
-const extendedDNSResolverName = "dnsname.ens.eth";
 const dummyBytes4 = "0x12345678";
 const testAddress = "0x8000000000000000000000000000000000000001";
+const testData = "0xabcdef";
 const testURL = "https://ens.domains";
 const basicProfile: KnownProfile = {
   name: "test.com",
@@ -66,6 +67,7 @@ async function fixture() {
     mockDNSSEC.address,
     oracleGatewayProvider.address,
     v2.batchGatewayProvider.address,
+    v2.contractNamer.address,
   ]);
   await v1.setupName({
     name: "com",
@@ -75,19 +77,18 @@ async function fixture() {
     name: "com",
     resolverAddress: dnsTLDResolver.address,
   });
-  const dnsTXTResolver = await network.viem.deployContract("DNSTXTResolver");
+  const dnsTXTResolver = await network.viem.deployContract("DNSTXTResolver", [
+    v2.contractNamer.address,
+  ]);
   await setupNamedResolver(dnsTXTResolverName, dnsTXTResolver.address);
   const dnsAliasResolver = await network.viem.deployContract(
     "DNSAliasResolver",
-    [v2.rootRegistry.address, v2.batchGatewayProvider.address],
+    [
+      v2.rootRegistry.address,
+      v2.batchGatewayProvider.address,
+      v2.contractNamer.address,
+    ],
   );
-  const extendedDNSResolverAddress = await deployArtifact(v2.walletClient, {
-    file: new URL(
-      "./ExtendedDNSResolver_53f64de872aad627467a34836be1e2b63713a438.json",
-      import.meta.url,
-    ),
-  });
-  await setupNamedResolver(extendedDNSResolverName, extendedDNSResolverAddress);
   return {
     v1,
     v2,
@@ -99,7 +100,6 @@ async function fixture() {
     dnsTLDResolver,
     dnsTXTResolver,
     dnsAliasResolver,
-    extendedDNSResolverAddress,
     expectTXT,
     expectGasless,
     expectResolution,
@@ -129,9 +129,6 @@ async function fixture() {
     ]);
     expectVar({ directAnswer }).toStrictEqual(answer);
     await expect(
-      dnsTLDResolver.read.requiresOffchain([dnsEncodeName(kp.name)]),
-    ).resolves.toStrictEqual(gasless);
-    await expect(
       dnsTLDResolver.read.getResolver([dnsEncodeName(kp.name)]),
     ).resolves.toStrictEqual([getAddress(resolverAddress), gasless]);
   }
@@ -140,7 +137,7 @@ async function fixture() {
       name,
       resolverAddress: myResolver.address,
     });
-    await myResolver.write.setAddr([namehash(name), COIN_TYPE_ETH, resolver]);
+    await myResolver.write.setAddr([namehash(name), resolver]);
   }
 }
 
@@ -294,33 +291,6 @@ describe("DNSTLDResolver", () => {
     bundle.expect(answer);
   });
 
-  describe("ExtendedDNSResolver (original deployment)", () => {
-    // this ensures MockDNSSEC is working as expected
-    it("addr(60)", async () => {
-      const F = await network.networkHelpers.loadFixture(fixture);
-      await F.mockDNSSEC.write.setResponse([
-        encodeRRs([
-          makeTXT(
-            basicProfile.name,
-            `ENS1 ${extendedDNSResolverName} ${testAddress}`,
-          ),
-        ]),
-      ]);
-      await F.expectGasless(
-        {
-          name: basicProfile.name,
-          addresses: [
-            {
-              coinType: COIN_TYPE_ETH,
-              value: testAddress,
-            },
-          ],
-        },
-        F.extendedDNSResolverAddress,
-      );
-    });
-  });
-
   describe("DNSSEC", () => {
     it("no ENS1", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
@@ -389,7 +359,7 @@ describe("DNSTLDResolver", () => {
     const anotherAddress = "0x1234567812345678123456781234567812345678";
     const x = `0x${"a".repeat(64)}` as const;
     const y = `0x${"b".repeat(64)}` as const;
-    const context = `a[60]=${testAddress} a[e0]=${anotherAddress} t[url]='${testURL}' c=${contenthash} xy=${concat([x, y])}`;
+    const context = `a[60]=${testAddress} a[e0]=${anotherAddress} t[url]='${testURL}' d[abc]=${testData} c=${contenthash} xy=${concat([x, y])}`;
     const encodedRRs = encodeRRs([
       makeTXT(basicProfile.name, `ENS1 ${dnsTXTResolverName} ${context}`),
     ]);
@@ -407,36 +377,37 @@ describe("DNSTLDResolver", () => {
         .withArgs([dummyBytes4]);
     });
 
-    it("invalid hex", async () => {
-      const F = await network.networkHelpers.loadFixture(fixture);
-      const invalidHex = "!@#$";
-      await F.mockDNSSEC.write.setResponse([
-        encodeRRs([
-          makeTXT(
-            basicProfile.name,
-            `ENS1 ${dnsTXTResolverName} a[60]=${invalidHex}`,
-          ),
-        ]),
-      ]);
-      const [res] = makeResolutions({
-        name: basicProfile.name,
-        addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
-      });
-      await expect(
-        F.v2.universalResolver.read.resolve([
-          dnsEncodeName(basicProfile.name),
-          res.call,
-        ]),
-      )
-        .toBeRevertedWithCustomError("ResolverError")
-        .withArgs([
-          encodeErrorResult({
-            abi: F.dnsTXTResolver.abi,
-            errorName: "InvalidHexData",
-            args: [stringToHex(invalidHex)],
-          }),
+    for (const invalidHex of ["0", "00", "0x0", "!@#$"]) {
+      it(`invalid hex: ${invalidHex}`, async () => {
+        const F = await network.networkHelpers.loadFixture(fixture);
+        await F.mockDNSSEC.write.setResponse([
+          encodeRRs([
+            makeTXT(
+              basicProfile.name,
+              `ENS1 ${dnsTXTResolverName} a[60]=${invalidHex}`,
+            ),
+          ]),
         ]);
-    });
+        const [res] = makeResolutions({
+          name: basicProfile.name,
+          addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
+        });
+        await expect(
+          F.v2.universalResolver.read.resolve([
+            dnsEncodeName(basicProfile.name),
+            res.call,
+          ]),
+        )
+          .toBeRevertedWithCustomError("ResolverError")
+          .withArgs([
+            encodeErrorResult({
+              abi: F.dnsTXTResolver.abi,
+              errorName: "InvalidHexData",
+              args: [stringToHex(invalidHex)],
+            }),
+          ]);
+      });
+    }
 
     it("invalid length: address", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
@@ -498,6 +469,22 @@ describe("DNSTLDResolver", () => {
         ]);
     });
 
+    it("og: just addr(60)", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      const name = "og.com";
+      await F.mockDNSSEC.write.setResponse([
+        encodeRRs([makeTXT(name, `ENS1 ${dnsTXTResolverName} ${testAddress}`)]),
+      ]);
+      await F.expectTXT({
+        name,
+        addresses: [
+          { coinType: COIN_TYPE_ETH, value: testAddress },
+          { coinType: COIN_TYPE_DEFAULT, value: "0x" },
+          { coinType: 0n, value: "0x" },
+        ],
+      });
+    });
+
     it("addr()", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.mockDNSSEC.write.setResponse([encodedRRs]);
@@ -528,12 +515,39 @@ describe("DNSTLDResolver", () => {
       });
     });
 
-    it("text(url)", async () => {
+    it("text()", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.mockDNSSEC.write.setResponse([encodedRRs]);
       await F.expectTXT({
         name: basicProfile.name,
         texts: [{ key: "url", value: testURL }],
+      });
+    });
+
+    it("text() w/[-key", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      const key = "a[b[c]]";
+      const value = "123";
+      await F.mockDNSSEC.write.setResponse([
+        encodeRRs([
+          makeTXT(
+            basicProfile.name,
+            `ENS1 ${dnsTXTResolverName} t[${key}]=${value}`,
+          ),
+        ]),
+      ]);
+      await F.expectTXT({
+        name: basicProfile.name,
+        texts: [{ key, value }],
+      });
+    });
+
+    it("data()", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      await F.mockDNSSEC.write.setResponse([encodedRRs]);
+      await F.expectTXT({
+        name: basicProfile.name,
+        datas: [{ key: "abc", value: testData }],
       });
     });
 
@@ -593,7 +607,7 @@ describe("DNSTLDResolver", () => {
 
     function parseContext(name: string, context: string) {
       const pos = context.indexOf(" ");
-      if (pos == -1) return context;
+      if (pos === -1) return context;
       return name.replace(
         new RegExp(`(^|\.)${context.slice(0, pos)}$`),
         (_, x) => x + context.slice(pos + 1),
@@ -613,6 +627,7 @@ describe("DNSTLDResolver", () => {
             name: newName,
             addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
             texts: [{ key: "url", value: testURL }],
+            datas: [{ key: "abc", value: testData }],
           } as const satisfies KnownProfile;
           await F.v2.setupName({
             name: newName,

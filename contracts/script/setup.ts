@@ -1,5 +1,6 @@
 import { artifacts } from "@rocketh";
 import { rm } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { anvil as createAnvil } from "prool/instances";
 import { executeDeployScripts, resolveConfig } from "rocketh";
 import {
@@ -7,6 +8,7 @@ import {
   type Address,
   ContractFunctionExecutionError,
   ContractFunctionRevertedError,
+  createPublicClient,
   createWalletClient,
   decodeAbiParameters,
   encodeAbiParameters,
@@ -29,15 +31,19 @@ import {
   computeVerifiableProxyAddress as computeVerifiableProxyAddress_,
   deployVerifiableProxy,
 } from "../test/integration/fixtures/deployVerifiableProxy.js";
-import { dnsEncodeName, splitName } from "../test/utils/utils.js";
+import {
+  dnsEncodeName,
+  getReverseName,
+  splitName,
+} from "../test/utils/utils.js";
 import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
 import {
   LOCAL_BATCH_GATEWAY_URL,
   MAX_EXPIRY,
   ROLES,
 } from "./deploy-constants.js";
-import { deployArtifact } from "../test/integration/fixtures/deployArtifact.js";
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
+import { bootstrapForkDeployments, ENS_DAO_MULTISIG } from "./forkBootstrap.js";
 
 const NAMED_ACCOUNTS = ["deployer", "owner", "user", "user2"] as const;
 
@@ -46,7 +52,7 @@ export type DevnetEnvironment = Awaited<ReturnType<typeof setupDevnet>>;
 export type DevnetAccount =
   DevnetEnvironment["namedAccounts"][(typeof NAMED_ACCOUNTS)[number]];
 
-function ansi(c: any, s: any) {
+function ansi(c: unknown, s: unknown) {
   return `\x1b[${c}m${s}\x1b[0m`;
 }
 
@@ -58,6 +64,8 @@ export async function setupDevnet({
   quiet = !saveDeployments,
   procLog = false,
   extraTime = 0,
+  forkUrl,
+  forkBlockNumber,
 }: {
   port?: number;
   chainId?: number;
@@ -66,7 +74,10 @@ export async function setupDevnet({
   quiet?: boolean;
   procLog?: boolean; // show anvil process logs
   extraTime?: number; // extra time to subtract from genesis timestamp
+  forkUrl?: string; // when set, anvil forks from this RPC URL
+  forkBlockNumber?: bigint; // optional fork block; defaults to latest
 } = {}) {
+  const isFork = !!forkUrl;
   // shutdown functions for partial initialization
   const finalizers: (() => unknown | Promise<unknown>)[] = [];
   async function shutdown() {
@@ -86,13 +97,20 @@ export async function setupDevnet({
     console.log("Deploying ENSv2...");
     await patchArtifactsV1();
 
-    process.env["RUST_LOG"] = "info"; // required to capture console.log()
+    process.env.RUST_LOG = "info"; // required to capture console.log()
     const anvilInstance = createAnvil({
       accounts: NAMED_ACCOUNTS.length,
       mnemonic,
-      chainId,
+      // when forking, anvil derives chainId from the upstream RPC; the bare
+      // `chainId` flag is omitted so anvil takes the upstream value
+      ...(isFork ? {} : { chainId }),
       port,
-      ...(extraTime
+      // autoImpersonate lets the deploy flow sign as any address (e.g. the DAO
+      // multisig mapped to `owner` on chainId 1) without explicit unlocking.
+      // omitted in non-fork mode — prool encodes `false` as a positional arg
+      // rather than dropping the flag, which trips anvil's subcommand parser.
+      ...(isFork ? { autoImpersonate: true, forkUrl, forkBlockNumber } : {}),
+      ...(extraTime && !isFork
         ? { timestamp: Math.floor(Date.now() / 1000) - extraTime }
         : {}),
     });
@@ -148,8 +166,15 @@ export async function setupDevnet({
     })();
 
     const httpURL = `http://${hostPort}`;
+
+    // when forking, anvil reports the upstream chainId — pull it from the live
+    // node so downstream chain definition + deployments dir name reflect reality
+    const activeChainId = isFork
+      ? await createPublicClient({ transport: http(httpURL) }).getChainId()
+      : chainId;
+
     const chain = defineChain({
-      id: chainId,
+      id: activeChainId,
       name: "ENSv2",
       nativeCurrency: {
         decimals: 18,
@@ -198,11 +223,25 @@ export async function setupDevnet({
     });
 
     console.log("Deploying contracts");
-    const deploymentName = `devnet-${chainId}`;
+    const deploymentName = `devnet-${activeChainId}`;
+    const deploymentsDirURL = new URL(
+      `../deployments/${deploymentName}`,
+      import.meta.url,
+    );
     if (saveDeployments) {
-      await rm(new URL(`../deployments/${deploymentName}`, import.meta.url), {
+      await rm(deploymentsDirURL, {
         recursive: true,
         force: true,
+      });
+    }
+    if (isFork) {
+      await bootstrapForkDeployments({
+        client,
+        deploymentsDir: fileURLToPath(deploymentsDirURL),
+        canonicalDir: fileURLToPath(
+          new URL("../lib/ens-contracts/deployments/mainnet", import.meta.url),
+        ),
+        chainId: activeChainId,
       });
     }
     process.env.BATCH_GATEWAY_URLS = JSON.stringify([LOCAL_BATCH_GATEWAY_URL]);
@@ -219,7 +258,9 @@ export async function setupDevnet({
             "legacy", // legacy registry
           ],
           fork: false,
-          scripts: ["lib/ens-contracts/deploy", "deploy"],
+          // on fork, v1 contracts come from the live mainnet state we just
+          // pre-populated; only the v2 deploy scripts run on top
+          scripts: isFork ? ["deploy"] : ["lib/ens-contracts/deploy", "deploy"],
           pollingInterval: 0.001, // cannot be zero
         },
         askBeforeProceeding: false,
@@ -236,6 +277,11 @@ export async function setupDevnet({
         address: rocketh.get("BatchGatewayProvider").address,
         client,
       }),
+      DNSSECGatewayProvider: getContract({
+        abi: artifacts.GatewayProvider.abi,
+        address: rocketh.get("DNSSECGatewayProvider").address,
+        client,
+      }),
       DefaultReverseRegistrar: getContract({
         abi: artifacts.DefaultReverseRegistrar.abi,
         address: rocketh.get("DefaultReverseRegistrar").address,
@@ -247,16 +293,18 @@ export async function setupDevnet({
         client,
       }),
       ETHReverseRegistrar: getContract({
-        // TODO: update to actual reverse registrar when we have it
-        abi: artifacts[
-          "lib/ens-contracts/contracts/reverseRegistrar/L2ReverseRegistrar.sol/L2ReverseRegistrar"
-        ].abi,
-        address: rocketh.get("ETHReverseRegistrar").address,
+        abi: artifacts.ReverseRegistrar.abi,
+        address: rocketh.get("ReverseRegistrar").address,
         client,
       }),
-      ETHReverseResolver: getContract({
-        abi: artifacts.ETHReverseResolver.abi,
-        address: rocketh.get("ETHReverseResolver").address,
+      ReverseRegistrarHCAAdapter: getContract({
+        abi: artifacts.ReverseRegistrarHCAAdapter.abi,
+        address: rocketh.get("ReverseRegistrarHCAAdapter").address,
+        client,
+      }),
+      DefaultReverseRegistrarHCAAdapter: getContract({
+        abi: artifacts.DefaultReverseRegistrarHCAAdapter.abi,
+        address: rocketh.get("DefaultReverseRegistrarHCAAdapter").address,
         client,
       }),
     };
@@ -305,14 +353,22 @@ export async function setupDevnet({
       }),
     };
 
+    const NameCoderErrors = artifacts.NameCoder.abi.filter(
+      (x) => x.type === "error",
+    );
     const v2 = {
-      SimpleRegistryMetadata: getContract({
-        abi: artifacts.SimpleRegistryMetadata.abi,
-        address: rocketh.get("SimpleRegistryMetadata").address,
+      ContractNamer: getContract({
+        abi: artifacts.ContractNamer.abi,
+        address: rocketh.get("ContractNamer").address,
+        client,
+      }),
+      LabelStore: getContract({
+        abi: artifacts.LabelStore.abi,
+        address: rocketh.get("LabelStore").address,
         client,
       }),
       HCAFactory: getContract({
-        abi: artifacts.MockHCAFactoryBasic.abi,
+        abi: artifacts.HCAFactory.abi,
         address: rocketh.get("HCAFactory").address,
         client,
       }),
@@ -322,24 +378,29 @@ export async function setupDevnet({
         client,
       }),
       RootRegistry: getContract({
-        abi: artifacts.PermissionedRegistry.abi,
+        abi: [...artifacts.PermissionedRegistry.abi, ...NameCoderErrors],
         address: rocketh.get("RootRegistry").address,
         client,
       }),
       ETHRegistry: getContract({
-        abi: artifacts.PermissionedRegistry.abi,
+        abi: [...artifacts.PermissionedRegistry.abi, ...NameCoderErrors],
         address: rocketh.get("ETHRegistry").address,
         client,
       }),
       // eth registrar
+      StandardRentPriceOracle: getContract({
+        abi: artifacts.StandardRentPriceOracle.abi,
+        address: rocketh.get("StandardRentPriceOracle").address,
+        client,
+      }),
       ETHRegistrar: getContract({
         abi: artifacts.ETHRegistrar.abi,
         address: rocketh.get("ETHRegistrar").address,
         client,
       }),
-      StandardRentPriceOracle: getContract({
-        abi: artifacts.StandardRentPriceOracle.abi,
-        address: rocketh.get("StandardRentPriceOracle").address,
+      ETHRenewerV1: getContract({
+        abi: artifacts.ETHRenewerV1.abi,
+        address: rocketh.get("ETHRenewerV1").address,
         client,
       }),
       // VerifiableFactory implementations
@@ -349,7 +410,7 @@ export async function setupDevnet({
         client,
       }),
       UserRegistryImpl: getContract({
-        abi: artifacts.UserRegistry.abi,
+        abi: [...artifacts.UserRegistry.abi, ...NameCoderErrors],
         address: rocketh.get("UserRegistryImpl").address,
         client,
       }),
@@ -360,13 +421,28 @@ export async function setupDevnet({
       }),
       // migration
       UnlockedMigrationController: getContract({
-        abi: artifacts.UnlockedMigrationController.abi,
+        abi: [...artifacts.UnlockedMigrationController.abi, ...NameCoderErrors],
         address: rocketh.get("UnlockedMigrationController").address,
         client,
       }),
       LockedMigrationController: getContract({
-        abi: artifacts.LockedMigrationController.abi,
+        abi: [...artifacts.LockedMigrationController.abi, ...NameCoderErrors],
         address: rocketh.get("LockedMigrationController").address,
+        client,
+      }),
+      Graveyard: getContract({
+        abi: artifacts.Graveyard.abi,
+        address: rocketh.get("Graveyard").address,
+        client,
+      }),
+      PublicResolverSet: getContract({
+        abi: artifacts.PermissionedAddressSet.abi,
+        address: rocketh.get("PublicResolverSet").address,
+        client,
+      }),
+      ApprovedUpgradeGate: getContract({
+        abi: artifacts.ApprovedUpgradeGate.abi,
+        address: rocketh.get("ApprovedUpgradeGate").address,
         client,
       }),
       // resolvers
@@ -400,6 +476,11 @@ export async function setupDevnet({
         address: rocketh.get("ENSV2Resolver").address,
         client,
       }),
+      PublicResolver: getContract({
+        abi: artifacts.PublicResolverV2.abi,
+        address: rocketh.get("PublicResolverV2").address,
+        client,
+      }),
     };
 
     const erc20 = {
@@ -422,6 +503,19 @@ export async function setupDevnet({
       .forEach(patchContractWrite);
     console.log("Linked contracts");
 
+    const hcaDeferredImplementation =
+      await v2.HCAFactory.read.DEFERRED_IMPLEMENTATION();
+    for (const account of accounts) {
+      const currentImplementation =
+        await v2.HCAFactory.read.accountImplementationOf([account.address]);
+      if (currentImplementation !== zeroAddress) continue;
+      await v2.HCAFactory.write.setAccountImplementation(
+        [hcaDeferredImplementation],
+        { account },
+      );
+    }
+    console.log("Configured HCA implementation for dev accounts");
+
     const namedAccounts = Object.fromEntries(
       await Promise.all(
         accounts.map(async (account) => {
@@ -440,8 +534,12 @@ export async function setupDevnet({
     >;
     console.log("Created PermissionedResolver for each account");
 
-    await setupEnsDotEth();
-    console.log("Setup ens.eth");
+    // on fork, ens.eth already exists on canonical v1 with real subdomains;
+    // skip the synthetic register-and-seed step to avoid colliding with state
+    if (!isFork) {
+      await setupEnsDotEth();
+      console.log("Setup ens.eth");
+    }
 
     console.log("Deployed ENSv2");
     return {
@@ -469,6 +567,7 @@ export async function setupDevnet({
       findPermissionedRegistry,
       findWrapperRegistry,
       patchContractWrite,
+      activateV2,
     };
 
     async function waitFor(hash: Hex | Promise<Hex>) {
@@ -525,7 +624,10 @@ export async function setupDevnet({
     async function sync({
       blocks = 1,
       warpSec = "local",
-    }: { blocks?: number; warpSec?: number | "local" } = {}) {
+    }: {
+      blocks?: number;
+      warpSec?: number | "local";
+    } = {}) {
       const block = await client.getBlock();
       let timestamp = Number(block.timestamp);
       if (warpSec === "local") {
@@ -706,6 +808,72 @@ export async function setupDevnet({
       );
     }
 
+    async function activateV2() {
+      // on fork the canonical v1 contracts are owned by the DAO multisig, not
+      // by the mnemonic-derived `owner` account — anvil autoImpersonate lets us
+      // call onlyOwner functions by passing the DAO address as a JSON-RPC
+      // account directly.
+      const account: Account | Address = isFork
+        ? ENS_DAO_MULTISIG
+        : namedAccounts.owner;
+      // lock NameWrapper if still owned (idempotent across fork + synthetic)
+      if ((await v1.NameWrapper.read.owner()) !== zeroAddress) {
+        await v1.NameWrapper.write.renounceOwnership({ account });
+      }
+      // disable every v1 path that can register .eth 2LDs by revoking it as
+      // a BaseRegistrarImplementation controller (routed via
+      // RegistrarSecurityController, which is BaseRegistrar's owner):
+      //   - ETHRegistrarController / LegacyETHRegistrarController: direct
+      //     controllers of BaseRegistrar.
+      //   - NameWrapper: BaseRegistrar controller through which the
+      //     WrappedETHRegistrarController registers wrapped 2LDs.
+      //   - WrappedETHRegistrarController: not actually a BaseRegistrar
+      //     controller on canonical mainnet (it routes through NameWrapper),
+      //     but is on the synthetic devnet; included for parity.
+      // BaseRegistrarImplementation.removeController is idempotent (sets
+      // controllers[x]=false and emits an event), so revoking an address
+      // that isn't currently registered is a harmless no-op. The
+      // LegacyETHRegistrarController rocketh artifact is pre-populated by
+      // `bootstrapForkDeployments` in fork mode and by the v1 deploy scripts
+      // in synthetic-devnet mode.
+      const v1ControllerNames = [
+        "ETHRegistrarController",
+        "WrappedETHRegistrarController",
+        "LegacyETHRegistrarController",
+        "NameWrapper",
+      ] as const;
+      for (const name of v1ControllerNames) {
+        await v1.RegistrarSecurityController.write.removeRegistrarController(
+          [rocketh.get(name).address],
+          { account },
+        );
+      }
+      // add v2 eth controllers
+      await v1.RegistrarSecurityController.write.addRegistrarController(
+        [v2.Graveyard.address],
+        { account },
+      );
+      await v1.RegistrarSecurityController.write.addRegistrarController(
+        [v2.ETHRenewerV1.address],
+        { account },
+      );
+      // on fork, also grant deployer registrar-controller rights so morticia's
+      // e2e harness can call into v1.BaseRegistrar from the test mnemonic
+      // (matches the synthetic devnet's implicit "deployer can register" stance)
+      if (isFork) {
+        await v1.RegistrarSecurityController.write.addRegistrarController(
+          [namedAccounts.deployer.address],
+          { account },
+        );
+      }
+      // transfer to syncer for juggling
+      await v1.RegistrarSecurityController.write.transferRegistrarOwnership(
+        [v2.ETHRenewerV1.address],
+        { account },
+      );
+      // TODO: delay grant of registar/renewer-related roles until here?
+    }
+
     async function setupEnsDotEth() {
       const { resolver } = namedAccounts.owner;
 
@@ -726,30 +894,70 @@ export async function setupDevnet({
         MAX_EXPIRY,
       ]);
 
-      // create "dnsname.ens.eth"
-      // https://etherscan.io/address/0x08769D484a7Cd9c4A98E928D9E270221F3E8578c#code
-      await setupNamedResolver(
-        "dnsname",
-        await deployArtifact(client, {
-          file: new URL(
-            "../test/integration/dns/ExtendedDNSResolver_53f64de872aad627467a34836be1e2b63713a438.json",
-            import.meta.url,
-          ),
-        }),
+      await setName("namer", v2.ContractNamer.address);
+
+      await setName("root", v2.RootRegistry.address);
+      await setName("registry", v2.ETHRegistry.address);
+      await setName("impl.registry", v2.UserRegistryImpl.address);
+      await setName("impl.wrapper-registry", v2.WrapperRegistryImpl.address);
+
+      await setName("2to1.resolver", v2.ENSV1Resolver.address);
+      await setName("1to2.resolver", v2.ENSV2Resolver.address);
+      await setName("impl.resolver", v2.PermissionedResolverImpl.address);
+      // await setName("universal", v2.UniversalResolver.address); // devnet doesn't deploy a proxy
+      await setName("impl.universal", v2.UniversalResolver.address);
+      await setName("public.resolver", v2.PublicResolver.address);
+      await setName("dns.resolver", v2.DNSTLDResolver.address);
+
+      await setName("dnsname", v2.DNSTXTResolver.address); // remap v1 ExtendedDNSResolver
+      await setName("dnstxt", v2.DNSTXTResolver.address); // TODO: could just use "dnsname"?
+      await setName("dnsalias", v2.DNSAliasResolver.address);
+
+      await setName("registrar", v2.ETHRegistrar.address);
+      await setName("renewer", v2.ETHRenewerV1.address);
+      await setName("oracle", v2.StandardRentPriceOracle.address);
+      // await setName("batch.migration", v2.BatchRegistrar.address); // this is only used internally for premigration
+      await setName("addr.reverse", shared.ReverseRegistrarHCAAdapter.address);
+      await setName(
+        "default.reverse",
+        shared.DefaultReverseRegistrarHCAAdapter.address,
       );
 
-      // create "dnstxt.ens.eth"
-      await setupNamedResolver("dnstxt", v2.DNSTXTResolver.address);
+      await setName(
+        "unlocked.migration",
+        v2.UnlockedMigrationController.address,
+      );
+      await setName("locked.migration", v2.LockedMigrationController.address);
+      await setName("graveyard", v2.Graveyard.address);
+      // MigrationHelper
+      await setName("gate.wrapper-registry", v2.ApprovedUpgradeGate.address);
+      await setName("prset.migration", v2.PublicResolverSet.address);
 
-      // create "dnsalias.ens.eth"
-      await setupNamedResolver("dnsalias", v2.DNSAliasResolver.address);
+      await setName("hca", v2.HCAFactory.address);
+      await setName("batch.gateways", shared.BatchGatewayProvider.address);
+      await setName("dnssec.gateways", shared.DNSSECGatewayProvider.address);
+      await setName("labelstore", v2.LabelStore.address);
+      await setName("verifiable-factory", v2.VerifiableFactory.address);
 
-      function setupNamedResolver(label: string, address: Address) {
-        return resolver.write.setAddr([
-          namehash(`${label}.ens.eth`),
-          60n,
-          address,
-        ]);
+      async function setName(
+        prefix: string,
+        address: Address,
+        namer = namedAccounts.owner,
+      ) {
+        const name = `${prefix}.ens.eth`;
+        try {
+          await shared.ReverseRegistrarHCAAdapter.write.claimForContract(
+            [address, resolver.address],
+            { account: namer },
+          );
+          await resolver.write.setName([
+            namehash(getReverseName(address)),
+            name,
+          ]);
+        } catch (err) {
+          console.log(`Cannot name: ${name}`);
+        }
+        await resolver.write.setAddr([namehash(name), 60n, address]);
       }
     }
 

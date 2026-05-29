@@ -6,13 +6,23 @@ export default execute(
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
+    const graveyard = get<(typeof artifacts.Graveyard)["abi"]>("Graveyard");
+
     const ethRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
+
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
 
     const migrationController = await deploy("UnlockedMigrationController", {
       account: deployer,
       artifact: artifacts.UnlockedMigrationController,
-      args: [nameWrapper.address, ethRegistry.address],
+      args: [
+        nameWrapper.address,
+        graveyard.address,
+        ethRegistry.address,
+        contractNamer.address,
+      ],
     });
 
     // see: UnlockedMigrationController.t.sol
@@ -27,6 +37,12 @@ export default execute(
   },
   {
     tags: ["UnlockedMigrationController", "v2"],
-    dependencies: ["NameWrapper", "ETHRegistry"],
+    dependencies: [
+      "NameWrapper",
+      "Graveyard",
+      "ETHRegistry",
+      "setup:HCAFactory",
+      "ContractNamer",
+    ],
   },
 );

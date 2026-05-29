@@ -7,7 +7,11 @@ import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactor
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
+import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 
 /// @notice Migration controller for handling locked .eth names.
@@ -15,9 +19,9 @@ import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 /// Assumes premigration has `RESERVED` existing ENSv1 names.
 /// Requires `ROLE_REGISTER_RESERVED` on .eth registry to perform migration.
 ///
-contract LockedMigrationController is LockedWrapperReceiver {
+contract LockedMigrationController is LockedWrapperReceiver, DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
@@ -27,18 +31,46 @@ contract LockedMigrationController is LockedWrapperReceiver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes LockedMigrationController.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
+    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param ethRegistry The ENSv2 .eth `PermissionedRegistry` where migrated names are registered.
     /// @param verifiableFactory The shared factory for verifiable deployments.
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
+    /// @param publicResolverSet The list of `PublicResolver` contracts that require replacement.
+    /// @param publicResolver The replacement `PublicResolver`.
+    /// @param contractNamer Delegated contract namer.
     constructor(
         INameWrapper nameWrapper,
+        address graveyard,
         IPermissionedRegistry ethRegistry,
         VerifiableFactory verifiableFactory,
-        address wrapperRegistryImpl
-    ) LockedWrapperReceiver(nameWrapper, verifiableFactory, wrapperRegistryImpl) {
+        address wrapperRegistryImpl,
+        IAddressSet publicResolverSet,
+        address publicResolver,
+        IContractNamer contractNamer
+    )
+        LockedWrapperReceiver(
+            nameWrapper,
+            graveyard,
+            verifiableFactory,
+            wrapperRegistryImpl,
+            publicResolverSet,
+            publicResolver
+        )
+        DelegatedContractNamer(contractNamer)
+    {
         ETH_REGISTRY = ethRegistry;
+    }
+
+    /// @inheritdoc DelegatedContractNamer
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(AbstractWrapperReceiver, DelegatedContractNamer)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -62,7 +94,11 @@ contract LockedMigrationController is LockedWrapperReceiver {
         address resolver,
         uint256 roleBitmap,
         uint64 /*expiry*/
-    ) internal override returns (uint256 tokenId) {
+    )
+        internal
+        override
+        returns (uint256 tokenId)
+    {
         return
             ETH_REGISTRY.register(
                 label,

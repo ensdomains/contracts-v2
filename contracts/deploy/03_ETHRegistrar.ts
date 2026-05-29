@@ -1,5 +1,11 @@
 import { artifacts, execute } from "@rocketh";
-import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
+import {
+  DEPLOYMENT_ROLES,
+  GRACE_PERIOD_V2,
+  MIN_COMMITMENT_AGE,
+  MAX_COMMITMENT_AGE,
+  MIN_REGISTER_DURATION,
+} from "../script/deploy-constants.js";
 
 export default execute(
   async ({
@@ -9,7 +15,7 @@ export default execute(
     namedAccounts: { deployer, owner },
   }) => {
     const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
+      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
 
     const ethRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
@@ -18,20 +24,19 @@ export default execute(
       "StandardRentPriceOracle",
     );
 
-    const beneficiary = owner || deployer;
-
-    const SEC_PER_DAY = 86400n;
     const ethRegistrar = await deploy("ETHRegistrar", {
       account: deployer,
       artifact: artifacts.ETHRegistrar,
       args: [
-        ethRegistry.address,
+        owner,
         hcaFactory.address,
-        beneficiary,
-        60n, // minCommitmentAge
-        SEC_PER_DAY, // maxCommitmentAge
-        28n * SEC_PER_DAY, // minRegistrationDuration
+        ethRegistry.address,
+        owner, // TODO: beneficiary,
         rentPriceOracle.address,
+        GRACE_PERIOD_V2,
+        MIN_COMMITMENT_AGE,
+        MAX_COMMITMENT_AGE,
+        MIN_REGISTER_DURATION,
       ],
     });
 
@@ -43,6 +48,6 @@ export default execute(
   },
   {
     tags: ["ETHRegistrar", "v2"],
-    dependencies: ["HCAFactory", "ETHRegistry", "StandardRentPriceOracle"],
+    dependencies: ["setup:HCAFactory", "ETHRegistry", "StandardRentPriceOracle"],
   },
 );

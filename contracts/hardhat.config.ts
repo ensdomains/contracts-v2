@@ -8,42 +8,65 @@ import HardhatDeploy from "hardhat-deploy";
 import HardhatIgnoreWarningsPlugin from "./plugins/ignore-warnings/index.ts";
 import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
+const version = "0.8.25";
+const hcaVersion = "0.8.27";
+const outputSelection = {
+  "*": {
+    "*": ["storageLayout"],
+  },
+};
 const config = {
   solidity: {
     compilers: [
       {
-        version: "0.8.25",
+        version,
         settings: {
           optimizer: {
             enabled: true,
             runs: 1000,
           },
           evmVersion: "cancun",
-          outputSelection: {
-            "*": {
-              "*": ["storageLayout"],
-            },
+          outputSelection,
+        },
+      },
+      {
+        version: hcaVersion,
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1000,
           },
+          evmVersion: "cancun",
+          outputSelection,
         },
       },
     ],
     overrides: {
-      'src/L2/reverse-registrar/L2ReverseRegistrar.sol': {
-        version: "0.8.25",
+      // 23k at 1
+      // 25k at 1000
+      "src/registry/WrapperRegistry.sol": {
+        version,
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 100,
+          },
+          evmVersion: "cancun",
+          outputSelection,
+        },
+      },
+      "src/L2/reverse-registrar/L2ReverseRegistrar.sol": {
+        version,
         settings: {
           optimizer: {
             enabled: true,
             runs: 1_000_000,
           },
           evmVersion: "paris",
-          outputSelection: {
-            "*": {
-              "*": ["storageLayout"],
-            },
-          },
+          outputSelection,
         },
-      }
-    }
+      },
+    },
   },
   paths: {
     sources: {
@@ -53,18 +76,16 @@ const config = {
         "./lib/verifiable-factory/src/",
         "./lib/ens-contracts/contracts/",
         "./lib/openzeppelin-contracts/contracts/utils/introspection/",
-        "./lib/openzeppelin-contracts/contracts/token/ERC721",
+        "./lib/openzeppelin-contracts/contracts/token/ERC721/",
         "./lib/openzeppelin-contracts/contracts/token/ERC1155/",
+        "./lib/openzeppelin-contracts/contracts/proxy/ERC1967/",
         // note: this increases artifact size by 25MB+ for 1 interface
         // "./lib/unruggable-gateways/contracts/",
       ],
     },
   },
   shouldIgnoreWarnings: (path) => {
-    return (
-      path.startsWith("./lib/ens-contracts/") ||
-      path.startsWith("./lib/solsha1/")
-    );
+    return path.startsWith("./lib/");
   },
   plugins: [
     HardhatNetworkHelpersPlugin,

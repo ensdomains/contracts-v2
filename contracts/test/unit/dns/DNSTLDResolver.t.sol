@@ -5,37 +5,39 @@ pragma solidity >=0.8.13;
 
 import {Test} from "forge-std/Test.sol";
 
+import {ENS} from "@ens/contracts/registry/ENS.sol";
+import {DNSSEC} from "@ens/contracts/dnssec-oracle/DNSSEC.sol";
+import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
-import {PermissionedRegistry, IRegistryMetadata} from "~src/registry/PermissionedRegistry.sol";
-import {DNSTLDResolver, ENS, IRegistry, DNSSEC, HexUtils} from "~src/dns/DNSTLDResolver.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
+import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {DNSTLDResolver} from "~src/dns/DNSTLDResolver.sol";
+import {LabelStore} from "~src/utils/LabelStore.sol";
 
 // coverage:ignore-next-line
 contract MockDNS is DNSTLDResolver {
-    constructor(
-        IRegistry rootRegistry
-    )
+    constructor(IPermissionedRegistry rootRegistry)
         DNSTLDResolver(
             ENS(address(0)),
             address(0),
             rootRegistry,
             DNSSEC(address(0)),
             new GatewayProvider(address(1), new string[](0)),
-            new GatewayProvider(address(1), new string[](0))
+            new GatewayProvider(address(1), new string[](0)),
+            IContractNamer(address(0))
         )
     {}
     function readTXT(bytes memory v) external pure returns (bytes memory) {
         return _readTXT(v, 0, v.length);
     }
-    function readTXT(
-        bytes memory v,
-        uint256 pos,
-        uint256 end
-    ) external pure returns (bytes memory) {
+    function readTXT(bytes memory v, uint256 pos, uint256 end) external pure returns (bytes memory) {
         return _readTXT(v, pos, end);
     }
     // function trim(bytes memory v) external pure returns (bytes memory) {
@@ -46,6 +48,7 @@ contract MockDNS is DNSTLDResolver {
     }
 }
 
+
 contract DNSTLDResolverTest is Test, ERC1155Holder, IAddrResolver {
     PermissionedRegistry rootRegistry;
     MockDNS dns;
@@ -53,7 +56,7 @@ contract DNSTLDResolverTest is Test, ERC1155Holder, IAddrResolver {
     function setUp() external {
         rootRegistry = new PermissionedRegistry(
             IHCAFactoryBasic(address(0)),
-            IRegistryMetadata(address(0)),
+            new LabelStore(IContractNamer(address(0))),
             address(this),
             EACBaseRolesLib.ALL_ROLES
         );

@@ -1,16 +1,11 @@
 import { artifacts, execute } from "@rocketh";
 
 export default execute(
-  async ({ deploy, get, namedAccounts: { deployer } }) => {
+  async ({ deploy, get, namedAccounts: { deployer, owner } }) => {
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
-    const hcaFactory =
-      get<(typeof artifacts.MockHCAFactoryBasic)["abi"]>("HCAFactory");
-
-    const registryMetadata = get<
-      (typeof artifacts.SimpleRegistryMetadata)["abi"]
-    >("SimpleRegistryMetadata");
+    const graveyard = get<(typeof artifacts.Graveyard)["abi"]>("Graveyard");
 
     const verifiableFactory =
       get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
@@ -18,20 +13,35 @@ export default execute(
     const ensV1Resolver =
       get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
 
+    const hcaFactory =
+      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
+
+    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+
     const approvedUpgradeGate = get<
       (typeof artifacts.ApprovedUpgradeGate)["abi"]
     >("ApprovedUpgradeGate");
+
+    const publicResolverSet =
+      get<(typeof artifacts.IAddressSet)["abi"]>("PublicResolverSet");
+
+    const publicResolverV2 =
+      get<(typeof artifacts.PublicResolverV2)["abi"]>("PublicResolverV2");
 
     await deploy("WrapperRegistryImpl", {
       account: deployer,
       artifact: artifacts.WrapperRegistry,
       args: [
         nameWrapper.address,
+        graveyard.address,
         verifiableFactory.address,
         ensV1Resolver.address,
         hcaFactory.address,
-        registryMetadata.address,
         approvedUpgradeGate.address,
+        labelStore.address,
+        publicResolverSet.address,
+        publicResolverV2.address,
+        owner,
       ],
     });
   },
@@ -39,11 +49,14 @@ export default execute(
     tags: ["WrapperRegistryImpl", "v2"],
     dependencies: [
       "NameWrapper",
-      "HCAFactory",
-      "SimpleRegistryMetadata",
+      "Graveyard",
       "VerifiableFactory",
       "ENSV1Resolver",
+      "HCAFactory",
       "ApprovedUpgradeGate",
+      "LabelStore",
+      "PublicResolverSet",
+      "PublicResolverV2",
     ],
   },
 );

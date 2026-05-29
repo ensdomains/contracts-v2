@@ -1,16 +1,14 @@
 import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/behaviour";
 import hre from "hardhat";
-import { describe, expect, it } from "vitest";
-import { namehash, zeroAddress } from "viem";
+import { describe, it } from "vitest";
 
 import {
-  COIN_TYPE_ETH,
   type KnownProfile,
   bundleCalls,
   makeResolutions,
 } from "../utils/resolutions.js";
 import { shouldSupportFeatures } from "../utils/supportsFeatures.js";
-import { dnsEncodeName, idFromLabel } from "../utils/utils.js";
+import { dnsEncodeName, idFromLabel, COIN_TYPE_ETH } from "../utils/utils.js";
 import { deployV1Fixture } from "./fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "./fixtures/deployV2Fixture.js";
 import { expectVar } from "../utils/expectVar.js";
@@ -22,8 +20,9 @@ async function fixture() {
   const v2 = await deployV2Fixture(network, true);
   const ethResolver = v1.ownedResolver.address;
   const ensV2Resolver = await network.viem.deployContract("ENSV2Resolver", [
-    v2.rootRegistry.address,
     v2.batchGatewayProvider.address,
+    v2.contractNamer.address,
+    v2.rootRegistry.address,
     ethResolver,
   ]);
   // setup fallback resolver
@@ -43,6 +42,7 @@ describe("ENSV2Resolver", () => {
       "IERC7996",
       "IExtendedResolver",
       "ICompositeResolver",
+      "IContractNamer",
     ],
   });
 
@@ -128,13 +128,6 @@ describe("ENSV2Resolver", () => {
           dnsEncodeName(name),
         ]);
         expectVar({ resolver }).toEqualAddress(myResolver.address);
-        expectVar({ offchain }).toStrictEqual(false);
-      }
-      // check requiresOffchain
-      {
-        const offchain = await F.ensV2Resolver.read.requiresOffchain([
-          dnsEncodeName(name),
-        ]);
         expectVar({ offchain }).toStrictEqual(false);
       }
     });

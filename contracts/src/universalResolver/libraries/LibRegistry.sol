@@ -2,7 +2,9 @@
 pragma solidity >=0.8.24;
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
+import {IOwnedRegistry} from "../../registry/interfaces/IOwnedRegistry.sol";
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
 /// @dev Recursive traversal helpers for the namechain registry tree — resolver lookup, registry
@@ -16,11 +18,7 @@ library LibRegistry {
     /// @return resolver The resolver or null if not found.
     /// @return node The namehash of `name[offset:]`.
     /// @return resolverOffset The offset into `name` corresponding to `resolver`.
-    function findResolver(
-        IRegistry rootRegistry,
-        bytes memory name,
-        uint256 offset
-    )
+    function findResolver(IRegistry rootRegistry, bytes memory name, uint256 offset)
         internal
         view
         returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 resolverOffset)
@@ -46,14 +44,34 @@ library LibRegistry {
         node = NameCoder.namehash(node, labelHash); // update namehash
     }
 
+    /// @dev Find the owner for `name[offset:]`.
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name to search.
+    /// @return owner The owner address or null if unowned or not found.
+    function findOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)
+        internal
+        view
+        returns (address owner)
+    {
+        IRegistry registry = findParentRegistry(rootRegistry, name, offset);
+        if (
+            address(registry) != address(0) &&
+            ERC165Checker.supportsInterface(address(registry), type(IOwnedRegistry).interfaceId)
+        ) {
+            (string memory label, ) = NameCoder.extractLabel(name, offset);
+            owner = IOwnedRegistry(address(registry)).findOwner(label);
+        }
+    }
+
     /// @dev Construct the canonical name for `registry`.
     /// @param rootRegistry The root ENS registry.
     /// @param registry The registry to name.
     /// @return name The DNS-encoded name or empty if not canonical.
-    function findCanonicalName(
-        IRegistry rootRegistry,
-        IRegistry registry
-    ) internal view returns (bytes memory name) {
+    function findCanonicalName(IRegistry rootRegistry, IRegistry registry)
+        internal
+        view
+        returns (bytes memory name)
+    {
         if (address(registry) == address(0)) {
             return "";
         }
@@ -78,28 +96,29 @@ library LibRegistry {
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name.
     /// @return The canonical registry or null if not canonical.
-    function findCanonicalRegistry(
-        IRegistry rootRegistry,
-        bytes memory name
-    ) internal view returns (IRegistry) {
+    function findCanonicalRegistry(IRegistry rootRegistry, bytes memory name)
+        internal
+        view
+        returns (IRegistry)
+    {
         IRegistry registry = LibRegistry.findExactRegistry(rootRegistry, name, 0);
         return
             address(registry) != address(0) &&
-                keccak256(bytes(LibRegistry.findCanonicalName(rootRegistry, registry))) ==
-                keccak256(name)
-                ? registry
-                : IRegistry(address(0));
+            keccak256(bytes(LibRegistry.findCanonicalName(rootRegistry, registry))) ==
+            keccak256(name)
+            ? registry
+            : IRegistry(address(0));
     }
 
     /// @dev Find the exact registry for `name[offset:]`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
     /// @return exactRegistry The exact registry or null if not found.
-    function findExactRegistry(
-        IRegistry rootRegistry,
-        bytes memory name,
-        uint256 offset
-    ) internal view returns (IRegistry exactRegistry) {
+    function findExactRegistry(IRegistry rootRegistry, bytes memory name, uint256 offset)
+        internal
+        view
+        returns (IRegistry exactRegistry)
+    {
         (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, offset);
         if (labelHash == bytes32(0)) {
             return rootRegistry;
@@ -111,16 +130,31 @@ library LibRegistry {
         }
     }
 
+    /// @dev Find the parent registry for `name[offset:]`.
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name to search.
+    /// @return parentRegistry The parent registry or null if not found.
+    function findParentRegistry(IRegistry rootRegistry, bytes memory name, uint256 offset)
+        internal
+        view
+        returns (IRegistry parentRegistry)
+    {
+        (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, offset);
+        if (labelHash != bytes32(0)) {
+            parentRegistry = findExactRegistry(rootRegistry, name, next);
+        }
+    }
+
     /// @dev Find all registries in the ancestry of `name`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name.
     /// @param offset The offset into `name` to begin the search.
     /// @return registries Array of registries in label-order.
-    function findRegistries(
-        IRegistry rootRegistry,
-        bytes memory name,
-        uint256 offset
-    ) internal view returns (IRegistry[] memory registries) {
+    function findRegistries(IRegistry rootRegistry, bytes memory name, uint256 offset)
+        internal
+        view
+        returns (IRegistry[] memory registries)
+    {
         registries = new IRegistry[](1 + NameCoder.countLabels(name, offset));
         registries[registries.length - 1] = rootRegistry;
         _findRegistries(name, offset, registries, 0);
@@ -132,7 +166,11 @@ library LibRegistry {
         uint256 offset,
         IRegistry[] memory registries,
         uint256 index
-    ) private view returns (IRegistry registry) {
+    )
+        private
+        view
+        returns (IRegistry registry)
+    {
         (string memory label, uint256 nextOffset) = NameCoder.extractLabel(name, offset);
         if (bytes(label).length == 0) {
             return registries[registries.length - 1];

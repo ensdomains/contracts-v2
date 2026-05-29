@@ -4,7 +4,8 @@ pragma solidity >=0.8.13;
 import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
-import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 
 import {AbstractMirrorResolver} from "./AbstractMirrorResolver.sol";
@@ -12,11 +13,11 @@ import {AbstractMirrorResolver} from "./AbstractMirrorResolver.sol";
 /// @notice Resolver that performs resolutions using ENSv2 with override for ENSv1 "eth" resolver.
 contract ENSV2Resolver is AbstractMirrorResolver {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv2 root registry used to traverse the registry hierarchy and locate resolvers.
-    IRegistry public immutable ROOT_REGISTRY;
+    IPermissionedRegistry public immutable ROOT_REGISTRY;
 
     /// @notice The ENSv1 resolver for "eth".
     address public immutable ETH_RESOLVER;
@@ -25,15 +26,18 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the ENSV2Resolver with the root registry and batch gateway provider.
-    /// @param rootRegistry The root registry.
     /// @param batchGatewayProvider The batch gateway provider.
+    /// @param contractNamer Delegated contract namer.
+    /// @param rootRegistry The ENSv2 root registry.
     /// @param ethResolver The override resolver for "eth" or null to use ENSv2.
     constructor(
-        IRegistry rootRegistry,
         IGatewayProvider batchGatewayProvider,
+        IContractNamer contractNamer,
+        IPermissionedRegistry rootRegistry,
         address ethResolver
-    ) AbstractMirrorResolver(batchGatewayProvider) {
+    )
+        AbstractMirrorResolver(batchGatewayProvider, contractNamer)
+    {
         ROOT_REGISTRY = rootRegistry;
         ETH_RESOLVER = ethResolver;
     }

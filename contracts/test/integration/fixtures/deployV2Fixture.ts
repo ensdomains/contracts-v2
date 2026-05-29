@@ -1,5 +1,5 @@
 import type { NetworkConnection } from "hardhat/types/network";
-import { type Address, zeroAddress } from "viem";
+import { type Address, encodeFunctionData, zeroAddress } from "viem";
 import {
   DEPLOYMENT_ROLES,
   LOCAL_BATCH_GATEWAY_URL,
@@ -17,12 +17,28 @@ export async function deployV2Fixture(
     ccipRead: enableCcipRead ? undefined : false,
   });
   const [walletClient] = await network.viem.getWalletClients();
+  const contractNamerImpl = await network.viem.deployContract("ContractNamer");
+  const contractNamerProxy = await network.viem.deployContract("ERC1967Proxy", [
+    contractNamerImpl.address,
+    encodeFunctionData({
+      abi: contractNamerImpl.abi,
+      functionName: "initialize",
+      args: [walletClient.account.address],
+    }),
+  ]);
+  const contractNamer = await network.viem.getContractAt(
+    "ContractNamer",
+    contractNamerProxy.address,
+  );
   const hcaFactory = await network.viem.deployContract("MockHCAFactoryBasic");
+  const labelStore = await network.viem.deployContract("LabelStore", [
+    contractNamer.address,
+  ]);
   const rootRegistry = await network.viem.deployContract(
     "PermissionedRegistry",
     [
       hcaFactory.address,
-      zeroAddress,
+      labelStore.address,
       walletClient.account.address,
       DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
     ],
@@ -31,7 +47,7 @@ export async function deployV2Fixture(
     "PermissionedRegistry",
     [
       hcaFactory.address,
-      zeroAddress,
+      labelStore.address,
       walletClient.account.address,
       DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
     ],
@@ -42,7 +58,7 @@ export async function deployV2Fixture(
   );
   const universalResolver = await network.viem.deployContract(
     "UniversalResolverV2",
-    [rootRegistry.address, batchGatewayProvider.address],
+    [rootRegistry.address, batchGatewayProvider.address, contractNamer.address],
     { client: { public: publicClient } },
   );
   await rootRegistry.write.register([
@@ -64,13 +80,15 @@ export async function deployV2Fixture(
     await network.viem.deployContract("VerifiableFactory");
   const PermissionedResolverImpl = await network.viem.deployContract(
     "PermissionedResolver",
-    [hcaFactory.address],
+    [hcaFactory.address, contractNamer.address],
   );
   return {
     network,
     publicClient,
     walletClient,
+    contractNamer,
     hcaFactory,
+    labelStore,
     rootRegistry,
     ethRegistry,
     batchGatewayProvider,
@@ -105,7 +123,6 @@ export async function deployV2Fixture(
     expiry = MAX_EXPIRY,
     roles = ROLES.ALL,
     resolverAddress,
-    metadataAddress = zeroAddress,
     exact,
   }: {
     name: string;
@@ -113,7 +130,6 @@ export async function deployV2Fixture(
     expiry?: bigint;
     roles?: bigint;
     resolverAddress?: Address;
-    metadataAddress?: Address;
     exact?: exact_;
   }) {
     const labels = splitName(name);
@@ -133,7 +149,7 @@ export async function deployV2Fixture(
             "PermissionedRegistry",
             [
               hcaFactory.address,
-              metadataAddress,
+              labelStore.address,
               walletClient.account.address,
               roles,
             ],

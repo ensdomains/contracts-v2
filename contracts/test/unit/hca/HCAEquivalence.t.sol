@@ -6,7 +6,9 @@ pragma solidity ^0.8.25;
 import {Test} from "forge-std/Test.sol";
 
 import {HCAEquivalence} from "~src/hca/HCAEquivalence.sol";
+import {HCAFactory} from "~src/hca/HCAFactory.sol";
 import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
+import {IHCAInitDataParser} from "~src/hca/interfaces/IHCAInitDataParser.sol";
 import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 contract HCAEquivalenceHarness is HCAEquivalence {
@@ -16,6 +18,19 @@ contract HCAEquivalenceHarness is HCAEquivalence {
         return _msgSenderWithHcaEquivalence();
     }
 }
+
+
+contract HCAEquivalenceInitDataParser is IHCAInitDataParser {
+    function getOwnerFromInitData(bytes calldata initData) external pure returns (address hcaOwner) {
+        hcaOwner = abi.decode(initData, (address));
+    }
+}
+
+
+contract HCAEquivalenceImplementation {
+    function initializeAccount(bytes calldata) external payable {}
+}
+
 
 contract HCAEquivalenceTest is Test {
     MockHCAFactoryBasic factory;
@@ -50,7 +65,7 @@ contract HCAEquivalenceTest is Test {
     }
 
     function test_msgSender_zero_owner_treated_as_eoa() public {
-        // Ensure no owner configured for `user`
+        // Ensure no owner is set for `user`
         vm.prank(user);
         address sender = harness.exposedMsgSender();
         assertEq(sender, user);
@@ -72,5 +87,33 @@ contract HCAEquivalenceTest is Test {
         vm.prank(hca);
         address sender = harness.exposedMsgSender();
         assertEq(sender, hca, "When owner == HCA, _msgSender should be the HCA address");
+    }
+
+    function test_msgSender_with_real_factory_resolves_deployed_hca() public {
+        HCAEquivalenceImplementation implementation = new HCAEquivalenceImplementation();
+        HCAEquivalenceInitDataParser parser = new HCAEquivalenceInitDataParser();
+        HCAFactory realFactory = new HCAFactory(address(implementation), parser, address(this));
+        HCAEquivalenceHarness realHarness =
+            new HCAEquivalenceHarness(IHCAFactoryBasic(address(realFactory)));
+
+        address deployedHca = realFactory.createAccount(abi.encode(user));
+
+        vm.prank(user);
+        assertEq(realHarness.exposedMsgSender(), user);
+
+        vm.prank(deployedHca);
+        address sender = realHarness.exposedMsgSender();
+        assertEq(sender, user);
+    }
+
+    function test_msgSender_with_real_factory_allows_contract_fallback_without_recorded_hca()
+        public
+    {
+        HCAFactory realFactory =
+            new HCAFactory(address(0x1234), IHCAInitDataParser(address(0)), address(this));
+        HCAEquivalenceHarness realHarness =
+            new HCAEquivalenceHarness(IHCAFactoryBasic(address(realFactory)));
+
+        assertEq(realHarness.exposedMsgSender(), address(this));
     }
 }

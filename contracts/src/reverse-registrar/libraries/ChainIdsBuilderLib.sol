@@ -22,12 +22,14 @@ library ChainIdsBuilderLib {
     /// @param chainIds       Calldata array of chain IDs (must be strictly ascending).
     /// @param currentChainId The chain ID that must be present in the array.
     /// @return result The comma-separated string, e.g. "1, 10, 8453".
-    function validateAndBuild(
-        uint256[] calldata chainIds,
-        uint256 currentChainId
-    ) internal pure returns (string memory result) {
+    function validateAndBuild(uint256[] calldata chainIds, uint256 currentChainId)
+        internal
+        pure
+        returns (string memory result)
+    {
         uint256 length = chainIds.length;
-        if (length == 0) revert CurrentChainNotFound(currentChainId);
+        if (length == 0)
+            revert CurrentChainNotFound(currentChainId);
 
         /// @solidity memory-safe-assembly
         assembly {

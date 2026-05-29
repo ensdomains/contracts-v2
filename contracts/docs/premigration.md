@@ -48,18 +48,17 @@ bun run script/preMigration.ts [options]
 | `--limit <number>` | none | Maximum total names to process |
 | `--dry-run` | `false` | Simulate without sending transactions |
 | `--continue` | `false` | Resume from the last checkpoint |
-| `--grace-period-days <days>` | `90` | Days of grace period added on top of each name's v1 expiry. Every reserved name gets `v1Expiry + gracePeriodDays` as its v2 expiry. Set to `0` to preserve v1 expiries exactly. |
+| `--bonus-period-days <days>` | `62` | Days added to each name's v1 expiry to compute its v2 expiry. |
 | `--v1-base-registrar <address>` | `0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85` | v1 BaseRegistrar address for expiry lookups |
 
 ## CSV Format
 
-The CSV must have a header row with the following columns:
+Parsing is **header-driven**. The script reads the first line as the header, locates the label column by name, and ignores everything else. Two column names are accepted (case-insensitive, leading/trailing whitespace trimmed):
 
-```
-node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate
-```
+- **`labelName`** — the v1 subgraph schema. Preferred when both names are present.
+- **`label`** — the name used by the `exportTheGraphRegistrations.ts` exporter.
 
-Only the **`labelName`** column (index 6, zero-based) is used by the script. All other columns can be empty. Example:
+Both of these inputs work without any flag:
 
 ```csv
 node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate
@@ -68,7 +67,33 @@ node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,
 ,,,,,,ens,,
 ```
 
-The script handles quoted fields and escaped quotes within CSV values.
+```csv
+name,label,labelhash,registrant,expiryDate,registrationDate
+vitalik.eth,vitalik,0x...,0x...,...,...
+nick.eth,nick,0x...,0x...,...,...
+```
+
+The parser handles quoted fields and `""`-escaped quotes within values. A UTF-8 BOM on the header line and a single trailing blank line at end of file are tolerated. CRLF line endings are normalized to LF.
+
+### Strict-mode behavior
+
+Any structural problem aborts the run with a clear error that includes the CSV path and 1-based line number (the header counts as line 1). The script does not try to recover — fix the file and re-run.
+
+| Condition | Behavior |
+|---|---|
+| Header has no `labelName` and no `label` column | Abort. Error lists the columns that were found. |
+| Header has unbalanced quotes | Abort. |
+| Data row column count does not match header column count | Abort. Error shows declared and actual counts and the first ~200 chars of the row. |
+| Data row has unbalanced quotes | Abort. |
+| Data row has an empty (or whitespace-only) value in the label column | Abort. |
+| Blank line in the middle of the file | Abort. Only a single trailing blank line is tolerated. |
+| File is empty (no header) | Abort. |
+
+Application-level filtering still applies *after* structural parsing — labels longer than 255 bytes and the bracketed-labelhash form (`[0x…]`) are skipped and counted as `invalidLabelCount` rather than aborting the run.
+
+### Known limitation
+
+`readline` splits on `\n`, so a field that contains a literal newline inside quotes will be misread. No exporter we control produces such fields. If you have one, pre-process the file to strip or escape the embedded newline.
 
 ## How It Works
 
@@ -84,8 +109,8 @@ The script handles quoted fields and escaped quotes within CSV values.
 8. **For each verified name:**
    - If already **registered** (status 2): fail — name is fully owned on v2
    - If already **reserved** (status 1): mark for potential renewal
-   - If not registered or expired on v1: skip
-   - Add to the batch reservation list with v2 expiry = `v1Expiry + --grace-period-days`
+   - If never registered on v1, or past v1's 90-day grace period (`v1Expiry + 90 days < now`): skip — v1 owner has lost their claim
+   - Otherwise add to the batch reservation list with v2 expiry = `v1Expiry + --bonus-period-days`. If the result is in the past, registration will fail — operators should choose `--bonus-period-days` large enough to cover the deepest-in-grace name they want migrated
 9. **Estimate gas** for the batch and preemptively split if estimated gas exceeds 80% of the block gas limit
 10. **Submit batch transaction** via `BatchRegistrar.batchRegister()`. If a batch reverts, recursively split it in half (binary-search fallback) until individual failing names are isolated.
 11. **Save checkpoint** after each batch
@@ -95,11 +120,11 @@ The script handles quoted fields and escaped quotes within CSV values.
 
 | v2 Status | v1 Status | Action |
 |---|---|---|
-| Available (0) | Registered & not expiring soon | **Reserve** on v2 |
+| Available (0) | Registered, or expired but within v1's 90-day grace period | **Reserve** on v2 with expiry `v1Expiry + bonusPeriodDays` |
 | Reserved (1) | Registered with different expiry | **Renew** on v2 (sync expiry) |
 | Reserved (1) | Registered with same expiry | **Skip** (already up-to-date) |
 | Registered (2) | Any | **Fail** (already fully registered) |
-| Any | Expired or never registered | **Skip** |
+| Any | Never registered, or past v1's 90-day grace | **Skip** (v1 owner has lost their claim) |
 
 ### On-Chain Registration Parameters
 
@@ -108,7 +133,7 @@ Each name is reserved with:
 - **registry**: `address(0)`
 - **resolver**: The ENSV1Resolver address (for fallback resolution to v1 records)
 - **roleBitmap**: `0`
-- **expires**: The v1 expiry timestamp plus `--grace-period-days`
+- **expires**: The v1 expiry timestamp plus `--bonus-period-days`
 
 ## Batch Processing
 
@@ -171,7 +196,7 @@ Dry run still:
 - Reads and parses the CSV
 - Checks v2 state for each name
 - Verifies v1 registration and expiry
-- Applies `--grace-period-days` to each expiry
+- Applies `--bonus-period-days` to each expiry
 - Logs what would happen
 - Saves checkpoints
 
@@ -214,7 +239,8 @@ Success rate:                   99%
 
 | Scenario | Behavior |
 |---|---|
-| Invalid/empty label in CSV | Filtered out before processing, counted as `invalidLabelCount` |
+| CSV structural problem (bad header, wrong column count, unbalanced quotes, empty label cell, mid-file blank line) | Abort the run. See [CSV Format](#csv-format) for the full list. |
+| Label longer than 255 bytes or in the `[0x…]` bracketed-labelhash form | Filtered out before processing, counted as `invalidLabelCount` |
 | Name not registered on v1 | Skipped, counted as `skippedCount` |
 | Name already fully registered on v2 | Counted as failure |
 | Batch transaction reverts | Binary-search split: recursively halves the batch until individual failures are isolated |
@@ -274,13 +300,15 @@ bun run script/preMigration.ts \
 bun run script/preMigration.ts --continue [same options]
 ```
 
-### Custom grace period
+### Custom expiry buffer
 
 ```bash
-bun run script/preMigration.ts --grace-period-days 180 [other options]
+bun run script/preMigration.ts --bonus-period-days 180 [other options]
 ```
 
 Every reserved name's v2 expiry is set to `v1Expiry + 180 days`. Pass `0` to preserve v1 expiries exactly.
+
+Note: eligibility for migration is gated by v1's hard-coded 90-day grace period regardless of this value. A name expired more than 90 days ago is past v1 grace and is skipped.
 
 ### Custom v1 BaseRegistrar (for testing)
 

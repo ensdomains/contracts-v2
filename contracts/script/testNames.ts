@@ -2,12 +2,7 @@ import { encodeFunctionData, getContract, namehash, zeroAddress } from "viem";
 
 import { artifacts } from "@rocketh";
 import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
-import {
-  dnsEncodeName,
-  dnsDecodeName,
-  idFromLabel,
-  getLabelAt,
-} from "../test/utils/utils.js";
+import { dnsEncodeName, dnsDecodeName } from "../test/utils/utils.js";
 import type { DevnetEnvironment } from "./setup.js";
 import {
   trackGas,
@@ -123,12 +118,13 @@ export async function testNames(env: DevnetEnvironment) {
   const minAge = await env.v2.ETHRegistrar.read.MIN_COMMITMENT_AGE();
   await env.sync({ warpSec: Number(minAge) + 1 });
 
-  const [aliasBase, aliasPremium] = await env.v2.ETHRegistrar.read.rentPrice([
-    "alias",
-    env.namedAccounts.owner.address,
-    aliasDuration,
-    aliasPaymentToken,
-  ]);
+  const [aliasBase, aliasPremium] =
+    await env.v2.StandardRentPriceOracle.read.getRegisterPrice([
+      "alias",
+      MAX_EXPIRY,
+      aliasDuration,
+      aliasPaymentToken,
+    ]);
   const aliasPrice = aliasBase + aliasPremium;
   const aliasBalance = await env.erc20.MockUSDC.read.balanceOf([
     env.namedAccounts.owner.address,

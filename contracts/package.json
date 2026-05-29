@@ -20,17 +20,13 @@
     "@ensdomains/address-encoder": "^1.1.3",
     "@nomicfoundation/edr": "0.12.0-next.4",
     "@nomicfoundation/hardhat-foundry": "^1.2.0",
-    "@rocketh/proxy": "0.14.0",
+    "@rocketh/proxy": "0.14.1",
     "@rocketh/verifier": "0.14.4",
     "@types/bun": "^1.3.2",
     "abitype": "^1.2.3",
     "chai": "^5.1.1",
     "ethers": "^6.15.0",
-    "prettier": "^3.5.3",
-    "prettier-plugin-solidity": "2.0.0",
-    "solhint": "6.0.0",
-    "solhint-plugin-contracts-v2": "workspace:*",
-    "solhint-plugin-prettier": "^0.1.0",
+    "solgrid": "0.0.16",
     "ts-node": "^10.9.2",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "3.1.3"
@@ -43,8 +39,11 @@
     "node": ">=24"
   },
   "scripts": {
-    "lint": "NODE_PATH=./node_modules solhint --noPoster 'src/**/*.sol'",
-    "lint:fix": "NODE_PATH=./node_modules solhint --noPoster --fix",
+    "lint": "solgrid check 'src/**/*.sol' && solgrid check --config solgrid.test.toml 'test/**/*.sol' 'script/**/*.sol'",
+    "lint:fix": "solgrid fix 'src/**/*.sol' && solgrid fix --config solgrid.test.toml 'test/**/*.sol' 'script/**/*.sol'",
+    "format": "solgrid fmt 'src/**/*.sol' 'test/**/*.sol' 'script/**/*.sol'",
+    "format:check": "solgrid fmt --diff 'src/**/*.sol' 'test/**/*.sol' 'script/**/*.sol'",
+    "check:types": "tsc --noEmit",
     "compile:forge": "forge build",
     "compile:hardhat": "hardhat compile",
     "compile": "bun run compile:forge && bun run compile:hardhat",
@@ -60,8 +59,7 @@
     "coverage": "bun run coverage:forge && bun run coverage:hardhat && bun run coverage:reports",
     "clean": "forge clean && hardhat clean && rm -rf coverage/",
     "devnet": "bun run compile && bun ./script/runDevnet.ts",
-    "aakit": "bun ./script/deployAAkit.ts",
-    "check:types": "tsc --noEmit"
+    "aakit": "bun ./script/deployAAkit.ts"
   },
   "type": "module"
 }

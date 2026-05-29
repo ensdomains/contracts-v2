@@ -53,6 +53,11 @@ library PermissionedResolverLib {
     /// @dev Nybble 41: authorizes setting ROLE_SET_DATA.
     uint256 internal constant ROLE_SET_DATA_ADMIN = ROLE_SET_DATA << 128;
 
+    /// @dev Nybble 30: authorizes contract naming. Root-only.
+    uint256 internal constant ROLE_CAN_NAME = 1 << 120;
+    /// @dev Nybble 63: authorizes setting ROLE_CAN_NAME.
+    uint256 internal constant ROLE_CAN_NAME_ADMIN = ROLE_CAN_NAME << 128;
+
     /// @dev Nybble 31: authorizes UUPS proxy upgrades. Root-only.
     uint256 internal constant ROLE_UPGRADE = 1 << 124;
     /// @dev Nybble 63: authorizes setting ROLE_UPGRADE.

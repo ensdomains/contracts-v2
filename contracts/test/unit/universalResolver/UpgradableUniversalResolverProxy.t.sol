@@ -15,7 +15,8 @@ import {
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
 import {
     UpgradableUniversalResolverProxy
@@ -48,7 +49,11 @@ contract ProxyTest is Test {
 
         // Deploy the implementations
         urV1 = new UniversalResolverV1(address(0), ENS(address(this)), batchGatewayProvider);
-        urV2 = new UniversalResolverV2(IRegistry(address(0)), batchGatewayProvider);
+        urV2 = new UniversalResolverV2(
+            IPermissionedRegistry(address(0)),
+            batchGatewayProvider,
+            IContractNamer(address(0))
+        );
 
         // Deploy the proxy with V1 implementation
         proxy = new UpgradableUniversalResolverProxy(ADMIN, address(urV1));
@@ -126,17 +131,12 @@ contract ProxyTest is Test {
 
         // Create a new proxy with the mock implementation
         vm.prank(ADMIN);
-        UpgradableUniversalResolverProxy testProxy = new UpgradableUniversalResolverProxy(
-            ADMIN,
-            address(mockImpl)
-        );
+        UpgradableUniversalResolverProxy testProxy =
+            new UpgradableUniversalResolverProxy(ADMIN, address(mockImpl));
 
         // Create calldata for resolve method
-        bytes memory callData = abi.encodeWithSignature(
-            "resolve(bytes,bytes)",
-            dnsEncodedName,
-            mockData
-        );
+        bytes memory callData =
+            abi.encodeWithSignature("resolve(bytes,bytes)", dnsEncodedName, mockData);
 
         // Make the call through the proxy
         (bool success, bytes memory result) = address(testProxy).call(callData);
@@ -145,10 +145,8 @@ contract ProxyTest is Test {
         assertTrue(success);
 
         // Decode the result to verify it matches expectations
-        (bytes memory returnedData, address returnedResolver) = abi.decode(
-            result,
-            (bytes, address)
-        );
+        (bytes memory returnedData, address returnedResolver) =
+            abi.decode(result, (bytes, address));
         assertEq(returnedData, bytes.concat(dnsEncodedName, mockData));
         assertEq(returnedResolver, mockResolver);
     }
@@ -159,17 +157,12 @@ contract ProxyTest is Test {
 
         // Create a new proxy with the mock implementation
         vm.prank(ADMIN);
-        UpgradableUniversalResolverProxy testProxy = new UpgradableUniversalResolverProxy(
-            ADMIN,
-            address(mockImpl)
-        );
+        UpgradableUniversalResolverProxy testProxy =
+            new UpgradableUniversalResolverProxy(ADMIN, address(mockImpl));
 
         // Create calldata for reverse method
-        bytes memory callData = abi.encodeWithSignature(
-            "reverse(bytes,uint256)",
-            dnsEncodedName,
-            uint256(60)
-        );
+        bytes memory callData =
+            abi.encodeWithSignature("reverse(bytes,uint256)", dnsEncodedName, uint256(60));
 
         // Make the call through the proxy
         (bool success, bytes memory result) = address(testProxy).call(callData);
@@ -178,10 +171,8 @@ contract ProxyTest is Test {
         assertTrue(success);
 
         // Decode the result to verify it matches expectations
-        (string memory name, address resolver, address reverseResolver) = abi.decode(
-            result,
-            (string, address, address)
-        );
+        (string memory name, address resolver, address reverseResolver) =
+            abi.decode(result, (string, address, address));
         assertEq(name, "test.eth");
         assertEq(resolver, mockResolver);
         assertEq(reverseResolver, address(mockImpl));
@@ -195,17 +186,12 @@ contract ProxyTest is Test {
 
         // Create a new proxy using the mock implementation
         vm.prank(ADMIN);
-        UpgradableUniversalResolverProxy ccipProxy = new UpgradableUniversalResolverProxy(
-            ADMIN,
-            address(mockCCIPImpl)
-        );
+        UpgradableUniversalResolverProxy ccipProxy =
+            new UpgradableUniversalResolverProxy(ADMIN, address(mockCCIPImpl));
 
         // Create calldata for resolve method
-        bytes memory callData = abi.encodeWithSignature(
-            "resolve(bytes,bytes)",
-            dnsEncodedName,
-            mockData
-        );
+        bytes memory callData =
+            abi.encodeWithSignature("resolve(bytes,bytes)", dnsEncodedName, mockData);
 
         // Make the call and catch the revert data
         (bool success, bytes memory returnData) = address(ccipProxy).call(callData);
@@ -224,7 +210,8 @@ contract ProxyTest is Test {
             bytes memory ccipCallData,
             bytes4 callbackFunction,
             bytes memory extraData
-        ) = abi.decode(errorData, (address, string[], bytes, bytes4, bytes));
+        ) =
+            abi.decode(errorData, (address, string[], bytes, bytes4, bytes));
 
         // Third assertion: the sender should be the proxy address, not the implementation
         assertEq(sender, address(ccipProxy));
@@ -243,17 +230,12 @@ contract ProxyTest is Test {
 
         // Create a new proxy using the mock implementation
         vm.prank(ADMIN);
-        UpgradableUniversalResolverProxy senderProxy = new UpgradableUniversalResolverProxy(
-            ADMIN,
-            address(mockDiffSenderImpl)
-        );
+        UpgradableUniversalResolverProxy senderProxy =
+            new UpgradableUniversalResolverProxy(ADMIN, address(mockDiffSenderImpl));
 
         // Create calldata for resolve method
-        bytes memory callData = abi.encodeWithSignature(
-            "resolve(bytes,bytes)",
-            dnsEncodedName,
-            mockData
-        );
+        bytes memory callData =
+            abi.encodeWithSignature("resolve(bytes,bytes)", dnsEncodedName, mockData);
 
         // Make the call
         (bool success, bytes memory result) = address(senderProxy).call(callData);
@@ -280,17 +262,12 @@ contract ProxyTest is Test {
 
         // Create a new proxy using the mock implementation
         vm.prank(ADMIN);
-        UpgradableUniversalResolverProxy revertProxy = new UpgradableUniversalResolverProxy(
-            ADMIN,
-            address(mockRevertImpl)
-        );
+        UpgradableUniversalResolverProxy revertProxy =
+            new UpgradableUniversalResolverProxy(ADMIN, address(mockRevertImpl));
 
         // Create calldata for resolve method
-        bytes memory callData = abi.encodeWithSignature(
-            "resolve(bytes,bytes)",
-            dnsEncodedName,
-            mockData
-        );
+        bytes memory callData =
+            abi.encodeWithSignature("resolve(bytes,bytes)", dnsEncodedName, mockData);
 
         // Make the call and capture the result
         (bool success, bytes memory result) = address(revertProxy).call(callData);
@@ -310,17 +287,12 @@ contract ProxyTest is Test {
 
         // Create a new proxy with the mock implementation
         vm.prank(ADMIN);
-        UpgradableUniversalResolverProxy testProxy = new UpgradableUniversalResolverProxy(
-            ADMIN,
-            address(mockImpl)
-        );
+        UpgradableUniversalResolverProxy testProxy =
+            new UpgradableUniversalResolverProxy(ADMIN, address(mockImpl));
 
         // Create calldata for a method that is properly implemented in mock
-        bytes memory callData = abi.encodeWithSignature(
-            "resolve(bytes,bytes)",
-            dnsEncodedName,
-            mockData
-        );
+        bytes memory callData =
+            abi.encodeWithSignature("resolve(bytes,bytes)", dnsEncodedName, mockData);
 
         // Make the call through the fallback
         (bool success, bytes memory result) = address(testProxy).call(callData);
@@ -341,6 +313,7 @@ contract ProxyTest is Test {
     }
 }
 
+
 // Base contract for mocks to implement common functionality
 abstract contract UniversalResolverMockBase is IUniversalResolver {
     function supportsInterface(bytes4 interfaceId) external pure virtual returns (bool) {
@@ -350,26 +323,29 @@ abstract contract UniversalResolverMockBase is IUniversalResolver {
     }
 
     // Default implementation for all methods
-    function resolve(
-        bytes calldata,
-        bytes calldata
-    ) external view virtual returns (bytes memory, address) {
+    function resolve(bytes calldata, bytes calldata)
+        external
+        view
+        virtual
+        returns (bytes memory, address)
+    {
         return (bytes(""), address(0));
     }
 
-    function findResolver(
-        bytes calldata
-    ) external view virtual returns (address, bytes32, uint256) {
+    function findResolver(bytes calldata) external view virtual returns (address, bytes32, uint256) {
         return (address(0), bytes32(0), 0);
     }
 
-    function reverse(
-        bytes calldata,
-        uint256
-    ) external view virtual returns (string memory, address, address) {
+    function reverse(bytes calldata, uint256)
+        external
+        view
+        virtual
+        returns (string memory, address, address)
+    {
         return ("", address(0), address(0));
     }
 }
+
 
 // Mock with full implementation returning expected values
 contract MockCompleteImplementation is UniversalResolverMockBase {
@@ -378,33 +354,42 @@ contract MockCompleteImplementation is UniversalResolverMockBase {
     uint256 public constant MOCK_OFFSET = 0;
 
     // Add this method to handle the resolveCallback
-    function resolveCallback(
-        bytes calldata response,
-        bytes calldata extraData
-    ) external pure returns (bytes memory, address) {
+    function resolveCallback(bytes calldata response, bytes calldata extraData)
+        external
+        pure
+        returns (bytes memory, address)
+    {
         return (bytes.concat(response, extraData), MOCK_RESOLVER);
     }
 
-    function resolve(
-        bytes calldata name,
-        bytes calldata data
-    ) external pure override returns (bytes memory, address) {
+    function resolve(bytes calldata name, bytes calldata data)
+        external
+        pure
+        override
+        returns (bytes memory, address)
+    {
         return (bytes.concat(name, data), MOCK_RESOLVER);
     }
 
-    function findResolver(
-        bytes calldata
-    ) external pure override returns (address, bytes32, uint256) {
+    function findResolver(bytes calldata)
+        external
+        pure
+        override
+        returns (address, bytes32, uint256)
+    {
         return (MOCK_RESOLVER, MOCK_NAMEHASH, MOCK_OFFSET);
     }
 
-    function reverse(
-        bytes calldata,
-        uint256
-    ) external view override returns (string memory, address, address) {
+    function reverse(bytes calldata, uint256)
+        external
+        view
+        override
+        returns (string memory, address, address)
+    {
         return ("test.eth", MOCK_RESOLVER, address(this));
     }
 }
+
 
 // Mock that reverts with CCIP-Read
 contract MockCCIPReadImplementation is UniversalResolverMockBase {
@@ -433,14 +418,17 @@ contract MockCCIPReadImplementation is UniversalResolverMockBase {
         return extraData;
     }
 
-    function resolve(
-        bytes calldata,
-        bytes calldata
-    ) external view override returns (bytes memory, address) {
+    function resolve(bytes calldata, bytes calldata)
+        external
+        view
+        override
+        returns (bytes memory, address)
+    {
         // Revert with OffchainLookup
         revert OffchainLookup(address(this), urls, callData, callbackFunction, extraData);
     }
 }
+
 
 // Mock that reverts with CCIP-Read but uses a different sender
 contract MockCCIPReadWithDifferentSender is UniversalResolverMockBase {
@@ -470,23 +458,28 @@ contract MockCCIPReadWithDifferentSender is UniversalResolverMockBase {
         return extraData;
     }
 
-    function resolve(
-        bytes calldata,
-        bytes calldata
-    ) external view override returns (bytes memory, address) {
+    function resolve(bytes calldata, bytes calldata)
+        external
+        view
+        override
+        returns (bytes memory, address)
+    {
         // Revert with OffchainLookup using a different sender
         revert OffchainLookup(differentSender, urls, callData, callbackFunction, extraData);
     }
 }
 
+
 // Mock that reverts with a custom error
 contract MockRevertingImplementation is UniversalResolverMockBase {
     error CustomError();
 
-    function resolve(
-        bytes calldata,
-        bytes calldata
-    ) external pure override returns (bytes memory, address) {
+    function resolve(bytes calldata, bytes calldata)
+        external
+        pure
+        override
+        returns (bytes memory, address)
+    {
         revert CustomError();
     }
 }

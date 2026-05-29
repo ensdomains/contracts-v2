@@ -67,6 +67,13 @@ export class InvalidLabelNameError extends Error {
   }
 }
 
+export class CSVFormatError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CSVFormatError";
+  }
+}
+
 const ENCODED_LABELHASH_RE = /^\[[0-9a-fA-F]{64}\]$/;
 
 export function isValidLabel(label: any): label is string {
@@ -98,7 +105,7 @@ export interface PreMigrationConfig {
   dryRun: boolean;
   continue?: boolean;
   disableCheckpoint?: boolean;
-  gracePeriodDays: number;
+  bonusPeriodDays: number;
   v1ResolverAddress: Address;
   v1BaseRegistrarAddress: Address;
 }
@@ -125,6 +132,14 @@ const RPC_TIMEOUT_MS = 30000;
 // ENS v1 BaseRegistrar on Ethereum mainnet
 const BASE_REGISTRAR_ADDRESS =
   "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85" as Address;
+
+/// Hard-coded ENSv1 grace period (in days). Defines the window after a name's
+/// v1 expiry during which the original owner retains exclusive renewal rights
+/// on v1. Sourced from `BaseRegistrarImplementation.GRACE_PERIOD = 90 days`.
+/// Used as the v1-side eligibility gate for migration: a name is migratable
+/// only while its v1 owner can still renew it.
+export const V1_GRACE_PERIOD_DAYS = 90n;
+export const V1_GRACE_PERIOD_SECONDS = V1_GRACE_PERIOD_DAYS * 86400n;
 
 export function createFreshCheckpoint(): Checkpoint {
   return {
@@ -272,8 +287,8 @@ class PreMigrationLogger extends Logger {
 
   v1NotRegistered(name: string, reason: string): void {
     this.raw(
-      yellow(`  → ⊘ Not registered on v1: ${reason}`),
-      `  → ⊘ Not registered on v1: ${reason}`,
+      yellow(`  → ⊘ Not claimable on v1: ${reason}`),
+      `  → ⊘ Not claimable on v1: ${reason}`,
     );
   }
 
@@ -355,10 +370,19 @@ async function validateBatchRegistrar(
   logger.success(`Using BatchRegistrar at ${address}`);
 }
 
+const CSV_ROW_PREVIEW_LIMIT = 200;
+const UTF8_BOM = "﻿";
+
+function previewCSVLine(line: string): string {
+  return line.length <= CSV_ROW_PREVIEW_LIMIT
+    ? line
+    : `${line.slice(0, CSV_ROW_PREVIEW_LIMIT)}...`;
+}
+
 async function* readCSVInBatches(
   csvFilePath: string,
   batchSize: number,
-  startLineNumber: number = 0,
+  startLineNumber: number = -1,
   limit: number | null = null,
 ): AsyncGenerator<ENSRegistration[]> {
   const readline = await import("node:readline");
@@ -369,41 +393,123 @@ async function* readCSVInBatches(
     crlfDelay: Infinity,
   });
 
-  let lineNumber = 0;
+  let dataLineNumber = 0;
   let processedCount = 0;
   let batch: ENSRegistration[] = [];
-  let headerSkipped = false;
 
-  for await (const line of rl) {
-    if (!headerSkipped) {
-      headerSkipped = true;
+  let rawLineNumber = 0;
+  let headerParsed = false;
+  let labelColumnIndex = -1;
+  let expectedColumnCount = 0;
+  let pendingBlankLineNumber: number | null = null;
+
+  for await (const rawLine of rl) {
+    rawLineNumber++;
+
+    let line = rawLine;
+    if (rawLineNumber === 1 && line.startsWith(UTF8_BOM)) {
+      line = line.slice(UTF8_BOM.length);
+    }
+
+    if (!headerParsed) {
+      let headerFields: string[];
+      try {
+        headerFields = parseCSVLine(line);
+      } catch {
+        throw new CSVFormatError(
+          `CSV header at ${csvFilePath}:1 has unbalanced quotes. Row: ${previewCSVLine(line)}`,
+        );
+      }
+
+      const normalized = headerFields.map((f) => f.trim().toLowerCase());
+      const labelNameIdx = normalized.indexOf("labelname");
+      const labelIdx = normalized.indexOf("label");
+      const resolvedIdx = labelNameIdx !== -1 ? labelNameIdx : labelIdx;
+      if (resolvedIdx === -1) {
+        const found = headerFields.map((f) => f.trim()).join(", ");
+        throw new CSVFormatError(
+          `CSV header at ${csvFilePath}:1 has no "labelName" or "label" column. ` +
+            `Found columns: [${found}]. ` +
+            `Expected one of "labelName" or "label" (case-insensitive).`,
+        );
+      }
+      labelColumnIndex = resolvedIdx;
+      expectedColumnCount = headerFields.length;
+      headerParsed = true;
       continue;
     }
 
-    if (lineNumber <= startLineNumber) {
-      lineNumber++;
+    if (dataLineNumber <= startLineNumber) {
+      if (line !== "") {
+        dataLineNumber++;
+      }
       continue;
     }
 
-    if (limit && processedCount >= limit) {
+    if (limit !== null && processedCount >= limit) {
       break;
     }
 
-    const parts = parseCSVLine(line);
-    if (parts.length >= 7) {
-      const labelName = parts[6].trim();
-      if (labelName && labelName !== "") {
-        batch.push({ labelName, lineNumber });
-        processedCount++;
-
-        if (batch.length >= batchSize) {
-          yield batch;
-          batch = [];
-        }
+    if (line === "") {
+      if (pendingBlankLineNumber === null) {
+        pendingBlankLineNumber = rawLineNumber;
+      } else {
+        throw new CSVFormatError(
+          `CSV row at ${csvFilePath}:${pendingBlankLineNumber} is blank. ` +
+            `Blank lines are only tolerated at end of file.`,
+        );
       }
+      continue;
     }
 
-    lineNumber++;
+    if (pendingBlankLineNumber !== null) {
+      throw new CSVFormatError(
+        `CSV row at ${csvFilePath}:${pendingBlankLineNumber} is blank. ` +
+          `Blank lines are only tolerated at end of file.`,
+      );
+    }
+
+    let parts: string[];
+    try {
+      parts = parseCSVLine(line);
+    } catch {
+      throw new CSVFormatError(
+        `CSV row at ${csvFilePath}:${rawLineNumber} has unbalanced quotes. ` +
+          `Row: ${previewCSVLine(line)}`,
+      );
+    }
+
+    if (parts.length !== expectedColumnCount) {
+      throw new CSVFormatError(
+        `CSV row at ${csvFilePath}:${rawLineNumber} has ${parts.length} columns ` +
+          `but header declared ${expectedColumnCount}. ` +
+          `Row: ${previewCSVLine(line)}`,
+      );
+    }
+
+    const labelName = parts[labelColumnIndex].trim();
+    if (labelName === "") {
+      throw new CSVFormatError(
+        `CSV row at ${csvFilePath}:${rawLineNumber} has empty "labelName". ` +
+          `Row: ${previewCSVLine(line)}`,
+      );
+    }
+
+    batch.push({ labelName, lineNumber: dataLineNumber });
+    processedCount++;
+
+    if (batch.length >= batchSize) {
+      yield batch;
+      batch = [];
+    }
+
+    dataLineNumber++;
+  }
+
+  if (!headerParsed) {
+    throw new CSVFormatError(
+      `CSV file at ${csvFilePath} is empty (no header row).`,
+    );
   }
 
   if (batch.length > 0) {
@@ -432,6 +538,10 @@ function parseCSVLine(line: string): string[] {
     } else {
       current += char;
     }
+  }
+
+  if (inQuotes) {
+    throw new Error("unbalanced quotes");
   }
 
   result.push(current);
@@ -584,7 +694,11 @@ export interface VerificationResult {
   registration: ENSRegistration;
   v2Status: number;
   v2LatestOwner: string;
-  v1IsRegistered: boolean;
+  /// Whether the original v1 owner still has renewal rights — i.e., the name
+  /// is currently registered or within the v1 90-day grace period. Names that
+  /// pass this gate are candidates for migration; the v2 expiry is computed
+  /// separately by adding the configurable `--bonus-period-days`.
+  v1IsClaimable: boolean;
   v1Expiry: bigint;
   error?: string;
 }
@@ -650,7 +764,7 @@ export async function batchVerifyRegistrations(
         registration: reg,
         v2Status: -1,
         v2LatestOwner: zeroAddress,
-        v1IsRegistered: false,
+        v1IsClaimable: false,
         v1Expiry: 0n,
         error: v2.status === "failure" ? String(v2.error) : String(v1.error),
       };
@@ -661,7 +775,8 @@ export async function batchVerifyRegistrations(
       registration: reg,
       v2Status: (v2.result as any).status,
       v2LatestOwner: (v2.result as any).latestOwner,
-      v1IsRegistered: expiry > 0n && expiry > currentTimestamp,
+      v1IsClaimable:
+        expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > currentTimestamp,
       v1Expiry: expiry,
     };
   });
@@ -818,7 +933,7 @@ async function processBatch(
   const alreadyReservedNames = new Set<string>();
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
 
-  const gracePeriodSeconds = BigInt(config.gracePeriodDays) * 86400n;
+  const bonusPeriodSeconds = BigInt(config.bonusPeriodDays) * 86400n;
 
   const verificationResults = await batchVerifyRegistrations(
     registrations,
@@ -863,11 +978,11 @@ async function processBatch(
       alreadyReservedNames.add(registration.labelName);
     }
 
-    if (!result.v1IsRegistered) {
+    if (!result.v1IsClaimable) {
       const reason =
         result.v1Expiry === 0n
-          ? "never registered or fully expired"
-          : "expired";
+          ? "never registered on v1"
+          : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
       logger.v1NotRegistered(registration.labelName, reason);
       checkpoint.skippedCount++;
       checkpoint.totalProcessed++;
@@ -875,7 +990,7 @@ async function processBatch(
       continue;
     }
 
-    const effectiveExpiry = result.v1Expiry + gracePeriodSeconds;
+    const effectiveExpiry = result.v1Expiry + bonusPeriodSeconds;
 
     const expiryDateFormatted = new Date(Number(effectiveExpiry) * 1000)
       .toISOString()
@@ -1049,9 +1164,9 @@ export async function main(argv = process.argv): Promise<void> {
       false,
     )
     .option(
-      "--grace-period-days <days>",
-      "Days of grace period to add on top of each name's v1 expiry",
-      "90",
+      "--bonus-period-days <days>",
+      "Days added to each name's v1 expiry to compute its v2 expiry",
+      "62",
     )
     .requiredOption(
       "--v1-resolver <address>",
@@ -1087,9 +1202,9 @@ export async function main(argv = process.argv): Promise<void> {
     limit: opts.limit ? parseInt(opts.limit) : null,
     dryRun: opts.dryRun,
     continue: opts.continue,
-    gracePeriodDays: Number.isNaN(parseInt(opts.gracePeriodDays))
-      ? 90
-      : parseInt(opts.gracePeriodDays),
+    bonusPeriodDays: Number.isNaN(parseInt(opts.bonusPeriodDays))
+      ? 62
+      : parseInt(opts.bonusPeriodDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
   };
@@ -1109,7 +1224,11 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config("Mainnet RPC (v1)", config.mainnetRpcUrl);
     logger.config("CSV File", config.csvFilePath);
     logger.config("Batch Size", config.batchSize);
-    logger.config("Grace Period Days", config.gracePeriodDays);
+    logger.config("Bonus Period Days", config.bonusPeriodDays);
+    logger.config(
+      "V1 Grace Period Days (hard-coded)",
+      Number(V1_GRACE_PERIOD_DAYS),
+    );
     logger.config("V1 Resolver", config.v1ResolverAddress);
     logger.config("Limit", config.limit ?? "none");
     logger.config("Dry Run", config.dryRun);

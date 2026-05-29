@@ -6,6 +6,8 @@ export default execute(
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
+    const graveyard = get<(typeof artifacts.Graveyard)["abi"]>("Graveyard");
+
     const ethRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
 
@@ -16,14 +18,27 @@ export default execute(
       "WrapperRegistryImpl",
     );
 
+    const publicResolverSet =
+      get<(typeof artifacts.IAddressSet)["abi"]>("PublicResolverSet");
+
+    const publicResolverV2 =
+      get<(typeof artifacts.PublicResolverV2)["abi"]>("PublicResolverV2");
+
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+
     const migrationController = await deploy("LockedMigrationController", {
       account: deployer,
       artifact: artifacts.LockedMigrationController,
       args: [
         nameWrapper.address,
+        graveyard.address,
         ethRegistry.address,
         verifiableFactory.address,
         wrapperRegistryImpl.address,
+        publicResolverSet.address,
+        publicResolverV2.address,
+        contractNamer.address,
       ],
     });
 
@@ -41,9 +56,14 @@ export default execute(
     tags: ["LockedMigrationController", "v2"],
     dependencies: [
       "NameWrapper",
+      "Graveyard",
       "ETHRegistry",
+      "setup:HCAFactory",
       "VerifiableFactory",
       "WrapperRegistryImpl",
+      "PublicResolverSet",
+      "PublicResolverV2",
+      "ContractNamer",
     ],
   },
 );

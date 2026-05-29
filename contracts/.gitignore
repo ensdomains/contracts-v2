@@ -1,5 +1,6 @@
 # Compiler files
 cache/
+.solgrid_cache/
 out/
 
 # Ignores development broadcast logs
