@@ -284,25 +284,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_migrate_invalidReceiver() external {
-        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        LibMigration.Data memory md = _lockedData(name);
-        md.owner = address(ethRegistry); // not a IERC1155Receiver
-        vm.expectRevert(
-            WrappedErrorLib.wrap(
-                abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, md.owner)
-            )
-        );
-        vm.prank(testOwner);
-        nameWrapper.safeTransferFrom(
-            testOwner,
-            address(migrationController),
-            uint256(NameCoder.namehash(name, 0)),
-            1,
-            abi.encode(md)
-        );
-    }
-
     function test_migrate_nameDataMismatch() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes32 node = NameCoder.namehash(name, 0);
@@ -367,20 +348,31 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     function test_checkIfMigrated() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         LibMigration.Data memory md = _lockedData(name);
+        bytes32 node = NameCoder.namehash(name, 0);
         uint256 tokenIdV1 = LibLabel.id(md.label);
 
-        assertFalse(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, testOwner));
+        address expectedRegistry =
+            _computeVerifiableFactoryAddress(address(migrationController), uint256(node));
+
+        assertFalse(
+            ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, expectedRegistry)
+        );
 
         vm.prank(testOwner);
         nameWrapper.safeTransferFrom(
             testOwner,
             address(migrationController),
-            uint256(NameCoder.namehash(name, 0)),
+            uint256(node),
             1,
             abi.encode(md)
         );
 
-        assertTrue(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, testOwner));
+        assertTrue(
+            ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, expectedRegistry),
+            "hasRoles"
+        );
+        assertEq(ethRegistry.findOwner(md.label), expectedRegistry, "owner");
+        assertEq(address(ethRegistry.getSubregistry(md.label)), expectedRegistry, "subregistry");
     }
 
     function test_migrate() external {
@@ -420,7 +412,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_RENEW |
             RegistryRolesLib.ROLE_RENEW_ADMIN |
             RegistryRolesLib.ROLE_CAN_NAME |
-            RegistryRolesLib.ROLE_CAN_NAME_ADMIN
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
+            RegistryRolesLib.ROLE_SET_PARENT_RESOLVER |
+            RegistryRolesLib.ROLE_SET_PARENT_RESOLVER_ADMIN |
+            RegistryRolesLib.ROLE_EDIT_PUBLIC_RESOLVER |
+            RegistryRolesLib.ROLE_EDIT_PUBLIC_RESOLVER_ADMIN
         );
         // emit Initializable.Initialized()
         vm.expectEmit();
@@ -435,23 +431,26 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             tokenId,
             bytes32(tokenIdV1),
             md.label,
-            md.owner,
+            expectedRegistry, // owner
             expectedExpiry,
             address(migrationController)
         );
         vm.expectEmit();
-        emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
+        emit IERC1155.TransferSingle(
+            address(migrationController),
+            address(0),
+            expectedRegistry,
+            tokenId,
+            1
+        );
         vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
             tokenId,
-            md.owner,
+            expectedRegistry,
             0 /*old roles*/,
-            RegistryRolesLib.ROLE_SET_RESOLVER |
-            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
-            RegistryRolesLib.ROLE_WAS_RESERVED
+            RegistryRolesLib.ROLE_SET_RESOLVER | RegistryRolesLib.ROLE_WAS_RESERVED
         );
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(
@@ -473,7 +472,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         console.log("Gas: %s", g - gasleft());
 
         assertEq(ethRegistry.getTokenId(tokenIdV1), tokenId, "tokenId");
-        assertEq(ethRegistry.ownerOf(tokenId), md.owner, "owner");
+        assertEq(ethRegistry.ownerOf(tokenId), expectedRegistry, "owner");
         assertEq(ethRegistry.getExpiry(tokenId), expectedExpiry, "expiry");
         assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
         checkResolution(name, address(ensV2Resolver), md.resolver);
@@ -522,13 +521,13 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         for (uint256 i; i < count; ++i) {
             string memory label = _label(i);
             uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(label));
-            assertEq(ethRegistry.ownerOf(tokenId), testOwner, "owner");
+            address expectedRegistry =
+                _computeVerifiableFactoryAddress(address(migrationController), ids[i]);
+            assertEq(ethRegistry.ownerOf(tokenId), expectedRegistry, "owner");
             assertEq(ethRegistry.getResolver(label), address(uint160(i)), "resolver");
+            assertEq(address(ethRegistry.getSubregistry(label)), expectedRegistry, "subregistry");
             assertTrue(
-                ERC165Checker.supportsInterface(
-                    address(ethRegistry.getSubregistry(label)),
-                    type(IWrapperRegistry).interfaceId
-                ),
+                ERC165Checker.supportsInterface(expectedRegistry, type(IWrapperRegistry).interfaceId),
                 "IWrapperRegistry"
             );
         }
@@ -562,6 +561,105 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
+    function test_migrate_transferNonCanonical() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes32 node = NameCoder.namehash(name, 0);
+        LibMigration.Data memory md = _lockedData(name);
+
+        vm.prank(testOwner);
+        nameWrapper.safeTransferFrom(
+            testOwner,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
+        );
+
+        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(testLabel)));
+
+        // transfer from same registry, diff label
+        uint256 tokenId1 =
+            ethRegistry.register(
+                "1",
+                testOwner,
+                testRegistry,
+                testResolver,
+                RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
+                _soon()
+            );
+        vm.expectRevert(abi.encodeWithSelector(WrapperRegistry.TokenNotCanonical.selector));
+        vm.prank(testOwner);
+        ethRegistry.safeTransferFrom(address(testOwner), address(registry), tokenId1, 1, "");
+
+        // transfer from diff registry, same label
+        vm.prank(testOwner);
+        uint256 tokenId2 =
+            registry.register(
+                testLabel,
+                testOwner,
+                testRegistry,
+                testResolver,
+                RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
+                _soon()
+            );
+        vm.expectRevert(
+            WrappedErrorLib.wrap(
+                abi.encodeWithSelector(UnauthorizedCaller.selector, address(registry))
+            )
+        );
+        vm.prank(testOwner);
+        registry.safeTransferFrom(address(testOwner), address(registry), tokenId2, 1, "");
+    }
+
+    function test_migrate_setParentResolver() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes32 node = NameCoder.namehash(name, 0);
+        LibMigration.Data memory md = _lockedData(name);
+
+        vm.prank(testOwner);
+        nameWrapper.safeTransferFrom(
+            testOwner,
+            address(migrationController),
+            uint256(node),
+            1,
+            abi.encode(md)
+        );
+
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
+
+        assertTrue(
+            registry.hasRootRoles(RegistryRolesLib.ROLE_SET_PARENT_RESOLVER, testOwner),
+            "setParent:owner"
+        );
+        assertFalse(
+            registry.hasRootRoles(RegistryRolesLib.ROLE_SET_PARENT_RESOLVER, address(registry)),
+            "setParent:registry"
+        );
+        assertFalse(
+            ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, testOwner),
+            "set:owner"
+        );
+        assertTrue(
+            ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, address(registry)),
+            "set:registry"
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_SET_PARENT_RESOLVER,
+                address(actor)
+            )
+        );
+        vm.prank(actor);
+        registry.setParentResolver(testResolver);
+
+        vm.prank(testOwner);
+        registry.setParentResolver(testResolver);
+    }
+
     function test_migrate_lockedResolver() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
         bytes32 node = NameCoder.namehash(name, 0);
@@ -583,20 +681,39 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(md)
         );
 
-        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
         assertEq(ethRegistry.getResolver(md.label), frozenResolver, "frozen");
         checkResolution(name, frozenResolver, frozenResolver);
-        assertFalse(ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, testOwner));
+
+        uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
+
+        assertFalse(
+            registry.hasRootRoles(RegistryRolesLib.ROLE_SET_PARENT_RESOLVER, testOwner),
+            "setParent:owner"
+        );
+        assertFalse(
+            registry.hasRootRoles(RegistryRolesLib.ROLE_SET_PARENT_RESOLVER, address(registry)),
+            "setParent:registry"
+        );
+        assertFalse(
+            ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, testOwner),
+            "set:owner"
+        );
+        assertFalse(
+            ethRegistry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, address(registry)),
+            "set:registry"
+        );
+
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                tokenId,
-                RegistryRolesLib.ROLE_SET_RESOLVER,
-                testOwner
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_SET_PARENT_RESOLVER,
+                address(testOwner)
             )
         );
         vm.prank(testOwner);
-        ethRegistry.setResolver(tokenId, testResolver);
+        registry.setParentResolver(testResolver);
     }
 
     function test_migrate_lockedResolver_publicResolver() external {
@@ -661,17 +778,18 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
 
         uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
+        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
         assertEq(
-            ethRegistry.roles(tokenId, testOwner) & EACBaseRolesLib.ADMIN_ROLES,
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
+            ethRegistry.roles(tokenId, address(registry)),
+            RegistryRolesLib.ROLE_SET_RESOLVER | RegistryRolesLib.ROLE_WAS_RESERVED,
             "token"
         );
-        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
         assertEq(
             registry.roles(registry.ROOT_RESOURCE(), testOwner) & EACBaseRolesLib.ADMIN_ROLES,
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
             RegistryRolesLib.ROLE_RENEW_ADMIN |
-            RegistryRolesLib.ROLE_CAN_NAME_ADMIN,
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
+            RegistryRolesLib.ROLE_EDIT_PUBLIC_RESOLVER_ADMIN,
             "registry"
         );
     }
@@ -745,13 +863,33 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             1,
             abi.encode(data3)
         );
+        IWrapperRegistry registry3 =
+            IWrapperRegistry(address(registry2.getSubregistry(data3.label)));
 
-        uint256 tokenId = registry2.getTokenId(LibLabel.id(data3.label));
-        assertTrue(registry2.hasRoles(tokenId, RegistryRolesLib.ROLE_RENEW, friend), "ROLE_RENEW");
+        assertTrue(
+            registry2.hasRoles(
+                LibLabel.id(data3.label),
+                RegistryRolesLib.ROLE_RENEW,
+                address(registry3)
+            ),
+            "ROLE_RENEW"
+        );
 
-        uint64 expiry = registry2.getExpiry(tokenId);
+        uint64 expiry = registry2.getExpiry(LibLabel.id(data3.label));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry2.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_RENEW_PARENT,
+                actor
+            )
+        );
+        vm.prank(actor);
+        registry3.renewParent(expiry + 1);
+
         vm.prank(friend);
-        registry2.renew(tokenId, expiry + 1);
+        registry3.renewParent(expiry + 1);
     }
 
     function test_migrate_lockedChildren() external {
@@ -773,13 +911,14 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             1,
             abi.encode(data2)
         );
-        assertEq(
-            ethRegistry.ownerOf(ethRegistry.getTokenId(LibLabel.id(data2.label))),
-            data2.owner,
-            "owner2"
-        );
         IWrapperRegistry registry2 =
             IWrapperRegistry(address(ethRegistry.getSubregistry(data2.label)));
+
+        assertEq(
+            ethRegistry.ownerOf(ethRegistry.getTokenId(LibLabel.id(data2.label))),
+            address(registry2),
+            "owner2"
+        );
         assertTrue(
             ERC165Checker.supportsInterface(address(registry2), type(IWrapperRegistry).interfaceId),
             "registry2"
@@ -797,12 +936,12 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         assertEq(registry2.getResolver(data3.label), data3.resolver, "resolver3");
         checkResolution(name3, address(ensV2Resolver), data3.resolver);
+        IRegistry registry3 = registry2.getSubregistry(data3.label);
         assertEq(
             registry2.ownerOf(registry2.getTokenId(LibLabel.id(data3.label))),
-            data3.owner,
+            address(registry3),
             "owner3"
         );
-        IRegistry registry3 = registry2.getSubregistry(data3.label);
         assertTrue(
             ERC165Checker.supportsInterface(address(registry3), type(IWrapperRegistry).interfaceId),
             "registry3"
@@ -850,13 +989,13 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             1,
             abi.encode(data2)
         );
-        assertEq(
-            ethRegistry.ownerOf(ethRegistry.getTokenId(LibLabel.id(data2.label))),
-            data2.owner,
-            "owner2"
-        );
         IWrapperRegistry registry2 =
             IWrapperRegistry(address(ethRegistry.getSubregistry(data2.label)));
+        assertEq(
+            ethRegistry.ownerOf(ethRegistry.getTokenId(LibLabel.id(data2.label))),
+            address(registry2),
+            "owner2"
+        );
         assertTrue(
             ERC165Checker.supportsInterface(address(registry2), type(IWrapperRegistry).interfaceId),
             "registry2"

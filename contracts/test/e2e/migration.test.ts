@@ -607,7 +607,7 @@ describe("Migration", () => {
       await locked.migrate({
         target: env.v2.LockedMigrationController.address,
       });
-      await locked.checkMigrated();
+      await locked.checkMigrated({ owner: locked.wrapperRegistry().address });
       await locked.checkResolution();
     });
 
@@ -619,7 +619,7 @@ describe("Migration", () => {
         target: env.v2.LockedMigrationController.address,
         data: { resolver: anotherAddress },
       });
-      await locked.checkMigrated();
+      await locked.checkMigrated({ owner: locked.wrapperRegistry().address });
       const resolver = await env.v2.ETHRegistry.read.getResolver([
         locked.label,
       ]);
@@ -660,7 +660,7 @@ describe("Migration", () => {
       await locked.migrate({
         target: env.v2.LockedMigrationController.address,
       });
-      await locked.checkMigrated();
+      await locked.checkMigrated({ owner: locked.wrapperRegistry().address });
     });
 
     it("migrate locked child", async () => {
@@ -677,7 +677,9 @@ describe("Migration", () => {
       await lockedChild.migrate({
         target: lockedRegistry.address,
       });
-      await lockedChild.checkMigrated();
+      await lockedChild.checkMigrated({
+        owner: lockedChild.wrapperRegistry().address,
+      });
       await lockedChild.checkResolution();
     });
 
@@ -807,7 +809,8 @@ describe("Migration", () => {
       const state = await lockedRegistry.read.getState([
         idFromLabel(lockedChild.label),
       ]);
-      await lockedRegistry.write.renew([state.tokenId, state.expiry + 1n], {
+      const lockedChildRegistry = lockedChild.wrapperRegistry();
+      await lockedChildRegistry.write.renewParent([state.expiry + 1n], {
         account: lockedChild.account,
       });
     });
@@ -820,16 +823,6 @@ describe("Migration", () => {
           data: { owner: zeroAddress }, // wrong
         }),
       ).rejects.toThrow("InvalidOwner");
-    });
-
-    it("invalid receiver", async () => {
-      const locked = await registerWrapped({ fuses: FUSES.CANNOT_UNWRAP });
-      expect(
-        locked.migrate({
-          target: env.v2.LockedMigrationController.address,
-          data: { owner: env.v2.ETHRegistry.address }, // not IERC1155Receiver
-        }),
-      ).rejects.toThrow("ERC1155InvalidReceiver");
     });
 
     it("wrong controller", async () => {

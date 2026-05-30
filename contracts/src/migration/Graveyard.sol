@@ -62,7 +62,6 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Create a graveyard.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param contractNamer Delegated contract namer.
     constructor(INameWrapper nameWrapper, IContractNamer contractNamer)

@@ -60,6 +60,10 @@ contract WrapperRegistry is
     /// @param implementation The disallowed implementation address.
     error UpgradeTargetNotApproved(address implementation);
 
+    /// @notice Registry only accepts the canonical token.
+    /// @dev Error selector: `0xc7569e47`
+    error TokenNotCanonical();
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -179,6 +183,45 @@ contract WrapperRegistry is
             revert LibMigration.NameRequiresMigration();
         }
         return super.register(label, owner, registry, resolver, roleBitmap, expiry);
+    }
+
+    /// @inheritdoc AbstractWrapperReceiver
+    /// @dev Support canonical token ownership.
+    function onERC1155Received(
+        address operator,
+        address from,
+        uint256 id,
+        uint256 amount,
+        bytes calldata data
+    )
+        public
+        override
+        returns (bytes4)
+    {
+        if (msg.sender == address(_parentRegistry)) {
+            if (LibLabel.withVersion(id, 0) != LibLabel.withVersion(LibLabel.id(_childLabel), 0)) {
+                revert TokenNotCanonical();
+            }
+            return this.onERC1155Received.selector;
+        } else {
+            return super.onERC1155Received(operator, from, id, amount, data);
+        }
+    }
+
+    /// @inheritdoc IWrapperRegistry
+    function setParentResolver(address resolver)
+        public
+        onlyRootRoles(RegistryRolesLib.ROLE_SET_PARENT_RESOLVER)
+    {
+        PermissionedRegistry(address(_parentRegistry)).setResolver(
+            LibLabel.id(_childLabel),
+            resolver
+        );
+    }
+
+    /// @inheritdoc IWrapperRegistry
+    function renewParent(uint64 expiry) public onlyRootRoles(RegistryRolesLib.ROLE_RENEW_PARENT) {
+        PermissionedRegistry(address(_parentRegistry)).renew(LibLabel.id(_childLabel), expiry);
     }
 
     /// @inheritdoc PermissionedRegistry

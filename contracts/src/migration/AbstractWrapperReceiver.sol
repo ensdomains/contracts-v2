@@ -92,35 +92,24 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc IERC1155Receiver
-    /// @notice Migrate one NameWrapper token via `safeTransferFrom()`.
-    /// @dev Only callable by NameWrapper.
-    ///      Reverts require `WrappedErrorLib.unwrap()` before processing.
-    /// @param id The NameWrapper token ID (namehash) of the name being migrated.
-    /// @param data ABI-encoded `LibMigration.Data` struct containing migration parameters.
-    function onERC1155Received(
-        address /*operator*/,
-        address /*from*/,
-        uint256 id,
-        uint256 /*amount*/,
-        bytes calldata data
-    )
+    /// @notice Convert NameWrapper tokens to their equivalent ENSv2 form.
+    /// @dev Only callable by ourself and invoked by our `IERC1155Receiver` handlers.
+    ///
+    /// TODO: gas analysis and optimization
+    /// NOTE: converting this to an internal call requires catching many reverts
+    ///
+    /// @param ids The NameWrapper token IDs (namehashes) of the names being migrated.
+    /// @param mds The migration parameters for each name, indexed in parallel with `ids`.
+    function finishERC1155Migration(uint256[] calldata ids, LibMigration.Data[] calldata mds)
         external
-        onlyWrapper
-        withData(data, LibMigration.MIN_DATA_SIZE)
-        returns (bytes4)
     {
-        // if (amount != 1) { ... } => never happens :: caught by ERC1155Fuse
-        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L293
-        uint256[] memory ids = new uint256[](1);
-        LibMigration.Data[] memory mds = new LibMigration.Data[](1);
-        ids[0] = id;
-        mds[0] = abi.decode(data, (LibMigration.Data)); // reverts if invalid
-        try this.finishERC1155Migration(ids, mds) {
-            return this.onERC1155Received.selector;
-        } catch (bytes memory reason) {
-            WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
+        if (msg.sender != address(this)) {
+            revert UnauthorizedCaller(msg.sender);
         }
+        if (ids.length != mds.length) {
+            revert IERC1155Errors.ERC1155InvalidArrayLength(ids.length, mds.length);
+        }
+        _migrateWrapped(ids, mds);
     }
 
     /// @inheritdoc IERC1155Receiver
@@ -153,24 +142,36 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
         }
     }
 
-    /// @notice Convert NameWrapper tokens to their equivalent ENSv2 form.
-    /// @dev Only callable by ourself and invoked by our `IERC1155Receiver` handlers.
-    ///
-    /// TODO: gas analysis and optimization
-    /// NOTE: converting this to an internal call requires catching many reverts
-    ///
-    /// @param ids The NameWrapper token IDs (namehashes) of the names being migrated.
-    /// @param mds The migration parameters for each name, indexed in parallel with `ids`.
-    function finishERC1155Migration(uint256[] calldata ids, LibMigration.Data[] calldata mds)
-        external
+    /// @inheritdoc IERC1155Receiver
+    /// @notice Migrate one NameWrapper token via `safeTransferFrom()`.
+    /// @dev Only callable by NameWrapper.
+    ///      Reverts require `WrappedErrorLib.unwrap()` before processing.
+    /// @param id The NameWrapper token ID (namehash) of the name being migrated.
+    /// @param data ABI-encoded `LibMigration.Data` struct containing migration parameters.
+    function onERC1155Received(
+        address /*operator*/,
+        address /*from*/,
+        uint256 id,
+        uint256 /*amount*/,
+        bytes calldata data
+    )
+        public
+        virtual
+        onlyWrapper
+        withData(data, LibMigration.MIN_DATA_SIZE)
+        returns (bytes4)
     {
-        if (msg.sender != address(this)) {
-            revert UnauthorizedCaller(msg.sender);
+        // if (amount != 1) { ... } => never happens :: caught by ERC1155Fuse
+        // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L293
+        uint256[] memory ids = new uint256[](1);
+        LibMigration.Data[] memory mds = new LibMigration.Data[](1);
+        ids[0] = id;
+        mds[0] = abi.decode(data, (LibMigration.Data)); // reverts if invalid
+        try this.finishERC1155Migration(ids, mds) {
+            return this.onERC1155Received.selector;
+        } catch (bytes memory reason) {
+            WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
         }
-        if (ids.length != mds.length) {
-            revert IERC1155Errors.ERC1155InvalidArrayLength(ids.length, mds.length);
-        }
-        _migrateWrapped(ids, mds);
     }
 
     ////////////////////////////////////////////////////////////////////////

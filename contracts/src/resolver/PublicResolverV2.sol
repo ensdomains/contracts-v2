@@ -12,11 +12,13 @@ import {NameResolver} from "@ens/contracts/resolvers/profiles/NameResolver.sol";
 import {PubkeyResolver} from "@ens/contracts/resolvers/profiles/PubkeyResolver.sol";
 import {TextResolver} from "@ens/contracts/resolvers/profiles/TextResolver.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
@@ -182,6 +184,13 @@ contract PublicResolverV2 is
             return false;
         }
         address owner = LibRegistry.findOwner(ROOT_REGISTRY, name, 0);
+        if (ERC165Checker.supportsInterface(owner, type(IPermissionedRegistry).interfaceId)) {
+            return
+                IPermissionedRegistry(owner).hasRootRoles(
+                    RegistryRolesLib.ROLE_EDIT_PUBLIC_RESOLVER,
+                    operator
+                );
+        }
         return
             owner == operator ||
             isApprovedForAll(owner, operator) ||

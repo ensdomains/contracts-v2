@@ -5,7 +5,7 @@ import {IPermissionedRegistry} from "./IPermissionedRegistry.sol";
 import {IRegistry} from "./IRegistry.sol";
 
 /// @notice Interface for a registry that manages a locked NameWrapper name.
-/// @dev Interface selector: `0x6b2f7339`
+/// @dev Interface selector: `0x8cdebff4`
 interface IWrapperRegistry is IPermissionedRegistry {
     /// @notice Initializes WrapperRegistry.
     /// @param node Namehash of this registry.
@@ -21,6 +21,14 @@ interface IWrapperRegistry is IPermissionedRegistry {
         uint256 roleBitmap
     )
         external;
+
+    /// @notice Call `setResolver()` on the parent registry.
+    /// @param resolver The new parent resolver.
+    function setParentResolver(address resolver) external;
+
+    /// @notice Call `renew()` on the parent registry.
+    /// @param expiry The new parent expiry.
+    function renewParent(uint64 expiry) external;
 
     /// @notice Returns the DNS-encoded name for this registry.
     function getWrappedName() external view returns (bytes memory);
