@@ -28,11 +28,7 @@ library EACBaseRolesLib {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Derive roles bitmap from role counts for a resource.
-    function fromCounts(uint256 count) internal pure returns (uint256) {
-        return
-            (count & ALL_ROLES) |
-            ((count >> 1) & ALL_ROLES) |
-            ((count >> 2) & ALL_ROLES) |
-            ((count >> 3) & ALL_ROLES);
+    function fromCounts(uint256 counts) internal pure returns (uint256) {
+        return (counts | (counts >> 1) | (counts >> 2) | (counts >> 3)) & ALL_ROLES;
     }
 }
