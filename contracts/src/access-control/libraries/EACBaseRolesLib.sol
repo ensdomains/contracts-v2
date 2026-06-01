@@ -34,7 +34,23 @@ library EACBaseRolesLib {
     }
 
     /// @dev Derive roles bitmap from assignee counts.
+    /// @param counts Packed role counts (0-15) as `uint4x64`.
     function fromCounts(uint256 counts) internal pure returns (uint256) {
         return (counts | (counts >> 1) | (counts >> 2) | (counts >> 3)) & ALL_ROLES;
+    }
+
+    /// @dev Checks if the given value has any zero nybbles.
+    /// @param value The value to check.
+    /// @return `true` if the value has any zero nybbles, `false` otherwise.
+    function hasZeroNybbles(uint256 value) internal pure returns (bool) {
+        // Algorithm source: https://graphics.stanford.edu/~seander/bithacks.html#ZeroInWord
+        uint256 zeroNybbles;
+        unchecked {
+            zeroNybbles =
+                (value - 0x1111111111111111111111111111111111111111111111111111111111111111) &
+                ~value &
+                0x8888888888888888888888888888888888888888888888888888888888888888;
+        }
+        return zeroNybbles != 0;
     }
 }

@@ -53,15 +53,6 @@ contract WrapperRegistry is
     bytes32 internal _node;
 
     ////////////////////////////////////////////////////////////////////////
-    // Errors
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Upgrade target is not approved for `WrapperRegistry` proxies.
-    /// @dev Error selector: `0xf74d7dd0`
-    /// @param implementation The disallowed implementation address.
-    error UpgradeTargetNotApproved(address implementation);
-
-    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
@@ -166,7 +157,10 @@ contract WrapperRegistry is
         for (uint256 i; i < revokes.length; ++i) {
             _revokeRoles(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, revokes[i], false);
         }
-        _grantRoles(ROOT_RESOURCE, EACBaseRolesLib.withAdminRolesApplied(unionRoles), to, false);
+        if (hasAssignees(ROOT_RESOURCE, EACBaseRolesLib.ADMIN_ROLES)) {
+            revert AdminRolesNotFullyRevoked();
+        }
+        _grantRoles(ROOT_RESOURCE, unionRoles, to, false);
     }
 
     /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.

@@ -7,6 +7,23 @@ import {IRegistry} from "./IRegistry.sol";
 /// @notice Interface for a registry that manages a locked NameWrapper name.
 /// @dev Interface selector: `0xf9fc8b9c`
 interface IWrapperRegistry is IPermissionedRegistry {
+    ////////////////////////////////////////////////////////////////////////
+    // Errors
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Upgrade target is not approved for `WrapperRegistry` proxies.
+    /// @dev Error selector: `0xf74d7dd0`
+    /// @param implementation The disallowed implementation address.
+    error UpgradeTargetNotApproved(address implementation);
+
+    /// @notice All prior admin roles must be revoked by reclaim.
+    /// @dev Error selector: `0x74c75408`
+    error AdminRolesNotFullyRevoked();
+
+    ////////////////////////////////////////////////////////////////////////
+    // Functions
+    ////////////////////////////////////////////////////////////////////////
+
     /// @notice Initializes WrapperRegistry.
     /// @param node Namehash of this registry.
     /// @param parentRegistry The parent of this registry.
@@ -22,8 +39,9 @@ interface IWrapperRegistry is IPermissionedRegistry {
     )
         external;
 
-    /// @notice Reclaim the registry from a prior owner.
+    /// @notice Reclaim the registry from prior ownership.
     /// @dev Requires `ROLE_WRAPPER_RECLAIM` on token.
+    ///      Reverts `AdminRolesNotFullyRevoked` unless all admins are revoked.
     /// @param to The new root account.
     /// @param revokes The old root accounts which get fully revoked.
     function reclaim(address to, address[] calldata revokes) external;

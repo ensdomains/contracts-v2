@@ -164,7 +164,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                WrapperRegistry.UpgradeTargetNotApproved.selector,
+                IWrapperRegistry.UpgradeTargetNotApproved.selector,
                 address(newImplementation)
             )
         );
@@ -599,6 +599,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         registry.reclaim(friend, new address[](0));
 
         address[] memory revokes = new address[](1);
+        vm.expectRevert(abi.encodeWithSelector(IWrapperRegistry.AdminRolesNotFullyRevoked.selector));
+        vm.prank(friend);
+        registry.reclaim(friend, revokes);
+
         revokes[0] = testOwner;
         vm.prank(friend);
         registry.reclaim(friend, revokes);
