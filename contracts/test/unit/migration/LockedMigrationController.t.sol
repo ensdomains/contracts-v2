@@ -420,7 +420,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_RENEW |
             RegistryRolesLib.ROLE_RENEW_ADMIN |
             RegistryRolesLib.ROLE_CAN_NAME |
-            RegistryRolesLib.ROLE_CAN_NAME_ADMIN
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
+            RegistryRolesLib.ROLE_WRAPPER_RECLAIM
         );
         // emit Initializable.Initialized()
         vm.expectEmit();
@@ -587,6 +588,19 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         uint256 rootRoles = registry.roles(registry.ROOT_RESOURCE(), testOwner);
 
+        // prior owner cannot grant admin
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                registry.ROOT_RESOURCE(),
+                rootRoles,
+                testOwner
+            )
+        );
+        vm.prank(testOwner);
+        registry.grantRootRoles(rootRoles, friend);
+
+        // caller lacks token permission
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -596,16 +610,22 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             )
         );
         vm.prank(testOwner);
-        registry.reclaim(friend, new address[](0));
+        registry.reclaim(testOwner, friend);
 
-        address[] memory revokes = new address[](1);
-        vm.expectRevert(abi.encodeWithSelector(IWrapperRegistry.AdminRolesNotFullyRevoked.selector));
+        // from is not the prior owner
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_WRAPPER_RECLAIM,
+                actor
+            )
+        );
         vm.prank(friend);
-        registry.reclaim(friend, revokes);
+        registry.reclaim(actor, friend);
 
-        revokes[0] = testOwner;
         vm.prank(friend);
-        registry.reclaim(friend, revokes);
+        registry.reclaim(testOwner, friend);
 
         assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "old");
         assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), rootRoles, "new");

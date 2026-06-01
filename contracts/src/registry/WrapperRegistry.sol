@@ -9,7 +9,6 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
@@ -137,7 +136,8 @@ contract WrapperRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IWrapperRegistry
-    function reclaim(address to, address[] calldata revokes) external {
+    function reclaim(address from, address to) external {
+        // caller must have permission token (on parent registry)
         address sender = _msgSender();
         if (
             !PermissionedRegistry(address(_parentRegistry)).hasRoles(
@@ -152,15 +152,10 @@ contract WrapperRegistry is
                 sender
             );
         }
-        (uint256 counts, ) = getAssigneeCount(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES);
-        uint256 unionRoles = EACBaseRolesLib.fromCounts(counts);
-        for (uint256 i; i < revokes.length; ++i) {
-            _revokeRoles(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, revokes[i], false);
-        }
-        if (hasAssignees(ROOT_RESOURCE, EACBaseRolesLib.ADMIN_ROLES)) {
-            revert AdminRolesNotFullyRevoked();
-        }
-        _grantRoles(ROOT_RESOURCE, unionRoles, to, false);
+        // from must have "tracking" role on root (on this registry)
+        // see: LockedWrapperReceiver._subregistryRoleBitmapFromFuses()
+        _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_WRAPPER_RECLAIM, from);
+        _transferRoles(ROOT_RESOURCE, from, to, false);
     }
 
     /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
@@ -250,6 +245,24 @@ contract WrapperRegistry is
         returns (uint256 tokenId)
     {
         return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
+    }
+
+    /// @inheritdoc PermissionedRegistry
+    /// @dev Override for token-dependent logic:
+    ///
+    /// Root admin roles cannot be granted.
+    ///
+    /// @param resource The resource to get settable roles for.
+    /// @param account The account to get settable roles for.
+    /// @return The settable roles.
+    function _getSettableRoles(uint256 resource, address account)
+        internal
+        view
+        override
+        returns (uint256)
+    {
+        uint256 roleBitmap = super._getSettableRoles(resource, account);
+        return resource == ROOT_RESOURCE ? roleBitmap >> 128 : roleBitmap;
     }
 
     /// @dev Requires `ROLE_UPGRADE` and approval for the target implementation.

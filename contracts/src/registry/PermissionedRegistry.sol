@@ -569,6 +569,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     function _getSettableRoles(uint256 resource, address account)
         internal
         view
+        virtual
         override
         returns (uint256)
     {

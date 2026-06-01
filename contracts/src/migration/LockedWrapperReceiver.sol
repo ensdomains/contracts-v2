@@ -227,7 +227,8 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             RegistryRolesLib.ROLE_UPGRADE |
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
             RegistryRolesLib.ROLE_CAN_NAME |
-            RegistryRolesLib.ROLE_CAN_NAME_ADMIN;
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
+            RegistryRolesLib.ROLE_WRAPPER_RECLAIM; // no admin, used for "tracking"
     }
 
     /// @dev Convert fuses to equivalent token roles.

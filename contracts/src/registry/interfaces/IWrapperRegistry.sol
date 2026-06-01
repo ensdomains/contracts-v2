@@ -5,7 +5,7 @@ import {IPermissionedRegistry} from "./IPermissionedRegistry.sol";
 import {IRegistry} from "./IRegistry.sol";
 
 /// @notice Interface for a registry that manages a locked NameWrapper name.
-/// @dev Interface selector: `0xf9fc8b9c`
+/// @dev Interface selector: `0x309dafc4`
 interface IWrapperRegistry is IPermissionedRegistry {
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -15,10 +15,6 @@ interface IWrapperRegistry is IPermissionedRegistry {
     /// @dev Error selector: `0xf74d7dd0`
     /// @param implementation The disallowed implementation address.
     error UpgradeTargetNotApproved(address implementation);
-
-    /// @notice All prior admin roles must be revoked by reclaim.
-    /// @dev Error selector: `0x74c75408`
-    error AdminRolesNotFullyRevoked();
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
@@ -39,12 +35,12 @@ interface IWrapperRegistry is IPermissionedRegistry {
     )
         external;
 
-    /// @notice Reclaim the registry from prior ownership.
-    /// @dev Requires `ROLE_WRAPPER_RECLAIM` on token.
-    ///      Reverts `AdminRolesNotFullyRevoked` unless all admins are revoked.
+    /// @notice Reclaim control of the registry.
+    /// @dev Requires `ROLE_WRAPPER_RECLAIM` on token for caller.
+    ///      Requires `ROLE_WRAPPER_RECLAIM` on root for `from`.
+    /// @param from The old root account with `ROLE_WRAPPER_RECLAIM`.
     /// @param to The new root account.
-    /// @param revokes The old root accounts which get fully revoked.
-    function reclaim(address to, address[] calldata revokes) external;
+    function reclaim(address from, address to) external;
 
     /// @notice Returns the DNS-encoded name for this registry.
     function getWrappedName() external view returns (bytes memory);
