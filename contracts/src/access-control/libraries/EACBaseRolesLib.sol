@@ -27,7 +27,13 @@ library EACBaseRolesLib {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Derive roles bitmap from role counts for a resource.
+    /// @dev Admin roles imply their corresponding regular roles.
+    function withAdminRolesApplied(uint256 roleBitmap) internal pure returns (uint256) {
+        roleBitmap >>= 128;
+        return (roleBitmap << 128) | roleBitmap;
+    }
+
+    /// @dev Derive roles bitmap from assignee counts.
     function fromCounts(uint256 counts) internal pure returns (uint256) {
         return (counts | (counts >> 1) | (counts >> 2) | (counts >> 3)) & ALL_ROLES;
     }

@@ -166,7 +166,7 @@ contract WrapperRegistry is
         for (uint256 i; i < revokes.length; ++i) {
             _revokeRoles(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, revokes[i], false);
         }
-        _grantRoles(ROOT_RESOURCE, unionRoles | (unionRoles >> 128), to, false);
+        _grantRoles(ROOT_RESOURCE, EACBaseRolesLib.withAdminRolesApplied(unionRoles), to, false);
     }
 
     /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
