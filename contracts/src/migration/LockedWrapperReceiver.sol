@@ -155,7 +155,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                                     node,
                                     parentRegistry,
                                     md.label,
-                                    md.owner,
                                     _subregistryRoleBitmapFromFuses(fuses)
                                 )
                             )
@@ -225,7 +224,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         if (LibMigration.notFrozen(fuses)) {
             roleBitmap |= roleBitmap << 128; // give admin
         }
-        roleBitmap |= RegistryRolesLib.ROLE_WRAPPER_RECLAIM; // no admin, used for "tracking"
     }
 
     /// @dev Convert fuses to equivalent token roles.
@@ -236,7 +234,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         if ((fuses & CANNOT_SET_RESOLVER) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_SET_RESOLVER;
         }
-        roleBitmap |= RegistryRolesLib.ROLE_WRAPPER_RECLAIM;
         if (LibMigration.notFrozen(fuses)) {
             roleBitmap |= roleBitmap << 128; // give admin
         }

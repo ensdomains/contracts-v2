@@ -117,7 +117,6 @@ contract WrapperRegistry is
         bytes32 node,
         IRegistry parentRegistry,
         string calldata childLabel,
-        address rootAccount,
         uint256 roleBitmap
     )
         public
@@ -128,35 +127,12 @@ contract WrapperRegistry is
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
         emit RegistryCreated();
-        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
+        _grantRoles(ROOT_RESOURCE, roleBitmap, address(this), false);
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
-
-    /// @inheritdoc IWrapperRegistry
-    function reclaim(address from, address to) external {
-        // caller must have permission token (on parent registry)
-        address sender = _msgSender();
-        if (
-            !PermissionedRegistry(address(_parentRegistry)).hasRoles(
-                LibLabel.id(_childLabel),
-                RegistryRolesLib.ROLE_WRAPPER_RECLAIM,
-                sender
-            )
-        ) {
-            revert EACUnauthorizedAccountRoles(
-                PermissionedRegistry(address(_parentRegistry)).findTokenId(_childLabel),
-                RegistryRolesLib.ROLE_WRAPPER_RECLAIM,
-                sender
-            );
-        }
-        // from must have "tracking" role on root (on this registry)
-        // see: LockedWrapperReceiver._subregistryRoleBitmapFromFuses()
-        _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_WRAPPER_RECLAIM, from);
-        _transferRoles(ROOT_RESOURCE, from, to, false);
-    }
 
     /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
     /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
@@ -245,6 +221,15 @@ contract WrapperRegistry is
         returns (uint256 tokenId)
     {
         return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
+    }
+
+    /// @dev If the caller is the token owner, return the virtual owner. 
+    function _msgSender() internal view override returns (address) {
+        address sender = super._msgSender();
+        return
+            sender == PermissionedRegistry(address(_parentRegistry)).findOwner(_childLabel)
+                ? address(this)
+                : sender;
     }
 
     /// @inheritdoc PermissionedRegistry

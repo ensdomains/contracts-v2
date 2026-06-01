@@ -159,7 +159,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     }
 
     function test_wrapperRegistryUpgrade_revertsForUnapprovedTarget() external {
-        WrapperRegistry registry = _deployWrapperRegistryProxy(address(this));
+        WrapperRegistry registry = _deployWrapperRegistryProxy();
         WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
 
         vm.expectRevert(
@@ -168,21 +168,24 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 address(newImplementation)
             )
         );
+        vm.prank(testOwner);
         registry.upgradeToAndCall(address(newImplementation), "");
     }
 
     function test_wrapperRegistryUpgrade_allowsApprovedTarget() external {
-        WrapperRegistry registry = _deployWrapperRegistryProxy(address(this));
+        WrapperRegistry registry = _deployWrapperRegistryProxy();
         WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
 
         approvedUpgradeGate.setImplementationApproval(address(newImplementation), true);
+
+        vm.prank(testOwner);
         registry.upgradeToAndCall(address(newImplementation), "");
 
         assertEq(WrapperRegistryV2Mock(address(registry)).version(), 2, "version");
     }
 
     function test_wrapperRegistryUpgrade_requiresUpgradeRole() external {
-        WrapperRegistry registry = _deployWrapperRegistryProxy(address(this));
+        WrapperRegistry registry = _deployWrapperRegistryProxy();
         WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
 
         approvedUpgradeGate.setImplementationApproval(address(newImplementation), true);
@@ -411,7 +414,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
             0 /*ROOT_RESOURCE*/,
-            md.owner,
+            expectedRegistry,
             0 /*old roles*/,
             RegistryRolesLib.ROLE_UPGRADE |
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
@@ -420,8 +423,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_RENEW |
             RegistryRolesLib.ROLE_RENEW_ADMIN |
             RegistryRolesLib.ROLE_CAN_NAME |
-            RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
-            RegistryRolesLib.ROLE_WRAPPER_RECLAIM
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN
         );
         // emit Initializable.Initialized()
         vm.expectEmit();
@@ -452,8 +454,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_SET_RESOLVER |
             RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
             RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
-            RegistryRolesLib.ROLE_WRAPPER_RECLAIM |
-            RegistryRolesLib.ROLE_WRAPPER_RECLAIM_ADMIN |
             RegistryRolesLib.ROLE_WAS_RESERVED
         );
         vm.expectEmit();
@@ -487,7 +487,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "IWrapperRegistry"
         );
         assertTrue(
-            subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, md.owner),
+            subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(subregistry)),
             "ROLE_REGISTRAR"
         );
         assertEq(
@@ -579,56 +579,31 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(md)
         );
 
-        // transfer token
-        uint256 tokenId = ethRegistry.findTokenId(md.label);
-        vm.prank(testOwner);
-        ethRegistry.safeTransferFrom(testOwner, friend, tokenId, 1, "");
-
         IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
 
-        uint256 rootRoles = registry.roles(registry.ROOT_RESOURCE(), testOwner);
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "old");
+        uint256 rootRoles = registry.roles(registry.ROOT_RESOURCE(), address(registry));
 
-        // prior owner cannot grant admin
+        // owner cannot grant admin
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
                 registry.ROOT_RESOURCE(),
                 rootRoles,
-                testOwner
+                address(registry)
             )
         );
         vm.prank(testOwner);
         registry.grantRootRoles(rootRoles, friend);
 
-        // caller lacks token permission
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                tokenId,
-                RegistryRolesLib.ROLE_WRAPPER_RECLAIM,
-                testOwner
-            )
-        );
+        // transfer token
+        uint256 tokenId = ethRegistry.findTokenId(md.label);
         vm.prank(testOwner);
-        registry.reclaim(testOwner, friend);
+        ethRegistry.safeTransferFrom(testOwner, friend, tokenId, 1, "");
 
-        // from is not the prior owner
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                registry.ROOT_RESOURCE(),
-                RegistryRolesLib.ROLE_WRAPPER_RECLAIM,
-                actor
-            )
-        );
-        vm.prank(friend);
-        registry.reclaim(actor, friend);
-
-        vm.prank(friend);
-        registry.reclaim(testOwner, friend);
-
-        assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "old");
-        assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), rootRoles, "new");
+        // new virtual owner but no roles have changed
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), 0, "new");
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), address(registry)), rootRoles, "virtual");
     }
 
     function test_migrate_lockedResolver() external {
@@ -732,15 +707,14 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
         assertEq(
             ethRegistry.roles(tokenId, testOwner) & EACBaseRolesLib.ADMIN_ROLES,
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_WRAPPER_RECLAIM_ADMIN,
+            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
             "token"
         );
         IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
         assertEq(
-            registry.roles(registry.ROOT_RESOURCE(), testOwner) & EACBaseRolesLib.ADMIN_ROLES,
-            RegistryRolesLib.ROLE_UPGRADE_ADMIN |
-            RegistryRolesLib.ROLE_RENEW_ADMIN |
-            RegistryRolesLib.ROLE_CAN_NAME_ADMIN,
+            registry.roles(registry.ROOT_RESOURCE(), address(registry)) &
+            EACBaseRolesLib.ADMIN_ROLES,
+            0,
             "registry"
         );
     }
@@ -1010,10 +984,14 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         IWrapperRegistry registry2 =
             IWrapperRegistry(address(ethRegistry.getSubregistry(data2.label)));
 
-        // testOwner (parent's root account) holds ROLE_REGISTRAR on registry2 by default,
+        // the registry itself holds ROLE_REGISTRAR on registry2 by default,
         // so they could otherwise re-register the unwrapped emancipated subname in v2
         assertTrue(
-            registry2.hasRoles(registry2.ROOT_RESOURCE(), RegistryRolesLib.ROLE_REGISTRAR, testOwner),
+            registry2.hasRoles(
+                registry2.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_REGISTRAR,
+                address(registry2)
+            ),
             "testOwner has ROLE_REGISTRAR on registry2"
         );
         vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));
@@ -1136,7 +1114,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function _deployWrapperRegistryProxy(address rootAccount) internal returns (WrapperRegistry) {
+    function _deployWrapperRegistryProxy() internal returns (WrapperRegistry) {
         bytes memory name = NameCoder.ethName(testLabel);
         bytes32 node = NameCoder.namehash(name, 0);
         uint256 salt = uint256(node);
@@ -1146,9 +1124,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 salt,
                 abi.encodeCall(
                     IWrapperRegistry.initialize,
-                    (node, ethRegistry, testLabel, rootAccount, RegistryRolesLib.ROLE_UPGRADE)
+                    (node, ethRegistry, testLabel, RegistryRolesLib.ROLE_UPGRADE)
                 )
             );
+        ethRegistry.register(testLabel, testOwner, IRegistry(proxyAddress), address(0), 0, _soon());
         return WrapperRegistry(proxyAddress);
     }
 
