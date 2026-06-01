@@ -218,17 +218,14 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR;
         }
+        roleBitmap |=
+            RegistryRolesLib.ROLE_RENEW |
+            RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_CAN_NAME;
         if (LibMigration.notFrozen(fuses)) {
             roleBitmap |= roleBitmap << 128; // give admin
         }
-        roleBitmap |=
-            RegistryRolesLib.ROLE_RENEW |
-            RegistryRolesLib.ROLE_RENEW_ADMIN |
-            RegistryRolesLib.ROLE_UPGRADE |
-            RegistryRolesLib.ROLE_UPGRADE_ADMIN |
-            RegistryRolesLib.ROLE_CAN_NAME |
-            RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
-            RegistryRolesLib.ROLE_WRAPPER_RECLAIM; // no admin, used for "tracking"
+        roleBitmap |= RegistryRolesLib.ROLE_WRAPPER_RECLAIM; // no admin, used for "tracking"
     }
 
     /// @dev Convert fuses to equivalent token roles.
@@ -239,14 +236,12 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         if ((fuses & CANNOT_SET_RESOLVER) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_SET_RESOLVER;
         }
+        roleBitmap |= RegistryRolesLib.ROLE_WRAPPER_RECLAIM;
         if (LibMigration.notFrozen(fuses)) {
             roleBitmap |= roleBitmap << 128; // give admin
         }
         if ((fuses & CANNOT_TRANSFER) == 0) {
-            roleBitmap |=
-                RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
-                RegistryRolesLib.ROLE_WRAPPER_RECLAIM |
-                RegistryRolesLib.ROLE_WRAPPER_RECLAIM_ADMIN;
+            roleBitmap |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN; // no user
         }
     }
 }
