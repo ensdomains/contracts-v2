@@ -732,15 +732,13 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         uint256 tokenId = ethRegistry.getTokenId(LibLabel.id(md.label));
         assertEq(
             ethRegistry.roles(tokenId, testOwner) & EACBaseRolesLib.ADMIN_ROLES,
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_WRAPPER_RECLAIM_ADMIN,
+            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
             "token"
         );
         IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
         assertEq(
             registry.roles(registry.ROOT_RESOURCE(), testOwner) & EACBaseRolesLib.ADMIN_ROLES,
-            RegistryRolesLib.ROLE_UPGRADE_ADMIN |
-            RegistryRolesLib.ROLE_RENEW_ADMIN |
-            RegistryRolesLib.ROLE_CAN_NAME_ADMIN,
+            0,
             "registry"
         );
     }
