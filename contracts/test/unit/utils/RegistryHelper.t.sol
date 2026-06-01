@@ -10,7 +10,6 @@ import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {RegistryHelper} from "~src/utils/RegistryHelper.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
-
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
 contract RegistryHelperTest is V2Fixture {
@@ -110,8 +109,12 @@ contract RegistryHelperTest is V2Fixture {
 
         vm.prank(alice);
         aliceRegistry.register(
-            "sub", bob, IRegistry(address(0)), address(0),
-            REGISTRATION_ROLES, uint64(block.timestamp + 365 days)
+            "sub",
+            bob,
+            IRegistry(address(0)),
+            address(0),
+            REGISTRATION_ROLES,
+            uint64(block.timestamp + 365 days)
         );
 
         // alice's UserRegistry was deployed via VerifiableFactory
@@ -140,8 +143,12 @@ contract RegistryHelperTest is V2Fixture {
 
         vm.prank(alice);
         aliceRegistry.register(
-            "sub", bob, IRegistry(address(0)), address(0),
-            REGISTRATION_ROLES, uint64(block.timestamp + 365 days)
+            "sub",
+            bob,
+            IRegistry(address(0)),
+            address(0),
+            REGISTRATION_ROLES,
+            uint64(block.timestamp + 365 days)
         );
 
         // sub.alice.eth is NOT emancipated because alice's registry has dangerous roles
@@ -155,8 +162,12 @@ contract RegistryHelperTest is V2Fixture {
 
         vm.prank(alice);
         aliceRegistry.register(
-            "sub", bob, IRegistry(address(0)), address(0),
-            REGISTRATION_ROLES, uint64(block.timestamp + 365 days)
+            "sub",
+            bob,
+            IRegistry(address(0)),
+            address(0),
+            REGISTRATION_ROLES,
+            uint64(block.timestamp + 365 days)
         );
 
         assertFalse(helper.isEmancipated(NameCoder.encode("sub.alice.eth")));
@@ -227,8 +238,7 @@ contract RegistryHelperTest is V2Fixture {
     function test_getLabels_aliceEth() external {
         _registerOnEth("alice", alice);
 
-        RegistryHelper.LabelInfo[] memory labels =
-            helper.getLabels(NameCoder.encode("alice.eth"));
+        RegistryHelper.LabelInfo[] memory labels = helper.getLabels(NameCoder.encode("alice.eth"));
 
         assertEq(labels.length, 2);
 
@@ -252,8 +262,12 @@ contract RegistryHelperTest is V2Fixture {
 
         vm.prank(alice);
         aliceRegistry.register(
-            "sub", bob, IRegistry(address(0)), address(0),
-            REGISTRATION_ROLES, uint64(block.timestamp + 365 days)
+            "sub",
+            bob,
+            IRegistry(address(0)),
+            address(0),
+            REGISTRATION_ROLES,
+            uint64(block.timestamp + 365 days)
         );
 
         RegistryHelper.LabelInfo[] memory labels =
@@ -278,8 +292,7 @@ contract RegistryHelperTest is V2Fixture {
 
         vm.warp(block.timestamp + 366 days);
 
-        RegistryHelper.LabelInfo[] memory labels =
-            helper.getLabels(NameCoder.encode("alice.eth"));
+        RegistryHelper.LabelInfo[] memory labels = helper.getLabels(NameCoder.encode("alice.eth"));
 
         assertEq(labels[0].owner, address(0));
         assertFalse(labels[0].flags & helper.FLAG_HAS_OWNER() != 0, "expired:FLAG_HAS_OWNER");
@@ -290,8 +303,7 @@ contract RegistryHelperTest is V2Fixture {
     }
 
     function test_getLabels_unregisteredName_noToken() external view {
-        RegistryHelper.LabelInfo[] memory labels =
-            helper.getLabels(NameCoder.encode("nobody.eth"));
+        RegistryHelper.LabelInfo[] memory labels = helper.getLabels(NameCoder.encode("nobody.eth"));
 
         assertEq(labels[0].owner, address(0));
         assertFalse(labels[0].flags & helper.FLAG_HAS_OWNER() != 0, "unregistered:FLAG_HAS_OWNER");
@@ -302,8 +314,7 @@ contract RegistryHelperTest is V2Fixture {
     function test_getLabels_registeredName_hasToken() external {
         _registerOnEth("alice", alice);
 
-        RegistryHelper.LabelInfo[] memory labels =
-            helper.getLabels(NameCoder.encode("alice.eth"));
+        RegistryHelper.LabelInfo[] memory labels = helper.getLabels(NameCoder.encode("alice.eth"));
 
         assertTrue(labels[0].flags & helper.FLAG_HAS_OWNER() != 0, "registered:FLAG_HAS_OWNER");
         assertTrue(labels[0].flags & helper.FLAG_HAS_TOKEN() != 0, "registered:FLAG_HAS_TOKEN");
@@ -317,8 +328,12 @@ contract RegistryHelperTest is V2Fixture {
 
         vm.prank(alice);
         aliceRegistry.register(
-            "sub", bob, IRegistry(address(0)), resolver1,
-            REGISTRATION_ROLES, uint64(block.timestamp + 180 days)
+            "sub",
+            bob,
+            IRegistry(address(0)),
+            resolver1,
+            REGISTRATION_ROLES,
+            uint64(block.timestamp + 180 days)
         );
 
         RegistryHelper.LabelInfo[] memory labels =
@@ -342,8 +357,7 @@ contract RegistryHelperTest is V2Fixture {
         // Deploy subregistry but never call setParent
         UserRegistry aliceRegistry = _registerWithSubregistry("alice", alice);
 
-        RegistryHelper.LabelInfo[] memory labels =
-            helper.getLabels(NameCoder.encode("alice.eth"));
+        RegistryHelper.LabelInfo[] memory labels = helper.getLabels(NameCoder.encode("alice.eth"));
 
         // Forward link exists (ethRegistry.getSubregistry("alice") == aliceRegistry)
         // but reverse link is missing (aliceRegistry.getParent() == (address(0), ""))
@@ -360,8 +374,7 @@ contract RegistryHelperTest is V2Fixture {
         vm.prank(alice);
         aliceRegistry.setParent(ethRegistry, "bob");
 
-        RegistryHelper.LabelInfo[] memory labels =
-            helper.getLabels(NameCoder.encode("alice.eth"));
+        RegistryHelper.LabelInfo[] memory labels = helper.getLabels(NameCoder.encode("alice.eth"));
 
         assertFalse(
             labels[0].flags & helper.FLAG_IS_CANONICAL() != 0,
@@ -375,8 +388,7 @@ contract RegistryHelperTest is V2Fixture {
         vm.prank(alice);
         aliceRegistry.setParent(rootRegistry, "alice");
 
-        RegistryHelper.LabelInfo[] memory labels =
-            helper.getLabels(NameCoder.encode("alice.eth"));
+        RegistryHelper.LabelInfo[] memory labels = helper.getLabels(NameCoder.encode("alice.eth"));
 
         assertFalse(
             labels[0].flags & helper.FLAG_IS_CANONICAL() != 0,
@@ -482,7 +494,11 @@ contract RegistryHelperTest is V2Fixture {
         internal
         returns (UserRegistry registry)
     {
-        registry = deployUserRegistry(owner, EACBaseRolesLib.ALL_ROLES, uint256(keccak256(bytes(label))));
+        registry = deployUserRegistry(
+            owner,
+            EACBaseRolesLib.ALL_ROLES,
+            uint256(keccak256(bytes(label)))
+        );
 
         ethRegistry.register(
             label,
