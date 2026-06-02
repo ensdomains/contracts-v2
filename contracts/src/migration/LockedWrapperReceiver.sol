@@ -155,7 +155,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                                     node,
                                     parentRegistry,
                                     md.label,
-                                    md.owner,
                                     _subregistryRoleBitmapFromFuses(fuses)
                                 )
                             )
@@ -218,16 +217,13 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR;
         }
+        roleBitmap |=
+            RegistryRolesLib.ROLE_RENEW |
+            RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_CAN_NAME;
         if (LibMigration.notFrozen(fuses)) {
             roleBitmap |= roleBitmap << 128; // give admin
         }
-        roleBitmap |=
-            RegistryRolesLib.ROLE_RENEW |
-            RegistryRolesLib.ROLE_RENEW_ADMIN |
-            RegistryRolesLib.ROLE_UPGRADE |
-            RegistryRolesLib.ROLE_UPGRADE_ADMIN |
-            RegistryRolesLib.ROLE_CAN_NAME |
-            RegistryRolesLib.ROLE_CAN_NAME_ADMIN;
     }
 
     /// @dev Convert fuses to equivalent token roles.
@@ -242,7 +238,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             roleBitmap |= roleBitmap << 128; // give admin
         }
         if ((fuses & CANNOT_TRANSFER) == 0) {
-            roleBitmap |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+            roleBitmap |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN; // no user
         }
     }
 }

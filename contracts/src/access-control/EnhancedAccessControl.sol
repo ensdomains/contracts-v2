@@ -327,13 +327,13 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
         if (isGrant) {
             // Check for overflow
-            if (_hasZeroNybbles(~(roleMask & _roleCount[resource]))) {
+            if (EACBaseRolesLib.hasZeroNybbles(~(roleMask & _roleCount[resource]))) {
                 revert EACMaxAssignees(resource, roleBitmap);
             }
             _roleCount[resource] += roleBitmap;
         } else {
             // Check for underflow
-            if (_hasZeroNybbles(~(roleMask & ~_roleCount[resource]))) {
+            if (EACBaseRolesLib.hasZeroNybbles(~(roleMask & ~_roleCount[resource]))) {
                 revert EACMinAssignees(resource, roleBitmap);
             }
             _roleCount[resource] -= roleBitmap;
@@ -424,9 +424,10 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
-        uint256 roleBitmap =
-            (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
-        return (roleBitmap << 128) | roleBitmap;
+        return
+            EACBaseRolesLib.withAdminRolesApplied(
+                _roles[resource][account] | _roles[ROOT_RESOURCE][account]
+            );
     }
 
     /// @dev Returns the revokable roles for `account` within `resource`.
@@ -442,9 +443,10 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
-        uint256 roleBitmap =
-            (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
-        return (roleBitmap << 128) | roleBitmap;
+        return
+            EACBaseRolesLib.withAdminRolesApplied(
+                _roles[resource][account] | _roles[ROOT_RESOURCE][account]
+            );
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -469,20 +471,5 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         _checkRoleBitmap(roleBitmap);
         roleMask = roleBitmap | (roleBitmap << 1);
         roleMask |= roleMask << 2;
-    }
-
-    /// @dev Checks if the given value has any zero nybbles.
-    /// @param value The value to check.
-    /// @return `true` if the value has any zero nybbles, `false` otherwise.
-    function _hasZeroNybbles(uint256 value) private pure returns (bool) {
-        // Algorithm source: https://graphics.stanford.edu/~seander/bithacks.html#ZeroInWord
-        uint256 hasZeroNybbles;
-        unchecked {
-            hasZeroNybbles =
-                (value - 0x1111111111111111111111111111111111111111111111111111111111111111) &
-                ~value &
-                0x8888888888888888888888888888888888888888888888888888888888888888;
-        }
-        return hasZeroNybbles != 0;
     }
 }

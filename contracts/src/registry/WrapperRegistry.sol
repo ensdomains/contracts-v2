@@ -9,11 +9,13 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {HCAContext} from "../hca/HCAContext.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
@@ -50,15 +52,6 @@ contract WrapperRegistry is
 
     /// @dev The namehash of this registry.
     bytes32 internal _node;
-
-    ////////////////////////////////////////////////////////////////////////
-    // Errors
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Upgrade target is not approved for `WrapperRegistry` proxies.
-    /// @dev Error selector: `0xf74d7dd0`
-    /// @param implementation The disallowed implementation address.
-    error UpgradeTargetNotApproved(address implementation);
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -126,7 +119,6 @@ contract WrapperRegistry is
         bytes32 node,
         IRegistry parentRegistry,
         string calldata childLabel,
-        address rootAccount,
         uint256 roleBitmap
     )
         public
@@ -137,8 +129,9 @@ contract WrapperRegistry is
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
         emit RegistryCreated();
-        emit ParentUpdated(parentRegistry, childLabel, rootAccount);
-        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
+        address virtualOwner = address(_parentRegistry);
+        emit ParentUpdated(parentRegistry, childLabel, virtualOwner);
+        _grantRoles(ROOT_RESOURCE, roleBitmap, virtualOwner, false);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -213,6 +206,17 @@ contract WrapperRegistry is
         return _node;
     }
 
+    /// @inheritdoc PermissionedRegistry
+    /// @dev Respect virtual owner.
+    function isContractNamer(address namer)
+        public
+        view
+        override(IContractNamer, PermissionedRegistry)
+        returns (bool)
+    {
+        return hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, _remapVirtualOwner(namer));
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
@@ -232,6 +236,30 @@ contract WrapperRegistry is
         returns (uint256 tokenId)
     {
         return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
+    }
+
+    /// @inheritdoc HCAContext
+    /// @dev Respect virtual owner.
+    function _msgSender() internal view override returns (address) {
+        return _remapVirtualOwner(super._msgSender());
+    }
+
+    /// @inheritdoc PermissionedRegistry
+    /// @dev Override for token-dependent logic:
+    ///
+    /// Root admin roles cannot be granted.
+    ///
+    /// @param resource The resource to get settable roles for.
+    /// @param account The account to get settable roles for.
+    /// @return The settable roles.
+    function _getSettableRoles(uint256 resource, address account)
+        internal
+        view
+        override
+        returns (uint256)
+    {
+        uint256 roleBitmap = super._getSettableRoles(resource, account);
+        return resource == ROOT_RESOURCE ? roleBitmap >> 128 : roleBitmap;
     }
 
     /// @dev Requires `ROLE_UPGRADE` and approval for the target implementation.
@@ -265,5 +293,14 @@ contract WrapperRegistry is
         // and reserving the label would lock it forever; positive expiry on either
         // side marks a completed migration.
         return LibMigration.isEmancipatedChild(fuses) && _REGISTRY_V1.owner(node) != address(0);
+    }
+
+    /// @dev If `account` is the token owner, return the virtual owner. 
+    function _remapVirtualOwner(address account) internal view returns (address) {
+        address parent = address(_parentRegistry); // virtual owner
+        return
+            parent != address(0) && account == PermissionedRegistry(parent).findOwner(_childLabel)
+                ? parent
+                : account;
     }
 }

@@ -11,6 +11,10 @@ pragma solidity ^0.8.20;
 /// just the 32 admin role slots. Used to extract which admin roles an account holds.
 ///
 library EACBaseRolesLib {
+    ////////////////////////////////////////////////////////////////////////
+    // Constants
+    ////////////////////////////////////////////////////////////////////////
+
     /// @dev Mask with bit 0 set in every nybble — represents one unit per role slot across all 64 slots.
     uint256 internal constant ALL_ROLES =
         0x1111111111111111111111111111111111111111111111111111111111111111;
@@ -18,4 +22,35 @@ library EACBaseRolesLib {
     /// @dev Mask selecting only the 32 admin role nybbles (upper 128 bits).
     uint256 internal constant ADMIN_ROLES =
         0x1111111111111111111111111111111100000000000000000000000000000000;
+
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Admin roles imply their corresponding regular roles.
+    function withAdminRolesApplied(uint256 roleBitmap) internal pure returns (uint256) {
+        roleBitmap >>= 128;
+        return (roleBitmap << 128) | roleBitmap;
+    }
+
+    /// @dev Derive roles bitmap from assignee counts.
+    /// @param counts Packed role counts (0-15) as `uint4x64`.
+    function fromCounts(uint256 counts) internal pure returns (uint256) {
+        return (counts | (counts >> 1) | (counts >> 2) | (counts >> 3)) & ALL_ROLES;
+    }
+
+    /// @dev Checks if the given value has any zero nybbles.
+    /// @param value The value to check.
+    /// @return `true` if the value has any zero nybbles, `false` otherwise.
+    function hasZeroNybbles(uint256 value) internal pure returns (bool) {
+        // Algorithm source: https://graphics.stanford.edu/~seander/bithacks.html#ZeroInWord
+        uint256 zeroNybbles;
+        unchecked {
+            zeroNybbles =
+                (value - 0x1111111111111111111111111111111111111111111111111111111111111111) &
+                ~value &
+                0x8888888888888888888888888888888888888888888888888888888888888888;
+        }
+        return zeroNybbles != 0;
+    }
 }
