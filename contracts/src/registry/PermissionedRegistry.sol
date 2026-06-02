@@ -279,7 +279,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IContractNamer
-    function isContractNamer(address namer) public view returns (bool) {
+    function isContractNamer(address namer) public view virtual returns (bool) {
         return hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, namer);
     }
 
