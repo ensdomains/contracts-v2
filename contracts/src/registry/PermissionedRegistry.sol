@@ -37,8 +37,6 @@ import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 ///
 /// Names are treated as `AVAILABLE` once `block.timestamp >= expiry`.
 ///
-/// URI renderer address is embedded into URI data as `abi.encodePacked(uint8(1), address)`.
-///
 /// State diagram:
 ///
 ///                      register()

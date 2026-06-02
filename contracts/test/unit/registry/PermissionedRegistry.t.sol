@@ -1473,6 +1473,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.revokeRoles(tokenId, role1, testOwner);
     }
 
+    // scenerio: emanicipation concern: root can revoke token
+    function test_rootRevokeToken(uint8 role) external {
+        vm.assume(role >= 32 && role < 64);
+        testRoles = 1 << (role << 2); // every admin role
+        uint256 tokenId = this._register();
+        assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Internals
     ////////////////////////////////////////////////////////////////////////

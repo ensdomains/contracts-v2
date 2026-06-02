@@ -6,13 +6,15 @@ import {IReverseRegistrar} from "@ens/contracts/reverseRegistrar/IReverseRegistr
 import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
+import {IContractNamer} from "./interfaces/IContractNamer.sol";
 import {AccountNamerLib} from "./libraries/AccountNamerLib.sol";
 
 /// @title Reverse Registrar HCA Adapter
 /// @notice HCA-aware forwarder for v1 `addr.reverse` registrar updates.
 /// @dev The adapter must be configured as a controller on the reverse registrar.
-contract ReverseRegistrarHCAAdapter is HCAContext {
+contract ReverseRegistrarHCAAdapter is DelegatedContractNamer, HCAContext {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -27,8 +29,14 @@ contract ReverseRegistrarHCAAdapter is HCAContext {
     /// @notice Initializes the adapter with its HCA context and target registrar.
     /// @param hcaFactory The HCA factory used to resolve HCA callers to their owners.
     /// @param reverseRegistrar The v1 reverse registrar for `addr.reverse`.
-    constructor(IHCAFactoryBasic hcaFactory, IReverseRegistrar reverseRegistrar)
+    /// @param contractNamer Delegated contract namer.
+    constructor(
+        IHCAFactoryBasic hcaFactory,
+        IReverseRegistrar reverseRegistrar,
+        IContractNamer contractNamer
+    )
         HCAEquivalence(hcaFactory)
+        DelegatedContractNamer(contractNamer)
     {
         REVERSE_REGISTRAR = reverseRegistrar;
     }

@@ -916,7 +916,7 @@ export async function setupDevnet({
       await setName("registrar", v2.ETHRegistrar.address);
       await setName("renewer", v2.ETHRenewerV1.address);
       await setName("oracle", v2.StandardRentPriceOracle.address);
-      // BatchRegistrar
+      // await setName("batch.migration", v2.BatchRegistrar.address); // this is only used internally for premigration
       await setName("addr.reverse", shared.ReverseRegistrarHCAAdapter.address);
       await setName(
         "default.reverse",

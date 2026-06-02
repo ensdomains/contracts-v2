@@ -9,7 +9,9 @@ import {HCAContext} from "../hca/HCAContext.sol";
 import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
 import {LibMigration} from "./libraries/LibMigration.sol";
@@ -23,7 +25,7 @@ struct LockedChildren {
 }
 
 /// @notice Migration helper for mixed (ERC-721 and ERC-1155) batch migration using approval.
-contract MigrationHelper is HCAContext {
+contract MigrationHelper is DelegatedContractNamer, HCAContext {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -63,18 +65,20 @@ contract MigrationHelper is HCAContext {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes `MigrationHelper`.
     /// @param hcaFactory The HCA factory to use.
     /// @param rootRegistry The root registry.
     /// @param unlockedController The ENSv2 `UnlockedMigrationController`.
     /// @param lockedController The ENSv2 `LockedMigrationController`.
+    /// @param contractNamer Delegated contract namer.
     constructor(
         IHCAFactoryBasic hcaFactory,
         IRegistry rootRegistry,
         AbstractWrapperReceiver unlockedController,
-        AbstractWrapperReceiver lockedController
+        AbstractWrapperReceiver lockedController,
+        IContractNamer contractNamer
     )
         HCAEquivalence(hcaFactory)
+        DelegatedContractNamer(contractNamer)
     {
         ROOT_REGISTRY = rootRegistry;
         UNLOCKED_CONTROLLER = unlockedController;
