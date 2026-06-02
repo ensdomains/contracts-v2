@@ -127,7 +127,8 @@ contract WrapperRegistry is
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
         emit RegistryCreated();
-        _grantRoles(ROOT_RESOURCE, roleBitmap, address(this), false);
+        // grant to virtual account
+        _grantRoles(ROOT_RESOURCE, roleBitmap, address(_parentRegistry), false);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -226,9 +227,10 @@ contract WrapperRegistry is
     /// @dev If the caller is the token owner, return the virtual owner. 
     function _msgSender() internal view override returns (address) {
         address sender = super._msgSender();
+        address parent = address(_parentRegistry); // virtual account
         return
-            sender == PermissionedRegistry(address(_parentRegistry)).findOwner(_childLabel)
-                ? address(this)
+            sender == PermissionedRegistry(parent).findOwner(_childLabel)
+                ? parent
                 : sender;
     }
 

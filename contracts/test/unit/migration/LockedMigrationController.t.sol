@@ -398,6 +398,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             _computeVerifiableFactoryAddress(address(migrationController), salt);
         uint64 expectedExpiry =
             uint64(baseRegistrar.nameExpires(tokenIdV1)) + premigrationBonusPeriod;
+        address virtualOwner = address(ethRegistry);
         vm.expectEmit();
         emit IERC1155.TransferSingle(
             testOwner,
@@ -414,7 +415,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
             0 /*ROOT_RESOURCE*/,
-            expectedRegistry,
+            virtualOwner,
             0 /*old roles*/,
             RegistryRolesLib.ROLE_UPGRADE |
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
@@ -487,7 +488,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "IWrapperRegistry"
         );
         assertTrue(
-            subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(subregistry)),
+            subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(ethRegistry)),
             "ROLE_REGISTRAR"
         );
         assertEq(
@@ -580,9 +581,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
 
         IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
+        address virtualOwner = address(ethRegistry);
 
         assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "old");
-        uint256 rootRoles = registry.roles(registry.ROOT_RESOURCE(), address(registry));
+        uint256 rootRoles = registry.roles(registry.ROOT_RESOURCE(), virtualOwner);
 
         // owner cannot grant admin
         vm.expectRevert(
@@ -590,7 +592,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
                 registry.ROOT_RESOURCE(),
                 rootRoles,
-                address(registry)
+                virtualOwner
             )
         );
         vm.prank(testOwner);
@@ -603,7 +605,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         // new virtual owner but no roles have changed
         assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), 0, "new");
-        assertEq(registry.roles(registry.ROOT_RESOURCE(), address(registry)), rootRoles, "virtual");
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), virtualOwner), rootRoles, "virtual");
     }
 
     function test_migrate_lockedResolver() external {
@@ -711,9 +713,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "token"
         );
         IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
+        address virtualOwner = address(ethRegistry);
         assertEq(
-            registry.roles(registry.ROOT_RESOURCE(), address(registry)) &
-            EACBaseRolesLib.ADMIN_ROLES,
+            registry.roles(registry.ROOT_RESOURCE(), virtualOwner) & EACBaseRolesLib.ADMIN_ROLES,
             0,
             "registry"
         );
@@ -983,6 +985,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         IWrapperRegistry registry2 =
             IWrapperRegistry(address(ethRegistry.getSubregistry(data2.label)));
+        address virtualOwner = address(ethRegistry);
 
         // the registry itself holds ROLE_REGISTRAR on registry2 by default,
         // so they could otherwise re-register the unwrapped emancipated subname in v2
@@ -990,7 +993,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             registry2.hasRoles(
                 registry2.ROOT_RESOURCE(),
                 RegistryRolesLib.ROLE_REGISTRAR,
-                address(registry2)
+                virtualOwner
             ),
             "testOwner has ROLE_REGISTRAR on registry2"
         );
