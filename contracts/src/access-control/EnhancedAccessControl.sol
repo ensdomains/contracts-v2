@@ -190,9 +190,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (bool)
     {
-        return
-            (_getRoles(ROOT_RESOURCE, account) | _getRoles(resource, account)) & roleBitmap ==
-            roleBitmap;
+        return _getEffectiveRoles(resource, account) & roleBitmap == roleBitmap;
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -426,10 +424,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         returns (uint256)
     {
         account = _getUnderlyingAccount(resource, account);
-        return
-            EACBaseRolesLib.withAdminRolesApplied(
-                _roles[resource][account] | _roles[ROOT_RESOURCE][account]
-            );
+        return EACBaseRolesLib.withAdminRolesApplied(_getEffectiveRoles(resource, account));
     }
 
     /// @dev Returns the revokable roles for `account` within `resource`.
@@ -445,11 +440,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
-        account = _getUnderlyingAccount(resource, account);
-        return
-            EACBaseRolesLib.withAdminRolesApplied(
-                _roles[resource][account] | _roles[ROOT_RESOURCE][account]
-            );
+        return EACBaseRolesLib.withAdminRolesApplied(_getEffectiveRoles(resource, account));
     }
 
     /// @dev Returns the underlying account with permissions.
@@ -469,6 +460,11 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     /// @dev Returns the roles bitmap for an account in a resource.
     function _getRoles(uint256 resource, address account) private view returns (uint256) {
         return _roles[resource][_getUnderlyingAccount(resource, account)];
+    }
+
+    /// @dev Returns the effective roles bitmap for an account.
+    function _getEffectiveRoles(uint256 resource, address account) private view returns (uint256) {
+        return _getRoles(ROOT_RESOURCE, account) | _getRoles(resource, account);
     }
 
     /// @dev Checks if a role bitmap contains only valid role bits.

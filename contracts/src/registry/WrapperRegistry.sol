@@ -213,7 +213,8 @@ contract WrapperRegistry is
         override(IContractNamer, PermissionedRegistry)
         returns (bool)
     {
-        return hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, _remapVirtualOwner(namer));
+        return
+            hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, _getUnderlyingAccount(ROOT_RESOURCE, namer));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -258,7 +259,7 @@ contract WrapperRegistry is
     /// @inheritdoc PermissionedRegistry
     /// @dev Override for token-dependent logic:
     ///
-    /// * if root, remap underlying account.
+    /// * if root and operator is token owner, remap to virtual owner.
     ///
     function _getUnderlyingAccount(uint256 resource, address operator)
         internal
@@ -268,7 +269,13 @@ contract WrapperRegistry is
     {
         account = super._getUnderlyingAccount(resource, operator);
         if (resource == ROOT_RESOURCE) {
-            account = _remapVirtualOwner(account);
+            address parent = address(_parentRegistry); // virtual owner
+            if (
+                parent != address(0) &&
+                account == PermissionedRegistry(parent).findOwner(_childLabel)
+            ) {
+                account = parent;
+            }
         }
     }
 
@@ -303,14 +310,5 @@ contract WrapperRegistry is
         // and reserving the label would lock it forever; positive expiry on either
         // side marks a completed migration.
         return LibMigration.isEmancipatedChild(fuses) && _REGISTRY_V1.owner(node) != address(0);
-    }
-
-    /// @dev If `account` is the token owner, return the virtual owner. 
-    function _remapVirtualOwner(address account) internal view returns (address) {
-        address parent = address(_parentRegistry); // virtual owner
-        return
-            parent != address(0) && account == PermissionedRegistry(parent).findOwner(_childLabel)
-                ? parent
-                : account;
     }
 }

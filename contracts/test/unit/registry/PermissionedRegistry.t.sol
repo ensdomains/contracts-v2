@@ -1240,15 +1240,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256 tokenId = this._register();
         vm.warp(testExpiry);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
-                tokenId + 1, // next
-                testRoles,
-                address(this)
-            )
-        );
-        registry.revokeRoles(tokenId, testRoles, testOwner);
+        assertFalse(registry.revokeRoles(tokenId, testRoles, testOwner));
     }
 
     function test_revokeRoles_whileReserved(uint256) external {
@@ -1256,15 +1248,39 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
         uint256 tokenId = this._reserve();
 
+        assertFalse(registry.revokeRoles(tokenId, roleBitmap, testOwner));
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // EAC + setApprovalForAll()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_setApprovalForAll_roles() external {
+        testRoles = _randomRoleBitmap(true, false);
+        uint256 tokenId = this._register();
+        testRoles >>= 128; // convert to normal
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        vm.prank(user2);
+        registry.grantRoles(tokenId, testRoles, actor);
+        vm.prank(user2);
+        registry.revokeRoles(tokenId, testRoles, actor);
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, false);
+
         vm.expectRevert(
             abi.encodeWithSelector(
-                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
                 tokenId, // same as resource
-                roleBitmap,
-                address(this)
+                testRoles,
+                user2
             )
         );
-        registry.revokeRoles(tokenId, roleBitmap, testOwner);
+        vm.prank(user2);
+        registry.grantRoles(tokenId, testRoles, actor);
     }
 
     ////////////////////////////////////////////////////////////////////////
