@@ -14,7 +14,6 @@ import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol"
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
-import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
@@ -203,17 +202,6 @@ contract WrapperRegistry is
         returns (bytes32)
     {
         return _node;
-    }
-
-    /// @inheritdoc PermissionedRegistry
-    /// @dev Respect virtual owner.
-    function isContractNamer(address namer)
-        public
-        view
-        override(IContractNamer, PermissionedRegistry)
-        returns (bool)
-    {
-        return hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, namer);
     }
 
     ////////////////////////////////////////////////////////////////////////
