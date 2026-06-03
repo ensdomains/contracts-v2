@@ -246,20 +246,20 @@ contract WrapperRegistry is
     /// @inheritdoc PermissionedRegistry
     /// @dev Override for token-dependent logic:
     ///
-    /// * if root and operator is token owner, remap to virtual owner.
+    /// * if root and account is token owner, remap to virtual owner.
     ///
-    function _getRoles(uint256 resource, address operator)
+    function _getRoles(uint256 resource, address account)
         internal
         view
         override
         returns (uint256 roleBitmap)
     {
-        roleBitmap = super._getRoles(resource, operator);
+        roleBitmap = super._getRoles(resource, account);
         if (resource == ROOT_RESOURCE) {
             address parent = address(_parentRegistry); // virtual owner
             if (
                 parent != address(0) &&
-                operator == PermissionedRegistry(parent).findOwner(_childLabel)
+                account == PermissionedRegistry(parent).findOwner(_childLabel)
             ) {
                 roleBitmap = super._getRoles(resource, parent); // replace, instead of OR
             }
