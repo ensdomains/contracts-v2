@@ -248,20 +248,20 @@ contract WrapperRegistry is
     ///
     /// * if root and operator is token owner, remap to virtual owner.
     ///
-    function _checkedRoles(uint256 resource, address operator)
+    function _getRoles(uint256 resource, address operator)
         internal
         view
         override
         returns (uint256 roleBitmap)
     {
-        roleBitmap = super._checkedRoles(resource, operator);
+        roleBitmap = super._getRoles(resource, operator);
         if (resource == ROOT_RESOURCE) {
             address parent = address(_parentRegistry); // virtual owner
             if (
                 parent != address(0) &&
                 operator == PermissionedRegistry(parent).findOwner(_childLabel)
             ) {
-                roleBitmap = super._checkedRoles(resource, parent); // replace, instead of OR
+                roleBitmap = super._getRoles(resource, parent); // replace, instead of OR
             }
         }
     }
