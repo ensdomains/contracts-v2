@@ -261,7 +261,7 @@ contract WrapperRegistry is
                 parent != address(0) &&
                 operator == PermissionedRegistry(parent).findOwner(_childLabel)
             ) {
-                roleBitmap |= super._checkedRoles(resource, parent);
+                roleBitmap = super._checkedRoles(resource, parent); // replace, instead of OR
             }
         }
     }
