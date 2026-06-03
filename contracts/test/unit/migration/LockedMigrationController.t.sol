@@ -583,8 +583,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
         address virtualOwner = address(ethRegistry);
 
-        assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "old");
         uint256 rootRoles = registry.roles(registry.ROOT_RESOURCE(), virtualOwner);
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), rootRoles, "before:owner");
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), 0, "before:friend");
 
         // owner cannot grant admin
         vm.expectRevert(
@@ -592,7 +593,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
                 registry.ROOT_RESOURCE(),
                 rootRoles,
-                virtualOwner
+                testOwner
             )
         );
         vm.prank(testOwner);
@@ -603,8 +604,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.prank(testOwner);
         ethRegistry.safeTransferFrom(testOwner, friend, tokenId, 1, "");
 
-        // new virtual owner but no roles have changed
-        assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), 0, "new");
+        // effective roles have "transferred"
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "after:owner");
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), rootRoles, "after:friend");
+
+        // underlying virtual owner roles are unchanged
         assertEq(registry.roles(registry.ROOT_RESOURCE(), virtualOwner), rootRoles, "virtual");
     }
 

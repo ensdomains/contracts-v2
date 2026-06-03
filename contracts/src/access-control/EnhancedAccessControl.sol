@@ -170,7 +170,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @inheritdoc IEnhancedAccessControl
     function roles(uint256 resource, address account) public view virtual returns (uint256) {
-        return _roles[resource][account];
+        return _getRoles(resource, account);
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -180,7 +180,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @inheritdoc IEnhancedAccessControl
     function hasRootRoles(uint256 roleBitmap, address account) public view virtual returns (bool) {
-        return _roles[ROOT_RESOURCE][account] & roleBitmap == roleBitmap;
+        return _getRoles(ROOT_RESOURCE, account) & roleBitmap == roleBitmap;
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -191,7 +191,8 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         returns (bool)
     {
         return
-            (_roles[ROOT_RESOURCE][account] | _roles[resource][account]) & roleBitmap == roleBitmap;
+            (_getRoles(ROOT_RESOURCE, account) | _getRoles(resource, account)) & roleBitmap ==
+            roleBitmap;
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -424,6 +425,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
+        account = _getUnderlyingAccount(resource, account);
         return
             EACBaseRolesLib.withAdminRolesApplied(
                 _roles[resource][account] | _roles[ROOT_RESOURCE][account]
@@ -443,15 +445,31 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
+        account = _getUnderlyingAccount(resource, account);
         return
             EACBaseRolesLib.withAdminRolesApplied(
                 _roles[resource][account] | _roles[ROOT_RESOURCE][account]
             );
     }
 
+    /// @dev Returns the underlying account with permissions.
+    function _getUnderlyingAccount(uint256 resource, address operator)
+        internal
+        view
+        virtual
+        returns (address)
+    {
+        return operator;
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Private Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Returns the roles bitmap for an account in a resource.
+    function _getRoles(uint256 resource, address account) private view returns (uint256) {
+        return _roles[resource][_getUnderlyingAccount(resource, account)];
+    }
 
     /// @dev Checks if a role bitmap contains only valid role bits.
     /// @param roleBitmap The role bitmap to check.

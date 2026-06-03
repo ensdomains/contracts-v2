@@ -572,34 +572,29 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         returns (uint256)
     {
         uint256 roleBitmap = super._getSettableRoles(resource, account);
-        if (resource == ROOT_RESOURCE) {
-            return roleBitmap;
-        } else if (ownerOf(_constructTokenId(resource, _entry(resource))) == address(0)) {
-            return 0; // available or reserved
-        }
-        return roleBitmap >> 128; // remove admin
+        return resource == ROOT_RESOURCE ? roleBitmap : roleBitmap >> 128;
     }
 
     /// @inheritdoc EnhancedAccessControl
     /// @dev Override for token-dependent logic:
     ///
-    /// Token roles can only be revoked from registered tokens.
+    /// * if token is expired (available or reserved), return null.
+    /// * if caller is approved by token, return token owner.
     ///
-    /// Root roles are unaffected.
-    ///
-    function _getRevokableRoles(uint256 resource, address account)
+    function _getUnderlyingAccount(uint256 resource, address operator)
         internal
         view
+        virtual
         override
-        returns (uint256)
+        returns (address)
     {
-        if (
-            resource != ROOT_RESOURCE &&
-            ownerOf(_constructTokenId(resource, _entry(resource))) == address(0)
-        ) {
-            return 0; // available or reserved
+        if (resource != ROOT_RESOURCE) {
+            address owner = ownerOf(_constructTokenId(resource, _entry(resource)));
+            if (owner == address(0) || isApprovedForAll(owner, operator)) {
+                return owner;
+            }
         }
-        return super._getRevokableRoles(resource, account);
+        return operator;
     }
 
     /// @dev Zeroes version bits in `anyId` to return the canonical storage entry for the name.

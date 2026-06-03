@@ -351,6 +351,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256 tokenId = this._reserve();
         vm.warp(testExpiry);
         testExpiry += testExpiry;
+
         registry.renew(tokenId, testExpiry);
         assertEq(registry.getExpiry(tokenId), testExpiry);
     }

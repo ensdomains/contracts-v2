@@ -9,7 +9,6 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {HCAContext} from "../hca/HCAContext.sol";
 import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
@@ -238,12 +237,6 @@ contract WrapperRegistry is
         return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
     }
 
-    /// @inheritdoc HCAContext
-    /// @dev Respect virtual owner.
-    function _msgSender() internal view override returns (address) {
-        return _remapVirtualOwner(super._msgSender());
-    }
-
     /// @inheritdoc PermissionedRegistry
     /// @dev Override for token-dependent logic:
     ///
@@ -260,6 +253,23 @@ contract WrapperRegistry is
     {
         uint256 roleBitmap = super._getSettableRoles(resource, account);
         return resource == ROOT_RESOURCE ? roleBitmap >> 128 : roleBitmap;
+    }
+
+    /// @inheritdoc PermissionedRegistry
+    /// @dev Override for token-dependent logic:
+    ///
+    /// * if root, remap underlying account.
+    ///
+    function _getUnderlyingAccount(uint256 resource, address operator)
+        internal
+        view
+        override
+        returns (address account)
+    {
+        account = super._getUnderlyingAccount(resource, operator);
+        if (resource == ROOT_RESOURCE) {
+            account = _remapVirtualOwner(account);
+        }
     }
 
     /// @dev Requires `ROLE_UPGRADE` and approval for the target implementation.
