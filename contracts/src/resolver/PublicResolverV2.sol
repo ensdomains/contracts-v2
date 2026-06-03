@@ -13,9 +13,6 @@ import {PubkeyResolver} from "@ens/contracts/resolvers/profiles/PubkeyResolver.s
 import {TextResolver} from "@ens/contracts/resolvers/profiles/TextResolver.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 
-import {HCAContext} from "../hca/HCAContext.sol";
-import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
@@ -33,7 +30,6 @@ contract PublicResolverV2 is
     NameResolver,
     PubkeyResolver,
     TextResolver,
-    HCAContext,
     DelegatedContractNamer
 {
     ////////////////////////////////////////////////////////////////////////
@@ -86,18 +82,14 @@ contract PublicResolverV2 is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Create a WrappedPublicResolver.
-    /// @param hcaFactory The HCA factory.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
     /// @param rootRegistry The ENSv2 Root Registry contract.
     /// @param contractNamer Delegated contract namer.
     constructor(
-        IHCAFactoryBasic hcaFactory,
         INameWrapper nameWrapper,
         IPermissionedRegistry rootRegistry,
         IContractNamer contractNamer
     )
-        HCAEquivalence(hcaFactory)
         DelegatedContractNamer(contractNamer)
     {
         NAME_WRAPPER = nameWrapper;
@@ -134,7 +126,7 @@ contract PublicResolverV2 is
     /// @param operator The account to approve.
     /// @param approved If `true`, approved, otherwise revoked.
     function setApprovalForAll(address operator, bool approved) external {
-        address sender = _msgSender();
+        address sender = msg.sender;
         require(sender != operator, "ERC1155: setting approval status for self");
         _operatorApprovals[sender][operator] = approved;
         emit ApprovalForAll(sender, operator, approved);
@@ -145,7 +137,7 @@ contract PublicResolverV2 is
     /// @param delegate The account to approve.
     /// @param approved If `true`, approved, otherwise revoked.
     function approve(bytes32 node, address delegate, bool approved) external {
-        address sender = _msgSender();
+        address sender = msg.sender;
         require(sender != delegate, "Setting delegate status for self");
         _tokenApprovals[sender][node][delegate] = approved;
         emit Approved(sender, node, delegate, approved);
@@ -195,6 +187,6 @@ contract PublicResolverV2 is
     // solhint-disable private-vars-leading-underscore
     /// @dev Determine if the caller is authorized for `node`.
     function isAuthorised(bytes32 node) internal view override returns (bool) {
-        return canModifyName(node, _msgSender());
+        return canModifyName(node, msg.sender);
     }
 }

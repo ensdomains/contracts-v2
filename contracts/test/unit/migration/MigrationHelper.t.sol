@@ -44,14 +44,12 @@ contract MigrationHelperTest is MigrationControllerFixture {
 
         // locked
         ApprovedUpgradeGate approvedUpgradeGate = new ApprovedUpgradeGate(address(this));
-        PermissionedAddressSet publicResolverSet =
-            new PermissionedAddressSet(hcaFactory, address(this));
+        PermissionedAddressSet publicResolverSet = new PermissionedAddressSet(address(this));
         wrapperRegistryImpl = new WrapperRegistry(
             nameWrapper,
             address(graveyard),
             verifiableFactory,
             address(ensV1Resolver),
-            hcaFactory,
             approvedUpgradeGate,
             labelStore,
             publicResolverSet,
@@ -75,7 +73,6 @@ contract MigrationHelperTest is MigrationControllerFixture {
         );
 
         helper = new MigrationHelper(
-            hcaFactory,
             rootRegistry,
             unlockedController,
             lockedController,

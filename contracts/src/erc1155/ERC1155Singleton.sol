@@ -8,10 +8,9 @@ import {
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {ERC1155Utils} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Utils.sol";
 import {Arrays} from "@openzeppelin/contracts/utils/Arrays.sol";
+import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-
-import {HCAContext} from "../hca/HCAContext.sol";
 
 import {IERC1155Singleton} from "./interfaces/IERC1155Singleton.sol";
 
@@ -24,13 +23,10 @@ import {IERC1155Singleton} from "./interfaces/IERC1155Singleton.sol";
 /// Used by `PermissionedRegistry` to represent domain name ownership as non-divisible tokens.
 /// The registry overrides `ownerOf` to add expiry and version validation on top of raw ownership.
 ///
-/// Inherits `HCAContext` so that `_msgSender()` resolves HCA proxy accounts to their real
-/// owners for approval checks and operator tracking.
-///
 /// @author OpenZeppelin (https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/token/ERC1155/ERC1155.sol)
 /// @dev This contract has been modified from the implementation at the above link.
 abstract contract ERC1155Singleton is
-    HCAContext,
+    Context,
     ERC165,
     IERC1155Singleton,
     IERC1155Errors,

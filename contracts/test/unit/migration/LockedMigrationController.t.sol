@@ -36,7 +36,6 @@ import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegis
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
-import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {WrapperRegistry, IWrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
@@ -57,8 +56,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         approvedUpgradeGate = new ApprovedUpgradeGate(address(this));
 
-        publicResolverSet = new PermissionedAddressSet(hcaFactory, address(this));
-        publicResolver = new PublicResolverV2(hcaFactory, nameWrapper, rootRegistry, contractNamer);
+        publicResolverSet = new PermissionedAddressSet(address(this));
+        publicResolver = new PublicResolverV2(nameWrapper, rootRegistry, contractNamer);
 
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
@@ -67,7 +66,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(graveyard),
             verifiableFactory,
             address(ensV1Resolver),
-            hcaFactory,
             approvedUpgradeGate,
             labelStore,
             publicResolverSet,
@@ -1141,7 +1139,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 address(graveyard),
                 verifiableFactory,
                 address(ensV1Resolver),
-                hcaFactory,
                 approvedUpgradeGate,
                 labelStore,
                 publicResolverSet,
@@ -1158,7 +1155,6 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
         address graveyard,
         IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
-        IHCAFactoryBasic hcaFactory,
         ApprovedUpgradeGate upgradeGate,
         ILabelStore labelStore,
         IAddressSet publicResolverSet,
@@ -1170,7 +1166,6 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
             graveyard,
             verifiableFactory,
             ensV1Resolver,
-            hcaFactory,
             upgradeGate,
             labelStore,
             publicResolverSet,

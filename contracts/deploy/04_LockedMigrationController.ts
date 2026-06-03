@@ -58,7 +58,6 @@ export default execute(
       "NameWrapper",
       "Graveyard",
       "ETHRegistry",
-      "setup:HCAFactory",
       "VerifiableFactory",
       "WrapperRegistryImpl",
       "PublicResolverSet",

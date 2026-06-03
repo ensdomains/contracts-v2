@@ -5,9 +5,6 @@ import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 
-import {HCAContext} from "../hca/HCAContext.sol";
-import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
@@ -25,7 +22,7 @@ struct LockedChildren {
 }
 
 /// @notice Migration helper for mixed (ERC-721 and ERC-1155) batch migration using approval.
-contract MigrationHelper is DelegatedContractNamer, HCAContext {
+contract MigrationHelper is DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -65,19 +62,16 @@ contract MigrationHelper is DelegatedContractNamer, HCAContext {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param hcaFactory The HCA factory to use.
     /// @param rootRegistry The root registry.
     /// @param unlockedController The ENSv2 `UnlockedMigrationController`.
     /// @param lockedController The ENSv2 `LockedMigrationController`.
     /// @param contractNamer Delegated contract namer.
     constructor(
-        IHCAFactoryBasic hcaFactory,
         IRegistry rootRegistry,
         AbstractWrapperReceiver unlockedController,
         AbstractWrapperReceiver lockedController,
         IContractNamer contractNamer
     )
-        HCAEquivalence(hcaFactory)
         DelegatedContractNamer(contractNamer)
     {
         ROOT_REGISTRY = rootRegistry;
@@ -105,7 +99,7 @@ contract MigrationHelper is DelegatedContractNamer, HCAContext {
     )
         external
     {
-        address sender = _msgSender();
+        address sender = msg.sender;
         for (uint256 i; i < unwrapped.length; ++i) {
             LibMigration.Data calldata md = unwrapped[i];
             uint256 tokenId = uint256(keccak256(bytes(md.label)));

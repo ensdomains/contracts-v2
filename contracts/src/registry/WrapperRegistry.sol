@@ -7,10 +7,9 @@ import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthoriz
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {HCAContext} from "../hca/HCAContext.sol";
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
@@ -61,7 +60,6 @@ contract WrapperRegistry is
     /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.
-    /// @param hcaFactory The HCA factory.
     /// @param upgradeGate The upgrade target allowlist.
     /// @param labelStore The shared label database.
     /// @param publicResolverSet The approved list of `PublicResolver` contracts.
@@ -72,7 +70,6 @@ contract WrapperRegistry is
         address graveyard,
         IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
-        IHCAFactoryBasic hcaFactory,
         ApprovedUpgradeGate upgradeGate,
         ILabelStore labelStore,
         IAddressSet publicResolverSet,
@@ -80,7 +77,6 @@ contract WrapperRegistry is
         address namer
     )
         PermissionedRegistry(
-            hcaFactory,
             labelStore,
             namer,
             RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN
@@ -238,7 +234,7 @@ contract WrapperRegistry is
         return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
     }
 
-    /// @inheritdoc HCAContext
+    /// @inheritdoc Context
     /// @dev Respect virtual owner.
     function _msgSender() internal view override returns (address) {
         return _remapVirtualOwner(super._msgSender());

@@ -3,9 +3,8 @@
 
 pragma solidity ^0.8.20;
 
+import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
-
-import {HCAContext} from "../hca/HCAContext.sol";
 
 import {IEnhancedAccessControl} from "./interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "./libraries/EACBaseRolesLib.sol";
@@ -47,7 +46,7 @@ import {EACBaseRolesLib} from "./libraries/EACBaseRolesLib.sol";
 /// The same nybble-per-role layout is used for assignee counting: each nybble in the count
 /// bitmap tracks the number of accounts holding that role within a resource (4 bits = max 15).
 ///
-abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessControl {
+abstract contract EnhancedAccessControl is Context, ERC165, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////

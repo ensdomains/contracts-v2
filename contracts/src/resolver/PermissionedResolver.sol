@@ -27,10 +27,6 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
 import {InvalidOwner} from "../CommonErrors.sol";
-import {HCAContext} from "../hca/HCAContext.sol";
-import {HCAContextUpgradeable} from "../hca/HCAContextUpgradeable.sol";
-import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
 import {IPermissionedResolver} from "./interfaces/IPermissionedResolver.sol";
@@ -93,7 +89,7 @@ import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib
 ///
 contract PermissionedResolver is
     IPermissionedResolver,
-    HCAContextUpgradeable,
+    ContextUpgradeable,
     UUPSUpgradeable,
     EnhancedAccessControl,
     IERC7996,
@@ -199,9 +195,8 @@ contract PermissionedResolver is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param hcaFactory The HCA factory.
     /// @param namer The implementation namer.
-    constructor(IHCAFactoryBasic hcaFactory, address namer) HCAEquivalence(hcaFactory) {
+    constructor(address namer) {
         _grantRoles(
             ROOT_RESOURCE,
             PermissionedResolverLib.ROLE_CAN_NAME | PermissionedResolverLib.ROLE_CAN_NAME_ADMIN,
@@ -762,18 +757,19 @@ contract PermissionedResolver is
         //
     }
 
-    /// @dev HCA-compatible `_msgSender()`.
+    /// @dev Default behavior.
+    ///      Needed to resolve Context/ContextUpgradable inheritance.
     function _msgSender()
         internal
         view
         virtual
-        override(HCAContext, HCAContextUpgradeable)
+        override(Context, ContextUpgradeable)
         returns (address)
     {
-        return HCAContextUpgradeable._msgSender();
+        return super._msgSender();
     }
 
-    /// @dev Returns the original `msg.data`.
+    /// @dev Default behavior.
     ///      Needed to resolve Context/ContextUpgradable inheritance.
     function _msgData()
         internal
@@ -785,7 +781,7 @@ contract PermissionedResolver is
         return msg.data;
     }
 
-    /// @dev Returns 0.
+    /// @dev Default behavior.
     ///      Needed to resolve Context/ContextUpgradable inheritance.
     function _contextSuffixLength()
         internal

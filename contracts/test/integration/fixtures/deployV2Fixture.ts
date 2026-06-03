@@ -30,14 +30,12 @@ export async function deployV2Fixture(
     "ContractNamer",
     contractNamerProxy.address,
   );
-  const hcaFactory = await network.viem.deployContract("MockHCAFactoryBasic");
   const labelStore = await network.viem.deployContract("LabelStore", [
     contractNamer.address,
   ]);
   const rootRegistry = await network.viem.deployContract(
     "PermissionedRegistry",
     [
-      hcaFactory.address,
       labelStore.address,
       walletClient.account.address,
       DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
@@ -46,7 +44,6 @@ export async function deployV2Fixture(
   const ethRegistry = await network.viem.deployContract(
     "PermissionedRegistry",
     [
-      hcaFactory.address,
       labelStore.address,
       walletClient.account.address,
       DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
@@ -80,14 +77,13 @@ export async function deployV2Fixture(
     await network.viem.deployContract("VerifiableFactory");
   const PermissionedResolverImpl = await network.viem.deployContract(
     "PermissionedResolver",
-    [hcaFactory.address, contractNamer.address],
+    [contractNamer.address],
   );
   return {
     network,
     publicClient,
     walletClient,
     contractNamer,
-    hcaFactory,
     labelStore,
     rootRegistry,
     ethRegistry,
@@ -147,12 +143,7 @@ export async function deployV2Fixture(
           // registry does not exist, create it
           const registry = await network.viem.deployContract(
             "PermissionedRegistry",
-            [
-              hcaFactory.address,
-              labelStore.address,
-              walletClient.account.address,
-              roles,
-            ],
+            [labelStore.address, walletClient.account.address, roles],
           );
           registryAddress = registry.address;
           if (exists) {

@@ -3,12 +3,8 @@ pragma solidity >=0.8.13;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-import {HCAContext} from "../hca/HCAContext.sol";
-import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
@@ -16,7 +12,7 @@ import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
 /// @dev Abstract registrar implementation shared between `ETHRegistrar` and `ETHRenewerV1`.
-abstract contract AbstractETHRegistrar is Ownable, HCAContext, ERC165, IETHRenewer {
+abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Constants & Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -50,19 +46,16 @@ abstract contract AbstractETHRegistrar is Ownable, HCAContext, ERC165, IETHRenew
     ////////////////////////////////////////////////////////////////////////
 
     /// @param owner_ Contract owner.
-    /// @param hcaFactory HCA factory.
     /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.
     /// @param beneficiary Address that receives payments.
     /// @param oracle Initial oracle for registration and renewal costs.
     constructor(
         address owner_,
-        IHCAFactoryBasic hcaFactory,
         IPermissionedRegistry ethRegistry,
         address beneficiary,
         IRentPriceOracle oracle
     )
         Ownable(owner_)
-        HCAEquivalence(hcaFactory)
     {
         ETH_REGISTRY = ethRegistry;
         BENEFICIARY = beneficiary;
@@ -94,7 +87,7 @@ abstract contract AbstractETHRegistrar is Ownable, HCAContext, ERC165, IETHRenew
         IPermissionedRegistry.State memory state = _requireRenewable(label, duration); // reverts if not
         uint64 newExpiry = state.expiry + duration; // reverts if overflow
         uint256 amount = rentPriceOracle.getRenewPrice(label, state.expiry, duration, paymentToken); // reverts if invalid
-        SafeERC20.safeTransferFrom(paymentToken, _msgSender(), BENEFICIARY, amount); // reverts if payment failed
+        SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, amount); // reverts if payment failed
         ETH_REGISTRY.renew(state.tokenId, newExpiry);
         _onRenew(label, duration);
         emit NameRenewed(state.tokenId, label, duration, newExpiry, paymentToken, referrer, amount);
@@ -147,10 +140,5 @@ abstract contract AbstractETHRegistrar is Ownable, HCAContext, ERC165, IETHRenew
         if (duration < MIN_RENEW_DURATION) {
             revert DurationTooShort(duration, MIN_RENEW_DURATION);
         }
-    }
-
-    /// @inheritdoc HCAContext
-    function _msgSender() internal view override(Context, HCAContext) returns (address) {
-        return super._msgSender();
     }
 }

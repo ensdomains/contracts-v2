@@ -5,9 +5,6 @@ export default execute(
     const nameWrapper =
       get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
-    const hcaFactory =
-      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
-
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
@@ -17,21 +14,11 @@ export default execute(
     await deploy("PublicResolverV2", {
       account: deployer,
       artifact: artifacts.PublicResolverV2,
-      args: [
-        hcaFactory.address,
-        nameWrapper.address,
-        rootRegistry.address,
-        contractNamer.address,
-      ],
+      args: [nameWrapper.address, rootRegistry.address, contractNamer.address],
     });
   },
   {
     tags: ["PublicResolverV2", "v2"],
-    dependencies: [
-      "NameWrapper",
-      "HCAFactory",
-      "RootRegistry",
-      "ContractNamer",
-    ],
+    dependencies: ["NameWrapper", "RootRegistry", "ContractNamer"],
   },
 );

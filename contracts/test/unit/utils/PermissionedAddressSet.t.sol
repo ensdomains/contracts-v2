@@ -5,18 +5,15 @@ import {Test} from "forge-std/Test.sol";
 
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {PermissionedAddressSet, ROLE_APPROVE} from "~src/utils/PermissionedAddressSet.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 contract PermissionedAddressSetTest is Test {
-    MockHCAFactoryBasic hcaFactory;
     PermissionedAddressSet set;
 
     address testAddr = makeAddr("something");
     address friend = makeAddr("anotherAdmin");
 
     function setUp() external {
-        hcaFactory = new MockHCAFactoryBasic();
-        set = new PermissionedAddressSet(hcaFactory, address(this));
+        set = new PermissionedAddressSet(address(this));
     }
 
     function test_approve_notAuthorized() external {

@@ -7,8 +7,6 @@ import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
-import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
@@ -108,18 +106,10 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param hcaFactory The HCA factory to use.
     /// @param labelStore The shared label database.
     /// @param rootAccount Account granted root roles.
     /// @param roleBitmap The role bitmap granted to `rootAccount`.
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        ILabelStore labelStore,
-        address rootAccount,
-        uint256 roleBitmap
-    )
-        HCAEquivalence(hcaFactory)
-    {
+    constructor(ILabelStore labelStore, address rootAccount, uint256 roleBitmap) {
         emit RegistryCreated();
         LABEL_STORE = labelStore;
         _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
