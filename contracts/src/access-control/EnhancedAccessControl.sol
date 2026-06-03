@@ -458,8 +458,12 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Returns the roles bitmap for an account in a resource.
-    function _getRoles(uint256 resource, address account) private view returns (uint256) {
-        return _roles[resource][_getUnderlyingAccount(resource, account)];
+    function _getRoles(uint256 resource, address account) private view returns (uint256 roleBitmap) {
+        roleBitmap = _roles[resource][account];
+        address underlying = _getUnderlyingAccount(resource, account);
+        if (underlying != address(0) && underlying != account) {
+            roleBitmap |= _roles[resource][underlying];
+        }
     }
 
     /// @dev Returns the effective roles bitmap for an account.

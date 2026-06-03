@@ -1283,6 +1283,27 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.grantRoles(tokenId, testRoles, actor);
     }
 
+    function test_setApprovalForAll_blended() external {
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+        uint256 tokenId = this._register();
+
+        // user2 has approved roles
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        // user2 also has root roles
+        registry.grantRootRoles(RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN, user2);
+
+        assertTrue(
+            registry.hasRoles(
+                tokenId,
+                RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
+                RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN,
+                user2
+            )
+        );
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // IContractNamer
     ////////////////////////////////////////////////////////////////////////
