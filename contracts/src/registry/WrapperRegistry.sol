@@ -213,8 +213,7 @@ contract WrapperRegistry is
         override(IContractNamer, PermissionedRegistry)
         returns (bool)
     {
-        return
-            hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, _getUnderlyingAccount(ROOT_RESOURCE, namer));
+        return hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, _remapVirtualOwner(namer));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -261,20 +260,17 @@ contract WrapperRegistry is
     ///
     /// * if root and operator is token owner, remap to virtual owner.
     ///
-    function _getUnderlyingAccount(uint256 resource, address operator)
+    function _checkedRoles(uint256 resource, address operator)
         internal
         view
         override
-        returns (address account)
+        returns (uint256 roleBitmap)
     {
-        account = super._getUnderlyingAccount(resource, operator);
+        roleBitmap = super._checkedRoles(resource, operator);
         if (resource == ROOT_RESOURCE) {
-            address parent = address(_parentRegistry); // virtual owner
-            if (
-                parent != address(0) &&
-                account == PermissionedRegistry(parent).findOwner(_childLabel)
-            ) {
-                account = parent;
+            address virtualOwner = _remapVirtualOwner(operator);
+            if (virtualOwner != operator) {
+                roleBitmap |= super._checkedRoles(resource, virtualOwner);
             }
         }
     }
@@ -310,5 +306,14 @@ contract WrapperRegistry is
         // and reserving the label would lock it forever; positive expiry on either
         // side marks a completed migration.
         return LibMigration.isEmancipatedChild(fuses) && _REGISTRY_V1.owner(node) != address(0);
+    }
+
+    /// @dev If `account` is the token owner, return the virtual owner. 
+    function _remapVirtualOwner(address account) internal view returns (address) {
+        address parent = address(_parentRegistry); // virtual owner
+        return
+            parent != address(0) && account == PermissionedRegistry(parent).findOwner(_childLabel)
+                ? parent
+                : account;
     }
 }

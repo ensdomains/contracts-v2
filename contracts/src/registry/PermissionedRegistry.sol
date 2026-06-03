@@ -581,20 +581,20 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// * if token is expired (available or reserved), return null.
     /// * if caller is approved by token, return token owner.
     ///
-    function _getUnderlyingAccount(uint256 resource, address operator)
+    function _checkedRoles(uint256 resource, address operator)
         internal
         view
         virtual
         override
-        returns (address)
+        returns (uint256 roleBitmap)
     {
+        roleBitmap = super._checkedRoles(resource, operator);
         if (resource != ROOT_RESOURCE) {
             address owner = ownerOf(_constructTokenId(resource, _entry(resource)));
-            if (owner == address(0) || isApprovedForAll(owner, operator)) {
-                return owner;
+            if (owner != address(0) && isApprovedForAll(owner, operator)) {
+                roleBitmap |= super._checkedRoles(resource, owner);
             }
         }
-        return operator;
     }
 
     /// @dev Zeroes version bits in `anyId` to return the canonical storage entry for the name.

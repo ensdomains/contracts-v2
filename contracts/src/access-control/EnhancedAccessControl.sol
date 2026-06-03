@@ -170,7 +170,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @inheritdoc IEnhancedAccessControl
     function roles(uint256 resource, address account) public view virtual returns (uint256) {
-        return _getRoles(resource, account);
+        return _checkedRoles(resource, account);
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -180,7 +180,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @inheritdoc IEnhancedAccessControl
     function hasRootRoles(uint256 roleBitmap, address account) public view virtual returns (bool) {
-        return _getRoles(ROOT_RESOURCE, account) & roleBitmap == roleBitmap;
+        return _checkedRoles(ROOT_RESOURCE, account) & roleBitmap == roleBitmap;
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -190,7 +190,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (bool)
     {
-        return _getEffectiveRoles(resource, account) & roleBitmap == roleBitmap;
+        return _effectiveRoles(resource, account) & roleBitmap == roleBitmap;
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -423,8 +423,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
-        account = _getUnderlyingAccount(resource, account);
-        return EACBaseRolesLib.withAdminRolesApplied(_getEffectiveRoles(resource, account));
+        return EACBaseRolesLib.withAdminRolesApplied(_effectiveRoles(resource, account));
     }
 
     /// @dev Returns the revokable roles for `account` within `resource`.
@@ -440,35 +439,26 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
-        return EACBaseRolesLib.withAdminRolesApplied(_getEffectiveRoles(resource, account));
+        return EACBaseRolesLib.withAdminRolesApplied(_effectiveRoles(resource, account));
     }
 
-    /// @dev Returns the underlying account with permissions.
-    function _getUnderlyingAccount(uint256 resource, address operator)
+    /// @dev Returns the effective roles bitmap for an account.
+    function _checkedRoles(uint256 resource, address account)
         internal
         view
         virtual
-        returns (address)
+        returns (uint256)
     {
-        return operator;
+        return _roles[resource][account];
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Private Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Returns the roles bitmap for an account in a resource.
-    function _getRoles(uint256 resource, address account) private view returns (uint256 roleBitmap) {
-        roleBitmap = _roles[resource][account];
-        address underlying = _getUnderlyingAccount(resource, account);
-        if (underlying != address(0) && underlying != account) {
-            roleBitmap |= _roles[resource][underlying];
-        }
-    }
-
     /// @dev Returns the effective roles bitmap for an account.
-    function _getEffectiveRoles(uint256 resource, address account) private view returns (uint256) {
-        return _getRoles(ROOT_RESOURCE, account) | _getRoles(resource, account);
+    function _effectiveRoles(uint256 resource, address account) private view returns (uint256) {
+        return _checkedRoles(ROOT_RESOURCE, account) | _checkedRoles(resource, account);
     }
 
     /// @dev Checks if a role bitmap contains only valid role bits.
