@@ -65,11 +65,15 @@ contract MockERC20Blacklist is MockERC20 {
     }
 
     function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
-        if (isBlacklisted[from])
-            revert Blacklisted(from);
-        if (isBlacklisted[to])
-            revert Blacklisted(to);
+        _checkBlacklist(from);
+        _checkBlacklist(to);
         return super.transferFrom(from, to, amount);
+    }
+
+    function _checkBlacklist(address addr) internal pure {
+        if (isBlacklisted[addr]) {
+            revert Blacklisted(addr);
+        }
     }
 }
 
@@ -95,12 +99,6 @@ contract MockERC20VoidReturn is MockERC20 {
 
 
 contract MockERC20FalseReturn is MockERC20 {
-    ////////////////////////////////////////////////////////////////////////
-    // Storage
-    ////////////////////////////////////////////////////////////////////////
-
-    bool public shouldFail;
-
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
