@@ -70,7 +70,7 @@ contract MockERC20Blacklist is MockERC20 {
         return super.transferFrom(from, to, amount);
     }
 
-    function _checkBlacklist(address addr) internal pure {
+    function _checkBlacklist(address addr) internal view {
         if (isBlacklisted[addr]) {
             revert Blacklisted(addr);
         }
