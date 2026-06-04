@@ -1242,10 +1242,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // EAC + setApprovalForAll()
+    // EAC Override: setApprovalForAll()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_setApprovalForAll_roles() external {
+    function test_setApprovalForAll_roles(uint256) external {
         testRoles = _randomRoleBitmap(true, false);
         uint256 tokenId = this._register();
         testRoles >>= 128; // convert to normal
@@ -1257,6 +1257,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.grantRoles(tokenId, testRoles, actor);
         vm.prank(user2);
         registry.revokeRoles(tokenId, testRoles, actor);
+        assertEq(registry.roles(tokenId, actor), 0);
 
         vm.prank(testOwner);
         registry.setApprovalForAll(user2, false);
@@ -1273,7 +1274,30 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.grantRoles(tokenId, testRoles, actor);
     }
 
-    function test_setApprovalForAll_blended() external {
+    function test_setApprovalForAll_revokeRoles() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        uint256 tokenId = this._register();
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        assertEq(registry.roles(tokenId, testOwner), testRoles, "before:owner");
+        assertEq(registry.roles(tokenId, user2), testRoles, "before:approved");
+
+        vm.prank(user2);
+        assertFalse(registry.revokeRoles(tokenId, testRoles, user2));
+
+        vm.prank(user2);
+        assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
+
+        assertEq(registry.roles(tokenId, testOwner), 0, "after:owner");
+        assertEq(registry.roles(tokenId, user2), 0, "after:approved");
+
+        (uint256 counts, ) = registry.getAssigneeCount(tokenId, testRoles);
+        assertEq(counts, 0);
+    }
+
+    function test_setApprovalForAll_blendedRoles() external {
         testRoles = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
         uint256 tokenId = this._register();
 
@@ -1292,6 +1316,50 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
                 user2
             )
         );
+    }
+
+    function test_setApprovalForAll_setResolver() external {
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
+        uint256 tokenId = this._register();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                tokenId, // same as resource
+                testRoles,
+                user2
+            )
+        );
+        vm.prank(user2);
+        registry.setResolver(tokenId, testResolver);
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        vm.prank(user2);
+        registry.setResolver(tokenId, testResolver);
+    }
+
+    function test_setApprovalForAll_setSubregistry() external {
+        testRoles = RegistryRolesLib.ROLE_SET_SUBREGISTRY;
+        uint256 tokenId = this._register();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                tokenId, // same as resource
+                testRoles,
+                user2
+            )
+        );
+        vm.prank(user2);
+        registry.setSubregistry(tokenId, testRegistry);
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        vm.prank(user2);
+        registry.setSubregistry(tokenId, testRegistry);
     }
 
     ////////////////////////////////////////////////////////////////////////

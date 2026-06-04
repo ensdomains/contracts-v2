@@ -564,7 +564,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_migrate_transferAndReclaim() external {
+    function test_migrate_transferRegistryControl() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes32 node = NameCoder.namehash(name, 0);
         LibMigration.Data memory md = _lockedData(name);
@@ -581,9 +581,13 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
         address virtualOwner = address(ethRegistry);
 
+        vm.prank(testOwner);
+        registry.setApprovalForAll(actor, true);
+
         uint256 rootRoles = registry.roles(registry.ROOT_RESOURCE(), virtualOwner);
         assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), rootRoles, "before:owner");
         assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), 0, "before:friend");
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), actor), 0, "before:actor");
 
         // owner cannot grant admin
         vm.expectRevert(
@@ -605,6 +609,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         // effective roles have "transferred"
         assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "after:owner");
         assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), rootRoles, "after:friend");
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), actor), 0, "after:actor");
 
         // underlying virtual owner roles are unchanged
         assertEq(registry.roles(registry.ROOT_RESOURCE(), virtualOwner), rootRoles, "virtual");
