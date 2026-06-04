@@ -5,8 +5,6 @@ pragma solidity ^0.8.20;
 
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-import {HCAContext} from "../hca/HCAContext.sol";
-
 import {IEnhancedAccessControl} from "./interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "./libraries/EACBaseRolesLib.sol";
 
@@ -47,7 +45,7 @@ import {EACBaseRolesLib} from "./libraries/EACBaseRolesLib.sol";
 /// The same nybble-per-role layout is used for assignee counting: each nybble in the count
 /// bitmap tracks the number of accounts holding that role within a resource (4 bits = max 15).
 ///
-abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessControl {
+abstract contract EnhancedAccessControl is ERC165, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
@@ -79,25 +77,25 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @dev Modifier that checks that sender has the admin roles for all the given roles.
     modifier canGrantRoles(uint256 resource, uint256 roleBitmap) {
-        _checkCanGrantRoles(resource, roleBitmap, _msgSender());
+        _checkCanGrantRoles(resource, roleBitmap, msg.sender);
         _;
     }
 
     /// @dev Modifier that checks that sender has the admin roles for all the given roles and can revoke them.
     modifier canRevokeRoles(uint256 resource, uint256 roleBitmap) {
-        _checkCanRevokeRoles(resource, roleBitmap, _msgSender());
+        _checkCanRevokeRoles(resource, roleBitmap, msg.sender);
         _;
     }
 
     /// @dev Modifier that checks that sender has all the given roles within the given resource or the ROOT_RESOURCE.
     modifier onlyRoles(uint256 resource, uint256 roleBitmap) {
-        _checkRoles(resource, roleBitmap, _msgSender());
+        _checkRoles(resource, roleBitmap, msg.sender);
         _;
     }
 
     /// @dev Modifier that checks that sender has all the given roles within the `ROOT_RESOURCE`.
     modifier onlyRootRoles(uint256 roleBitmap) {
-        _checkRoles(ROOT_RESOURCE, roleBitmap, _msgSender());
+        _checkRoles(ROOT_RESOURCE, roleBitmap, msg.sender);
         _;
     }
 

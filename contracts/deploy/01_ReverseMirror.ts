@@ -26,6 +26,6 @@ export default execute(
   },
   {
     tags: ["ReverseMirror", "v2"],
-    dependencies: ["RootRegistry", "setup:HCAFactory", "ENSV1Resolver"],
+    dependencies: ["RootRegistry", "ENSV1Resolver"],
   },
 );

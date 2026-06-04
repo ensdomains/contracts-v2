@@ -7,7 +7,6 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
@@ -23,12 +22,10 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param hcaFactory The HCA factory.
     /// @param labelStore The shared label database.
     /// @param namer The implementation namer.
-    constructor(IHCAFactoryBasic hcaFactory, ILabelStore labelStore, address namer)
+    constructor(ILabelStore labelStore, address namer)
         PermissionedRegistry(
-            hcaFactory,
             labelStore,
             namer,
             RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN

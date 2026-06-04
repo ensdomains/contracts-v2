@@ -41,7 +41,6 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
 
         ethRenewerV1 = new ETHRenewerV1(
             address(this),
-            hcaFactory,
             ethRegistry,
             beneficiary,
             rentPriceOracle,

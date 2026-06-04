@@ -35,7 +35,6 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
 
         ethRegistrar = new ETHRegistrar(
             address(this),
-            hcaFactory,
             ethRegistry,
             beneficiary,
             rentPriceOracle,
@@ -92,7 +91,6 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         vm.expectRevert(abi.encodeWithSelector(ETHRegistrar.MaxCommitmentAgeTooLow.selector));
         new ETHRegistrar(
             address(this),
-            hcaFactory,
             ethRegistry,
             beneficiary,
             rentPriceOracle,
@@ -107,7 +105,6 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         vm.expectRevert(abi.encodeWithSelector(ETHRegistrar.MaxCommitmentAgeTooLow.selector));
         new ETHRegistrar(
             address(this),
-            hcaFactory,
             ethRegistry,
             beneficiary,
             rentPriceOracle,

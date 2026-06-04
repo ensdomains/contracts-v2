@@ -15,13 +15,11 @@ import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {ContractNamer} from "~src/utils/ContractNamer.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 /// @dev Reusable testing fixture for ENSv2 with a basic ".eth" deployment.
 contract V2Fixture is Test, ERC1155Holder {
     ContractNamer contractNamer;
     VerifiableFactory verifiableFactory;
-    MockHCAFactoryBasic hcaFactory;
     LabelStore labelStore;
     UserRegistry userRegistryImpl;
     PermissionedRegistry rootRegistry;
@@ -73,21 +71,10 @@ contract V2Fixture is Test, ERC1155Holder {
             )
         );
         verifiableFactory = new VerifiableFactory();
-        hcaFactory = new MockHCAFactoryBasic();
         labelStore = new LabelStore(contractNamer);
-        userRegistryImpl = new UserRegistry(hcaFactory, labelStore, address(this));
-        rootRegistry = new PermissionedRegistry(
-            hcaFactory,
-            labelStore,
-            address(this),
-            _rootRegistryRootRoles()
-        );
-        ethRegistry = new PermissionedRegistry(
-            hcaFactory,
-            labelStore,
-            address(this),
-            _ethRegistryRootRoles()
-        );
+        userRegistryImpl = new UserRegistry(labelStore, address(this));
+        rootRegistry = new PermissionedRegistry(labelStore, address(this), _rootRegistryRootRoles());
+        ethRegistry = new PermissionedRegistry(labelStore, address(this), _ethRegistryRootRoles());
         rootRegistry.register(
             "eth",
             address(this),

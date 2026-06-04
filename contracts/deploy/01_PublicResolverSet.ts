@@ -8,13 +8,10 @@ export default execute(
     get,
     namedAccounts: { deployer, owner },
   }) => {
-    const hcaFactory =
-      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
-
     const publicResolverSet = await deploy("PublicResolverSet", {
       account: deployer,
       artifact: artifacts.PermissionedAddressSet,
-      args: [hcaFactory.address, owner],
+      args: [owner],
     });
 
     const publicResolverV1 =
@@ -41,6 +38,6 @@ export default execute(
   },
   {
     tags: ["PublicResolverSet", "v2"],
-    dependencies: ["setup:HCAFactory", "PublicResolver"],
+    dependencies: ["PublicResolver"],
   },
 );

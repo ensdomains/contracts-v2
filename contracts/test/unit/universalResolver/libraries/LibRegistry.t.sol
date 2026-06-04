@@ -10,7 +10,6 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
-import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
@@ -319,13 +318,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
 
     function _createRegistry() internal returns (PermissionedRegistry) {
-        return
-            new PermissionedRegistry(
-                IHCAFactoryBasic(address(0)),
-                labelStore,
-                address(this),
-                EACBaseRolesLib.ALL_ROLES
-            );
+        return new PermissionedRegistry(labelStore, address(this), EACBaseRolesLib.ALL_ROLES);
     }
 
     function _register(

@@ -8,9 +8,6 @@ import {Test} from "forge-std/Test.sol";
 import {EnhancedAccessControl} from "~src/access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
-import {HCAEquivalence} from "~src/hca/HCAEquivalence.sol";
-import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 uint256 constant ROOT_RESOURCE = 0;
 
@@ -54,7 +51,7 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
     address public lastRevokedAccount;
     uint256 public lastRevokedResource;
 
-    constructor(IHCAFactoryBasic hcaFactory) HCAEquivalence(hcaFactory) {
+    constructor() {
         _grantRoles(ROOT_RESOURCE, ALL_ROLES, msg.sender, true);
         lastGrantedCount = 0;
         lastRevokedCount = 0;
@@ -149,15 +146,13 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
 
 contract EnhancedAccessControlTest is Test {
     MockEnhancedAccessControl access;
-    MockHCAFactoryBasic hcaFactory;
     address admin = address(this);
     address user1 = makeAddr("user1");
     address user2 = makeAddr("user2");
     address superuser = makeAddr("superuser");
 
     function setUp() external {
-        hcaFactory = new MockHCAFactoryBasic();
-        access = new MockEnhancedAccessControl(hcaFactory);
+        access = new MockEnhancedAccessControl();
     }
 
     function test_ROOT_RESOURCE() external view {

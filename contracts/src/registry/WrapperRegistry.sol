@@ -9,7 +9,6 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
@@ -59,7 +58,6 @@ contract WrapperRegistry is
     /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.
-    /// @param hcaFactory The HCA factory.
     /// @param upgradeGate The upgrade target allowlist.
     /// @param labelStore The shared label database.
     /// @param publicResolverSet The approved list of `PublicResolver` contracts.
@@ -70,7 +68,6 @@ contract WrapperRegistry is
         address graveyard,
         IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
-        IHCAFactoryBasic hcaFactory,
         ApprovedUpgradeGate upgradeGate,
         ILabelStore labelStore,
         IAddressSet publicResolverSet,
@@ -78,7 +75,6 @@ contract WrapperRegistry is
         address namer
     )
         PermissionedRegistry(
-            hcaFactory,
             labelStore,
             namer,
             RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN
@@ -248,22 +244,17 @@ contract WrapperRegistry is
     ///
     /// * if root and account is token owner, remap to virtual owner.
     ///
-    function _getRoles(uint256 resource, address account)
-        internal
-        view
-        override
-        returns (uint256 roleBitmap)
-    {
-        roleBitmap = super._getRoles(resource, account);
+    function _getRoles(uint256 resource, address account) internal view override returns (uint256) {
         if (resource == ROOT_RESOURCE) {
             address parent = address(_parentRegistry); // virtual owner
             if (
                 parent != address(0) &&
                 account == PermissionedRegistry(parent).findOwner(_childLabel)
             ) {
-                roleBitmap = super._getRoles(resource, parent); // replace, instead of OR
+                return super._getRoles(resource, parent); // replace, instead of OR
             }
         }
+        return super._getRoles(resource, account);
     }
 
     /// @dev Requires `ROLE_UPGRADE` and approval for the target implementation.

@@ -22,17 +22,14 @@ import {ITemporalRegistry} from "~src/registry/interfaces/ITemporalRegistry.sol"
 import {ITokenizedRegistry} from "~src/registry/interfaces/ITokenizedRegistry.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 uint256 constant DEFAULT_ROLE_BITMAP = EACBaseRolesLib.ALL_ROLES;
 
 contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     MockPermissionedRegistry registry;
-    MockHCAFactoryBasic hcaFactory;
     LabelStore labelStore;
 
     address user1 = makeAddr("user1");
@@ -47,27 +44,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
 
     function setUp() external {
-        hcaFactory = new MockHCAFactoryBasic();
         labelStore = new LabelStore(IContractNamer(address(0)));
 
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        registry = new MockPermissionedRegistry(
-            hcaFactory,
-            labelStore,
-            address(this),
-            DEFAULT_ROLE_BITMAP
-        );
+        registry = new MockPermissionedRegistry(labelStore, address(this), DEFAULT_ROLE_BITMAP);
     }
 
     function test_initForProxyImplementation() external {
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        new PermissionedRegistry(hcaFactory, labelStore, address(0), 0);
+        new PermissionedRegistry(labelStore, address(0), 0);
     }
 
     function test_constructor() external view {
-        assertEq(address(registry.HCA_FACTORY()), address(hcaFactory), "HCA_FACTORY");
         assertEq(address(registry.LABEL_STORE()), address(labelStore), "LABEL_STORE");
 
         assertTrue(registry.hasRootRoles(DEFAULT_ROLE_BITMAP, address(this)));
@@ -1615,13 +1605,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
 
 contract MockPermissionedRegistry is PermissionedRegistry {
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        ILabelStore labelStore,
-        address rootAccount,
-        uint256 roleBitmap
-    )
-        PermissionedRegistry(hcaFactory, labelStore, rootAccount, roleBitmap)
+    constructor(ILabelStore labelStore, address rootAccount, uint256 roleBitmap)
+        PermissionedRegistry(labelStore, rootAccount, roleBitmap)
     {}
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);

@@ -7,8 +7,6 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
-import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
@@ -166,7 +164,6 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         uint64 premiumPeriod,
         PaymentRatio[] memory paymentRatios
     )
-        HCAEquivalence(IHCAFactoryBasic(address(0)))
     {
         _grantRoles(ROOT_RESOURCE, DEFAULT_ROLE_BITMAP, rootAccount, false);
 
