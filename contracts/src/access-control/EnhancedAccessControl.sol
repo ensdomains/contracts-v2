@@ -170,7 +170,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @inheritdoc IEnhancedAccessControl
     function roles(uint256 resource, address account) public view virtual returns (uint256) {
-        return _roles[resource][account];
+        return _getRoles(resource, account);
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -180,7 +180,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @inheritdoc IEnhancedAccessControl
     function hasRootRoles(uint256 roleBitmap, address account) public view virtual returns (bool) {
-        return _roles[ROOT_RESOURCE][account] & roleBitmap == roleBitmap;
+        return _getRoles(ROOT_RESOURCE, account) & roleBitmap == roleBitmap;
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -190,8 +190,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (bool)
     {
-        return
-            (_roles[ROOT_RESOURCE][account] | _roles[resource][account]) & roleBitmap == roleBitmap;
+        return _effectiveRoles(resource, account) & roleBitmap == roleBitmap;
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -424,10 +423,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
-        return
-            EACBaseRolesLib.withAdminRolesApplied(
-                _roles[resource][account] | _roles[ROOT_RESOURCE][account]
-            );
+        return EACBaseRolesLib.withAdminRolesApplied(_effectiveRoles(resource, account));
     }
 
     /// @dev Returns the revokable roles for `account` within `resource`.
@@ -443,15 +439,22 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
-        return
-            EACBaseRolesLib.withAdminRolesApplied(
-                _roles[resource][account] | _roles[ROOT_RESOURCE][account]
-            );
+        return EACBaseRolesLib.withAdminRolesApplied(_effectiveRoles(resource, account));
+    }
+
+    /// @dev Returns the roles bitmap for an account for permission checks.
+    function _getRoles(uint256 resource, address account) internal view virtual returns (uint256) {
+        return _roles[resource][account];
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Private Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Returns the effective roles bitmap for an account for permission checks.
+    function _effectiveRoles(uint256 resource, address account) private view returns (uint256) {
+        return _getRoles(ROOT_RESOURCE, account) | _getRoles(resource, account);
+    }
 
     /// @dev Checks if a role bitmap contains only valid role bits.
     /// @param roleBitmap The role bitmap to check.
