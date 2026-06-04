@@ -1281,36 +1281,47 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         vm.prank(testOwner);
         registry.setApprovalForAll(user2, true);
 
-        assertEq(registry.roles(tokenId, testOwner), testRoles, "before:owner");
-        assertEq(registry.roles(tokenId, user2), testRoles, "before:approved");
+        // approval roles are aliased and not an actual assignee
+        (uint256 counts, ) = registry.getAssigneeCount(tokenId, testRoles);
+        assertEq(counts, EACBaseRolesLib.ALL_ROLES * 1); // not * 2
+        assertEq(registry.roles(tokenId, testOwner), testRoles, "before:owner"); // real
+        assertEq(registry.roles(tokenId, user2), testRoles, "before:approved"); // alias
 
+        // cant revoke aliased roles
         vm.prank(user2);
         assertFalse(registry.revokeRoles(tokenId, testRoles, user2));
 
+        // can revoke real roles via approval
         vm.prank(user2);
         assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
 
+        // since roles are aliased, revoking real roles => aliased roles
+        (counts, ) = registry.getAssigneeCount(tokenId, testRoles);
+        assertEq(counts, 0);
         assertEq(registry.roles(tokenId, testOwner), 0, "after:owner");
         assertEq(registry.roles(tokenId, user2), 0, "after:approved");
-
-        (uint256 counts, ) = registry.getAssigneeCount(tokenId, testRoles);
-        assertEq(counts, 0);
     }
 
     function test_setApprovalForAll_blendedRoles() external {
         testRoles = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
         uint256 tokenId = this._register();
 
-        // user2 has approved roles
+        // user2 has token roles via approval
         vm.prank(testOwner);
         registry.setApprovalForAll(user2, true);
 
-        // user2 also has root roles
+        // user2 has token roles via grant
+        vm.prank(testOwner);
+        registry.grantRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user2);
+
+        // user2 has root roles
         registry.grantRootRoles(RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN, user2);
 
+        // user2 effectively has roles from all sources
         assertTrue(
             registry.hasRoles(
                 tokenId,
+                RegistryRolesLib.ROLE_SET_RESOLVER |
                 RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
                 RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN,
                 user2
@@ -1322,6 +1333,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
         uint256 tokenId = this._register();
 
+        // without approval
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -1336,6 +1348,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         vm.prank(testOwner);
         registry.setApprovalForAll(user2, true);
 
+        // with approval
         vm.prank(user2);
         registry.setResolver(tokenId, testResolver);
     }
@@ -1344,6 +1357,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         testRoles = RegistryRolesLib.ROLE_SET_SUBREGISTRY;
         uint256 tokenId = this._register();
 
+        // without approval
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -1358,6 +1372,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         vm.prank(testOwner);
         registry.setApprovalForAll(user2, true);
 
+        // with approval
         vm.prank(user2);
         registry.setSubregistry(tokenId, testRegistry);
     }
