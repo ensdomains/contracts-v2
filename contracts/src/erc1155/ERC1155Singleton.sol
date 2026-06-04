@@ -8,7 +8,6 @@ import {
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {ERC1155Utils} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Utils.sol";
 import {Arrays} from "@openzeppelin/contracts/utils/Arrays.sol";
-import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
@@ -26,7 +25,6 @@ import {IERC1155Singleton} from "./interfaces/IERC1155Singleton.sol";
 /// @author OpenZeppelin (https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/token/ERC1155/ERC1155.sol)
 /// @dev This contract has been modified from the implementation at the above link.
 abstract contract ERC1155Singleton is
-    Context,
     ERC165,
     IERC1155Singleton,
     IERC1155Errors,
@@ -73,7 +71,7 @@ abstract contract ERC1155Singleton is
     /// @param operator The operator to set the approval for.
     /// @param approved The approval status.
     function setApprovalForAll(address operator, bool approved) public virtual {
-        _setApprovalForAll(_msgSender(), operator, approved);
+        _setApprovalForAll(msg.sender, operator, approved);
     }
 
     /// @notice Transfers a single token from one address to another.
@@ -91,10 +89,7 @@ abstract contract ERC1155Singleton is
         public
         virtual
     {
-        address sender = _msgSender();
-        if (from != sender && !isApprovedForAll(from, sender)) {
-            revert ERC1155MissingApprovalForAll(sender, from);
-        }
+        _checkApproval(from, msg.sender);
         _safeTransferFrom(from, to, id, value, data);
     }
 
@@ -117,10 +112,7 @@ abstract contract ERC1155Singleton is
         public
         virtual
     {
-        address sender = _msgSender();
-        if (from != sender && !isApprovedForAll(from, sender)) {
-            revert ERC1155MissingApprovalForAll(sender, from);
-        }
+        _checkApproval(from, msg.sender);
         _safeBatchTransferFrom(from, to, ids, values, data);
     }
 
@@ -195,8 +187,6 @@ abstract contract ERC1155Singleton is
             revert ERC1155InvalidArrayLength(ids.length, values.length);
         }
 
-        address operator = _msgSender();
-
         for (uint256 i = 0; i < ids.length; ++i) {
             uint256 id = ids.unsafeMemoryAccess(i);
             uint256 value = values.unsafeMemoryAccess(i);
@@ -215,9 +205,9 @@ abstract contract ERC1155Singleton is
         if (ids.length == 1) {
             uint256 id = ids.unsafeMemoryAccess(0);
             uint256 value = values.unsafeMemoryAccess(0);
-            emit TransferSingle(operator, from, to, id, value);
+            emit TransferSingle(msg.sender, from, to, id, value);
         } else {
-            emit TransferBatch(operator, from, to, ids, values);
+            emit TransferBatch(msg.sender, from, to, ids, values);
         }
     }
 
@@ -244,13 +234,12 @@ abstract contract ERC1155Singleton is
     {
         _update(from, to, ids, values);
         if (to != address(0)) {
-            address operator = _msgSender();
             if (batch) {
-                ERC1155Utils.checkOnERC1155BatchReceived(operator, from, to, ids, values, data);
+                ERC1155Utils.checkOnERC1155BatchReceived(msg.sender, from, to, ids, values, data);
             } else {
                 uint256 id = ids.unsafeMemoryAccess(0);
                 uint256 value = values.unsafeMemoryAccess(0);
-                ERC1155Utils.checkOnERC1155Received(operator, from, to, id, value, data);
+                ERC1155Utils.checkOnERC1155Received(msg.sender, from, to, id, value, data);
             }
         }
     }
@@ -361,6 +350,13 @@ abstract contract ERC1155Singleton is
     ////////////////////////////////////////////////////////////////////////
     // Private Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Ensure operator is approved.
+    function _checkApproval(address from, address operator) private view {
+        if (from != operator && !isApprovedForAll(from, operator)) {
+            revert ERC1155MissingApprovalForAll(operator, from);
+        }
+    }
 
     /// @dev Gas-optimized assembly helper that creates two length-1 memory arrays without Solidity's
     ///      default zero-initialization overhead. Used to adapt single-token operations (`_mint`,

@@ -45,9 +45,9 @@ contract PermissionedAddressSet is EnhancedAccessControl, IAddressSet, IContract
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param admin The initial admin.
-    constructor(address admin) {
-        _grantRoles(ROOT_RESOURCE, DEFAULT_ROLE_BITMAP, admin, false);
+    /// @param rootAccount Account granted root roles.
+    constructor(address rootAccount) {
+        _grantRoles(ROOT_RESOURCE, DEFAULT_ROLE_BITMAP, rootAccount, false);
     }
 
     /// @inheritdoc EnhancedAccessControl
@@ -68,7 +68,7 @@ contract PermissionedAddressSet is EnhancedAccessControl, IAddressSet, IContract
     function approve(address addr, bool approved) external onlyRootRoles(ROLE_APPROVE) {
         require(_approved[addr] != approved);
         _approved[addr] = approved;
-        emit ApprovalChanged(addr, approved, _msgSender());
+        emit ApprovalChanged(addr, approved, msg.sender);
     }
 
     /// @inheritdoc IAddressSet

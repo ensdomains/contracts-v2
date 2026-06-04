@@ -7,14 +7,12 @@ import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthoriz
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
-import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
@@ -202,17 +200,6 @@ contract WrapperRegistry is
         return _node;
     }
 
-    /// @inheritdoc PermissionedRegistry
-    /// @dev Respect virtual owner.
-    function isContractNamer(address namer)
-        public
-        view
-        override(IContractNamer, PermissionedRegistry)
-        returns (bool)
-    {
-        return hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, _remapVirtualOwner(namer));
-    }
-
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
@@ -234,12 +221,6 @@ contract WrapperRegistry is
         return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
     }
 
-    /// @inheritdoc Context
-    /// @dev Respect virtual owner.
-    function _msgSender() internal view override returns (address) {
-        return _remapVirtualOwner(super._msgSender());
-    }
-
     /// @inheritdoc PermissionedRegistry
     /// @dev Override for token-dependent logic:
     ///
@@ -256,6 +237,24 @@ contract WrapperRegistry is
     {
         uint256 roleBitmap = super._getSettableRoles(resource, account);
         return resource == ROOT_RESOURCE ? roleBitmap >> 128 : roleBitmap;
+    }
+
+    /// @inheritdoc PermissionedRegistry
+    /// @dev Override for token-dependent logic:
+    ///
+    /// * if root and account is token owner, remap to virtual owner.
+    ///
+    function _getRoles(uint256 resource, address account) internal view override returns (uint256) {
+        if (resource == ROOT_RESOURCE) {
+            address parent = address(_parentRegistry); // virtual owner
+            if (
+                parent != address(0) &&
+                account == PermissionedRegistry(parent).findOwner(_childLabel)
+            ) {
+                return super._getRoles(resource, parent); // replace, instead of OR
+            }
+        }
+        return super._getRoles(resource, account);
     }
 
     /// @dev Requires `ROLE_UPGRADE` and approval for the target implementation.
@@ -289,14 +288,5 @@ contract WrapperRegistry is
         // and reserving the label would lock it forever; positive expiry on either
         // side marks a completed migration.
         return LibMigration.isEmancipatedChild(fuses) && _REGISTRY_V1.owner(node) != address(0);
-    }
-
-    /// @dev If `account` is the token owner, return the virtual owner. 
-    function _remapVirtualOwner(address account) internal view returns (address) {
-        address parent = address(_parentRegistry); // virtual owner
-        return
-            parent != address(0) && account == PermissionedRegistry(parent).findOwner(_childLabel)
-                ? parent
-                : account;
     }
 }

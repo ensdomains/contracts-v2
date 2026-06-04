@@ -20,8 +20,6 @@ import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
@@ -89,7 +87,6 @@ import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib
 ///
 contract PermissionedResolver is
     IPermissionedResolver,
-    ContextUpgradeable,
     UUPSUpgradeable,
     EnhancedAccessControl,
     IERC7996,
@@ -180,13 +177,12 @@ contract PermissionedResolver is
     ////////////////////////////////////////////////////////////////////////
 
     modifier onlyPartRoles(bytes32 node, bytes32 part, uint256 roleBitmap) {
-        address sender = _msgSender();
         if (
             part == bytes32(0) ||
-            (!hasRoles(PermissionedResolverLib.resource(node, part), roleBitmap, sender) &&
-                !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, sender))
+            (!hasRoles(PermissionedResolverLib.resource(node, part), roleBitmap, msg.sender) &&
+                !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, msg.sender))
         ) {
-            _checkRoles(PermissionedResolverLib.resource(node, 0), roleBitmap, sender); // reverts using "widest" resource
+            _checkRoles(PermissionedResolverLib.resource(node, 0), roleBitmap, msg.sender); // reverts using "widest" resource
         }
         _;
     }
@@ -286,13 +282,13 @@ contract PermissionedResolver is
         bytes32 node = NameCoder.namehash(toName, 0);
         uint256 resource = PermissionedResolverLib.resource(node, 0);
         if (grant) {
-            _checkCanGrantRoles(resource, roleBitmap, _msgSender());
+            _checkCanGrantRoles(resource, roleBitmap, msg.sender);
             if (resource != ROOT_RESOURCE && roleCount(resource) == 0) {
                 emit NamedResource(resource, toName);
             }
             return _grantRoles(resource, roleBitmap, account, true);
         } else {
-            _checkCanRevokeRoles(resource, roleBitmap, _msgSender());
+            _checkCanRevokeRoles(resource, roleBitmap, msg.sender);
             return _revokeRoles(resource, roleBitmap, account, true);
         }
     }
@@ -319,13 +315,13 @@ contract PermissionedResolver is
         uint256 partResource =
             PermissionedResolverLib.resource(node, PermissionedResolverLib.partHash(key));
         if (grant) {
-            _checkCanGrantRoles(nodeResource, roleBit, _msgSender());
+            _checkCanGrantRoles(nodeResource, roleBit, msg.sender);
             if (roleCount(partResource) == 0) {
                 emit NamedTextResource(partResource, toName, keccak256(bytes(key)), key);
             }
             return _grantRoles(partResource, roleBit, account, true);
         } else {
-            _checkCanRevokeRoles(nodeResource, roleBit, _msgSender());
+            _checkCanRevokeRoles(nodeResource, roleBit, msg.sender);
             return _revokeRoles(partResource, roleBit, account, true);
         }
     }
@@ -352,13 +348,13 @@ contract PermissionedResolver is
         uint256 partResource =
             PermissionedResolverLib.resource(node, PermissionedResolverLib.partHash(key));
         if (grant) {
-            _checkCanGrantRoles(nodeResource, roleBit, _msgSender());
+            _checkCanGrantRoles(nodeResource, roleBit, msg.sender);
             if (roleCount(partResource) == 0) {
                 emit NamedDataResource(partResource, toName, keccak256(bytes(key)), key);
             }
             return _grantRoles(partResource, roleBit, account, true);
         } else {
-            _checkCanRevokeRoles(nodeResource, roleBit, _msgSender());
+            _checkCanRevokeRoles(nodeResource, roleBit, msg.sender);
             return _revokeRoles(partResource, roleBit, account, true);
         }
     }
@@ -380,13 +376,13 @@ contract PermissionedResolver is
         uint256 partResource =
             PermissionedResolverLib.resource(node, PermissionedResolverLib.partHash(coinType));
         if (grant) {
-            _checkCanGrantRoles(nodeResource, roleBit, _msgSender());
+            _checkCanGrantRoles(nodeResource, roleBit, msg.sender);
             if (roleCount(partResource) == 0) {
                 emit NamedAddrResource(partResource, toName, coinType);
             }
             return _grantRoles(partResource, roleBit, account, true);
         } else {
-            _checkCanRevokeRoles(nodeResource, roleBit, _msgSender());
+            _checkCanRevokeRoles(nodeResource, roleBit, msg.sender);
             return _revokeRoles(partResource, roleBit, account, true);
         }
     }
@@ -755,42 +751,6 @@ contract PermissionedResolver is
         onlyRootRoles(PermissionedResolverLib.ROLE_UPGRADE)
     {
         //
-    }
-
-    /// @dev Default behavior.
-    ///      Needed to resolve Context/ContextUpgradable inheritance.
-    function _msgSender()
-        internal
-        view
-        virtual
-        override(Context, ContextUpgradeable)
-        returns (address)
-    {
-        return super._msgSender();
-    }
-
-    /// @dev Default behavior.
-    ///      Needed to resolve Context/ContextUpgradable inheritance.
-    function _msgData()
-        internal
-        view
-        virtual
-        override(Context, ContextUpgradeable)
-        returns (bytes calldata)
-    {
-        return msg.data;
-    }
-
-    /// @dev Default behavior.
-    ///      Needed to resolve Context/ContextUpgradable inheritance.
-    function _contextSuffixLength()
-        internal
-        view
-        virtual
-        override(Context, ContextUpgradeable)
-        returns (uint256)
-    {
-        return 0;
     }
 
     /// @dev Apply one round of aliasing.
