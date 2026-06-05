@@ -95,10 +95,12 @@ export async function deployV2Fixture(
   async function deployPermissionedResolver({
     owner = walletClient.account.address,
     roles = ROLES.ALL,
+    setters = [],
     salt = idFromLabel(new Date().toISOString()),
   }: {
     owner?: Address;
     roles?: bigint;
+    setters?: Hex[];
     salt?: bigint;
   } = {}) {
     return deployVerifiableProxy({
@@ -107,7 +109,7 @@ export async function deployV2Fixture(
       implAddress: PermissionedResolverImpl.address,
       abi: PermissionedResolverImpl.abi,
       functionName: "initialize",
-      args: [walletClient.account.address, roles],
+      args: [walletClient.account.address, roles, setters],
       salt,
     });
   }

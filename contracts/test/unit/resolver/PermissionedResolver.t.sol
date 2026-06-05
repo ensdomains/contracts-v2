@@ -40,7 +40,8 @@ bytes4 constant TEST_SELECTOR = 0x12345678;
 contract PermissionedResolverTest is Test {
     uint256 constant DEFAULT_ROLES = EACBaseRolesLib.ALL_ROLES;
 
-    PermissionedResolver resolverImpl;
+    VerifiableFactory factory;
+    PermissionedResolver implementation;
     PermissionedResolver resolver;
 
     address owner = makeAddr("owner");
@@ -54,15 +55,16 @@ contract PermissionedResolverTest is Test {
     string testString = "abc";
 
     function setUp() external {
-        VerifiableFactory factory = new VerifiableFactory();
-        resolverImpl = new PermissionedResolver(address(this));
+        factory = new VerifiableFactory();
+        implementation = new PermissionedResolver(address(this));
+
         testName = NameCoder.encode("test.eth");
         testNode = NameCoder.namehash(testName, 0);
 
         bytes memory initData =
-            abi.encodeCall(PermissionedResolver.initialize, (owner, DEFAULT_ROLES));
+            abi.encodeCall(PermissionedResolver.initialize, (owner, DEFAULT_ROLES, new bytes[](0)));
         resolver = PermissionedResolver(
-            factory.deployProxy(address(resolverImpl), uint256(keccak256(initData)), initData)
+            factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
         );
     }
 
@@ -72,6 +74,31 @@ contract PermissionedResolverTest is Test {
 
     function test_initialize() external view {
         assertTrue(resolver.hasRootRoles(DEFAULT_ROLES, owner), "roles");
+    }
+
+    function test_initialize_unowned() external {
+        bytes memory initData =
+            abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, new bytes[](0)));
+        PermissionedResolver r =
+            PermissionedResolver(
+                factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
+            );
+        assertEq(r.roleCount(r.ROOT_RESOURCE()), 0);
+    }
+
+    function test_initalize_with_setters() external {
+        bytes[] memory m = new bytes[](2);
+        m[0] = abi.encodeCall(PermissionedResolver.setName, (testNode, testString));
+        m[1] = abi.encodeCall(PermissionedResolver.setContenthash, (testNode, testAddress));
+
+        bytes memory initData = abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, m));
+        PermissionedResolver r =
+            PermissionedResolver(
+                factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
+            );
+
+        assertEq(r.name(testNode), testString, "name()");
+        assertEq(r.contenthash(testNode), testAddress, "contenthash()");
     }
 
     function test_upgrade() external {
@@ -983,7 +1010,7 @@ contract PermissionedResolverTest is Test {
     ////////////////////////////////////////////////////////////////////////
 
     function test_implementationIsNameable() external view {
-        assertTrue(resolverImpl.isContractNamer(address(this)));
+        assertTrue(implementation.isContractNamer(address(this)));
     }
 
     function test_isContractNamer() external {
