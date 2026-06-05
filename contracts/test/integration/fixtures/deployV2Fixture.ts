@@ -1,5 +1,5 @@
 import type { NetworkConnection } from "hardhat/types/network";
-import { type Address, encodeFunctionData, zeroAddress } from "viem";
+import { type Address, encodeFunctionData, type Hex, zeroAddress } from "viem";
 import {
   DEPLOYMENT_ROLES,
   LOCAL_BATCH_GATEWAY_URL,
