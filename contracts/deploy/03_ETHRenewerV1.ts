@@ -10,6 +10,7 @@ export default execute(
     deploy,
     execute: write,
     get,
+    getV1,
     namedAccounts: { deployer, owner },
   }) => {
     const hcaFactory =
@@ -22,11 +23,11 @@ export default execute(
       "StandardRentPriceOracle",
     );
 
-    const baseRegistrar = get<
+    const baseRegistrar = await getV1<
       (typeof artifacts.BaseRegistrarImplementation)["abi"]
     >("BaseRegistrarImplementation");
 
-    const wrappedController = get<
+    const wrappedController = await getV1<
       (typeof artifacts.IWrappedETHRegistrarController)["abi"]
     >("WrappedETHRegistrarController");
 
@@ -53,13 +54,6 @@ export default execute(
     });
   },
   {
-    tags: ["ETHRenewerV1", "v2"],
-    dependencies: [
-      "setup:HCAFactory",
-      "ETHRegistry",
-      "StandardRentPriceOracle",
-      "BaseRegistrarImplementation",
-      "WrappedETHRegistrarController",
-    ],
+    tags: ["ETHRenewerV1", "migration:phase1:deploy-v2", "v2"],
   },
 );

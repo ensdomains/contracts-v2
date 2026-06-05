@@ -1,6 +1,6 @@
 import { encodeFunctionData, getContract, namehash, zeroAddress } from "viem";
 
-import { artifacts } from "@rocketh";
+import { Artifact_PermissionedResolver } from "generated/artifacts/PermissionedResolver.js";
 import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
 import { dnsEncodeName, dnsDecodeName } from "../test/utils/utils.js";
 import type { DevnetEnvironment } from "./setup.js";
@@ -41,7 +41,7 @@ export {
 };
 
 const ONE_DAY_SECONDS = 86400;
-const PermissionedResolverAbi = artifacts.PermissionedResolver.abi;
+const PermissionedResolverAbi = Artifact_PermissionedResolver.abi;
 
 /**
  * Set up test names with various states and configurations for development/testing
@@ -125,10 +125,10 @@ export async function testNames(env: DevnetEnvironment) {
       aliasDuration,
       aliasPaymentToken,
     ]);
-  const aliasPrice = aliasBase + aliasPremium;
+  const aliasPrice = (aliasBase as bigint) + (aliasPremium as bigint);
   const aliasBalance = await env.erc20.MockUSDC.read.balanceOf([
     env.namedAccounts.owner.address,
-  ]);
+  ]) as bigint;
   if (aliasBalance < aliasPrice) {
     await env.erc20.MockUSDC.write.mint(
       [env.namedAccounts.owner.address, aliasPrice - aliasBalance + 1000000n],
@@ -161,7 +161,7 @@ export async function testNames(env: DevnetEnvironment) {
     address: testNameData.resolver,
     abi: PermissionedResolverAbi,
     client: env.client,
-  });
+  }) as any;
   const aliasTx = await env.waitFor(
     testResolver.write.setAlias(
       [dnsEncodeName("alias.eth"), dnsEncodeName("test.eth")],
@@ -257,7 +257,7 @@ export async function testNames(env: DevnetEnvironment) {
       address: walletData.resolver,
       abi: PermissionedResolverAbi,
       client: env.client,
-    });
+    }) as any;
     await walletResolver.write.setAlias(
       [
         dnsEncodeName("linked.parent.eth"),
@@ -403,7 +403,7 @@ async function verifyNames(env: DevnetEnvironment, names: string[]) {
     if (data.expiry && data.expiry !== MAX_EXPIRY) {
       const currentTimestamp = await env.client
         .getBlock()
-        .then((b) => b.timestamp);
+        .then((b: any) => b.timestamp);
       if (data.expiry <= currentTimestamp) {
         errors.push(
           `${name}: expired (expiry=${data.expiry}, now=${currentTimestamp})`,

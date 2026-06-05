@@ -298,7 +298,7 @@ export async function reserveName(
 
   options.expiry ??= await env.client
     .getBlock()
-    .then((b) => b.timestamp + 86400n);
+    .then((b: any) => b.timestamp + 86400n);
 
   console.log(`\nReserving ${name}...`);
 

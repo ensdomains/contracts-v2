@@ -1,7 +1,7 @@
 import { artifacts, execute } from "@rocketh";
-import { zeroAddress } from "viem";
+import { labelhash, zeroAddress } from "viem";
+import { MAX_EXPIRY, ROLES } from "../script/deploy-constants.js";
 import { dnsEncodeName } from "../test/utils/utils.js";
-import { MAX_EXPIRY } from "../script/deploy-constants.js";
 
 async function fetchPublicSuffixes() {
   const res = await fetch(
@@ -20,33 +20,35 @@ export default execute(
     deploy,
     execute: write,
     get,
+    getV1,
     read,
     namedAccounts: { deployer },
-    network,
+    tags,
   }) => {
     const ensRegistry =
-      get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
+      await getV1<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
-    const dnsTLDResolverV1 = get<(typeof artifacts.OffchainDNSResolver)["abi"]>(
-      "OffchainDNSResolver",
-    );
+    const dnsTLDResolverV1 = await getV1<
+      (typeof artifacts.OffchainDNSResolver)["abi"]
+    >("OffchainDNSResolver");
 
-    const publicSuffixList = get<
+    const publicSuffixList = await getV1<
       (typeof artifacts.SimplePublicSuffixList)["abi"]
     >("SimplePublicSuffixList");
 
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
-    const dnssecOracle = get<(typeof artifacts.DNSSEC)["abi"]>("DNSSECImpl");
+    const dnssecOracle =
+      await getV1<(typeof artifacts.DNSSECImpl)["abi"]>("DNSSECImpl");
 
-    const batchGatewayProvider = get<(typeof artifacts.GatewayProvider)["abi"]>(
-      "BatchGatewayProvider",
-    );
+    const batchGatewayProvider =
+      await getV1<(typeof artifacts.GatewayProvider)["abi"]>(
+        "BatchGatewayProvider",
+      );
 
-    const dnssecGatewayProvider = get<
-      (typeof artifacts.GatewayProvider)["abi"]
-    >("DNSSECGatewayProvider");
+    const dnssecGatewayProvider =
+      get<(typeof artifacts.GatewayProvider)["abi"]>("DNSSECGatewayProvider");
 
     const contractNamer =
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
@@ -65,37 +67,75 @@ export default execute(
       ],
     });
 
-    let suffixes = network.tags.local
+    let suffixes = tags.local
       ? ["com", "org", "net", "xyz"]
       : await fetchPublicSuffixes();
-    suffixes = (
-      await Promise.all(
-        suffixes.map((suffix) =>
-          read(publicSuffixList, {
-            functionName: "isPublicSuffix",
-            args: [dnsEncodeName(suffix)],
-          }).then((pub) => (pub ? suffix : "")),
-        ),
-      )
-    ).filter(Boolean);
+    const eligibleSuffixes = await Promise.all(
+      suffixes.map(async (suffix) => {
+        const isPublicSuffix = await read(publicSuffixList, {
+          functionName: "isPublicSuffix",
+          args: [dnsEncodeName(suffix)],
+        });
+        if (!isPublicSuffix) return undefined;
 
-    // TODO: this create 1000+ transactions
-    // batching is a mess in rocketh
-    // anvil batching appears broken (only mines 1-2 tx)
-    for (const suffix of suffixes) {
-      await write(rootRegistry, {
+        const status = await read(rootRegistry, {
+          functionName: "getStatus",
+          args: [BigInt(labelhash(suffix))],
+        });
+        return status === 0 ? suffix : undefined;
+      }),
+    );
+    suffixes = eligibleSuffixes.filter((suffix): suffix is string =>
+      Boolean(suffix),
+    );
+
+    if (suffixes.length === 0) {
+      console.warn("  - No suffixes found");
+      return;
+    }
+
+    const batchRegistrar = await deploy("RootBatchRegistrar", {
+      account: deployer,
+      artifact: artifacts.BatchRegistrar,
+      args: [rootRegistry.address, deployer],
+    });
+
+    await write(rootRegistry, {
+      account: deployer,
+      functionName: "grantRootRoles",
+      args: [
+        ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
+        batchRegistrar.address,
+      ],
+    });
+
+    const suffixBatchSize = 25;
+    for (let i = 0; i < suffixes.length; i += suffixBatchSize) {
+      const batch = suffixes.slice(i, i + suffixBatchSize);
+      const progress = Math.min(i + suffixBatchSize, suffixes.length);
+      console.log(
+        `  - Registering ${batch.length} suffixes (${progress}/${suffixes.length})`,
+      );
+      await write(batchRegistrar, {
         account: deployer,
-        functionName: "register",
+        functionName: "batchRegister",
         args: [
-          suffix,
-          deployer, // TODO: ownership
           zeroAddress,
           dnsTLDResolver.address,
-          0n, // TODO: roles
-          MAX_EXPIRY,
+          batch,
+          new Array(batch.length).fill(MAX_EXPIRY),
         ],
       });
     }
+
+    await write(rootRegistry, {
+      account: deployer,
+      functionName: "revokeRootRoles",
+      args: [
+        ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
+        batchRegistrar.address,
+      ],
+    });
   },
   {
     tags: ["DNSTLDResolver", "v2"],

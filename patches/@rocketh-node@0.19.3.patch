@@ -1,0 +1,12 @@
+diff --git a/dist/executor/index.js b/dist/executor/index.js
+index 00db18f8f807c3f47828e4c46aa963c525ddc2f2..6c389ef9247c35d0d006b5dc3fdd2552bf46f263 100644
+--- a/dist/executor/index.js
++++ b/dist/executor/index.js
+@@ -1,4 +1,6 @@
+-import 'tsx';
++if (!globalThis.Bun) {
++    await import('tsx');
++}
+ import fs from 'node:fs';
+ import path from 'node:path';
+ import prompts from 'prompts';

@@ -21,7 +21,13 @@ export default execute(
       args: [hcaFactory.address, reverseRegistrar.address],
     });
 
-    if (network.name === "mainnet" && !network.tags?.tenderly) return;
+    const networkContext = network as typeof network & {
+      name?: string;
+      tags?: Record<string, boolean>;
+    };
+    if (networkContext.name === "mainnet" && !networkContext.tags?.tenderly) {
+      return;
+    }
 
     const adapterIsReverseController = await read(reverseRegistrar, {
       functionName: "controllers",

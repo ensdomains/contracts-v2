@@ -1,0 +1,52 @@
+import { artifacts, execute } from "@rocketh";
+import { STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS } from "../../script/deploy-constants.js";
+
+const SEPOLIA_CHAIN_ID = 11155111;
+const SEPOLIA_USDC = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+const PRICE_DECIMALS = STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS;
+const SEPOLIA_USDC_DECIMALS = 6n;
+const SEPOLIA_USDC_NUMER =
+  10n **
+  (SEPOLIA_USDC_DECIMALS > PRICE_DECIMALS
+    ? SEPOLIA_USDC_DECIMALS - PRICE_DECIMALS
+    : 0n);
+const SEPOLIA_USDC_DENOM =
+  10n **
+  (PRICE_DECIMALS > SEPOLIA_USDC_DECIMALS
+    ? PRICE_DECIMALS - SEPOLIA_USDC_DECIMALS
+    : 0n);
+
+export default execute(
+  async ({
+    execute: write,
+    get,
+    read,
+    namedAccounts: { deployer, owner },
+    network,
+  }) => {
+    if (network.chain.id !== SEPOLIA_CHAIN_ID) return;
+
+    const oracle =
+      get<(typeof artifacts.StandardRentPriceOracle)["abi"]>(
+        "StandardRentPriceOracle",
+      );
+    const oracleOwner = owner || deployer;
+
+    const oracleHasSepoliaUsdc = await read(oracle, {
+      functionName: "isPaymentToken",
+      args: [SEPOLIA_USDC],
+    });
+
+    if (!oracleHasSepoliaUsdc) {
+      await write(oracle, {
+        account: oracleOwner,
+        functionName: "updatePaymentToken",
+        args: [SEPOLIA_USDC, SEPOLIA_USDC_NUMER, SEPOLIA_USDC_DENOM],
+      });
+    }
+  },
+  {
+    tags: ["oracle:setup", "testnet", "v2"],
+    dependencies: [], // ["StandardRentPriceOracle", "ETHRegistrar", "FastETHRegistrar"],
+  },
+);

@@ -1,9 +1,9 @@
 import { artifacts, execute } from "@rocketh";
 
 export default execute(
-  async ({ deploy, get, namedAccounts: { deployer, owner } }) => {
+  async ({ deploy, get, getV1, namedAccounts: { deployer, owner } }) => {
     const nameWrapper =
-      get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
+      await getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
     const graveyard = get<(typeof artifacts.Graveyard)["abi"]>("Graveyard");
 
@@ -46,7 +46,7 @@ export default execute(
     });
   },
   {
-    tags: ["WrapperRegistryImpl", "v2"],
+    tags: ["WrapperRegistryImpl", "migration:phase1:deploy-v2", "v2"],
     dependencies: [
       "NameWrapper",
       "Graveyard",

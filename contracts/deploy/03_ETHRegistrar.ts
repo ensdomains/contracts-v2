@@ -13,6 +13,7 @@ export default execute(
     execute: write,
     get,
     namedAccounts: { deployer, owner },
+    tags,
   }) => {
     const hcaFactory =
       get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
@@ -40,14 +41,19 @@ export default execute(
       ],
     });
 
-    await write(ethRegistry, {
-      functionName: "grantRootRoles",
-      args: [DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT, ethRegistrar.address],
-      account: deployer,
-    });
+    if (!tags.deferV2Registrar) {
+      await write(ethRegistry, {
+        functionName: "grantRootRoles",
+        args: [
+          DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
+          ethRegistrar.address,
+        ],
+        account: deployer,
+      });
+    }
   },
   {
-    tags: ["ETHRegistrar", "v2"],
+    tags: ["ETHRegistrar", "migration:phase1:deploy-v2", "v2"],
     dependencies: ["setup:HCAFactory", "ETHRegistry", "StandardRentPriceOracle"],
   },
 );

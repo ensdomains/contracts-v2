@@ -7,7 +7,8 @@ export default execute(
     get,
     read,
     namedAccounts: { deployer, owner },
-    network,
+    name,
+    tags,
   }) => {
     const hcaFactory = get<(typeof artifacts.HCAFactory)["abi"]>(
       "HCAFactory",
@@ -19,7 +20,7 @@ export default execute(
     });
 
     const setupAccounts = new Set([deployer]);
-    if (network.name !== "mainnet" || network.tags?.tenderly) {
+    if (name !== "mainnet" || tags.tenderly) {
       setupAccounts.add(owner || deployer);
     }
 

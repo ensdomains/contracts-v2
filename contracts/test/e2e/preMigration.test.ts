@@ -19,6 +19,8 @@ import {
   main,
   verifyNameOnV1,
   batchVerifyRegistrations,
+  ensV2ContinuityExpiry,
+  GRACE_PERIOD_V1_SECONDS,
   InvalidLabelNameError,
   CSVFormatError,
   isValidLabel,
@@ -39,6 +41,11 @@ import {
 } from "../utils/preMigrationTestUtils.js";
 
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
+const V1_FULLY_EXPIRED_WARP_SECONDS = Number(GRACE_PERIOD_V1_SECONDS + 2n);
+
+function expectContinuityExpiry(actual: bigint, v1Expiry: bigint) {
+  expect(actual).toBe(ensV2ContinuityExpiry(v1Expiry));
+}
 
 describe("PreMigration", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
@@ -129,30 +136,42 @@ describe("PreMigration", () => {
       const state = await verifyV2State(env, labels[i]);
       expect(state.status).toBe(STATUS.RESERVED);
       expect(state.latestOwner).toBe(zeroAddress);
-      expect(state.expiry).toBe(expiries[i]);
+      expectContinuityExpiry(state.expiry, expiries[i]);
     }
   });
 
-  it("reserves v1-grace-period names even when v2 expiry would already be in the past", async () => {
-    const label = "expiredname";
+  it("reserves names still in v1 grace", async () => {
+    const label = "gracename";
     const { user } = env.namedAccounts;
 
     const v1Expiry = await registerV1Name(env, label, user.address, 1);
-    await setTimeout(2000);
+    await env.sync({ warpSec: 2 });
 
     createCSVFile(csvFilePath, [label]);
     const args = buildMainArgs(env, csvFilePath);
     await main(args);
 
-    // Past expiry on a reservation is allowed by the contract; getState
-    // still reports AVAILABLE because _constructStatus treats expired
-    // entries as such.
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+    expectContinuityExpiry(state.expiry, v1Expiry);
+  });
+
+  it("skips names fully available on v1", async () => {
+    const label = "fullyexpired";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, 1);
+    await env.sync({ warpSec: V1_FULLY_EXPIRED_WARP_SECONDS });
+
+    createCSVFile(csvFilePath, [label]);
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.AVAILABLE);
-    expect(state.expiry).toBe(v1Expiry);
 
     const checkpoint = readTestCheckpoint();
-    expect(checkpoint!.successCount).toBe(1);
+    expect(checkpoint!.successCount).toBe(0);
     expect(checkpoint!.failureCount).toBe(0);
   });
 
@@ -161,16 +180,15 @@ describe("PreMigration", () => {
     const { user } = env.namedAccounts;
 
     const v1Expiry = await registerV1Name(env, label, user.address, 1);
-    await setTimeout(2000);
+    await env.sync({ warpSec: 2 });
 
     createCSVFile(csvFilePath, [label]);
-    const bonusPeriodDays = 62;
-    const args = buildMainArgs(env, csvFilePath, { bonusPeriodDays });
+    const args = buildMainArgs(env, csvFilePath);
     await main(args);
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-    expect(state.expiry).toBe(v1Expiry + BigInt(bonusPeriodDays) * 86400n);
+    expectContinuityExpiry(state.expiry, v1Expiry);
   });
 
   it("handles already-reserved names (same expiry)", async () => {
@@ -258,7 +276,7 @@ describe("PreMigration", () => {
     expect(state3.status).toBe(STATUS.AVAILABLE);
   });
 
-  it("adds expiry buffer to short v1 expiries", async () => {
+  it("adds the continuity bonus to short v1 expiries", async () => {
     const label = "soonexpire";
     const { user } = env.namedAccounts;
 
@@ -271,16 +289,15 @@ describe("PreMigration", () => {
     );
 
     createCSVFile(csvFilePath, [label]);
-    const bonusPeriodDays = 90;
-    const args = buildMainArgs(env, csvFilePath, { bonusPeriodDays });
+    const args = buildMainArgs(env, csvFilePath);
     await main(args);
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-    expect(state.expiry).toBe(v1Expiry + BigInt(bonusPeriodDays) * 86400n);
+    expectContinuityExpiry(state.expiry, v1Expiry);
   });
 
-  it("adds expiry buffer to long v1 expiries", async () => {
+  it("adds the continuity bonus to long v1 expiries", async () => {
     const label = "longexpire";
     const { user } = env.namedAccounts;
 
@@ -292,13 +309,12 @@ describe("PreMigration", () => {
     );
 
     createCSVFile(csvFilePath, [label]);
-    const bonusPeriodDays = 90;
-    const args = buildMainArgs(env, csvFilePath, { bonusPeriodDays });
+    const args = buildMainArgs(env, csvFilePath);
     await main(args);
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-    expect(state.expiry).toBe(v1Expiry + BigInt(bonusPeriodDays) * 86400n);
+    expectContinuityExpiry(state.expiry, v1Expiry);
   });
 
   it("handles checkpoint resumption", async () => {
@@ -437,30 +453,30 @@ describe("PreMigration", () => {
     for (let i = 0; i < labels.length; i++) {
       const state = await verifyV2State(env, labels[i]);
       expect(state.status).toBe(STATUS.RESERVED);
-      expect(state.expiry).toBe(expiries[i]);
+      expectContinuityExpiry(state.expiry, expiries[i]);
     }
   });
 
-  it("handles mixed registered/expired/valid names in single multicall batch", async () => {
+  it("handles mixed registered/grace/never-registered names in single multicall batch", async () => {
     const validLabel = "mixedvalid";
-    const expiredLabel = "mixedexpired";
+    const graceLabel = "mixedgrace";
     const neverRegisteredLabel = "mixednever";
     const { user } = env.namedAccounts;
 
     await registerV1Name(env, validLabel, user.address, ONE_YEAR_SECONDS);
 
-    await registerV1Name(env, expiredLabel, user.address, 1);
-    await setTimeout(2000);
+    await registerV1Name(env, graceLabel, user.address, 1);
+    await env.sync({ warpSec: 2 });
 
-    createCSVFile(csvFilePath, [validLabel, expiredLabel, neverRegisteredLabel]);
+    createCSVFile(csvFilePath, [validLabel, graceLabel, neverRegisteredLabel]);
     const args = buildMainArgs(env, csvFilePath);
     await main(args);
 
     const validState = await verifyV2State(env, validLabel);
     expect(validState.status).toBe(STATUS.RESERVED);
 
-    const expiredState = await verifyV2State(env, expiredLabel);
-    expect(expiredState.status).toBe(STATUS.AVAILABLE);
+    const graceState = await verifyV2State(env, graceLabel);
+    expect(graceState.status).toBe(STATUS.RESERVED);
 
     const neverState = await verifyV2State(env, neverRegisteredLabel);
     expect(neverState.status).toBe(STATUS.AVAILABLE);
@@ -468,15 +484,15 @@ describe("PreMigration", () => {
 
   it("batchVerifyRegistrations returns correct v1/v2 state for each name", async () => {
     const validLabel = "bvvalid";
-    const expiredLabel = "bvexpired";
+    const graceLabel = "bvgrace";
     const registeredLabel = "bvregistered";
     const neverLabel = "bvnever";
     const { user, deployer } = env.namedAccounts;
 
     const validExpiry = await registerV1Name(env, validLabel, user.address, ONE_YEAR_SECONDS);
-    await registerV1Name(env, expiredLabel, user.address, 1);
+    await registerV1Name(env, graceLabel, user.address, 1);
     await registerV1Name(env, registeredLabel, user.address, ONE_YEAR_SECONDS);
-    await setTimeout(2000);
+    await env.sync({ warpSec: 2 });
 
     await env.v2.ETHRegistry.write.register([
       registeredLabel,
@@ -502,7 +518,7 @@ describe("PreMigration", () => {
     const registryAbi = [...env.v2.ETHRegistry.abi];
     const registrations = [
       { labelName: validLabel, lineNumber: 1 },
-      { labelName: expiredLabel, lineNumber: 2 },
+      { labelName: graceLabel, lineNumber: 2 },
       { labelName: registeredLabel, lineNumber: 3 },
       { labelName: neverLabel, lineNumber: 4 },
     ];
@@ -519,18 +535,22 @@ describe("PreMigration", () => {
     expect(results.length).toBe(4);
 
     expect(results[0].v2Status).toBe(STATUS.AVAILABLE);
-    expect(results[0].v1IsClaimable).toBe(true);
+    expect(results[0].v1IsRegistered).toBe(true);
+    expect(results[0].v1IsContinuityEligible).toBe(true);
     expect(results[0].v1Expiry).toBe(validExpiry);
 
     // Just-expired name is still within v1's 90-day grace, so claimable.
     expect(results[1].v2Status).toBe(STATUS.AVAILABLE);
-    expect(results[1].v1IsClaimable).toBe(true);
+    expect(results[1].v1IsRegistered).toBe(false);
+    expect(results[1].v1IsContinuityEligible).toBe(true);
 
     expect(results[2].v2Status).toBe(STATUS.REGISTERED);
-    expect(results[2].v1IsClaimable).toBe(true);
+    expect(results[2].v1IsRegistered).toBe(true);
+    expect(results[2].v1IsContinuityEligible).toBe(true);
 
     expect(results[3].v2Status).toBe(STATUS.AVAILABLE);
-    expect(results[3].v1IsClaimable).toBe(false);
+    expect(results[3].v1IsRegistered).toBe(false);
+    expect(results[3].v1IsContinuityEligible).toBe(false);
     expect(results[3].v1Expiry).toBe(0n);
   });
 
@@ -571,7 +591,7 @@ describe("PreMigration", () => {
     for (let i = 0; i < labels.length; i++) {
       const state = await verifyV2State(env, labels[i]);
       expect(state.status).toBe(STATUS.RESERVED);
-      expect(state.expiry).toBe(expiries[i]);
+      expectContinuityExpiry(state.expiry, expiries[i]);
     }
 
     const checkpoint = readTestCheckpoint();
@@ -599,7 +619,7 @@ describe("PreMigration", () => {
     for (let i = 0; i < labels.length; i++) {
       const state = await verifyV2State(env, labels[i]);
       expect(state.status).toBe(STATUS.RESERVED);
-      expect(state.expiry).toBe(expiries[i]);
+      expectContinuityExpiry(state.expiry, expiries[i]);
     }
 
     const checkpoint = readTestCheckpoint();
@@ -628,7 +648,7 @@ describe("PreMigration", () => {
     for (let i = 0; i < labels.length; i++) {
       const state = await verifyV2State(env, labels[i]);
       expect(state.status).toBe(STATUS.RESERVED);
-      expect(state.expiry).toBe(expiries[i]);
+      expectContinuityExpiry(state.expiry, expiries[i]);
     }
   });
 
@@ -636,15 +656,15 @@ describe("PreMigration", () => {
 
   it("checkpoint correctly tracks success, skip, and failure counts", async () => {
     const validLabel = "cptvalid";
-    const expiredLabel = "cptexpired";
+    const graceLabel = "cptgrace";
     const neverLabel = "cptnever";
     const { user } = env.namedAccounts;
 
     await registerV1Name(env, validLabel, user.address, ONE_YEAR_SECONDS);
-    await registerV1Name(env, expiredLabel, user.address, 1);
-    await setTimeout(2000);
+    await registerV1Name(env, graceLabel, user.address, 1);
+    await env.sync({ warpSec: 2 });
 
-    createCSVFile(csvFilePath, [validLabel, expiredLabel, neverLabel]);
+    createCSVFile(csvFilePath, [validLabel, graceLabel, neverLabel]);
     const args = buildMainArgs(env, csvFilePath);
     await main(args);
 
@@ -921,7 +941,7 @@ describe("PreMigration", () => {
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
-    expect(state.expiry).toBe(expiry);
+    expectContinuityExpiry(state.expiry, expiry);
   });
 
   it("processes names with limit + continue across multiple runs", async () => {
@@ -1148,9 +1168,9 @@ describe("PreMigration", () => {
     }
   });
 
-  it("mixed batch: some expired, some valid, some never registered — with small batches", async () => {
+  it("mixed batch: some grace, some valid, some never registered — with small batches", async () => {
     const validLabels = ["mxs1", "mxs3", "mxs5"];
-    const expiredLabels = ["mxs2", "mxs4"];
+    const graceLabels = ["mxs2", "mxs4"];
     const neverLabel = "mxs6";
     const allLabels = ["mxs1", "mxs2", "mxs3", "mxs4", "mxs5", "mxs6"];
     const { user } = env.namedAccounts;
@@ -1158,10 +1178,10 @@ describe("PreMigration", () => {
     for (const label of validLabels) {
       await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
     }
-    for (const label of expiredLabels) {
+    for (const label of graceLabels) {
       await registerV1Name(env, label, user.address, 1);
     }
-    await setTimeout(2000);
+    await env.sync({ warpSec: 2 });
 
     createCSVFile(csvFilePath, allLabels);
     const args = buildMainArgs(env, csvFilePath, { batchSize: 2 });
@@ -1171,7 +1191,11 @@ describe("PreMigration", () => {
       const state = await verifyV2State(env, label);
       expect(state.status).toBe(STATUS.RESERVED);
     }
-    for (const label of [...expiredLabels, neverLabel]) {
+    for (const label of graceLabels) {
+      const state = await verifyV2State(env, label);
+      expect(state.status).toBe(STATUS.RESERVED);
+    }
+    for (const label of [neverLabel]) {
       const state = await verifyV2State(env, label);
       expect(state.status).toBe(STATUS.AVAILABLE);
     }

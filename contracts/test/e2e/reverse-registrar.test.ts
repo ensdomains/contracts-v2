@@ -3,7 +3,6 @@ import { describe, it } from "bun:test";
 import {
   encodeAbiParameters,
   encodeFunctionData,
-  getContract,
   namehash,
   zeroAddress,
   type Address,
@@ -115,11 +114,10 @@ describe("Reverse registrars", () => {
       }),
     );
 
-    return getContract({
+    return {
       address: hca,
       abi: executorAbi,
-      client: env.client,
-    });
+    };
   }
 
   async function executeFromHCA({
@@ -134,7 +132,11 @@ describe("Reverse registrars", () => {
     data: Hex;
   }) {
     await env.waitFor(
-      hca.write.execute([target, data], {
+      env.client.writeContract({
+        address: hca.address,
+        abi: hca.abi,
+        functionName: "execute",
+        args: [target, data],
         account,
       }),
     );

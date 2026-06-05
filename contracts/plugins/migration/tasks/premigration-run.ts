@@ -1,0 +1,80 @@
+import type { NewTaskActionFunction } from "hardhat/types/tasks";
+
+import {
+  parseMigrationNetwork,
+  runPreMigrationCommand,
+} from "../../../script/migration.js";
+import {
+  defaultHardhatSigner,
+  optionalString,
+  requireHttpNetwork,
+} from "./utils.js";
+
+type PremigrationRunTaskArgs = {
+  migrationNetwork: string;
+  deploymentsDir: string;
+  deploymentNetwork: string;
+  v1DeploymentsDir: string;
+  v1DeploymentNetwork: string;
+  csvFile: string;
+  mainnetRpcUrl: string;
+  batchSize: string;
+  limit: string;
+  minExpiryDays: string;
+  workDir: string;
+  dryRun: boolean;
+  skipExistingReservations: boolean;
+  resume: boolean;
+};
+
+const action: NewTaskActionFunction<PremigrationRunTaskArgs> = async (
+  args,
+  hre,
+) => {
+  const connection = await hre.network.connect();
+  try {
+    const networkConfig = requireHttpNetwork(
+      connection.networkConfig,
+      "migration premigration-run",
+      connection.networkName,
+    );
+    const rpcUrl = await networkConfig.url.getUrl();
+    const signer = await defaultHardhatSigner(
+      networkConfig,
+      connection.provider,
+    );
+    if (!signer.privateKey) {
+      throw new Error(
+        "migration premigration-run could not resolve a Hardhat private key; configure DEPLOYER_KEY",
+      );
+    }
+    if (args.csvFile === "") {
+      throw new Error("migration premigration-run requires --csv-file");
+    }
+
+    await runPreMigrationCommand(
+      {
+        network: parseMigrationNetwork(args.migrationNetwork),
+        rpcUrl,
+        mainnetRpcUrl: optionalString(args.mainnetRpcUrl),
+        deploymentsDir: args.deploymentsDir,
+        deploymentNetwork: optionalString(args.deploymentNetwork),
+        v1DeploymentsDir: optionalString(args.v1DeploymentsDir),
+        v1DeploymentNetwork: optionalString(args.v1DeploymentNetwork),
+        privateKey: signer.privateKey,
+        csvFile: args.csvFile,
+        batchSize: optionalString(args.batchSize),
+        limit: optionalString(args.limit),
+        minExpiryDays: optionalString(args.minExpiryDays),
+        workDir: optionalString(args.workDir),
+        dryRun: args.dryRun,
+        skipExistingReservations: args.skipExistingReservations,
+      },
+      args.resume,
+    );
+  } finally {
+    await connection.close();
+  }
+};
+
+export default action;

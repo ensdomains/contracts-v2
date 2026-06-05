@@ -1,5 +1,5 @@
 import { artifacts, execute } from "@rocketh";
-import { zeroAddress } from "viem";
+import { labelhash, zeroAddress } from "viem";
 import {
   MAX_EXPIRY,
   DEPLOYMENT_ROLES,
@@ -11,6 +11,7 @@ export default execute(
     deploy,
     execute: write,
     get,
+    read,
     namedAccounts: { deployer, owner },
   }) => {
     const rootRegistry =
@@ -33,26 +34,35 @@ export default execute(
       ],
     });
 
-    console.log("  - Registering in parent");
-    await write(rootRegistry, {
-      account: deployer,
-      functionName: "register",
-      args: [
-        "eth",
-        deployer,
-        ethRegistry.address,
-        zeroAddress,
-        DEPLOYMENT_ROLES.ETH_TOKEN,
-        MAX_EXPIRY,
-      ],
+    const currentStatus = await read(rootRegistry, {
+      functionName: "getStatus",
+      args: [BigInt(labelhash("eth"))],
     });
 
-    console.log("  - Setting canonical parent");
-    await write(ethRegistry, {
-      account: deployer,
-      functionName: "setParent",
-      args: [rootRegistry.address, "eth"],
-    });
+    if (currentStatus === 0) {
+      console.log("  - Registering in parent");
+      await write(rootRegistry, {
+        account: deployer,
+        functionName: "register",
+        args: [
+          "eth",
+          deployer,
+          ethRegistry.address,
+          zeroAddress,
+          DEPLOYMENT_ROLES.ETH_TOKEN,
+          MAX_EXPIRY,
+        ],
+      });
+    }
+
+    if (ethRegistry.newlyDeployed) {
+      console.log("  - Setting canonical parent");
+      await write(ethRegistry, {
+        account: deployer,
+        functionName: "setParent",
+        args: [rootRegistry.address, "eth"],
+      });
+    }
 
     console.log("  - Granting CAN_NAME to owner");
     await write(ethRegistry, {
@@ -62,7 +72,7 @@ export default execute(
     });
   },
   {
-    tags: ["ETHRegistry", "v2"],
+    tags: ["ETHRegistry", "migration:phase1:deploy-v2", "v2"],
     dependencies: ["RootRegistry", "setup:HCAFactory", "LabelStore"],
   },
 );

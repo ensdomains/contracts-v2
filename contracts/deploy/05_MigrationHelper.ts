@@ -18,7 +18,7 @@ export default execute(
 
     await deploy("MigrationHelper", {
       account: deployer,
-      artifact: artifacts["src/migration/MigrationHelper.sol/MigrationHelper"],
+      artifact: artifacts.MigrationHelper,
       args: [
         hcaFactory.address,
         rootRegistry.address,
@@ -28,7 +28,7 @@ export default execute(
     });
   },
   {
-    tags: ["MigrationHelper", "v2"],
+    tags: ["MigrationHelper", "migration:phase1:deploy-v2", "v2"],
     dependencies: [
       "HCAFactory",
       "RootRegistry",

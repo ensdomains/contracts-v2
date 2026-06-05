@@ -5,7 +5,6 @@ import {
   namehash,
   zeroAddress,
 } from "viem";
-import { artifacts } from "@rocketh";
 
 import type { DevnetEnvironment } from "../setup.js";
 import { MAX_EXPIRY, STATUS } from "../deploy-constants.js";
@@ -62,19 +61,19 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
         abi,
         functionName: "multicall",
         data: result,
-      });
+      }) as readonly `0x${string}`[];
 
       // Decode individual results
       ethAddress = decodeFunctionResult({
         abi,
         functionName: "addr",
         data: results[0],
-      });
+      }) as `0x${string}`;
       description = decodeFunctionResult({
         abi,
         functionName: "text",
         data: results[1],
-      });
+      }) as string;
     } catch {
       // Resolution may fail for names without a resolver (e.g., reserved or unregistered names)
     }
@@ -113,7 +112,9 @@ export async function showAlias(env: DevnetEnvironment, names: string[]) {
     if (resolverAddress === zeroAddress) continue;
     const resolver = env.castPermissionedResolver(resolverAddress);
     try {
-      const aliasResult = await resolver.read.getAlias([dnsEncodeName(name)]);
+      const aliasResult = await resolver.read.getAlias([
+        dnsEncodeName(name),
+      ]) as `0x${string}`;
       if (aliasResult.length > 2) {
         const aliasTarget = dnsDecodeName(aliasResult);
         aliasData.push({
