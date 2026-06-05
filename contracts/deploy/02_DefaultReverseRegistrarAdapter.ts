@@ -16,10 +16,19 @@ export default execute(
     const contractNamer =
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
 
+    const verifiableFactory =
+      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
+
     const adapter = await deploy("DefaultReverseRegistrarAdapter", {
       account: deployer,
       artifact: artifacts.DefaultReverseRegistrarAdapter,
-      args: [defaultReverseRegistrar.address, contractNamer.address],
+      args: [
+        defaultReverseRegistrar.address,
+        contractNamer.address,
+        verifiableFactory.address,
+        owner,
+        [],
+      ],
     });
 
     const adapterIsDefaultController = await read(defaultReverseRegistrar, {
@@ -40,6 +49,6 @@ export default execute(
   },
   {
     tags: ["DefaultReverseRegistrarAdapter", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["ContractNamer"],
+    dependencies: ["ContractNamer", "VerifiableFactory"],
   },
 );

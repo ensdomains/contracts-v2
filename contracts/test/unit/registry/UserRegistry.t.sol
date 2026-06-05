@@ -343,6 +343,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
 // Mock V2 contract for testing upgrades
 contract UserRegistryV2Mock is UserRegistry {
     constructor(ILabelStore labelStore, address namer) UserRegistry(labelStore, namer) {}
+
     function version() public pure returns (uint256) {
         return 2;
     }

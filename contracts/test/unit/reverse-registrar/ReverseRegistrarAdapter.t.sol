@@ -8,10 +8,16 @@ import {Test} from "forge-std/Test.sol";
 import {ENSRegistry} from "@ens/contracts/registry/ENSRegistry.sol";
 import {ReverseRegistrar} from "@ens/contracts/reverseRegistrar/ReverseRegistrar.sol";
 import {MockOwnable} from "@ens/contracts/test/mocks/MockOwnable.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {MockContractNamer} from "~test/mocks/MockContractNamer.sol";
+import {MockRevertingHCA, MockHCA} from "~test/mocks/MockHCA.sol";
 import {ReverseRegistrarAdapter} from "~src/reverse-registrar/ReverseRegistrarAdapter.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {AccountNamerLib} from "~src/reverse-registrar/libraries/AccountNamerLib.sol";
+import {HCAAuthorizer} from "~src/utils/HCAAuthorizer.sol";
 
 contract ReverseRegistrarAdapterTest is Test {
     bytes32 constant REVERSE_LABELHASH = keccak256("reverse");
@@ -21,14 +27,36 @@ contract ReverseRegistrarAdapterTest is Test {
     ENSRegistry registry;
     ReverseRegistrar reverseRegistrar;
     ReverseRegistrarAdapter reverseAdapter;
+    VerifiableFactory verifiableFactory;
+    MockContractNamer delegatedNamer;
+    MockHCA hcaImplementation;
+    MockHCA otherHCAImplementation;
+    MockRevertingHCA revertingHCAImplementation;
 
     address owner = makeAddr("owner");
+    address adapterOwner = makeAddr("adapterOwner");
+    address other = makeAddr("other");
     address resolver = makeAddr("resolver");
+    uint256 nextSalt = 1;
 
     function setUp() external {
         registry = new ENSRegistry();
         reverseRegistrar = new ReverseRegistrar(registry);
-        reverseAdapter = new ReverseRegistrarAdapter(reverseRegistrar, IContractNamer(address(0)));
+        verifiableFactory = new VerifiableFactory();
+        delegatedNamer = new MockContractNamer(owner);
+        hcaImplementation = new MockHCA();
+        otherHCAImplementation = new MockHCA();
+        revertingHCAImplementation = new MockRevertingHCA();
+
+        address[] memory trustedHCAImplementations = new address[](1);
+        trustedHCAImplementations[0] = address(hcaImplementation);
+        reverseAdapter = new ReverseRegistrarAdapter(
+            reverseRegistrar,
+            delegatedNamer,
+            verifiableFactory,
+            adapterOwner,
+            trustedHCAImplementations
+        );
 
         registry.setSubnodeOwner(bytes32(0), REVERSE_LABELHASH, address(this));
         registry.setSubnodeOwner(REVERSE_NODE, ADDR_LABELHASH, address(reverseRegistrar));
@@ -42,15 +70,69 @@ contract ReverseRegistrarAdapterTest is Test {
             address(reverseRegistrar),
             "REVERSE_REGISTRAR"
         );
+        assertEq(
+            address(reverseAdapter.VERIFIABLE_FACTORY()),
+            address(verifiableFactory),
+            "VERIFIABLE_FACTORY"
+        );
+        assertEq(address(reverseAdapter.CONTRACT_NAMER()), address(delegatedNamer), "CONTRACT_NAMER");
+        assertEq(reverseAdapter.owner(), adapterOwner, "owner");
+        assertTrue(reverseAdapter.trustedHCAImplementations(address(hcaImplementation)), "trusted");
+        assertFalse(
+            reverseAdapter.trustedHCAImplementations(address(otherHCAImplementation)),
+            "untrusted"
+        );
     }
 
-    function test_claimForAddr_EOA() external {
+    function test_supportsInterface() external view {
+        assertTrue(reverseAdapter.supportsInterface(type(IContractNamer).interfaceId));
+        assertFalse(reverseAdapter.supportsInterface(0xffffffff));
+    }
+
+    function test_delegatesContractNamer() external view {
+        assertTrue(reverseAdapter.isContractNamer(owner));
+        assertFalse(reverseAdapter.isContractNamer(other));
+    }
+
+    function test_constructor_revert_verifiableFactoryCannotBeZero() external {
+        address[] memory trustedHCAImplementations = new address[](0);
+
+        vm.expectRevert(HCAAuthorizer.VerifiableFactoryCannotBeZero.selector);
+        new ReverseRegistrarAdapter(
+            reverseRegistrar,
+            delegatedNamer,
+            VerifiableFactory(address(0)),
+            adapterOwner,
+            trustedHCAImplementations
+        );
+    }
+
+    function test_constructor_revert_initialHCAImplementationCannotBeZero() external {
+        address[] memory trustedHCAImplementations = new address[](1);
+
+        vm.expectRevert(HCAAuthorizer.HCAImplementationCannotBeZero.selector);
+        new ReverseRegistrarAdapter(
+            reverseRegistrar,
+            delegatedNamer,
+            verifiableFactory,
+            adapterOwner,
+            trustedHCAImplementations
+        );
+    }
+
+    function test_claim_EOA() external {
         vm.prank(owner);
         bytes32 node = reverseAdapter.claim(owner, resolver);
 
         assertEq(node, reverseRegistrar.node(owner), "node");
         assertEq(registry.owner(node), owner, "owner");
         assertEq(registry.resolver(node), resolver, "resolver");
+    }
+
+    function test_claim_revert_unauthorized() external {
+        vm.expectRevert(abi.encodeWithSelector(AccountNamerLib.UnauthorizedNamer.selector, other));
+        vm.prank(other);
+        reverseAdapter.claim(owner, resolver);
     }
 
     function test_claim_Ownable() external {
@@ -64,7 +146,7 @@ contract ReverseRegistrarAdapterTest is Test {
         assertEq(registry.resolver(node), resolver, "resolver");
     }
 
-    function test_claimForContract_IContractNamer() external {
+    function test_claim_IContractNamer() external {
         MockContractNamer c = new MockContractNamer(owner);
 
         vm.prank(owner);
@@ -73,5 +155,131 @@ contract ReverseRegistrarAdapterTest is Test {
         assertEq(node, reverseRegistrar.node(address(c)), "node");
         assertEq(registry.owner(node), owner, "owner");
         assertEq(registry.resolver(node), resolver, "resolver");
+    }
+
+    function test_setTrustedHCAImplementation() external {
+        vm.expectEmit(true, true, true, true);
+        emit HCAAuthorizer.TrustedHCAImplementationUpdated(address(otherHCAImplementation), true);
+
+        vm.prank(adapterOwner);
+        reverseAdapter.setTrustedHCAImplementation(address(otherHCAImplementation), true);
+
+        assertTrue(
+            reverseAdapter.trustedHCAImplementations(address(otherHCAImplementation)),
+            "trusted"
+        );
+
+        vm.prank(adapterOwner);
+        reverseAdapter.setTrustedHCAImplementation(address(otherHCAImplementation), false);
+
+        assertFalse(
+            reverseAdapter.trustedHCAImplementations(address(otherHCAImplementation)),
+            "untrusted"
+        );
+    }
+
+    function test_setTrustedHCAImplementation_revert_onlyOwner() external {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, other));
+        vm.prank(other);
+        reverseAdapter.setTrustedHCAImplementation(address(otherHCAImplementation), true);
+    }
+
+    function test_setTrustedHCAImplementation_revert_hcaImplementationCannotBeZero() external {
+        vm.expectRevert(HCAAuthorizer.HCAImplementationCannotBeZero.selector);
+        vm.prank(adapterOwner);
+        reverseAdapter.setTrustedHCAImplementation(address(0), true);
+    }
+
+    function test_claimWithHCA_EOA() external {
+        address hca = _deployHCA(owner, address(hcaImplementation));
+
+        vm.prank(hca);
+        bytes32 node = reverseAdapter.claimWithHCA(owner, resolver);
+
+        assertEq(node, reverseRegistrar.node(owner), "node");
+        assertEq(registry.owner(node), owner, "owner");
+        assertEq(registry.resolver(node), resolver, "resolver");
+    }
+
+    function test_claimWithHCA_revert_hcaOwnerMismatch_ownable() external {
+        address hca = _deployHCA(owner, address(hcaImplementation));
+        MockOwnable c = new MockOwnable(owner);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAAuthorizer.HCAOwnerMismatch.selector, address(c), owner)
+        );
+        vm.prank(hca);
+        reverseAdapter.claimWithHCA(address(c), resolver);
+    }
+
+    function test_claimWithHCA_revert_hcaOwnerMismatch_contractNamer() external {
+        address hca = _deployHCA(owner, address(hcaImplementation));
+        MockContractNamer c = new MockContractNamer(owner);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAAuthorizer.HCAOwnerMismatch.selector, address(c), owner)
+        );
+        vm.prank(hca);
+        reverseAdapter.claimWithHCA(address(c), resolver);
+    }
+
+    function test_claimWithHCA_revert_hcaImplementationNotTrusted() external {
+        address hca = _deployHCA(owner, address(otherHCAImplementation));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                HCAAuthorizer.HCAImplementationNotTrusted.selector,
+                address(otherHCAImplementation)
+            )
+        );
+        vm.prank(hca);
+        reverseAdapter.claimWithHCA(owner, resolver);
+    }
+
+    function test_claimWithHCA_revert_hcaVerificationFailed() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IVerifiableFactory.VerificationFailed.selector,
+                address(hcaImplementation)
+            )
+        );
+        vm.prank(address(hcaImplementation));
+        reverseAdapter.claimWithHCA(owner, resolver);
+    }
+
+    function test_claimWithHCA_revert_hcaOwnerZero() external {
+        address hca = _deployHCA(address(0), address(hcaImplementation));
+
+        vm.expectRevert(abi.encodeWithSelector(HCAAuthorizer.HCAOwnerUnavailable.selector, hca));
+        vm.prank(hca);
+        reverseAdapter.claimWithHCA(owner, resolver);
+    }
+
+    function test_claimWithHCA_revert_hcaOwnerReverts() external {
+        vm.prank(adapterOwner);
+        reverseAdapter.setTrustedHCAImplementation(address(revertingHCAImplementation), true);
+        vm.prank(owner);
+        address hca =
+            verifiableFactory.deployProxy(address(revertingHCAImplementation), nextSalt++, "");
+
+        vm.expectRevert(abi.encodeWithSelector(HCAAuthorizer.HCAOwnerUnavailable.selector, hca));
+        vm.prank(hca);
+        reverseAdapter.claimWithHCA(owner, resolver);
+    }
+
+    function test_claimWithHCA_revert_hcaOwnerMismatch() external {
+        address hca = _deployHCA(owner, address(hcaImplementation));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAAuthorizer.HCAOwnerMismatch.selector, other, owner)
+        );
+        vm.prank(hca);
+        reverseAdapter.claimWithHCA(other, resolver);
+    }
+
+    function _deployHCA(address hcaOwner, address hcaImplementation_) internal returns (address) {
+        bytes memory data = abi.encodeCall(MockHCA.initialize, (hcaOwner));
+        vm.prank(owner);
+        return verifiableFactory.deployProxy(hcaImplementation_, nextSalt++, data);
     }
 }
