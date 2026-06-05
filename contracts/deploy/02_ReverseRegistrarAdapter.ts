@@ -15,10 +15,19 @@ export default execute(
     const contractNamer =
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
 
+    const verifiableFactory =
+      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
+
     const adapter = await deploy("ReverseRegistrarAdapter", {
       account: deployer,
       artifact: artifacts.ReverseRegistrarAdapter,
-      args: [reverseRegistrar.address, contractNamer.address],
+      args: [
+        reverseRegistrar.address,
+        contractNamer.address,
+        verifiableFactory.address,
+        owner,
+        [],
+      ],
     });
 
     if (network.name === "mainnet" && !network.tags?.tenderly) return;
@@ -38,6 +47,6 @@ export default execute(
   },
   {
     tags: ["ReverseRegistrarAdapter", "v2"],
-    dependencies: ["ReverseRegistrar", "ContractNamer"],
+    dependencies: ["ReverseRegistrar", "ContractNamer", "VerifiableFactory"],
   },
 );

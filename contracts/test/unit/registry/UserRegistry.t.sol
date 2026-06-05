@@ -61,8 +61,9 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
     function test_initialization() public view {
         // Verify the proxy was deployed correctly
-        assertTrue(
-            factory.verifyContract(address(proxy), address(implementation)),
+        assertEq(
+            factory.verifyContract(address(proxy)),
+            address(implementation),
             "Proxy should be verified"
         );
 
@@ -332,6 +333,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
 // Mock V2 contract for testing upgrades
 contract UserRegistryV2Mock is UserRegistry {
     constructor(ILabelStore labelStore, address namer) UserRegistry(labelStore, namer) {}
+
     function version() public pure returns (uint256) {
         return 2;
     }
