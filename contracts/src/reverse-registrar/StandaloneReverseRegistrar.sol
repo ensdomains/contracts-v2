@@ -7,7 +7,6 @@ import {
     IStandaloneReverseRegistrar
 } from "@ens/contracts/reverseRegistrar/IStandaloneReverseRegistrar.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {IRegistryEvents} from "../registry/interfaces/IRegistryEvents.sol";
@@ -19,8 +18,7 @@ abstract contract StandaloneReverseRegistrar is
     IStandaloneReverseRegistrar,
     IExtendedResolver,
     IRegistryEvents,
-    INameResolver,
-    Context
+    INameResolver
 {
     ////////////////////////////////////////////////////////////////////////
     // Constants & Immutables
@@ -181,8 +179,8 @@ abstract contract StandaloneReverseRegistrar is
         _names[node] = name_;
 
         // Emit ENSIP-16 events for indexer compatibility
-        emit LabelRegistered(tokenId, labelHash, label, addr, expiry, _msgSender());
-        emit ResolverUpdated(tokenId, address(this), _msgSender());
+        emit LabelRegistered(tokenId, labelHash, label, addr, expiry, msg.sender);
+        emit ResolverUpdated(tokenId, address(this), msg.sender);
         emit NameChanged(node, name_);
     }
 }

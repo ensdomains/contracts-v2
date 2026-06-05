@@ -141,7 +141,6 @@ export default execute(
     tags: ["DNSTLDResolver", "v2"],
     dependencies: [
       "RootRegistry",
-      "setup:HCAFactory",
       "ENSRegistry",
       "DNSSECImpl",
       "OffchainDNSResolver",

@@ -19,7 +19,7 @@ export default execute(
     });
   },
   {
-    tags: ["BatchRegistrar", "migration:phase1:deploy-v2", "l1"],
-    dependencies: ["ETHRegistry", "setup:HCAFactory"],
+    tags: ["BatchRegistrar", "migration:phase1:deploy-v2", "v2"],
+    dependencies: ["ETHRegistry"],
   },
 );

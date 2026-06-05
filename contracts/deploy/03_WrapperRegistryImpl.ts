@@ -13,9 +13,6 @@ export default execute(
     const ensV1Resolver =
       get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
 
-    const hcaFactory =
-      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
-
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
     const approvedUpgradeGate = get<
@@ -36,7 +33,6 @@ export default execute(
         graveyard.address,
         verifiableFactory.address,
         ensV1Resolver.address,
-        hcaFactory.address,
         approvedUpgradeGate.address,
         labelStore.address,
         publicResolverSet.address,
@@ -52,7 +48,6 @@ export default execute(
       "Graveyard",
       "VerifiableFactory",
       "ENSV1Resolver",
-      "HCAFactory",
       "ApprovedUpgradeGate",
       "LabelStore",
       "PublicResolverSet",

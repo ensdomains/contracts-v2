@@ -349,14 +349,14 @@ export async function setupDevnet({
         address: rocketh.get("ReverseRegistrar").address,
         client,
       }),
-      ReverseRegistrarHCAAdapter: getContract({
-        abi: artifacts.ReverseRegistrarHCAAdapter.abi,
-        address: rocketh.get("ReverseRegistrarHCAAdapter").address,
+      ReverseRegistrarAdapter: getContract({
+        abi: artifacts.ReverseRegistrarAdapter.abi,
+        address: rocketh.get("ReverseRegistrarAdapter").address,
         client,
       }),
-      DefaultReverseRegistrarHCAAdapter: getContract({
-        abi: artifacts.DefaultReverseRegistrarHCAAdapter.abi,
-        address: rocketh.get("DefaultReverseRegistrarHCAAdapter").address,
+      DefaultReverseRegistrarAdapter: getContract({
+        abi: artifacts.DefaultReverseRegistrarAdapter.abi,
+        address: rocketh.get("DefaultReverseRegistrarAdapter").address,
         client,
       }),
     };
@@ -417,11 +417,6 @@ export async function setupDevnet({
       LabelStore: getContract({
         abi: artifacts.LabelStore.abi,
         address: rocketh.get("LabelStore").address,
-        client,
-      }),
-      HCAFactory: getContract({
-        abi: artifacts.HCAFactory.abi,
-        address: rocketh.get("HCAFactory").address,
         client,
       }),
       VerifiableFactory: getContract({
@@ -554,19 +549,6 @@ export async function setupDevnet({
       .flatMap((x) => Object.values(x))
       .forEach(patchContractWrite);
     console.log("Linked contracts");
-
-    const hcaDeferredImplementation =
-      await v2.HCAFactory.read.DEFERRED_IMPLEMENTATION();
-    for (const account of accounts) {
-      const currentImplementation =
-        await v2.HCAFactory.read.accountImplementationOf([account.address]);
-      if (currentImplementation !== zeroAddress) continue;
-      await v2.HCAFactory.write.setAccountImplementation(
-        [hcaDeferredImplementation],
-        { account },
-      );
-    }
-    console.log("Configured HCA implementation for dev accounts");
 
     const namedAccounts = Object.fromEntries(
       await Promise.all(
@@ -968,11 +950,11 @@ export async function setupDevnet({
       await setName("registrar", v2.ETHRegistrar.address);
       await setName("renewer", v2.ETHRenewerV1.address);
       await setName("oracle", v2.StandardRentPriceOracle.address);
-      // BatchRegistrar
-      await setName("addr.reverse", shared.ReverseRegistrarHCAAdapter.address);
+      // await setName("batch.migration", v2.BatchRegistrar.address); // this is only used internally for premigration
+      await setName("addr.reverse", shared.ReverseRegistrarAdapter.address);
       await setName(
         "default.reverse",
-        shared.DefaultReverseRegistrarHCAAdapter.address,
+        shared.DefaultReverseRegistrarAdapter.address,
       );
 
       await setName(
@@ -985,7 +967,6 @@ export async function setupDevnet({
       await setName("gate.wrapper-registry", v2.ApprovedUpgradeGate.address);
       await setName("prset.migration", v2.PublicResolverSet.address);
 
-      await setName("hca", v2.HCAFactory.address);
       await setName("batch.gateways", shared.BatchGatewayProvider.address);
       await setName("dnssec.gateways", shared.DNSSECGatewayProvider.address);
       await setName("labelstore", v2.LabelStore.address);
@@ -998,7 +979,7 @@ export async function setupDevnet({
       ) {
         const name = `${prefix}.ens.eth`;
         try {
-          await shared.ReverseRegistrarHCAAdapter.write.claimForContract(
+          await shared.ReverseRegistrarAdapter.write.claim(
             [address, resolver.address],
             { account: namer },
           );

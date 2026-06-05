@@ -5,8 +5,6 @@ pragma solidity ^0.8.20;
 
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-import {HCAContext} from "../hca/HCAContext.sol";
-
 import {IEnhancedAccessControl} from "./interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "./libraries/EACBaseRolesLib.sol";
 
@@ -47,7 +45,7 @@ import {EACBaseRolesLib} from "./libraries/EACBaseRolesLib.sol";
 /// The same nybble-per-role layout is used for assignee counting: each nybble in the count
 /// bitmap tracks the number of accounts holding that role within a resource (4 bits = max 15).
 ///
-abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessControl {
+abstract contract EnhancedAccessControl is ERC165, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
@@ -79,25 +77,25 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @dev Modifier that checks that sender has the admin roles for all the given roles.
     modifier canGrantRoles(uint256 resource, uint256 roleBitmap) {
-        _checkCanGrantRoles(resource, roleBitmap, _msgSender());
+        _checkCanGrantRoles(resource, roleBitmap, msg.sender);
         _;
     }
 
     /// @dev Modifier that checks that sender has the admin roles for all the given roles and can revoke them.
     modifier canRevokeRoles(uint256 resource, uint256 roleBitmap) {
-        _checkCanRevokeRoles(resource, roleBitmap, _msgSender());
+        _checkCanRevokeRoles(resource, roleBitmap, msg.sender);
         _;
     }
 
     /// @dev Modifier that checks that sender has all the given roles within the given resource or the ROOT_RESOURCE.
     modifier onlyRoles(uint256 resource, uint256 roleBitmap) {
-        _checkRoles(resource, roleBitmap, _msgSender());
+        _checkRoles(resource, roleBitmap, msg.sender);
         _;
     }
 
     /// @dev Modifier that checks that sender has all the given roles within the `ROOT_RESOURCE`.
     modifier onlyRootRoles(uint256 roleBitmap) {
-        _checkRoles(ROOT_RESOURCE, roleBitmap, _msgSender());
+        _checkRoles(ROOT_RESOURCE, roleBitmap, msg.sender);
         _;
     }
 
@@ -170,7 +168,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @inheritdoc IEnhancedAccessControl
     function roles(uint256 resource, address account) public view virtual returns (uint256) {
-        return _roles[resource][account];
+        return _getRoles(resource, account);
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -180,7 +178,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
     /// @inheritdoc IEnhancedAccessControl
     function hasRootRoles(uint256 roleBitmap, address account) public view virtual returns (bool) {
-        return _roles[ROOT_RESOURCE][account] & roleBitmap == roleBitmap;
+        return _getRoles(ROOT_RESOURCE, account) & roleBitmap == roleBitmap;
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -190,8 +188,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (bool)
     {
-        return
-            (_roles[ROOT_RESOURCE][account] | _roles[resource][account]) & roleBitmap == roleBitmap;
+        return _effectiveRoles(resource, account) & roleBitmap == roleBitmap;
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -327,13 +324,13 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
 
         if (isGrant) {
             // Check for overflow
-            if (_hasZeroNybbles(~(roleMask & _roleCount[resource]))) {
+            if (EACBaseRolesLib.hasZeroNybbles(~(roleMask & _roleCount[resource]))) {
                 revert EACMaxAssignees(resource, roleBitmap);
             }
             _roleCount[resource] += roleBitmap;
         } else {
             // Check for underflow
-            if (_hasZeroNybbles(~(roleMask & ~_roleCount[resource]))) {
+            if (EACBaseRolesLib.hasZeroNybbles(~(roleMask & ~_roleCount[resource]))) {
                 revert EACMinAssignees(resource, roleBitmap);
             }
             _roleCount[resource] -= roleBitmap;
@@ -424,9 +421,7 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
-        uint256 roleBitmap =
-            (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
-        return (roleBitmap << 128) | roleBitmap;
+        return EACBaseRolesLib.withAdminRolesApplied(_effectiveRoles(resource, account));
     }
 
     /// @dev Returns the revokable roles for `account` within `resource`.
@@ -442,14 +437,22 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         virtual
         returns (uint256)
     {
-        uint256 roleBitmap =
-            (_roles[resource][account] | _roles[ROOT_RESOURCE][account]) >> 128;
-        return (roleBitmap << 128) | roleBitmap;
+        return EACBaseRolesLib.withAdminRolesApplied(_effectiveRoles(resource, account));
+    }
+
+    /// @dev Returns the roles bitmap for an account for permission checks.
+    function _getRoles(uint256 resource, address account) internal view virtual returns (uint256) {
+        return _roles[resource][account];
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Private Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Returns the effective roles bitmap for an account for permission checks.
+    function _effectiveRoles(uint256 resource, address account) private view returns (uint256) {
+        return _getRoles(ROOT_RESOURCE, account) | _getRoles(resource, account);
+    }
 
     /// @dev Checks if a role bitmap contains only valid role bits.
     /// @param roleBitmap The role bitmap to check.
@@ -469,20 +472,5 @@ abstract contract EnhancedAccessControl is HCAContext, ERC165, IEnhancedAccessCo
         _checkRoleBitmap(roleBitmap);
         roleMask = roleBitmap | (roleBitmap << 1);
         roleMask |= roleMask << 2;
-    }
-
-    /// @dev Checks if the given value has any zero nybbles.
-    /// @param value The value to check.
-    /// @return `true` if the value has any zero nybbles, `false` otherwise.
-    function _hasZeroNybbles(uint256 value) private pure returns (bool) {
-        // Algorithm source: https://graphics.stanford.edu/~seander/bithacks.html#ZeroInWord
-        uint256 hasZeroNybbles;
-        unchecked {
-            hasZeroNybbles =
-                (value - 0x1111111111111111111111111111111111111111111111111111111111111111) &
-                ~value &
-                0x8888888888888888888888888888888888888888888888888888888888888888;
-        }
-        return hasZeroNybbles != 0;
     }
 }

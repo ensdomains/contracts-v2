@@ -37,12 +37,6 @@ export default execute(
   },
   {
     tags: ["UnlockedMigrationController", "migration:phase1:deploy-v2", "v2"],
-    dependencies: [
-      "NameWrapper",
-      "Graveyard",
-      "ETHRegistry",
-      "setup:HCAFactory",
-      "ContractNamer",
-    ],
+    dependencies: ["NameWrapper", "Graveyard", "ETHRegistry", "ContractNamer"],
   },
 );

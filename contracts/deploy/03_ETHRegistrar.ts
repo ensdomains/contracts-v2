@@ -15,9 +15,6 @@ export default execute(
     namedAccounts: { deployer, owner },
     tags,
   }) => {
-    const hcaFactory =
-      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
-
     const ethRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
 
@@ -30,7 +27,6 @@ export default execute(
       artifact: artifacts.ETHRegistrar,
       args: [
         owner,
-        hcaFactory.address,
         ethRegistry.address,
         owner, // TODO: beneficiary,
         rentPriceOracle.address,
@@ -54,6 +50,6 @@ export default execute(
   },
   {
     tags: ["ETHRegistrar", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["setup:HCAFactory", "ETHRegistry", "StandardRentPriceOracle"],
+    dependencies: ["ETHRegistry", "StandardRentPriceOracle"],
   },
 );

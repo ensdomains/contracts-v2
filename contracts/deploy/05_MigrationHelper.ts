@@ -2,9 +2,6 @@ import { artifacts, execute } from "@rocketh";
 
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer } }) => {
-    const hcaFactory =
-      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
-
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
@@ -16,24 +13,27 @@ export default execute(
       (typeof artifacts.LockedMigrationController)["abi"]
     >("LockedMigrationController");
 
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+
     await deploy("MigrationHelper", {
       account: deployer,
       artifact: artifacts.MigrationHelper,
       args: [
-        hcaFactory.address,
         rootRegistry.address,
         unlockedMigrationController.address,
         lockedMigrationController.address,
+        contractNamer.address,
       ],
     });
   },
   {
     tags: ["MigrationHelper", "migration:phase1:deploy-v2", "v2"],
     dependencies: [
-      "HCAFactory",
       "RootRegistry",
       "UnlockedMigrationController",
       "LockedMigrationController",
+      "ContractNamer",
     ],
   },
 );

@@ -9,17 +9,17 @@ export default execute(
     namedAccounts: { deployer, owner },
     network,
   }) => {
-    const hcaFactory =
-      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
-
     const defaultReverseRegistrar = get<
       (typeof artifacts.DefaultReverseRegistrar)["abi"]
     >("DefaultReverseRegistrar");
 
-    const adapter = await deploy("DefaultReverseRegistrarHCAAdapter", {
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+
+    const adapter = await deploy("DefaultReverseRegistrarAdapter", {
       account: deployer,
-      artifact: artifacts.DefaultReverseRegistrarHCAAdapter,
-      args: [hcaFactory.address, defaultReverseRegistrar.address],
+      artifact: artifacts.DefaultReverseRegistrarAdapter,
+      args: [defaultReverseRegistrar.address, contractNamer.address],
     });
 
     const networkContext = network as typeof network & {
@@ -44,7 +44,7 @@ export default execute(
     }
   },
   {
-    tags: ["DefaultReverseRegistrarHCAAdapter", "v2"],
-    dependencies: ["HCAFactory", "DefaultReverseRegistrar"],
+    tags: ["DefaultReverseRegistrarAdapter", "v2"],
+    dependencies: ["DefaultReverseRegistrar", "ContractNamer"],
   },
 );

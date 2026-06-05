@@ -34,14 +34,12 @@ import {
     COIN_TYPE_ETH,
     COIN_TYPE_DEFAULT
 } from "~src/resolver/PermissionedResolver.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 bytes4 constant TEST_SELECTOR = 0x12345678;
 
 contract PermissionedResolverTest is Test {
     uint256 constant DEFAULT_ROLES = EACBaseRolesLib.ALL_ROLES;
 
-    MockHCAFactoryBasic hcaFactory;
     PermissionedResolver resolverImpl;
     PermissionedResolver resolver;
 
@@ -57,8 +55,7 @@ contract PermissionedResolverTest is Test {
 
     function setUp() external {
         VerifiableFactory factory = new VerifiableFactory();
-        hcaFactory = new MockHCAFactoryBasic();
-        resolverImpl = new PermissionedResolver(hcaFactory, address(this));
+        resolverImpl = new PermissionedResolver(address(this));
         testName = NameCoder.encode("test.eth");
         testNode = NameCoder.namehash(testName, 0);
 
@@ -72,10 +69,6 @@ contract PermissionedResolverTest is Test {
     ////////////////////////////////////////////////////////////////////////
     // Init
     ////////////////////////////////////////////////////////////////////////
-
-    function test_constructor() external view {
-        assertEq(address(resolver.HCA_FACTORY()), address(hcaFactory), "HCA_FACTORY");
-    }
 
     function test_initialize() external view {
         assertTrue(resolver.hasRootRoles(DEFAULT_ROLES, owner), "roles");

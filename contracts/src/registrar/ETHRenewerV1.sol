@@ -5,7 +5,6 @@ import {
     BaseRegistrarImplementation
 } from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
 
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
@@ -52,7 +51,6 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
     ////////////////////////////////////////////////////////////////////////
 
     /// @param owner_ Contract owner.
-    /// @param hcaFactory HCA factory.
     /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.
     /// @param beneficiary Address that receives payments.
     /// @param oracle Initial oracle for registration and renewal costs.
@@ -62,7 +60,6 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
     /// @param wrappedController ENSv1 `ETHRegistrarController` that is a `NameWrapper` controller.
     constructor(
         address owner_,
-        IHCAFactoryBasic hcaFactory,
         IPermissionedRegistry ethRegistry,
         address beneficiary,
         IRentPriceOracle oracle,
@@ -71,7 +68,7 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
         BaseRegistrarImplementation baseRegistrar,
         address wrappedController
     )
-        AbstractETHRegistrar(owner_, hcaFactory, ethRegistry, beneficiary, oracle)
+        AbstractETHRegistrar(owner_, ethRegistry, beneficiary, oracle)
     {
         GRACE_PERIOD = bonusPeriod + gracePeriod;
         _GRACE_PERIOD_V2 = gracePeriod;

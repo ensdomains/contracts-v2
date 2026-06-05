@@ -22,17 +22,14 @@ import {ITemporalRegistry} from "~src/registry/interfaces/ITemporalRegistry.sol"
 import {ITokenizedRegistry} from "~src/registry/interfaces/ITokenizedRegistry.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
 
 uint256 constant DEFAULT_ROLE_BITMAP = EACBaseRolesLib.ALL_ROLES;
 
 contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     MockPermissionedRegistry registry;
-    MockHCAFactoryBasic hcaFactory;
     LabelStore labelStore;
 
     address user1 = makeAddr("user1");
@@ -47,27 +44,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
 
     function setUp() external {
-        hcaFactory = new MockHCAFactoryBasic();
         labelStore = new LabelStore(IContractNamer(address(0)));
 
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        registry = new MockPermissionedRegistry(
-            hcaFactory,
-            labelStore,
-            address(this),
-            DEFAULT_ROLE_BITMAP
-        );
+        registry = new MockPermissionedRegistry(labelStore, address(this), DEFAULT_ROLE_BITMAP);
     }
 
     function test_initForProxyImplementation() external {
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        new PermissionedRegistry(hcaFactory, labelStore, address(0), 0);
+        new PermissionedRegistry(labelStore, address(0), 0);
     }
 
     function test_constructor() external view {
-        assertEq(address(registry.HCA_FACTORY()), address(hcaFactory), "HCA_FACTORY");
         assertEq(address(registry.LABEL_STORE()), address(labelStore), "LABEL_STORE");
 
         assertTrue(registry.hasRootRoles(DEFAULT_ROLE_BITMAP, address(this)));
@@ -351,6 +341,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256 tokenId = this._reserve();
         vm.warp(testExpiry);
         testExpiry += testExpiry;
+
         registry.renew(tokenId, testExpiry);
         assertEq(registry.getExpiry(tokenId), testExpiry);
     }
@@ -1241,15 +1232,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256 tokenId = this._register();
         vm.warp(testExpiry);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
-                tokenId + 1, // next
-                testRoles,
-                address(this)
-            )
-        );
-        registry.revokeRoles(tokenId, testRoles, testOwner);
+        assertFalse(registry.revokeRoles(tokenId, testRoles, testOwner));
     }
 
     function test_revokeRoles_whileReserved(uint256) external {
@@ -1257,15 +1240,60 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
         uint256 tokenId = this._reserve();
 
+        assertFalse(registry.revokeRoles(tokenId, roleBitmap, testOwner));
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // EAC + setApprovalForAll()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_setApprovalForAll_roles() external {
+        testRoles = _randomRoleBitmap(true, false);
+        uint256 tokenId = this._register();
+        testRoles >>= 128; // convert to normal
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        vm.prank(user2);
+        registry.grantRoles(tokenId, testRoles, actor);
+        vm.prank(user2);
+        registry.revokeRoles(tokenId, testRoles, actor);
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, false);
+
         vm.expectRevert(
             abi.encodeWithSelector(
-                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
                 tokenId, // same as resource
-                roleBitmap,
-                address(this)
+                testRoles,
+                user2
             )
         );
-        registry.revokeRoles(tokenId, roleBitmap, testOwner);
+        vm.prank(user2);
+        registry.grantRoles(tokenId, testRoles, actor);
+    }
+
+    function test_setApprovalForAll_blended() external {
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+        uint256 tokenId = this._register();
+
+        // user2 has approved roles
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        // user2 also has root roles
+        registry.grantRootRoles(RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN, user2);
+
+        assertTrue(
+            registry.hasRoles(
+                tokenId,
+                RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
+                RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN,
+                user2
+            )
+        );
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1475,6 +1503,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.revokeRoles(tokenId, role1, testOwner);
     }
 
+    // scenerio: emanicipation concern: root can revoke token
+    function test_rootRevokeToken(uint8 role) external {
+        vm.assume(role >= 32 && role < 64);
+        testRoles = 1 << (role << 2); // every admin role
+        uint256 tokenId = this._register();
+        assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Internals
     ////////////////////////////////////////////////////////////////////////
@@ -1585,13 +1621,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
 
 contract MockPermissionedRegistry is PermissionedRegistry {
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        ILabelStore labelStore,
-        address rootAccount,
-        uint256 roleBitmap
-    )
-        PermissionedRegistry(hcaFactory, labelStore, rootAccount, roleBitmap)
+    constructor(ILabelStore labelStore, address rootAccount, uint256 roleBitmap)
+        PermissionedRegistry(labelStore, rootAccount, roleBitmap)
     {}
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);

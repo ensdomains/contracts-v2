@@ -17,21 +17,13 @@ export default execute(
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
-    const hcaFactory =
-      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
-
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
     console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
       account: deployer,
       artifact: artifacts.PermissionedRegistry,
-      args: [
-        hcaFactory.address,
-        labelStore.address,
-        deployer,
-        DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
-      ],
+      args: [labelStore.address, deployer, DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT],
     });
 
     const currentStatus = await read(rootRegistry, {
@@ -73,6 +65,6 @@ export default execute(
   },
   {
     tags: ["ETHRegistry", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["RootRegistry", "setup:HCAFactory", "LabelStore"],
+    dependencies: ["RootRegistry", "LabelStore"],
   },
 );

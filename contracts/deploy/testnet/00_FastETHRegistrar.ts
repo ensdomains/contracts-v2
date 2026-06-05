@@ -15,9 +15,6 @@ export default execute(
   }) => {
     if (network.chain.id === 1) return;
 
-    const hcaFactory =
-      get<(typeof artifacts.HCAFactory)["abi"]>("HCAFactory");
-
     const ethRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
 
@@ -33,7 +30,6 @@ export default execute(
       artifact: artifacts.ETHRegistrar,
       args: [
         owner,
-        hcaFactory.address,
         ethRegistry.address,
         beneficiary,
         rentPriceOracle.address,
@@ -55,6 +51,6 @@ export default execute(
   },
   {
     tags: ["FastETHRegistrar", "v2", "testnet"],
-    dependencies: ["HCAFactory", "ETHRegistry", "StandardRentPriceOracle"],
+    dependencies: ["ETHRegistry", "StandardRentPriceOracle"],
   },
 );

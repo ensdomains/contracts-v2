@@ -4,7 +4,6 @@ pragma solidity >=0.8.13;
 import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
@@ -73,7 +72,6 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     ////////////////////////////////////////////////////////////////////////
 
     /// @param owner_ Contract owner.
-    /// @param hcaFactory HCA factory.
     /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.
     /// @param beneficiary Address that receives payments.
     /// @param oracle Initial oracle for registration and renewal costs.
@@ -83,7 +81,6 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     /// @param minRegisterDuration Minimum register duration, in seconds.
     constructor(
         address owner_,
-        IHCAFactoryBasic hcaFactory,
         IPermissionedRegistry ethRegistry,
         address beneficiary,
         IRentPriceOracle oracle,
@@ -92,7 +89,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
         uint64 maxCommitmentAge,
         uint64 minRegisterDuration
     )
-        AbstractETHRegistrar(owner_, hcaFactory, ethRegistry, beneficiary, oracle)
+        AbstractETHRegistrar(owner_, ethRegistry, beneficiary, oracle)
     {
         if (maxCommitmentAge <= minCommitmentAge) {
             revert MaxCommitmentAgeTooLow();
@@ -150,7 +147,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
                 duration,
                 paymentToken
             ); // reverts if invalid
-        SafeERC20.safeTransferFrom(paymentToken, _msgSender(), BENEFICIARY, base + premium); // reverts if payment failed
+        SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, base + premium); // reverts if payment failed
         tokenId = ETH_REGISTRY.register(
             label,
             owner,

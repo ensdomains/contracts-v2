@@ -9,7 +9,6 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
@@ -52,15 +51,6 @@ contract WrapperRegistry is
     bytes32 internal _node;
 
     ////////////////////////////////////////////////////////////////////////
-    // Errors
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Upgrade target is not approved for `WrapperRegistry` proxies.
-    /// @dev Error selector: `0xf74d7dd0`
-    /// @param implementation The disallowed implementation address.
-    error UpgradeTargetNotApproved(address implementation);
-
-    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
@@ -68,7 +58,6 @@ contract WrapperRegistry is
     /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.
-    /// @param hcaFactory The HCA factory.
     /// @param upgradeGate The upgrade target allowlist.
     /// @param labelStore The shared label database.
     /// @param publicResolverSet The approved list of `PublicResolver` contracts.
@@ -79,7 +68,6 @@ contract WrapperRegistry is
         address graveyard,
         IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
-        IHCAFactoryBasic hcaFactory,
         ApprovedUpgradeGate upgradeGate,
         ILabelStore labelStore,
         IAddressSet publicResolverSet,
@@ -87,7 +75,6 @@ contract WrapperRegistry is
         address namer
     )
         PermissionedRegistry(
-            hcaFactory,
             labelStore,
             namer,
             RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN
@@ -126,7 +113,6 @@ contract WrapperRegistry is
         bytes32 node,
         IRegistry parentRegistry,
         string calldata childLabel,
-        address rootAccount,
         uint256 roleBitmap
     )
         public
@@ -137,7 +123,9 @@ contract WrapperRegistry is
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
         emit RegistryCreated();
-        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
+        address virtualOwner = address(_parentRegistry);
+        emit ParentUpdated(parentRegistry, childLabel, virtualOwner);
+        _grantRoles(ROOT_RESOURCE, roleBitmap, virtualOwner, false);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -231,6 +219,42 @@ contract WrapperRegistry is
         returns (uint256 tokenId)
     {
         return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
+    }
+
+    /// @inheritdoc PermissionedRegistry
+    /// @dev Override for token-dependent logic:
+    ///
+    /// Root admin roles cannot be granted.
+    ///
+    /// @param resource The resource to get settable roles for.
+    /// @param account The account to get settable roles for.
+    /// @return The settable roles.
+    function _getSettableRoles(uint256 resource, address account)
+        internal
+        view
+        override
+        returns (uint256)
+    {
+        uint256 roleBitmap = super._getSettableRoles(resource, account);
+        return resource == ROOT_RESOURCE ? roleBitmap >> 128 : roleBitmap;
+    }
+
+    /// @inheritdoc PermissionedRegistry
+    /// @dev Override for token-dependent logic:
+    ///
+    /// * if root and account is token owner, remap to virtual owner.
+    ///
+    function _getRoles(uint256 resource, address account) internal view override returns (uint256) {
+        if (resource == ROOT_RESOURCE) {
+            address parent = address(_parentRegistry); // virtual owner
+            if (
+                parent != address(0) &&
+                account == PermissionedRegistry(parent).findOwner(_childLabel)
+            ) {
+                return super._getRoles(resource, parent); // replace, instead of OR
+            }
+        }
+        return super._getRoles(resource, account);
     }
 
     /// @dev Requires `ROLE_UPGRADE` and approval for the target implementation.

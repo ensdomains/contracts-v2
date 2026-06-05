@@ -5,7 +5,6 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {AbstractETHRegistrar} from "~src/registrar/AbstractETHRegistrar.sol";
-import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
 import {IETHRenewer} from "~src/registrar/interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
@@ -19,13 +18,7 @@ contract AbstractETHRegistrarTest is MigrationControllerFixture, StandardRentPri
         deployMigrationControllerFixture();
         deployStandardRentPriceOracleFixture();
 
-        ethRegistrar = new MockRegistrar(
-            address(this),
-            hcaFactory,
-            ethRegistry,
-            beneficiary,
-            rentPriceOracle
-        );
+        ethRegistrar = new MockRegistrar(address(this), ethRegistry, beneficiary, rentPriceOracle);
     }
 
     function test_supportsInterface() external view {
@@ -67,12 +60,11 @@ contract MockRegistrar is AbstractETHRegistrar {
     uint64 public constant GRACE_PERIOD = 0;
     constructor(
         address owner_,
-        IHCAFactoryBasic hcaFactory,
         IPermissionedRegistry ethRegistry,
         address beneficiary,
         IRentPriceOracle oracle
     )
-        AbstractETHRegistrar(owner_, hcaFactory, ethRegistry, beneficiary, oracle)
+        AbstractETHRegistrar(owner_, ethRegistry, beneficiary, oracle)
     {}
     function _isRenewable(IPermissionedRegistry.State memory) internal pure override returns (bool) {
         return false;
