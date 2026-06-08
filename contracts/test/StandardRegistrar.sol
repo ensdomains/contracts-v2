@@ -5,7 +5,7 @@ import {PaymentRatio, DiscountPoint} from "~src/registrar/StandardRentPriceOracl
 import {MockERC20} from "~test/mocks/MockERC20.sol";
 
 library StandardRegistrar {
-    uint64 internal constant SEC_PER_YEAR = 31_557_600; // 365.25
+    uint64 internal constant SEC_PER_YEAR = 365 * 1 days; // 31536000
 
     uint64 internal constant MIN_COMMITMENT_AGE = 60; // 1 minute
     uint64 internal constant MAX_COMMITMENT_AGE = 1 days;
@@ -27,9 +27,9 @@ library StandardRegistrar {
     // ┌───┬────┬───────────┬────────┐
     // │   │ cp │ rate      │ yearly │
     // ├───┼────┼───────────┼────────┤
-    // │ 0 │ 5  │ 253505n   │ 8.00   │
-    // │ 1 │ 4  │ 5070095n  │ 160.00 │
-    // │ 2 │ 3  │ 20280377n │ 640.00 │
+    // │ 0 │ 5  │ 253679n   │ 8.00   │
+    // │ 1 │ 4  │ 5073567n  │ 160.00 │
+    // │ 2 │ 3  │ 20294267n │ 640.00 │
     // └───┴────┴───────────┴────────┘
 
     uint256 internal constant RATE_1CP = 0;
@@ -69,7 +69,7 @@ library StandardRegistrar {
 
     function getDiscountPoints() internal pure returns (DiscountPoint[] memory v) {
         v = new DiscountPoint[](3);
-        v[0] = DiscountPoint(SEC_PER_YEAR * 2, _discountNumer(7, 8)); //////// 1 - 14/16 = 12.50%
+        v[0] = DiscountPoint(SEC_PER_YEAR * 2, _discountNumer(7, 8)); //// 1 - 14/16 = 12.50%
         v[1] = DiscountPoint(SEC_PER_YEAR * 3, _discountNumer(11, 16)); // 1 - 11/16 = 31.25%
         v[2] = DiscountPoint(SEC_PER_YEAR * 6, _discountNumer(9, 16)); /// 1 -  9/16 = 43.75%
     }

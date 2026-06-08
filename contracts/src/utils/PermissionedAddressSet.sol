@@ -13,14 +13,14 @@ uint256 constant ROLE_APPROVE = 1 << 0;
 uint256 constant ROLE_APPROVE_ADMIN = ROLE_APPROVE << 128;
 
 /// @dev Nybble 1: authorizes contract naming. Root only.
-uint256 constant ROLE_SET_NAME = 1 << 4;
+uint256 constant ROLE_CAN_NAME = 1 << 4;
 
-/// @dev Nybble 33: authorizes setting `ROLE_SET_NAME`.
-uint256 constant ROLE_SET_NAME_ADMIN = ROLE_SET_NAME << 128;
+/// @dev Nybble 33: authorizes setting `ROLE_CAN_NAME`.
+uint256 constant ROLE_CAN_NAME_ADMIN = ROLE_CAN_NAME << 128;
 
 /// @dev Default root roles assigned at construction.
 uint256 constant DEFAULT_ROLE_BITMAP =
-    ROLE_APPROVE | ROLE_APPROVE_ADMIN | ROLE_SET_NAME | ROLE_SET_NAME_ADMIN;
+    ROLE_APPROVE | ROLE_APPROVE_ADMIN | ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN;
 
 /// @notice An arbitrary set of addresses managed by EAC.
 contract PermissionedAddressSet is EnhancedAccessControl, IAddressSet, IContractNamer {
@@ -78,6 +78,6 @@ contract PermissionedAddressSet is EnhancedAccessControl, IAddressSet, IContract
 
     /// @inheritdoc IContractNamer
     function isContractNamer(address namer) external view returns (bool) {
-        return hasRootRoles(ROLE_SET_NAME, namer);
+        return hasRootRoles(ROLE_CAN_NAME, namer);
     }
 }

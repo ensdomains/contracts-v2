@@ -165,20 +165,23 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
             return (node, State.OWNED);
         } else {
             (address owner, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
-            if (owner == address(this)) {
-                // resolver is cleared by migration
-                if (LibMigration.isLocked(fuses)) {
-                    return (node, State.LOCKED);
+            if (LibMigration.isLocked(fuses)) {
+                if (owner != address(this)) {
+                    revert NameNotClearable();
                 }
-                // } else if (LibMigration.isEmancipatedChild(fuses)) {
-                //    return (node, State.OWNED);
-                // }
-            } else if (owner != address(0)) {
+                // resolver is cleared by migration
+                return (node, State.LOCKED);
+            } else if (LibMigration.isEmancipatedChild(fuses)) {
+                if (owner != address(0) || _REGISTRY_V1.owner(node) != address(this)) {
+                    revert NameNotClearable();
+                }
+                // resolver is cleared by migration
+            } else {
                 NAME_WRAPPER.setSubnodeRecord(
                     parentNode,
                     string(name[offset + 1:nextOffset]),
                     address(this), // owner
-                    address(0), // resolver
+                    address(0), // resolver is cleared
                     0, // ttl
                     0, // fuses
                     0 // expiry (uses min)

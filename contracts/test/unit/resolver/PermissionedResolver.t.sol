@@ -3,37 +3,36 @@ pragma solidity ^0.8.13;
 
 import {Test} from "forge-std/Test.sol";
 
-import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
-import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
+import {ENSIP19, COIN_TYPE_ETH, COIN_TYPE_DEFAULT} from "@ens/contracts/utils/ENSIP19.sol";
+import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
+import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
+import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
+import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
+import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
+import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
+import {IDataResolver} from "@ens/contracts/resolvers/profiles/IDataResolver.sol";
+import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
+import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
+import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
+import {IPubkeyResolver} from "@ens/contracts/resolvers/profiles/IPubkeyResolver.sol";
+import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
+import {IVersionableResolver} from "@ens/contracts/resolvers/profiles/IVersionableResolver.sol";
+
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
-import {
-    PermissionedResolver,
-    IPermissionedResolver,
-    PermissionedResolverLib,
-    IMulticallable,
-    IABIResolver,
-    IAddrResolver,
-    IAddressResolver,
-    IContentHashResolver,
-    IDataResolver,
-    IHasAddressResolver,
-    IInterfaceResolver,
-    INameResolver,
-    IPubkeyResolver,
-    ITextResolver,
-    IVersionableResolver,
-    NameCoder,
-    ResolverFeatures,
-    IERC7996,
-    ENSIP19,
-    COIN_TYPE_ETH,
-    COIN_TYPE_DEFAULT
-} from "~src/resolver/PermissionedResolver.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {IPermissionedResolver} from "~src/resolver/interfaces/IPermissionedResolver.sol";
+import {PermissionedResolverLib} from "~src/resolver/libraries/PermissionedResolverLib.sol";
+import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
 
 bytes4 constant TEST_SELECTOR = 0x12345678;
 
@@ -123,44 +122,86 @@ contract PermissionedResolverTest is Test {
     }
 
     function test_supportsInterface() external view {
-        assertTrue(ERC165Checker.supportsERC165(address(resolver)));
         assertTrue(
-            resolver.supportsInterface(type(IPermissionedResolver).interfaceId),
+            ERC165Checker.supportsInterface(
+                address(resolver),
+                type(IPermissionedResolver).interfaceId
+            ),
             "IPermissionedResolver"
         );
         assertTrue(
-            resolver.supportsInterface(type(IEnhancedAccessControl).interfaceId),
+            ERC165Checker.supportsInterface(
+                address(resolver),
+                type(IEnhancedAccessControl).interfaceId
+            ),
             "IEnhancedAccessControl"
         );
-        assertTrue(resolver.supportsInterface(type(IMulticallable).interfaceId), "IMulticallable");
-        assertTrue(resolver.supportsInterface(type(IERC7996).interfaceId), "IERC7996");
-        assertTrue(resolver.supportsInterface(type(UUPSUpgradeable).interfaceId), "UUPSUpgradeable");
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IContractNamer).interfaceId),
+            "IContractNamer"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IMulticallable).interfaceId),
+            "IMulticallable"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IERC7996).interfaceId),
+            "IERC7996"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(UUPSUpgradeable).interfaceId),
+            "UUPSUpgradeable"
+        );
 
         // profiles
-        assertTrue(resolver.supportsInterface(type(IABIResolver).interfaceId), "IABIResolver");
-        assertTrue(resolver.supportsInterface(type(IAddrResolver).interfaceId), "IAddrResolver");
         assertTrue(
-            resolver.supportsInterface(type(IAddressResolver).interfaceId),
+            ERC165Checker.supportsInterface(address(resolver), type(IABIResolver).interfaceId),
+            "IABIResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IAddrResolver).interfaceId),
+            "IAddrResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IAddressResolver).interfaceId),
             "IAddressResolver"
         );
         assertTrue(
-            resolver.supportsInterface(type(IContentHashResolver).interfaceId),
+            ERC165Checker.supportsInterface(
+                address(resolver),
+                type(IContentHashResolver).interfaceId
+            ),
             "IContentHashResolver"
         );
-        assertTrue(resolver.supportsInterface(type(IDataResolver).interfaceId), "IDataResolver");
         assertTrue(
-            resolver.supportsInterface(type(IHasAddressResolver).interfaceId),
+            ERC165Checker.supportsInterface(address(resolver), type(IDataResolver).interfaceId),
+            "IDataResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IHasAddressResolver).interfaceId),
             "IHasAddressResolver"
         );
         assertTrue(
-            resolver.supportsInterface(type(IInterfaceResolver).interfaceId),
+            ERC165Checker.supportsInterface(address(resolver), type(IInterfaceResolver).interfaceId),
             "IInterfaceResolver"
         );
-        assertTrue(resolver.supportsInterface(type(INameResolver).interfaceId), "INameResolver");
-        assertTrue(resolver.supportsInterface(type(IPubkeyResolver).interfaceId), "IPubkeyResolver");
-        assertTrue(resolver.supportsInterface(type(ITextResolver).interfaceId), "ITextResolver");
         assertTrue(
-            resolver.supportsInterface(type(IVersionableResolver).interfaceId),
+            ERC165Checker.supportsInterface(address(resolver), type(INameResolver).interfaceId),
+            "INameResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IPubkeyResolver).interfaceId),
+            "IPubkeyResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(ITextResolver).interfaceId),
+            "ITextResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(resolver),
+                type(IVersionableResolver).interfaceId
+            ),
             "IVersionableResolver"
         );
     }
@@ -683,7 +724,7 @@ contract PermissionedResolverTest is Test {
     }
 
     function test_setInterface(bytes4 interfaceId, address impl) external {
-        vm.assume(!resolver.supportsInterface(interfaceId));
+        vm.assume(!ERC165Checker.supportsInterface(address(resolver), interfaceId));
 
         vm.expectEmit();
         emit IInterfaceResolver.InterfaceChanged(testNode, interfaceId, impl);
@@ -1015,10 +1056,9 @@ contract PermissionedResolverTest is Test {
 
     function test_isContractNamer() external {
         assertTrue(resolver.isContractNamer(owner));
-
         assertFalse(resolver.isContractNamer(friend), "before");
-        vm.prank(owner);
 
+        vm.prank(owner);
         resolver.grantRootRoles(PermissionedResolverLib.ROLE_CAN_NAME, friend);
         assertTrue(resolver.isContractNamer(friend), "granted");
 
