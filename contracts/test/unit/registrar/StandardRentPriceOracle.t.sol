@@ -7,6 +7,7 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
 import {
@@ -15,7 +16,11 @@ import {
     DiscountPoint,
     DEFAULT_ROLE_BITMAP,
     ROLE_UPDATE_TOKEN,
-    ROLE_DISABLE_TOKEN
+    ROLE_UPDATE_TOKEN_ADMIN,
+    ROLE_DISABLE_TOKEN,
+    ROLE_DISABLE_TOKEN_ADMIN,
+    ROLE_CAN_NAME,
+    ROLE_CAN_NAME_ADMIN
 } from "~src/registrar/StandardRentPriceOracle.sol";
 import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOracleFixture.sol";
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
@@ -36,6 +41,24 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
                 address(rentPriceOracle),
                 type(IRentPriceOracle).interfaceId
             )
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(rentPriceOracle),
+                type(IContractNamer).interfaceId
+            )
+        );
+    }
+
+    function test_DEFAULT_ROLE_BITMAP() external pure {
+        assertEq(
+            DEFAULT_ROLE_BITMAP,
+            ROLE_UPDATE_TOKEN |
+            ROLE_UPDATE_TOKEN_ADMIN |
+            ROLE_DISABLE_TOKEN |
+            ROLE_DISABLE_TOKEN_ADMIN |
+            ROLE_CAN_NAME |
+            ROLE_CAN_NAME_ADMIN
         );
     }
 
@@ -505,5 +528,15 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
             )
         );
         rentPriceOracle.convertUnits(0, invalidPaymentToken);
+    }
+
+    function test_isContractNamer() external {
+        assertTrue(rentPriceOracle.isContractNamer(address(this)));
+
+        assertFalse(rentPriceOracle.isContractNamer(actor), "before");
+        rentPriceOracle.grantRootRoles(ROLE_CAN_NAME, actor);
+        assertTrue(rentPriceOracle.isContractNamer(actor), "granted");
+        rentPriceOracle.revokeRootRoles(ROLE_CAN_NAME, actor);
+        assertFalse(rentPriceOracle.isContractNamer(actor), "revoked");
     }
 }
