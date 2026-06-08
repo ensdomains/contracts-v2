@@ -6,10 +6,8 @@ import {Test} from "forge-std/Test.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
-
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
-
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {ENSIP19, COIN_TYPE_ETH, COIN_TYPE_DEFAULT} from "@ens/contracts/utils/ENSIP19.sol";

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {Multicallable} from "@ens/contracts/resolvers/Multicallable.sol";
 import {ABIResolver} from "@ens/contracts/resolvers/profiles/ABIResolver.sol";
 import {AddrResolver} from "@ens/contracts/resolvers/profiles/AddrResolver.sol";
@@ -13,6 +12,7 @@ import {NameResolver} from "@ens/contracts/resolvers/profiles/NameResolver.sol";
 import {PubkeyResolver} from "@ens/contracts/resolvers/profiles/PubkeyResolver.sol";
 import {TextResolver} from "@ens/contracts/resolvers/profiles/TextResolver.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
@@ -20,7 +20,8 @@ import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @notice PublicResolver that respects the ENSv2 registry.
-contract PublicResolverV2 is ERC165,
+contract PublicResolverV2 is
+    ERC165,
     Multicallable,
     ABIResolver,
     AddrResolver,
