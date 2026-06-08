@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 const SUFFIX = ".lcov";
 const PREFIX = "filtered-";
 const DIR = "./coverage/";
+const CODECOV_PGP_KEY_URL = "https://keybase.io/codecovsecops/pgp_keys.asc";
 
 const rootDir = new URL("../", import.meta.url);
 const coverageDir = new URL(DIR, rootDir);
@@ -24,7 +25,7 @@ if (codecov.exitCode !== 0) {
   await $`curl -Os ${installUrl}`;
 
   // integrity check
-  await $`curl https://keybase.io/codecovsecurity/pgp_keys.asc | gpg --no-default-keyring --keyring trustedkeys.gpg --import`;
+  await $`curl ${CODECOV_PGP_KEY_URL} | gpg --no-default-keyring --keyring trustedkeys.gpg --import`;
   await $`curl -Os ${installUrl}.SHA256SUM`;
   await $`curl -Os ${installUrl}.SHA256SUM.sig`;
 
@@ -44,6 +45,7 @@ const baseCmd = [
     ? [`--git-service ${process.env.CC_GIT_SERVICE}`]
     : []),
   ...(process.env.CC_SHA ? [`--sha ${process.env.CC_SHA}`] : []),
+  ...(process.env.CC_PR ? [`--pr ${process.env.CC_PR}`] : []),
 ];
 
 const coverageFiles = readdirSync(coverageDir).filter(

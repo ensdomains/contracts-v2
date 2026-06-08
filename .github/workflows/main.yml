@@ -58,7 +58,8 @@ jobs:
         env:
           CC_TOKEN: ${{ secrets.CODECOV_TOKEN }}
           CC_GIT_SERVICE: github
-          CC_SHA: ${{ github.sha }}
+          CC_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          CC_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }}
 
   hardhat-tests:
     name: Hardhat Tests
@@ -85,7 +86,8 @@ jobs:
         env:
           CC_TOKEN: ${{ secrets.CODECOV_TOKEN }}
           CC_GIT_SERVICE: github
-          CC_SHA: ${{ github.sha }}
+          CC_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          CC_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }}
 
   lint:
     name: Lint and Format
