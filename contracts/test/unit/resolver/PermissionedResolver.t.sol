@@ -341,28 +341,23 @@ contract PermissionedResolverTest is Test {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // authorizeTextRoles() and authorizeAddrRoles()
+    // authorizeTextRoles()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_authorizeTextRoles() external {
+    function test_authorizeTextRoles(string calldata key) external {
         uint256 resource =
             PermissionedResolverLib.resource(
                 NameCoder.namehash(testName, 0),
-                PermissionedResolverLib.partHash(testString)
+                PermissionedResolverLib.partHash(key)
             );
         vm.expectEmit();
-        emit PermissionedResolver.NamedTextResource(
-            resource,
-            testName,
-            keccak256(bytes(testString)),
-            testString
-        );
+        emit PermissionedResolver.NamedTextResource(resource, testName, keccak256(bytes(key)), key);
         vm.prank(owner);
-        resolver.authorizeTextRoles(testName, testString, friend, true);
+        resolver.authorizeTextRoles(testName, key, friend, true);
         assertTrue(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_TEXT, friend));
 
         vm.prank(owner);
-        resolver.authorizeTextRoles(testName, testString, friend, false);
+        resolver.authorizeTextRoles(testName, key, friend, false);
         assertFalse(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_TEXT, friend));
     }
 
@@ -399,6 +394,10 @@ contract PermissionedResolverTest is Test {
         vm.prank(friend);
         resolver.authorizeTextRoles(testName, testString, owner, true);
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // authorizeAddrRoles(), and authorizeDataRoles()
+    ////////////////////////////////////////////////////////////////////////
 
     function test_authorizeAddrRoles(uint256 coinType) external {
         uint256 resource =
@@ -451,6 +450,61 @@ contract PermissionedResolverTest is Test {
         );
         vm.prank(friend);
         resolver.authorizeAddrRoles(testName, 0, owner, true);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // authorizeDataRoles()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_authorizeDataRoles(string calldata key) external {
+        uint256 resource =
+            PermissionedResolverLib.resource(
+                NameCoder.namehash(testName, 0),
+                PermissionedResolverLib.partHash(key)
+            );
+        vm.expectEmit();
+        emit PermissionedResolver.NamedDataResource(resource, testName, keccak256(bytes(key)), key);
+        vm.prank(owner);
+        resolver.authorizeDataRoles(testName, key, friend, true);
+        assertTrue(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_DATA, friend));
+
+        vm.prank(owner);
+        resolver.authorizeDataRoles(testName, key, friend, false);
+        assertFalse(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_DATA, friend));
+    }
+
+    function test_authorizeDataRoles_anyName() external {
+        vm.prank(owner);
+        resolver.authorizeDataRoles(NameCoder.encode(""), testString, friend, true);
+        vm.prank(owner);
+        resolver.authorizeDataRoles(NameCoder.encode(""), testString, friend, false);
+    }
+
+    function test_authorizeDataRoles_notRoot() external {
+        vm.prank(owner);
+        resolver.authorizeNameRoles(
+            testName,
+            PermissionedResolverLib.ROLE_SET_DATA_ADMIN,
+            actor,
+            true
+        );
+        vm.prank(actor);
+        resolver.authorizeDataRoles(testName, testString, friend, true);
+        vm.prank(actor);
+        resolver.authorizeDataRoles(testName, testString, friend, false);
+    }
+
+    function test_authorizeDataRoles_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                PermissionedResolverLib.resource(NameCoder.namehash(testName, 0), 0),
+                PermissionedResolverLib.ROLE_SET_DATA,
+                friend
+            )
+        );
+        vm.prank(friend);
+        resolver.authorizeDataRoles(testName, testString, owner, true);
     }
 
     ////////////////////////////////////////////////////////////////////////

@@ -5,12 +5,16 @@ import {Test} from "forge-std/Test.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {ContractNamer} from "~src/utils/ContractNamer.sol";
+import {DelegatedContractNamer} from "~src/utils/DelegatedContractNamer.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 
 contract ContractNamerTest is Test {
     ContractNamer contractNamer;
+    MockDelegated delegated;
+
     address owner = makeAddr("owner");
 
     function setUp() external {
@@ -22,11 +26,26 @@ contract ContractNamerTest is Test {
                 )
             )
         );
+        delegated = new MockDelegated(contractNamer);
+    }
+
+    function test_supportsInterface() external view {
+        assertTrue(
+            ERC165Checker.supportsInterface(address(contractNamer), type(IContractNamer).interfaceId),
+            "IContractNamer"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(delegated), type(IContractNamer).interfaceId),
+            "IContractNamer"
+        );
     }
 
     function test_isContractNamer() external view {
         assertFalse(contractNamer.isContractNamer(address(0)));
         assertTrue(contractNamer.isContractNamer(owner));
+
+        assertFalse(delegated.isContractNamer(address(0)));
+        assertTrue(delegated.isContractNamer(owner));
     }
 
     function test_upgrade() external {
@@ -49,4 +68,9 @@ contract MockUpgrade is UUPSUpgradeable, IContractNamer {
         return namer == address(1);
     }
     function _authorizeUpgrade(address) internal override {}
+}
+
+
+contract MockDelegated is DelegatedContractNamer {
+    constructor(IContractNamer namer) DelegatedContractNamer(namer) {}
 }
