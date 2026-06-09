@@ -94,7 +94,7 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     }
 
     /// @inheritdoc IETHRenewer
-    function batchRenew(
+    function renewBatch(
         string[] calldata labels,
         uint64 duration,
         bool isExpiry,

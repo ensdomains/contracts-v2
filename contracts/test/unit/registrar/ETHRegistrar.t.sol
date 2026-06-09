@@ -509,7 +509,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         this.renew();
     }
 
-    function test_batchRenew_addDuration() external {
+    function test_renewBatch_addDuration() external {
         string[] memory labels = new string[](2);
         testLabel = labels[0] = _label(1);
         uint256 tokenId1 = this.register();
@@ -520,13 +520,13 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         uint256 expiry2 = ethRegistry.getExpiry(tokenId2);
 
         vm.prank(testOwner);
-        ethRegistrar.batchRenew(labels, testDuration, false, testPaymentToken, testReferrer);
+        ethRegistrar.renewBatch(labels, testDuration, false, testPaymentToken, testReferrer);
 
         assertEq(ethRegistry.getExpiry(tokenId1), expiry1 + testDuration, "1");
         assertEq(ethRegistry.getExpiry(tokenId2), expiry2 + testDuration, "2");
     }
 
-    function test_batchRenew_setExpiry() external {
+    function test_renewBatch_setExpiry() external {
         string[] memory labels = new string[](2);
         testLabel = labels[0] = _label(1);
         uint256 tokenId1 = this.register();
@@ -537,13 +537,13 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         uint64 newExpiry = ethRegistry.getExpiry(tokenId1) + ethRegistry.getExpiry(tokenId2);
 
         vm.prank(testOwner);
-        ethRegistrar.batchRenew(labels, newExpiry, true, testPaymentToken, testReferrer);
+        ethRegistrar.renewBatch(labels, newExpiry, true, testPaymentToken, testReferrer);
 
         assertEq(ethRegistry.getExpiry(tokenId1), newExpiry, "1");
         assertEq(ethRegistry.getExpiry(tokenId2), newExpiry, "2");
     }
 
-    function test_batchRenew_insufficientDuration() external {
+    function test_renewBatch_insufficientDuration() external {
         string[] memory labels = new string[](1);
         labels[0] = testLabel;
         uint256 tokenId = this.register();
@@ -551,19 +551,19 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
 
         uint64 min = ethRegistrar.MIN_RENEW_DURATION();
         vm.prank(testOwner);
-        ethRegistrar.batchRenew(labels, min - 1, false, testPaymentToken, testReferrer);
+        ethRegistrar.renewBatch(labels, min - 1, false, testPaymentToken, testReferrer);
 
         assertEq(ethRegistry.getExpiry(tokenId), expiry);
     }
 
-    function test_batchRenew_pastExpiry() external {
+    function test_renewBatch_pastExpiry() external {
         string[] memory labels = new string[](1);
         labels[0] = testLabel;
         uint256 tokenId = this.register();
         uint64 expiry = ethRegistry.getExpiry(tokenId);
 
         vm.prank(testOwner);
-        ethRegistrar.batchRenew(labels, expiry - 1, true, testPaymentToken, testReferrer);
+        ethRegistrar.renewBatch(labels, expiry - 1, true, testPaymentToken, testReferrer);
 
         assertEq(ethRegistry.getExpiry(tokenId), expiry);
     }

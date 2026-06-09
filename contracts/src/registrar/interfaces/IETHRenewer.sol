@@ -59,7 +59,7 @@ interface IETHRenewer {
     /// @param isExpiry If true, duration is interpeted as an expiry.
     /// @param paymentToken The payment token.
     /// @param referrer The referrer hash.
-    function batchRenew(
+    function renewBatch(
         string[] calldata labels,
         uint64 duration,
         bool isExpiry,
