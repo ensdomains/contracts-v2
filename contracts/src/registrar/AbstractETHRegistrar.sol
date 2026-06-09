@@ -94,6 +94,48 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     }
 
     /// @inheritdoc IETHRenewer
+    function batchRenew(
+        string[] calldata labels,
+        uint64 duration,
+        bool isExpiry,
+        IERC20 paymentToken,
+        bytes32 referrer
+    )
+        external
+    {
+        uint256 total;
+        for (uint256 i; i < labels.length; ++i) {
+            IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(labels[i]));
+            uint64 newExpiry = isExpiry ? duration : state.expiry + duration;
+            if (_isRenewable(state) && newExpiry >= state.expiry + MIN_RENEW_DURATION) {
+                uint64 actualDuration = newExpiry - state.expiry;
+                uint256 amount =
+                    rentPriceOracle.getRenewPrice(
+                        labels[i],
+                        state.expiry,
+                        actualDuration,
+                        paymentToken
+                    );
+                ETH_REGISTRY.renew(state.tokenId, newExpiry);
+                _onRenew(labels[i], actualDuration);
+                emit NameRenewed(
+                    state.tokenId,
+                    labels[i],
+                    actualDuration,
+                    newExpiry,
+                    paymentToken,
+                    referrer,
+                    amount
+                );
+                total += amount;
+            }
+        }
+        if (total > 0) {
+            SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, total);
+        }
+    }
+
+    /// @inheritdoc IETHRenewer
     function isRenewable(string calldata label) external view returns (bool) {
         return _isRenewable(ETH_REGISTRY.getState(LibLabel.id(label)));
     }

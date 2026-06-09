@@ -4,7 +4,7 @@ pragma solidity >=0.8.13;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Interface for renewing ".eth" names.
-/// @dev Interface selector: `0x06aaeb32`
+/// @dev Interface selector: `0x97bfed47`
 interface IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -49,7 +49,23 @@ interface IETHRenewer {
     /// @param duration The duration extension, in seconds.
     /// @param paymentToken The payment token.
     /// @param referrer The referrer hash.
-    function renew(string memory label, uint64 duration, IERC20 paymentToken, bytes32 referrer)
+    function renew(string calldata label, uint64 duration, IERC20 paymentToken, bytes32 referrer)
+        external;
+
+    /// @notice Renew multiple names.
+    /// @dev Skips names that `renew()` would revert for.
+    /// @param labels The names to renew.
+    /// @param duration The duration extension, in seconds.
+    /// @param isExpiry If true, duration is interpeted as an expiry.
+    /// @param paymentToken The payment token.
+    /// @param referrer The referrer hash.
+    function batchRenew(
+        string[] calldata labels,
+        uint64 duration,
+        bool isExpiry,
+        IERC20 paymentToken,
+        bytes32 referrer
+    )
         external;
 
     /// @notice Determine renew price for a name.
