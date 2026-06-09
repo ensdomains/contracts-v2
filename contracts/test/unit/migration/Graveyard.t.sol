@@ -11,6 +11,7 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
+import {Graveyard} from "~src/migration/Graveyard.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
@@ -37,7 +38,7 @@ contract GraveyardTest is MigrationControllerFixture {
     }
 
     function test_clear_xyz() external {
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(Graveyard.NameNotClearable.selector));
         graveyard.clear(_oneName(NameCoder.encode("xyz")));
         vm.expectRevert();
         graveyard.clear(_oneName(NameCoder.encode("test.xyz")));
@@ -299,6 +300,9 @@ contract GraveyardTest is MigrationControllerFixture {
         vm.stopPrank();
 
         _simulateMigration(name2);
+
+        vm.expectRevert(abi.encodeWithSelector(Graveyard.NameRequiresPreimage.selector));
+        graveyard.clear(_oneName(abi.encodePacked(uint8(0), keccak256(bytes(testLabel)), name2)));
 
         graveyard.clear(_oneName(name3));
 

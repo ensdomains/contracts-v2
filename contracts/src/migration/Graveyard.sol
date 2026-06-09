@@ -55,8 +55,13 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Name cannot be cleared.
     /// @dev Error selector: `0xacae6b3b`
     error NameNotClearable();
+
+    /// @notice Wrapped names require preimage. 
+    /// @dev Error selector: `0xa3f28cee`
+    error NameRequiresPreimage();
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -177,6 +182,9 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
                 }
                 // resolver is cleared by migration
             } else {
+                if (uint8(name[offset]) == 0) {
+                    revert NameRequiresPreimage();
+                }
                 NAME_WRAPPER.setSubnodeRecord(
                     parentNode,
                     string(name[offset + 1:nextOffset]),
