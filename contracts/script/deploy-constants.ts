@@ -43,6 +43,11 @@ const FLAGS = {
     DISABLE_TOKEN: 1n << 4n,
     CAN_NAME: 1n << 8n,
   },
+  // see: PermissionedAddressSet.sol
+  ADDRESS_SET: {
+    APPROVE: 1n << 0n,
+    CAN_NAME: 1n << 4n,
+  },
 } as const satisfies Flags;
 
 function adminify(flags: Flags): Flags {

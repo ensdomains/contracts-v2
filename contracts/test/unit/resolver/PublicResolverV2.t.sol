@@ -167,6 +167,39 @@ contract PublicResolverV2Test is V1Fixture, V2Fixture {
         publicResolver.setAddr(node, testOwner);
     }
 
+    ////////////////////////////////////////////////////////////////////////
+    // Approval
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_isApprovedForAll() external {
+        assertFalse(publicResolver.isApprovedForAll(testOwner, friend));
+
+        vm.expectEmit();
+        emit PublicResolverV2.ApprovalForAll(testOwner, friend, true);
+        vm.prank(testOwner);
+        publicResolver.setApprovalForAll(friend, true);
+
+        assertTrue(publicResolver.isApprovedForAll(testOwner, friend), "friend");
+        assertFalse(publicResolver.isApprovedForAll(testOwner, actor), "actor");
+    }
+
+    function test_isApprovedFor(bytes32 node) external {
+        assertFalse(publicResolver.isApprovedFor(testOwner, node, friend));
+
+        vm.expectEmit();
+        emit PublicResolverV2.Approved(testOwner, node, friend, true);
+        vm.prank(testOwner);
+        publicResolver.approve(node, friend, true);
+
+        assertTrue(publicResolver.isApprovedFor(testOwner, node, friend), "friend");
+        assertFalse(publicResolver.isApprovedFor(testOwner, ~node, friend), "other node");
+        assertFalse(publicResolver.isApprovedFor(testOwner, node, actor), "other actor");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Helpers
+    ////////////////////////////////////////////////////////////////////////
+
     function _register(string memory label) internal returns (bytes32 node) {
         // register wrapped name in v1
         bytes memory name = registerWrappedETH2LD(label, 0);

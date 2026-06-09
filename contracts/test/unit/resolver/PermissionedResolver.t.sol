@@ -98,6 +98,11 @@ contract PermissionedResolverTest is Test {
         assertEq(r.contenthash(testNode), testAddress, "contenthash()");
     }
 
+    function test_canUpgradeFrom() external view {
+        assertTrue(resolver.canUpgradeFrom(address(0))); // accepts
+        assertTrue(resolver.canUpgradeFrom(address(1))); // any address
+    }
+
     function test_upgrade() external {
         MockUpgrade upgrade = new MockUpgrade();
         vm.prank(owner);
@@ -107,6 +112,7 @@ contract PermissionedResolverTest is Test {
 
     function test_upgrade_notAuthorized() external {
         MockUpgrade upgrade = new MockUpgrade();
+        assertTrue(resolver.canUpgradeFrom(address(upgrade)));
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -298,6 +304,21 @@ contract PermissionedResolverTest is Test {
             )
         );
         resolver.grantRoles(resource, roleBitmap, account);
+    }
+
+    function test_revokeRoles_disabled(uint256 resource, address account) external {
+        vm.assume(resource > 0);
+        uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                resource,
+                roleBitmap,
+                account
+            )
+        );
+        resolver.revokeRoles(resource, roleBitmap, account);
     }
 
     function test_authorizeNameRoles() external {
@@ -629,6 +650,31 @@ contract PermissionedResolverTest is Test {
         resolver.setAddr(testNode, COIN_TYPE_ETH, "");
     }
 
+    function test_setData(string calldata key, bytes calldata value) external {
+        vm.expectEmit();
+        emit IDataResolver.DataChanged(testNode, key, key, value);
+        vm.prank(owner);
+        resolver.setData(testNode, key, value);
+
+        assertEq(resolver.data(testNode, key), value, "immediate");
+
+        bytes memory result =
+            resolver.resolve(testName, abi.encodeCall(IDataResolver.data, (bytes32(0), key)));
+        assertEq(result, abi.encode(value), "extended");
+    }
+
+    function test_setData_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                PermissionedResolverLib.resource(testNode, 0),
+                PermissionedResolverLib.ROLE_SET_DATA,
+                address(this)
+            )
+        );
+        resolver.setData(testNode, testString, "");
+    }
+
     function test_setText(string calldata key, string calldata value) external {
         vm.expectEmit();
         emit ITextResolver.TextChanged(testNode, key, key, value);
@@ -776,7 +822,7 @@ contract PermissionedResolverTest is Test {
     }
 
     function test_setInterface(bytes4 interfaceId, address impl) external {
-        vm.assume(!ERC165Checker.supportsInterface(address(resolver), interfaceId));
+        vm.assume(!resolver.supportsInterface(interfaceId));
 
         vm.expectEmit();
         emit IInterfaceResolver.InterfaceChanged(testNode, interfaceId, impl);
