@@ -82,20 +82,6 @@ contract TestnetV1PremigrationRegistrar {
         bytes32 referrer
     );
 
-    /// @notice Emitted when a name is renewed.
-    /// @param label The label of the name.
-    /// @param labelhash The keccak256 hash of the label.
-    /// @param cost The cost of the name.
-    /// @param expires The expiry time of the name.
-    /// @param referrer The referrer of the registration.
-    event NameRenewed(
-        string label,
-        bytes32 indexed labelhash,
-        uint256 cost,
-        uint256 expires,
-        bytes32 referrer
-    );
-
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
@@ -195,6 +181,13 @@ contract TestnetV1PremigrationRegistrar {
         );
 
         _refund();
+    }
+
+    /// @notice Returns true if the label is valid and available for v1 registration.
+    /// @param label The label to check.
+    /// @return True if the label is valid and available, false otherwise.
+    function available(string calldata label) public view returns (bool) {
+        return _available(label, keccak256(bytes(label)));
     }
 
     ////////////////////////////////////////////////////////////////////////
