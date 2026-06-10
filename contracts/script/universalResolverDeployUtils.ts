@@ -1,5 +1,12 @@
+import type { ExecutionArgs, ReadFunction } from "@rocketh/read-execute";
 import type { Deployment } from "rocketh/types";
-import { encodeFunctionData, getAddress, type Address } from "viem";
+import {
+  type Abi,
+  type Address,
+  type ContractFunctionName,
+  encodeFunctionData,
+  getAddress,
+} from "viem";
 
 import artifacts from "./artifacts.js";
 import { DEPLOYED_UNIVERSAL_RESOLVER_PROXY } from "./deploy-constants.js";
@@ -57,6 +64,17 @@ export function externalTopProxyOwnerLabel(tags: Record<string, unknown>) {
   return tags.hasDao ? "DAO" : tags.sepolia ? "top URP owner" : undefined;
 }
 
+// matches the bound `execute` deploy-script extension (see rocketh/config.ts);
+// the return type is widened to `unknown` because the custom `execute` override
+// returns a receipt rather than the EIP1193DATA of rocketh's ExecuteFunction
+type WriteFunction = <
+  TAbi extends Abi,
+  TFunctionName extends ContractFunctionName<TAbi, "nonpayable" | "payable">,
+>(
+  deployment: Deployment<TAbi>,
+  args: ExecutionArgs<TAbi, TFunctionName>,
+) => Promise<unknown>;
+
 export async function setProxyImplementationIfNeeded({
   read,
   write,
@@ -65,8 +83,8 @@ export async function setProxyImplementationIfNeeded({
   account,
   label,
 }: {
-  read: any;
-  write: any;
+  read: ReadFunction;
+  write: WriteFunction;
   deployment: UpgradableUniversalResolverProxyDeployment;
   implementation: Address;
   account: string;
@@ -74,7 +92,7 @@ export async function setProxyImplementationIfNeeded({
 }) {
   const currentImplementation = await read(deployment, {
     functionName: "implementation",
-  }) as Address;
+  });
   if (getAddress(currentImplementation) === getAddress(implementation)) {
     console.log(`${label}: already ${implementation}`);
     return;

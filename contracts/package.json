@@ -45,7 +45,7 @@
     "lint:fix": "solgrid fix 'src/**/*.sol' && solgrid fix --config solgrid.test.toml 'test/**/*.sol' 'script/**/*.sol'",
     "format": "solgrid fmt 'src/**/*.sol' 'test/**/*.sol' 'script/**/*.sol'",
     "format:check": "solgrid fmt --diff 'src/**/*.sol' 'test/**/*.sol' 'script/**/*.sol'",
-    "check:types": "tsc --noEmit",
+    "check:types": "NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit",
     "compile:forge": "forge build",
     "compile:hardhat": "hardhat compile",
     "compile": "bun run compile:forge && bun run compile:hardhat",

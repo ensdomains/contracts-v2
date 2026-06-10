@@ -68,7 +68,7 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
         abi,
         functionName: "addr",
         data: results[0],
-      }) as `0x${string}`;
+      });
       description = decodeFunctionResult({
         abi,
         functionName: "text",
@@ -112,9 +112,7 @@ export async function showAlias(env: DevnetEnvironment, names: string[]) {
     if (resolverAddress === zeroAddress) continue;
     const resolver = env.castPermissionedResolver(resolverAddress);
     try {
-      const aliasResult = await resolver.read.getAlias([
-        dnsEncodeName(name),
-      ]) as `0x${string}`;
+      const aliasResult = await resolver.read.getAlias([dnsEncodeName(name)]);
       if (aliasResult.length > 2) {
         const aliasTarget = dnsDecodeName(aliasResult);
         aliasData.push({

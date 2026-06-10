@@ -145,7 +145,7 @@ export async function reregisterName(
   await env.sync({ warpSec: warpSeconds });
 
   console.log(
-    `\nCurrent onchain timestamp: ${await env.client.getBlock().then((b: any) => formatExpiry(b.timestamp))}`,
+    `\nCurrent onchain timestamp: ${await env.client.getBlock().then((b) => formatExpiry(b.timestamp))}`,
   );
   console.log(`\nCurrent onchain expiry: ${formatExpiry(initialExpiry)}`);
 
@@ -212,13 +212,11 @@ export async function renewName(
 
   console.log(`Renewal price: ${price}`);
 
-  const balance = await env.erc20.MockUSDC.read.balanceOf([
-    account.address,
-  ]) as bigint;
+  const balance = await env.erc20.MockUSDC.read.balanceOf([account.address]);
   console.log(`Current balance: ${balance}`);
 
   if (balance < price) {
-    const amountToMint = (price as bigint) - balance + 1000000n;
+    const amountToMint = price - balance + 1000000n;
     console.log(`Minting ${amountToMint} tokens...`);
     await env.erc20.MockUSDC.write.mint([account.address, amountToMint], {
       account,
