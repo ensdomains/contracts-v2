@@ -7,7 +7,8 @@ export default execute(
     get,
     read,
     namedAccounts: { deployer, owner },
-    network,
+    name,
+    tags,
   }) => {
     const reverseRegistrar =
       get<(typeof artifacts.ReverseRegistrar)["abi"]>("ReverseRegistrar");
@@ -21,7 +22,9 @@ export default execute(
       args: [reverseRegistrar.address, contractNamer.address],
     });
 
-    if (network.name === "mainnet" && !network.tags?.tenderly) return;
+    if (name === "mainnet" && !tags.tenderly) {
+      return;
+    }
 
     const adapterIsReverseController = await read(reverseRegistrar, {
       functionName: "controllers",

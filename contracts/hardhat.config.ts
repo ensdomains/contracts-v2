@@ -1,11 +1,13 @@
-import type { HardhatUserConfig } from "hardhat/config";
+import { configVariable, type HardhatUserConfig } from "hardhat/config";
 
 import HardhatChaiMatchersViemPlugin from "@ensdomains/hardhat-chai-matchers-viem";
+import HardhatKeystore from "@nomicfoundation/hardhat-keystore";
 import HardhatNetworkHelpersPlugin from "@nomicfoundation/hardhat-network-helpers";
 import HardhatViem from "@nomicfoundation/hardhat-viem";
 import HardhatDeploy from "hardhat-deploy";
 
 import HardhatIgnoreWarningsPlugin from "./plugins/ignore-warnings/index.ts";
+import HardhatClearRemappingsPlugin from "./plugins/clear-remappings/index.ts";
 import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
 const version = "0.8.25";
@@ -14,6 +16,20 @@ const outputSelection = {
     "*": ["storageLayout"],
   },
 };
+const tenderlySepoliaRpcUrl =
+  process.env.TENDERLY_SEPOLIA_RPC_URL ??
+  configVariable('TENDERLY_SEPOLIA_RPC_URL');
+const plugins = [
+  HardhatNetworkHelpersPlugin,
+  ...(process.env.HARDHAT_DISABLE_VIEM === '1'
+    ? []
+    : [HardhatChaiMatchersViemPlugin, HardhatViem]),
+  HardhatStorageLayoutPlugin,
+  HardhatIgnoreWarningsPlugin,
+  HardhatDeploy,
+  HardhatKeystore,
+  HardhatClearRemappingsPlugin,
+];
 const config = {
   solidity: {
     compilers: [
@@ -30,6 +46,15 @@ const config = {
       },
     ],
     overrides: {
+      "lib/ens-contracts/contracts/wrapper/NameWrapper.sol": {
+        version: "0.8.17",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1200,
+          },
+        },
+      },
       // 23k at 1
       // 25k at 1000
       "src/registry/WrapperRegistry.sol": {
@@ -56,6 +81,19 @@ const config = {
       },
     },
   },
+  networks: {
+    'sepolia-dev': {
+      type: 'http',
+      url: configVariable('SEPOLIA_RPC_URL'),
+      accounts: [configVariable('DEV_DEPLOYER_KEY')],
+      chainId: 11155111,
+    },
+    'tenderly-sepolia': {
+      type: 'http',
+      url: tenderlySepoliaRpcUrl,
+      accounts: [configVariable('DEPLOYER_KEY')],
+    },
+  },
   paths: {
     sources: {
       solidity: [
@@ -72,17 +110,17 @@ const config = {
       ],
     },
   },
+  generateTypedArtifacts: {
+    destinations: [
+      {
+        mode: "typescript",
+      },
+    ],
+  },
   shouldIgnoreWarnings: (path) => {
     return path.startsWith("./lib/");
   },
-  plugins: [
-    HardhatNetworkHelpersPlugin,
-    HardhatChaiMatchersViemPlugin,
-    HardhatViem,
-    HardhatStorageLayoutPlugin,
-    HardhatIgnoreWarningsPlugin,
-    HardhatDeploy,
-  ],
+  plugins,
 } satisfies HardhatUserConfig;
 
 export default config;

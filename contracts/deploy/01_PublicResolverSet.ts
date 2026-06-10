@@ -6,6 +6,8 @@ export default execute(
     deploy,
     execute: write,
     get,
+    getV1,
+    read,
     namedAccounts: { deployer, owner },
   }) => {
     const publicResolverSet = await deploy("PublicResolverSet", {
@@ -15,7 +17,7 @@ export default execute(
     });
 
     const publicResolverV1 =
-      get<(typeof artifacts.PublicResolver)["abi"]>("PublicResolver");
+      await getV1<(typeof artifacts.PublicResolver)["abi"]>("PublicResolver");
 
     // TODO: update these addresses
     const wrapperAwarePublicResolvers: Address[] = [
@@ -26,6 +28,12 @@ export default execute(
       // "0xF29100983E058B709F3D539b0c765937B804AC15", // PublicResolverV4: https://etherscan.io/address/0xF29100983E058B709F3D539b0c765937B804AC15
     ];
     for (const addr of wrapperAwarePublicResolvers) {
+      const approved = await read(publicResolverSet, {
+        functionName: "includes",
+        args: [addr],
+      });
+      if (approved) continue;
+
       await write(publicResolverSet, {
         account: owner,
         functionName: "approve",

@@ -24,7 +24,7 @@ export default execute(
     });
   },
   {
-    tags: ["RootRegistry", "v2"],
+    tags: ["RootRegistry", "migration:phase1:deploy-v2", "v2"],
     dependencies: ["LabelStore"],
   },
 );

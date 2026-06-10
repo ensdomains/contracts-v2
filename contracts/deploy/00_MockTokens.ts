@@ -17,6 +17,6 @@ export default execute(
     });
   },
   {
-    tags: ["MockTokens", "v2"],
+    tags: ["MockTokens", "migration:phase1:deploy-v2", "v2"],
   },
 );

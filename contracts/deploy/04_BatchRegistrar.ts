@@ -19,7 +19,7 @@ export default execute(
     });
   },
   {
-    tags: ["BatchRegistrar", "v2"],
+    tags: ["BatchRegistrar", "migration:phase1:deploy-v2", "v2"],
     dependencies: ["ETHRegistry"],
   },
 );

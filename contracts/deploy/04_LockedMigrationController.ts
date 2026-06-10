@@ -2,9 +2,9 @@ import { artifacts, execute } from "@rocketh";
 import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
 
 export default execute(
-  async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
+  async ({ deploy, execute: write, get, getV1, namedAccounts: { deployer } }) => {
     const nameWrapper =
-      get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
+      await getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
     const graveyard = get<(typeof artifacts.Graveyard)["abi"]>("Graveyard");
 
@@ -14,9 +14,8 @@ export default execute(
     const verifiableFactory =
       get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
 
-    const wrapperRegistryImpl = get<(typeof artifacts.WrapperRegistry)["abi"]>(
-      "WrapperRegistryImpl",
-    );
+    const wrapperRegistryImpl =
+      get<(typeof artifacts.WrapperRegistry)["abi"]>("WrapperRegistryImpl");
 
     const publicResolverSet =
       get<(typeof artifacts.IAddressSet)["abi"]>("PublicResolverSet");
@@ -53,7 +52,7 @@ export default execute(
     });
   },
   {
-    tags: ["LockedMigrationController", "v2"],
+    tags: ["LockedMigrationController", "migration:phase1:deploy-v2", "v2"],
     dependencies: [
       "NameWrapper",
       "Graveyard",

@@ -36,7 +36,7 @@ const V1_OWNABLE_NAMES = [
 ] as const;
 
 // ENS DAO multisig — mapped to the `owner` named account on chainId 1 via
-// `rocketh.ts`. Included unconditionally so that even if a future ownership
+// Rocketh config. Included unconditionally so that even if a future ownership
 // transfer hasn't fully propagated, the DAO address is still funded.
 export const ENS_DAO_MULTISIG: Address =
   "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7";

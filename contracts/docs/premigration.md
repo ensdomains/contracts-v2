@@ -4,7 +4,16 @@
 
 The pre-migration script (`contracts/script/preMigration.ts`) migrates ENS v1 `.eth` second-level domain (2LD) registrations to the v2 registry. It reads a CSV export of v1 registrations, verifies each name on-chain against the v1 BaseRegistrar, and reserves or renews the name on v2 via the `BatchRegistrar` contract.
 
-Names are registered on v2 in a **reserved** state (owner set to `address(0)`) with the v1 expiry date preserved and the ENSV1Resolver set as the fallback resolver. Actual ownership transfer happens in a later migration phase.
+Names that are registered or still in the ENSv1 grace period are registered on v2 in a **reserved** state (owner set to `address(0)`) with the continuity-adjusted expiry and the ENSV1Resolver set as the fallback resolver. Actual ownership transfer happens in a later migration phase.
+
+The continuity rules are fixed by the ENSv1 continuity case study:
+
+- ENSv1 grace period: 90 days
+- ENSv1 true grace period: 90 days + 1 second
+- ENSv2 grace period: 28 days
+- ENSv2 reservation bonus: 62 days + 1 second
+
+Every eligible reservation uses `v2Expiry = v1Expiry + 62 days + 1 second`. Names are eligible when the ENSv1 name is actively registered or still inside ENSv1 grace.
 
 ## Prerequisites
 
@@ -14,7 +23,7 @@ Names are registered on v2 in a **reserved** state (owner set to `address(0)`) w
   - `PermissionedRegistry` (the v2 ETH registry)
   - `BatchRegistrar` (owned by the deployer account)
   - `ENSV1Resolver` (deployed on v2 for fallback resolution)
-- **Private key** for the `BatchRegistrar` owner account — provided via `--private-key` or the `PREMIGRATION_PRIVATE_KEY` environment variable
+- **Signer** for the `BatchRegistrar` owner account — a private key via `--private-key` or the `PREMIGRATION_PRIVATE_KEY` environment variable, or an impersonated/unlocked node account via `--account` (forks and devnets)
 - **RPC endpoint** for Ethereum mainnet (where both v1 and v2 contracts live). The chain ID is auto-detected from the RPC.
   - Optionally, a separate `--mainnet-rpc-url` if v1 reads should go to a different endpoint (e.g. when running v2 on a local devnet that also has v1 contracts deployed)
 - **CSV file** of v1 registrations (see [CSV Format](#csv-format))
@@ -26,6 +35,131 @@ Run from the `contracts/` directory:
 ```bash
 bun run script/preMigration.ts [options]
 ```
+
+For the full phased migration workflow, prefer the operator CLI:
+
+```bash
+bun run migration --help
+```
+
+The CLI entrypoint is `script/migration.ts` and is exposed through
+`contracts/package.json`. Use `bun run migration --help` to list the available
+phase commands. The phases themselves — and where pre-migration sits within
+them (phases 2 and 4) — are defined in [migration.md](./migration.md).
+
+When running against a Hardhat deployment network, prefer the Hardhat task so the
+BatchRegistrar owner key can come from the configured Hardhat signer:
+
+```bash
+bunx hardhat --network tenderly-sepolia migration premigration-run \
+  --migration-network sepolia \
+  --deployment-network sepolia \
+  --csv-file ./csv-data/ens-registrations-sepolia.csv \
+  --mainnet-rpc-url https://sepolia-rpc.example.com \
+  --min-expiry-days 0 \
+  --skip-existing-reservations
+```
+
+Prepared owner transactions are JSONL files emitted by the phased migration
+deploy. The owner can execute a specific role from that file without exposing the
+key on the command line:
+
+```bash
+SEPOLIA_V1_OWNER_KEY=0xabc...def bun run migration -- phase execute-owner-txs \
+  --network sepolia \
+  --rpc-url https://sepolia-rpc.example.com \
+  --file ./owner-txs.jsonl \
+  --role v1Owner
+```
+
+Mnemonic-backed owner accounts can use the matching mnemonic environment
+variable instead. This is intended to work with secret-injection tools such as
+1Password CLI:
+
+```bash
+op run --env-file ./owner-txs.env -- bun run migration -- phase execute-owner-txs \
+  --network sepolia \
+  --rpc-url https://sepolia-rpc.example.com \
+  --file ./owner-txs.jsonl \
+  --role v1Owner
+```
+
+Where `owner-txs.env` contains a secret reference such as
+`SEPOLIA_V1_OWNER_MNEMONIC=op://Vault/Item/mnemonic`. Use
+`SEPOLIA_V1_OWNER_MNEMONIC_INDEX` or `SEPOLIA_V1_OWNER_MNEMONIC_PATH` if the
+owner is not the first derived account. If the mnemonic uses a BIP39
+passphrase, set `SEPOLIA_V1_OWNER_MNEMONIC_PASSPHRASE` to a separate secret
+reference.
+
+The operator CLI can verify a pre-migration pass after the reservations are
+submitted:
+
+```bash
+bun run migration -- premigration verify \
+  --network sepolia \
+  --rpc-url https://sepolia-rpc.example.com \
+  --deployment-network sepolia \
+  --csv-file ./csv-data/ens-registrations-sepolia.csv
+```
+
+The verifier checks the stored continuity expiry for every eligible name. Names
+whose v2 continuity expiry is already in the past may read as available from the
+registry, so the verifier reports those separately instead of treating the
+available status as a failure.
+
+After the final pre-migration pass, the hand-off phases are split across v1 and
+v2 permissions.
+[Phase 8](./migration.md#phase-8-authorize-v1-handoff-controllers) authorizes
+`Graveyard` as a v1 BaseRegistrar controller and keeps
+`TestnetV1PremigrationRegistrar` authorized on testnets when that deployment
+exists.
+[Phase 9](./migration.md#phase-9-activate-ethrenewerv1-and-enable-the-v2-ethregistrar)
+authorizes `ETHRenewerV1` as a v1 BaseRegistrar controller, transfers v1
+BaseRegistrar ownership to `ETHRenewerV1`, then grants `REGISTRAR | RENEW` on
+the v2 ETH registry to `ETHRegistrar`.
+
+Before the final pre-migration sync
+([Phase 4](./migration.md#phase-4-final-pre-migration-sync)), export a fresh
+CSV for the target network after v1 registration controllers are disabled. This
+applies to both Sepolia and mainnet. The initial pre-migration pass
+([Phase 2](./migration.md#phase-2-initial-pre-migration)) can use the current
+export plus `--min-expiry-days 7`, but the final sync should use fresh data with
+`--min-expiry-days 0` and `--skip-existing-reservations` so it catches names
+registered, renewed, or crossing the expiry buffer before the v1 freeze. The
+skip only applies when the existing v2 reservation already has the expected
+continuity expiry; a differing expiry is renewed.
+
+Which export source to use depends on the network and the pass:
+
+- **Initial pass and rehearsals (both networks)** — the TheGraph subgraph
+  export, `bun run migration -- fetch-data` (a wrapper around
+  `script/exportTheGraphRegistrations.ts`). It pages the ENS subgraph for the
+  chosen network through the TheGraph Gateway and writes the subgraph-schema
+  CSV consumed by this script:
+
+  ```bash
+  THEGRAPH_API_KEY=... bun run migration -- fetch-data \
+    --network sepolia \
+    --output ./csv-data/ens-registrations-sepolia.csv
+  ```
+
+- **Sepolia final sync** — the audited Dune export query `7411764`
+  (`ENS Sepolia registrations pre-migration CSV export`), not TheGraph. Execute
+  it after the v1 freeze and download the execution CSV as the phase-4 input:
+
+  ```bash
+  curl -X POST https://api.dune.com/api/v1/query/7411764/execute \
+    -H "x-dune-api-key: $DUNE_API_KEY" \
+    -H "content-type: application/json" \
+    -d '{"performance":"medium"}'
+  ```
+
+  Poll the returned execution id at
+  `/api/v1/execution/<execution_id>/status`, then download
+  `/api/v1/execution/<execution_id>/results/csv` to the phase-4 CSV path.
+
+- **Mainnet final sync** — the Google BigQuery export source, rather than Dune
+  or TheGraph. The output still must use the same CSV shape described below.
 
 ### Required Options
 
@@ -41,15 +175,22 @@ bun run script/preMigration.ts [options]
 
 | Option | Default | Description |
 |---|---|---|
-| `--private-key <key>` | `PREMIGRATION_PRIVATE_KEY` env var | Deployer private key. If omitted, falls back to the `PREMIGRATION_PRIVATE_KEY` environment variable. The script exits with an error if neither is provided. |
+| `--private-key <key>` | `PREMIGRATION_PRIVATE_KEY` env var | Deployer private key. If omitted, falls back to the `PREMIGRATION_PRIVATE_KEY` environment variable. The script exits with an error if no signer is provided via `--private-key`, `PREMIGRATION_PRIVATE_KEY`, or `--account`. The migration CLI also accepts `BATCH_REGISTRAR_OWNER_KEY` or `DEPLOYER_KEY` as fallbacks. |
+| `--account <address>` | none | Impersonated or unlocked BatchRegistrar owner account. The node signs `eth_sendTransaction` for this address, so it only works on RPCs with unlocked/impersonated accounts (forks and devnets). Alternative to `--private-key`. |
 | `--mainnet-rpc-url <url>` | `https://eth.drpc.org` | Mainnet RPC for v1 BaseRegistrar expiry lookups. Useful when v2 is running on a local devnet with its own v1 contracts, so v1 reads can be pointed at the devnet instead of real mainnet. |
 | `--batch-size <number>` | `50` | Names per on-chain batch transaction |
 | `--start-index <number>` | `-1` | CSV line number to start from (used internally with `--continue`) |
 | `--limit <number>` | none | Maximum total names to process |
 | `--dry-run` | `false` | Simulate without sending transactions |
 | `--continue` | `false` | Resume from the last checkpoint |
-| `--bonus-period-days <days>` | `62` | Days added to each name's v1 expiry to compute its v2 expiry. |
+| `--min-expiry-days <days>` | `0` | Skip active names expiring within this many days. Names already in ENSv1 grace are still continuity-eligible. |
+| `--skip-existing-reservations` | `false` | Skip names already reserved on v2, but only when the existing reservation has the expected continuity expiry — a differing expiry is still renewed. Used in the final sync ([Phase 4](./migration.md#phase-4-final-pre-migration-sync)). |
 | `--v1-base-registrar <address>` | `0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85` | v1 BaseRegistrar address for expiry lookups |
+
+### Registration Export
+
+`bun run migration -- fetch-data` and `script/exportTheGraphRegistrations.ts`
+accept `--thegraph-api-key`, `THEGRAPH_API_KEY`, or `GRAPH_API_KEY`.
 
 ## CSV Format
 
@@ -109,8 +250,8 @@ Application-level filtering still applies *after* structural parsing — labels 
 8. **For each verified name:**
    - If already **registered** (status 2): fail — name is fully owned on v2
    - If already **reserved** (status 1): mark for potential renewal
-   - If never registered on v1, or past v1's 90-day grace period (`v1Expiry + 90 days < now`): skip — v1 owner has lost their claim
-   - Otherwise add to the batch reservation list with v2 expiry = `v1Expiry + --bonus-period-days`. If the result is in the past, registration will fail — operators should choose `--bonus-period-days` large enough to cover the deepest-in-grace name they want migrated
+   - If not registered on v1 or fully available after ENSv1 grace: skip
+   - Add to the batch reservation list with v2 expiry = `v1Expiry + 62 days + 1 second`
 9. **Estimate gas** for the batch and preemptively split if estimated gas exceeds 80% of the block gas limit
 10. **Submit batch transaction** via `BatchRegistrar.batchRegister()`. If a batch reverts, recursively split it in half (binary-search fallback) until individual failing names are isolated.
 11. **Save checkpoint** after each batch
@@ -120,11 +261,11 @@ Application-level filtering still applies *after* structural parsing — labels 
 
 | v2 Status | v1 Status | Action |
 |---|---|---|
-| Available (0) | Registered, or expired but within v1's 90-day grace period | **Reserve** on v2 with expiry `v1Expiry + bonusPeriodDays` |
-| Reserved (1) | Registered with different expiry | **Renew** on v2 (sync expiry) |
-| Reserved (1) | Registered with same expiry | **Skip** (already up-to-date) |
+| Available (0) | Registered or in ENSv1 grace | **Reserve** on v2 |
+| Reserved (1) | Registered or in ENSv1 grace with different continuity expiry | **Renew** on v2 (sync expiry) |
+| Reserved (1) | Registered or in ENSv1 grace with same continuity expiry | **Skip** (already up-to-date) |
 | Registered (2) | Any | **Fail** (already fully registered) |
-| Any | Never registered, or past v1's 90-day grace | **Skip** (v1 owner has lost their claim) |
+| Any | Fully available on ENSv1 or never registered | **Skip** |
 
 ### On-Chain Registration Parameters
 
@@ -133,7 +274,7 @@ Each name is reserved with:
 - **registry**: `address(0)`
 - **resolver**: The ENSV1Resolver address (for fallback resolution to v1 records)
 - **roleBitmap**: `0`
-- **expires**: The v1 expiry timestamp plus `--bonus-period-days`
+- **expires**: The v1 expiry timestamp plus the fixed continuity bonus of 62 days + 1 second
 
 ## Batch Processing
 
@@ -196,7 +337,7 @@ Dry run still:
 - Reads and parses the CSV
 - Checks v2 state for each name
 - Verifies v1 registration and expiry
-- Applies `--bonus-period-days` to each expiry
+- Applies the fixed continuity bonus to each eligible expiry
 - Logs what would happen
 - Saves checkpoints
 
@@ -299,16 +440,6 @@ bun run script/preMigration.ts \
 ```bash
 bun run script/preMigration.ts --continue [same options]
 ```
-
-### Custom expiry buffer
-
-```bash
-bun run script/preMigration.ts --bonus-period-days 180 [other options]
-```
-
-Every reserved name's v2 expiry is set to `v1Expiry + 180 days`. Pass `0` to preserve v1 expiries exactly.
-
-Note: eligibility for migration is gated by v1's hard-coded 90-day grace period regardless of this value. A name expired more than 90 days ago is past v1 grace and is skipped.
 
 ### Custom v1 BaseRegistrar (for testing)
 

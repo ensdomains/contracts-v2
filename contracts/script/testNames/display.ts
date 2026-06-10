@@ -5,7 +5,6 @@ import {
   namehash,
   zeroAddress,
 } from "viem";
-import { artifacts } from "@rocketh";
 
 import type { DevnetEnvironment } from "../setup.js";
 import { MAX_EXPIRY, STATUS } from "../deploy-constants.js";
@@ -62,7 +61,7 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
         abi,
         functionName: "multicall",
         data: result,
-      });
+      }) as readonly `0x${string}`[];
 
       // Decode individual results
       ethAddress = decodeFunctionResult({
@@ -74,7 +73,7 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
         abi,
         functionName: "text",
         data: results[1],
-      });
+      }) as string;
     } catch {
       // Resolution may fail for names without a resolver (e.g., reserved or unregistered names)
     }

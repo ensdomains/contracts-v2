@@ -11,7 +11,7 @@ export default execute(
     });
   },
   {
-    tags: ["UserRegistryImpl", "v2"],
+    tags: ["UserRegistryImpl", "migration:phase1:deploy-v2", "v2"],
     dependencies: ["LabelStore"],
   },
 );

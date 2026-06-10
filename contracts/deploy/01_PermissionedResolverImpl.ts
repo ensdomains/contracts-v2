@@ -9,6 +9,6 @@ export default execute(
     });
   },
   {
-    tags: ["PermissionedResolverImpl", "v2"],
+    tags: ["PermissionedResolverImpl", "migration:phase1:deploy-v2", "v2"],
   },
 );

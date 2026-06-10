@@ -6,6 +6,8 @@ The prepare-migration script (`contracts/script/prepareMigration.ts`) rewires ro
 
 Run this once, after all pre-migration seeding via [`preMigration.ts`](./premigration.md) has completed and before opening registration traffic to users. The script is idempotent at the role level — re-running it against a registry that is already in the live configuration will show every planned op as already satisfied and simply broadcast the same grants/revokes again.
 
+> **The phased migration supersedes this hand-off.** In the phased v1 → v2 flow ([migration.md](./migration.md)) the same transition is split across two phases: [Phase 7](./migration.md#phase-7-disable-the-batchregistrar) (`phase disable-batch-registrar`) revokes the `BatchRegistrar` roles, and [Phase 9](./migration.md#phase-9-activate-ethrenewerv1-and-enable-the-v2-ethregistrar) (`phase enable-v2-registrar`) grants `REGISTRAR | RENEW` to `ETHRegistrar`; the migration controllers receive `ROLE_REGISTER_RESERVED` already at deploy time. Use the phased commands when operating that flow. This script remains the path for non-phased, all-at-once deployments (e.g. devnets deployed outside the phased flow).
+
 ## Role changes
 
 The script performs exactly four root-level role operations on the target registry:
@@ -17,7 +19,7 @@ The script performs exactly four root-level role operations on the target regist
 | `UnlockedMigrationController` | **GRANT** | `ROLE_REGISTER_RESERVED` | None of the granted bit. |
 | `LockedMigrationController` | **GRANT** | `ROLE_REGISTER_RESERVED` | None of the granted bit. |
 
-> **Note for devnet users.** The canonical devnet deploy scripts (`deploy/03_ETHRegistrar.ts`, `deploy/02_UnlockedMigrationController.ts`, `deploy/04_LockedMigrationController.ts`) *already* pre-grant the roles this script would otherwise grant, as a convenience for local dev. That means running this script against a fresh devnet will show every GRANT op as already satisfied and only the `BatchRegistrar` revoke will produce observable state change. The test fixture `revertPrePrepareMigrationRoles` in `test/utils/mockPrepareMigration.ts` undoes those pre-grants so the grant paths can be exercised end-to-end in the e2e tests.
+> **Note for devnet users.** The canonical devnet deploy scripts (`deploy/03_ETHRegistrar.ts`, `deploy/02_UnlockedMigrationController.ts`, `deploy/04_LockedMigrationController.ts`) pre-grant the roles this script would otherwise grant, as a convenience for local dev — with one condition: `deploy/03_ETHRegistrar.ts` skips the `ETHRegistrar` grant when the `deferV2Registrar` tag is set (the phased migration deploy always sets it — see [migration.md](./migration.md#phase-1-deploy-v2-contracts)), deferring that grant to phase 9. The migration-controller grants are unconditional. That means running this script against a fresh devnet deployed *without* `deferV2Registrar` will show every GRANT op as already satisfied and only the `BatchRegistrar` revoke will produce observable state change. The test fixture `revertPrePrepareMigrationRoles` in `test/utils/mockPrepareMigration.ts` undoes those pre-grants so the grant paths can be exercised end-to-end in the e2e tests.
 
 For background on these roles and the EAC admin/base pairing used by registry contracts, see the [EAC section of the contracts README](../README.md#access-control) and [`RegistryRolesLib.sol`](../src/registry/libraries/RegistryRolesLib.sol).
 

@@ -1,8 +1,10 @@
 import { artifacts, execute } from "@rocketh";
 
 export default execute(
-  async ({ get, deploy, namedAccounts: { deployer } }) => {
-    const batchGatewayProvider = get<(typeof artifacts.GatewayProvider)["abi"]>(
+  async ({ get, getV1, deploy, namedAccounts: { deployer } }) => {
+    const batchGatewayProvider = await getV1<
+      (typeof artifacts.GatewayProvider)["abi"]
+    >(
       "BatchGatewayProvider",
     );
 
@@ -10,7 +12,7 @@ export default execute(
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
 
     const ensRegistry =
-      get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
+      await getV1<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
     await deploy("ENSV1Resolver", {
       account: deployer,
@@ -23,7 +25,7 @@ export default execute(
     });
   },
   {
-    tags: ["ENSV1Resolver", "v2"],
+    tags: ["ENSV1Resolver", "migration:phase1:deploy-v2", "v2"],
     dependencies: ["BatchGatewayProvider", "ContractNamer", "ENSRegistry"],
   },
 );

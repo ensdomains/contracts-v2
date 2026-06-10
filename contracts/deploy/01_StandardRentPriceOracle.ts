@@ -9,16 +9,29 @@ import {
   PREMIUM_PRICE_INITIAL,
   PREMIUM_HALVING_PERIOD,
   PREMIUM_PERIOD,
+  SEPOLIA_USDC,
 } from "../script/deploy-constants.js";
 
 type MockERC20 =
   (typeof artifacts)["test/mocks/MockERC20.sol/MockERC20"]["abi"];
 
 export default execute(
-  async ({ deploy, read, get, namedAccounts: { deployer, owner } }) => {
+  async ({
+    deploy,
+    execute: write,
+    read,
+    get,
+    getOrNull,
+    namedAccounts: { deployer, owner },
+    tags,
+  }) => {
+    const mockTokenArtifact = artifacts["test/mocks/MockERC20.sol/MockERC20"];
     const paymentTokens = [
       get<MockERC20>("MockUSDC"),
       get<MockERC20>("MockDAI"),
+      ...(tags.sepolia || tags["clean-testnet"]
+        ? [{ address: SEPOLIA_USDC, abi: mockTokenArtifact.abi }]
+        : []),
     ];
 
     const baseRates = BASE_RATE_PER_CP.flatMap((rate, i) => {
@@ -28,10 +41,11 @@ export default execute(
 
     const paymentFactors = await Promise.all(
       paymentTokens.map(async (x) => {
-        const [symbol, decimals] = await Promise.all([
+        const [symbol, decimalsResult] = await Promise.all([
           read(x, { functionName: "symbol" }),
           read(x, { functionName: "decimals" }),
         ]);
+        const decimals = Number(decimalsResult);
         return {
           MockERC20: symbol,
           paymentToken: x.address,
@@ -49,20 +63,43 @@ export default execute(
       baseRates.map((x) => ({ ...x, yearly: x.yearly.toFixed(2) })),
     );
 
-    const standardRentPriceOracle = await deploy("StandardRentPriceOracle", {
-      account: deployer,
-      artifact: artifacts.StandardRentPriceOracle,
-      args: [
-        owner,
-        BASE_RATE_PER_CP,
-        DISCOUNT_POINTS,
-        DISCOUNT_DENOMINATOR,
-        PREMIUM_PRICE_INITIAL,
-        PREMIUM_HALVING_PERIOD,
-        PREMIUM_PERIOD,
-        paymentFactors,
-      ],
-    });
+    const standardRentPriceOracle =
+      getOrNull<typeof artifacts.StandardRentPriceOracle.abi>(
+        "StandardRentPriceOracle",
+      ) ??
+      (await deploy("StandardRentPriceOracle", {
+        account: deployer,
+        artifact: artifacts.StandardRentPriceOracle,
+        args: [
+          owner,
+          BASE_RATE_PER_CP,
+          DISCOUNT_POINTS,
+          DISCOUNT_DENOMINATOR,
+          PREMIUM_PRICE_INITIAL,
+          PREMIUM_HALVING_PERIOD,
+          PREMIUM_PERIOD,
+          paymentFactors,
+        ],
+      }));
+
+    for (const paymentFactor of paymentFactors) {
+      const [numer, denom] = (await read(standardRentPriceOracle, {
+        functionName: "getPaymentTokenRatio",
+        args: [paymentFactor.paymentToken],
+      })) as [bigint, bigint];
+      if (numer === paymentFactor.numer && denom === paymentFactor.denom) {
+        continue;
+      }
+      await write(standardRentPriceOracle, {
+        account: owner,
+        functionName: "updatePaymentToken",
+        args: [
+          paymentFactor.paymentToken,
+          paymentFactor.numer,
+          paymentFactor.denom,
+        ],
+      });
+    }
 
     const denom = 100000n;
     const durations = [
@@ -104,7 +141,7 @@ export default execute(
     );
   },
   {
-    tags: ["StandardRentPriceOracle", "v2"],
+    tags: ["StandardRentPriceOracle", "migration:phase1:deploy-v2", "v2"],
     dependencies: ["MockTokens"],
   },
 );

@@ -1,6 +1,59 @@
 export const MAX_EXPIRY = (1n << 64n) - 1n; // see: DatastoreUtils.sol
 
 export const LOCAL_BATCH_GATEWAY_URL = "x-batch-gateway:true";
+export const DEPLOYED_UNIVERSAL_RESOLVER_PROXY =
+  "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe" as const;
+
+export const SEPOLIA_USDC =
+  "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
+
+export const STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS = 12n;
+export const STANDARD_RENT_PRICE_ORACLE_PRICE_SCALE =
+  10n ** STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS;
+
+export const STANDARD_RENT_PRICE_ORACLE_BASE_RATE_SPECS = [
+  { codepointCount: 1, yearlyPrice: 0n },
+  { codepointCount: 2, yearlyPrice: 0n },
+  { codepointCount: 3, yearlyPrice: 640n },
+  { codepointCount: 4, yearlyPrice: 160n },
+  { codepointCount: 5, yearlyPrice: 8n },
+] as const;
+
+export const STANDARD_RENT_PRICE_ORACLE_DISCOUNT_SCALE = (1n << 128n) - 1n;
+
+export const STANDARD_RENT_PRICE_ORACLE_DISCOUNT_POINT_SPECS = [
+  { t: 31_557_600n, numer: 0n, denom: 1n },
+  { t: 31_557_600n, numer: 1n, denom: 4n },
+  { t: 31_557_600n, numer: 11n, denom: 16n },
+  { t: 31_557_600n, numer: 5n, denom: 16n },
+  { t: 31_557_600n, numer: 3n, denom: 8n },
+  { t: 31_557_600n, numer: 1n, denom: 1n },
+] as const;
+
+export function standardRentPriceOracleDiscountRatio(
+  numer: bigint,
+  denom: bigint,
+) {
+  return (
+    (STANDARD_RENT_PRICE_ORACLE_DISCOUNT_SCALE * numer + denom - 1n) / denom
+  );
+}
+
+export function standardRentPriceOracleDiscountPoints() {
+  return STANDARD_RENT_PRICE_ORACLE_DISCOUNT_POINT_SPECS.map(
+    ({ t, numer, denom }) => ({
+      t,
+      value: standardRentPriceOracleDiscountRatio(numer, denom),
+    }),
+  );
+}
+
+export function standardRentPriceOracleBaseRates(secPerYear: bigint) {
+  return STANDARD_RENT_PRICE_ORACLE_BASE_RATE_SPECS.map(({ yearlyPrice }) => {
+    const yearlyUnits = STANDARD_RENT_PRICE_ORACLE_PRICE_SCALE * yearlyPrice;
+    return (yearlyUnits + secPerYear - 1n) / secPerYear;
+  });
+}
 
 interface Flags {
   [key: string]: bigint | Flags;

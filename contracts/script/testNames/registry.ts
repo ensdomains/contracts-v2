@@ -5,7 +5,7 @@ import {
   zeroAddress,
 } from "viem";
 
-import type { DevnetEnvironment } from "../setup.js";
+import type { DevnetAccount, DevnetEnvironment } from "../setup.js";
 import { MAX_EXPIRY, ROLES, STATUS } from "../deploy-constants.js";
 import {
   splitName,
@@ -58,7 +58,7 @@ export async function createSubname(
   env: DevnetEnvironment,
   fullName: string,
   options: {
-    account?: any;
+    account?: DevnetAccount;
     expiry?: bigint;
   } = {},
 ): Promise<string[]> {
@@ -296,9 +296,9 @@ export async function reserveName(
     throw new Error(`already exists: ${name}`);
   }
 
-  options.expiry ??= await env.client
-    .getBlock()
-    .then((b) => b.timestamp + 86400n);
+  const expiry: bigint =
+    options.expiry ??
+    (await env.client.getBlock().then((b) => b.timestamp + 86400n));
 
   console.log(`\nReserving ${name}...`);
 
@@ -309,7 +309,7 @@ export async function reserveName(
       zeroAddress, // no subregistry
       zeroAddress, // no resolver
       0n, // roleBitmap must be 0 for reservations
-      options.expiry,
+      expiry,
     ]),
   );
 

@@ -1,0 +1,63 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 48eba2596a81afaa45cfbe2f3f655fdf150abdbc..2a909de3149d01735df331b3990c0f121ad5a2c6 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -2,4 +2,6 @@ export { setupDeployScripts, loadEnvironment, resolveConfig, resolveExecutionPar
+ export { createEnvironment, loadDeployments } from './environment/index.js';
+ export { enhanceEnvIfNeeded } from '@rocketh/core/environment';
+ export { getChainConfigFromUserConfig } from './environment/chains.js';
++export declare const setup: typeof setupDeployScripts;
++export type * from './types.js';
+ //# sourceMappingURL=index.d.ts.map
+diff --git a/dist/index.js b/dist/index.js
+index 018a31ca31616c50679b1b566c1092b67857c47d..b21ab3736f81172de7ab5402e97f1390f807ca37 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -3,4 +3,47 @@ export { createEnvironment, loadDeployments } from './environment/index.js';
+ // used by hardhat-deploy and instead of having hardhat-deploy depends on @rocketh/core we export it here as well
+ export { enhanceEnvIfNeeded } from '@rocketh/core/environment';
+ export { getChainConfigFromUserConfig } from './environment/chains.js';
++import { setupDeployScripts } from './executor/index.js';
++
++export function setup(extensions) {
++    const legacyExtensions = { ...extensions };
++    legacyExtensions.savePendingDeployment ??= (env) => async (pendingDeployment) => {
++        const receipt = await waitForReceipt(env, pendingDeployment.transaction.hash);
++        const contractAddress = pendingDeployment.expectedAddress ?? receipt.contractAddress;
++        if (!contractAddress) {
++            throw new Error(`no contract address found for ${pendingDeployment.name}`);
++        }
++        const { abi, ...artifactObjectWithoutABI } = pendingDeployment.partialDeployment;
++        return env.save(pendingDeployment.name, {
++            address: contractAddress,
++            abi,
++            ...artifactObjectWithoutABI,
++            transaction: pendingDeployment.transaction,
++            receipt: {
++                blockHash: receipt.blockHash,
++                blockNumber: receipt.blockNumber,
++                transactionIndex: receipt.transactionIndex,
++            },
++        });
++    };
++    return setupDeployScripts(legacyExtensions);
++}
++
++async function waitForReceipt(env, hash) {
++    for (;;) {
++        let receipt;
++        try {
++            receipt = await env.network.provider.request({
++                method: 'eth_getTransactionReceipt',
++                params: [hash],
++            });
++        }
++        catch {
++        }
++        if (receipt?.blockHash) {
++            return receipt;
++        }
++        await new Promise((resolve) => setTimeout(resolve, 50));
++    }
++}
+ //# sourceMappingURL=index.js.map
