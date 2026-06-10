@@ -8,6 +8,7 @@ import HardhatDeploy from "hardhat-deploy";
 
 import HardhatIgnoreWarningsPlugin from "./plugins/ignore-warnings/index.ts";
 import HardhatClearRemappingsPlugin from "./plugins/clear-remappings/index.ts";
+import HardhatMigrationPlugin from "./plugins/migration/index.ts";
 import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
 const version = "0.8.25";
@@ -29,6 +30,7 @@ const plugins = [
   HardhatDeploy,
   HardhatKeystore,
   HardhatClearRemappingsPlugin,
+  HardhatMigrationPlugin,
 ];
 const config = {
   solidity: {
