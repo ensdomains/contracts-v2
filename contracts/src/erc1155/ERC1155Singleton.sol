@@ -131,7 +131,7 @@ abstract contract ERC1155Singleton is
     /// @param id The token ID.
     /// @return balance The balance of the token for the account. This will only ever be 1 or 0.
     function balanceOf(address account, uint256 id) public view virtual returns (uint256) {
-        return ownerOf(id) == account ? 1 : 0;
+        return account != address(0) && ownerOf(id) == account ? 1 : 0;
     }
 
     /// @notice Returns the balances of a batch of tokens for an account.
