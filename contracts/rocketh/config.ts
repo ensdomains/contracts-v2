@@ -26,8 +26,13 @@ export const config = {
       mainnet: "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
       1: "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
     },
-    urManager: {
+    securityCouncil: {
+      // admin of ManagedUniversalResolverProxy; set per-network to the
+      // security council multisig once one is designated
       default: "deployer",
+    },
+    urManager: {
+      default: "securityCouncil",
     },
     v1Owner: {
       default: "owner",
