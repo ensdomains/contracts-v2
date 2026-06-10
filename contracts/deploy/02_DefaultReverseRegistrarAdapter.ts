@@ -7,7 +7,8 @@ export default execute(
     get,
     read,
     namedAccounts: { deployer, owner },
-    network,
+    name,
+    tags,
   }) => {
     const defaultReverseRegistrar = get<
       (typeof artifacts.DefaultReverseRegistrar)["abi"]
@@ -22,11 +23,7 @@ export default execute(
       args: [defaultReverseRegistrar.address, contractNamer.address],
     });
 
-    const networkContext = network as typeof network & {
-      name?: string;
-      tags?: Record<string, boolean>;
-    };
-    if (networkContext.name === "mainnet" && !networkContext.tags?.tenderly) {
+    if (name === "mainnet" && !tags.tenderly) {
       return;
     }
 
