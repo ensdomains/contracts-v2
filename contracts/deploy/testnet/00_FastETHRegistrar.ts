@@ -22,8 +22,6 @@ export default execute(
       "StandardRentPriceOracle",
     );
 
-    const beneficiary = owner || deployer;
-
     const SEC_PER_DAY = 86400n;
     const ethRegistrar = await deploy("FastETHRegistrar", {
       account: deployer,
@@ -31,7 +29,7 @@ export default execute(
       args: [
         owner,
         ethRegistry.address,
-        beneficiary,
+        owner, // beneficiary
         rentPriceOracle.address,
         GRACE_PERIOD_V2,
         0n, // minCommitmentAge
@@ -42,10 +40,7 @@ export default execute(
 
     await write(ethRegistry, {
       functionName: "grantRootRoles",
-      args: [
-        DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
-        ethRegistrar.address,
-      ],
+      args: [DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT, ethRegistrar.address],
       account: deployer,
     });
   },

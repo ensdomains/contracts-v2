@@ -1,6 +1,9 @@
 import { artifacts, execute } from "@rocketh";
 import { ROLES } from "../../script/deploy-constants.js";
 
+const MOCK_PREMIGRATOR_ROLE_BITMAP =
+  ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
+
 export default execute(
   async ({
     deploy,
@@ -8,6 +11,7 @@ export default execute(
     get,
     namedAccounts: { deployer },
     network,
+    read,
     tags,
   }) => {
     // only on testnet
@@ -24,17 +28,20 @@ export default execute(
       args: [ethRegistry.address],
     });
 
-    await write(ethRegistry, {
-      account: deployer,
-      functionName: "grantRootRoles",
-      args: [
-        ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
-        mockPremigrator.address,
-      ],
+    const hasPremigrationRoles = await read(ethRegistry, {
+      functionName: "hasRootRoles",
+      args: [MOCK_PREMIGRATOR_ROLE_BITMAP, mockPremigrator.address],
     });
+    if (!hasPremigrationRoles) {
+      await write(ethRegistry, {
+        account: deployer,
+        functionName: "grantRootRoles",
+        args: [MOCK_PREMIGRATOR_ROLE_BITMAP, mockPremigrator.address],
+      });
+    }
   },
   {
-    tags: ["MockPremigrator", "l1"],
-    dependencies: [],
+    tags: ["MockPremigrator", "testnet"],
+    dependencies: ["ETHRegistry"],
   },
 );

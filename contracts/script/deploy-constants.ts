@@ -4,6 +4,9 @@ export const LOCAL_BATCH_GATEWAY_URL = "x-batch-gateway:true";
 export const DEPLOYED_UNIVERSAL_RESOLVER_PROXY =
   "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe" as const;
 
+export const SEPOLIA_USDC =
+  "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
+
 export const STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS = 12n;
 export const STANDARD_RENT_PRICE_ORACLE_PRICE_SCALE =
   10n ** STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS;
@@ -27,15 +30,22 @@ export const STANDARD_RENT_PRICE_ORACLE_DISCOUNT_POINT_SPECS = [
   { t: 31_557_600n, numer: 1n, denom: 1n },
 ] as const;
 
-export function standardRentPriceOracleDiscountRatio(numer: bigint, denom: bigint) {
-  return (STANDARD_RENT_PRICE_ORACLE_DISCOUNT_SCALE * numer + denom - 1n) / denom;
+export function standardRentPriceOracleDiscountRatio(
+  numer: bigint,
+  denom: bigint,
+) {
+  return (
+    (STANDARD_RENT_PRICE_ORACLE_DISCOUNT_SCALE * numer + denom - 1n) / denom
+  );
 }
 
 export function standardRentPriceOracleDiscountPoints() {
-  return STANDARD_RENT_PRICE_ORACLE_DISCOUNT_POINT_SPECS.map(({ t, numer, denom }) => ({
-    t,
-    value: standardRentPriceOracleDiscountRatio(numer, denom),
-  }));
+  return STANDARD_RENT_PRICE_ORACLE_DISCOUNT_POINT_SPECS.map(
+    ({ t, numer, denom }) => ({
+      t,
+      value: standardRentPriceOracleDiscountRatio(numer, denom),
+    }),
+  );
 }
 
 export function standardRentPriceOracleBaseRates(secPerYear: bigint) {

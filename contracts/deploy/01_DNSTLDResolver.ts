@@ -1,19 +1,9 @@
 import { artifacts, execute } from "@rocketh";
-import { labelhash, zeroAddress } from "viem";
-import { MAX_EXPIRY, ROLES } from "../script/deploy-constants.js";
-import { dnsEncodeName } from "../test/utils/utils.js";
-
-async function fetchPublicSuffixes() {
-  const res = await fetch(
-    "https://publicsuffix.org/list/public_suffix_list.dat",
-    { headers: { Connection: "close" } },
-  );
-  if (!res.ok) throw new Error(`expected suffixes: ${res.status}`);
-  return (await res.text())
-    .split("\n")
-    .map((x) => x.trim())
-    .filter((x) => x && !x.startsWith("//"));
-}
+import {
+  fetchPublicSuffixes,
+  filterAvailableSuffixes,
+  registerSuffixesViaBatchRegistrar,
+} from "../script/publicSuffixes.js";
 
 export default execute(
   async ({
@@ -42,13 +32,13 @@ export default execute(
     const dnssecOracle =
       await getV1<(typeof artifacts.DNSSECImpl)["abi"]>("DNSSECImpl");
 
-    const batchGatewayProvider =
-      await getV1<(typeof artifacts.GatewayProvider)["abi"]>(
-        "BatchGatewayProvider",
-      );
+    const batchGatewayProvider = await getV1<
+      (typeof artifacts.GatewayProvider)["abi"]
+    >("BatchGatewayProvider");
 
-    const dnssecGatewayProvider =
-      get<(typeof artifacts.GatewayProvider)["abi"]>("DNSSECGatewayProvider");
+    const dnssecGatewayProvider = get<
+      (typeof artifacts.GatewayProvider)["abi"]
+    >("DNSSECGatewayProvider");
 
     const contractNamer =
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
@@ -67,27 +57,15 @@ export default execute(
       ],
     });
 
-    let suffixes = tags.local
+    const candidates = tags.local
       ? ["com", "org", "net", "xyz"]
       : await fetchPublicSuffixes();
-    const eligibleSuffixes = await Promise.all(
-      suffixes.map(async (suffix) => {
-        const isPublicSuffix = await read(publicSuffixList, {
-          functionName: "isPublicSuffix",
-          args: [dnsEncodeName(suffix)],
-        });
-        if (!isPublicSuffix) return undefined;
-
-        const status = await read(rootRegistry, {
-          functionName: "getStatus",
-          args: [BigInt(labelhash(suffix))],
-        });
-        return status === 0 ? suffix : undefined;
-      }),
-    );
-    suffixes = eligibleSuffixes.filter((suffix): suffix is string =>
-      Boolean(suffix),
-    );
+    const suffixes = await filterAvailableSuffixes({
+      read,
+      publicSuffixList,
+      rootRegistry,
+      candidates,
+    });
 
     if (suffixes.length === 0) {
       console.warn("  - No suffixes found");
@@ -100,41 +78,13 @@ export default execute(
       args: [rootRegistry.address, deployer],
     });
 
-    await write(rootRegistry, {
+    await registerSuffixesViaBatchRegistrar({
+      write,
       account: deployer,
-      functionName: "grantRootRoles",
-      args: [
-        ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
-        batchRegistrar.address,
-      ],
-    });
-
-    const suffixBatchSize = 25;
-    for (let i = 0; i < suffixes.length; i += suffixBatchSize) {
-      const batch = suffixes.slice(i, i + suffixBatchSize);
-      const progress = Math.min(i + suffixBatchSize, suffixes.length);
-      console.log(
-        `  - Registering ${batch.length} suffixes (${progress}/${suffixes.length})`,
-      );
-      await write(batchRegistrar, {
-        account: deployer,
-        functionName: "batchRegister",
-        args: [
-          zeroAddress,
-          dnsTLDResolver.address,
-          batch,
-          new Array(batch.length).fill(MAX_EXPIRY),
-        ],
-      });
-    }
-
-    await write(rootRegistry, {
-      account: deployer,
-      functionName: "revokeRootRoles",
-      args: [
-        ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
-        batchRegistrar.address,
-      ],
+      rootRegistry,
+      batchRegistrar,
+      resolver: dnsTLDResolver.address,
+      suffixes,
     });
   },
   {

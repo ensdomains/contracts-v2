@@ -1,5 +1,4 @@
 import { artifacts, execute } from "@rocketh";
-import type { Address } from "viem";
 import {
   SEC_PER_YEAR,
   PRICE_SCALE,
@@ -10,12 +9,11 @@ import {
   PREMIUM_PRICE_INITIAL,
   PREMIUM_HALVING_PERIOD,
   PREMIUM_PERIOD,
+  SEPOLIA_USDC,
 } from "../script/deploy-constants.js";
 
 type MockERC20 =
   (typeof artifacts)["test/mocks/MockERC20.sol/MockERC20"]["abi"];
-
-const SEPOLIA_USDC = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as Address;
 
 export default execute(
   async ({
@@ -32,9 +30,7 @@ export default execute(
       get<MockERC20>("MockUSDC"),
       get<MockERC20>("MockDAI"),
       ...(tags.sepolia || tags["clean-testnet"]
-        ? [
-            { address: SEPOLIA_USDC, abi: mockTokenArtifact.abi },
-          ]
+        ? [{ address: SEPOLIA_USDC, abi: mockTokenArtifact.abi }]
         : []),
     ];
 
@@ -67,10 +63,11 @@ export default execute(
       baseRates.map((x) => ({ ...x, yearly: x.yearly.toFixed(2) })),
     );
 
-    const standardRentPriceOracle = getOrNull<
-      typeof artifacts.StandardRentPriceOracle.abi
-    >("StandardRentPriceOracle")
-      ?? await deploy("StandardRentPriceOracle", {
+    const standardRentPriceOracle =
+      getOrNull<typeof artifacts.StandardRentPriceOracle.abi>(
+        "StandardRentPriceOracle",
+      ) ??
+      (await deploy("StandardRentPriceOracle", {
         account: deployer,
         artifact: artifacts.StandardRentPriceOracle,
         args: [
@@ -83,13 +80,13 @@ export default execute(
           PREMIUM_PERIOD,
           paymentFactors,
         ],
-      });
+      }));
 
     for (const paymentFactor of paymentFactors) {
-      const [numer, denom] = await read(standardRentPriceOracle, {
+      const [numer, denom] = (await read(standardRentPriceOracle, {
         functionName: "getPaymentTokenRatio",
         args: [paymentFactor.paymentToken],
-      }) as [bigint, bigint];
+      })) as [bigint, bigint];
       if (numer === paymentFactor.numer && denom === paymentFactor.denom) {
         continue;
       }

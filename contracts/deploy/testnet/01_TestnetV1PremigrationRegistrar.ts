@@ -2,7 +2,8 @@ import { artifacts, execute } from "@rocketh";
 import { zeroAddress } from "viem";
 import { ROLES } from "../../script/deploy-constants.js";
 
-const PREMIGRATION_ROLE_BITMAP = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
+const PREMIGRATION_ROLE_BITMAP =
+  ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 
 export default execute(
   async ({
@@ -18,7 +19,8 @@ export default execute(
     if (
       network.chain.id === 1 ||
       (!tags.tenderly && !tags["testnet-premigration-registrar"])
-    ) return;
+    )
+      return;
 
     const baseRegistrar = await getV1<
       (typeof artifacts.BaseRegistrarImplementation)["abi"]
@@ -71,6 +73,6 @@ export default execute(
       "migration:testnet:v1-premigration-registrar",
       "testnet",
     ],
-    dependencies: [],
+    dependencies: ["ETHRegistry", "ENSV1Resolver"],
   },
 );
