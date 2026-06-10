@@ -6,7 +6,7 @@ import {
 } from "../../../script/migration.js";
 import {
   defaultHardhatPrivateKey,
-  optionalString,
+  nonEmptyString,
   requireHttpNetwork,
 } from "./utils.js";
 
@@ -17,10 +17,9 @@ type SetV1ReverseDefaultResolverTaskArgs = {
   v1DeploymentNetwork: string;
 };
 
-const action: NewTaskActionFunction<SetV1ReverseDefaultResolverTaskArgs> = async (
-  args,
-  hre,
-) => {
+const action: NewTaskActionFunction<
+  SetV1ReverseDefaultResolverTaskArgs
+> = async (args, hre) => {
   const connection = await hre.network.connect();
   try {
     const networkConfig = requireHttpNetwork(
@@ -37,9 +36,9 @@ const action: NewTaskActionFunction<SetV1ReverseDefaultResolverTaskArgs> = async
     await setV1ReverseDefaultResolver({
       network: parseMigrationNetwork(args.migrationNetwork),
       rpcUrl: await networkConfig.url.getUrl(),
-      chainId: optionalString(args.chainId),
-      v1DeploymentsDir: optionalString(args.v1DeploymentsDir),
-      v1DeploymentNetwork: optionalString(args.v1DeploymentNetwork),
+      chainId: nonEmptyString(args.chainId),
+      v1DeploymentsDir: nonEmptyString(args.v1DeploymentsDir),
+      v1DeploymentNetwork: nonEmptyString(args.v1DeploymentNetwork),
       privateKey,
     });
   } finally {

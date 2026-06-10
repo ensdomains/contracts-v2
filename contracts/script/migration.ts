@@ -8,7 +8,6 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -30,7 +29,11 @@ import {
   type Address,
   type Chain,
 } from "viem";
-import { generatePrivateKey, mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
+import {
+  generatePrivateKey,
+  mnemonicToAccount,
+  privateKeyToAccount,
+} from "viem/accounts";
 import { mainnet, sepolia } from "viem/chains";
 import type { AccountDefinition, AccountType, UserConfig } from "rocketh/types";
 import { Artifact_BaseRegistrarImplementation } from "generated/artifacts/BaseRegistrarImplementation.js";
@@ -39,7 +42,11 @@ import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedR
 import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
 import { config as rockethConfig } from "../rocketh/config.js";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
-import { DEPLOYED_UNIVERSAL_RESOLVER_PROXY, ROLES, STATUS } from "./deploy-constants.js";
+import {
+  DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+  ROLES,
+  STATUS,
+} from "./deploy-constants.js";
 import { main as exportRegistrationsMain } from "./exportTheGraphRegistrations.js";
 import {
   ensV2ContinuityExpiry,
@@ -48,6 +55,8 @@ import {
   isV1ContinuityEligible,
   loadCheckpoint,
   main as preMigrationMain,
+  parseCSVLine,
+  SECONDS_PER_DAY,
 } from "./preMigration.js";
 
 const DEFAULT_ANVIL_KEY =
@@ -57,26 +66,33 @@ const DEFAULT_ANVIL_DEPLOYER =
 const DEFAULT_ANVIL_OWNER =
   "0x70997970c51812dc3a010c7d01b50e0d17dc79c8" as const;
 const MAINNET_DAO = "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7" as const;
-const SEPOLIA_V1_OWNER =
-  "0x0F32b753aFc8ABad9Ca6fE589F707755f4df2353" as const;
+// The Sepolia ENS v1 BaseRegistrar owner EOA; derived from the `v1Owner` named
+// account in rocketh/config.ts so the two values cannot drift apart.
+const SEPOLIA_V1_OWNER = getAddress(rockethConfig.accounts.v1Owner.sepolia);
 
-const SECONDS_PER_DAY = 24n * 60n * 60n;
 const V1_REGISTRATION_DURATION = 365n * SECONDS_PER_DAY;
 const V2_REGISTRATION_DURATION = 28n * SECONDS_PER_DAY;
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 const RPC_RETRY_COUNT = 3;
 const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
+// Phase 2 (initial pre-migration) skips names expiring within this many days so the
+// final sync in phase 4 — run after the v1 registrars are disabled — picks them up
+// once their expiries can no longer change under live renewals.
+const INITIAL_PREMIGRATION_MIN_EXPIRY_DAYS = "7";
 
 const DEFAULT_DEPLOYMENTS_DIR = resolve(import.meta.dirname, "../deployments");
 const BUNDLED_V1_DEPLOYMENTS_DIR = resolve(
   import.meta.dirname,
   "../lib/ens-contracts/deployments",
 );
-const LOCAL_V1_DEPLOYMENTS_DIR = resolve(import.meta.dirname, "../deployments/v1");
+const LOCAL_V1_DEPLOYMENTS_DIR = resolve(
+  import.meta.dirname,
+  "../deployments/v1",
+);
 
 const MIGRATION_DEPLOY_TAGS = ["migration:phase1:deploy-v2"] as const;
 
-const migrationDataComponents = [
+export const migrationDataComponents = [
   { name: "label", type: "string" },
   { name: "owner", type: "address" },
   { name: "subregistry", type: "address" },
@@ -86,7 +102,10 @@ const migrationDataComponents = [
 export type MigrationNetwork = "sepolia" | "mainnet";
 
 type RpcProvider = {
-  request(args: { method: string; params?: readonly unknown[] | object }): Promise<unknown>;
+  request(args: {
+    method: string;
+    params?: readonly unknown[] | object;
+  }): Promise<unknown>;
 };
 
 type JsonDeployment = {
@@ -150,13 +169,11 @@ const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
   },
 };
 
-export function parseMigrationNetwork(value: string | undefined): MigrationNetwork {
+export function parseMigrationNetwork(
+  value: string | undefined,
+): MigrationNetwork {
   if (value === "mainnet" || value === "sepolia") return value;
   throw new Error(`Unsupported network: ${value ?? "<missing>"}`);
-}
-
-function parseNetwork(value: string | undefined): MigrationNetwork {
-  return parseMigrationNetwork(value);
 }
 
 function loadDotEnv(filePath: string): void {
@@ -170,7 +187,10 @@ function loadDotEnv(filePath: string): void {
   }
 }
 
-function requireRpcUrl(opts: { rpcUrl?: string }, network: MigrationNetwork): string {
+function requireRpcUrl(
+  opts: { rpcUrl?: string },
+  network: MigrationNetwork,
+): string {
   const config = NETWORKS[network];
   const rpcUrl = opts.rpcUrl ?? process.env[config.rpcEnv];
   if (!rpcUrl) {
@@ -179,7 +199,11 @@ function requireRpcUrl(opts: { rpcUrl?: string }, network: MigrationNetwork): st
   return rpcUrl;
 }
 
-function forkChain(network: MigrationNetwork, chainId: number, rpcUrl: string): Chain {
+function forkChain(
+  network: MigrationNetwork,
+  chainId: number,
+  rpcUrl: string,
+): Chain {
   const base = NETWORKS[network].chain;
   return defineChain({
     ...base,
@@ -206,7 +230,9 @@ async function getProviderChainId(provider: RpcProvider): Promise<number> {
   throw new Error(`Unsupported eth_chainId response: ${String(value)}`);
 }
 
-type WalletAccount = ReturnType<typeof privateKeyToAccount> | ReturnType<typeof mnemonicToAccount>;
+type WalletAccount =
+  | ReturnType<typeof privateKeyToAccount>
+  | ReturnType<typeof mnemonicToAccount>;
 
 function walletClient({
   rpcUrl,
@@ -267,16 +293,23 @@ function requireV1Deployment(
 ): JsonDeployment {
   const deployment = loadV1Deployment(network, name, opts);
   if (!deployment) {
-    const environment = opts.v1DeploymentNetwork ?? NETWORKS[network].environment;
+    const environment =
+      opts.v1DeploymentNetwork ?? NETWORKS[network].environment;
     throw new Error(`Missing ${environment} v1 deployment: ${name}`);
   }
   return deployment;
 }
 
-function loadV2Deployment(root: string, environment: string, name: string): JsonDeployment {
+function loadV2Deployment(
+  root: string,
+  environment: string,
+  name: string,
+): JsonDeployment {
   const deployment = loadDeploymentFromRoot(resolve(root), environment, name);
   if (!deployment) {
-    throw new Error(`Missing v2 deployment: ${resolve(root)}/${environment}/${name}.json`);
+    throw new Error(
+      `Missing v2 deployment: ${resolve(root)}/${environment}/${name}.json`,
+    );
   }
   return deployment;
 }
@@ -299,10 +332,16 @@ function resolveDeploymentAddress(
   return loadV2Deployment(deploymentsDir, environment, name).address;
 }
 
-function parseNumber(value: string | number | undefined, fallback: number): number {
-  if (value === undefined) return fallback;
+function parseNumber(
+  value: string | number | undefined,
+  fallback: number,
+): number {
+  if (value === undefined || value === "") return fallback;
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Expected a numeric value, got: ${JSON.stringify(value)}`);
+  }
+  return parsed;
 }
 
 function envValue(...names: string[]): string | undefined {
@@ -324,35 +363,10 @@ function parseResumeFromPhase(value: string | undefined): 2 | undefined {
   throw new Error(`Unsupported --resume-from-phase value: ${value}`);
 }
 
-function parseCsvLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === "\"") {
-      if (inQuotes && line[i + 1] === "\"") {
-        current += "\"";
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === "," && !inQuotes) {
-      result.push(current);
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  result.push(current);
-  return result;
-}
-
 function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
   const lines = readFileSync(csvFile, "utf-8").trim().split(/\r?\n/);
   if (lines.length === 0 || !lines[0]) return [];
-  const header = parseCsvLine(lines[0]);
+  const header = parseCSVLine(lines[0]);
   const labelIndex = (() => {
     const labelNameIndex = header.indexOf("labelName");
     if (labelNameIndex >= 0) return labelNameIndex;
@@ -363,29 +377,35 @@ function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
   const labels: string[] = [];
   for (const line of lines.slice(1)) {
     if (limit !== undefined && labels.length >= limit) break;
-    const label = parseCsvLine(line)[labelIndex]?.trim();
+    const label = parseCSVLine(line)[labelIndex]?.trim();
     if (label) labels.push(label);
   }
   return labels;
 }
 
-function transformCsvForPreMigration(sourcePath: string, targetPath: string): number {
+function transformCsvForPreMigration(
+  sourcePath: string,
+  targetPath: string,
+): number {
   const lines = readFileSync(sourcePath, "utf-8").trim().split(/\r?\n/);
   if (lines.length === 0) throw new Error(`CSV is empty: ${sourcePath}`);
 
-  const sourceHeader = parseCsvLine(lines[0]);
-  const labelIndex = sourceHeader.indexOf("labelName") >= 0
-    ? sourceHeader.indexOf("labelName")
-    : sourceHeader.indexOf("label");
+  const sourceHeader = parseCSVLine(lines[0]);
+  const labelIndex =
+    sourceHeader.indexOf("labelName") >= 0
+      ? sourceHeader.indexOf("labelName")
+      : sourceHeader.indexOf("label");
   if (labelIndex < 0) {
-    throw new Error(`CSV must contain either a labelName or label column: ${sourcePath}`);
+    throw new Error(
+      `CSV must contain either a labelName or label column: ${sourcePath}`,
+    );
   }
 
   const output = [
     "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
   ];
   for (const line of lines.slice(1)) {
-    const columns = parseCsvLine(line);
+    const columns = parseCSVLine(line);
     const label = columns[labelIndex]?.trim();
     if (label) output.push(`,,,,,,${label},,`);
   }
@@ -403,12 +423,12 @@ function prependCsvLabels(csvFile: string, labels: string[]): void {
 function readPremigrationLabels(csvFile: string, count: number): string[] {
   const lines = readFileSync(csvFile, "utf-8").trimEnd().split(/\r?\n/);
   const [header, ...rows] = lines;
-  const labelIndex = parseCsvLine(header).indexOf("labelName");
+  const labelIndex = parseCSVLine(header).indexOf("labelName");
   if (labelIndex < 0) {
     throw new Error(`CSV must contain a labelName column: ${csvFile}`);
   }
   const labels = rows
-    .map((row) => parseCsvLine(row)[labelIndex]?.trim())
+    .map((row) => parseCSVLine(row)[labelIndex]?.trim())
     .filter((label): label is string => Boolean(label));
   if (labels.length < count) {
     throw new Error(`CSV must contain at least ${count} labels: ${csvFile}`);
@@ -438,7 +458,10 @@ async function requestAny(
   throw lastError;
 }
 
-async function increaseTime(client: ReturnType<typeof publicClient>, seconds: bigint) {
+async function increaseTime(
+  client: ReturnType<typeof publicClient>,
+  seconds: bigint,
+) {
   await requestAny(client, [
     { method: "anvil_increaseTime", params: [Number(seconds)] },
     { method: "evm_increaseTime", params: [Number(seconds)] },
@@ -460,14 +483,16 @@ async function waitForCommitmentAge(
   }
   const startTimestamp = (await client.getBlock()).timestamp;
   const targetTimestamp = startTimestamp + seconds + 15n;
-  console.log(`waiting for commitment age until block timestamp ${targetTimestamp}`);
+  console.log(
+    `waiting for commitment age until block timestamp ${targetTimestamp}`,
+  );
   for (;;) {
     const currentTimestamp = (await client.getBlock()).timestamp;
     if (currentTimestamp >= targetTimestamp) return;
     const remainingSeconds = targetTimestamp - currentTimestamp;
     const delaySeconds = remainingSeconds < 12n ? remainingSeconds : 12n;
     await new Promise((resolvePromise) =>
-      setTimeout(resolvePromise, Number(delaySeconds) * 1000)
+      setTimeout(resolvePromise, Number(delaySeconds) * 1000),
     );
   }
 }
@@ -520,22 +545,6 @@ async function waitForRpc(rpcUrl: string, chain: Chain): Promise<void> {
   throw new Error(`Timed out waiting for RPC at ${rpcUrl}`);
 }
 
-async function getFreePort(): Promise<number> {
-  const server = createServer();
-  await new Promise<void>((resolvePromise, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolvePromise());
-  });
-  const address = server.address();
-  await new Promise<void>((resolvePromise, reject) => {
-    server.close((error) => (error ? reject(error) : resolvePromise()));
-  });
-  if (!address || typeof address === "string") {
-    throw new Error("failed to allocate a free local port");
-  }
-  return address.port;
-}
-
 function buildFeeHistoryResult(params: any) {
   const blockCount = Number(BigInt(params?.[0] ?? "0x1"));
   const percentiles = params?.[2] ?? [];
@@ -543,9 +552,8 @@ function buildFeeHistoryResult(params: any) {
     oldestBlock: "0x1",
     baseFeePerGas: Array.from({ length: blockCount + 1 }, () => "0x1"),
     gasUsedRatio: Array.from({ length: blockCount }, () => 0),
-    reward: Array.from(
-      { length: blockCount },
-      () => Array.from({ length: percentiles.length }, () => "0x1"),
+    reward: Array.from({ length: blockCount }, () =>
+      Array.from({ length: percentiles.length }, () => "0x1"),
     ),
   };
 }
@@ -570,14 +578,19 @@ function isMissingFeeHistory(error: any): boolean {
   );
 }
 
-function withRpcCompatibility(provider: RpcProvider, debugRpc = false): RpcProvider {
+function withRpcCompatibility(
+  provider: RpcProvider,
+  debugRpc = false,
+): RpcProvider {
   return {
     async request(args) {
       try {
         return await provider.request(args);
       } catch (error) {
         if (args.method === "eth_feeHistory" && isMissingFeeHistory(error)) {
-          return buildFeeHistoryResult(Array.isArray(args.params) ? args.params : []);
+          return buildFeeHistoryResult(
+            Array.isArray(args.params) ? args.params : [],
+          );
         }
         if (debugRpc) {
           console.error(`rpc error from ${args.method}:`, error);
@@ -602,12 +615,14 @@ function httpRpcProvider(rpcUrl: string): RpcProvider {
           params: args.params ?? [],
         }),
       });
-      const payload = await response.json() as {
+      const payload = (await response.json()) as {
         result?: unknown;
         error?: { code?: number; message?: string; data?: unknown };
       };
       if (payload.error) {
-        const error = new Error(payload.error.message ?? "JSON-RPC error") as Error & {
+        const error = new Error(
+          payload.error.message ?? "JSON-RPC error",
+        ) as Error & {
           code?: number;
           data?: unknown;
         };
@@ -648,7 +663,8 @@ function privateKeyRpcProvider({
   };
   return {
     async request(args) {
-      if (args.method === "eth_accounts") return [account.address.toLowerCase()];
+      if (args.method === "eth_accounts")
+        return [account.address.toLowerCase()];
       if (args.method === "eth_sendTransaction") {
         const [transaction] = (args.params ?? []) as [any];
         return await client.sendTransaction(normalizeTransaction(transaction));
@@ -664,7 +680,9 @@ function privateKeyRpcProvider({
 
 function privateKeySignerProtocol(rpcUrl: string, chain: Chain) {
   return async (protocolString: string) => {
-    const privateKey = protocolString.slice("privateKey:".length) as `0x${string}`;
+    const privateKey = protocolString.slice(
+      "privateKey:".length,
+    ) as `0x${string}`;
     return {
       type: "remote" as const,
       signer: privateKeyRpcProvider({ rpcUrl, chain, privateKey }) as any,
@@ -672,7 +690,10 @@ function privateKeySignerProtocol(rpcUrl: string, chain: Chain) {
   };
 }
 
-function impersonatedAccountProvider(provider: RpcProvider, address: Address): RpcProvider {
+function impersonatedAccountProvider(
+  provider: RpcProvider,
+  address: Address,
+): RpcProvider {
   return {
     async request(args) {
       if (args.method === "eth_accounts") return [address];
@@ -683,7 +704,10 @@ function impersonatedAccountProvider(provider: RpcProvider, address: Address): R
 
 function impersonationProvider(opts: DeployV2Options): RpcProvider | undefined {
   if (opts.rpcUrl) {
-    return withRpcCompatibility(httpRpcProvider(opts.rpcUrl), Boolean(opts.debugRpc));
+    return withRpcCompatibility(
+      httpRpcProvider(opts.rpcUrl),
+      Boolean(opts.debugRpc),
+    );
   }
   if (!opts.provider) return undefined;
   return opts.rpcCompatibility
@@ -691,27 +715,48 @@ function impersonationProvider(opts: DeployV2Options): RpcProvider | undefined {
     : opts.provider;
 }
 
-async function createRpcSnapshot(provider: RpcProvider): Promise<string> {
-  const snapshotId = await provider.request({ method: "evm_snapshot", params: [] });
+export async function createRpcSnapshot(
+  provider: RpcProvider,
+): Promise<string> {
+  const snapshotId = await provider.request({
+    method: "evm_snapshot",
+    params: [],
+  });
   if (typeof snapshotId !== "string") {
     throw new Error(`unexpected evm_snapshot response: ${String(snapshotId)}`);
   }
   return snapshotId;
 }
 
-function saveRpcSnapshotFile(path: string, snapshotId: string, network: string) {
+export function saveRpcSnapshotFile(
+  path: string,
+  snapshotId: string,
+  network: string,
+) {
   const filePath = resolve(path);
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(
     filePath,
-    `${JSON.stringify({
-      network,
-      snapshotId,
-      createdAt: new Date().toISOString(),
-    }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        network,
+        snapshotId,
+        createdAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
   );
 }
 
+/**
+ * Permanently monkey-patches `globalThis.fetch` to add JSON-RPC compatibility
+ * fallbacks for HTTP traffic issued by libraries we do not control (rocketh/viem
+ * internals): when an RPC lacks `eth_feeHistory` and returns an error, a synthetic
+ * fee-history response is fabricated so EIP-1559 fee estimation can proceed. With
+ * `debugRpc` enabled, JSON-RPC error payloads are also logged. The patch is
+ * process-wide, never uninstalled, and otherwise passes responses through untouched.
+ */
 function installRpcCompatibility(debugRpc: boolean): void {
   const originalFetch = globalThis.fetch.bind(globalThis);
   (globalThis as any).fetch = async (input: any, init?: any) => {
@@ -733,7 +778,10 @@ function installRpcCompatibility(debugRpc: boolean): void {
         });
       }
       if (debugRpc && payload?.error) {
-        console.error(`rpc error from ${request?.method ?? "unknown"}:`, payload.error);
+        console.error(
+          `rpc error from ${request?.method ?? "unknown"}:`,
+          payload.error,
+        );
       }
     } catch {
       // Non-JSON responses are unrelated to JSON-RPC compatibility handling.
@@ -746,7 +794,11 @@ function isLocalRpcUrl(rpcUrl: string): boolean {
   return /^https?:\/\/(127\.0\.0\.1|localhost)(?::|\/|$)/i.test(rpcUrl);
 }
 
-function printPreparedCall(label: string, target: Address, data: `0x${string}`): void {
+function printPreparedCall(
+  label: string,
+  target: Address,
+  data: `0x${string}`,
+): void {
   console.log(`${label}`);
   console.log(`  to:   ${target}`);
   console.log(`  data: ${data}`);
@@ -766,7 +818,8 @@ function parsePreparedOwnerTransaction(
   const input = value as Record<string, unknown>;
   const to = optionalString(input.to);
   const data = optionalString(input.data);
-  if (!to) throw new Error(`Invalid owner tx on line ${lineNumber}: missing to`);
+  if (!to)
+    throw new Error(`Invalid owner tx on line ${lineNumber}: missing to`);
   if (!data?.startsWith("0x")) {
     throw new Error(`Invalid owner tx on line ${lineNumber}: missing calldata`);
   }
@@ -796,7 +849,7 @@ function readPreparedOwnerTransactions(
     .map((line, index) => ({ line: line.trim(), lineNumber: index + 1 }))
     .filter(({ line }) => line.length > 0)
     .map(({ line, lineNumber }) =>
-      parsePreparedOwnerTransaction(JSON.parse(line), lineNumber)
+      parsePreparedOwnerTransaction(JSON.parse(line), lineNumber),
     )
     .filter((tx) => {
       if (!roleFilter) return true;
@@ -815,98 +868,67 @@ function preparedOwnerTransactionLabel(tx: PreparedOwnerTransaction): string {
   return [tx.phase, action].filter(Boolean).join(": ");
 }
 
+// Role-specific env-var prefixes for prepared owner transactions. Roles not listed
+// here fall back to OWNER_TX_ENV_DEFAULT_PREFIXES. Role names are matched after
+// lowercasing and stripping dashes (e.g. "v1-owner" -> "v1owner").
+const OWNER_TX_ENV_PREFIXES: Record<string, readonly string[]> = {
+  v1owner: ["SEPOLIA_V1_OWNER", "V1_OWNER"],
+  sepoliatopurpowner: ["SEPOLIA_TOP_URP_OWNER", "TOP_URP_OWNER"],
+};
+
+const OWNER_TX_ENV_DEFAULT_PREFIXES = [
+  "OWNER_TX",
+  "SEPOLIA_V1_OWNER",
+  "V1_OWNER",
+  "SEPOLIA_TOP_URP_OWNER",
+  "TOP_URP_OWNER",
+] as const;
+
+function normalizeOwnerTransactionRole(role: string | undefined): string {
+  return role?.toLowerCase().replace(/-/g, "") ?? "";
+}
+
+function ownerTransactionEnv(
+  role: string | undefined,
+  suffix: string,
+): string | undefined {
+  const prefixes =
+    OWNER_TX_ENV_PREFIXES[normalizeOwnerTransactionRole(role)] ??
+    OWNER_TX_ENV_DEFAULT_PREFIXES;
+  return envValue(...prefixes.map((prefix) => `${prefix}${suffix}`));
+}
+
 function ownerTransactionPrivateKey(
   role: string | undefined,
   privateKey: `0x${string}` | undefined,
 ): `0x${string}` | undefined {
   if (privateKey) return privateKey;
-  const normalizedRole = role?.toLowerCase();
-  if (normalizedRole === "v1owner" || normalizedRole === "v1-owner") {
-    return envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY");
-  }
-  if (normalizedRole === "sepolia-top-urp-owner" || normalizedRole === "sepoliatopurpowner") {
-    return envPrivateKey("SEPOLIA_TOP_URP_OWNER_KEY", "TOP_URP_OWNER_KEY");
-  }
-  if (normalizedRole === "deployer") {
+  if (normalizeOwnerTransactionRole(role) === "deployer") {
     return envPrivateKey("DEPLOYER_KEY");
   }
-  return envPrivateKey(
-    "OWNER_TX_KEY",
-    "SEPOLIA_V1_OWNER_KEY",
-    "V1_OWNER_KEY",
-    "SEPOLIA_TOP_URP_OWNER_KEY",
-    "TOP_URP_OWNER_KEY",
-  );
+  return ownerTransactionEnv(role, "_KEY") as `0x${string}` | undefined;
 }
 
-function ownerTransactionMnemonic(role: string | undefined): string | undefined {
-  const normalizedRole = role?.toLowerCase();
-  if (normalizedRole === "v1owner" || normalizedRole === "v1-owner") {
-    return envValue("SEPOLIA_V1_OWNER_MNEMONIC", "V1_OWNER_MNEMONIC");
-  }
-  if (normalizedRole === "sepolia-top-urp-owner" || normalizedRole === "sepoliatopurpowner") {
-    return envValue("SEPOLIA_TOP_URP_OWNER_MNEMONIC", "TOP_URP_OWNER_MNEMONIC");
-  }
-  return envValue(
-    "OWNER_TX_MNEMONIC",
-    "SEPOLIA_V1_OWNER_MNEMONIC",
-    "V1_OWNER_MNEMONIC",
-    "SEPOLIA_TOP_URP_OWNER_MNEMONIC",
-    "TOP_URP_OWNER_MNEMONIC",
-  );
+function ownerTransactionMnemonic(
+  role: string | undefined,
+): string | undefined {
+  return ownerTransactionEnv(role, "_MNEMONIC");
 }
 
-function ownerTransactionMnemonicPath(role: string | undefined): string | undefined {
-  const normalizedRole = role?.toLowerCase();
-  if (normalizedRole === "v1owner" || normalizedRole === "v1-owner") {
-    return envValue("SEPOLIA_V1_OWNER_MNEMONIC_PATH", "V1_OWNER_MNEMONIC_PATH");
-  }
-  if (normalizedRole === "sepolia-top-urp-owner" || normalizedRole === "sepoliatopurpowner") {
-    return envValue("SEPOLIA_TOP_URP_OWNER_MNEMONIC_PATH", "TOP_URP_OWNER_MNEMONIC_PATH");
-  }
-  return envValue(
-    "OWNER_TX_MNEMONIC_PATH",
-    "SEPOLIA_V1_OWNER_MNEMONIC_PATH",
-    "V1_OWNER_MNEMONIC_PATH",
-    "SEPOLIA_TOP_URP_OWNER_MNEMONIC_PATH",
-    "TOP_URP_OWNER_MNEMONIC_PATH",
-  );
+function ownerTransactionMnemonicPath(
+  role: string | undefined,
+): string | undefined {
+  return ownerTransactionEnv(role, "_MNEMONIC_PATH");
 }
 
-function ownerTransactionMnemonicPassphrase(role: string | undefined): string | undefined {
-  const normalizedRole = role?.toLowerCase();
-  if (normalizedRole === "v1owner" || normalizedRole === "v1-owner") {
-    return envValue("SEPOLIA_V1_OWNER_MNEMONIC_PASSPHRASE", "V1_OWNER_MNEMONIC_PASSPHRASE");
-  }
-  if (normalizedRole === "sepolia-top-urp-owner" || normalizedRole === "sepoliatopurpowner") {
-    return envValue(
-      "SEPOLIA_TOP_URP_OWNER_MNEMONIC_PASSPHRASE",
-      "TOP_URP_OWNER_MNEMONIC_PASSPHRASE",
-    );
-  }
-  return envValue(
-    "OWNER_TX_MNEMONIC_PASSPHRASE",
-    "SEPOLIA_V1_OWNER_MNEMONIC_PASSPHRASE",
-    "V1_OWNER_MNEMONIC_PASSPHRASE",
-    "SEPOLIA_TOP_URP_OWNER_MNEMONIC_PASSPHRASE",
-    "TOP_URP_OWNER_MNEMONIC_PASSPHRASE",
-  );
+function ownerTransactionMnemonicPassphrase(
+  role: string | undefined,
+): string | undefined {
+  return ownerTransactionEnv(role, "_MNEMONIC_PASSPHRASE");
 }
 
 function ownerTransactionMnemonicIndex(role: string | undefined): number {
-  const normalizedRole = role?.toLowerCase();
-  const value = normalizedRole === "v1owner" || normalizedRole === "v1-owner"
-    ? envValue("SEPOLIA_V1_OWNER_MNEMONIC_INDEX", "V1_OWNER_MNEMONIC_INDEX")
-    : normalizedRole === "sepolia-top-urp-owner" || normalizedRole === "sepoliatopurpowner"
-      ? envValue("SEPOLIA_TOP_URP_OWNER_MNEMONIC_INDEX", "TOP_URP_OWNER_MNEMONIC_INDEX")
-      : envValue(
-        "OWNER_TX_MNEMONIC_INDEX",
-        "SEPOLIA_V1_OWNER_MNEMONIC_INDEX",
-        "V1_OWNER_MNEMONIC_INDEX",
-        "SEPOLIA_TOP_URP_OWNER_MNEMONIC_INDEX",
-        "TOP_URP_OWNER_MNEMONIC_INDEX",
-      );
-  return parseNumber(value, 0);
+  return parseNumber(ownerTransactionEnv(role, "_MNEMONIC_INDEX"), 0);
 }
 
 function ownerTransactionSigner(
@@ -925,7 +947,10 @@ function ownerTransactionSigner(
     mnemonic,
     (path
       ? { path, passphrase }
-      : { addressIndex: ownerTransactionMnemonicIndex(role), passphrase }) as never,
+      : {
+          addressIndex: ownerTransactionMnemonicIndex(role),
+          passphrase,
+        }) as never,
   );
 }
 
@@ -967,7 +992,11 @@ async function executePreparedOwnerTransactions(opts: {
     console.log(`  to:   ${tx.to}`);
     console.log(`  data: ${tx.data}`);
 
-    if (account && tx.from && getAddress(account.address) !== getAddress(tx.from)) {
+    if (
+      account &&
+      tx.from &&
+      getAddress(account.address) !== getAddress(tx.from)
+    ) {
       throw new Error(
         `Signer ${account.address} does not match prepared tx sender ${tx.from} for ${label}`,
       );
@@ -992,10 +1021,12 @@ async function runFetchData(opts: {
   limit?: string;
   output: string;
 }) {
-  const thegraphApiKey = opts.thegraphApiKey
-    ?? envValue("THEGRAPH_API_KEY", "GRAPH_API_KEY");
+  const thegraphApiKey =
+    opts.thegraphApiKey ?? envValue("THEGRAPH_API_KEY", "GRAPH_API_KEY");
   if (!thegraphApiKey) {
-    throw new Error("Missing --thegraph-api-key or THEGRAPH_API_KEY/GRAPH_API_KEY");
+    throw new Error(
+      "Missing --thegraph-api-key or THEGRAPH_API_KEY/GRAPH_API_KEY",
+    );
   }
   const args = [
     "bun",
@@ -1015,28 +1046,31 @@ async function runFetchData(opts: {
   await exportRegistrationsMain(args);
 }
 
-export async function runPreMigrationCommand(opts: {
-  rpcUrl: string;
-  mainnetRpcUrl?: string;
-  network?: MigrationNetwork;
-  v1DeploymentsDir?: string;
-  v1DeploymentNetwork?: string;
-  deploymentNetwork?: string;
-  deploymentsDir?: string;
-  registry?: Address;
-  batchRegistrar?: Address;
-  privateKey?: `0x${string}`;
-  account?: Address;
-  csvFile: string;
-  batchSize?: string;
-  limit?: string;
-  minExpiryDays?: string;
-  v1Resolver?: Address;
-  v1BaseRegistrar?: Address;
-  workDir?: string;
-  dryRun?: boolean;
-  skipExistingReservations?: boolean;
-}, resume: boolean) {
+export async function runPreMigrationCommand(
+  opts: {
+    rpcUrl: string;
+    mainnetRpcUrl?: string;
+    network?: MigrationNetwork;
+    v1DeploymentsDir?: string;
+    v1DeploymentNetwork?: string;
+    deploymentNetwork?: string;
+    deploymentsDir?: string;
+    registry?: Address;
+    batchRegistrar?: Address;
+    privateKey?: `0x${string}`;
+    account?: Address;
+    csvFile: string;
+    batchSize?: string;
+    limit?: string;
+    minExpiryDays?: string;
+    v1Resolver?: Address;
+    v1BaseRegistrar?: Address;
+    workDir?: string;
+    dryRun?: boolean;
+    skipExistingReservations?: boolean;
+  },
+  resume: boolean,
+) {
   const network = opts.network ?? "mainnet";
   const deploymentNetwork = opts.deploymentNetwork ?? network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
@@ -1058,10 +1092,16 @@ export async function runPreMigrationCommand(opts: {
     deploymentNetwork,
     "ENSV1Resolver",
   );
-  const v1BaseRegistrar = opts.v1BaseRegistrar
-    ?? requireV1Deployment(network, "BaseRegistrarImplementation", opts).address;
-  const privateKey = opts.privateKey
-    ?? envPrivateKey("PREMIGRATION_PRIVATE_KEY", "BATCH_REGISTRAR_OWNER_KEY", "DEPLOYER_KEY");
+  const v1BaseRegistrar =
+    opts.v1BaseRegistrar ??
+    requireV1Deployment(network, "BaseRegistrarImplementation", opts).address;
+  const privateKey =
+    opts.privateKey ??
+    envPrivateKey(
+      "PREMIGRATION_PRIVATE_KEY",
+      "BATCH_REGISTRAR_OWNER_KEY",
+      "DEPLOYER_KEY",
+    );
   const previousCwd = process.cwd();
 
   if (opts.workDir) {
@@ -1096,7 +1136,8 @@ export async function runPreMigrationCommand(opts: {
     if (opts.account) args.push("--account", opts.account);
     if (opts.limit) args.push("--limit", opts.limit);
     if (opts.dryRun) args.push("--dry-run");
-    if (opts.skipExistingReservations) args.push("--skip-existing-reservations");
+    if (opts.skipExistingReservations)
+      args.push("--skip-existing-reservations");
     if (resume) args.push("--continue");
     await preMigrationMain(args);
   } finally {
@@ -1148,19 +1189,25 @@ async function verifyPreMigration(opts: {
     abi: Artifact_PermissionedRegistry.abi,
     client,
   });
-  const expectedResolver = opts.v1Resolver
-    ?? maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, "ENSV1Resolver")?.address;
-  const baseRegistrar = opts.v1BaseRegistrar
-    ?? requireV1Deployment(opts.network, "BaseRegistrarImplementation", opts).address;
+  const expectedResolver =
+    opts.v1Resolver ??
+    maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, "ENSV1Resolver")
+      ?.address;
+  const baseRegistrar =
+    opts.v1BaseRegistrar ??
+    requireV1Deployment(opts.network, "BaseRegistrarImplementation", opts)
+      .address;
   const expectedStatus = opts.expectedStatus ?? "reserved-or-registered";
-  const labels = readLabelsFromCsv(opts.csvFile, opts.limit ? Number(opts.limit) : undefined);
+  const labels = readLabelsFromCsv(
+    opts.csvFile,
+    opts.limit ? Number(opts.limit) : undefined,
+  );
   const v1Block = await v1Client.getBlock();
   const v2Block = await client.getBlock();
   const v1Now = BigInt(v1Block.timestamp);
   const v2Now = BigInt(v2Block.timestamp);
   const minExpiryDays = parseNumber(opts.minExpiryDays, 0);
-  const minExpiryThreshold =
-    v1Now + BigInt(minExpiryDays) * SECONDS_PER_DAY;
+  const minExpiryThreshold = v1Now + BigInt(minExpiryDays) * SECONDS_PER_DAY;
   const errors: string[] = [];
   let eligible = 0;
   let skipped = 0;
@@ -1168,7 +1215,11 @@ async function verifyPreMigration(opts: {
   let verifiedActive = 0;
   let verifiedExpiredContinuity = 0;
 
-  for (let start = 0; start < labels.length; start += PREMIGRATION_VERIFY_BATCH_SIZE) {
+  for (
+    let start = 0;
+    start < labels.length;
+    start += PREMIGRATION_VERIFY_BATCH_SIZE
+  ) {
     const batch = labels.slice(start, start + PREMIGRATION_VERIFY_BATCH_SIZE);
     const validBatch = batch.filter((label) => {
       if (isValidLabel(label)) return true;
@@ -1203,11 +1254,15 @@ async function verifyPreMigration(opts: {
       const stateResult = stateResults[index];
 
       if (expiryResult.status === "failure") {
-        errors.push(`${label}.eth v1 expiry lookup failed: ${expiryResult.error}`);
+        errors.push(
+          `${label}.eth v1 expiry lookup failed: ${expiryResult.error}`,
+        );
         continue;
       }
       if (stateResult.status === "failure") {
-        errors.push(`${label}.eth v2 state lookup failed: ${stateResult.error}`);
+        errors.push(
+          `${label}.eth v2 state lookup failed: ${stateResult.error}`,
+        );
         continue;
       }
 
@@ -1240,11 +1295,12 @@ async function verifyPreMigration(opts: {
       }
 
       const status = Number(state.status);
-      const statusOk = expectedStatus === "reserved"
-        ? status === STATUS.RESERVED
-        : expectedStatus === "registered"
-          ? status === STATUS.REGISTERED
-          : status === STATUS.RESERVED || status === STATUS.REGISTERED;
+      const statusOk =
+        expectedStatus === "reserved"
+          ? status === STATUS.RESERVED
+          : expectedStatus === "registered"
+            ? status === STATUS.REGISTERED
+            : status === STATUS.RESERVED || status === STATUS.REGISTERED;
       if (!statusOk) {
         errors.push(`${label}.eth has status ${status}`);
         continue;
@@ -1289,14 +1345,18 @@ async function verifyPreMigration(opts: {
   console.log(`eligible v1 names: ${eligible}`);
   console.log(`skipped ineligible names: ${skipped}`);
   console.log(`verified active names: ${verifiedActive}`);
-  console.log(`verified expired-continuity names: ${verifiedExpiredContinuity}`);
+  console.log(
+    `verified expired-continuity names: ${verifiedExpiredContinuity}`,
+  );
   console.log(`verified names: ${verifiedActive + verifiedExpiredContinuity}`);
   if (errors.length > 0) {
     console.error(errors.slice(0, 20).join("\n"));
     if (errors.length > 20) {
       console.error(`...and ${errors.length - 20} more errors`);
     }
-    throw new Error(`pre-migration verification failed for ${errors.length} names`);
+    throw new Error(
+      `pre-migration verification failed for ${errors.length} names`,
+    );
   }
 }
 
@@ -1318,7 +1378,11 @@ async function disableV1Registrars(opts: {
     opts.rpcUrl,
   );
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
-  const baseRegistrar = requireV1Deployment(opts.network, "BaseRegistrarImplementation", opts);
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    "BaseRegistrarImplementation",
+    opts,
+  );
   const registrarSecurityController = loadV1Deployment(
     opts.network,
     "RegistrarSecurityController",
@@ -1332,11 +1396,11 @@ async function disableV1Registrars(opts: {
   ];
 
   const target = registrarSecurityController ?? baseRegistrar;
-  const owner = await client.readContract({
+  const owner = (await client.readContract({
     address: target.address,
     abi: target.abi,
     functionName: "owner",
-  }) as Address;
+  })) as Address;
 
   if (opts.impersonateOwner) {
     await impersonate(client, owner);
@@ -1344,12 +1408,12 @@ async function disableV1Registrars(opts: {
   const wallet = opts.calldataOnly
     ? null
     : walletClient({
-      rpcUrl: opts.rpcUrl,
-      chain,
-      privateKey: opts.privateKey,
-      account: opts.impersonateOwner ? owner : undefined,
-      provider: opts.provider,
-    });
+        rpcUrl: opts.rpcUrl,
+        chain,
+        privateKey: opts.privateKey,
+        account: opts.impersonateOwner ? owner : undefined,
+        provider: opts.provider,
+      });
 
   const controllers = [
     ...controllerNames.flatMap((name) => {
@@ -1445,41 +1509,57 @@ async function setV1RegistrarController(opts: {
     opts.rpcUrl,
   );
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
-  const baseRegistrar = requireV1Deployment(opts.network, "BaseRegistrarImplementation", opts);
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    "BaseRegistrarImplementation",
+    opts,
+  );
   const registrarSecurityController = loadV1Deployment(
     opts.network,
     "RegistrarSecurityController",
     opts,
   );
-  const current = await client.readContract({
+  const current = (await client.readContract({
     address: baseRegistrar.address,
     abi: baseRegistrar.abi,
     functionName: "controllers",
     args: [opts.controller],
-  }) as boolean;
+  })) as boolean;
   console.log(`${opts.label} v1 registrar controller enabled: ${current}`);
   if (current === opts.enabled) return;
 
   const target = registrarSecurityController ?? baseRegistrar;
   const functionName = registrarSecurityController
-    ? opts.enabled ? "addRegistrarController" : "removeRegistrarController"
-    : opts.enabled ? "addController" : "removeController";
+    ? opts.enabled
+      ? "addRegistrarController"
+      : "removeRegistrarController"
+    : opts.enabled
+      ? "addController"
+      : "removeController";
   const data = encodeFunctionData({
     abi: target.abi,
     functionName,
     args: [opts.controller],
   });
   if (opts.calldataOnly) {
-    printPreparedCall(`${opts.enabled ? "authorize" : "disable"} ${opts.label}`, target.address, data);
+    printPreparedCall(
+      `${opts.enabled ? "authorize" : "disable"} ${opts.label}`,
+      target.address,
+      data,
+    );
     return;
   }
 
-  const owner = await client.readContract({
+  const owner = (await client.readContract({
     address: target.address,
     abi: target.abi,
     functionName: "owner",
-  }) as Address;
-  if (opts.privateKey && getAddress(privateKeyToAccount(opts.privateKey).address) !== getAddress(owner)) {
+  })) as Address;
+  if (
+    opts.privateKey &&
+    getAddress(privateKeyToAccount(opts.privateKey).address) !==
+      getAddress(owner)
+  ) {
     throw new Error(`private key does not match v1 registrar owner ${owner}`);
   }
   if (opts.impersonateOwner) await impersonate(client, owner);
@@ -1499,15 +1579,19 @@ async function setV1RegistrarController(opts: {
   });
   await waitForSuccessfulReceipt(client, hash, `${functionName} ${opts.label}`);
 
-  const updated = await client.readContract({
+  const updated = (await client.readContract({
     address: baseRegistrar.address,
     abi: baseRegistrar.abi,
     functionName: "controllers",
     args: [opts.controller],
-  }) as boolean;
-  console.log(`${opts.label} v1 registrar controller enabled after phase: ${updated}`);
+  })) as boolean;
+  console.log(
+    `${opts.label} v1 registrar controller enabled after phase: ${updated}`,
+  );
   if (updated !== opts.enabled) {
-    throw new Error(`${opts.label} v1 registrar controller did not reach expected state`);
+    throw new Error(
+      `${opts.label} v1 registrar controller did not reach expected state`,
+    );
   }
 }
 
@@ -1558,8 +1642,9 @@ async function activateV1HandoffControllers(opts: {
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const testnetV1PremigrationRegistrar = opts.testnetV1PremigrationRegistrar
-    ?? maybeLoadV2Deployment(
+  const testnetV1PremigrationRegistrar =
+    opts.testnetV1PremigrationRegistrar ??
+    maybeLoadV2Deployment(
       deploymentsDir,
       deploymentNetwork,
       "TestnetV1PremigrationRegistrar",
@@ -1573,7 +1658,9 @@ async function activateV1HandoffControllers(opts: {
       enabled: true,
     });
   } else {
-    console.log("no TestnetV1PremigrationRegistrar deployment found; skipping testnet helper authorization");
+    console.log(
+      "no TestnetV1PremigrationRegistrar deployment found; skipping testnet helper authorization",
+    );
   }
 
   await activateV1Graveyard(opts);
@@ -1615,17 +1702,21 @@ async function activateV1RenewerAndTransferOwnership(opts: {
     opts.rpcUrl,
   );
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
-  const baseRegistrar = requireV1Deployment(opts.network, "BaseRegistrarImplementation", opts);
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    "BaseRegistrarImplementation",
+    opts,
+  );
   const registrarSecurityController = loadV1Deployment(
     opts.network,
     "RegistrarSecurityController",
     opts,
   );
-  const currentOwner = await client.readContract({
+  const currentOwner = (await client.readContract({
     address: baseRegistrar.address,
     abi: baseRegistrar.abi,
     functionName: "owner",
-  }) as Address;
+  })) as Address;
   console.log(`v1 BaseRegistrar owner: ${currentOwner}`);
   if (getAddress(currentOwner) === getAddress(ethRenewerV1)) return;
 
@@ -1639,16 +1730,24 @@ async function activateV1RenewerAndTransferOwnership(opts: {
     args: [ethRenewerV1],
   });
   if (opts.calldataOnly) {
-    printPreparedCall("transfer v1 BaseRegistrar ownership to ETHRenewerV1", target.address, data);
+    printPreparedCall(
+      "transfer v1 BaseRegistrar ownership to ETHRenewerV1",
+      target.address,
+      data,
+    );
     return;
   }
 
-  const owner = await client.readContract({
+  const owner = (await client.readContract({
     address: target.address,
     abi: target.abi,
     functionName: "owner",
-  }) as Address;
-  if (opts.privateKey && getAddress(privateKeyToAccount(opts.privateKey).address) !== getAddress(owner)) {
+  })) as Address;
+  if (
+    opts.privateKey &&
+    getAddress(privateKeyToAccount(opts.privateKey).address) !==
+      getAddress(owner)
+  ) {
     throw new Error(`private key does not match v1 registrar owner ${owner}`);
   }
   if (opts.impersonateOwner) await impersonate(client, owner);
@@ -1666,13 +1765,17 @@ async function activateV1RenewerAndTransferOwnership(opts: {
     functionName,
     args: [ethRenewerV1],
   });
-  await waitForSuccessfulReceipt(client, hash, "transfer v1 BaseRegistrar ownership to ETHRenewerV1");
+  await waitForSuccessfulReceipt(
+    client,
+    hash,
+    "transfer v1 BaseRegistrar ownership to ETHRenewerV1",
+  );
 
-  const updatedOwner = await client.readContract({
+  const updatedOwner = (await client.readContract({
     address: baseRegistrar.address,
     abi: baseRegistrar.abi,
     functionName: "owner",
-  }) as Address;
+  })) as Address;
   console.log(`v1 BaseRegistrar owner after phase: ${updatedOwner}`);
   if (getAddress(updatedOwner) !== getAddress(ethRenewerV1)) {
     throw new Error(`unexpected v1 BaseRegistrar owner: ${updatedOwner}`);
@@ -1692,7 +1795,11 @@ async function verifyV1RegistrarsDisabled(opts: {
     opts.rpcUrl,
   );
   const client = publicClient(opts.rpcUrl, chain);
-  const baseRegistrar = requireV1Deployment(opts.network, "BaseRegistrarImplementation", opts);
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    "BaseRegistrarImplementation",
+    opts,
+  );
   const controllerNames = [
     "LegacyETHRegistrarController",
     "ETHRegistrarController",
@@ -1710,12 +1817,16 @@ async function verifyV1RegistrarsDisabled(opts: {
       functionName: "controllers",
       args: [controller.address],
     });
-    console.log(`${name}: ${enabled ? "enabled" : "disabled"} (${controller.address})`);
+    console.log(
+      `${name}: ${enabled ? "enabled" : "disabled"} (${controller.address})`,
+    );
     if (enabled) enabledControllers.push(name);
   }
 
   if (enabledControllers.length > 0) {
-    throw new Error(`v1 registrar controllers still enabled: ${enabledControllers.join(", ")}`);
+    throw new Error(
+      `v1 registrar controllers still enabled: ${enabledControllers.join(", ")}`,
+    );
   }
 }
 
@@ -1735,13 +1846,21 @@ export async function setV1ReverseDefaultResolver(opts: {
   );
   const client = publicClient(rpcUrl, chain);
   const wallet = walletClient({ rpcUrl, chain, privateKey: opts.privateKey });
-  const reverseRegistrar = requireV1Deployment(opts.network, "ReverseRegistrar", opts);
-  const publicResolver = requireV1Deployment(opts.network, "PublicResolver", opts);
-  const currentResolver = await client.readContract({
+  const reverseRegistrar = requireV1Deployment(
+    opts.network,
+    "ReverseRegistrar",
+    opts,
+  );
+  const publicResolver = requireV1Deployment(
+    opts.network,
+    "PublicResolver",
+    opts,
+  );
+  const currentResolver = (await client.readContract({
     address: reverseRegistrar.address,
     abi: reverseRegistrar.abi,
     functionName: "defaultResolver",
-  }) as Address;
+  })) as Address;
   console.log(`v1 reverse registrar default resolver: ${currentResolver}`);
   if (getAddress(currentResolver) === getAddress(publicResolver.address)) {
     return;
@@ -1752,15 +1871,23 @@ export async function setV1ReverseDefaultResolver(opts: {
     functionName: "setDefaultResolver",
     args: [publicResolver.address],
   });
-  await waitForSuccessfulReceipt(client, hash, "set v1 reverse default resolver");
-  const updatedResolver = await client.readContract({
+  await waitForSuccessfulReceipt(
+    client,
+    hash,
+    "set v1 reverse default resolver",
+  );
+  const updatedResolver = (await client.readContract({
     address: reverseRegistrar.address,
     abi: reverseRegistrar.abi,
     functionName: "defaultResolver",
-  }) as Address;
-  console.log(`v1 reverse registrar default resolver after update: ${updatedResolver}`);
+  })) as Address;
+  console.log(
+    `v1 reverse registrar default resolver after update: ${updatedResolver}`,
+  );
   if (getAddress(updatedResolver) !== getAddress(publicResolver.address)) {
-    throw new Error(`unexpected v1 reverse default resolver: ${updatedResolver}`);
+    throw new Error(
+      `unexpected v1 reverse default resolver: ${updatedResolver}`,
+    );
   }
 }
 
@@ -1803,7 +1930,8 @@ async function enableV2Registrar(opts: {
   console.log(`v2 registrar already enabled: ${beforeEnabled}`);
   if (beforeEnabled) return;
 
-  if (opts.impersonateAccount) await impersonate(client, opts.impersonateAccount);
+  if (opts.impersonateAccount)
+    await impersonate(client, opts.impersonateAccount);
   const wallet = walletClient({
     rpcUrl: opts.rpcUrl,
     chain,
@@ -1865,7 +1993,8 @@ async function disableBatchRegistrar(opts: {
   console.log(`batch registrar enabled before phase: ${beforeEnabled}`);
   if (!beforeEnabled) return;
 
-  if (opts.impersonateAccount) await impersonate(client, opts.impersonateAccount);
+  if (opts.impersonateAccount)
+    await impersonate(client, opts.impersonateAccount);
   const wallet = walletClient({
     rpcUrl: opts.rpcUrl,
     chain,
@@ -1878,7 +2007,11 @@ async function disableBatchRegistrar(opts: {
     functionName: "revokeRootRoles",
     args: [REGISTRAR_ROLES, batchRegistrar],
   });
-  await waitForSuccessfulReceipt(client, hash, `disable batch registrar ${batchRegistrar}`);
+  await waitForSuccessfulReceipt(
+    client,
+    hash,
+    `disable batch registrar ${batchRegistrar}`,
+  );
   const afterEnabled = await client.readContract({
     address: registryAddress,
     abi: registryAbi,
@@ -1886,7 +2019,8 @@ async function disableBatchRegistrar(opts: {
     args: [REGISTRAR_ROLES, batchRegistrar],
   });
   console.log(`batch registrar enabled after phase: ${afterEnabled}`);
-  if (afterEnabled) throw new Error("batch registrar still has registrar/renew roles");
+  if (afterEnabled)
+    throw new Error("batch registrar still has registrar/renew roles");
 }
 
 async function verifyBatchRegistrarDisabled(opts: {
@@ -1922,7 +2056,8 @@ async function verifyBatchRegistrarDisabled(opts: {
     args: [REGISTRAR_ROLES, batchRegistrar],
   });
   console.log(`batch registrar enabled: ${enabled}`);
-  if (enabled) throw new Error("batch registrar still has registrar/renew roles");
+  if (enabled)
+    throw new Error("batch registrar still has registrar/renew roles");
 }
 
 export async function checkBatchRegistrarOwner(opts: {
@@ -1948,16 +2083,21 @@ export async function checkBatchRegistrarOwner(opts: {
     deploymentNetwork,
     "BatchRegistrar",
   );
-  const owner = await client.readContract({
+  const owner = (await client.readContract({
     address: batchRegistrar,
     abi: Artifact_BatchRegistrar.abi,
     functionName: "owner",
-  }) as Address;
+  })) as Address;
 
   console.log(`batch registrar: ${batchRegistrar}`);
   console.log(`batch registrar owner: ${owner}`);
-  if (opts.expectedOwner !== undefined && getAddress(owner) !== getAddress(opts.expectedOwner)) {
-    throw new Error(`unexpected BatchRegistrar owner: expected ${opts.expectedOwner}, got ${owner}`);
+  if (
+    opts.expectedOwner !== undefined &&
+    getAddress(owner) !== getAddress(opts.expectedOwner)
+  ) {
+    throw new Error(
+      `unexpected BatchRegistrar owner: expected ${opts.expectedOwner}, got ${owner}`,
+    );
   }
 }
 
@@ -1973,20 +2113,26 @@ async function readBatchRegistrarOwner(opts: {
     opts.rpcUrl,
   );
   const client = publicClient(opts.rpcUrl, chain);
-  return await client.readContract({
+  return (await client.readContract({
     address: opts.batchRegistrar,
     abi: Artifact_BatchRegistrar.abi,
     functionName: "owner",
-  }) as Address;
+  })) as Address;
 }
 
-function preMigrationSigner(account: Address): { privateKey?: `0x${string}`; account?: Address } {
+function preMigrationSigner(account: Address): {
+  privateKey?: `0x${string}`;
+  account?: Address;
+} {
   return getAddress(account) === getAddress(DEFAULT_ANVIL_DEPLOYER)
     ? { privateKey: DEFAULT_ANVIL_KEY }
     : { account };
 }
 
-function adminSigner(account: Address): { privateKey?: `0x${string}`; impersonateAccount?: Address } {
+function adminSigner(account: Address): {
+  privateKey?: `0x${string}`;
+  impersonateAccount?: Address;
+} {
   return getAddress(account) === getAddress(DEFAULT_ANVIL_DEPLOYER)
     ? { privateKey: DEFAULT_ANVIL_KEY }
     : { impersonateAccount: account };
@@ -2064,10 +2210,11 @@ async function verifyUrp(opts: {
     abi: Artifact_UpgradableUniversalResolverProxy.abi,
     client,
   });
-  const topAdmin = await top.read.admin() as Address;
-  const topImplementation = await top.read.implementation() as Address;
-  const managedAdmin = await managed.read.admin() as Address;
-  const managedImplementation = await managed.read.implementation() as Address;
+  const topAdmin = (await top.read.admin()) as Address;
+  const topImplementation = (await top.read.implementation()) as Address;
+  const managedAdmin = (await managed.read.admin()) as Address;
+  const managedImplementation =
+    (await managed.read.implementation()) as Address;
 
   console.log(`top URP: ${topUrp}`);
   console.log(`top URP admin: ${topAdmin}`);
@@ -2077,16 +2224,19 @@ async function verifyUrp(opts: {
   console.log(`managed URP implementation: ${managedImplementation}`);
 
   if (
-    opts.expectedTopImplementation
-    && getAddress(topImplementation) !== getAddress(opts.expectedTopImplementation)
+    opts.expectedTopImplementation &&
+    getAddress(topImplementation) !== getAddress(opts.expectedTopImplementation)
   ) {
     throw new Error("top URP implementation does not match expected address");
   }
   if (
-    opts.expectedManagedImplementation
-    && getAddress(managedImplementation) !== getAddress(opts.expectedManagedImplementation)
+    opts.expectedManagedImplementation &&
+    getAddress(managedImplementation) !==
+      getAddress(opts.expectedManagedImplementation)
   ) {
-    throw new Error("managed URP implementation does not match expected address");
+    throw new Error(
+      "managed URP implementation does not match expected address",
+    );
   }
 }
 
@@ -2124,10 +2274,15 @@ async function switchTopUrpToManaged(opts: {
     args: [managedUrp],
   });
   if (opts.calldataOnly) {
-    printPreparedCall("switch UniversalResolverProxy to managed URP", topUrp, data);
+    printPreparedCall(
+      "switch UniversalResolverProxy to managed URP",
+      topUrp,
+      data,
+    );
     return;
   }
-  if (opts.impersonateAccount) await impersonate(client, opts.impersonateAccount);
+  if (opts.impersonateAccount)
+    await impersonate(client, opts.impersonateAccount);
   const wallet = walletClient({
     rpcUrl: opts.rpcUrl,
     chain,
@@ -2147,7 +2302,7 @@ async function switchTopUrpToManaged(opts: {
     abi: Artifact_UpgradableUniversalResolverProxy.abi,
     client,
   });
-  const actualImplementation = await top.read.implementation() as Address;
+  const actualImplementation = (await top.read.implementation()) as Address;
   if (getAddress(actualImplementation) !== getAddress(managedUrp)) {
     throw new Error(`top URP implementation mismatch: ${actualImplementation}`);
   }
@@ -2196,7 +2351,8 @@ async function upgradeManagedUrp(opts: {
     printPreparedCall("upgrade managed URP", managedUrp, data);
     return;
   }
-  if (opts.impersonateAccount) await impersonate(client, opts.impersonateAccount);
+  if (opts.impersonateAccount)
+    await impersonate(client, opts.impersonateAccount);
   const wallet = walletClient({
     rpcUrl: opts.rpcUrl,
     chain,
@@ -2216,14 +2372,16 @@ async function upgradeManagedUrp(opts: {
     abi: Artifact_UpgradableUniversalResolverProxy.abi,
     client,
   });
-  const actualImplementation = await managed.read.implementation() as Address;
+  const actualImplementation = (await managed.read.implementation()) as Address;
   if (getAddress(actualImplementation) !== getAddress(implementation)) {
-    throw new Error(`managed URP implementation mismatch: ${actualImplementation}`);
+    throw new Error(
+      `managed URP implementation mismatch: ${actualImplementation}`,
+    );
   }
   console.log(`managed URP implementation: ${actualImplementation}`);
 }
 
-export type DeployV2Options = {
+type DeployV2Options = {
   network: MigrationNetwork;
   rpcUrl?: string;
   chainId?: string;
@@ -2252,7 +2410,7 @@ export type DeployV2Options = {
   provider?: RpcProvider;
 };
 
-export type DeployV1Options = {
+type DeployV1Options = {
   network: MigrationNetwork;
   rpcUrl?: string;
   chainId?: string;
@@ -2269,7 +2427,7 @@ export type DeployV1Options = {
   provider?: RpcProvider;
 };
 
-export type RunForkFullOptions = {
+type RunForkFullOptions = {
   network: MigrationNetwork;
   rpcUrl?: string;
   provider?: RpcProvider;
@@ -2304,9 +2462,9 @@ export type RunForkFullOptions = {
   resumeFromPhase?: string;
 };
 
-export type RunCleanTestnetFullOptions = Omit<
+type RunCleanTestnetFullOptions = Omit<
   RunForkFullOptions,
-  "csvFile" | "resumeFromPhase"
+  "csvFile" | "resumeFromPhase" | "direct" | "keepAnvil"
 > & {
   csvFile?: string;
   resumeExistingDeployments?: boolean;
@@ -2317,7 +2475,11 @@ function uniqueTags(tags: readonly (string | undefined)[]): string[] {
 }
 
 function normalizeAccountAddress(value: AccountDefinition): AccountDefinition {
-  if (typeof value === "string" && value.startsWith("0x") && value.length === 42) {
+  if (
+    typeof value === "string" &&
+    value.startsWith("0x") &&
+    value.length === 42
+  ) {
     return value.toLowerCase() as Address;
   }
   return value;
@@ -2339,10 +2501,14 @@ function signerAccountDefinition(
   privateKey: `0x${string}` | undefined,
   fallback: AccountDefinition | undefined,
 ): AccountDefinition | undefined {
-  return privateKey ? `privateKey:${privateKey}` as AccountDefinition : fallback;
+  return privateKey
+    ? (`privateKey:${privateKey}` as AccountDefinition)
+    : fallback;
 }
 
-function keyAddress(privateKey: `0x${string}` | undefined): Address | undefined {
+function keyAddress(
+  privateKey: `0x${string}` | undefined,
+): Address | undefined {
   return privateKey ? privateKeyToAccount(privateKey).address : undefined;
 }
 
@@ -2370,7 +2536,9 @@ function requirePrivateKeyForAddress(
 ): `0x${string}` {
   const privateKey = privateKeyForAddress(address, keys);
   if (!privateKey) {
-    throw new Error(`${label} ${address} is not backed by a configured private key`);
+    throw new Error(
+      `${label} ${address} is not backed by a configured private key`,
+    );
   }
   return privateKey;
 }
@@ -2391,13 +2559,22 @@ function addressForImpersonation(
   name: string,
 ): Address {
   if (account === undefined) return fallback;
-  if (typeof account === "string" && account.startsWith("0x") && account.length === 42) {
+  if (
+    typeof account === "string" &&
+    account.startsWith("0x") &&
+    account.length === 42
+  ) {
     return getAddress(account) as Address;
   }
-  throw new Error(`${name} impersonation requires an address or omitted account override`);
+  throw new Error(
+    `${name} impersonation requires an address or omitted account override`,
+  );
 }
 
-function chainIdOverrideProvider(provider: RpcProvider, chainId: number): RpcProvider {
+function chainIdOverrideProvider(
+  provider: RpcProvider,
+  chainId: number,
+): RpcProvider {
   return {
     async request(args) {
       if (args.method === "eth_chainId") {
@@ -2419,7 +2596,9 @@ function buildDeployV2RockethConfig(
   const impersonatedV1Owner = opts.impersonateV1Owner
     ? addressForImpersonation(opts.v1Owner, network.defaultV1Owner, "v1Owner")
     : undefined;
-  const signerProvider = impersonatedV1Owner ? impersonationProvider(opts) : undefined;
+  const signerProvider = impersonatedV1Owner
+    ? impersonationProvider(opts)
+    : undefined;
   const accounts = Object.fromEntries(
     Object.entries(baseConfig.accounts ?? {}).map(([name, account]) => [
       name,
@@ -2447,7 +2626,9 @@ function buildDeployV2RockethConfig(
     signerAccountDefinition(opts.v1OwnerPrivateKey, opts.v1Owner),
   );
   if (impersonatedV1Owner) {
-    accounts.v1Owner = { default: `impersonate:${impersonatedV1Owner.toLowerCase()}` };
+    accounts.v1Owner = {
+      default: `impersonate:${impersonatedV1Owner.toLowerCase()}`,
+    };
   }
 
   const baseEnvironments = baseConfig.environments ?? {};
@@ -2461,7 +2642,9 @@ function buildDeployV2RockethConfig(
     opts.network === "sepolia" ? "sepolia" : undefined,
     "deferV2Registrar",
     opts.tenderly ? "tenderly" : undefined,
-    opts.includeTestnetPremigrationRegistrar ? "testnet-premigration-registrar" : undefined,
+    opts.includeTestnetPremigrationRegistrar
+      ? "testnet-premigration-registrar"
+      : undefined,
     opts.cleanTestnet ? "clean-testnet" : undefined,
     ...network.chainTags,
     ...baseChainTags,
@@ -2476,7 +2659,9 @@ function buildDeployV2RockethConfig(
     accounts,
     signerProtocols: {
       ...(baseConfig.signerProtocols ?? {}),
-      ...(opts.rpcUrl ? { privateKey: privateKeySignerProtocol(opts.rpcUrl, chain) } : {}),
+      ...(opts.rpcUrl
+        ? { privateKey: privateKeySignerProtocol(opts.rpcUrl, chain) }
+        : {}),
       ...(impersonatedV1Owner && signerProvider
         ? {
             impersonate: async (protocolString: string) => {
@@ -2555,7 +2740,9 @@ function buildDeployV1RockethConfig(
     accounts,
     signerProtocols: {
       ...(baseConfig.signerProtocols ?? {}),
-      ...(opts.rpcUrl ? { privateKey: privateKeySignerProtocol(opts.rpcUrl, chain) } : {}),
+      ...(opts.rpcUrl
+        ? { privateKey: privateKeySignerProtocol(opts.rpcUrl, chain) }
+        : {}),
     },
     chains: {
       ...(baseConfig.chains ?? {}),
@@ -2590,15 +2777,16 @@ async function waitForSuccessfulReceipt(
   return receipt;
 }
 
-export async function deployV1(opts: DeployV1Options) {
+async function deployV1(opts: DeployV1Options) {
   const network = NETWORKS[opts.network];
   const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
   if (!opts.rpcUrl && !opts.provider) {
     throw new Error("Missing rpcUrl or provider");
   }
-  let provider = opts.provider && opts.rpcCompatibility
-    ? withRpcCompatibility(opts.provider, Boolean(opts.debugRpc))
-    : opts.provider;
+  let provider =
+    opts.provider && opts.rpcCompatibility
+      ? withRpcCompatibility(opts.provider, Boolean(opts.debugRpc))
+      : opts.provider;
   const chainId = opts.chainId
     ? parseNumber(opts.chainId, network.chain.id)
     : provider
@@ -2651,9 +2839,10 @@ export async function deployV2(opts: DeployV2Options) {
   if (!opts.rpcUrl && !opts.provider) {
     throw new Error("Missing rpcUrl or provider");
   }
-  let provider = opts.provider && opts.rpcCompatibility
-    ? withRpcCompatibility(opts.provider, Boolean(opts.debugRpc))
-    : opts.provider;
+  let provider =
+    opts.provider && opts.rpcCompatibility
+      ? withRpcCompatibility(opts.provider, Boolean(opts.debugRpc))
+      : opts.provider;
   const chainId = opts.chainId
     ? parseNumber(opts.chainId, network.chain.id)
     : provider
@@ -2690,8 +2879,9 @@ export async function deployV2(opts: DeployV2Options) {
       provider: provider as any,
       extra: {
         v1DeploymentsDir: opts.v1DeploymentsDir,
-        v1DeploymentNetwork: opts.v1DeploymentNetwork
-          ?? (opts.deploymentNetwork ? network.environment : undefined),
+        v1DeploymentNetwork:
+          opts.v1DeploymentNetwork ??
+          (opts.deploymentNetwork ? network.environment : undefined),
         deferV1OwnerTransactions: opts.deferV1OwnerTransactions,
         deferredV1OwnerTransactionsFile: opts.deferredV1OwnerTransactionsFile,
       },
@@ -2764,12 +2954,12 @@ async function registerViaV1Controller({
     reverseRecord: 0,
     referrer: zeroHash,
   };
-  const commitment = await client.readContract({
+  const commitment = (await client.readContract({
     address: controller.address,
     abi: controller.abi,
     functionName: "makeCommitment",
     args: [registration],
-  }) as `0x${string}`;
+  })) as `0x${string}`;
   let hash = await wallet.writeContract({
     address: controller.address,
     abi: controller.abi,
@@ -2777,18 +2967,22 @@ async function registerViaV1Controller({
     args: [commitment],
   });
   await waitForSuccessfulReceipt(client, hash, `v1 commit ${label}.eth`);
-  const minCommitmentAge = await client.readContract({
+  const minCommitmentAge = (await client.readContract({
     address: controller.address,
     abi: controller.abi,
     functionName: "minCommitmentAge",
-  }) as bigint;
-  await waitForCommitmentAge(client, minCommitmentAge + 1n, useRpcStateControls);
-  const price = await client.readContract({
+  })) as bigint;
+  await waitForCommitmentAge(
+    client,
+    minCommitmentAge + 1n,
+    useRpcStateControls,
+  );
+  const price = (await client.readContract({
     address: controller.address,
     abi: controller.abi,
     functionName: "rentPrice",
     args: [label, V1_REGISTRATION_DURATION],
-  }) as { base: bigint; premium: bigint };
+  })) as { base: bigint; premium: bigint };
   hash = await wallet.writeContract({
     address: controller.address,
     abi: controller.abi,
@@ -2850,26 +3044,69 @@ async function readV1Owner({
   label: string;
 }) {
   const client = publicClient(rpcUrl, chain, provider);
-  const baseRegistrar = requireV1Deployment(network, "BaseRegistrarImplementation", {
-    v1DeploymentsDir,
-    v1DeploymentNetwork,
-  });
-  return await client.readContract({
+  const baseRegistrar = requireV1Deployment(
+    network,
+    "BaseRegistrarImplementation",
+    {
+      v1DeploymentsDir,
+      v1DeploymentNetwork,
+    },
+  );
+  return (await client.readContract({
     address: baseRegistrar.address,
     abi: baseRegistrar.abi,
     functionName: "ownerOf",
     args: [labelId(label)],
-  }) as Address;
+  })) as Address;
 }
 
-async function assertRejected(promise: Promise<unknown>, message: string) {
+function errorMessageChain(error: unknown): string[] {
+  const messages: string[] = [];
+  let current: unknown = error;
+  while (current !== undefined && current !== null && messages.length < 10) {
+    messages.push(current instanceof Error ? current.message : String(current));
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return messages;
+}
+
+/**
+ * Asserts that `promise` rejects. When `expectedError` is given, the rejection's
+ * message/cause chain must match it; otherwise unrelated failures (RPC outages,
+ * wrong signer, ...) would make a negative test "pass" for the wrong reason.
+ */
+async function assertRejected(
+  promise: Promise<unknown>,
+  message: string,
+  expectedError?: string | RegExp,
+) {
+  let rejection: unknown;
+  let rejected = false;
   try {
     await promise;
-  } catch {
-    console.log(message);
-    return;
+  } catch (error) {
+    rejection = error;
+    rejected = true;
   }
-  throw new Error(message.replace("rejected", "did not reject"));
+  if (!rejected) {
+    throw new Error(message.replace("rejected", "did not reject"));
+  }
+  const chain = errorMessageChain(rejection);
+  if (expectedError !== undefined) {
+    const matches = chain.some((candidate) =>
+      typeof expectedError === "string"
+        ? candidate.includes(expectedError)
+        : expectedError.test(candidate),
+    );
+    if (!matches) {
+      console.error(`unexpected rejection: ${chain.join(" <- ")}`);
+      throw new Error(
+        `${message.replace("rejected", "rejected for an unexpected reason")}; expected ${expectedError}, got: ${chain[0] ?? String(rejection)}`,
+      );
+    }
+  }
+  console.log(message);
+  console.log(`  rejection: ${chain[0] ?? String(rejection)}`);
 }
 
 async function assertV2State({
@@ -2888,17 +3125,19 @@ async function assertV2State({
   owner?: Address;
 }) {
   const client = publicClient(rpcUrl, chain);
-  const state = await client.readContract({
+  const state = (await client.readContract({
     address: ethRegistry.address,
     abi: ethRegistry.abi,
     functionName: "getState",
     args: [labelId(label)],
-  }) as { status: number; latestOwner: Address };
+  })) as { status: number; latestOwner: Address };
   if (Number(state.status) !== status) {
     throw new Error(`unexpected v2 status for ${label}.eth: ${state.status}`);
   }
   if (owner && getAddress(state.latestOwner) !== getAddress(owner)) {
-    throw new Error(`unexpected v2 owner for ${label}.eth: ${state.latestOwner}`);
+    throw new Error(
+      `unexpected v2 owner for ${label}.eth: ${state.latestOwner}`,
+    );
   }
 }
 
@@ -2945,12 +3184,12 @@ async function migrateUnwrappedV1Name({
     "BaseRegistrarImplementation",
     v1Deployments,
   );
-  const resolver = await client.readContract({
+  const resolver = (await client.readContract({
     address: registry.address,
     abi: registry.abi,
     functionName: "resolver",
     args: [namehash(`${label}.eth`)],
-  }) as Address;
+  })) as Address;
   const data = encodeAbiParameters(
     [{ type: "tuple", components: migrationDataComponents }],
     [{ label, owner, subregistry: zeroAddress, resolver }],
@@ -2986,7 +3225,7 @@ async function registerViaV2Registrar({
   const client = publicClient(rpcUrl, chain);
   const wallet = walletClient({ rpcUrl, chain, privateKey });
   const payer = privateKeyToAccount(privateKey).address;
-  const commitment = await client.readContract({
+  const commitment = (await client.readContract({
     address: ethRegistrar.address,
     abi: ethRegistrar.abi,
     functionName: "makeCommitment",
@@ -2999,7 +3238,7 @@ async function registerViaV2Registrar({
       V2_REGISTRATION_DURATION,
       zeroHash,
     ],
-  }) as `0x${string}`;
+  })) as `0x${string}`;
   let hash = await wallet.writeContract({
     address: ethRegistrar.address,
     abi: ethRegistrar.abi,
@@ -3007,32 +3246,44 @@ async function registerViaV2Registrar({
     args: [commitment],
   });
   await waitForSuccessfulReceipt(client, hash, `v2 commit ${label}.eth`);
-  const minCommitmentAge = await client.readContract({
+  const minCommitmentAge = (await client.readContract({
     address: ethRegistrar.address,
     abi: ethRegistrar.abi,
     functionName: "MIN_COMMITMENT_AGE",
-  }) as bigint;
-  await waitForCommitmentAge(client, minCommitmentAge + 1n, useRpcStateControls);
-  const [base, premium] = await client.readContract({
+  })) as bigint;
+  await waitForCommitmentAge(
+    client,
+    minCommitmentAge + 1n,
+    useRpcStateControls,
+  );
+  const [base, premium] = (await client.readContract({
     address: ethRegistrar.address,
     abi: ethRegistrar.abi,
     functionName: "getRegisterPrice",
     args: [label, V2_REGISTRATION_DURATION, mockUsdc.address],
-  }) as [bigint, bigint];
+  })) as [bigint, bigint];
   hash = await wallet.writeContract({
     address: mockUsdc.address,
     abi: mockUsdc.abi,
     functionName: "mint",
     args: [payer, base + premium],
   });
-  await waitForSuccessfulReceipt(client, hash, `mint payment token for ${label}.eth`);
+  await waitForSuccessfulReceipt(
+    client,
+    hash,
+    `mint payment token for ${label}.eth`,
+  );
   hash = await wallet.writeContract({
     address: mockUsdc.address,
     abi: mockUsdc.abi,
     functionName: "approve",
     args: [ethRegistrar.address, base + premium],
   });
-  await waitForSuccessfulReceipt(client, hash, `approve payment token for ${label}.eth`);
+  await waitForSuccessfulReceipt(
+    client,
+    hash,
+    `approve payment token for ${label}.eth`,
+  );
   hash = await wallet.writeContract({
     address: ethRegistrar.address,
     abi: ethRegistrar.abi,
@@ -3051,7 +3302,7 @@ async function registerViaV2Registrar({
   await waitForSuccessfulReceipt(client, hash, `v2 register ${label}.eth`);
 }
 
-export type V2RegistrarSmokeOptions = {
+type V2RegistrarSmokeOptions = {
   network: MigrationNetwork;
   rpcUrl?: string;
   chainId?: string;
@@ -3068,36 +3319,54 @@ export async function runV2RegistrarSmoke(opts: V2RegistrarSmokeOptions) {
   const rpcUrl = requireRpcUrl(opts, opts.network);
   const chainId = parseNumber(opts.chainId, network.chain.id);
   const chain = forkChain(opts.network, chainId, rpcUrl);
-  const deploymentsDir = resolve(opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR);
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
   const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
   const client = publicClient(rpcUrl, chain);
   const owner = opts.owner ?? privateKeyToAccount(opts.privateKey).address;
-  const label = opts.label ?? `${opts.network === "mainnet" ? "mf" : "sf"}${Date.now().toString(36)}v2ok`;
-  const ethRegistry = loadV2Deployment(deploymentsDir, deploymentNetwork, "ETHRegistry");
-  const ethRegistrar = loadV2Deployment(deploymentsDir, deploymentNetwork, "ETHRegistrar");
-  const mockUsdc = loadV2Deployment(deploymentsDir, deploymentNetwork, "MockUSDC");
+  const label =
+    opts.label ??
+    `${opts.network === "mainnet" ? "mf" : "sf"}${Date.now().toString(36)}v2ok`;
+  const ethRegistry = loadV2Deployment(
+    deploymentsDir,
+    deploymentNetwork,
+    "ETHRegistry",
+  );
+  const ethRegistrar = loadV2Deployment(
+    deploymentsDir,
+    deploymentNetwork,
+    "ETHRegistrar",
+  );
+  const mockUsdc = loadV2Deployment(
+    deploymentsDir,
+    deploymentNetwork,
+    "MockUSDC",
+  );
 
-  const enabled = await client.readContract({
+  const enabled = (await client.readContract({
     address: ethRegistry.address,
     abi: ethRegistry.abi,
     functionName: "hasRootRoles",
     args: [REGISTRAR_ROLES, ethRegistrar.address],
-  }) as boolean;
+  })) as boolean;
   if (!enabled) {
     throw new Error(`ETHRegistrar is not enabled for ${deploymentNetwork}`);
   }
 
-  const available = await client.readContract({
+  const available = (await client.readContract({
     address: ethRegistrar.address,
     abi: ethRegistrar.abi,
     functionName: "isAvailable",
     args: [label],
-  }) as boolean;
+  })) as boolean;
   if (!available) {
     throw new Error(`${label}.eth is not available for v2 registration smoke`);
   }
 
-  console.log(`smoke: registering ${label}.eth via ETHRegistrar ${ethRegistrar.address}`);
+  console.log(
+    `smoke: registering ${label}.eth via ETHRegistrar ${ethRegistrar.address}`,
+  );
   await registerViaV2Registrar({
     rpcUrl,
     chain,
@@ -3138,11 +3407,31 @@ function loadV2MigrationDeployments(
   deploymentNetwork: string,
 ): V2MigrationDeployments {
   return {
-    ethRegistry: loadV2Deployment(deploymentsDir, deploymentNetwork, "ETHRegistry"),
-    batchRegistrar: loadV2Deployment(deploymentsDir, deploymentNetwork, "BatchRegistrar"),
-    ensV1Resolver: loadV2Deployment(deploymentsDir, deploymentNetwork, "ENSV1Resolver"),
-    ethRegistrar: loadV2Deployment(deploymentsDir, deploymentNetwork, "ETHRegistrar"),
-    ethRenewerV1: maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, "ETHRenewerV1"),
+    ethRegistry: loadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      "ETHRegistry",
+    ),
+    batchRegistrar: loadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      "BatchRegistrar",
+    ),
+    ensV1Resolver: loadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      "ENSV1Resolver",
+    ),
+    ethRegistrar: loadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      "ETHRegistrar",
+    ),
+    ethRenewerV1: maybeLoadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      "ETHRenewerV1",
+    ),
     mockUsdc: loadV2Deployment(deploymentsDir, deploymentNetwork, "MockUSDC"),
     unlockedMigrationController: loadV2Deployment(
       deploymentsDir,
@@ -3186,7 +3475,9 @@ function collectV2MigrationDeployments(
     universalResolverV2: deployEnv.get("UniversalResolverV2"),
     managedUrp: deployEnv.get("ManagedUniversalResolverProxy"),
     topUrp: deployEnv.get("UpgradableUniversalResolverProxy"),
-    testnetV1PremigrationRegistrar: deployEnv.getOrNull("TestnetV1PremigrationRegistrar"),
+    testnetV1PremigrationRegistrar: deployEnv.getOrNull(
+      "TestnetV1PremigrationRegistrar",
+    ),
   };
 }
 
@@ -3206,7 +3497,8 @@ async function disableAndVerifyBatchRegistrar(opts: {
 }
 
 export async function runForkFull(opts: RunForkFullOptions) {
-  if (opts.direct || opts.debugRpc) installRpcCompatibility(Boolean(opts.debugRpc));
+  if (opts.direct || opts.debugRpc)
+    installRpcCompatibility(Boolean(opts.debugRpc));
   const resumeFromPhase = parseResumeFromPhase(opts.resumeFromPhase);
   const network = NETWORKS[opts.network];
   const forkRpcUrl = requireRpcUrl(opts, opts.network);
@@ -3215,14 +3507,19 @@ export async function runForkFull(opts: RunForkFullOptions) {
   const rpcUrl = opts.direct ? forkRpcUrl : `http://127.0.0.1:${port}`;
   const chain = forkChain(opts.network, chainId, rpcUrl);
   const provider = opts.provider;
-  const useRpcStateControls = opts.rpcStateControls ?? true;
+  // State controls (impersonation, time travel, setBalance) are only available on
+  // simulated RPCs: the local Anvil fork, other local nodes, or Tenderly forks.
+  const useRpcStateControls =
+    opts.rpcStateControls ?? (Boolean(opts.tenderly) || isLocalRpcUrl(rpcUrl));
   const keys: PrivateKeyOptions = {
     deployerPrivateKey: opts.deployerPrivateKey,
     ownerPrivateKey: opts.ownerPrivateKey,
     v1OwnerPrivateKey: opts.v1OwnerPrivateKey,
     urManagerPrivateKey: opts.urManagerPrivateKey,
   };
-  const deploymentsDir = resolve(opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR);
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
   const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
   const v1Deployments = {
     v1DeploymentsDir: opts.v1DeploymentsDir,
@@ -3232,37 +3529,47 @@ export async function runForkFull(opts: RunForkFullOptions) {
     throw new Error("--resume-from-phase requires --work-dir");
   }
   const workDir = resolve(
-    opts.workDir ?? join(tmpdir(), `enschain-${opts.network}-migration-${Date.now()}`),
+    opts.workDir ??
+      join(tmpdir(), `enschain-${opts.network}-migration-${Date.now()}`),
   );
   mkdirSync(workDir, { recursive: true });
 
   const transformedCsv = join(workDir, "premigration.csv");
   if (resumeFromPhase === 2) {
     if (!existsSync(transformedCsv)) {
-      throw new Error(`Cannot resume phase 2 without existing transformed CSV: ${transformedCsv}`);
+      throw new Error(
+        `Cannot resume phase 2 without existing transformed CSV: ${transformedCsv}`,
+      );
     }
-    console.log(`resuming from phase 2 with pre-migration CSV: ${transformedCsv}`);
+    console.log(
+      `resuming from phase 2 with pre-migration CSV: ${transformedCsv}`,
+    );
   } else {
-    const totalRows = transformCsvForPreMigration(resolve(opts.csvFile), transformedCsv);
-    console.log(`prepared pre-migration CSV with ${totalRows} labels: ${transformedCsv}`);
+    const totalRows = transformCsvForPreMigration(
+      resolve(opts.csvFile),
+      transformedCsv,
+    );
+    console.log(
+      `prepared pre-migration CSV with ${totalRows} labels: ${transformedCsv}`,
+    );
   }
 
   const anvil = opts.direct
     ? null
     : Bun.spawn(
-      [
-        "anvil",
-        "--fork-url",
-        forkRpcUrl,
-        "--host",
-        "127.0.0.1",
-        "--port",
-        String(port),
-        "--chain-id",
-        String(chainId),
-      ],
-      { stdout: "ignore", stderr: "inherit" },
-    );
+        [
+          "anvil",
+          "--fork-url",
+          forkRpcUrl,
+          "--host",
+          "127.0.0.1",
+          "--port",
+          String(port),
+          "--chain-id",
+          String(chainId),
+        ],
+        { stdout: "ignore", stderr: "inherit" },
+      );
 
   try {
     await waitForRpc(rpcUrl, chain);
@@ -3277,22 +3584,34 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(`pre-rehearsal snapshot: ${snapshotId}`);
       console.log(`snapshot file: ${opts.snapshotFile}`);
     }
-    const deployer = opts.deployer ?? (opts.direct ? undefined : DEFAULT_ANVIL_DEPLOYER);
-    const owner = opts.owner ?? (
-      opts.direct && opts.network === "sepolia" ? undefined : network.defaultOwner
-    );
-    const urManager = opts.urManager ?? (opts.direct ? undefined : DEFAULT_ANVIL_DEPLOYER);
+    const deployer =
+      opts.deployer ?? (opts.direct ? undefined : DEFAULT_ANVIL_DEPLOYER);
+    const owner =
+      opts.owner ??
+      (opts.direct && opts.network === "sepolia"
+        ? undefined
+        : network.defaultOwner);
+    const urManager =
+      opts.urManager ?? (opts.direct ? undefined : DEFAULT_ANVIL_DEPLOYER);
     if (deployer === undefined) {
-      throw new Error("--direct requires --deployer; use the Hardhat fork-full task to derive it from keystore");
+      throw new Error(
+        "--direct requires --deployer; use the Hardhat fork-full task to derive it from keystore",
+      );
     }
     if (owner === undefined) {
-      throw new Error("--direct on sepolia requires --owner; use the Hardhat fork-full task to derive it from keystore");
+      throw new Error(
+        "--direct on sepolia requires --owner; use the Hardhat fork-full task to derive it from keystore",
+      );
     }
     if (urManager === undefined) {
-      throw new Error("--direct requires --ur-manager; use the Hardhat fork-full task to derive it from keystore");
+      throw new Error(
+        "--direct requires --ur-manager; use the Hardhat fork-full task to derive it from keystore",
+      );
     }
     if (!useRpcStateControls && !opts.deployerPrivateKey) {
-      throw new Error("direct migration without RPC state controls requires a deployer private key");
+      throw new Error(
+        "direct migration without RPC state controls requires a deployer private key",
+      );
     }
     const v1Owner = opts.v1Owner ?? network.defaultV1Owner;
     if (useRpcStateControls) {
@@ -3302,15 +3621,21 @@ export async function runForkFull(opts: RunForkFullOptions) {
       await setBalance(client, v1Owner);
       await setBalance(client, urManager);
     }
-    const generatedSmokePrivateKey = useRpcStateControls ? generatePrivateKey() : undefined;
+    const generatedSmokePrivateKey = useRpcStateControls
+      ? generatePrivateKey()
+      : undefined;
     const smokeAccount = generatedSmokePrivateKey
       ? privateKeyToAccount(generatedSmokePrivateKey)
       : { address: deployer };
-    const smokePrivateKey = generatedSmokePrivateKey
-      ?? privateKeyForAddress(smokeAccount.address, keys);
-    const smokeSignerPrivateKey = smokePrivateKey
-      ?? (() => {
-        throw new Error(`smoke account ${smokeAccount.address} is not backed by a configured private key`);
+    const smokePrivateKey =
+      generatedSmokePrivateKey ??
+      privateKeyForAddress(smokeAccount.address, keys);
+    const smokeSignerPrivateKey =
+      smokePrivateKey ??
+      (() => {
+        throw new Error(
+          `smoke account ${smokeAccount.address} is not backed by a configured private key`,
+        );
       })();
     if (useRpcStateControls) {
       await setBalance(client, smokeAccount.address);
@@ -3322,8 +3647,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
       await impersonate(client, v1Owner);
       await impersonate(client, urManager);
     } else if (
-      useRpcStateControls
-      && getAddress(deployer) !== getAddress(DEFAULT_ANVIL_DEPLOYER)
+      useRpcStateControls &&
+      getAddress(deployer) !== getAddress(DEFAULT_ANVIL_DEPLOYER)
     ) {
       await impersonate(client, deployer);
     }
@@ -3333,20 +3658,25 @@ export async function runForkFull(opts: RunForkFullOptions) {
       "BaseRegistrarImplementation",
       v1Deployments,
     );
-    const v1RegistrarOwner = await client.readContract({
+    const v1RegistrarOwner = (await client.readContract({
       address: v1BaseRegistrar.address,
       abi: v1BaseRegistrar.abi,
       functionName: "owner",
-    }) as Address;
+    })) as Address;
     if (useRpcStateControls) await impersonate(client, v1RegistrarOwner);
 
     let v2Deployments: V2MigrationDeployments;
 
     if (resumeFromPhase === 2) {
       console.log("phase 1: skipped; loading saved v2 deployments");
-      v2Deployments = loadV2MigrationDeployments(deploymentsDir, deploymentNetwork);
+      v2Deployments = loadV2MigrationDeployments(
+        deploymentsDir,
+        deploymentNetwork,
+      );
     } else {
-      console.log(`phase 1: deploy v2 contracts against ${opts.v1DeploymentNetwork ?? network.environment} v1 references`);
+      console.log(
+        `phase 1: deploy v2 contracts against ${opts.v1DeploymentNetwork ?? network.environment} v1 references`,
+      );
       const deployEnv = await deployV2({
         network: opts.network,
         rpcUrl,
@@ -3358,7 +3688,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
         ...v1Deployments,
         saveDeployments: opts.saveDeployments,
         tenderly: opts.tenderly,
-        includeTestnetPremigrationRegistrar: opts.includeTestnetPremigrationRegistrar,
+        includeTestnetPremigrationRegistrar:
+          opts.includeTestnetPremigrationRegistrar,
         cleanTestnet: opts.cleanTestnet,
         deployer,
         deployerPrivateKey: opts.deployerPrivateKey,
@@ -3370,7 +3701,9 @@ export async function runForkFull(opts: RunForkFullOptions) {
         urManagerPrivateKey: opts.urManagerPrivateKey,
       });
       if (opts.saveDeployments) {
-        console.log(`deployment files: ${join(deploymentsDir, deploymentNetwork)}`);
+        console.log(
+          `deployment files: ${join(deploymentsDir, deploymentNetwork)}`,
+        );
       }
 
       v2Deployments = collectV2MigrationDeployments(deployEnv);
@@ -3397,8 +3730,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
     });
     console.log(`batch registrar owner: ${batchRegistrarOwner}`);
     if (
-      useRpcStateControls
-      && getAddress(batchRegistrarOwner) !== getAddress(DEFAULT_ANVIL_DEPLOYER)
+      useRpcStateControls &&
+      getAddress(batchRegistrarOwner) !== getAddress(DEFAULT_ANVIL_DEPLOYER)
     ) {
       await impersonate(client, batchRegistrarOwner);
     }
@@ -3437,27 +3770,33 @@ export async function runForkFull(opts: RunForkFullOptions) {
     });
 
     const smokePrefix = `${opts.network === "mainnet" ? "mf" : "sf"}${Date.now().toString(36)}`;
-    const smokeLabels = resumeFromPhase === 2
-      ? (() => {
-        const [migrate, reservedOnly] = readPremigrationLabels(transformedCsv, 2);
-        console.log(`resumed smoke labels: ${migrate}.eth, ${reservedOnly}.eth`);
-        return {
-          v1BeforeDisable: `${smokePrefix}pre`,
-          migrate,
-          reservedOnly,
-          v1AfterDisable: `${smokePrefix}block`,
-          v2BeforeEnable: `${smokePrefix}v2block`,
-          v2AfterEnable: `${smokePrefix}v2ok`,
-        };
-      })()
-      : {
-        v1BeforeDisable: `${smokePrefix}pre`,
-        migrate: `${smokePrefix}mig`,
-        reservedOnly: `${smokePrefix}res`,
-        v1AfterDisable: `${smokePrefix}block`,
-        v2BeforeEnable: `${smokePrefix}v2block`,
-        v2AfterEnable: `${smokePrefix}v2ok`,
-      };
+    const smokeLabels =
+      resumeFromPhase === 2
+        ? (() => {
+            const [migrate, reservedOnly] = readPremigrationLabels(
+              transformedCsv,
+              2,
+            );
+            console.log(
+              `resumed smoke labels: ${migrate}.eth, ${reservedOnly}.eth`,
+            );
+            return {
+              v1BeforeDisable: `${smokePrefix}pre`,
+              migrate,
+              reservedOnly,
+              v1AfterDisable: `${smokePrefix}block`,
+              v2BeforeEnable: `${smokePrefix}v2block`,
+              v2AfterEnable: `${smokePrefix}v2ok`,
+            };
+          })()
+        : {
+            v1BeforeDisable: `${smokePrefix}pre`,
+            migrate: `${smokePrefix}mig`,
+            reservedOnly: `${smokePrefix}res`,
+            v1AfterDisable: `${smokePrefix}block`,
+            v2BeforeEnable: `${smokePrefix}v2block`,
+            v2AfterEnable: `${smokePrefix}v2ok`,
+          };
 
     let smokeMigrationOwner = smokeAccount.address;
     let smokeMigrationPrivateKey: `0x${string}` | undefined = smokePrivateKey;
@@ -3474,7 +3813,9 @@ export async function runForkFull(opts: RunForkFullOptions) {
       if (useRpcStateControls) await impersonate(client, smokeMigrationOwner);
       console.log(`resumed smoke migration owner: ${smokeMigrationOwner}`);
     } else {
-      console.log("smoke: v1 registration succeeds before registrar disablement");
+      console.log(
+        "smoke: v1 registration succeeds before registrar disablement",
+      );
       await registerViaV1Controller({
         network: opts.network,
         rpcUrl,
@@ -3538,28 +3879,36 @@ export async function runForkFull(opts: RunForkFullOptions) {
         label: smokeLabels.reservedOnly,
         owner: smokeAccount.address,
       });
-      prependCsvLabels(transformedCsv, [smokeLabels.migrate, smokeLabels.reservedOnly]);
-      console.log(`v1 registration succeeded before registrar disablement: ${smokeLabels.v1BeforeDisable}.eth`);
+      prependCsvLabels(transformedCsv, [
+        smokeLabels.migrate,
+        smokeLabels.reservedOnly,
+      ]);
+      console.log(
+        `v1 registration succeeded before registrar disablement: ${smokeLabels.v1BeforeDisable}.eth`,
+      );
     }
 
     console.log("phase 2: initial pre-migration");
-    await runPreMigrationCommand({
-      network: opts.network,
-      rpcUrl,
-      mainnetRpcUrl: rpcUrl,
-      ...v1Deployments,
-      deploymentNetwork,
-      registry: ethRegistry.address,
-      batchRegistrar: batchRegistrar.address,
-      ...batchRegistrarSigner,
-      csvFile: transformedCsv,
-      v1Resolver: ensV1Resolver.address,
-      v1BaseRegistrar: v1BaseRegistrar.address,
-      batchSize: opts.batchSize,
-      limit: opts.initialLimit,
-      minExpiryDays: "7",
-      workDir,
-    }, resumeFromPhase === 2);
+    await runPreMigrationCommand(
+      {
+        network: opts.network,
+        rpcUrl,
+        mainnetRpcUrl: rpcUrl,
+        ...v1Deployments,
+        deploymentNetwork,
+        registry: ethRegistry.address,
+        batchRegistrar: batchRegistrar.address,
+        ...batchRegistrarSigner,
+        csvFile: transformedCsv,
+        v1Resolver: ensV1Resolver.address,
+        v1BaseRegistrar: v1BaseRegistrar.address,
+        batchSize: opts.batchSize,
+        limit: opts.initialLimit,
+        minExpiryDays: INITIAL_PREMIGRATION_MIN_EXPIRY_DAYS,
+        workDir,
+      },
+      resumeFromPhase === 2,
+    );
     await assertV2State({
       rpcUrl,
       chain,
@@ -3579,11 +3928,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ...(useRpcStateControls
         ? { impersonateOwner: true }
         : {
-            privateKey: requirePrivateKeyForAddress(
-              v1Owner,
-              keys,
-              "v1 owner",
-            ),
+            privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner"),
           }),
     });
     await assertRejected(
@@ -3600,28 +3945,34 @@ export async function runForkFull(opts: RunForkFullOptions) {
         useRpcStateControls,
       }),
       `v1 registration rejected after registrar disablement: ${smokeLabels.v1AfterDisable}.eth`,
+      // The disabled controller can no longer mint on the BaseRegistrar, so the
+      // registration must fail with a revert (at simulation or in the receipt).
+      /revert/i,
     );
 
     console.log("phase 4: sync remaining names and finish pre-migration");
     const finalSyncWorkDir = join(workDir, "final-sync");
-    await runPreMigrationCommand({
-      network: opts.network,
-      rpcUrl,
-      mainnetRpcUrl: rpcUrl,
-      ...v1Deployments,
-      deploymentNetwork,
-      registry: ethRegistry.address,
-      batchRegistrar: batchRegistrar.address,
-      ...batchRegistrarSigner,
-      csvFile: transformedCsv,
-      v1Resolver: ensV1Resolver.address,
-      v1BaseRegistrar: v1BaseRegistrar.address,
-      batchSize: opts.batchSize,
-      limit: opts.finishLimit,
-      minExpiryDays: "0",
-      skipExistingReservations: true,
-      workDir: finalSyncWorkDir,
-    }, existsSync(join(finalSyncWorkDir, "preMigration-checkpoint.json")));
+    await runPreMigrationCommand(
+      {
+        network: opts.network,
+        rpcUrl,
+        mainnetRpcUrl: rpcUrl,
+        ...v1Deployments,
+        deploymentNetwork,
+        registry: ethRegistry.address,
+        batchRegistrar: batchRegistrar.address,
+        ...batchRegistrarSigner,
+        csvFile: transformedCsv,
+        v1Resolver: ensV1Resolver.address,
+        v1BaseRegistrar: v1BaseRegistrar.address,
+        batchSize: opts.batchSize,
+        limit: opts.finishLimit,
+        minExpiryDays: "0",
+        skipExistingReservations: true,
+        workDir: finalSyncWorkDir,
+      },
+      existsSync(join(finalSyncWorkDir, "preMigration-checkpoint.json")),
+    );
     await assertV2State({
       rpcUrl,
       chain,
@@ -3629,7 +3980,9 @@ export async function runForkFull(opts: RunForkFullOptions) {
       label: smokeLabels.reservedOnly,
       status: STATUS.RESERVED,
     });
-    console.log(`smoke pre-migration reserved ${smokeLabels.reservedOnly}.eth for registrar rejection`);
+    console.log(
+      `smoke pre-migration reserved ${smokeLabels.reservedOnly}.eth for registrar rejection`,
+    );
 
     console.log("smoke: migrate a pre-migrated v1 name to v2");
     await migrateUnwrappedV1Name({
@@ -3658,14 +4011,18 @@ export async function runForkFull(opts: RunForkFullOptions) {
     });
     console.log(`smoke migration registered ${smokeLabels.migrate}.eth on v2`);
 
-    console.log("phase 5: DAO switch UniversalResolverProxy to ManagedUniversalResolverProxy");
-    const topUrpAdmin = await client.readContract({
+    console.log(
+      "phase 5: DAO switch UniversalResolverProxy to ManagedUniversalResolverProxy",
+    );
+    const topUrpAdmin = (await client.readContract({
       address: topUrp.address,
       abi: Artifact_UpgradableUniversalResolverProxy.abi,
       functionName: "admin",
-    }) as Address;
+    })) as Address;
     if (getAddress(topUrpAdmin) === getAddress(zeroAddress)) {
-      throw new Error("top URP admin is address(0); cannot impersonate admin for fork switch");
+      throw new Error(
+        "top URP admin is address(0); cannot impersonate admin for fork switch",
+      );
     }
     console.log(`top URP admin: ${topUrpAdmin}`);
     await switchTopUrpToManaged({
@@ -3704,8 +4061,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
             ),
           }
         : urManager === DEFAULT_ANVIL_DEPLOYER
-        ? { privateKey: DEFAULT_ANVIL_KEY }
-        : { impersonateAccount: urManager }),
+          ? { privateKey: DEFAULT_ANVIL_KEY }
+          : { impersonateAccount: urManager }),
     });
     console.log(`managed URP upgraded to: ${universalResolverV2.address}`);
 
@@ -3721,7 +4078,9 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ...deploymentAdminSigner,
     });
     if (testnetV1PremigrationRegistrar) {
-      console.log(`testnet premigration registrar remains enabled: ${testnetV1PremigrationRegistrar.address}`);
+      console.log(
+        `testnet premigration registrar remains enabled: ${testnetV1PremigrationRegistrar.address}`,
+      );
     }
 
     console.log("phase 8: authorize v1 handoff controllers");
@@ -3737,11 +4096,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ...(useRpcStateControls
         ? { impersonateOwner: true }
         : {
-            privateKey: requirePrivateKeyForAddress(
-              v1Owner,
-              keys,
-              "v1 owner",
-            ),
+            privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner"),
           }),
     });
 
@@ -3761,11 +4116,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ...(useRpcStateControls
         ? { impersonateOwner: true }
         : {
-            privateKey: requirePrivateKeyForAddress(
-              v1Owner,
-              keys,
-              "v1 owner",
-            ),
+            privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner"),
           }),
     });
     const beforeEnabled = await client.readContract({
@@ -3789,6 +4140,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
         useRpcStateControls,
       }),
       `v2 registrar rejected registration before enablement: ${smokeLabels.v2BeforeEnable}.eth`,
+      // The registrar lacks REGISTRAR/RENEW root roles until phase 9 enables it.
+      /revert/i,
     );
     await enableV2Registrar({
       network: opts.network,
@@ -3812,6 +4165,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
         useRpcStateControls,
       }),
       `v2 registrar rejected pre-migrated reserved name after enablement: ${smokeLabels.reservedOnly}.eth`,
+      // The name is RESERVED from pre-migration, so registration must revert.
+      /revert/i,
     );
     await registerViaV2Registrar({
       rpcUrl,
@@ -3831,9 +4186,13 @@ export async function runForkFull(opts: RunForkFullOptions) {
       status: STATUS.REGISTERED,
       owner: smokeAccount.address,
     });
-    console.log(`v2 registrar registered ${smokeLabels.v2AfterEnable}.eth after enablement`);
+    console.log(
+      `v2 registrar registered ${smokeLabels.v2AfterEnable}.eth after enablement`,
+    );
     if (opts.network === "mainnet") {
-      console.log(`mainnet DAO simulation used owner/v1Owner impersonation: ${owner}`);
+      console.log(
+        `mainnet DAO simulation used owner/v1Owner impersonation: ${owner}`,
+      );
     }
     console.log(`rehearsal work dir: ${workDir}`);
   } finally {
@@ -3844,19 +4203,22 @@ export async function runForkFull(opts: RunForkFullOptions) {
 }
 
 export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
-  if (opts.direct || opts.debugRpc) installRpcCompatibility(Boolean(opts.debugRpc));
+  // Clean testnet deploys always run directly against the configured RPC; no local
+  // Anvil fork is ever spawned.
+  installRpcCompatibility(Boolean(opts.debugRpc));
   if (opts.network !== "sepolia") {
-    throw new Error("clean testnet full deploy currently supports sepolia only");
-  }
-  if (!opts.direct) {
-    throw new Error("clean testnet full deploy requires --direct");
+    throw new Error(
+      "clean testnet full deploy currently supports sepolia only",
+    );
   }
 
   const network = NETWORKS[opts.network];
   const forkRpcUrl = requireRpcUrl(opts, opts.network);
   const useRpcStateControls = opts.tenderly || isLocalRpcUrl(forkRpcUrl);
   if (!useRpcStateControls && !opts.deployerPrivateKey) {
-    throw new Error("clean testnet full deploy requires a configured deployer private key");
+    throw new Error(
+      "clean testnet full deploy requires a configured deployer private key",
+    );
   }
   const chainId = parseNumber(opts.chainId, network.chain.id);
   const chain = forkChain(opts.network, chainId, forkRpcUrl);
@@ -3864,10 +4226,15 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
   await waitForRpc(forkRpcUrl, chain);
 
   const deploymentNetwork =
-    opts.deploymentNetwork ?? `${network.environment}-clean-${Date.now().toString(36)}`;
+    opts.deploymentNetwork ??
+    `${network.environment}-clean-${Date.now().toString(36)}`;
   const v1DeploymentNetwork = opts.v1DeploymentNetwork ?? deploymentNetwork;
-  const v1DeploymentsDir = resolve(opts.v1DeploymentsDir ?? LOCAL_V1_DEPLOYMENTS_DIR);
-  const deploymentsDir = resolve(opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR);
+  const v1DeploymentsDir = resolve(
+    opts.v1DeploymentsDir ?? LOCAL_V1_DEPLOYMENTS_DIR,
+  );
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
   if (!opts.resumeExistingDeployments) {
     assertCleanDeploymentNamespace(
       deploymentsDir,
@@ -3883,7 +4250,8 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
     );
   }
   const workDir = resolve(
-    opts.workDir ?? join(tmpdir(), `enschain-${deploymentNetwork}-clean-${Date.now()}`),
+    opts.workDir ??
+      join(tmpdir(), `enschain-${deploymentNetwork}-clean-${Date.now()}`),
   );
   mkdirSync(workDir, { recursive: true });
 
@@ -3907,12 +4275,17 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
   }
 
   console.log(`clean deployment namespace: ${deploymentNetwork}`);
-  console.log(`v1 deployment files: ${join(v1DeploymentsDir, v1DeploymentNetwork)}`);
-  console.log(`v2 deployment files: ${join(deploymentsDir, deploymentNetwork)}`);
+  console.log(
+    `v1 deployment files: ${join(v1DeploymentsDir, v1DeploymentNetwork)}`,
+  );
+  console.log(
+    `v2 deployment files: ${join(deploymentsDir, deploymentNetwork)}`,
+  );
 
   const v1DeploymentPath = join(v1DeploymentsDir, v1DeploymentNetwork);
-  const hasExistingV1Deployments = existsSync(v1DeploymentPath)
-    && readdirSync(v1DeploymentPath).some((file) => file.endsWith(".json"));
+  const hasExistingV1Deployments =
+    existsSync(v1DeploymentPath) &&
+    readdirSync(v1DeploymentPath).some((file) => file.endsWith(".json"));
   if (opts.resumeExistingDeployments && hasExistingV1Deployments) {
     console.log("clean phase 0: skipped; using existing fresh v1 deployments");
   } else {
@@ -3929,7 +4302,10 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
       deployer,
       deployerPrivateKey: opts.deployerPrivateKey,
       owner: v1Owner,
-      ownerPrivateKey: opts.v1OwnerPrivateKey ?? opts.ownerPrivateKey ?? opts.deployerPrivateKey,
+      ownerPrivateKey:
+        opts.v1OwnerPrivateKey ??
+        opts.ownerPrivateKey ??
+        opts.deployerPrivateKey,
     });
   }
 
@@ -3962,7 +4338,8 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
     owner,
     ownerPrivateKey: opts.ownerPrivateKey ?? opts.deployerPrivateKey,
     v1Owner,
-    v1OwnerPrivateKey: opts.v1OwnerPrivateKey ?? opts.ownerPrivateKey ?? opts.deployerPrivateKey,
+    v1OwnerPrivateKey:
+      opts.v1OwnerPrivateKey ?? opts.ownerPrivateKey ?? opts.deployerPrivateKey,
     urManager,
     urManagerPrivateKey: opts.urManagerPrivateKey ?? opts.deployerPrivateKey,
     resumeFromPhase: undefined,
@@ -3979,13 +4356,20 @@ function addNetworkOptions(command: Command): Command {
 function addDeploymentOptions(command: Command): Command {
   return command
     .option("--deployment-network <name>", "Deployment directory network name")
-    .option("--deployments-dir <path>", "Root directory for v2 deployments", DEFAULT_DEPLOYMENTS_DIR);
+    .option(
+      "--deployments-dir <path>",
+      "Root directory for v2 deployments",
+      DEFAULT_DEPLOYMENTS_DIR,
+    );
 }
 
 function addV1DeploymentOptions(command: Command): Command {
   return command
     .option("--v1-deployments-dir <path>", "Root directory for v1 deployments")
-    .option("--v1-deployment-network <name>", "V1 deployment directory network name");
+    .option(
+      "--v1-deployment-network <name>",
+      "V1 deployment directory network name",
+    );
 }
 
 function assertCleanDeploymentNamespace(
@@ -4001,7 +4385,9 @@ function assertCleanDeploymentNamespace(
   }
   const path = join(root, environment);
   if (!existsSync(path)) return;
-  const deploymentFiles = readdirSync(path).filter((file) => file.endsWith(".json"));
+  const deploymentFiles = readdirSync(path).filter((file) =>
+    file.endsWith(".json"),
+  );
   if (deploymentFiles.length > 0) {
     throw new Error(
       `clean testnet deploy refuses to reuse populated ${label} namespace: ${path}`,
@@ -4009,8 +4395,98 @@ function assertCleanDeploymentNamespace(
   }
 }
 
-function withNetwork(opts: any): any & { network: MigrationNetwork } {
-  return { ...opts, network: parseNetwork(opts.network) };
+// Minimal CLI option shapes. Commander hands us plain strings; the address and
+// private-key fields below are boundary assertions for downstream signatures.
+type NetworkCliOptions = {
+  network: string;
+  rpcUrl?: string;
+  chainId?: string;
+};
+
+type DeploymentCliOptions = {
+  deploymentNetwork?: string;
+  deploymentsDir?: string;
+};
+
+type V1DeploymentCliOptions = {
+  v1DeploymentsDir?: string;
+  v1DeploymentNetwork?: string;
+};
+
+// Phase commands that broadcast (or print calldata) as the v1 owner.
+type V1OwnerWriteCliOptions = {
+  privateKey?: `0x${string}`;
+  impersonateOwner?: boolean;
+  calldataOnly?: boolean;
+};
+
+// Phase commands that broadcast as a registry/proxy admin account.
+type AdminSignerCliOptions = {
+  privateKey?: `0x${string}`;
+  impersonateAccount?: Address;
+};
+
+type PremigrationRunCliOptions = NetworkCliOptions &
+  DeploymentCliOptions &
+  V1DeploymentCliOptions & {
+    privateKey?: `0x${string}`;
+    csvFile: string;
+    mainnetRpcUrl?: string;
+    registry?: Address;
+    batchRegistrar?: Address;
+    v1Resolver?: Address;
+    v1BaseRegistrar?: Address;
+    batchSize?: string;
+    limit?: string;
+    minExpiryDays?: string;
+    workDir?: string;
+    skipExistingReservations?: boolean;
+    dryRun?: boolean;
+  };
+
+type PremigrationVerifyCliOptions = NetworkCliOptions &
+  DeploymentCliOptions &
+  V1DeploymentCliOptions & {
+    csvFile: string;
+    mainnetRpcUrl?: string;
+    registry?: Address;
+    v1Resolver?: Address;
+    v1BaseRegistrar?: Address;
+    limit?: string;
+    expectedStatus?: "reserved" | "registered" | "reserved-or-registered";
+    minExpiryDays?: string;
+  };
+
+type DeployV2CliOptions = NetworkCliOptions &
+  DeploymentCliOptions &
+  V1DeploymentCliOptions & {
+    saveDeployments?: boolean;
+    includeTestnetPremigrationRegistrar?: boolean;
+    deferV1OwnerTransactions?: boolean;
+    deferredV1OwnerTransactionsFile?: string;
+    deployer?: Address;
+    owner?: Address;
+    urManager?: Address;
+    v1Owner?: Address;
+    impersonateV1Owner?: boolean;
+    rpcCompatibility?: boolean;
+    debugRpc?: boolean;
+    tags?: string;
+  };
+
+type ForkFullCliOptions = Omit<RunForkFullOptions, "network"> &
+  NetworkCliOptions;
+
+type CleanTestnetCliOptions = Omit<RunCleanTestnetFullOptions, "network"> &
+  NetworkCliOptions;
+
+function withNetwork<T extends NetworkCliOptions>(
+  opts: T,
+): Omit<T, "network"> & { network: MigrationNetwork } {
+  return {
+    ...opts,
+    network: parseMigrationNetwork(opts.network),
+  } as Omit<T, "network"> & { network: MigrationNetwork };
 }
 
 export async function main(argv = process.argv): Promise<void> {
@@ -4018,85 +4494,143 @@ export async function main(argv = process.argv): Promise<void> {
 
   const program = new Command()
     .name("migration")
-    .description("Operate and rehearse the ENS v1 to v2 migration in explicit phases.");
+    .description(
+      "Operate and rehearse the ENS v1 to v2 migration in explicit phases.",
+    );
 
   program.addCommand(
     new Command("fetch-data")
       .description("Fetch ENS registration data from TheGraph into a CSV")
-      .option("--thegraph-api-key <key>", "TheGraph Gateway API key; falls back to THEGRAPH_API_KEY or GRAPH_API_KEY")
-      .option("--network <network>", "ENS registrations network: mainnet or sepolia", "mainnet")
+      .option(
+        "--thegraph-api-key <key>",
+        "TheGraph Gateway API key; falls back to THEGRAPH_API_KEY or GRAPH_API_KEY",
+      )
+      .option(
+        "--network <network>",
+        "ENS registrations network: mainnet or sepolia",
+        "mainnet",
+      )
       .option("--batch-size <number>", "Rows per TheGraph request", "1000")
       .option("--start-index <number>", "Pagination start index", "0")
       .option("--limit <number>", "Maximum registrations to fetch")
-      .option("--output <file>", "Output CSV file", `csv-data/ens-registrations-${new Date().toISOString().split("T")[0]}.csv`)
-      .action(async (opts) => {
-        await runFetchData(opts);
-      }),
+      .option(
+        "--output <file>",
+        "Output CSV file",
+        `csv-data/ens-registrations-${new Date().toISOString().split("T")[0]}.csv`,
+      )
+      .action(
+        async (opts: {
+          thegraphApiKey?: string;
+          network?: string;
+          batchSize?: string;
+          startIndex?: string;
+          limit?: string;
+          output: string;
+        }) => {
+          await runFetchData(opts);
+        },
+      ),
   );
 
-  const premigration = new Command("premigration")
-    .description("Run, resume, inspect, and verify pre-migration reservations.");
+  const premigration = new Command("premigration").description(
+    "Run, resume, inspect, and verify pre-migration reservations.",
+  );
 
-  const addPremigrationOptions = (command: Command) => addV1DeploymentOptions(addDeploymentOptions(
-    addNetworkOptions(command)
-      .option("--private-key <key>", "BatchRegistrar owner private key")
-      .requiredOption("--csv-file <path>", "Pre-migration CSV")
-      .option("--mainnet-rpc-url <url>", "RPC URL for v1 expiry reads")
-      .option("--registry <address>", "v2 ETHRegistry address")
-      .option("--batch-registrar <address>", "BatchRegistrar address")
-      .option("--v1-resolver <address>", "ENSV1Resolver address")
-      .option("--v1-base-registrar <address>", "v1 BaseRegistrar address")
-      .option("--batch-size <number>", "Names per batch", "50")
-      .option("--limit <number>", "Maximum names to process")
-      .option("--min-expiry-days <days>", "Skip names expiring within this many days")
-      .option("--work-dir <path>", "Directory for checkpoints and logs")
-      .option("--skip-existing-reservations", "Skip names already reserved on v2 with the expected expiry", false)
-      .option("--dry-run", "Simulate without transactions", false),
-  ));
+  const addPremigrationOptions = (command: Command) =>
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(command)
+          .option("--private-key <key>", "BatchRegistrar owner private key")
+          .requiredOption("--csv-file <path>", "Pre-migration CSV")
+          .option("--mainnet-rpc-url <url>", "RPC URL for v1 expiry reads")
+          .option("--registry <address>", "v2 ETHRegistry address")
+          .option("--batch-registrar <address>", "BatchRegistrar address")
+          .option("--v1-resolver <address>", "ENSV1Resolver address")
+          .option("--v1-base-registrar <address>", "v1 BaseRegistrar address")
+          .option("--batch-size <number>", "Names per batch", "50")
+          .option("--limit <number>", "Maximum names to process")
+          .option(
+            "--min-expiry-days <days>",
+            "Skip names expiring within this many days",
+          )
+          .option("--work-dir <path>", "Directory for checkpoints and logs")
+          .option(
+            "--skip-existing-reservations",
+            "Skip names already reserved on v2 with the expected expiry",
+            false,
+          )
+          .option("--dry-run", "Simulate without transactions", false),
+      ),
+    );
 
   premigration.addCommand(
-    addPremigrationOptions(new Command("run").description("Start pre-migration from a fresh checkpoint"))
-      .action(async (opts) => {
-        const networkOpts = withNetwork(opts);
-        await runPreMigrationCommand({
+    addPremigrationOptions(
+      new Command("run").description(
+        "Start pre-migration from a fresh checkpoint",
+      ),
+    ).action(async (opts: PremigrationRunCliOptions) => {
+      const networkOpts = withNetwork(opts);
+      await runPreMigrationCommand(
+        {
           ...networkOpts,
           rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-        }, false);
-      }),
+        },
+        false,
+      );
+    }),
   );
   premigration.addCommand(
-    addPremigrationOptions(new Command("resume").description("Resume pre-migration from checkpoint"))
-      .action(async (opts) => {
-        const networkOpts = withNetwork(opts);
-        await runPreMigrationCommand({
+    addPremigrationOptions(
+      new Command("resume").description("Resume pre-migration from checkpoint"),
+    ).action(async (opts: PremigrationRunCliOptions) => {
+      const networkOpts = withNetwork(opts);
+      await runPreMigrationCommand(
+        {
           ...networkOpts,
           rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-        }, true);
-      }),
+        },
+        true,
+      );
+    }),
   );
   premigration.addCommand(
     new Command("status")
       .description("Print the current pre-migration checkpoint")
-      .option("--work-dir <path>", "Directory containing preMigration-checkpoint.json")
-      .action(async (opts) => {
+      .option(
+        "--work-dir <path>",
+        "Directory containing preMigration-checkpoint.json",
+      )
+      .action(async (opts: { workDir?: string }) => {
         await printPreMigrationStatus(opts);
       }),
   );
   premigration.addCommand(
-    addV1DeploymentOptions(addDeploymentOptions(
-      addNetworkOptions(
-        new Command("verify")
-          .description("Verify eligible CSV names were reserved or registered on v2")
-          .requiredOption("--csv-file <path>", "Pre-migration CSV")
-          .option("--mainnet-rpc-url <url>", "RPC URL for v1 expiry reads")
-          .option("--registry <address>", "v2 ETHRegistry address")
-          .option("--v1-resolver <address>", "Expected ENSV1Resolver address")
-          .option("--v1-base-registrar <address>", "v1 BaseRegistrar address")
-          .option("--limit <number>", "Maximum labels to verify")
-          .option("--expected-status <status>", "reserved, registered, or reserved-or-registered", "reserved-or-registered")
-          .option("--min-expiry-days <days>", "Treat names expiring within this many days as ineligible", "0"),
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("verify")
+            .description(
+              "Verify eligible CSV names were reserved or registered on v2",
+            )
+            .requiredOption("--csv-file <path>", "Pre-migration CSV")
+            .option("--mainnet-rpc-url <url>", "RPC URL for v1 expiry reads")
+            .option("--registry <address>", "v2 ETHRegistry address")
+            .option("--v1-resolver <address>", "Expected ENSV1Resolver address")
+            .option("--v1-base-registrar <address>", "v1 BaseRegistrar address")
+            .option("--limit <number>", "Maximum labels to verify")
+            .option(
+              "--expected-status <status>",
+              "reserved, registered, or reserved-or-registered",
+              "reserved-or-registered",
+            )
+            .option(
+              "--min-expiry-days <days>",
+              "Treat names expiring within this many days as ineligible",
+              "0",
+            ),
+        ),
       ),
-    )).action(async (opts) => {
+    ).action(async (opts: PremigrationVerifyCliOptions) => {
       const networkOpts = withNetwork(opts);
       await verifyPreMigration({
         ...networkOpts,
@@ -4106,28 +4640,57 @@ export async function main(argv = process.argv): Promise<void> {
   );
   program.addCommand(premigration);
 
-  const phase = new Command("phase")
-    .description("Run or verify individual live/fork migration phases.");
+  const phase = new Command("phase").description(
+    "Run or verify individual live/fork migration phases.",
+  );
 
   phase.addCommand(
-    addV1DeploymentOptions(addDeploymentOptions(addNetworkOptions(
-      new Command("deploy-v2")
-        .description("Deploy the v2 migration contracts with the registrar deferred")
-        .option("--save-deployments", "Persist deployment files", false)
-        .option("--include-testnet-premigration-registrar", "Deploy the testnet v1 premigration registrar helper", false)
-        .option("--defer-v1-owner-transactions", "Record v1-owner transactions instead of broadcasting them", false)
-        .option("--deferred-v1-owner-transactions-file <path>", "JSONL file for deferred v1-owner transactions")
-        .option("--deployer <address>", "Deployer account address")
-        .option("--owner <address>", "Owner/admin address")
-        .option("--ur-manager <address>", "Managed URP admin address")
-        .option("--v1-owner <address>", "v1 owner address for v1 writes")
-        .option("--impersonate-v1-owner", "Impersonate v1 owner on a fork", false)
-        .option("--rpc-compatibility", "Enable compatibility fallbacks for fork RPCs", false)
-        .option("--debug-rpc", "Log JSON-RPC error responses", false)
-        .option("--tags <tags>", "Comma-separated deploy tags to run instead of the default v2 migration tags"),
-    ))).action(async (opts) => {
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("deploy-v2")
+            .description(
+              "Deploy the v2 migration contracts with the registrar deferred",
+            )
+            .option("--save-deployments", "Persist deployment files", false)
+            .option(
+              "--include-testnet-premigration-registrar",
+              "Deploy the testnet v1 premigration registrar helper",
+              false,
+            )
+            .option(
+              "--defer-v1-owner-transactions",
+              "Record v1-owner transactions instead of broadcasting them",
+              false,
+            )
+            .option(
+              "--deferred-v1-owner-transactions-file <path>",
+              "JSONL file for deferred v1-owner transactions",
+            )
+            .option("--deployer <address>", "Deployer account address")
+            .option("--owner <address>", "Owner/admin address")
+            .option("--ur-manager <address>", "Managed URP admin address")
+            .option("--v1-owner <address>", "v1 owner address for v1 writes")
+            .option(
+              "--impersonate-v1-owner",
+              "Impersonate v1 owner on a fork",
+              false,
+            )
+            .option(
+              "--rpc-compatibility",
+              "Enable compatibility fallbacks for fork RPCs",
+              false,
+            )
+            .option("--debug-rpc", "Log JSON-RPC error responses", false)
+            .option(
+              "--tags <tags>",
+              "Comma-separated deploy tags to run instead of the default v2 migration tags",
+            ),
+        ),
+      ),
+    ).action(async (opts: DeployV2CliOptions) => {
       const networkOpts = withNetwork(opts);
-      const network = networkOpts.network as MigrationNetwork;
+      const network = networkOpts.network;
       await deployV2({
         ...networkOpts,
         deployerPrivateKey: envPrivateKey("DEPLOYER_KEY"),
@@ -4140,25 +4703,40 @@ export async function main(argv = process.argv): Promise<void> {
     }),
   );
   phase.addCommand(
-    addV1DeploymentOptions(addNetworkOptions(
-      new Command("disable-v1-registrars")
-        .description("Disable v1 registrar controllers")
-        .option("--private-key <key>", "Owner private key")
-        .option("--impersonate-owner", "Impersonate owner on a fork", false)
-        .option("--calldata-only", "Print transaction targets and calldata", false),
-    )).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await disableV1Registrars({
-        ...networkOpts,
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    addV1DeploymentOptions(
+      addNetworkOptions(
+        new Command("disable-v1-registrars")
+          .description("Disable v1 registrar controllers")
+          .option("--private-key <key>", "Owner private key")
+          .option("--impersonate-owner", "Impersonate owner on a fork", false)
+          .option(
+            "--calldata-only",
+            "Print transaction targets and calldata",
+            false,
+          ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          V1DeploymentCliOptions &
+          V1OwnerWriteCliOptions,
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await disableV1Registrars({
+          ...networkOpts,
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(addNetworkOptions(
-      new Command("verify-v1-registrars-disabled")
-        .description("Verify v1 registrar controllers are disabled"),
-    )).action(async (opts) => {
+    addV1DeploymentOptions(
+      addNetworkOptions(
+        new Command("verify-v1-registrars-disabled").description(
+          "Verify v1 registrar controllers are disabled",
+        ),
+      ),
+    ).action(async (opts: NetworkCliOptions & V1DeploymentCliOptions) => {
       const networkOpts = withNetwork(opts);
       await verifyV1RegistrarsDisabled({
         ...networkOpts,
@@ -4170,18 +4748,37 @@ export async function main(argv = process.argv): Promise<void> {
     addNetworkOptions(
       new Command("execute-owner-txs")
         .description("Execute prepared owner transactions from a JSONL file")
-        .requiredOption("--file <path>", "JSONL file of prepared owner transactions")
-        .option("--role <role>", "Only execute transactions for this role/account")
+        .requiredOption(
+          "--file <path>",
+          "JSONL file of prepared owner transactions",
+        )
+        .option(
+          "--role <role>",
+          "Only execute transactions for this role/account",
+        )
         .option("--private-key <key>", "Owner private key")
-        .option("--dry-run", "Print matching transactions without broadcasting", false),
-    ).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await executePreparedOwnerTransactions({
-        ...networkOpts,
-        privateKey: opts.privateKey,
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+        .option(
+          "--dry-run",
+          "Print matching transactions without broadcasting",
+          false,
+        ),
+    ).action(
+      async (
+        opts: NetworkCliOptions & {
+          file: string;
+          role?: string;
+          privateKey?: `0x${string}`;
+          dryRun?: boolean;
+        },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await executePreparedOwnerTransactions({
+          ...networkOpts,
+          privateKey: opts.privateKey,
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
     addDeploymentOptions(
@@ -4190,105 +4787,227 @@ export async function main(argv = process.argv): Promise<void> {
           .description("Verify top and managed UniversalResolverProxy status")
           .option("--top-urp <address>", "Top-level URP address")
           .option("--managed-urp <address>", "Managed URP address")
-          .option("--expected-top-implementation <address>", "Expected top-level URP implementation")
-          .option("--expected-managed-implementation <address>", "Expected managed URP implementation"),
+          .option(
+            "--expected-top-implementation <address>",
+            "Expected top-level URP implementation",
+          )
+          .option(
+            "--expected-managed-implementation <address>",
+            "Expected managed URP implementation",
+          ),
       ),
-    ).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await verifyUrp({
-        ...networkOpts,
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions & {
+            topUrp?: Address;
+            managedUrp?: Address;
+            expectedTopImplementation?: Address;
+            expectedManagedImplementation?: Address;
+          },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await verifyUrp({
+          ...networkOpts,
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(addDeploymentOptions(addNetworkOptions(
-      new Command("authorize-testnet-v1-premigration-registrar")
-        .description("Authorize the testnet premigration helper as a v1 registrar controller")
-        .option("--registrar <address>", "TestnetV1PremigrationRegistrar address")
-        .option("--private-key <key>", "V1 owner private key")
-        .option("--impersonate-owner", "Impersonate owner on a fork", false)
-        .option("--calldata-only", "Print transaction target and calldata", false),
-    ))).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await authorizeTestnetV1PremigrationRegistrar({
-        ...networkOpts,
-        privateKey: opts.privateKey ?? envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("authorize-testnet-v1-premigration-registrar")
+            .description(
+              "Authorize the testnet premigration helper as a v1 registrar controller",
+            )
+            .option(
+              "--registrar <address>",
+              "TestnetV1PremigrationRegistrar address",
+            )
+            .option("--private-key <key>", "V1 owner private key")
+            .option("--impersonate-owner", "Impersonate owner on a fork", false)
+            .option(
+              "--calldata-only",
+              "Print transaction target and calldata",
+              false,
+            ),
+        ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          V1DeploymentCliOptions &
+          V1OwnerWriteCliOptions & { registrar?: Address },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await authorizeTestnetV1PremigrationRegistrar({
+          ...networkOpts,
+          privateKey:
+            opts.privateKey ??
+            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(addDeploymentOptions(addNetworkOptions(
-      new Command("activate-v1-graveyard")
-        .description("Phase 8: authorize Graveyard as a v1 BaseRegistrar controller")
-        .option("--graveyard <address>", "Graveyard address")
-        .option("--private-key <key>", "V1 owner private key")
-        .option("--impersonate-owner", "Impersonate owner on a fork", false)
-        .option("--calldata-only", "Print transaction target and calldata", false),
-    ))).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await activateV1Graveyard({
-        ...networkOpts,
-        privateKey: opts.privateKey ?? envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("activate-v1-graveyard")
+            .description(
+              "Phase 8: authorize Graveyard as a v1 BaseRegistrar controller",
+            )
+            .option("--graveyard <address>", "Graveyard address")
+            .option("--private-key <key>", "V1 owner private key")
+            .option("--impersonate-owner", "Impersonate owner on a fork", false)
+            .option(
+              "--calldata-only",
+              "Print transaction target and calldata",
+              false,
+            ),
+        ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          V1DeploymentCliOptions &
+          V1OwnerWriteCliOptions & { graveyard?: Address },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await activateV1Graveyard({
+          ...networkOpts,
+          privateKey:
+            opts.privateKey ??
+            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(addDeploymentOptions(addNetworkOptions(
-      new Command("activate-v1-handoff-controllers")
-        .description("Phase 8: authorize Graveyard and the testnet premigration helper as v1 BaseRegistrar controllers")
-        .option("--graveyard <address>", "Graveyard address")
-        .option("--testnet-v1-premigration-registrar <address>", "TestnetV1PremigrationRegistrar address")
-        .option("--private-key <key>", "V1 owner private key")
-        .option("--impersonate-owner", "Impersonate owner on a fork", false)
-        .option("--calldata-only", "Print transaction targets and calldata", false),
-    ))).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await activateV1HandoffControllers({
-        ...networkOpts,
-        privateKey: opts.privateKey ?? envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("activate-v1-handoff-controllers")
+            .description(
+              "Phase 8: authorize Graveyard and the testnet premigration helper as v1 BaseRegistrar controllers",
+            )
+            .option("--graveyard <address>", "Graveyard address")
+            .option(
+              "--testnet-v1-premigration-registrar <address>",
+              "TestnetV1PremigrationRegistrar address",
+            )
+            .option("--private-key <key>", "V1 owner private key")
+            .option("--impersonate-owner", "Impersonate owner on a fork", false)
+            .option(
+              "--calldata-only",
+              "Print transaction targets and calldata",
+              false,
+            ),
+        ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          V1DeploymentCliOptions &
+          V1OwnerWriteCliOptions & {
+            graveyard?: Address;
+            testnetV1PremigrationRegistrar?: Address;
+          },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await activateV1HandoffControllers({
+          ...networkOpts,
+          privateKey:
+            opts.privateKey ??
+            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(addDeploymentOptions(addNetworkOptions(
-      new Command("activate-v1-renewer")
-        .description("Phase 9: authorize ETHRenewerV1 on v1 and transfer BaseRegistrar ownership to it")
-        .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address")
-        .option("--private-key <key>", "V1 owner private key")
-        .option("--impersonate-owner", "Impersonate owner on a fork", false)
-        .option("--calldata-only", "Print transaction targets and calldata", false),
-    ))).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await activateV1RenewerAndTransferOwnership({
-        ...networkOpts,
-        privateKey: opts.privateKey ?? envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("activate-v1-renewer")
+            .description(
+              "Phase 9: authorize ETHRenewerV1 on v1 and transfer BaseRegistrar ownership to it",
+            )
+            .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address")
+            .option("--private-key <key>", "V1 owner private key")
+            .option("--impersonate-owner", "Impersonate owner on a fork", false)
+            .option(
+              "--calldata-only",
+              "Print transaction targets and calldata",
+              false,
+            ),
+        ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          V1DeploymentCliOptions &
+          V1OwnerWriteCliOptions & { ethRenewerV1?: Address },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await activateV1RenewerAndTransferOwnership({
+          ...networkOpts,
+          privateKey:
+            opts.privateKey ??
+            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
     addDeploymentOptions(
       addNetworkOptions(
         new Command("switch-urp-to-managed")
-          .description("Switch the top UniversalResolverProxy to ManagedUniversalResolverProxy")
+          .description(
+            "Switch the top UniversalResolverProxy to ManagedUniversalResolverProxy",
+          )
           .option("--top-urp <address>", "Top-level URP address")
           .option("--managed-urp <address>", "Managed URP address")
           .option("--private-key <key>", "Top URP admin private key")
-          .option("--impersonate-account <address>", "Impersonate top URP admin on a fork")
-          .option("--calldata-only", "Print transaction target and calldata", false),
+          .option(
+            "--impersonate-account <address>",
+            "Impersonate top URP admin on a fork",
+          )
+          .option(
+            "--calldata-only",
+            "Print transaction target and calldata",
+            false,
+          ),
       ),
-    ).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await switchTopUrpToManaged({
-        ...networkOpts,
-        privateKey: opts.privateKey ?? envPrivateKey("SEPOLIA_TOP_URP_OWNER_KEY", "TOP_URP_OWNER_KEY"),
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          AdminSignerCliOptions & {
+            topUrp?: Address;
+            managedUrp?: Address;
+            calldataOnly?: boolean;
+          },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await switchTopUrpToManaged({
+          ...networkOpts,
+          privateKey:
+            opts.privateKey ??
+            envPrivateKey("SEPOLIA_TOP_URP_OWNER_KEY", "TOP_URP_OWNER_KEY"),
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
     addDeploymentOptions(
@@ -4296,19 +5015,40 @@ export async function main(argv = process.argv): Promise<void> {
         new Command("upgrade-managed-urp")
           .description("Upgrade the managed URP to UniversalResolverV2")
           .option("--managed-urp <address>", "Managed URP address")
-          .option("--implementation <address>", "UniversalResolverV2 implementation")
+          .option(
+            "--implementation <address>",
+            "UniversalResolverV2 implementation",
+          )
           .option("--private-key <key>", "Managed URP admin private key")
-          .option("--impersonate-account <address>", "Impersonate admin on a fork")
-          .option("--calldata-only", "Print transaction target and calldata", false),
+          .option(
+            "--impersonate-account <address>",
+            "Impersonate admin on a fork",
+          )
+          .option(
+            "--calldata-only",
+            "Print transaction target and calldata",
+            false,
+          ),
       ),
-    ).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await upgradeManagedUrp({
-        ...networkOpts,
-        privateKey: opts.privateKey ?? envPrivateKey("UR_MANAGER_KEY", "DEPLOYER_KEY"),
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          AdminSignerCliOptions & {
+            managedUrp?: Address;
+            implementation?: Address;
+            calldataOnly?: boolean;
+          },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await upgradeManagedUrp({
+          ...networkOpts,
+          privateKey:
+            opts.privateKey ?? envPrivateKey("UR_MANAGER_KEY", "DEPLOYER_KEY"),
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
     addDeploymentOptions(
@@ -4318,32 +5058,55 @@ export async function main(argv = process.argv): Promise<void> {
           .option("--registry <address>", "v2 ETHRegistry address")
           .option("--batch-registrar <address>", "BatchRegistrar address")
           .option("--private-key <key>", "Registry role admin private key")
-          .option("--impersonate-account <address>", "Impersonate registry role admin on a fork"),
+          .option(
+            "--impersonate-account <address>",
+            "Impersonate registry role admin on a fork",
+          ),
       ),
-    ).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await disableBatchRegistrar({
-        ...networkOpts,
-        privateKey: opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          AdminSignerCliOptions & {
+            registry?: Address;
+            batchRegistrar?: Address;
+          },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await disableBatchRegistrar({
+          ...networkOpts,
+          privateKey:
+            opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
     addDeploymentOptions(
       addNetworkOptions(
         new Command("verify-batch-registrar-disabled")
-          .description("Verify BatchRegistrar no longer has registrar/renew roles")
+          .description(
+            "Verify BatchRegistrar no longer has registrar/renew roles",
+          )
           .option("--registry <address>", "v2 ETHRegistry address")
           .option("--batch-registrar <address>", "BatchRegistrar address"),
       ),
-    ).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await verifyBatchRegistrarDisabled({
-        ...networkOpts,
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions & {
+            registry?: Address;
+            batchRegistrar?: Address;
+          },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await verifyBatchRegistrarDisabled({
+          ...networkOpts,
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
     addDeploymentOptions(
@@ -4351,15 +5114,26 @@ export async function main(argv = process.argv): Promise<void> {
         new Command("batch-registrar-owner")
           .description("Print and optionally verify the BatchRegistrar owner")
           .option("--batch-registrar <address>", "BatchRegistrar address")
-          .option("--expected-owner <address>", "Expected BatchRegistrar owner"),
+          .option(
+            "--expected-owner <address>",
+            "Expected BatchRegistrar owner",
+          ),
       ),
-    ).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await checkBatchRegistrarOwner({
-        ...networkOpts,
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions & {
+            batchRegistrar?: Address;
+            expectedOwner?: Address;
+          },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await checkBatchRegistrarOwner({
+          ...networkOpts,
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
     addDeploymentOptions(
@@ -4369,16 +5143,29 @@ export async function main(argv = process.argv): Promise<void> {
           .option("--registry <address>", "v2 ETHRegistry address")
           .option("--eth-registrar <address>", "ETHRegistrar address")
           .option("--private-key <key>", "Registry role admin private key")
-          .option("--impersonate-account <address>", "Impersonate registry role admin on a fork"),
+          .option(
+            "--impersonate-account <address>",
+            "Impersonate registry role admin on a fork",
+          ),
       ),
-    ).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await enableV2Registrar({
-        ...networkOpts,
-        privateKey: opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          AdminSignerCliOptions & {
+            registry?: Address;
+            ethRegistrar?: Address;
+          },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await enableV2Registrar({
+          ...networkOpts,
+          privateKey:
+            opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   phase.addCommand(
     addDeploymentOptions(
@@ -4388,64 +5175,127 @@ export async function main(argv = process.argv): Promise<void> {
           .option("--registry <address>", "v2 ETHRegistry address")
           .option("--eth-registrar <address>", "ETHRegistrar address"),
       ),
-    ).action(async (opts) => {
-      const networkOpts = withNetwork(opts);
-      await verifyV2Registrar({
-        ...networkOpts,
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
-      });
-    }),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions & {
+            registry?: Address;
+            ethRegistrar?: Address;
+          },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await verifyV2Registrar({
+          ...networkOpts,
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
   );
   program.addCommand(phase);
 
-  const fork = new Command("fork")
-    .description("Run Anvil fork rehearsals.");
+  const fork = new Command("fork").description("Run Anvil fork rehearsals.");
   fork.addCommand(
-    addV1DeploymentOptions(addDeploymentOptions(addNetworkOptions(
-      new Command("full")
-        .description("Run the full phased migration rehearsal against an Anvil fork")
-        .option("--direct", "Use --rpc-url directly instead of starting Anvil", false)
-        .option("--port <port>", "Local Anvil port")
-        .requiredOption("--csv-file <path>", "Registration CSV")
-        .option("--batch-size <number>", "Names per pre-migration batch")
-        .option("--initial-limit <count>", "Optional cap before disabling v1 registrars")
-        .option("--finish-limit <count>", "Optional cap after disabling v1 registrars")
-        .option("--work-dir <path>", "Directory for fork logs, checkpoints, and generated CSV")
-        .option("--resume-from-phase <phase>", "Resume the full rehearsal from phase 2")
-        .option("--save-deployments", "Persist deployment JSON files", false)
-        .option("--include-testnet-premigration-registrar", "Deploy the testnet v1 premigration registrar helper", false)
-        .option("--snapshot-file <path>", "Optional file to write a pre-rehearsal snapshot id")
-        .option("--deployer <address>", "Migration deployer address")
-        .option("--owner <address>", "Migration owner/admin address")
-        .option("--v1-owner <address>", "V1 owner address")
-        .option("--ur-manager <address>", "Managed URP admin address")
-        .option("--debug-rpc", "Log JSON-RPC error responses", false)
-        .option("--keep-anvil", "Leave the local Anvil process running", false),
-    ))).action(async (opts) => {
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("full")
+            .description(
+              "Run the full phased migration rehearsal against an Anvil fork",
+            )
+            .option(
+              "--direct",
+              "Use --rpc-url directly instead of starting Anvil",
+              false,
+            )
+            .option("--port <port>", "Local Anvil port")
+            .requiredOption("--csv-file <path>", "Registration CSV")
+            .option("--batch-size <number>", "Names per pre-migration batch")
+            .option(
+              "--initial-limit <count>",
+              "Optional cap before disabling v1 registrars",
+            )
+            .option(
+              "--finish-limit <count>",
+              "Optional cap after disabling v1 registrars",
+            )
+            .option(
+              "--work-dir <path>",
+              "Directory for fork logs, checkpoints, and generated CSV",
+            )
+            .option(
+              "--resume-from-phase <phase>",
+              "Resume the full rehearsal from phase 2",
+            )
+            .option(
+              "--save-deployments",
+              "Persist deployment JSON files",
+              false,
+            )
+            .option(
+              "--include-testnet-premigration-registrar",
+              "Deploy the testnet v1 premigration registrar helper",
+              false,
+            )
+            .option(
+              "--snapshot-file <path>",
+              "Optional file to write a pre-rehearsal snapshot id",
+            )
+            .option("--deployer <address>", "Migration deployer address")
+            .option("--owner <address>", "Migration owner/admin address")
+            .option("--v1-owner <address>", "V1 owner address")
+            .option("--ur-manager <address>", "Managed URP admin address")
+            .option("--debug-rpc", "Log JSON-RPC error responses", false)
+            .option(
+              "--keep-anvil",
+              "Leave the local Anvil process running",
+              false,
+            ),
+        ),
+      ),
+    ).action(async (opts: ForkFullCliOptions) => {
       await runForkFull(withNetwork(opts));
     }),
   );
   program.addCommand(fork);
 
   program.addCommand(
-    addV1DeploymentOptions(addDeploymentOptions(addNetworkOptions(
-      new Command("clean-testnet")
-        .description("Deploy fresh testnet v1 contracts and run the full phased migration")
-        .option("--direct", "Use --rpc-url directly", true)
-        .option("--csv-file <path>", "Optional registration CSV to seed in addition to generated smoke labels")
-        .option("--batch-size <number>", "Names per pre-migration batch")
-        .option("--initial-limit <count>", "Optional cap before disabling v1 registrars")
-        .option("--finish-limit <count>", "Optional cap after disabling v1 registrars")
-        .option("--work-dir <path>", "Directory for clean deploy logs, checkpoints, and generated CSV")
-        .option("--snapshot-file <path>", "Optional file to write a pre-phase snapshot id after v1 deployment")
-        .option("--deployer <address>", "Migration deployer address")
-        .option("--owner <address>", "Migration owner/admin address")
-        .option("--v1-owner <address>", "V1 owner address")
-        .option("--ur-manager <address>", "Managed URP admin address")
-        .option("--debug-rpc", "Log JSON-RPC error responses", false)
-        .option("--keep-anvil", "Accepted for option parity; clean-testnet uses --rpc-url directly", false),
-    ))).action(async (opts) => {
-      await runCleanTestnetFull(withNetwork({ ...opts, direct: true }));
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("clean-testnet")
+            .description(
+              "Deploy fresh testnet v1 contracts and run the full phased migration",
+            )
+            .option(
+              "--csv-file <path>",
+              "Optional registration CSV to seed in addition to generated smoke labels",
+            )
+            .option("--batch-size <number>", "Names per pre-migration batch")
+            .option(
+              "--initial-limit <count>",
+              "Optional cap before disabling v1 registrars",
+            )
+            .option(
+              "--finish-limit <count>",
+              "Optional cap after disabling v1 registrars",
+            )
+            .option(
+              "--work-dir <path>",
+              "Directory for clean deploy logs, checkpoints, and generated CSV",
+            )
+            .option(
+              "--snapshot-file <path>",
+              "Optional file to write a pre-phase snapshot id after v1 deployment",
+            )
+            .option("--deployer <address>", "Migration deployer address")
+            .option("--owner <address>", "Migration owner/admin address")
+            .option("--v1-owner <address>", "V1 owner address")
+            .option("--ur-manager <address>", "Managed URP admin address")
+            .option("--debug-rpc", "Log JSON-RPC error responses", false),
+        ),
+      ),
+    ).action(async (opts: CleanTestnetCliOptions) => {
+      await runCleanTestnetFull(withNetwork(opts));
     }),
   );
 

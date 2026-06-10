@@ -1,27 +1,21 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import {
+  createRpcSnapshot,
+  saveRpcSnapshotFile,
+} from "../../../script/migration.js";
 
-export async function createSnapshot(
-  provider: { request(args: { method: string; params?: unknown[] }): Promise<unknown> },
-): Promise<string> {
-  const snapshotId = await provider.request({ method: "evm_snapshot", params: [] });
-  if (typeof snapshotId !== "string") {
-    throw new Error(`unexpected evm_snapshot response: ${String(snapshotId)}`);
-  }
-  return snapshotId;
-}
+// The canonical snapshot create/save implementations (and the JSON payload shape of
+// the snapshot file) live in script/migration.ts; these are thin re-exports so the
+// Hardhat tasks and the standalone CLI cannot drift apart.
+export const createSnapshot = createRpcSnapshot;
 
-export async function saveSnapshotFile(path: string, snapshotId: string, network: string) {
-  const filePath = resolve(path);
-  await mkdir(dirname(filePath), { recursive: true });
-  await writeFile(
-    filePath,
-    `${JSON.stringify({
-      network,
-      snapshotId,
-      createdAt: new Date().toISOString(),
-    }, null, 2)}\n`,
-  );
+export async function saveSnapshotFile(
+  path: string,
+  snapshotId: string,
+  network: string,
+): Promise<void> {
+  saveRpcSnapshotFile(path, snapshotId, network);
 }
 
 export async function readSnapshotFile(path: string): Promise<string> {

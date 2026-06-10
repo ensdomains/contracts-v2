@@ -1,10 +1,13 @@
 import type { NewTaskActionFunction } from "hardhat/types/tasks";
 
-import { parseMigrationNetwork, runCleanTestnetFull } from "../../../script/migration.js";
+import {
+  parseMigrationNetwork,
+  runCleanTestnetFull,
+} from "../../../script/migration.js";
 import {
   isTenderlyVirtualRpc,
   logMigrationSigners,
-  optionalString,
+  nonEmptyString,
   requireHttpNetwork,
   resolveMigrationSigners,
 } from "./utils.js";
@@ -28,10 +31,12 @@ type CleanTestnetTaskArgs = {
   urManager: string;
   resumeExistingDeployments: boolean;
   debugRpc: boolean;
-  keepAnvil: boolean;
 };
 
-const action: NewTaskActionFunction<CleanTestnetTaskArgs> = async (args, hre) => {
+const action: NewTaskActionFunction<CleanTestnetTaskArgs> = async (
+  args,
+  hre,
+) => {
   const connection = await hre.network.connect();
   try {
     const networkConfig = requireHttpNetwork(
@@ -53,23 +58,21 @@ const action: NewTaskActionFunction<CleanTestnetTaskArgs> = async (args, hre) =>
       network: parseMigrationNetwork(args.migrationNetwork),
       rpcUrl,
       provider: connection.provider,
-      direct: true,
-      chainId: optionalString(args.chainId),
-      csvFile: optionalString(args.csvFile),
-      batchSize: optionalString(args.batchSize),
-      initialLimit: optionalString(args.initialLimit),
-      finishLimit: optionalString(args.finishLimit),
-      workDir: optionalString(args.workDir),
+      chainId: nonEmptyString(args.chainId),
+      csvFile: nonEmptyString(args.csvFile),
+      batchSize: nonEmptyString(args.batchSize),
+      initialLimit: nonEmptyString(args.initialLimit),
+      finishLimit: nonEmptyString(args.finishLimit),
+      workDir: nonEmptyString(args.workDir),
       deploymentsDir: args.deploymentsDir,
-      deploymentNetwork: optionalString(args.deploymentNetwork),
-      v1DeploymentsDir: optionalString(args.v1DeploymentsDir),
-      v1DeploymentNetwork: optionalString(args.v1DeploymentNetwork),
+      deploymentNetwork: nonEmptyString(args.deploymentNetwork),
+      v1DeploymentsDir: nonEmptyString(args.v1DeploymentsDir),
+      v1DeploymentNetwork: nonEmptyString(args.v1DeploymentNetwork),
       tenderly: isTenderlyVirtualRpc(rpcUrl),
-      snapshotFile: optionalString(args.snapshotFile),
+      snapshotFile: nonEmptyString(args.snapshotFile),
       ...signers,
       resumeExistingDeployments: args.resumeExistingDeployments,
       debugRpc: args.debugRpc,
-      keepAnvil: args.keepAnvil,
     });
   } finally {
     await connection.close();

@@ -1,10 +1,13 @@
 import type { NewTaskActionFunction } from "hardhat/types/tasks";
 
-import { parseMigrationNetwork, runForkFull } from "../../../script/migration.js";
+import {
+  parseMigrationNetwork,
+  runForkFull,
+} from "../../../script/migration.js";
 import {
   isTenderlyVirtualRpc,
   logMigrationSigners,
-  optionalString,
+  nonEmptyString,
   requireHttpNetwork,
   resolveMigrationSigners,
 } from "./utils.js";
@@ -61,22 +64,23 @@ const action: NewTaskActionFunction<ForkFullTaskArgs> = async (args, hre) => {
       network: parseMigrationNetwork(args.migrationNetwork),
       rpcUrl,
       direct: args.direct,
-      chainId: optionalString(args.chainId),
-      port: optionalString(args.port),
+      chainId: nonEmptyString(args.chainId),
+      port: nonEmptyString(args.port),
       csvFile: args.csvFile,
-      batchSize: optionalString(args.batchSize),
-      initialLimit: optionalString(args.initialLimit),
-      finishLimit: optionalString(args.finishLimit),
-      workDir: optionalString(args.workDir),
-      resumeFromPhase: optionalString(args.resumeFromPhase),
+      batchSize: nonEmptyString(args.batchSize),
+      initialLimit: nonEmptyString(args.initialLimit),
+      finishLimit: nonEmptyString(args.finishLimit),
+      workDir: nonEmptyString(args.workDir),
+      resumeFromPhase: nonEmptyString(args.resumeFromPhase),
       saveDeployments: args.saveDeployments,
       deploymentsDir: args.deploymentsDir,
-      deploymentNetwork: optionalString(args.deploymentNetwork),
-      v1DeploymentsDir: optionalString(args.v1DeploymentsDir),
-      v1DeploymentNetwork: optionalString(args.v1DeploymentNetwork),
+      deploymentNetwork: nonEmptyString(args.deploymentNetwork),
+      v1DeploymentsDir: nonEmptyString(args.v1DeploymentsDir),
+      v1DeploymentNetwork: nonEmptyString(args.v1DeploymentNetwork),
       tenderly: isTenderlyVirtualRpc(rpcUrl),
-      includeTestnetPremigrationRegistrar: args.includeTestnetPremigrationRegistrar,
-      snapshotFile: optionalString(args.snapshotFile),
+      includeTestnetPremigrationRegistrar:
+        args.includeTestnetPremigrationRegistrar,
+      snapshotFile: nonEmptyString(args.snapshotFile),
       ...signers,
       debugRpc: args.debugRpc,
       keepAnvil: args.keepAnvil,

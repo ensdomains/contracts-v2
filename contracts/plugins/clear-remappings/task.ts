@@ -12,11 +12,15 @@ const REMAPPINGS_PATH = resolve(
 // in our own local file, but the build process still doesn't like that
 // the folders referenced in the ens-contracts remappings don't exist.
 
-const action: TaskOverrideActionFunction = async (task, _hre, runSuper) => {
+const action: TaskOverrideActionFunction = async (
+  taskArguments,
+  _hre,
+  runSuper,
+) => {
   const original = await readFile(REMAPPINGS_PATH, "utf8");
   await writeFile(REMAPPINGS_PATH, "");
   try {
-    return await runSuper(task);
+    return await runSuper(taskArguments);
   } finally {
     await writeFile(REMAPPINGS_PATH, original);
   }

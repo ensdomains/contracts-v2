@@ -6,7 +6,7 @@ import {
 } from "../../../script/migration.js";
 import {
   defaultHardhatSigner,
-  optionalString,
+  nonEmptyString,
   requireHttpNetwork,
 } from "./utils.js";
 
@@ -56,17 +56,17 @@ const action: NewTaskActionFunction<PremigrationRunTaskArgs> = async (
       {
         network: parseMigrationNetwork(args.migrationNetwork),
         rpcUrl,
-        mainnetRpcUrl: optionalString(args.mainnetRpcUrl),
+        mainnetRpcUrl: nonEmptyString(args.mainnetRpcUrl),
         deploymentsDir: args.deploymentsDir,
-        deploymentNetwork: optionalString(args.deploymentNetwork),
-        v1DeploymentsDir: optionalString(args.v1DeploymentsDir),
-        v1DeploymentNetwork: optionalString(args.v1DeploymentNetwork),
+        deploymentNetwork: nonEmptyString(args.deploymentNetwork),
+        v1DeploymentsDir: nonEmptyString(args.v1DeploymentsDir),
+        v1DeploymentNetwork: nonEmptyString(args.v1DeploymentNetwork),
         privateKey: signer.privateKey,
         csvFile: args.csvFile,
-        batchSize: optionalString(args.batchSize),
-        limit: optionalString(args.limit),
-        minExpiryDays: optionalString(args.minExpiryDays),
-        workDir: optionalString(args.workDir),
+        batchSize: nonEmptyString(args.batchSize),
+        limit: nonEmptyString(args.limit),
+        minExpiryDays: nonEmptyString(args.minExpiryDays),
+        workDir: nonEmptyString(args.workDir),
         dryRun: args.dryRun,
         skipExistingReservations: args.skipExistingReservations,
       },

@@ -1,6 +1,10 @@
 import { emptyTask, task } from "hardhat/config";
 import type { HardhatPlugin } from "hardhat/types/plugins";
 
+// Intentionally real, long-lived .eth names: the resolution smoke checks should
+// exercise names that actually exist on the target network with stable records.
+const DEFAULT_VERIFY_SMOKE_NAMES = "raffy.eth,vitalik.eth,nick.eth";
+
 const plugin: HardhatPlugin = {
   id: "ens-migration",
   tasks: [
@@ -26,7 +30,10 @@ const plugin: HardhatPlugin = {
       })
       .setAction(() => import("./tasks/revert.ts"))
       .build(),
-    task(["migration", "verify-all"], "Verify final migration wiring and resolution")
+    task(
+      ["migration", "verify-all"],
+      "Verify final migration wiring and resolution",
+    )
       .addOption({
         name: "migrationNetwork",
         description: "Migration network: sepolia or mainnet",
@@ -45,7 +52,7 @@ const plugin: HardhatPlugin = {
       .addOption({
         name: "names",
         description: "Comma-separated .eth names for resolution smoke checks",
-        defaultValue: "raffy.eth,vitalik.eth,nick.eth",
+        defaultValue: DEFAULT_VERIFY_SMOKE_NAMES,
       })
       .addOption({
         name: "topUrp",
@@ -54,7 +61,10 @@ const plugin: HardhatPlugin = {
       })
       .setAction(() => import("./tasks/verify-all.ts"))
       .build(),
-    task(["migration", "batch-registrar-owner"], "Print and optionally verify the BatchRegistrar owner")
+    task(
+      ["migration", "batch-registrar-owner"],
+      "Print and optionally verify the BatchRegistrar owner",
+    )
       .addOption({
         name: "migrationNetwork",
         description: "Migration network: sepolia or mainnet",
@@ -150,12 +160,14 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "deployer",
-        description: "Migration deployer address; defaults to the configured Hardhat account",
+        description:
+          "Migration deployer address; defaults to the configured Hardhat account",
         defaultValue: "",
       })
       .addOption({
         name: "owner",
-        description: "Migration owner/admin address; defaults to the configured Hardhat account",
+        description:
+          "Migration owner/admin address; defaults to the configured Hardhat account",
         defaultValue: "",
       })
       .addOption({
@@ -165,7 +177,8 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "urManager",
-        description: "Managed URP admin address; defaults to the configured Hardhat account",
+        description:
+          "Managed URP admin address; defaults to the configured Hardhat account",
         defaultValue: "",
       })
       .addOption({
@@ -180,7 +193,8 @@ const plugin: HardhatPlugin = {
       })
       .addFlag({
         name: "direct",
-        description: "Use the configured Hardhat network directly instead of starting Anvil",
+        description:
+          "Use the configured Hardhat network directly instead of starting Anvil",
       })
       .addFlag({
         name: "saveDeployments",
@@ -200,7 +214,10 @@ const plugin: HardhatPlugin = {
       })
       .setAction(() => import("./tasks/fork-full.ts"))
       .build(),
-    task(["migration", "clean-testnet"], "Deploy fresh testnet v1 and run the full phased migration")
+    task(
+      ["migration", "clean-testnet"],
+      "Deploy fresh testnet v1 and run the full phased migration",
+    )
       .addOption({
         name: "migrationNetwork",
         description: "Migration network: sepolia",
@@ -208,7 +225,8 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "csvFile",
-        description: "Optional registration CSV to seed in addition to generated smoke labels",
+        description:
+          "Optional registration CSV to seed in addition to generated smoke labels",
         defaultValue: "",
       })
       .addOption({
@@ -228,7 +246,8 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "workDir",
-        description: "Directory for clean deploy logs, checkpoints, and generated CSV",
+        description:
+          "Directory for clean deploy logs, checkpoints, and generated CSV",
         defaultValue: "",
       })
       .addOption({
@@ -238,7 +257,8 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "deploymentNetwork",
-        description: "Deployment namespace for v2 files; defaults to sepolia-clean-<timestamp>",
+        description:
+          "Deployment namespace for v2 files; defaults to sepolia-clean-<timestamp>",
         defaultValue: "",
       })
       .addOption({
@@ -248,17 +268,20 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "v1DeploymentNetwork",
-        description: "Deployment namespace for v1 files; defaults to the v2 namespace",
+        description:
+          "Deployment namespace for v1 files; defaults to the v2 namespace",
         defaultValue: "",
       })
       .addOption({
         name: "snapshotFile",
-        description: "Optional file to write a pre-phase snapshot id after v1 deployment",
+        description:
+          "Optional file to write a pre-phase snapshot id after v1 deployment",
         defaultValue: "",
       })
       .addOption({
         name: "deployer",
-        description: "Migration deployer address; defaults to the configured Hardhat account",
+        description:
+          "Migration deployer address; defaults to the configured Hardhat account",
         defaultValue: "",
       })
       .addOption({
@@ -283,19 +306,19 @@ const plugin: HardhatPlugin = {
       })
       .addFlag({
         name: "resumeExistingDeployments",
-        description: "Resume a clean testnet namespace that already has deployment files",
+        description:
+          "Resume a clean testnet namespace that already has deployment files",
       })
       .addFlag({
         name: "debugRpc",
         description: "Log JSON-RPC error responses",
       })
-      .addFlag({
-        name: "keepAnvil",
-        description: "Accepted for option parity; clean-testnet uses the configured RPC directly",
-      })
       .setAction(() => import("./tasks/clean-testnet.ts"))
       .build(),
-    task(["migration", "smoke-v2-registrar"], "Register a fresh .eth name through the enabled v2 registrar")
+    task(
+      ["migration", "smoke-v2-registrar"],
+      "Register a fresh .eth name through the enabled v2 registrar",
+    )
       .addOption({
         name: "migrationNetwork",
         description: "Migration network: sepolia or mainnet",
@@ -332,7 +355,10 @@ const plugin: HardhatPlugin = {
       })
       .setAction(() => import("./tasks/smoke-v2-registrar.ts"))
       .build(),
-    task(["migration", "set-v1-reverse-default-resolver"], "Point the v1 ReverseRegistrar default resolver at v1 PublicResolver")
+    task(
+      ["migration", "set-v1-reverse-default-resolver"],
+      "Point the v1 ReverseRegistrar default resolver at v1 PublicResolver",
+    )
       .addOption({
         name: "migrationNetwork",
         description: "Migration network: sepolia or mainnet",
@@ -396,7 +422,8 @@ const plugin: HardhatPlugin = {
       })
       .addFlag({
         name: "deferV1OwnerTransactions",
-        description: "Record v1-owner transactions instead of broadcasting them",
+        description:
+          "Record v1-owner transactions instead of broadcasting them",
       })
       .addOption({
         name: "deferredV1OwnerTransactionsFile",
@@ -405,7 +432,8 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "tags",
-        description: "Comma-separated deploy tags to run instead of the default v2 migration tags",
+        description:
+          "Comma-separated deploy tags to run instead of the default v2 migration tags",
         defaultValue: "",
       })
       .addFlag({
@@ -505,7 +533,8 @@ const plugin: HardhatPlugin = {
       })
       .addFlag({
         name: "skipExistingReservations",
-        description: "Skip names already reserved on v2 with the expected expiry",
+        description:
+          "Skip names already reserved on v2 with the expected expiry",
       })
       .addFlag({
         name: "resume",

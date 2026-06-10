@@ -141,7 +141,8 @@ export const BONUS_PERIOD_SECONDS =
 // ENS v1 BaseRegistrar on Ethereum mainnet
 const BASE_REGISTRAR_ADDRESS =
   "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85" as Address;
-const MULTICALL3_ADDRESS = "0xca11bde05977b3631167028862be2a173976ca11" as Address;
+const MULTICALL3_ADDRESS =
+  "0xca11bde05977b3631167028862be2a173976ca11" as Address;
 
 export function createFreshCheckpoint(): Checkpoint {
   return {
@@ -348,7 +349,9 @@ export function isV1ContinuityEligible(
   expiry: bigint,
   currentTimestamp: bigint,
 ): boolean {
-  return expiry > 0n && expiry + TRUE_GRACE_PERIOD_V1_SECONDS > currentTimestamp;
+  return (
+    expiry > 0n && expiry + TRUE_GRACE_PERIOD_V1_SECONDS > currentTimestamp
+  );
 }
 
 export function ensV2ContinuityExpiry(v1Expiry: bigint): bigint {
@@ -541,7 +544,7 @@ async function* readCSVInBatches(
   }
 }
 
-function parseCSVLine(line: string): string[] {
+export function parseCSVLine(line: string): string[] {
   const result: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -589,7 +592,9 @@ async function createMigrationClients(
     ? privateKeyToAccount(config.privateKey)
     : config.account;
   if (!account) {
-    throw new Error("Missing signer: provide --private-key, PREMIGRATION_PRIVATE_KEY, or --account");
+    throw new Error(
+      "Missing signer: provide --private-key, PREMIGRATION_PRIVATE_KEY, or --account",
+    );
   }
 
   const client = createWalletClient({
@@ -769,7 +774,9 @@ export async function batchVerifyRegistrations(
       multicallAddress: MULTICALL3_ADDRESS,
       contracts: v1Contracts,
     }),
-    currentTimestamp === undefined ? mainnetClient.getBlock() : Promise.resolve(null),
+    currentTimestamp === undefined
+      ? mainnetClient.getBlock()
+      : Promise.resolve(null),
   ]);
 
   const buildFallback = (reason: unknown) =>
@@ -786,7 +793,9 @@ export async function batchVerifyRegistrations(
     );
   }
   if (v1BlockSettled.status === "rejected") {
-    logger.warning(`v1 block timestamp lookup failed: ${v1BlockSettled.reason}`);
+    logger.warning(
+      `v1 block timestamp lookup failed: ${v1BlockSettled.reason}`,
+    );
   }
 
   const v2Results =
@@ -1047,7 +1056,9 @@ async function processBatch(
       result.v1Expiry > currentTimestamp &&
       result.v1Expiry <= minExpiryThreshold
     ) {
-      const daysUntilExpiry = Number((result.v1Expiry - currentTimestamp) / 86400n);
+      const daysUntilExpiry = Number(
+        (result.v1Expiry - currentTimestamp) / 86400n,
+      );
       logger.skippingExpiringSoon(registration.labelName, daysUntilExpiry);
       checkpoint.skippedCount++;
       checkpoint.totalProcessed++;
@@ -1059,7 +1070,10 @@ async function processBatch(
 
     if (result.v2Status === 1) {
       alreadyReservedNames.add(registration.labelName);
-      if (config.skipExistingReservations && result.v2Expiry === effectiveExpiry) {
+      if (
+        config.skipExistingReservations &&
+        result.v2Expiry === effectiveExpiry
+      ) {
         logger.alreadyReserved();
         checkpoint.skippedCount++;
         checkpoint.totalProcessed++;
@@ -1217,7 +1231,10 @@ export async function main(argv = process.argv): Promise<void> {
       "--private-key <key>",
       "Deployer private key (default: PREMIGRATION_PRIVATE_KEY env var)",
     )
-    .option("--account <address>", "Impersonated or unlocked BatchRegistrar owner account")
+    .option(
+      "--account <address>",
+      "Impersonated or unlocked BatchRegistrar owner account",
+    )
     .requiredOption(
       "--csv-file <path>",
       "Path to CSV file containing ENS registrations",
@@ -1247,8 +1264,16 @@ export async function main(argv = process.argv): Promise<void> {
       "Continue from previous checkpoint if it exists",
       false,
     )
-    .option("--min-expiry-days <days>", "Skip active names expiring within this many days", "0")
-    .option("--skip-existing-reservations", "Skip names already reserved on v2 with the expected expiry", false)
+    .option(
+      "--min-expiry-days <days>",
+      "Skip active names expiring within this many days",
+      "0",
+    )
+    .option(
+      "--skip-existing-reservations",
+      "Skip names already reserved on v2 with the expected expiry",
+      false,
+    )
     .requiredOption(
       "--v1-resolver <address>",
       "ENSV1Resolver address deployed on v2 for fallback resolution",
@@ -1272,7 +1297,10 @@ export async function main(argv = process.argv): Promise<void> {
     process.exit(1);
   }
 
-  const parseOptionInt = (value: string | undefined, fallback: number): number => {
+  const parseOptionInt = (
+    value: string | undefined,
+    fallback: number,
+  ): number => {
     if (value === undefined) return fallback;
     const parsed = parseInt(value);
     return Number.isNaN(parsed) ? fallback : parsed;
@@ -1307,17 +1335,18 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config("BatchRegistrar", config.batchRegistrarAddress);
     logger.config(
       "Signer Account",
-      config.account ?? (opts.privateKey ? "private key (CLI)" : "private key (env)"),
+      config.account ??
+        (opts.privateKey ? "private key (CLI)" : "private key (env)"),
     );
     logger.config("Mainnet RPC (v1)", config.mainnetRpcUrl);
     logger.config("CSV File", config.csvFilePath);
     logger.config("Batch Size", config.batchSize);
     logger.config("Min Expiry Days", config.minExpiryDays);
+    logger.config("Continuity Bonus Seconds", BONUS_PERIOD_SECONDS.toString());
     logger.config(
-      "Continuity Bonus Seconds",
-      BONUS_PERIOD_SECONDS.toString(),
+      "Skip Existing Reservations",
+      config.skipExistingReservations,
     );
-    logger.config("Skip Existing Reservations", config.skipExistingReservations);
     logger.config("V1 Resolver", config.v1ResolverAddress);
     logger.config("Limit", config.limit ?? "none");
     logger.config("Dry Run", config.dryRun);

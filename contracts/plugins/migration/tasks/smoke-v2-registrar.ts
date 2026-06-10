@@ -1,11 +1,14 @@
 import type { NewTaskActionFunction } from "hardhat/types/tasks";
 
-import { parseMigrationNetwork, runV2RegistrarSmoke } from "../../../script/migration.js";
+import {
+  parseMigrationNetwork,
+  runV2RegistrarSmoke,
+} from "../../../script/migration.js";
 import {
   addressForPrivateKey,
   defaultHardhatPrivateKey,
   optionalAddress,
-  optionalString,
+  nonEmptyString,
   requireHttpNetwork,
 } from "./utils.js";
 
@@ -19,7 +22,10 @@ type SmokeV2RegistrarTaskArgs = {
   rpcStateControls: boolean;
 };
 
-const action: NewTaskActionFunction<SmokeV2RegistrarTaskArgs> = async (args, hre) => {
+const action: NewTaskActionFunction<SmokeV2RegistrarTaskArgs> = async (
+  args,
+  hre,
+) => {
   const connection = await hre.network.connect();
   try {
     const networkConfig = requireHttpNetwork(
@@ -41,10 +47,10 @@ const action: NewTaskActionFunction<SmokeV2RegistrarTaskArgs> = async (args, hre
     await runV2RegistrarSmoke({
       network: parseMigrationNetwork(args.migrationNetwork),
       rpcUrl: await networkConfig.url.getUrl(),
-      chainId: optionalString(args.chainId),
+      chainId: nonEmptyString(args.chainId),
       deploymentsDir: args.deploymentsDir,
-      deploymentNetwork: optionalString(args.deploymentNetwork),
-      label: optionalString(args.label),
+      deploymentNetwork: nonEmptyString(args.deploymentNetwork),
+      label: nonEmptyString(args.label),
       owner,
       privateKey,
       rpcStateControls: args.rpcStateControls,

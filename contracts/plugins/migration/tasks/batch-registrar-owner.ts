@@ -4,7 +4,11 @@ import {
   checkBatchRegistrarOwner,
   parseMigrationNetwork,
 } from "../../../script/migration.js";
-import { optionalAddress, optionalString, requireHttpNetwork } from "./utils.js";
+import {
+  optionalAddress,
+  nonEmptyString,
+  requireHttpNetwork,
+} from "./utils.js";
 
 type BatchRegistrarOwnerTaskArgs = {
   migrationNetwork: string;
@@ -15,7 +19,10 @@ type BatchRegistrarOwnerTaskArgs = {
   chainId: string;
 };
 
-const action: NewTaskActionFunction<BatchRegistrarOwnerTaskArgs> = async (args, hre) => {
+const action: NewTaskActionFunction<BatchRegistrarOwnerTaskArgs> = async (
+  args,
+  hre,
+) => {
   const connection = await hre.network.connect();
   try {
     const networkConfig = requireHttpNetwork(
@@ -27,8 +34,8 @@ const action: NewTaskActionFunction<BatchRegistrarOwnerTaskArgs> = async (args, 
     await checkBatchRegistrarOwner({
       network: parseMigrationNetwork(args.migrationNetwork),
       rpcUrl: await networkConfig.url.getUrl(),
-      chainId: optionalString(args.chainId),
-      deploymentNetwork: optionalString(args.deploymentNetwork),
+      chainId: nonEmptyString(args.chainId),
+      deploymentNetwork: nonEmptyString(args.deploymentNetwork),
       deploymentsDir: args.deploymentsDir,
       batchRegistrar: optionalAddress(args.batchRegistrar),
       expectedOwner: optionalAddress(args.expectedOwner),

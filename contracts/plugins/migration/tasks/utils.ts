@@ -29,12 +29,13 @@ export type MigrationSigners = {
   urManagerPrivateKey?: `0x${string}`;
 };
 
-export function optionalString(value: string): string | undefined {
+/** Returns the value unless it is the empty string (Hardhat's "unset" default). */
+export function nonEmptyString(value: string): string | undefined {
   return value === "" ? undefined : value;
 }
 
 export function optionalAddress(value: string): Address | undefined {
-  return value === "" ? undefined : getAddress(value) as Address;
+  return value === "" ? undefined : (getAddress(value) as Address);
 }
 
 export function requireHttpNetwork(
@@ -51,7 +52,9 @@ export function requireHttpNetwork(
 export function isTenderlyVirtualRpc(rpcUrl: string): boolean {
   try {
     const hostname = new URL(rpcUrl).hostname.toLowerCase();
-    return hostname.startsWith("virtual.") && hostname.endsWith(".rpc.tenderly.co");
+    return (
+      hostname.startsWith("virtual.") && hostname.endsWith(".rpc.tenderly.co")
+    );
   } catch {
     return false;
   }
@@ -60,19 +63,23 @@ export function isTenderlyVirtualRpc(rpcUrl: string): boolean {
 export async function defaultHardhatAccount(
   provider: RpcAccountProvider,
 ): Promise<Address | undefined> {
-  const accounts = await provider.request({ method: "eth_accounts", params: [] });
-  if (!Array.isArray(accounts) || typeof accounts[0] !== "string") return undefined;
+  const accounts = await provider.request({
+    method: "eth_accounts",
+    params: [],
+  });
+  if (!Array.isArray(accounts) || typeof accounts[0] !== "string")
+    return undefined;
   return getAddress(accounts[0]) as Address;
 }
 
-export async function defaultHardhatPrivateKey(
-  networkConfig: { accounts?: unknown },
-): Promise<`0x${string}` | undefined> {
+export async function defaultHardhatPrivateKey(networkConfig: {
+  accounts?: unknown;
+}): Promise<`0x${string}` | undefined> {
   const accounts = networkConfig.accounts;
   if (!Array.isArray(accounts) || accounts.length === 0) return undefined;
   const first = accounts[0] as { getHexString?: () => Promise<string> };
   const value = await first.getHexString?.();
-  return value === undefined ? undefined : value as `0x${string}`;
+  return value === undefined ? undefined : (value as `0x${string}`);
 }
 
 export function addressForPrivateKey(privateKey: `0x${string}`): Address {
@@ -82,16 +89,21 @@ export function addressForPrivateKey(privateKey: `0x${string}`): Address {
 export function maybeAddressForPrivateKey(
   privateKey: `0x${string}` | undefined,
 ): Address | undefined {
-  return privateKey === undefined ? undefined : addressForPrivateKey(privateKey);
+  return privateKey === undefined
+    ? undefined
+    : addressForPrivateKey(privateKey);
 }
 
-export function privateKeyForAddress(
+/** Returns `privateKey` only when `address` is the same account as `signerAddress`. */
+export function privateKeyIfAddressMatches(
   address: Address | undefined,
   signerAddress: Address | undefined,
   privateKey: `0x${string}` | undefined,
 ): `0x${string}` | undefined {
   if (address === undefined || signerAddress === undefined) return undefined;
-  return getAddress(address) === getAddress(signerAddress) ? privateKey : undefined;
+  return getAddress(address) === getAddress(signerAddress)
+    ? privateKey
+    : undefined;
 }
 
 export async function defaultHardhatSigner(
@@ -132,7 +144,8 @@ export async function resolveMigrationSigners({
     );
   }
 
-  const defaultOwner = ownerFallback === "deployer" ? deployer : hardhatSigner.address;
+  const defaultOwner =
+    ownerFallback === "deployer" ? deployer : hardhatSigner.address;
   const owner = optionalAddress(args.owner) ?? defaultOwner;
   if (owner === undefined) {
     throw new Error(
@@ -140,8 +153,9 @@ export async function resolveMigrationSigners({
     );
   }
 
-  const urManager = optionalAddress(args.urManager)
-    ?? (ownerFallback === "deployer" ? deployer : hardhatSigner.address);
+  const urManager =
+    optionalAddress(args.urManager) ??
+    (ownerFallback === "deployer" ? deployer : hardhatSigner.address);
   if (urManager === undefined) {
     throw new Error(
       `${taskName} could not resolve a Hardhat account; configure DEPLOYER_KEY or pass --ur-manager`,
@@ -153,20 +167,38 @@ export async function resolveMigrationSigners({
   const hardhatAddress = hardhatSigner.address;
   return {
     deployer,
-    deployerPrivateKey: privateKeyForAddress(deployer, hardhatAddress, hardhatPrivateKey),
+    deployerPrivateKey: privateKeyIfAddressMatches(
+      deployer,
+      hardhatAddress,
+      hardhatPrivateKey,
+    ),
     owner,
-    ownerPrivateKey: privateKeyForAddress(owner, hardhatAddress, hardhatPrivateKey),
+    ownerPrivateKey: privateKeyIfAddressMatches(
+      owner,
+      hardhatAddress,
+      hardhatPrivateKey,
+    ),
     v1Owner,
-    v1OwnerPrivateKey: privateKeyForAddress(v1Owner, hardhatAddress, hardhatPrivateKey),
+    v1OwnerPrivateKey: privateKeyIfAddressMatches(
+      v1Owner,
+      hardhatAddress,
+      hardhatPrivateKey,
+    ),
     urManager,
-    urManagerPrivateKey: privateKeyForAddress(urManager, hardhatAddress, hardhatPrivateKey),
+    urManagerPrivateKey: privateKeyIfAddressMatches(
+      urManager,
+      hardhatAddress,
+      hardhatPrivateKey,
+    ),
   };
 }
 
-export function logMigrationSigners(signers: Pick<
-  MigrationSigners,
-  "deployer" | "owner" | "v1Owner" | "urManager"
->) {
+export function logMigrationSigners(
+  signers: Pick<
+    MigrationSigners,
+    "deployer" | "owner" | "v1Owner" | "urManager"
+  >,
+) {
   console.log(`migration deployer: ${signers.deployer}`);
   console.log(`migration owner: ${signers.owner}`);
   console.log(`v1 owner: ${signers.v1Owner}`);
