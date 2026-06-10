@@ -23,7 +23,7 @@ Every eligible reservation uses `v2Expiry = v1Expiry + 62 days + 1 second`. Name
   - `PermissionedRegistry` (the v2 ETH registry)
   - `BatchRegistrar` (owned by the deployer account)
   - `ENSV1Resolver` (deployed on v2 for fallback resolution)
-- **Private key** for the `BatchRegistrar` owner account — provided via `--private-key` or the `PREMIGRATION_PRIVATE_KEY` environment variable
+- **Signer** for the `BatchRegistrar` owner account — a private key via `--private-key` or the `PREMIGRATION_PRIVATE_KEY` environment variable, or an impersonated/unlocked node account via `--account` (forks and devnets)
 - **RPC endpoint** for Ethereum mainnet (where both v1 and v2 contracts live). The chain ID is auto-detected from the RPC.
   - Optionally, a separate `--mainnet-rpc-url` if v1 reads should go to a different endpoint (e.g. when running v2 on a local devnet that also has v1 contracts deployed)
 - **CSV file** of v1 registrations (see [CSV Format](#csv-format))
@@ -44,7 +44,8 @@ bun run migration --help
 
 The CLI entrypoint is `script/migration.ts` and is exposed through
 `contracts/package.json`. Use `bun run migration --help` to list the available
-phase commands.
+phase commands. The phases themselves — and where pre-migration sits within
+them (phases 2 and 4) — are defined in [migration.md](./migration.md).
 
 When running against a Hardhat deployment network, prefer the Hardhat task so the
 BatchRegistrar owner key can come from the configured Hardhat signer:
@@ -107,44 +108,58 @@ registry, so the verifier reports those separately instead of treating the
 available status as a failure.
 
 After the final pre-migration pass, the hand-off phases are split across v1 and
-v2 permissions. Phase 8 authorizes `Graveyard` as a v1 BaseRegistrar controller
-and keeps `TestnetV1PremigrationRegistrar` authorized on testnets when that
-deployment exists. Phase 9 authorizes `ETHRenewerV1` as a v1 BaseRegistrar
-controller, transfers v1 BaseRegistrar ownership to `ETHRenewerV1`, then grants
-`REGISTRAR | RENEW` on the v2 ETH registry to `ETHRegistrar`.
+v2 permissions.
+[Phase 8](./migration.md#phase-8-authorize-v1-handoff-controllers) authorizes
+`Graveyard` as a v1 BaseRegistrar controller and keeps
+`TestnetV1PremigrationRegistrar` authorized on testnets when that deployment
+exists.
+[Phase 9](./migration.md#phase-9-activate-ethrenewerv1-and-enable-the-v2-ethregistrar)
+authorizes `ETHRenewerV1` as a v1 BaseRegistrar controller, transfers v1
+BaseRegistrar ownership to `ETHRenewerV1`, then grants `REGISTRAR | RENEW` on
+the v2 ETH registry to `ETHRegistrar`.
 
-Before the final pre-migration sync, export a fresh CSV for the target network
-after v1 registration controllers are disabled. This applies to both Sepolia and
-mainnet. The initial pre-migration pass can use the current export plus
-`--min-expiry-days 7`, but the final sync should use fresh data with
+Before the final pre-migration sync
+([Phase 4](./migration.md#phase-4-final-pre-migration-sync)), export a fresh
+CSV for the target network after v1 registration controllers are disabled. This
+applies to both Sepolia and mainnet. The initial pre-migration pass
+([Phase 2](./migration.md#phase-2-initial-pre-migration)) can use the current
+export plus `--min-expiry-days 7`, but the final sync should use fresh data with
 `--min-expiry-days 0` and `--skip-existing-reservations` so it catches names
 registered, renewed, or crossing the expiry buffer before the v1 freeze. The
 skip only applies when the existing v2 reservation already has the expected
 continuity expiry; a differing expiry is renewed.
 
-For Sepolia, use the audited Dune export query `7411764`
-(`ENS Sepolia registrations pre-migration CSV export`). Execute it after the v1
-freeze and download the execution CSV for phase 4:
+Which export source to use depends on the network and the pass:
 
-```bash
-curl -X POST https://api.dune.com/api/v1/query/7411764/execute \
-  -H "x-dune-api-key: $DUNE_API_KEY" \
-  -H "content-type: application/json" \
-  -d '{"performance":"medium"}'
-```
+- **Initial pass and rehearsals (both networks)** — the TheGraph subgraph
+  export, `bun run migration -- fetch-data` (a wrapper around
+  `script/exportTheGraphRegistrations.ts`). It pages the ENS subgraph for the
+  chosen network through the TheGraph Gateway and writes the subgraph-schema
+  CSV consumed by this script:
 
-Poll the returned execution id at
-`/api/v1/execution/<execution_id>/status`, then download
-`/api/v1/execution/<execution_id>/results/csv` to the phase-4 CSV path.
+  ```bash
+  THEGRAPH_API_KEY=... bun run migration -- fetch-data \
+    --network sepolia \
+    --output ./csv-data/ens-registrations-sepolia.csv
+  ```
 
-For mainnet, use the Google BigQuery export source rather than Dune. The output
-still must use the same CSV shape described below.
+- **Sepolia final sync** — the audited Dune export query `7411764`
+  (`ENS Sepolia registrations pre-migration CSV export`), not TheGraph. Execute
+  it after the v1 freeze and download the execution CSV as the phase-4 input:
 
-```bash
-THEGRAPH_API_KEY=... bun run migration -- fetch-data \
-  --network sepolia \
-  --output ./csv-data/ens-registrations-sepolia-final-sync.csv
-```
+  ```bash
+  curl -X POST https://api.dune.com/api/v1/query/7411764/execute \
+    -H "x-dune-api-key: $DUNE_API_KEY" \
+    -H "content-type: application/json" \
+    -d '{"performance":"medium"}'
+  ```
+
+  Poll the returned execution id at
+  `/api/v1/execution/<execution_id>/status`, then download
+  `/api/v1/execution/<execution_id>/results/csv` to the phase-4 CSV path.
+
+- **Mainnet final sync** — the Google BigQuery export source, rather than Dune
+  or TheGraph. The output still must use the same CSV shape described below.
 
 ### Required Options
 
@@ -160,7 +175,8 @@ THEGRAPH_API_KEY=... bun run migration -- fetch-data \
 
 | Option | Default | Description |
 |---|---|---|
-| `--private-key <key>` | `PREMIGRATION_PRIVATE_KEY` env var | Deployer private key. If omitted, falls back to the `PREMIGRATION_PRIVATE_KEY` environment variable. The script exits with an error if neither is provided. The migration CLI also accepts `BATCH_REGISTRAR_OWNER_KEY` or `DEPLOYER_KEY` as fallbacks. |
+| `--private-key <key>` | `PREMIGRATION_PRIVATE_KEY` env var | Deployer private key. If omitted, falls back to the `PREMIGRATION_PRIVATE_KEY` environment variable. The script exits with an error if no signer is provided via `--private-key`, `PREMIGRATION_PRIVATE_KEY`, or `--account`. The migration CLI also accepts `BATCH_REGISTRAR_OWNER_KEY` or `DEPLOYER_KEY` as fallbacks. |
+| `--account <address>` | none | Impersonated or unlocked BatchRegistrar owner account. The node signs `eth_sendTransaction` for this address, so it only works on RPCs with unlocked/impersonated accounts (forks and devnets). Alternative to `--private-key`. |
 | `--mainnet-rpc-url <url>` | `https://eth.drpc.org` | Mainnet RPC for v1 BaseRegistrar expiry lookups. Useful when v2 is running on a local devnet with its own v1 contracts, so v1 reads can be pointed at the devnet instead of real mainnet. |
 | `--batch-size <number>` | `50` | Names per on-chain batch transaction |
 | `--start-index <number>` | `-1` | CSV line number to start from (used internally with `--continue`) |
@@ -168,6 +184,7 @@ THEGRAPH_API_KEY=... bun run migration -- fetch-data \
 | `--dry-run` | `false` | Simulate without sending transactions |
 | `--continue` | `false` | Resume from the last checkpoint |
 | `--min-expiry-days <days>` | `0` | Skip active names expiring within this many days. Names already in ENSv1 grace are still continuity-eligible. |
+| `--skip-existing-reservations` | `false` | Skip names already reserved on v2, but only when the existing reservation has the expected continuity expiry — a differing expiry is still renewed. Used in the final sync ([Phase 4](./migration.md#phase-4-final-pre-migration-sync)). |
 | `--v1-base-registrar <address>` | `0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85` | v1 BaseRegistrar address for expiry lookups |
 
 ### Registration Export

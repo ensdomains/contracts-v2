@@ -147,6 +147,8 @@ Legend: A = admin only, R = regular only, AR = admin and regular
 
 _`ETHRegistrar`, `ETHRenewerV1`, and `ApprovedUpgradeGate` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
 
+_Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 9](docs/migration.md#phase-9-activate-ethrenewerv1-and-enable-the-v2-ethregistrar)._
+
 _The token for `eth` is registered to the deployer; `reverse` and `addr.reverse` are reserved._
 
 #### Usage Examples
@@ -316,8 +318,10 @@ Modified ERC1155 allowing only one token per ID:
 
 Scripts for running the migration end-to-end:
 
+- [Phased migration](docs/migration.md) — the phase-by-phase workflow that runs the v1 → v2 cutover: phase definitions, the `bun run migration` operator CLI, the Hardhat `migration` tasks, and the fork/clean-testnet rehearsals.
 - [Pre-migration](docs/premigration.md) — seed v1 registrations into the v2 registry as _reserved_ entries, via `BatchRegistrar`.
 - [Prepare migration](docs/prepareMigration.md) — swap registry roles from `BatchRegistrar` to `ETHRegistrar` and the two migration controllers once pre-migration is complete.
+- [Universal Resolver structure](docs/universalResolver.md) — the proxy chain used to cut universal resolution over from v1 to v2, and the phased deploy scripts that manage it.
 
 ### Resolution
 
@@ -331,6 +335,8 @@ Single contract for resolving any ENS name:
 - Supports CCIP-Read for off-chain resolution
 - Wildcard resolution
 - Batch resolution
+
+On live networks, clients reach it through a chain of upgradable proxies that manages the v1 → v2 cutover — see [Universal Resolver structure](docs/universalResolver.md).
 
 **Example**:
 
