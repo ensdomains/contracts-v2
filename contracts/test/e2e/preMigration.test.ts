@@ -4,7 +4,6 @@ setDefaultTimeout(60_000);
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setTimeout } from "node:timers/promises";
 import {
   createPublicClient,
   createWalletClient,
@@ -241,6 +240,116 @@ describe("PreMigration", () => {
     expect(stateAfter.expiry).toBeGreaterThan(stateBefore.expiry);
   });
 
+  it("--skip-existing-reservations skips already-reserved names with matching expiry", async () => {
+    const label = "skipexisting";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    createCSVFile(csvFilePath, [label]);
+    await main(buildMainArgs(env, csvFilePath));
+
+    const stateBefore = await verifyV2State(env, label);
+    expect(stateBefore.status).toBe(STATUS.RESERVED);
+
+    deleteTestCheckpoint();
+    await main(
+      buildMainArgs(env, csvFilePath, { skipExistingReservations: true }),
+    );
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.skippedCount).toBe(1);
+    expect(checkpoint!.successCount).toBe(0);
+    expect(checkpoint!.renewedCount).toBe(0);
+    expect(checkpoint!.failureCount).toBe(0);
+
+    const stateAfter = await verifyV2State(env, label);
+    expect(stateAfter.status).toBe(STATUS.RESERVED);
+    expect(stateAfter.expiry).toBe(stateBefore.expiry);
+  });
+
+  it("--skip-existing-reservations still renews when v1 expiry differs", async () => {
+    const label = "skiprenews";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    createCSVFile(csvFilePath, [label]);
+    await main(buildMainArgs(env, csvFilePath));
+
+    const stateBefore = await verifyV2State(env, label);
+    expect(stateBefore.status).toBe(STATUS.RESERVED);
+
+    const renewedV1Expiry = await renewV1Name(env, label, ONE_YEAR_SECONDS);
+
+    deleteTestCheckpoint();
+    await main(
+      buildMainArgs(env, csvFilePath, { skipExistingReservations: true }),
+    );
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.renewedCount).toBe(1);
+    expect(checkpoint!.skippedCount).toBe(0);
+    expect(checkpoint!.successCount).toBe(0);
+
+    const stateAfter = await verifyV2State(env, label);
+    expect(stateAfter.status).toBe(STATUS.RESERVED);
+    expect(stateAfter.expiry).toBeGreaterThan(stateBefore.expiry);
+    expectContinuityExpiry(stateAfter.expiry, renewedV1Expiry);
+  });
+
+  it("--min-expiry-days skips unexpired names expiring within the window", async () => {
+    const expiringLabel = "minexpsoon";
+    const safeLabel = "minexpsafe";
+    const { user } = env.namedAccounts;
+
+    const fiveDays = 5 * 24 * 60 * 60;
+    await registerV1Name(env, expiringLabel, user.address, fiveDays);
+    const safeExpiry = await registerV1Name(
+      env,
+      safeLabel,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+
+    createCSVFile(csvFilePath, [expiringLabel, safeLabel]);
+    await main(buildMainArgs(env, csvFilePath, { minExpiryDays: 7 }));
+
+    // expires in ~5 days: v1Expiry > now but within the 7-day window → skipped
+    const expiringState = await verifyV2State(env, expiringLabel);
+    expect(expiringState.status).toBe(STATUS.AVAILABLE);
+
+    const safeState = await verifyV2State(env, safeLabel);
+    expect(safeState.status).toBe(STATUS.RESERVED);
+    expectContinuityExpiry(safeState.expiry, safeExpiry);
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.skippedCount).toBe(1);
+    expect(checkpoint!.successCount).toBe(1);
+    expect(checkpoint!.failureCount).toBe(0);
+  });
+
+  it("--min-expiry-days does not skip names already in v1 grace", async () => {
+    const label = "minexpgrace";
+    const { user } = env.namedAccounts;
+
+    const v1Expiry = await registerV1Name(env, label, user.address, 1);
+    await env.sync({ warpSec: 2 });
+
+    createCSVFile(csvFilePath, [label]);
+    await main(buildMainArgs(env, csvFilePath, { minExpiryDays: 7 }));
+
+    // v1Expiry <= now (in grace) so the min-expiry skip does not apply;
+    // the name is still continuity-eligible and gets reserved
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+    expectContinuityExpiry(state.expiry, v1Expiry);
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(1);
+    expect(checkpoint!.skippedCount).toBe(0);
+  });
+
   it("dry run does not create on-chain state", async () => {
     const label = "dryruntest";
     const { user } = env.namedAccounts;
@@ -281,12 +390,7 @@ describe("PreMigration", () => {
     const { user } = env.namedAccounts;
 
     const fiveDays = 5 * 24 * 60 * 60;
-    const v1Expiry = await registerV1Name(
-      env,
-      label,
-      user.address,
-      fiveDays,
-    );
+    const v1Expiry = await registerV1Name(env, label, user.address, fiveDays);
 
     createCSVFile(csvFilePath, [label]);
     const args = buildMainArgs(env, csvFilePath);
@@ -384,7 +488,9 @@ describe("PreMigration", () => {
     await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
 
     createCSVFile(csvFilePath, [label]);
-    const args = buildMainArgs(env, csvFilePath, { useEnvVarForPrivateKey: true });
+    const args = buildMainArgs(env, csvFilePath, {
+      useEnvVarForPrivateKey: true,
+    });
     await main(args);
 
     const state = await verifyV2State(env, label);
@@ -397,7 +503,8 @@ describe("PreMigration", () => {
 
     await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
 
-    process.env.PREMIGRATION_PRIVATE_KEY = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+    process.env.PREMIGRATION_PRIVATE_KEY =
+      "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 
     createCSVFile(csvFilePath, [label]);
     const args = buildMainArgs(env, csvFilePath);
@@ -442,7 +549,12 @@ describe("PreMigration", () => {
 
     const expiries: bigint[] = [];
     for (const label of labels) {
-      const expiry = await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+      const expiry = await registerV1Name(
+        env,
+        label,
+        user.address,
+        ONE_YEAR_SECONDS,
+      );
       expiries.push(expiry);
     }
 
@@ -489,7 +601,12 @@ describe("PreMigration", () => {
     const neverLabel = "bvnever";
     const { user, deployer } = env.namedAccounts;
 
-    const validExpiry = await registerV1Name(env, validLabel, user.address, ONE_YEAR_SECONDS);
+    const validExpiry = await registerV1Name(
+      env,
+      validLabel,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
     await registerV1Name(env, graceLabel, user.address, 1);
     await registerV1Name(env, registeredLabel, user.address, ONE_YEAR_SECONDS);
     await env.sync({ warpSec: 2 });
@@ -505,7 +622,9 @@ describe("PreMigration", () => {
 
     const rpcUrl = `http://${env.hostPort}`;
     const client = createWalletClient({
-      account: privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"),
+      account: privateKeyToAccount(
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      ),
       chain: mainnet,
       transport: http(rpcUrl, { retryCount: 0, timeout: 30000 }),
     }).extend(publicActions);
@@ -580,7 +699,12 @@ describe("PreMigration", () => {
 
     const expiries: bigint[] = [];
     for (const label of labels) {
-      const expiry = await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+      const expiry = await registerV1Name(
+        env,
+        label,
+        user.address,
+        ONE_YEAR_SECONDS,
+      );
       expiries.push(expiry);
     }
 
@@ -608,7 +732,12 @@ describe("PreMigration", () => {
 
     const expiries: bigint[] = [];
     for (const label of labels) {
-      const expiry = await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+      const expiry = await registerV1Name(
+        env,
+        label,
+        user.address,
+        ONE_YEAR_SECONDS,
+      );
       expiries.push(expiry);
     }
 
@@ -628,16 +757,17 @@ describe("PreMigration", () => {
   });
 
   it("handles batch of names with long labels (higher calldata cost)", async () => {
-    const labels = [
-      "a".repeat(63),
-      "b".repeat(63),
-      "c".repeat(63),
-    ];
+    const labels = ["a".repeat(63), "b".repeat(63), "c".repeat(63)];
     const { user } = env.namedAccounts;
 
     const expiries: bigint[] = [];
     for (const label of labels) {
-      const expiry = await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+      const expiry = await registerV1Name(
+        env,
+        label,
+        user.address,
+        ONE_YEAR_SECONDS,
+      );
       expiries.push(expiry);
     }
 
@@ -764,10 +894,7 @@ describe("PreMigration", () => {
   });
 
   it("fails fast when header has no labelName or label column", async () => {
-    const csvContent = [
-      "node,name,owner",
-      "n,foo,0x00",
-    ].join("\n");
+    const csvContent = ["node,name,owner", "n,foo,0x00"].join("\n");
     writeFileSync(csvFilePath, csvContent);
 
     const args = buildMainArgs(env, csvFilePath);
@@ -813,13 +940,12 @@ describe("PreMigration", () => {
 
     await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
 
-    const csvContent =
-      [
-        "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
-        `,,,,,,${label},,`,
-        "",
-        "",
-      ].join("\n");
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,${label},,`,
+      "",
+      "",
+    ].join("\n");
     writeFileSync(csvFilePath, csvContent);
 
     const args = buildMainArgs(env, csvFilePath);
@@ -857,10 +983,9 @@ describe("PreMigration", () => {
 
     await registerV1Name(env, winning, user.address, ONE_YEAR_SECONDS);
 
-    const csvContent = [
-      "label,labelName,extra",
-      `${losing},${winning},x`,
-    ].join("\n");
+    const csvContent = ["label,labelName,extra", `${losing},${winning},x`].join(
+      "\n",
+    );
     writeFileSync(csvFilePath, csvContent);
 
     const args = buildMainArgs(env, csvFilePath);
@@ -883,10 +1008,7 @@ describe("PreMigration", () => {
     writeFileSync(csvFilePath, csvContent);
 
     const args = buildMainArgs(env, csvFilePath);
-    await expectMainToExitWithCsvError(args, [
-      `${csvFilePath}:3`,
-      "is blank",
-    ]);
+    await expectMainToExitWithCsvError(args, [`${csvFilePath}:3`, "is blank"]);
   });
 
   it("skips labels exceeding 255 bytes and encoded labelhashes in CSV", async () => {
@@ -920,7 +1042,10 @@ describe("PreMigration", () => {
   // ─── Edge cases ────────────────────────────────────────────────────
 
   it("handles empty CSV file gracefully", async () => {
-    writeFileSync(csvFilePath, "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate\n");
+    writeFileSync(
+      csvFilePath,
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate\n",
+    );
 
     const args = buildMainArgs(env, csvFilePath);
     await main(args);
@@ -933,7 +1058,12 @@ describe("PreMigration", () => {
     const label = "singlename";
     const { user } = env.namedAccounts;
 
-    const expiry = await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    const expiry = await registerV1Name(
+      env,
+      label,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
 
     createCSVFile(csvFilePath, [label]);
     const args = buildMainArgs(env, csvFilePath);
@@ -1159,7 +1289,10 @@ describe("PreMigration", () => {
     }
 
     createCSVFile(csvFilePath, labels);
-    const args = buildMainArgs(env, csvFilePath, { dryRun: true, batchSize: 1 });
+    const args = buildMainArgs(env, csvFilePath, {
+      dryRun: true,
+      batchSize: 1,
+    });
     await main(args);
 
     for (const label of labels) {

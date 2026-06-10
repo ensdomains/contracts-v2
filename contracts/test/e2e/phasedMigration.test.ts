@@ -1,9 +1,4 @@
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-} from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { createServer } from "node:net";
 import {
   existsSync,
@@ -26,6 +21,7 @@ import {
 } from "viem";
 import { Artifact_ETHRegistrarController } from "generated/artifacts/ETHRegistrarController.js";
 import { ROLES, STATUS } from "../../script/deploy-constants.js";
+import { migrationDataComponents } from "../../script/migration.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import {
   buildMainArgs,
@@ -37,13 +33,6 @@ import { idFromLabel } from "../utils/utils.js";
 const ONE_YEAR_SECONDS = 365n * 24n * 60n * 60n;
 const MIN_V2_REGISTRATION_SECONDS = 28n * 24n * 60n * 60n;
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
-
-const migrationDataComponents = [
-  { name: "label", type: "string" },
-  { name: "owner", type: "address" },
-  { name: "subregistry", type: "address" },
-  { name: "resolver", type: "address" },
-] as const;
 
 describe("Phased migration rehearsal", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
@@ -121,9 +110,11 @@ describe("Phased migration rehearsal", () => {
     await expect(
       env.v1.BaseRegistrar.read.controllers([env.v1.NameWrapper.address]),
     ).resolves.toBe(false);
+    // v1 BaseRegistrar rejects register() from a removed controller with a
+    // bare require (no reason string), so only the reverted call is matchable.
     await expect(
       registerViaV1Controller("phaseoldblocked", user),
-    ).rejects.toThrow();
+    ).rejects.toThrow('The contract function "register" reverted');
 
     await preMigrationMain(
       buildMainArgs(env, csvFilePath, {
@@ -151,9 +142,14 @@ describe("Phased migration rehearsal", () => {
       env.v2.ETHRegistrar.address,
     ]);
     expect(registrarEnabledBefore).toBe(false);
+    // ETHRegistrar lacks REGISTRAR/RENEW root roles on the registry, so the
+    // registry rejects the registration with
+    // EACUnauthorizedAccountRoles(uint256,uint256,address). The registrar's
+    // deployment ABI cannot decode the registry's error, so viem surfaces the
+    // raw selector (0x4b27a133); match either form.
     await expect(
       registerViaV2Registrar("phasev2blocked", user),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/EACUnauthorizedAccountRoles|0x4b27a133/);
 
     await env.v2.ETHRegistry.write.grantRootRoles([
       REGISTRAR_ROLES,
@@ -166,9 +162,10 @@ describe("Phased migration rehearsal", () => {
     ]);
     expect(registrarEnabledAfter).toBe(true);
 
+    // The name is RESERVED from premigration, so the registrar refuses it.
     await expect(
       registerViaV2Registrar(remainingMigrationLabel, user),
-    ).rejects.toThrow();
+    ).rejects.toThrow("NameNotAvailable");
 
     await registerViaV2Registrar("phasev2works", user);
     const v2RegisteredState = await verifyV2State(env, "phasev2works");
@@ -315,7 +312,8 @@ describe("Phased migration rehearsal", () => {
 });
 
 const sepoliaRpcUrl = loadEnvValue("SEPOLIA_RPC_URL");
-const runSepoliaFork = process.env.RUN_SEPOLIA_FORK_MIGRATION_TEST === "1" && Boolean(sepoliaRpcUrl);
+const runSepoliaFork =
+  process.env.RUN_SEPOLIA_FORK_MIGRATION_TEST === "1" && Boolean(sepoliaRpcUrl);
 const describeSepoliaFork = runSepoliaFork ? describe : describe.skip;
 
 describeSepoliaFork("Sepolia Anvil fork migration rehearsal", () => {
@@ -367,15 +365,27 @@ describeSepoliaFork("Sepolia Anvil fork migration rehearsal", () => {
       ]);
       const output = `${stdout}\n${stderr}`;
       if (exitCode !== 0) {
-        throw new Error(`Sepolia fork rehearsal failed:\n${output.slice(-12_000)}`);
+        throw new Error(
+          `Sepolia fork rehearsal failed:\n${output.slice(-12_000)}`,
+        );
       }
 
-      expect(output).toContain("phase 1: deploy v2 contracts against official Sepolia v1 references");
-      expect(output).toContain("v1 registration succeeded before registrar disablement");
-      expect(output).toContain("v1 registration rejected after registrar disablement");
+      expect(output).toContain(
+        "phase 1: deploy v2 contracts against official Sepolia v1 references",
+      );
+      expect(output).toContain(
+        "v1 registration succeeded before registrar disablement",
+      );
+      expect(output).toContain(
+        "v1 registration rejected after registrar disablement",
+      );
       expect(output).toContain("smoke migration registered");
-      expect(output).toContain("v2 registrar rejected registration before enablement");
-      expect(output).toContain("v2 registrar rejected pre-migrated reserved name after enablement");
+      expect(output).toContain(
+        "v2 registrar rejected registration before enablement",
+      );
+      expect(output).toContain(
+        "v2 registrar rejected pre-migrated reserved name after enablement",
+      );
       expect(output).toContain("v2 registrar registered");
     } finally {
       rmSync(workDir, { recursive: true, force: true });
@@ -397,9 +407,9 @@ function loadEnvValue(name: string): string | undefined {
 
 function stringEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(env).filter((entry): entry is [string, string] => (
-      typeof entry[1] === "string"
-    )),
+    Object.entries(env).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
   );
 }
 
@@ -411,7 +421,7 @@ async function getFreePort(): Promise<number> {
   });
   const address = server.address();
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
   if (!address || typeof address === "string") {
     throw new Error("failed to allocate a free local port");
