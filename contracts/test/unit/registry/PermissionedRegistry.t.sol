@@ -744,6 +744,19 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.__safeTransferFrom(from, user2, tokenId, 1, "");
     }
 
+    function test_safeTransferFrom_missingApproval() external {
+        uint256 tokenId = this._register();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC1155Errors.ERC1155MissingApprovalForAll.selector,
+                user2,
+                user1
+            )
+        );
+        vm.prank(user2);
+        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+    }
+
     function test_safeTransferFrom_notAuthorized() external {
         uint256 tokenId = this._register();
         vm.expectRevert(
