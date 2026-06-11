@@ -135,7 +135,8 @@ contract TestnetV1PremigrationRegistrar {
         IPermissionedRegistry ethRegistry_,
         IRegistry premigrationRegistry_,
         address premigrationResolver_
-    ) {
+    )
+    {
         BASE = base_;
         ENS_REGISTRY = ensRegistry_;
         REVERSE_REGISTRAR = reverseRegistrar_;
@@ -198,7 +199,10 @@ contract TestnetV1PremigrationRegistrar {
     function _registerV1(
         IETHRegistrarController.Registration calldata registration,
         bytes32 labelhash
-    ) internal returns (uint256 expires) {
+    )
+        internal
+        returns (uint256 expires)
+    {
         uint256 tokenId = uint256(labelhash);
         if (registration.resolver == address(0)) {
             return BASE.register(tokenId, registration.owner, registration.duration);
@@ -248,7 +252,8 @@ contract TestnetV1PremigrationRegistrar {
 
     /// @dev Refunds ETH because this testnet controller is free.
     function _refund() internal {
-        if (msg.value == 0) return;
+        if (msg.value == 0)
+            return;
 
         (bool ok, ) = payable(msg.sender).call{value: msg.value}("");
         if (!ok) {

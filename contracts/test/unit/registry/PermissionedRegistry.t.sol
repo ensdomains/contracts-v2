@@ -1594,7 +1594,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256 tokenId,
         address resolver,
         address sender
-    ) internal pure {
+    )
+        internal
+        pure
+    {
         assertEq(log.topics.length, 4, "topic count");
         assertEq(log.topics[0], IRegistryEvents.ResolverUpdated.selector, "topic0");
         assertEq(log.topics[1], bytes32(tokenId), "tokenId");

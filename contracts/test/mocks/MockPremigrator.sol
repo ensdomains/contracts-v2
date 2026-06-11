@@ -30,12 +30,9 @@ contract MockPremigrator {
     /// @param expiry Expiry for the name
     /// @param registry The registry for the name
     /// @param resolver The resolver for the name
-    function preMigrate(
-        string calldata label,
-        uint64 expiry,
-        IRegistry registry,
-        address resolver
-    ) external {
+    function preMigrate(string calldata label, uint64 expiry, IRegistry registry, address resolver)
+        external
+    {
         IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(label));
 
         if (state.status == IPermissionedRegistry.Status.AVAILABLE) {

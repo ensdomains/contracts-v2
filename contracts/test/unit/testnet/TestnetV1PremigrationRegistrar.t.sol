@@ -73,16 +73,9 @@ contract TestnetV1PremigrationRegistrarTest is V1Fixture, V2Fixture {
         returns (IETHRegistrarController.Registration memory)
     {
         return
-            IETHRegistrarController.Registration({
-                label: testLabel,
-                owner: user,
-                duration: registrar.MIN_REGISTRATION_DURATION(),
-                secret: bytes32(0),
-                resolver: address(0),
-                data: new bytes[](0),
-                reverseRecord: 0,
-                referrer: testReferrer
-            });
+            IETHRegistrarController.Registration({label: testLabel, owner: user, duration: registrar.MIN_REGISTRATION_DURATION(), secret: bytes32(
+                0
+            ), resolver: address(0), data: new bytes[](0), reverseRecord: 0, referrer: testReferrer});
     }
 
     function _ethNode(bytes32 labelhash) internal view returns (bytes32) {
@@ -108,11 +101,7 @@ contract TestnetV1PremigrationRegistrarTest is V1Fixture, V2Fixture {
             address(premigrationRegistry),
             "PREMIGRATION_REGISTRY"
         );
-        assertEq(
-            registrar.PREMIGRATION_RESOLVER(),
-            premigrationResolver,
-            "PREMIGRATION_RESOLVER"
-        );
+        assertEq(registrar.PREMIGRATION_RESOLVER(), premigrationResolver, "PREMIGRATION_RESOLVER");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -244,9 +233,7 @@ contract TestnetV1PremigrationRegistrarTest is V1Fixture, V2Fixture {
         registration.data = new bytes[](1);
         registration.data[0] = "";
 
-        vm.expectRevert(
-            TestnetV1PremigrationRegistrar.ResolverRequiredWhenDataSupplied.selector
-        );
+        vm.expectRevert(TestnetV1PremigrationRegistrar.ResolverRequiredWhenDataSupplied.selector);
         registrar.register(registration);
     }
 
@@ -254,9 +241,7 @@ contract TestnetV1PremigrationRegistrarTest is V1Fixture, V2Fixture {
         IETHRegistrarController.Registration memory registration = _defaultRegistration();
         registration.reverseRecord = registrar.REVERSE_RECORD_ETHEREUM_BIT();
 
-        vm.expectRevert(
-            TestnetV1PremigrationRegistrar.ResolverRequiredForReverseRecord.selector
-        );
+        vm.expectRevert(TestnetV1PremigrationRegistrar.ResolverRequiredForReverseRecord.selector);
         registrar.register(registration);
     }
 
@@ -266,10 +251,7 @@ contract TestnetV1PremigrationRegistrarTest is V1Fixture, V2Fixture {
         uint256 expires = block.timestamp + registration.duration;
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                TestnetV1PremigrationRegistrar.ExpiryTooLarge.selector,
-                expires
-            )
+            abi.encodeWithSelector(TestnetV1PremigrationRegistrar.ExpiryTooLarge.selector, expires)
         );
         registrar.register(registration);
     }
@@ -284,7 +266,10 @@ contract TestnetV1PremigrationRegistrarTest is V1Fixture, V2Fixture {
         bytes32 node = _ethNode(bytes32(tokenId));
         registration.resolver = address(publicResolver);
         registration.data = new bytes[](1);
-        registration.data[0] = abi.encodeCall(publicResolver.setText, (node, "url", "https://ens.domains"));
+        registration.data[0] = abi.encodeCall(
+            publicResolver.setText,
+            (node, "url", "https://ens.domains")
+        );
 
         vm.prank(user);
         registrar.register(registration);
@@ -323,11 +308,7 @@ contract TestnetV1PremigrationRegistrarTest is V1Fixture, V2Fixture {
         registrar.register(registration);
 
         assertEq(defaultReverseRegistrar.nameForAddr(user), "test.eth", "default reverse");
-        assertEq(
-            registryV1.owner(reverseRegistrar.node(user)),
-            address(0),
-            "reverse owner"
-        );
+        assertEq(registryV1.owner(reverseRegistrar.node(user)), address(0), "reverse owner");
     }
 
     function test_register_reverseRecordBoth() external {
@@ -414,6 +395,7 @@ contract TestnetV1PremigrationRegistrarTest is V1Fixture, V2Fixture {
         assertEq(state.latestOwner, ownerV2, "latestOwner");
     }
 }
+
 
 /// @dev Calls `register` with value but cannot receive the refund.
 contract RegisterCaller {
