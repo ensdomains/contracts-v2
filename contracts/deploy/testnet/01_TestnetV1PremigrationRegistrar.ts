@@ -11,7 +11,7 @@ export default execute(
     execute: write,
     get,
     getV1,
-    namedAccounts: { deployer },
+    namedAccounts: { deployer, owner, v1Owner },
     network,
     read,
     tags,
@@ -64,6 +64,33 @@ export default execute(
         functionName: "grantRootRoles",
         args: [PREMIGRATION_ROLE_BITMAP, registrar.address],
       });
+    }
+
+    // register() calls BASE.register(), so the registrar must also be an
+    // ENSv1 registrar controller; that grant is a v1-owner transaction
+    // (deferred on phased deploys via deferV1OwnerTransactions)
+    const isV1Controller = await read(baseRegistrar, {
+      functionName: "controllers",
+      args: [registrar.address],
+    });
+    if (!isV1Controller) {
+      console.log("  - Adding as ENSv1 registrar controller");
+      const registrarSecurityController = await getV1<
+        (typeof artifacts.RegistrarSecurityController)["abi"]
+      >("RegistrarSecurityController").catch(() => null);
+      if (registrarSecurityController) {
+        await write(registrarSecurityController, {
+          account: v1Owner ?? owner,
+          functionName: "addRegistrarController",
+          args: [registrar.address],
+        });
+      } else {
+        await write(baseRegistrar, {
+          account: v1Owner ?? owner,
+          functionName: "addController",
+          args: [registrar.address],
+        });
+      }
     }
   },
   {
