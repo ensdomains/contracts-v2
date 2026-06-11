@@ -181,9 +181,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 // renewal rights when the name could extend its own expiry in v1)
                 uint256 roleBitmap = REGISTRATION_ROLE_BITMAP;
                 if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
-                    roleBitmap |=
-                        RegistryRolesLib.ROLE_RENEW |
-                        RegistryRolesLib.ROLE_RENEW_ADMIN;
+                    roleBitmap |= RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN;
                 }
                 _inject(md.label, md.owner, md.subregistry, resolver, roleBitmap, expiry);
             } else {
