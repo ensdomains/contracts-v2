@@ -1,6 +1,6 @@
 import { addStatementCoverageInstrumentation } from "@nomicfoundation/edr";
 import hre from "hardhat";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { toHex } from "viem";
 
 // https://github.com/NomicFoundation/hardhat/blob/main/v-next/hardhat/src/internal/builtin-plugins/coverage/hook-handlers/hre.ts
@@ -37,31 +37,46 @@ export function recordCoverage(testName: string) {
     if (!tags.length) return;
 
     const rootDir = new URL("../../", import.meta.url);
-    const artifactStr = await readFile(
-      new URL("generated/artifacts.ts", rootDir),
-      { encoding: "utf8" },
-    );
-
-    const hardhatLibrary = artifactStr.match(
-      /__hardhat_coverage_library_[a-f0-9-]+\.sol/,
-    )?.[0];
-    if (!hardhatLibrary) {
+    // each instrumented build is recorded in artifacts/build-info/
+    // <solc-...>.json, whose input lists every source plus the injected
+    // __hardhat_coverage_library_*.sol; re-instrumenting the local sources
+    // with that library reproduces the statement tags
+    const buildInfoDir = new URL("artifacts/build-info/", rootDir);
+    type SourceBuild = {
+      sourceName: string;
+      inputSourceName: string;
+      solcVersion: string;
+      coverageLibrary: string;
+    };
+    const sourceBuilds = new Map<string, SourceBuild>();
+    for (const file of await readdir(buildInfoDir)) {
+      if (!file.endsWith(".json") || file.endsWith(".output.json")) continue;
+      const buildInfo = JSON.parse(
+        await readFile(new URL(file, buildInfoDir), { encoding: "utf8" }),
+      ) as {
+        solcVersion: string;
+        input: { sources: Record<string, unknown> };
+      };
+      const inputSourceNames = Object.keys(buildInfo.input.sources);
+      const coverageLibrary = inputSourceNames.find((x) =>
+        /^__hardhat_coverage_library_[a-f0-9-]+\.sol$/.test(x),
+      );
+      if (!coverageLibrary) continue; // not an instrumented build
+      const prefix = "project/";
+      for (const inputSourceName of inputSourceNames) {
+        if (!inputSourceName.startsWith(prefix)) continue;
+        if (sourceBuilds.has(inputSourceName)) continue;
+        sourceBuilds.set(inputSourceName, {
+          sourceName: inputSourceName.slice(prefix.length),
+          inputSourceName,
+          solcVersion: buildInfo.solcVersion,
+          coverageLibrary,
+        });
+      }
+    }
+    if (!sourceBuilds.size) {
       throw new Error("expected hardhat coverage library");
     }
-
-    const rawArtifacts = JSON.parse(
-      artifactStr.slice(
-        artifactStr.indexOf("{"),
-        artifactStr.lastIndexOf("}") + 1,
-      ),
-    ) as Record<
-      string,
-      {
-        sourceName: string;
-        inputSourceName: string;
-        metadata: string;
-      }
-    >;
 
     type CodeUnit = { line: number; kind: string; name: string };
     type CodeBlock = CodeUnit & { unit: CodeUnit; id: string };
@@ -75,18 +90,15 @@ export function recordCoverage(testName: string) {
     };
     const tagMap = new Map<string, Location>();
     const fileMap = new Map<string, Location[]>();
-    for (const rawArtifact of Object.values(rawArtifacts)) {
+    for (const rawArtifact of sourceBuilds.values()) {
       const code = await readFile(new URL(rawArtifact.sourceName, rootDir), {
         encoding: "utf8",
       });
-      const rawMetadata = JSON.parse(rawArtifact.metadata) as {
-        compiler: { version: string };
-      };
-      const { metadata, source } = addStatementCoverageInstrumentation(
+      const { metadata } = addStatementCoverageInstrumentation(
         code,
         rawArtifact.inputSourceName, // "project/..."
-        rawMetadata.compiler.version.replace(/\+.*$/, ""), // "0.8.25"+commit.b61c2a9 => "0.8.25"
-        hardhatLibrary,
+        rawArtifact.solcVersion, // "0.8.25"
+        rawArtifact.coverageLibrary,
       );
 
       // generate line numbers
