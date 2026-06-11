@@ -806,6 +806,70 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         registry2.renew(tokenId, expiry + 1);
     }
 
+    function test_migrate_emancipated_canExtendExpiry() external {
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        vm.prank(friend);
+        bytes memory name3 =
+            this.createWrappedChild(name2, "sub", PARENT_CANNOT_CONTROL | CAN_EXTEND_EXPIRY);
+        vm.prank(friend);
+        bytes memory name3plain = this.createWrappedChild(name2, "plain", PARENT_CANNOT_CONTROL);
+
+        // migrate 2LD
+        LibMigration.Data memory data2 = _lockedData(name2);
+        vm.prank(testOwner);
+        nameWrapper.safeTransferFrom(
+            testOwner,
+            address(migrationController),
+            uint256(NameCoder.namehash(name2, 0)),
+            1,
+            abi.encode(data2)
+        );
+        IWrapperRegistry registry2 =
+            IWrapperRegistry(address(ethRegistry.getSubregistry(data2.label)));
+
+        // migrate emancipated 3LD with CAN_EXTEND_EXPIRY
+        LibMigration.Data memory data3 = _lockedData(name3);
+        vm.prank(friend);
+        nameWrapper.safeTransferFrom(
+            friend,
+            address(registry2),
+            uint256(NameCoder.namehash(name3, 0)),
+            1,
+            abi.encode(data3)
+        );
+
+        uint256 tokenId = registry2.getTokenId(LibLabel.id(data3.label));
+        assertTrue(
+            registry2.hasRoles(
+                tokenId,
+                RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN,
+                friend
+            ),
+            "ROLE_RENEW + ROLE_RENEW_ADMIN"
+        );
+
+        uint64 expiry = registry2.getExpiry(tokenId);
+        vm.prank(friend);
+        registry2.renew(tokenId, expiry + 1);
+
+        // migrate emancipated 3LD without CAN_EXTEND_EXPIRY
+        LibMigration.Data memory data3plain = _lockedData(name3plain);
+        vm.prank(friend);
+        nameWrapper.safeTransferFrom(
+            friend,
+            address(registry2),
+            uint256(NameCoder.namehash(name3plain, 0)),
+            1,
+            abi.encode(data3plain)
+        );
+
+        uint256 tokenIdPlain = registry2.getTokenId(LibLabel.id(data3plain.label));
+        assertFalse(
+            registry2.hasRoles(tokenIdPlain, RegistryRolesLib.ROLE_RENEW, friend),
+            "no ROLE_RENEW"
+        );
+    }
+
     function test_migrate_lockedChildren() external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         vm.prank(friend);
