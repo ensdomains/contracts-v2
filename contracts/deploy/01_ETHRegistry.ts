@@ -1,5 +1,5 @@
 import { artifacts, execute } from "@rocketh";
-import { labelhash, zeroAddress } from "viem";
+import { isAddressEqual, labelhash, zeroAddress } from "viem";
 import {
   MAX_EXPIRY,
   DEPLOYMENT_ROLES,
@@ -47,7 +47,14 @@ export default execute(
       });
     }
 
-    if (ethRegistry.newlyDeployed) {
+    const [currentParent, currentLabel] = await read(ethRegistry, {
+      functionName: "getParent",
+    });
+
+    if (
+      !isAddressEqual(currentParent, rootRegistry.address) ||
+      currentLabel !== "eth"
+    ) {
       console.log("  - Setting canonical parent");
       await write(ethRegistry, {
         account: deployer,
