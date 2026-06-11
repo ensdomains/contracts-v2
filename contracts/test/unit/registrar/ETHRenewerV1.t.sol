@@ -46,7 +46,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
             rentPriceOracle,
             StandardRegistrar.GRACE_PERIOD_V2,
             StandardRegistrar.BONUS_PERIOD,
-            baseRegistrar,
+            nameWrapper,
             address(wrappedController)
         );
 
@@ -55,6 +55,8 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
         baseRegistrar.addController(address(ethRenewerV1));
         baseRegistrar.transferOwnership(address(ethRenewerV1));
         nameWrapper.renounceOwnership();
+
+        // note: nameWrapper is still baseRegistrar controller, see: _activateV2()
 
         setupPaymentTokens(testOwner, address(ethRenewerV1));
         testPaymentToken = tokenUSDC;
@@ -69,6 +71,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
 
     function test_constructor() external view {
         assertEq(ethRenewerV1.GRACE_PERIOD(), gracePeriodV1, "GRACE_PERIOD");
+        assertEq(address(ethRenewerV1.NAME_WRAPPER()), address(nameWrapper), "NAME_WRAPPER");
         assertEq(address(ethRenewerV1.BASE_REGISTRAR()), address(baseRegistrar), "BASE_REGISTRAR");
         assertEq(
             address(ethRenewerV1.WRAPPED_CONTROLLER()),
@@ -285,6 +288,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
 
     function test_syncWrapper_unwrapped() external {
         registerUnwrapped(testLabel);
+        _activateV2(true);
         string[] memory labels = new string[](1);
         labels[0] = testLabel;
         uint256 g = gasleft();
@@ -298,16 +302,27 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
         console.log("N | Gas");
         for (uint256 n; n <= 5; ++n) {
             string[] memory labels = new string[](n);
+            _activateV2(false);
             for (uint256 i; i < n; ++i) {
                 string memory label = labels[i] = _label(k++);
                 registerWrappedETH2LD(label, 0);
                 vm.prank(address(ethControllerV1));
                 baseRegistrar.renew(LibLabel.id(label), 1);
             }
+            _activateV2(true);
             uint256 g = gasleft();
             ethRenewerV1.syncWrapper(labels);
             g -= gasleft();
             console.log("%s | %s", n, g);
+        }
+    }
+
+    function _activateV2(bool on) internal {
+        vm.prank(address(ethRenewerV1));
+        if (on) {
+            baseRegistrar.removeController(address(nameWrapper));
+        } else {
+            baseRegistrar.addController(address(nameWrapper));
         }
     }
 }

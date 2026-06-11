@@ -4,6 +4,7 @@ pragma solidity >=0.8.13;
 import {
     BaseRegistrarImplementation
 } from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
+import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
@@ -13,6 +14,8 @@ import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
 /// @notice `ETHRegistrarController.renew()` stub interface.
+/// @dev Interface selector: `0xacf1a841`
+// https://github.com/ensdomains/ens-contracts/blob/staging/deployments/mainnet/WrappedETHRegistrarController.json
 /// @dev Interface selector: `0xacf1a841`
 interface IWrappedETHRegistrarController {
     /// @notice Renew an ENSv1 name.
@@ -40,6 +43,9 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
     /// @dev ENSv2 `GRACE_PERIOD`.
     uint64 internal immutable _GRACE_PERIOD_V2;
 
+    /// @notice The ENSv1 `NameWrapper` contract.
+    INameWrapper public immutable NAME_WRAPPER;
+
     /// @notice ENSv1 `BaseRegistrarImplementation` contract.
     BaseRegistrarImplementation public immutable BASE_REGISTRAR;
 
@@ -56,7 +62,7 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
     /// @param oracle Initial oracle for registration and renewal costs.
     /// @param gracePeriod Post-expiry period where renewable and not available, in seconds.
     /// @param bonusPeriod Duration added by premigration, in seconds.
-    /// @param baseRegistrar ENSv1 `BaseRegistrarImplementation` contract.
+    /// @param nameWrapper ENSv1 `NameWrapper` contract.
     /// @param wrappedController ENSv1 `ETHRegistrarController` that is a `NameWrapper` controller.
     constructor(
         address owner_,
@@ -65,14 +71,15 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
         IRentPriceOracle oracle,
         uint64 gracePeriod,
         uint64 bonusPeriod,
-        BaseRegistrarImplementation baseRegistrar,
+        INameWrapper nameWrapper,
         address wrappedController
     )
         AbstractETHRegistrar(owner_, ethRegistry, beneficiary, oracle)
     {
         GRACE_PERIOD = bonusPeriod + gracePeriod;
         _GRACE_PERIOD_V2 = gracePeriod;
-        BASE_REGISTRAR = baseRegistrar;
+        NAME_WRAPPER = nameWrapper;
+        BASE_REGISTRAR = BaseRegistrarImplementation(address(nameWrapper.registrar()));
         WRAPPED_CONTROLLER = IWrappedETHRegistrarController(wrappedController);
     }
 
@@ -89,11 +96,11 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
     /// @notice Sync `NameWrapper` expiry with `BaseRegistrarImplementation` expiry.
     /// @param labels The labels to sync.
     function syncWrapper(string[] calldata labels) external {
-        BASE_REGISTRAR.addController(address(WRAPPED_CONTROLLER));
+        BASE_REGISTRAR.addController(address(NAME_WRAPPER));
         for (uint256 i; i < labels.length; ++i) {
             WRAPPED_CONTROLLER.renew(labels[i], 0);
         }
-        BASE_REGISTRAR.removeController(address(WRAPPED_CONTROLLER));
+        BASE_REGISTRAR.removeController(address(NAME_WRAPPER));
     }
 
     /// @inheritdoc IETHRenewer
