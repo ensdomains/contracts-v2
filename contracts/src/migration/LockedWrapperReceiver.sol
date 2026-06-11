@@ -177,15 +177,15 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
                 NAME_WRAPPER.unwrap(parentNode, labelHash, GRAVEYARD); // unwrap and transfer to graveyard
 
-                // add name to ENSv2 (same as UnlockedMigrationController)
-                _inject(
-                    md.label,
-                    md.owner,
-                    md.subregistry,
-                    resolver,
-                    REGISTRATION_ROLE_BITMAP,
-                    expiry
-                );
+                // add name to ENSv2 (same as UnlockedMigrationController, plus
+                // renewal rights when the name could extend its own expiry in v1)
+                uint256 roleBitmap = REGISTRATION_ROLE_BITMAP;
+                if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
+                    roleBitmap |=
+                        RegistryRolesLib.ROLE_RENEW |
+                        RegistryRolesLib.ROLE_RENEW_ADMIN;
+                }
+                _inject(md.label, md.owner, md.subregistry, resolver, roleBitmap, expiry);
             } else {
                 revert LibMigration.NameNotLocked(uint256(node));
             }
