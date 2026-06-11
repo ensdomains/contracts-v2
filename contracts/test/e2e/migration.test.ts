@@ -444,6 +444,12 @@ describe("Migration", () => {
         "NameNotRenewable",
       );
     });
+
+    it("syncWrapper", async () => {
+      const unlocked = await registerWrapped();
+      await env.activateV2();
+      await env.v2.ETHRenewerV1.write.syncWrapper([[unlocked.label]]);
+    });
   });
 
   describe("unwrapped", () => {
