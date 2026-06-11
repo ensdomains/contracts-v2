@@ -335,6 +335,11 @@ export async function setupDevnet({
         address: rocketh.get("NameWrapper").address,
         client,
       }),
+      // WrappedETHRegistrarController: getContract({
+      //   abi: artifacts.IWrappedETHRegistrarController.abi,
+      //   address: rocketh.get("WrappedETHRegistrarController").address,
+      //   client,
+      // }),
       RegistrarSecurityController: getContract({
         abi: artifacts.RegistrarSecurityController.abi,
         address: rocketh.get("RegistrarSecurityController").address,
@@ -801,6 +806,7 @@ export async function setupDevnet({
         ? ENS_DAO_MULTISIG
         : namedAccounts.owner;
       // lock NameWrapper if still owned (idempotent across fork + synthetic)
+
       if ((await v1.NameWrapper.read.owner()) !== zeroAddress) {
         await v1.NameWrapper.write.renounceOwnership({ account });
       }
@@ -822,7 +828,6 @@ export async function setupDevnet({
       // in synthetic-devnet mode.
       const v1ControllerNames = [
         "ETHRegistrarController",
-        "WrappedETHRegistrarController",
         "LegacyETHRegistrarController",
         "NameWrapper",
       ] as const;
