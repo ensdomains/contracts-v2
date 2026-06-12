@@ -653,6 +653,39 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(registry.latestOwnerOf(tokenId), testOwner, "expired");
     }
 
+    function test_balanceOf() external {
+        assertEq(registry.balanceOf(address(0), 0), 0, "zero");
+        assertEq(
+            registry.balanceOf(testOwner, LibLabel.withVersion(LibLabel.id(testLabel), 0)),
+            0,
+            "available"
+        );
+        uint256 tokenId = this._register();
+        assertEq(registry.balanceOf(testOwner, tokenId), 1, "registered");
+        assertEq(registry.balanceOf(testOwner, LibLabel.withVersion(tokenId, 1)), 0, "next");
+        registry.unregister(tokenId);
+        assertEq(registry.balanceOf(testOwner, tokenId), 0, "unregistered");
+    }
+
+    function test_balanceOfBatch() external {
+        address[] memory acs = new address[](3);
+        uint256[] memory ids = new uint256[](3);
+        ids[0] = ids[1] = this._register();
+        ids[2] = ids[0] + 1;
+        acs[0] = acs[2] = testOwner;
+        uint256[] memory bals = registry.balanceOfBatch(acs, ids);
+        assertEq(bals[0], 1);
+        assertEq(bals[1], 0, "wrong owner");
+        assertEq(bals[2], 0, "wrong token");
+    }
+
+    function test_balanceOfBatch_arrayLength() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidArrayLength.selector, 1, 0)
+        );
+        registry.balanceOfBatch(new address[](0), new uint256[](1));
+    }
+
     function test_safeTransferFrom() external {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
@@ -693,6 +726,35 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         );
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, amount, "");
+    }
+
+    function test_safeTransferFrom_invalidReceiver() external {
+        uint256 tokenId = this._register();
+        address to; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, to));
+        vm.prank(user1);
+        registry.safeTransferFrom(user1, to, tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_invalidSender() external {
+        uint256 tokenId = this._register();
+        address from; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
+        vm.prank(user1);
+        registry.__safeTransferFrom(from, user2, tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_missingApproval() external {
+        uint256 tokenId = this._register();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC1155Errors.ERC1155MissingApprovalForAll.selector,
+                user2,
+                user1
+            )
+        );
+        vm.prank(user2);
+        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
 
     function test_safeTransferFrom_notAuthorized() external {
@@ -810,6 +872,24 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         );
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
+    }
+
+    function test_safeBatchTransferFrom_invalidReceiver() external {
+        uint256 tokenId = this._register();
+        uint256[] memory v;
+        address to; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, to));
+        vm.prank(user1);
+        registry.safeBatchTransferFrom(user1, to, v, v, "");
+    }
+
+    function test_safeBatchTransferFrom_invalidSender() external {
+        uint256 tokenId = this._register();
+        uint256[] memory v;
+        address from; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
+        vm.prank(user1);
+        registry.__safeBatchTransferFrom(from, user2, v, v, "");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1046,6 +1126,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     // Token Regeneration
     ////////////////////////////////////////////////////////////////////////
 
+    function test_burn_invalidSender() external {
+        address from; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
+        registry.__burn(from, 0, 0);
+    }
+
     function test_regenerate_mintBurn() external {
         IPermissionedRegistry.State memory s0 = registry.getState(this._register());
         registry.unregister(s0.tokenId);
@@ -1244,6 +1330,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     ////////////////////////////////////////////////////////////////////////
     // EAC Override: setApprovalForAll()
     ////////////////////////////////////////////////////////////////////////
+
+    function test_setApprovalForAll_invalidOperator() external {
+        address to; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidOperator.selector, to));
+        registry.setApprovalForAll(to, true);
+    }
 
     function test_setApprovalForAll_roles(uint256) external {
         testRoles = _randomRoleBitmap(true, false);
@@ -1693,6 +1785,31 @@ contract MockPermissionedRegistry is PermissionedRegistry {
     {}
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
+    }
+    function __safeTransferFrom(
+        address from,
+        address to,
+        uint256 id,
+        uint256 value,
+        bytes memory data
+    )
+        external
+    {
+        _safeTransferFrom(from, to, id, value, data);
+    }
+    function __safeBatchTransferFrom(
+        address from,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory values,
+        bytes memory data
+    )
+        external
+    {
+        _safeBatchTransferFrom(from, to, ids, values, data);
+    }
+    function __burn(address from, uint256 id, uint256 value) external {
+        _burn(from, id, value);
     }
 }
 

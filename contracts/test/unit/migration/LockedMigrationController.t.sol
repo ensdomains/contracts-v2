@@ -222,6 +222,22 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         dummy1155.safeTransferFrom(actor, address(migrationController), tokenId, 1, ""); // wrong
     }
 
+    function test_onERC1155Received_unauthorizedCaller() external {
+        vm.expectRevert(
+            WrappedErrorLib.wrap(abi.encodeWithSelector(UnauthorizedCaller.selector, actor))
+        );
+        vm.prank(actor);
+        migrationController.onERC1155Received(address(0), address(0), 1, 1, "");
+    }
+
+    function test_onERC1155Received_invalidData() external {
+        vm.expectRevert(
+            WrappedErrorLib.wrap(abi.encodeWithSelector(LibMigration.InvalidData.selector))
+        );
+        vm.prank(address(nameWrapper));
+        migrationController.onERC1155Received(address(0), address(0), 1, 1, "");
+    }
+
     function test_migrate_invalidData(bytes calldata v) external {
         vm.assume(v.length < LibMigration.MIN_DATA_SIZE);
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);

@@ -12,6 +12,7 @@ import {NameResolver} from "@ens/contracts/resolvers/profiles/NameResolver.sol";
 import {PubkeyResolver} from "@ens/contracts/resolvers/profiles/PubkeyResolver.sol";
 import {TextResolver} from "@ens/contracts/resolvers/profiles/TextResolver.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
@@ -20,6 +21,7 @@ import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @notice PublicResolver that respects the ENSv2 registry.
 contract PublicResolverV2 is
+    ERC165,
     Multicallable,
     ABIResolver,
     AddrResolver,
@@ -101,6 +103,7 @@ contract PublicResolverV2 is
         public
         view
         override(
+            ERC165,
             Multicallable,
             ABIResolver,
             AddrResolver,

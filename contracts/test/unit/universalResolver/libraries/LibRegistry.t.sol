@@ -264,6 +264,20 @@ contract LibRegistryTest is Test, ERC1155Holder {
         );
     }
 
+    function test_findCanonical_wrongChild() external {
+        PermissionedRegistry ethRegistry = _createRegistry();
+        PermissionedRegistry testRegistry = _createRegistry();
+        _register(rootRegistry, "eth", ethRegistry, address(0));
+        uint256 tokenId = _register(ethRegistry, "test", testRegistry, address(0));
+        ethRegistry.setSubregistry(tokenId, IRegistry(address(0))); // wrong
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
+        assertEq(
+            address(LibRegistry.findCanonicalRegistry(rootRegistry, NameCoder.encode("test.eth"))),
+            address(0),
+            "findCanonicalRegistry"
+        );
+    }
+
     function test_findCanonical_aliased() external {
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
@@ -328,8 +342,9 @@ contract LibRegistryTest is Test, ERC1155Holder {
         address resolver
     )
         internal
+        returns (uint256 tokenId)
     {
-        parentRegistry.register(
+        tokenId = parentRegistry.register(
             label,
             address(this),
             registry,
