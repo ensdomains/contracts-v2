@@ -216,7 +216,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         uint256 tokenId = _constructTokenId(anyId, entry);
         uint64 expiry = entry.expiry;
         if (_isExpired(expiry)) {
-            if (expiry == 0 || !hasRootRoles(RegistryRolesLib.ROLE_RENEW, msg.sender)) {
+            if (expiry == 0 || !_canRevive(tokenId, msg.sender)) {
                 revert LabelExpired(tokenId); // never registered OR cannot revive
             }
         } else {
@@ -588,6 +588,19 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// @dev Zeroes version bits in `anyId` to return the canonical storage entry for the name.
     function _entry(uint256 anyId) internal view returns (Entry storage) {
         return _entries[LibLabel.withVersion(anyId, 0)];
+    }
+
+    /// @dev Determine if token can be revived.
+    function _canRevive(
+        uint256 /*tokenId*/,
+        address sender
+    )
+        internal
+        view
+        virtual
+        returns (bool)
+    {
+        return hasRootRoles(RegistryRolesLib.ROLE_RENEW, sender);
     }
 
     /// @dev Assert token is not expired and caller has necessary roles.

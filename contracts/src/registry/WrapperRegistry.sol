@@ -50,6 +50,9 @@ contract WrapperRegistry is
     /// @dev The namehash of this registry.
     bytes32 internal _node;
 
+    /// @dev The initial roles derived from the NameWrapper.
+    uint256 internal _initialRoleBitmap;
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -122,6 +125,7 @@ contract WrapperRegistry is
         // setup canonical parent (ROLE_SET_PARENT is not granted)
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
+        _initialRoleBitmap = roleBitmap;
         emit RegistryCreated();
         address virtualOwner = address(_parentRegistry);
         emit ParentUpdated(parentRegistry, childLabel, virtualOwner);
@@ -255,6 +259,13 @@ contract WrapperRegistry is
             }
         }
         return super._getRoles(resource, account);
+    }
+
+    /// @dev Override to prevent revive if `CANNOT_CREATE_SUBDOMAIN` fuse was burned.
+    function _canRevive(uint256 tokenId, address sender) internal view override returns (bool) {
+        return
+            (_initialRoleBitmap & RegistryRolesLib.ROLE_REGISTRAR) != 0 &&
+            super._canRevive(tokenId, sender);
     }
 
     /// @dev Requires `ROLE_UPGRADE` and approval for the target implementation.
