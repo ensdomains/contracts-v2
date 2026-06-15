@@ -14,6 +14,7 @@ flag_management:
         threshold: 1%
       - type: patch
         target: 90%
+        informational: true
 
 comment:
   layout: "header, diff, flags, components, files"
