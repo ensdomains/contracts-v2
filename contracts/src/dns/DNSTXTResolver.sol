@@ -208,7 +208,7 @@ contract DNSTXTResolver is DelegatedContractNamer, IERC7996, IExtendedDNSResolve
     }
 
     /// @dev Convert 0x-prefixed hex-string to bytes.
-    ///      Reverts `InvalidHexData` if non-null and not a hex string.
+    ///      Reverts `InvalidHexData` if non-null and not an even-length hex string.
     /// @param s The string to parse.
     /// @return v The parsed bytes.
     function _parse0xString(bytes memory s) internal pure returns (bytes memory v) {
