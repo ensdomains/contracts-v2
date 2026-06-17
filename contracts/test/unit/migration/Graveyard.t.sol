@@ -113,7 +113,7 @@ contract GraveyardTest is MigrationControllerFixture {
         graveyard.clear(_oneName(abi.encodePacked(uint8(0), labelHash, name))); // mark as prehashed
         assertEq(registryV1.resolver(node), address(1), "uncleared");
         graveyard.clear(_oneName(NameCoder.addLabel(name, label)));
-        assertEq(registryV1.resolver(node), address(0), "after");
+        _checkCleared(node, "after");
     }
 
     function test_clear_prehashedLabel_hashed(bytes32 labelHash) external {
@@ -131,7 +131,7 @@ contract GraveyardTest is MigrationControllerFixture {
         graveyard.clear(_oneName(NameCoder.addLabel(name, _encodedLabelHash(labelHash))));
         assertEq(registryV1.resolver(node), address(1), "uncleared");
         graveyard.clear(_oneName(abi.encodePacked(uint8(0), labelHash, name))); // mark as prehashed
-        assertEq(registryV1.resolver(node), address(0), "after");
+        _checkCleared(node, "after");
     }
 
     function test_clear_unregistered(uint256) external {
@@ -149,7 +149,7 @@ contract GraveyardTest is MigrationControllerFixture {
 
         graveyard.clear(_oneName(name));
 
-        assertEq(registryV1.resolver(node), address(0));
+        _checkCleared(name);
     }
 
     function test_clear_deep() external {
@@ -175,7 +175,7 @@ contract GraveyardTest is MigrationControllerFixture {
         name = name0;
         for (uint256 i; i < N; ++i) {
             name = NameCoder.addLabel(name, testLabel);
-            assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), vm.toString(i));
+            _checkCleared(name);
         }
     }
 
@@ -199,11 +199,7 @@ contract GraveyardTest is MigrationControllerFixture {
         graveyard.clear(names);
 
         for (uint256 i; i < names.length; ++i) {
-            assertEq(
-                registryV1.resolver(NameCoder.namehash(names[i], 0)),
-                address(0),
-                vm.toString(i)
-            );
+            _checkCleared(names[i]);
         }
     }
 
@@ -227,8 +223,8 @@ contract GraveyardTest is MigrationControllerFixture {
 
         graveyard.clear(_oneName(name3));
 
-        assertEq(registryV1.resolver(NameCoder.namehash(name2, 0)), address(0), "2");
-        assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
+        _checkCleared(name2);
+        _checkCleared(name3);
     }
 
     function test_clear_nestedLocked_migrateParent_expiredChild() external {
@@ -251,8 +247,8 @@ contract GraveyardTest is MigrationControllerFixture {
 
         graveyard.clear(_oneName(name3));
 
-        assertEq(registryV1.resolver(NameCoder.namehash(name2, 0)), address(0), "2");
-        assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
+        _checkCleared(name2);
+        _checkCleared(name3);
     }
 
     function test_clear_nestedLocked_bothExpired() external {
@@ -282,8 +278,8 @@ contract GraveyardTest is MigrationControllerFixture {
 
         graveyard.clear(_oneName(name3));
 
-        assertEq(registryV1.resolver(NameCoder.namehash(name2, 0)), address(0), "2");
-        assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
+        _checkCleared(name2);
+        _checkCleared(name3);
     }
 
     function test_clear_migrateParent_unwrappedChild() external {
@@ -306,8 +302,8 @@ contract GraveyardTest is MigrationControllerFixture {
 
         graveyard.clear(_oneName(name3));
 
-        assertEq(registryV1.resolver(NameCoder.namehash(name2, 0)), address(0), "2");
-        assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
+        _checkCleared(name2);
+        _checkCleared(name3);
     }
 
     function test_clear_detachedAndUnmigrated() external {
@@ -331,8 +327,8 @@ contract GraveyardTest is MigrationControllerFixture {
 
         graveyard.clear(_oneName(name3));
 
-        assertEq(registryV1.resolver(NameCoder.namehash(name2, 0)), address(0), "2");
-        assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
+        _checkCleared(name2);
+        _checkCleared(name3);
     }
 
     function test_clear_detachedAndExpired(bool unwrapped) external {
@@ -358,8 +354,8 @@ contract GraveyardTest is MigrationControllerFixture {
 
         graveyard.clear(_oneName(name3));
 
-        assertEq(registryV1.resolver(NameCoder.namehash(name2, 0)), address(0), "2");
-        assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
+        _checkCleared(name2);
+        _checkCleared(name3);
     }
 
     function test_clear_locked_expired() external {
@@ -381,7 +377,7 @@ contract GraveyardTest is MigrationControllerFixture {
         name = name0;
         for (uint256 i; i < N; ++i) {
             name = NameCoder.addLabel(name, testLabel);
-            assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), vm.toString(i));
+            _checkCleared(name);
         }
     }
 
@@ -414,14 +410,24 @@ contract GraveyardTest is MigrationControllerFixture {
 
         graveyard.clear(_oneName(name4));
 
-        assertEq(registryV1.resolver(NameCoder.namehash(name2, 0)), address(0), "2");
-        assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
-        assertEq(registryV1.resolver(NameCoder.namehash(name4, 0)), address(0), "4");
+        _checkCleared(name2);
+        _checkCleared(name3);
+        _checkCleared(name4);
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Helpers
     ////////////////////////////////////////////////////////////////////////
+
+    function _checkCleared(bytes memory name) internal {
+        _checkCleared(NameCoder.namehash(name, 0), NameCoder.decode(name));
+    }
+
+    /// @dev Ensure resolver and TTL are cleared.
+    function _checkCleared(bytes32 node, string memory tag) internal {
+        assertEq(registryV1.resolver(node), address(0), string.concat("resolver:", tag));
+        assertEq(registryV1.ttl(node), 0, string.concat("ttl:", tag));
+    }
 
     /// @dev Clear resolver if possible and transfer to graveyard.
     function _simulateMigration(bytes memory name) internal {
