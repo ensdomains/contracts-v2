@@ -160,10 +160,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
                 address(this),
                 type(uint64).max - block.timestamp - _GRACE_PERIOD // max duration?
             );
-            // lock expired? so clear it
-            if (_REGISTRY_V1.resolver(node) != address(0)) {
-                _REGISTRY_V1.setResolver(node, address(0));
-            }
+            _REGISTRY_V1.setRecord(node, address(this), address(0), 0);
             return (node, State.OWNED);
         } else if (parentState == State.OWNED) {
             _REGISTRY_V1.setSubnodeRecord(parentNode, labelHash, address(this), address(0), 0);
