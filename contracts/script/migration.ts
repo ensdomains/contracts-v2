@@ -2856,6 +2856,11 @@ export async function deployV2(opts: DeployV2Options) {
     chainId,
     opts.rpcUrl ?? network.chain.rpcUrls.default.http[0],
   );
+  if (opts.deferV1OwnerTransactions && !opts.deferredV1OwnerTransactionsFile) {
+    throw new Error(
+      "deferring v1 owner transactions requires an output file; pass --deferred-v1-owner-transactions-file so the deferred calldata is persisted for execute-owner-txs",
+    );
+  }
   if (opts.deferredV1OwnerTransactionsFile) {
     const file = resolve(opts.deferredV1OwnerTransactionsFile);
     mkdirSync(dirname(file), { recursive: true });

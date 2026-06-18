@@ -425,11 +425,12 @@ const plugin: HardhatPlugin = {
       .addFlag({
         name: "deferV1OwnerTransactions",
         description:
-          "Record v1-owner transactions instead of broadcasting them",
+          "Record v1-owner transactions instead of broadcasting them (requires --deferred-v1-owner-transactions-file)",
       })
       .addOption({
         name: "deferredV1OwnerTransactionsFile",
-        description: "JSONL file for deferred v1-owner transactions",
+        description:
+          "JSONL file for deferred v1-owner transactions (required when deferring)",
         defaultValue: "",
       })
       .addOption({
