@@ -17,6 +17,11 @@ import {
 
 const COIN_TYPE_OPTIMISM = coinTypeFromChain(10);
 
+// Some DNS cases resolve real third-party domains through the live
+// dnssec-oracle.ens.domains CCIP gateway, so they depend on external DNS state
+// and gateway availability. They are opt-in to keep CI independent of those.
+const itLiveDns = process.env.RUN_LIVE_DNS_TESTS === "1" ? it : it.skip;
+
 describe("Resolve", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
 
@@ -79,7 +84,7 @@ describe("Resolve", () => {
         ],
       }));
 
-    it("onchain txt: taytems.xyz", () =>
+    itLiveDns("onchain txt: taytems.xyz", () =>
       // Uses real DNS TXT record for taytems.xyz
       expectResolve({
         name: "taytems.xyz",
@@ -89,9 +94,10 @@ describe("Resolve", () => {
             value: "0x8e8Db5CcEF88cca9d624701Db544989C996E3216",
           },
         ],
-      }));
+      }),
+    );
 
-    it("onchain txt: dnstxt.raffy.xyz", () =>
+    itLiveDns("onchain txt: dnstxt.raffy.xyz", () =>
       // `dnstxt.ens.eth t[avatar]=https://raffy.xyz/ens.jpg a[e0]=0x51050ec063d393217B436747617aD1C2285Aeeee`
       expectResolve({
         name: "dnstxt.raffy.xyz",
@@ -102,9 +108,10 @@ describe("Resolve", () => {
           },
         ],
         texts: [{ key: "avatar", value: "https://raffy.xyz/ens.jpg" }],
-      }));
+      }),
+    );
 
-    it("alias rewrite: dnsalias[.raffy.xyz] => dnsalias[.ens.eth]", () =>
+    itLiveDns("alias rewrite: dnsalias[.raffy.xyz] => dnsalias[.ens.eth]", () =>
       // `dnsalias.ens.eth raffy.xyz ens.eth`
       expectResolve({
         name: "dnsalias.raffy.xyz",
@@ -114,6 +121,7 @@ describe("Resolve", () => {
             value: env.v2.DNSAliasResolver.address,
           },
         ],
-      }));
+      }),
+    );
   });
 });
