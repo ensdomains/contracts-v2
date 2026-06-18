@@ -84,27 +84,31 @@ export async function registerSuffixesViaBatchRegistrar({
     args: [BATCH_REGISTRAR_ROLE_BITMAP, batchRegistrar.address],
   });
 
-  for (let i = 0; i < suffixes.length; i += SUFFIX_BATCH_SIZE) {
-    const batch = suffixes.slice(i, i + SUFFIX_BATCH_SIZE);
-    const progress = Math.min(i + SUFFIX_BATCH_SIZE, suffixes.length);
-    console.log(
-      `  - Registering ${batch.length} suffixes (${progress}/${suffixes.length})`,
-    );
-    await write(batchRegistrar, {
+  try {
+    for (let i = 0; i < suffixes.length; i += SUFFIX_BATCH_SIZE) {
+      const batch = suffixes.slice(i, i + SUFFIX_BATCH_SIZE);
+      const progress = Math.min(i + SUFFIX_BATCH_SIZE, suffixes.length);
+      console.log(
+        `  - Registering ${batch.length} suffixes (${progress}/${suffixes.length})`,
+      );
+      await write(batchRegistrar, {
+        account,
+        functionName: "batchRegister",
+        args: [
+          zeroAddress,
+          resolver,
+          batch,
+          new Array(batch.length).fill(MAX_EXPIRY),
+        ],
+      });
+    }
+  } finally {
+    // Always revoke the temporary roles, even if a batch reverts partway, so the
+    // batch registrar is never left holding registrar permissions on the root.
+    await write(rootRegistry, {
       account,
-      functionName: "batchRegister",
-      args: [
-        zeroAddress,
-        resolver,
-        batch,
-        new Array(batch.length).fill(MAX_EXPIRY),
-      ],
+      functionName: "revokeRootRoles",
+      args: [BATCH_REGISTRAR_ROLE_BITMAP, batchRegistrar.address],
     });
   }
-
-  await write(rootRegistry, {
-    account,
-    functionName: "revokeRootRoles",
-    args: [BATCH_REGISTRAR_ROLE_BITMAP, batchRegistrar.address],
-  });
 }

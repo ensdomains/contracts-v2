@@ -172,7 +172,8 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "v1Owner",
-        description: "V1 owner address; defaults to the migration owner",
+        description:
+          "V1 owner address; defaults to the network-configured v1 owner",
         defaultValue: "",
       })
       .addOption({
@@ -291,7 +292,8 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "v1Owner",
-        description: "V1 owner address; defaults to the migration owner",
+        description:
+          "V1 owner address; defaults to the network-configured v1 owner",
         defaultValue: "",
       })
       .addOption({
@@ -466,7 +468,8 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "v1Owner",
-        description: "v1 owner address for v1 writes",
+        description:
+          "v1 owner address for v1 writes; defaults to the network-configured v1 owner",
         defaultValue: "",
       })
       .setAction(() => import("./tasks/deploy-v2.ts"))

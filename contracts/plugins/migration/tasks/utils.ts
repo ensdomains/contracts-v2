@@ -21,7 +21,7 @@ type MigrationSignerArgs = {
 export type MigrationSigners = {
   deployer: Address;
   owner: Address;
-  v1Owner: Address;
+  v1Owner?: Address;
   urManager: Address;
   deployerPrivateKey?: `0x${string}`;
   ownerPrivateKey?: `0x${string}`;
@@ -162,7 +162,9 @@ export async function resolveMigrationSigners({
     );
   }
 
-  const v1Owner = optionalAddress(args.v1Owner) ?? owner;
+  // Leave unset when no override is supplied so downstream deploy logic uses the
+  // network-configured v1 owner rather than overriding it with the migration owner.
+  const v1Owner = optionalAddress(args.v1Owner);
   const hardhatPrivateKey = hardhatSigner.privateKey;
   const hardhatAddress = hardhatSigner.address;
   return {
@@ -201,6 +203,6 @@ export function logMigrationSigners(
 ) {
   console.log(`migration deployer: ${signers.deployer}`);
   console.log(`migration owner: ${signers.owner}`);
-  console.log(`v1 owner: ${signers.v1Owner}`);
+  console.log(`v1 owner: ${signers.v1Owner ?? "(network default)"}`);
   console.log(`managed URP admin: ${signers.urManager}`);
 }
