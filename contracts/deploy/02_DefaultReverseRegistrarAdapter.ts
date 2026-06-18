@@ -5,12 +5,13 @@ export default execute(
     deploy,
     execute: write,
     get,
+    getV1,
     read,
     namedAccounts: { deployer, owner },
     name,
     tags,
   }) => {
-    const defaultReverseRegistrar = get<
+    const defaultReverseRegistrar = await getV1<
       (typeof artifacts.DefaultReverseRegistrar)["abi"]
     >("DefaultReverseRegistrar");
 
@@ -42,6 +43,6 @@ export default execute(
   },
   {
     tags: ["DefaultReverseRegistrarAdapter", "v2"],
-    dependencies: ["DefaultReverseRegistrar", "ContractNamer"],
+    dependencies: ["ContractNamer"],
   },
 );

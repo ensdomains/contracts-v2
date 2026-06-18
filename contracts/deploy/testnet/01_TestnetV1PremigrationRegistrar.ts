@@ -92,6 +92,33 @@ export default execute(
         });
       }
     }
+
+    // register() sets reverse records on behalf of the registrant, so the registrar
+    // must also be a controller of the reverse registrars; these are v1-owner
+    // transactions (deferred on phased deploys via deferV1OwnerTransactions)
+    const isReverseController = await read(reverseRegistrar, {
+      functionName: "controllers",
+      args: [registrar.address],
+    });
+    if (!isReverseController) {
+      await write(reverseRegistrar, {
+        account: v1Owner ?? owner,
+        functionName: "setController",
+        args: [registrar.address, true],
+      });
+    }
+
+    const isDefaultReverseController = await read(defaultReverseRegistrar, {
+      functionName: "controllers",
+      args: [registrar.address],
+    });
+    if (!isDefaultReverseController) {
+      await write(defaultReverseRegistrar, {
+        account: v1Owner ?? owner,
+        functionName: "setController",
+        args: [registrar.address, true],
+      });
+    }
   },
   {
     tags: [

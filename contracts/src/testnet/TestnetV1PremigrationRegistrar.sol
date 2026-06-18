@@ -35,6 +35,11 @@ contract TestnetV1PremigrationRegistrar {
     /// @notice The minimum registration duration accepted by the v1 controller.
     uint256 public constant MIN_REGISTRATION_DURATION = 28 days;
 
+    /// @notice Bonus added to the v2 reservation expiry so testnet reservations match
+    ///         the migration's continuity-adjusted expiry (v1 grace minus v2 grace, plus one
+    ///         second) and pass the premigration verifier's expected-expiry check.
+    uint256 public constant CONTINUITY_BONUS_PERIOD = 1 + (90 days - 28 days);
+
     /// @notice The ENS namehash for `eth`.
     bytes32 public constant ETH_NODE =
         0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae;
@@ -210,31 +215,44 @@ contract TestnetV1PremigrationRegistrar {
 
         expires = BASE.register(tokenId, address(this), registration.duration);
         bytes32 namehash = keccak256(abi.encodePacked(ETH_NODE, labelhash));
-        ENS_REGISTRY.setRecord(namehash, registration.owner, registration.resolver, 0);
 
+        // Apply resolver records while this registrar still owns the node, then hand
+        // ownership to the registrant. A resolver that authorises writes by node owner
+        // would otherwise reject these calls once ownership has moved.
+        ENS_REGISTRY.setResolver(namehash, registration.resolver);
         if (registration.data.length > 0) {
             Resolver(registration.resolver).multicallWithNodeCheck(namehash, registration.data);
         }
+        ENS_REGISTRY.setOwner(namehash, registration.owner);
 
         BASE.transferFrom(address(this), registration.owner, tokenId);
 
+        // Reverse records are set for the registrant rather than the caller.
         string memory name = string.concat(registration.label, ".eth");
         if (registration.reverseRecord & REVERSE_RECORD_ETHEREUM_BIT != 0) {
-            REVERSE_REGISTRAR.setNameForAddr(msg.sender, msg.sender, registration.resolver, name);
+            REVERSE_REGISTRAR.setNameForAddr(
+                registration.owner,
+                registration.owner,
+                registration.resolver,
+                name
+            );
         }
         if (registration.reverseRecord & REVERSE_RECORD_DEFAULT_BIT != 0) {
-            DEFAULT_REVERSE_REGISTRAR.setNameForAddr(msg.sender, name);
+            DEFAULT_REVERSE_REGISTRAR.setNameForAddr(registration.owner, name);
         }
     }
 
-    /// @dev Reserves or extends the matching ENSv2 reservation.
-    function _premigrate(string calldata label, uint256 expires) internal {
-        if (expires > type(uint64).max) {
-            revert ExpiryTooLarge(expires);
+    /// @dev Reserves or extends the matching ENSv2 reservation. Every reservation
+    ///      carries the continuity bonus on top of the v1 expiry, matching the migration's
+    ///      expected expiry for premigrated names.
+    function _premigrate(string calldata label, uint256 v1Expiry) internal {
+        uint256 reservationExpiry = v1Expiry + CONTINUITY_BONUS_PERIOD;
+        if (reservationExpiry > type(uint64).max) {
+            revert ExpiryTooLarge(reservationExpiry);
         }
 
         IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(label));
-        uint64 expiry = uint64(expires);
+        uint64 expiry = uint64(reservationExpiry);
 
         if (state.status == IPermissionedRegistry.Status.AVAILABLE) {
             ETH_REGISTRY.register(

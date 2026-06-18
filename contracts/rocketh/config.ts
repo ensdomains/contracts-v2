@@ -56,7 +56,9 @@ export const config = {
       chain: 11155111,
       scripts: ["deploy"],
       overrides: {
-        tags: ["dev"],
+        // Treat this Sepolia-derived environment as sepolia for the known top URP
+        // and other sepolia-gated setup; getV1 applies the matching v1 normalization.
+        tags: ["sepolia", "dev"],
       },
     },
     "sepolia-v1-dev": {
@@ -127,7 +129,11 @@ const extensions = {
   },
   getV1: (env: Environment) => {
     const extra = (env.extra ?? {}) as V1DeploymentOverrides;
-    const environment = extra.v1DeploymentNetwork ?? env.name;
+    // Sepolia-derived environments (e.g. sepolia-dev) share the canonical sepolia v1
+    // deployment set rather than one keyed by the literal environment name.
+    const environment =
+      extra.v1DeploymentNetwork ??
+      (env.name.startsWith("sepolia") ? "sepolia" : env.name);
     const paths = extra.v1DeploymentsDir
       ? [resolve(extra.v1DeploymentsDir)]
       : [

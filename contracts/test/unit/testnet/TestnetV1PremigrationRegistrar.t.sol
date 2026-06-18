@@ -155,7 +155,7 @@ contract TestnetV1PremigrationRegistrarTest is V1Fixture, V2Fixture {
         // v2 reservation
         IPermissionedRegistry.State memory state = ethRegistry.getState(tokenId);
         assertEq(uint8(state.status), uint8(IPermissionedRegistry.Status.RESERVED), "status");
-        assertEq(state.expiry, uint64(expires), "expiry");
+        assertEq(state.expiry, uint64(expires + registrar.CONTINUITY_BONUS_PERIOD()), "expiry");
         assertEq(state.latestOwner, address(0), "latestOwner");
         assertEq(
             address(ethRegistry.getSubregistry(testLabel)),
@@ -251,7 +251,10 @@ contract TestnetV1PremigrationRegistrarTest is V1Fixture, V2Fixture {
         uint256 expires = block.timestamp + registration.duration;
 
         vm.expectRevert(
-            abi.encodeWithSelector(TestnetV1PremigrationRegistrar.ExpiryTooLarge.selector, expires)
+            abi.encodeWithSelector(
+                TestnetV1PremigrationRegistrar.ExpiryTooLarge.selector,
+                expires + registrar.CONTINUITY_BONUS_PERIOD()
+            )
         );
         registrar.register(registration);
     }
@@ -349,7 +352,7 @@ contract TestnetV1PremigrationRegistrarTest is V1Fixture, V2Fixture {
 
         IPermissionedRegistry.State memory state = ethRegistry.getState(LibLabel.id(testLabel));
         assertEq(uint8(state.status), uint8(IPermissionedRegistry.Status.RESERVED), "status");
-        assertEq(state.expiry, uint64(expires), "expiry");
+        assertEq(state.expiry, uint64(expires + registrar.CONTINUITY_BONUS_PERIOD()), "expiry");
         assertEq(state.tokenId, tokenId, "tokenId");
 
         // renewal keeps the original reservation's subregistry and resolver

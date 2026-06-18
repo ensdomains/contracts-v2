@@ -98,6 +98,9 @@ export default execute(
       "BatchGatewayProvider",
       "DNSSECGatewayProvider",
       "ContractNamer",
+      // Run the v1 root-TLD mirror first so it claims root TLDs for v1 fallback;
+      // this resolver then registers only the remaining (non-root) public suffixes.
+      "DNSV1MirrorTLDs",
     ],
   },
 );
