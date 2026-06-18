@@ -73,6 +73,34 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
+    function test_onERC721Received_unauthorizedCaller() external {
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, actor));
+        vm.prank(actor);
+        migrationController.onERC721Received(address(0), address(0), 1, "");
+    }
+
+    function test_onERC721Received_invalidData() external {
+        vm.expectRevert(abi.encodeWithSelector(LibMigration.InvalidData.selector));
+        vm.prank(address(baseRegistrar));
+        migrationController.onERC721Received(address(0), address(0), 1, "");
+    }
+
+    function test_onERC1155Received_unauthorizedCaller() external {
+        vm.expectRevert(
+            WrappedErrorLib.wrap(abi.encodeWithSelector(UnauthorizedCaller.selector, actor))
+        );
+        vm.prank(actor);
+        migrationController.onERC1155Received(address(0), address(0), 1, 1, "");
+    }
+
+    function test_onERC1155Received_invalidData() external {
+        vm.expectRevert(
+            WrappedErrorLib.wrap(abi.encodeWithSelector(LibMigration.InvalidData.selector))
+        );
+        vm.prank(address(nameWrapper));
+        migrationController.onERC1155Received(address(0), address(0), 1, 1, "");
+    }
+
     function test_finishERC1155Migration_unauthorizedCaller() external {
         vm.expectRevert(abi.encodeWithSelector(UnauthorizedCaller.selector, actor));
         vm.prank(actor);

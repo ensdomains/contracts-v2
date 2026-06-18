@@ -94,6 +94,12 @@ const FLAGS = {
   ORACLE: {
     UPDATE_TOKEN: 1n << 0n,
     DISABLE_TOKEN: 1n << 4n,
+    CAN_NAME: 1n << 8n,
+  },
+  // see: PermissionedAddressSet.sol
+  ADDRESS_SET: {
+    APPROVE: 1n << 0n,
+    CAN_NAME: 1n << 4n,
   },
 } as const satisfies Flags;
 
@@ -186,8 +192,8 @@ export const FUSE_MASKS = {
 } as const;
 
 // see: StandardRegistrar.sol
-export const SEC_PER_YEAR = 31_557_600n;
 export const SEC_PER_DAY = 86400n;
+export const SEC_PER_YEAR = 365n * SEC_PER_DAY;
 
 export const MIN_COMMITMENT_AGE = 60n; // 1 minute
 export const MAX_COMMITMENT_AGE = SEC_PER_DAY;

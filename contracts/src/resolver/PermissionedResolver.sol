@@ -24,7 +24,6 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
-import {InvalidOwner} from "../CommonErrors.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
 import {IPermissionedResolver} from "./interfaces/IPermissionedResolver.sol";
@@ -232,12 +231,13 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IPermissionedResolver
-    function initialize(address admin, uint256 roleBitmap) external initializer {
-        if (admin == address(0)) {
-            revert InvalidOwner();
-        }
+    function initialize(address admin, uint256 roleBitmap, bytes[] calldata setters)
+        external
+        initializer
+    {
         __UUPSUpgradeable_init();
         _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
+        multicall(setters);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -751,6 +751,17 @@ contract PermissionedResolver is
         onlyRootRoles(PermissionedResolverLib.ROLE_UPGRADE)
     {
         //
+    }
+
+    /// @dev Avoid permission checks during initialization.
+    function _checkRoles(uint256 resource, uint256 roleBitmap, address account)
+        internal
+        view
+        override
+    {
+        if (!_isInitializing()) {
+            super._checkRoles(resource, roleBitmap, account);
+        }
     }
 
     /// @dev Apply one round of aliasing.

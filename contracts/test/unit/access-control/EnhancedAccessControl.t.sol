@@ -57,6 +57,13 @@ contract MockEnhancedAccessControl is EnhancedAccessControl {
         lastRevokedCount = 0;
     }
 
+    function callOnlyRoles(uint256 resource, uint256 roleBitmap)
+        external
+        onlyRoles(resource, roleBitmap)
+    {
+        // Function that will revert if caller doesn't have the roles in resource
+    }
+
     function callOnlyRootRoles(uint256 roleBitmap) external onlyRootRoles(roleBitmap) {
         // Function that will revert if caller doesn't have the roles in root resource
     }
@@ -340,6 +347,33 @@ contract EnhancedAccessControlTest is Test {
         );
         vm.prank(user2);
         access.callOnlyRootRoles(ROLE_A);
+    }
+
+    function test_only_roles() external {
+        // Grant role in root resource to user1
+        access.grantRootRoles(ROLE_A, user1);
+
+        // User1 should be able to call function with onlyRoles modifier
+        vm.prank(user1);
+        access.callOnlyRoles(RESOURCE_1, ROLE_A);
+
+        // User2 doesn't have the role, should revert
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                RESOURCE_1,
+                ROLE_A,
+                user2
+            )
+        );
+        vm.prank(user2);
+        access.callOnlyRoles(RESOURCE_1, ROLE_A);
+
+        // Having the role in a specific resource does satisfy onlyRoles
+        access.grantRoles(RESOURCE_1, ROLE_A, user2);
+
+        vm.prank(user2);
+        access.callOnlyRoles(RESOURCE_1, ROLE_A);
     }
 
     function test_has_roles_requires_all_roles() external {
@@ -1734,6 +1768,10 @@ contract EnhancedAccessControlTest is Test {
 
         vm.stopPrank();
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Helpers
+    ////////////////////////////////////////////////////////////////////////
 
     /// @dev Grant roles then require event and check getter.
     function _grant(uint256 resource, uint256 roles, address account) public {

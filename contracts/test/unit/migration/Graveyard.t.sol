@@ -9,7 +9,10 @@ import {
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
+import {Graveyard} from "~src/migration/Graveyard.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract GraveyardTest is MigrationControllerFixture {
@@ -17,6 +20,13 @@ contract GraveyardTest is MigrationControllerFixture {
 
     function setUp() external {
         deployMigrationControllerFixture();
+    }
+
+    function test_supportsInterface() external view {
+        assertTrue(
+            ERC165Checker.supportsInterface(address(graveyard), type(IContractNamer).interfaceId),
+            "IContractNamer"
+        );
     }
 
     function test_clear_root() external {
@@ -28,7 +38,7 @@ contract GraveyardTest is MigrationControllerFixture {
     }
 
     function test_clear_xyz() external {
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(Graveyard.NameNotClearable.selector));
         graveyard.clear(_oneName(NameCoder.encode("xyz")));
         vm.expectRevert();
         graveyard.clear(_oneName(NameCoder.encode("test.xyz")));
@@ -276,7 +286,56 @@ contract GraveyardTest is MigrationControllerFixture {
         assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
     }
 
-    function test_clear_detached(bool unwrapped) external {
+    function test_clear_migrateParent_unwrappedChild() external {
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes memory name3 = NameCoder.addLabel(name2, testLabel);
+
+        // claim 3LD ownership without wrapping
+        _claimNodes(name3, 0, testOwner);
+
+        // set resolvers
+        vm.startPrank(testOwner);
+        nameWrapper.setResolver(NameCoder.namehash(name2, 0), address(1));
+        registryV1.setResolver(NameCoder.namehash(name3, 0), address(1));
+        vm.stopPrank();
+
+        _simulateMigration(name2);
+
+        vm.expectRevert(abi.encodeWithSelector(Graveyard.NameRequiresPreimage.selector));
+        graveyard.clear(_oneName(abi.encodePacked(uint8(0), keccak256(bytes(testLabel)), name2)));
+
+        graveyard.clear(_oneName(name3));
+
+        assertEq(registryV1.resolver(NameCoder.namehash(name2, 0)), address(0), "2");
+        assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
+    }
+
+    function test_clear_detachedAndUnmigrated() external {
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes memory name3 = createWrappedChild(name2, testLabel, PARENT_CANNOT_CONTROL);
+
+        // set resolvers
+        vm.startPrank(testOwner);
+        nameWrapper.setResolver(NameCoder.namehash(name2, 0), address(1));
+        nameWrapper.setResolver(NameCoder.namehash(name3, 0), address(1));
+        vm.stopPrank();
+
+        _simulateMigration(name2);
+
+        vm.expectRevert();
+        graveyard.clear(_oneName(name3));
+
+        graveyard.clear(_oneName(name2));
+
+        _simulateMigration(name3);
+
+        graveyard.clear(_oneName(name3));
+
+        assertEq(registryV1.resolver(NameCoder.namehash(name2, 0)), address(0), "2");
+        assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
+    }
+
+    function test_clear_detachedAndExpired(bool unwrapped) external {
         bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes memory name3 = createWrappedChild(name2, testLabel, PARENT_CANNOT_CONTROL);
 
@@ -291,7 +350,7 @@ contract GraveyardTest is MigrationControllerFixture {
             nameWrapper.unwrap(
                 NameCoder.namehash(name2, 0),
                 keccak256(bytes(NameCoder.firstLabel(name3))),
-                address(graveyard)
+                address(testOwner)
             );
         }
 
@@ -343,7 +402,7 @@ contract GraveyardTest is MigrationControllerFixture {
         nameWrapper.unwrap(
             NameCoder.namehash(name3, 0),
             keccak256(bytes(NameCoder.firstLabel(name4))),
-            address(graveyard)
+            address(testOwner)
         );
 
         // name2 = locked
@@ -355,10 +414,14 @@ contract GraveyardTest is MigrationControllerFixture {
 
         graveyard.clear(_oneName(name4));
 
-        assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "2");
+        assertEq(registryV1.resolver(NameCoder.namehash(name2, 0)), address(0), "2");
         assertEq(registryV1.resolver(NameCoder.namehash(name3, 0)), address(0), "3");
         assertEq(registryV1.resolver(NameCoder.namehash(name4, 0)), address(0), "4");
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Helpers
+    ////////////////////////////////////////////////////////////////////////
 
     /// @dev Clear resolver if possible and transfer to graveyard.
     function _simulateMigration(bytes memory name) internal {

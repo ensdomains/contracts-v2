@@ -30,6 +30,16 @@ contract BatchRegistrarTest is V2Fixture {
         );
     }
 
+    function test_batchRegister_lengthMismatch() external {
+        vm.expectRevert(abi.encodeWithSelector(BatchRegistrar.InputLengthMismatch.selector));
+        batchRegistrar.batchRegister(
+            IRegistry(address(0)),
+            resolver,
+            new string[](0),
+            new uint64[](1)
+        );
+    }
+
     function test_batchRegister_new_names() public {
         string[] memory labels = new string[](3);
         uint64[] memory expires = new uint64[](3);

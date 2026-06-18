@@ -3,44 +3,42 @@ pragma solidity ^0.8.13;
 
 import {Test} from "forge-std/Test.sol";
 
-import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
-import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
+import {ENSIP19, COIN_TYPE_ETH, COIN_TYPE_DEFAULT} from "@ens/contracts/utils/ENSIP19.sol";
+import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
+import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
+import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
+import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
+import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
+import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
+import {IDataResolver} from "@ens/contracts/resolvers/profiles/IDataResolver.sol";
+import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
+import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
+import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
+import {IPubkeyResolver} from "@ens/contracts/resolvers/profiles/IPubkeyResolver.sol";
+import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
+import {IVersionableResolver} from "@ens/contracts/resolvers/profiles/IVersionableResolver.sol";
 
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
-import {
-    PermissionedResolver,
-    IPermissionedResolver,
-    PermissionedResolverLib,
-    IMulticallable,
-    IABIResolver,
-    IAddrResolver,
-    IAddressResolver,
-    IContentHashResolver,
-    IDataResolver,
-    IHasAddressResolver,
-    IInterfaceResolver,
-    INameResolver,
-    IPubkeyResolver,
-    ITextResolver,
-    IVersionableResolver,
-    NameCoder,
-    ResolverFeatures,
-    IERC7996,
-    ENSIP19,
-    COIN_TYPE_ETH,
-    COIN_TYPE_DEFAULT
-} from "~src/resolver/PermissionedResolver.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {IPermissionedResolver} from "~src/resolver/interfaces/IPermissionedResolver.sol";
+import {PermissionedResolverLib} from "~src/resolver/libraries/PermissionedResolverLib.sol";
+import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
 
 bytes4 constant TEST_SELECTOR = 0x12345678;
 
 contract PermissionedResolverTest is Test {
     uint256 constant DEFAULT_ROLES = EACBaseRolesLib.ALL_ROLES;
 
-    PermissionedResolver resolverImpl;
+    VerifiableFactory factory;
+    PermissionedResolver implementation;
     PermissionedResolver resolver;
 
     address owner = makeAddr("owner");
@@ -54,15 +52,16 @@ contract PermissionedResolverTest is Test {
     string testString = "abc";
 
     function setUp() external {
-        VerifiableFactory factory = new VerifiableFactory();
-        resolverImpl = new PermissionedResolver(address(this));
+        factory = new VerifiableFactory();
+        implementation = new PermissionedResolver(address(this));
+
         testName = NameCoder.encode("test.eth");
         testNode = NameCoder.namehash(testName, 0);
 
         bytes memory initData =
-            abi.encodeCall(PermissionedResolver.initialize, (owner, DEFAULT_ROLES));
+            abi.encodeCall(PermissionedResolver.initialize, (owner, DEFAULT_ROLES, new bytes[](0)));
         resolver = PermissionedResolver(
-            factory.deployProxy(address(resolverImpl), uint256(keccak256(initData)), initData)
+            factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
         );
     }
 
@@ -74,6 +73,36 @@ contract PermissionedResolverTest is Test {
         assertTrue(resolver.hasRootRoles(DEFAULT_ROLES, owner), "roles");
     }
 
+    function test_initialize_unowned() external {
+        bytes memory initData =
+            abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, new bytes[](0)));
+        PermissionedResolver r =
+            PermissionedResolver(
+                factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
+            );
+        assertEq(r.roleCount(r.ROOT_RESOURCE()), 0);
+    }
+
+    function test_initalize_with_setters() external {
+        bytes[] memory m = new bytes[](2);
+        m[0] = abi.encodeCall(PermissionedResolver.setName, (testNode, testString));
+        m[1] = abi.encodeCall(PermissionedResolver.setContenthash, (testNode, testAddress));
+
+        bytes memory initData = abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, m));
+        PermissionedResolver r =
+            PermissionedResolver(
+                factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
+            );
+
+        assertEq(r.name(testNode), testString, "name()");
+        assertEq(r.contenthash(testNode), testAddress, "contenthash()");
+    }
+
+    function test_canUpgradeFrom() external view {
+        assertTrue(resolver.canUpgradeFrom(address(0))); // accepts
+        assertTrue(resolver.canUpgradeFrom(address(1))); // any address
+    }
+
     function test_upgrade() external {
         MockUpgrade upgrade = new MockUpgrade();
         vm.prank(owner);
@@ -83,6 +112,7 @@ contract PermissionedResolverTest is Test {
 
     function test_upgrade_notAuthorized() external {
         MockUpgrade upgrade = new MockUpgrade();
+        assertTrue(resolver.canUpgradeFrom(address(upgrade)));
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -96,44 +126,86 @@ contract PermissionedResolverTest is Test {
     }
 
     function test_supportsInterface() external view {
-        assertTrue(ERC165Checker.supportsERC165(address(resolver)));
         assertTrue(
-            resolver.supportsInterface(type(IPermissionedResolver).interfaceId),
+            ERC165Checker.supportsInterface(
+                address(resolver),
+                type(IPermissionedResolver).interfaceId
+            ),
             "IPermissionedResolver"
         );
         assertTrue(
-            resolver.supportsInterface(type(IEnhancedAccessControl).interfaceId),
+            ERC165Checker.supportsInterface(
+                address(resolver),
+                type(IEnhancedAccessControl).interfaceId
+            ),
             "IEnhancedAccessControl"
         );
-        assertTrue(resolver.supportsInterface(type(IMulticallable).interfaceId), "IMulticallable");
-        assertTrue(resolver.supportsInterface(type(IERC7996).interfaceId), "IERC7996");
-        assertTrue(resolver.supportsInterface(type(UUPSUpgradeable).interfaceId), "UUPSUpgradeable");
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IContractNamer).interfaceId),
+            "IContractNamer"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IMulticallable).interfaceId),
+            "IMulticallable"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IERC7996).interfaceId),
+            "IERC7996"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(UUPSUpgradeable).interfaceId),
+            "UUPSUpgradeable"
+        );
 
         // profiles
-        assertTrue(resolver.supportsInterface(type(IABIResolver).interfaceId), "IABIResolver");
-        assertTrue(resolver.supportsInterface(type(IAddrResolver).interfaceId), "IAddrResolver");
         assertTrue(
-            resolver.supportsInterface(type(IAddressResolver).interfaceId),
+            ERC165Checker.supportsInterface(address(resolver), type(IABIResolver).interfaceId),
+            "IABIResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IAddrResolver).interfaceId),
+            "IAddrResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IAddressResolver).interfaceId),
             "IAddressResolver"
         );
         assertTrue(
-            resolver.supportsInterface(type(IContentHashResolver).interfaceId),
+            ERC165Checker.supportsInterface(
+                address(resolver),
+                type(IContentHashResolver).interfaceId
+            ),
             "IContentHashResolver"
         );
-        assertTrue(resolver.supportsInterface(type(IDataResolver).interfaceId), "IDataResolver");
         assertTrue(
-            resolver.supportsInterface(type(IHasAddressResolver).interfaceId),
+            ERC165Checker.supportsInterface(address(resolver), type(IDataResolver).interfaceId),
+            "IDataResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IHasAddressResolver).interfaceId),
             "IHasAddressResolver"
         );
         assertTrue(
-            resolver.supportsInterface(type(IInterfaceResolver).interfaceId),
+            ERC165Checker.supportsInterface(address(resolver), type(IInterfaceResolver).interfaceId),
             "IInterfaceResolver"
         );
-        assertTrue(resolver.supportsInterface(type(INameResolver).interfaceId), "INameResolver");
-        assertTrue(resolver.supportsInterface(type(IPubkeyResolver).interfaceId), "IPubkeyResolver");
-        assertTrue(resolver.supportsInterface(type(ITextResolver).interfaceId), "ITextResolver");
         assertTrue(
-            resolver.supportsInterface(type(IVersionableResolver).interfaceId),
+            ERC165Checker.supportsInterface(address(resolver), type(INameResolver).interfaceId),
+            "INameResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IPubkeyResolver).interfaceId),
+            "IPubkeyResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(ITextResolver).interfaceId),
+            "ITextResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(resolver),
+                type(IVersionableResolver).interfaceId
+            ),
             "IVersionableResolver"
         );
     }
@@ -234,6 +306,21 @@ contract PermissionedResolverTest is Test {
         resolver.grantRoles(resource, roleBitmap, account);
     }
 
+    function test_revokeRoles_disabled(uint256 resource, address account) external {
+        vm.assume(resource > 0);
+        uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                resource,
+                roleBitmap,
+                account
+            )
+        );
+        resolver.revokeRoles(resource, roleBitmap, account);
+    }
+
     function test_authorizeNameRoles() external {
         uint256 roleBitmap = EACBaseRolesLib.ALL_ROLES;
         uint256 resource = PermissionedResolverLib.resource(NameCoder.namehash(testName, 0), 0);
@@ -275,28 +362,23 @@ contract PermissionedResolverTest is Test {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // authorizeTextRoles() and authorizeAddrRoles()
+    // authorizeTextRoles()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_authorizeTextRoles() external {
+    function test_authorizeTextRoles(string calldata key) external {
         uint256 resource =
             PermissionedResolverLib.resource(
                 NameCoder.namehash(testName, 0),
-                PermissionedResolverLib.partHash(testString)
+                PermissionedResolverLib.partHash(key)
             );
         vm.expectEmit();
-        emit PermissionedResolver.NamedTextResource(
-            resource,
-            testName,
-            keccak256(bytes(testString)),
-            testString
-        );
+        emit PermissionedResolver.NamedTextResource(resource, testName, keccak256(bytes(key)), key);
         vm.prank(owner);
-        resolver.authorizeTextRoles(testName, testString, friend, true);
+        resolver.authorizeTextRoles(testName, key, friend, true);
         assertTrue(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_TEXT, friend));
 
         vm.prank(owner);
-        resolver.authorizeTextRoles(testName, testString, friend, false);
+        resolver.authorizeTextRoles(testName, key, friend, false);
         assertFalse(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_TEXT, friend));
     }
 
@@ -333,6 +415,10 @@ contract PermissionedResolverTest is Test {
         vm.prank(friend);
         resolver.authorizeTextRoles(testName, testString, owner, true);
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // authorizeAddrRoles(), and authorizeDataRoles()
+    ////////////////////////////////////////////////////////////////////////
 
     function test_authorizeAddrRoles(uint256 coinType) external {
         uint256 resource =
@@ -385,6 +471,61 @@ contract PermissionedResolverTest is Test {
         );
         vm.prank(friend);
         resolver.authorizeAddrRoles(testName, 0, owner, true);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // authorizeDataRoles()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_authorizeDataRoles(string calldata key) external {
+        uint256 resource =
+            PermissionedResolverLib.resource(
+                NameCoder.namehash(testName, 0),
+                PermissionedResolverLib.partHash(key)
+            );
+        vm.expectEmit();
+        emit PermissionedResolver.NamedDataResource(resource, testName, keccak256(bytes(key)), key);
+        vm.prank(owner);
+        resolver.authorizeDataRoles(testName, key, friend, true);
+        assertTrue(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_DATA, friend));
+
+        vm.prank(owner);
+        resolver.authorizeDataRoles(testName, key, friend, false);
+        assertFalse(resolver.hasRoles(resource, PermissionedResolverLib.ROLE_SET_DATA, friend));
+    }
+
+    function test_authorizeDataRoles_anyName() external {
+        vm.prank(owner);
+        resolver.authorizeDataRoles(NameCoder.encode(""), testString, friend, true);
+        vm.prank(owner);
+        resolver.authorizeDataRoles(NameCoder.encode(""), testString, friend, false);
+    }
+
+    function test_authorizeDataRoles_notRoot() external {
+        vm.prank(owner);
+        resolver.authorizeNameRoles(
+            testName,
+            PermissionedResolverLib.ROLE_SET_DATA_ADMIN,
+            actor,
+            true
+        );
+        vm.prank(actor);
+        resolver.authorizeDataRoles(testName, testString, friend, true);
+        vm.prank(actor);
+        resolver.authorizeDataRoles(testName, testString, friend, false);
+    }
+
+    function test_authorizeDataRoles_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                PermissionedResolverLib.resource(NameCoder.namehash(testName, 0), 0),
+                PermissionedResolverLib.ROLE_SET_DATA,
+                friend
+            )
+        );
+        vm.prank(friend);
+        resolver.authorizeDataRoles(testName, testString, owner, true);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -507,6 +648,31 @@ contract PermissionedResolverTest is Test {
             )
         );
         resolver.setAddr(testNode, COIN_TYPE_ETH, "");
+    }
+
+    function test_setData(string calldata key, bytes calldata value) external {
+        vm.expectEmit();
+        emit IDataResolver.DataChanged(testNode, key, key, value);
+        vm.prank(owner);
+        resolver.setData(testNode, key, value);
+
+        assertEq(resolver.data(testNode, key), value, "immediate");
+
+        bytes memory result =
+            resolver.resolve(testName, abi.encodeCall(IDataResolver.data, (bytes32(0), key)));
+        assertEq(result, abi.encode(value), "extended");
+    }
+
+    function test_setData_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                PermissionedResolverLib.resource(testNode, 0),
+                PermissionedResolverLib.ROLE_SET_DATA,
+                address(this)
+            )
+        );
+        resolver.setData(testNode, testString, "");
     }
 
     function test_setText(string calldata key, string calldata value) external {
@@ -983,15 +1149,14 @@ contract PermissionedResolverTest is Test {
     ////////////////////////////////////////////////////////////////////////
 
     function test_implementationIsNameable() external view {
-        assertTrue(resolverImpl.isContractNamer(address(this)));
+        assertTrue(implementation.isContractNamer(address(this)));
     }
 
     function test_isContractNamer() external {
         assertTrue(resolver.isContractNamer(owner));
-
         assertFalse(resolver.isContractNamer(friend), "before");
-        vm.prank(owner);
 
+        vm.prank(owner);
         resolver.grantRootRoles(PermissionedResolverLib.ROLE_CAN_NAME, friend);
         assertTrue(resolver.isContractNamer(friend), "granted");
 

@@ -655,6 +655,39 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(registry.latestOwnerOf(tokenId), testOwner, "expired");
     }
 
+    function test_balanceOf() external {
+        assertEq(registry.balanceOf(address(0), 0), 0, "zero");
+        assertEq(
+            registry.balanceOf(testOwner, LibLabel.withVersion(LibLabel.id(testLabel), 0)),
+            0,
+            "available"
+        );
+        uint256 tokenId = this._register();
+        assertEq(registry.balanceOf(testOwner, tokenId), 1, "registered");
+        assertEq(registry.balanceOf(testOwner, LibLabel.withVersion(tokenId, 1)), 0, "next");
+        registry.unregister(tokenId);
+        assertEq(registry.balanceOf(testOwner, tokenId), 0, "unregistered");
+    }
+
+    function test_balanceOfBatch() external {
+        address[] memory acs = new address[](3);
+        uint256[] memory ids = new uint256[](3);
+        ids[0] = ids[1] = this._register();
+        ids[2] = ids[0] + 1;
+        acs[0] = acs[2] = testOwner;
+        uint256[] memory bals = registry.balanceOfBatch(acs, ids);
+        assertEq(bals[0], 1);
+        assertEq(bals[1], 0, "wrong owner");
+        assertEq(bals[2], 0, "wrong token");
+    }
+
+    function test_balanceOfBatch_arrayLength() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidArrayLength.selector, 1, 0)
+        );
+        registry.balanceOfBatch(new address[](0), new uint256[](1));
+    }
+
     function test_safeTransferFrom() external {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
@@ -695,6 +728,35 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         );
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, amount, "");
+    }
+
+    function test_safeTransferFrom_invalidReceiver() external {
+        uint256 tokenId = this._register();
+        address to; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, to));
+        vm.prank(user1);
+        registry.safeTransferFrom(user1, to, tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_invalidSender() external {
+        uint256 tokenId = this._register();
+        address from; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
+        vm.prank(user1);
+        registry.__safeTransferFrom(from, user2, tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_missingApproval() external {
+        uint256 tokenId = this._register();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC1155Errors.ERC1155MissingApprovalForAll.selector,
+                user2,
+                user1
+            )
+        );
+        vm.prank(user2);
+        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
 
     function test_safeTransferFrom_notAuthorized() external {
@@ -812,6 +874,24 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         );
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
+    }
+
+    function test_safeBatchTransferFrom_invalidReceiver() external {
+        uint256 tokenId = this._register();
+        uint256[] memory v;
+        address to; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, to));
+        vm.prank(user1);
+        registry.safeBatchTransferFrom(user1, to, v, v, "");
+    }
+
+    function test_safeBatchTransferFrom_invalidSender() external {
+        uint256 tokenId = this._register();
+        uint256[] memory v;
+        address from; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
+        vm.prank(user1);
+        registry.__safeBatchTransferFrom(from, user2, v, v, "");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1048,6 +1128,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     // Token Regeneration
     ////////////////////////////////////////////////////////////////////////
 
+    function test_burn_invalidSender() external {
+        address from; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
+        registry.__burn(from, 0, 0);
+    }
+
     function test_regenerate_mintBurn() external {
         IPermissionedRegistry.State memory s0 = registry.getState(this._register());
         registry.unregister(s0.tokenId);
@@ -1244,10 +1330,16 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // EAC + setApprovalForAll()
+    // EAC Override: setApprovalForAll()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_setApprovalForAll_roles() external {
+    function test_setApprovalForAll_invalidOperator() external {
+        address to; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidOperator.selector, to));
+        registry.setApprovalForAll(to, true);
+    }
+
+    function test_setApprovalForAll_roles(uint256) external {
         testRoles = _randomRoleBitmap(true, false);
         uint256 tokenId = this._register();
         testRoles >>= 128; // convert to normal
@@ -1259,6 +1351,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.grantRoles(tokenId, testRoles, actor);
         vm.prank(user2);
         registry.revokeRoles(tokenId, testRoles, actor);
+        assertEq(registry.roles(tokenId, actor), 0);
 
         vm.prank(testOwner);
         registry.setApprovalForAll(user2, false);
@@ -1275,25 +1368,107 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.grantRoles(tokenId, testRoles, actor);
     }
 
-    function test_setApprovalForAll_blended() external {
-        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+    function test_setApprovalForAll_revokeRoles() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 tokenId = this._register();
 
-        // user2 has approved roles
         vm.prank(testOwner);
         registry.setApprovalForAll(user2, true);
 
-        // user2 also has root roles
+        // approval roles are aliased and not an actual assignee
+        (uint256 counts, ) = registry.getAssigneeCount(tokenId, testRoles);
+        assertEq(counts, EACBaseRolesLib.ALL_ROLES * 1); // not * 2
+        assertEq(registry.roles(tokenId, testOwner), testRoles, "before:owner"); // real
+        assertEq(registry.roles(tokenId, user2), testRoles, "before:approved"); // alias
+
+        // cant revoke aliased roles
+        vm.prank(user2);
+        assertFalse(registry.revokeRoles(tokenId, testRoles, user2));
+
+        // can revoke real roles via approval
+        vm.prank(user2);
+        assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
+
+        // since roles are aliased, revoking real roles => aliased roles
+        (counts, ) = registry.getAssigneeCount(tokenId, testRoles);
+        assertEq(counts, 0);
+        assertEq(registry.roles(tokenId, testOwner), 0, "after:owner");
+        assertEq(registry.roles(tokenId, user2), 0, "after:approved");
+    }
+
+    function test_setApprovalForAll_blendedRoles() external {
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+        uint256 tokenId = this._register();
+
+        // user2 has token roles via approval
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        // user2 has token roles via grant
+        vm.prank(testOwner);
+        registry.grantRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user2);
+
+        // user2 has root roles
         registry.grantRootRoles(RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN, user2);
 
+        // user2 effectively has roles from all sources
         assertTrue(
             registry.hasRoles(
                 tokenId,
+                RegistryRolesLib.ROLE_SET_RESOLVER |
                 RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
                 RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN,
                 user2
             )
         );
+    }
+
+    function test_setApprovalForAll_setResolver() external {
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
+        uint256 tokenId = this._register();
+
+        // without approval
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                tokenId, // same as resource
+                testRoles,
+                user2
+            )
+        );
+        vm.prank(user2);
+        registry.setResolver(tokenId, testResolver);
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        // with approval
+        vm.prank(user2);
+        registry.setResolver(tokenId, testResolver);
+    }
+
+    function test_setApprovalForAll_setSubregistry() external {
+        testRoles = RegistryRolesLib.ROLE_SET_SUBREGISTRY;
+        uint256 tokenId = this._register();
+
+        // without approval
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                tokenId, // same as resource
+                testRoles,
+                user2
+            )
+        );
+        vm.prank(user2);
+        registry.setSubregistry(tokenId, testRegistry);
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        // with approval
+        vm.prank(user2);
+        registry.setSubregistry(tokenId, testRegistry);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1629,6 +1804,31 @@ contract MockPermissionedRegistry is PermissionedRegistry {
     {}
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
+    }
+    function __safeTransferFrom(
+        address from,
+        address to,
+        uint256 id,
+        uint256 value,
+        bytes memory data
+    )
+        external
+    {
+        _safeTransferFrom(from, to, id, value, data);
+    }
+    function __safeBatchTransferFrom(
+        address from,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory values,
+        bytes memory data
+    )
+        external
+    {
+        _safeBatchTransferFrom(from, to, ids, values, data);
+    }
+    function __burn(address from, uint256 id, uint256 value) external {
+        _burn(from, id, value);
     }
 }
 

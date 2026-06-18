@@ -4,6 +4,7 @@ pragma solidity ^0.8.13;
 import {Test, Vm} from "forge-std/Test.sol";
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {ILabelStore} from "~src/utils/interfaces/ILabelStore.sol";
@@ -15,6 +16,13 @@ contract LabelStoreTest is Test {
 
     function setUp() external {
         labelStore = new LabelStore(IContractNamer(address(0)));
+    }
+
+    function test_supportsInterface() external view {
+        assertTrue(
+            ERC165Checker.supportsInterface(address(labelStore), type(ILabelStore).interfaceId),
+            "ILabelStore"
+        );
     }
 
     function test_setLabel(string calldata label, uint32 version) external {

@@ -25,10 +25,10 @@ uint256 constant ROLE_DISABLE_TOKEN = 1 << 4;
 uint256 constant ROLE_DISABLE_TOKEN_ADMIN = ROLE_DISABLE_TOKEN << 128;
 
 /// @dev Nybble 2: authorizes contract naming. Root only.
-uint256 constant ROLE_SET_NAME = 1 << 8;
+uint256 constant ROLE_CAN_NAME = 1 << 8;
 
-/// @dev Nybble 34: authorizes setting `ROLE_SET_NAME`.
-uint256 constant ROLE_SET_NAME_ADMIN = ROLE_SET_NAME << 128;
+/// @dev Nybble 34: authorizes setting `ROLE_CAN_NAME`.
+uint256 constant ROLE_CAN_NAME_ADMIN = ROLE_CAN_NAME << 128;
 
 /// @dev Default root roles assigned at construction.
 uint256 constant DEFAULT_ROLE_BITMAP =
@@ -36,8 +36,8 @@ uint256 constant DEFAULT_ROLE_BITMAP =
     ROLE_UPDATE_TOKEN_ADMIN |
     ROLE_DISABLE_TOKEN |
     ROLE_DISABLE_TOKEN_ADMIN |
-    ROLE_SET_NAME |
-    ROLE_SET_NAME_ADMIN;
+    ROLE_CAN_NAME |
+    ROLE_CAN_NAME_ADMIN;
 
 /// @dev Initialization-time structure for a discount point.
 /// @param duration Duration threshold, in seconds.
@@ -256,7 +256,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
 
     /// @inheritdoc IContractNamer
     function isContractNamer(address namer) external view returns (bool) {
-        return hasRootRoles(ROLE_SET_NAME, namer);
+        return hasRootRoles(ROLE_CAN_NAME, namer);
     }
 
     /// @notice Get all base rates, in standard units per second.

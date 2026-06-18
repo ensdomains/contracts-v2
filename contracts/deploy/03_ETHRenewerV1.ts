@@ -20,9 +20,8 @@ export default execute(
       "StandardRentPriceOracle",
     );
 
-    const baseRegistrar = await getV1<
-      (typeof artifacts.BaseRegistrarImplementation)["abi"]
-    >("BaseRegistrarImplementation");
+    const nameWrapper =
+      await getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
     const wrappedController = await getV1<
       (typeof artifacts.IWrappedETHRegistrarController)["abi"]
@@ -38,7 +37,7 @@ export default execute(
         rentPriceOracle.address,
         GRACE_PERIOD_V2,
         PREMIGRATION_BONUS_PERIOD,
-        baseRegistrar.address,
+        nameWrapper.address,
         wrappedController.address,
       ],
     });
@@ -54,7 +53,7 @@ export default execute(
     dependencies: [
       "ETHRegistry",
       "StandardRentPriceOracle",
-      "BaseRegistrarImplementation",
+      "NameWrapper",
       "WrappedETHRegistrarController",
     ],
   },

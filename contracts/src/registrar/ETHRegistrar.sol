@@ -179,7 +179,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     function getRegisterPrice(string calldata label, uint64 duration, IERC20 paymentToken)
         external
         view
-        returns (uint256 bae, uint256 premium)
+        returns (uint256 base, uint256 premium)
     {
         return
             rentPriceOracle.getRegisterPrice(
