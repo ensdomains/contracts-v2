@@ -20,10 +20,9 @@ type PremigrationRunTaskArgs = {
   mainnetRpcUrl: string;
   batchSize: string;
   limit: string;
-  minExpiryDays: string;
+  bonusPeriodDays: string;
   workDir: string;
   dryRun: boolean;
-  skipExistingReservations: boolean;
   resume: boolean;
 };
 
@@ -65,10 +64,9 @@ const action: NewTaskActionFunction<PremigrationRunTaskArgs> = async (
         csvFile: args.csvFile,
         batchSize: nonEmptyString(args.batchSize),
         limit: nonEmptyString(args.limit),
-        minExpiryDays: nonEmptyString(args.minExpiryDays),
+        bonusPeriodDays: nonEmptyString(args.bonusPeriodDays),
         workDir: nonEmptyString(args.workDir),
         dryRun: args.dryRun,
-        skipExistingReservations: args.skipExistingReservations,
       },
       args.resume,
     );

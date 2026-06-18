@@ -522,9 +522,10 @@ const plugin: HardhatPlugin = {
         defaultValue: "",
       })
       .addOption({
-        name: "minExpiryDays",
-        description: "Skip names expiring within this many days",
-        defaultValue: "0",
+        name: "bonusPeriodDays",
+        description:
+          "Days added to each name's v1 expiry to compute its v2 expiry",
+        defaultValue: "",
       })
       .addOption({
         name: "workDir",
@@ -534,11 +535,6 @@ const plugin: HardhatPlugin = {
       .addFlag({
         name: "dryRun",
         description: "Simulate without transactions",
-      })
-      .addFlag({
-        name: "skipExistingReservations",
-        description:
-          "Skip names already reserved on v2 with the expected expiry",
       })
       .addFlag({
         name: "resume",

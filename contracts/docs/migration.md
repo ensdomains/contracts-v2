@@ -18,7 +18,7 @@ Phase numbering below matches the console output of the `runForkFull` orchestrat
 | 1 | Deploy all v2 contracts, registrar deferred | `phase deploy-v2` | `deployer` / `owner` / `urManager` (+ one `v1Owner` tx, deferrable) |
 | 2 | Initial pre-migration: seed v1 names as reserved on v2 | `premigration run` / `resume`, then `premigration verify` | BatchRegistrar owner |
 | 3 | Disable v1 registrar controllers (v1 registration freeze) | `phase disable-v1-registrars`, then `phase verify-v1-registrars-disabled` | v1 owner |
-| 4 | Final pre-migration sync from a fresh post-freeze export | `premigration run --min-expiry-days 0 --skip-existing-reservations`, then `premigration verify` | BatchRegistrar owner |
+| 4 | Final pre-migration sync from a fresh post-freeze export | `premigration run`, then `premigration verify` | BatchRegistrar owner |
 | 5 | Switch top URP → managed URP | `phase switch-urp-to-managed`, then `phase verify-urp` | top URP admin (DAO on mainnet, top URP owner on sepolia) |
 | 6 | Upgrade managed URP → `UniversalResolverV2` (resolution cutover) | `phase upgrade-managed-urp`, then `phase verify-urp` | `urManager` (security council) |
 | 7 | Revoke `REGISTRAR \| RENEW` from `BatchRegistrar` | `phase disable-batch-registrar`, then `phase verify-batch-registrar-disabled` | registry root-role admin |
@@ -39,7 +39,7 @@ One step requires a v1-owner signature: pointing the v1 `.eth` resolver at `ENSV
 
 ### Phase 2: initial pre-migration
 
-Seeds every active or in-grace v1 `.eth` 2LD into the v2 registry as a **reserved** entry via `BatchRegistrar`, driven by a registration CSV — see [premigration.md](./premigration.md) for the CSV format, continuity-expiry rules, checkpointing, and verification. The rehearsal orchestrator runs this pass with `--min-expiry-days 7`, leaving names about to expire for the final sync.
+Seeds every active or in-grace v1 `.eth` 2LD into the v2 registry as a **reserved** entry via `BatchRegistrar`, driven by a registration CSV — see [premigration.md](./premigration.md) for the CSV format, the bonus-period expiry rule, checkpointing, and verification. Each reservation's v2 expiry is the name's v1 expiry plus the configurable `--bonus-period-days` (default 62).
 
 ### Phase 3: disable v1 registrars
 
@@ -47,7 +47,7 @@ Removes `LegacyETHRegistrarController`, `ETHRegistrarController`, `WrappedETHReg
 
 ### Phase 4: final pre-migration sync
 
-After the freeze, export a fresh registration CSV (Dune for Sepolia, BigQuery for mainnet — see [premigration.md](./premigration.md#cli-reference)) and re-run pre-migration with `--min-expiry-days 0 --skip-existing-reservations` so names registered, renewed, or newly past the expiry buffer since phase 2 are caught up. Reservations whose continuity expiry already matches are skipped; differing expiries are renewed.
+After the freeze, export a fresh registration CSV (Dune for Sepolia, BigQuery for mainnet — see [premigration.md](./premigration.md#cli-reference)) and re-run pre-migration so names registered or renewed since phase 2 are caught up. Names already reserved on v2 are re-reserved with their bonus-adjusted expiry; newly eligible names are reserved for the first time.
 
 ### Phase 5: switch top URP to managed URP
 

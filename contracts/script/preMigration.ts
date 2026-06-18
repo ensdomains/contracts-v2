@@ -106,8 +106,7 @@ export interface PreMigrationConfig {
   dryRun: boolean;
   continue?: boolean;
   disableCheckpoint?: boolean;
-  minExpiryDays: number;
-  skipExistingReservations: boolean;
+  bonusPeriodDays: number;
   v1ResolverAddress: Address;
   v1BaseRegistrarAddress: Address;
 }
@@ -130,19 +129,18 @@ const ERROR_LOG_FILE = "preMigration-errors.log";
 const INFO_LOG_FILE = "preMigration.log";
 
 const RPC_TIMEOUT_MS = 30000;
-const RPC_RETRY_COUNT = 3;
-export const SECONDS_PER_DAY = 86400n;
-export const GRACE_PERIOD_V1_SECONDS = 90n * SECONDS_PER_DAY;
-export const TRUE_GRACE_PERIOD_V1_SECONDS = GRACE_PERIOD_V1_SECONDS + 1n;
-export const GRACE_PERIOD_V2_SECONDS = 28n * SECONDS_PER_DAY;
-export const BONUS_PERIOD_SECONDS =
-  TRUE_GRACE_PERIOD_V1_SECONDS - GRACE_PERIOD_V2_SECONDS;
 
 // ENS v1 BaseRegistrar on Ethereum mainnet
 const BASE_REGISTRAR_ADDRESS =
   "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85" as Address;
-const MULTICALL3_ADDRESS =
-  "0xca11bde05977b3631167028862be2a173976ca11" as Address;
+
+/// Hard-coded ENSv1 grace period (in days). Defines the window after a name's
+/// v1 expiry during which the original owner retains exclusive renewal rights
+/// on v1. Sourced from `BaseRegistrarImplementation.GRACE_PERIOD = 90 days`.
+/// Used as the v1-side eligibility gate for migration: a name is migratable
+/// only while its v1 owner can still renew it.
+export const V1_GRACE_PERIOD_DAYS = 90n;
+export const V1_GRACE_PERIOD_SECONDS = V1_GRACE_PERIOD_DAYS * 86400n;
 
 export function createFreshCheckpoint(): Checkpoint {
   return {
@@ -217,8 +215,8 @@ class PreMigrationLogger extends Logger {
 
   alreadyReserved(): void {
     this.raw(
-      yellow(`  → ⊘ Already reserved with expected expiry`),
-      `  → ⊘ Already reserved with expected expiry`,
+      yellow(`  → ⊘ Already reserved by this migration`),
+      `  → ⊘ Already reserved by this migration`,
     );
   }
 
@@ -281,11 +279,10 @@ class PreMigrationLogger extends Logger {
     );
   }
 
-  v1Verified(name: string, v1Expiry: string, v2Expiry: string): void {
+  v1Verified(name: string, expiry: string): void {
     this.raw(
-      green(`  → ✓ Verified on v1 continuity`) +
-        dim(` (v1 expiry: ${v1Expiry}, v2 expiry: ${v2Expiry})`),
-      `  → ✓ Verified on v1 continuity (v1 expiry: ${v1Expiry}, v2 expiry: ${v2Expiry})`,
+      green(`  → ✓ Verified on v1`) + dim(` (expires: ${expiry})`),
+      `  → ✓ Verified on v1 (expires: ${expiry})`,
     );
   }
 
@@ -304,13 +301,6 @@ class PreMigrationLogger extends Logger {
     );
   }
 
-  skippingExpiringSoon(name: string, daysUntilExpiry: number): void {
-    this.raw(
-      yellow(`  → ⊘ Skipping: ${bold(name)}.eth`) +
-        dim(` (expires in ${daysUntilExpiry} days)`),
-      `  → ⊘ Skipping: ${name}.eth (expires in ${daysUntilExpiry} days)`,
-    );
-  }
 }
 
 const logger = new PreMigrationLogger();
@@ -341,21 +331,7 @@ export function saveCheckpoint(checkpoint: Checkpoint): void {
 // v1 verification
 interface V1VerificationResult {
   isRegistered: boolean;
-  isContinuityEligible: boolean;
   expiry: bigint;
-}
-
-export function isV1ContinuityEligible(
-  expiry: bigint,
-  currentTimestamp: bigint,
-): boolean {
-  return (
-    expiry > 0n && expiry + TRUE_GRACE_PERIOD_V1_SECONDS > currentTimestamp
-  );
-}
-
-export function ensV2ContinuityExpiry(v1Expiry: bigint): bigint {
-  return v1Expiry + BONUS_PERIOD_SECONDS;
 }
 
 export async function verifyNameOnV1(
@@ -376,12 +352,10 @@ export async function verifyNameOnV1(
     args: [tokenId],
   });
 
-  const block = await client.getBlock();
-  const currentTimestamp = BigInt(block.timestamp);
+  const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
   const isRegistered = expiry > 0n && expiry > currentTimestamp;
-  const isContinuityEligible = isV1ContinuityEligible(expiry, currentTimestamp);
 
-  return { isRegistered, isContinuityEligible, expiry };
+  return { isRegistered, expiry };
 }
 
 async function validateBatchRegistrar(
@@ -600,16 +574,13 @@ async function createMigrationClients(
   const client = createWalletClient({
     account,
     chain: v2Chain,
-    transport: http(config.rpcUrl, {
-      retryCount: RPC_RETRY_COUNT,
-      timeout: RPC_TIMEOUT_MS,
-    }),
+    transport: http(config.rpcUrl, { retryCount: 0, timeout: RPC_TIMEOUT_MS }),
   }).extend(publicActions);
 
   const mainnetClient = createPublicClient({
     chain: mainnet,
     transport: http(config.mainnetRpcUrl, {
-      retryCount: RPC_RETRY_COUNT,
+      retryCount: 0,
       timeout: RPC_TIMEOUT_MS,
     }),
   });
@@ -732,10 +703,12 @@ async function fetchAndReserveInBatches(
 export interface VerificationResult {
   registration: ENSRegistration;
   v2Status: number;
-  v2Expiry: bigint;
   v2LatestOwner: string;
-  v1IsRegistered: boolean;
-  v1IsContinuityEligible: boolean;
+  /// Whether the original v1 owner still has renewal rights — i.e., the name
+  /// is currently registered or within the v1 90-day grace period. Names that
+  /// pass this gate are candidates for migration; the v2 expiry is computed
+  /// separately by adding the configurable `--bonus-period-days`.
+  v1IsClaimable: boolean;
   v1Expiry: bigint;
   error?: string;
 }
@@ -747,7 +720,6 @@ export async function batchVerifyRegistrations(
   registryAddress: Address,
   registryAbi: any[],
   v1BaseRegistrarAddress: Address,
-  currentTimestamp?: bigint,
 ): Promise<VerificationResult[]> {
   const v2Contracts = registrations.map((r) => ({
     address: registryAddress,
@@ -763,20 +735,9 @@ export async function batchVerifyRegistrations(
     args: [keccak256(toHex(r.labelName))],
   }));
 
-  const [v2Settled, v1Settled, v1BlockSettled] = await Promise.allSettled([
-    client.multicall({
-      allowFailure: true,
-      multicallAddress: MULTICALL3_ADDRESS,
-      contracts: v2Contracts,
-    }),
-    mainnetClient.multicall({
-      allowFailure: true,
-      multicallAddress: MULTICALL3_ADDRESS,
-      contracts: v1Contracts,
-    }),
-    currentTimestamp === undefined
-      ? mainnetClient.getBlock()
-      : Promise.resolve(null),
+  const [v2Settled, v1Settled] = await Promise.allSettled([
+    client.multicall({ contracts: v2Contracts }),
+    mainnetClient.multicall({ contracts: v1Contracts }),
   ]);
 
   const buildFallback = (reason: unknown) =>
@@ -792,11 +753,6 @@ export async function batchVerifyRegistrations(
       `v1 multicall failed for batch of ${registrations.length}: ${v1Settled.reason}`,
     );
   }
-  if (v1BlockSettled.status === "rejected") {
-    logger.warning(
-      `v1 block timestamp lookup failed: ${v1BlockSettled.reason}`,
-    );
-  }
 
   const v2Results =
     v2Settled.status === "fulfilled"
@@ -807,11 +763,7 @@ export async function batchVerifyRegistrations(
       ? v1Settled.value
       : buildFallback(v1Settled.reason);
 
-  const v1Now =
-    currentTimestamp ??
-    (v1BlockSettled.status === "fulfilled" && v1BlockSettled.value
-      ? BigInt((v1BlockSettled.value as any).timestamp)
-      : BigInt(Math.floor(Date.now() / 1000)));
+  const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
 
   return registrations.map((reg, i) => {
     const v2 = (v2Results as any[])[i];
@@ -821,10 +773,8 @@ export async function batchVerifyRegistrations(
       return {
         registration: reg,
         v2Status: -1,
-        v2Expiry: 0n,
         v2LatestOwner: zeroAddress,
-        v1IsRegistered: false,
-        v1IsContinuityEligible: false,
+        v1IsClaimable: false,
         v1Expiry: 0n,
         error: v2.status === "failure" ? String(v2.error) : String(v1.error),
       };
@@ -834,10 +784,9 @@ export async function batchVerifyRegistrations(
     return {
       registration: reg,
       v2Status: (v2.result as any).status,
-      v2Expiry: BigInt((v2.result as any).expiry),
       v2LatestOwner: (v2.result as any).latestOwner,
-      v1IsRegistered: expiry > 0n && expiry > v1Now,
-      v1IsContinuityEligible: isV1ContinuityEligible(expiry, v1Now),
+      v1IsClaimable:
+        expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > currentTimestamp,
       v1Expiry: expiry,
     };
   });
@@ -994,10 +943,7 @@ async function processBatch(
   const alreadyReservedNames = new Set<string>();
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
 
-  const v1Block = await mainnetClient.getBlock();
-  const currentTimestamp = BigInt(v1Block.timestamp);
-  const minExpiryThreshold =
-    currentTimestamp + BigInt(config.minExpiryDays) * SECONDS_PER_DAY;
+  const bonusPeriodSeconds = BigInt(config.bonusPeriodDays) * 86400n;
 
   const verificationResults = await batchVerifyRegistrations(
     registrations,
@@ -1006,7 +952,6 @@ async function processBatch(
     config.registryAddress,
     registryAbi,
     config.v1BaseRegistrarAddress,
-    currentTimestamp,
   );
 
   const baseProcessed = checkpoint.totalProcessed;
@@ -1039,11 +984,15 @@ async function processBatch(
       logger.finishedName(registration.labelName, "failed");
       continue;
     }
-    if (!result.v1IsContinuityEligible) {
+    if (result.v2Status === 1) {
+      alreadyReservedNames.add(registration.labelName);
+    }
+
+    if (!result.v1IsClaimable) {
       const reason =
         result.v1Expiry === 0n
-          ? "never registered or fully expired"
-          : "fully expired";
+          ? "never registered on v1"
+          : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
       logger.v1NotRegistered(registration.labelName, reason);
       checkpoint.skippedCount++;
       checkpoint.totalProcessed++;
@@ -1051,48 +1000,12 @@ async function processBatch(
       continue;
     }
 
-    if (
-      config.minExpiryDays > 0 &&
-      result.v1Expiry > currentTimestamp &&
-      result.v1Expiry <= minExpiryThreshold
-    ) {
-      const daysUntilExpiry = Number(
-        (result.v1Expiry - currentTimestamp) / 86400n,
-      );
-      logger.skippingExpiringSoon(registration.labelName, daysUntilExpiry);
-      checkpoint.skippedCount++;
-      checkpoint.totalProcessed++;
-      logger.finishedName(registration.labelName, "skipped");
-      continue;
-    }
+    const effectiveExpiry = result.v1Expiry + bonusPeriodSeconds;
 
-    const effectiveExpiry = ensV2ContinuityExpiry(result.v1Expiry);
-
-    if (result.v2Status === 1) {
-      alreadyReservedNames.add(registration.labelName);
-      if (
-        config.skipExistingReservations &&
-        result.v2Expiry === effectiveExpiry
-      ) {
-        logger.alreadyReserved();
-        checkpoint.skippedCount++;
-        checkpoint.totalProcessed++;
-        logger.finishedName(registration.labelName, "skipped");
-        continue;
-      }
-    }
-
-    const v1ExpiryDateFormatted = new Date(Number(result.v1Expiry) * 1000)
-      .toISOString()
-      .split("T")[0];
     const expiryDateFormatted = new Date(Number(effectiveExpiry) * 1000)
       .toISOString()
       .split("T")[0];
-    logger.v1Verified(
-      registration.labelName,
-      v1ExpiryDateFormatted,
-      expiryDateFormatted,
-    );
+    logger.v1Verified(registration.labelName, expiryDateFormatted);
 
     batchLabels.push(registration.labelName);
     batchExpires.push(effectiveExpiry);
@@ -1265,14 +1178,9 @@ export async function main(argv = process.argv): Promise<void> {
       false,
     )
     .option(
-      "--min-expiry-days <days>",
-      "Skip active names expiring within this many days",
-      "0",
-    )
-    .option(
-      "--skip-existing-reservations",
-      "Skip names already reserved on v2 with the expected expiry",
-      false,
+      "--bonus-period-days <days>",
+      "Days added to each name's v1 expiry to compute its v2 expiry",
+      "62",
     )
     .requiredOption(
       "--v1-resolver <address>",
@@ -1297,15 +1205,6 @@ export async function main(argv = process.argv): Promise<void> {
     process.exit(1);
   }
 
-  const parseOptionInt = (
-    value: string | undefined,
-    fallback: number,
-  ): number => {
-    if (value === undefined) return fallback;
-    const parsed = parseInt(value);
-    return Number.isNaN(parsed) ? fallback : parsed;
-  };
-
   const config: PreMigrationConfig = {
     rpcUrl: opts.rpcUrl,
     mainnetRpcUrl: opts.mainnetRpcUrl,
@@ -1314,13 +1213,14 @@ export async function main(argv = process.argv): Promise<void> {
     privateKey,
     account,
     csvFilePath: opts.csvFile,
-    batchSize: parseOptionInt(opts.batchSize, 50),
-    startIndex: parseOptionInt(opts.startIndex, -1),
+    batchSize: parseInt(opts.batchSize) || 100,
+    startIndex: parseInt(opts.startIndex) || 0,
     limit: opts.limit ? parseInt(opts.limit) : null,
     dryRun: opts.dryRun,
     continue: opts.continue,
-    minExpiryDays: parseOptionInt(opts.minExpiryDays, 0),
-    skipExistingReservations: opts.skipExistingReservations,
+    bonusPeriodDays: Number.isNaN(parseInt(opts.bonusPeriodDays))
+      ? 62
+      : parseInt(opts.bonusPeriodDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
   };
@@ -1341,11 +1241,10 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config("Mainnet RPC (v1)", config.mainnetRpcUrl);
     logger.config("CSV File", config.csvFilePath);
     logger.config("Batch Size", config.batchSize);
-    logger.config("Min Expiry Days", config.minExpiryDays);
-    logger.config("Continuity Bonus Seconds", BONUS_PERIOD_SECONDS.toString());
+    logger.config("Bonus Period Days", config.bonusPeriodDays);
     logger.config(
-      "Skip Existing Reservations",
-      config.skipExistingReservations,
+      "V1 Grace Period Days (hard-coded)",
+      Number(V1_GRACE_PERIOD_DAYS),
     );
     logger.config("V1 Resolver", config.v1ResolverAddress);
     logger.config("Limit", config.limit ?? "none");

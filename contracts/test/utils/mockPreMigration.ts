@@ -58,9 +58,8 @@ export function buildMainArgs(
     dryRun?: boolean;
     limit?: number;
     continue?: boolean;
-    minExpiryDays?: number;
+    bonusPeriodDays?: number;
     batchSize?: number;
-    skipExistingReservations?: boolean;
     useEnvVarForPrivateKey?: boolean;
     omitPrivateKey?: boolean;
   } = {},
@@ -76,15 +75,15 @@ export function buildMainArgs(
     "--registry",
     registryAddress,
     "--batch-registrar",
-    env.rocketh.deployments["BatchRegistrar"].address,
+    env.rocketh.get("BatchRegistrar").address,
     "--csv-file",
     csvFilePath,
     "--v1-resolver",
     env.v2.ENSV1Resolver.address,
     "--mainnet-rpc-url",
     rpcUrl,
-    "--min-expiry-days",
-    String(overrides.minExpiryDays ?? 0),
+    "--bonus-period-days",
+    String(overrides.bonusPeriodDays ?? 0),
     "--v1-base-registrar",
     env.v1.BaseRegistrar.address,
   ];
@@ -107,12 +106,10 @@ export function buildMainArgs(
   if (overrides.batchSize !== undefined) {
     args.push("--batch-size", String(overrides.batchSize));
   }
-  if (overrides.skipExistingReservations) {
-    args.push("--skip-existing-reservations");
-  }
 
   return args;
 }
+
 
 export async function verifyV2State(
   env: DevnetEnvironment,

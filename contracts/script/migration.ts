@@ -45,18 +45,17 @@ import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environ
 import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
   ROLES,
+  SEC_PER_DAY,
   STATUS,
 } from "./deploy-constants.js";
 import { main as exportRegistrationsMain } from "./exportTheGraphRegistrations.js";
 import {
-  ensV2ContinuityExpiry,
   createFreshCheckpoint,
   isValidLabel,
-  isV1ContinuityEligible,
   loadCheckpoint,
   main as preMigrationMain,
   parseCSVLine,
-  SECONDS_PER_DAY,
+  V1_GRACE_PERIOD_SECONDS,
 } from "./preMigration.js";
 
 const DEFAULT_ANVIL_KEY =
@@ -70,15 +69,11 @@ const MAINNET_DAO = "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7" as const;
 // account in rocketh/config.ts so the two values cannot drift apart.
 const SEPOLIA_V1_OWNER = getAddress(rockethConfig.accounts.v1Owner.sepolia);
 
-const V1_REGISTRATION_DURATION = 365n * SECONDS_PER_DAY;
-const V2_REGISTRATION_DURATION = 28n * SECONDS_PER_DAY;
+const V1_REGISTRATION_DURATION = 365n * SEC_PER_DAY;
+const V2_REGISTRATION_DURATION = 28n * SEC_PER_DAY;
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 const RPC_RETRY_COUNT = 3;
 const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
-// Phase 2 (initial pre-migration) skips names expiring within this many days so the
-// final sync in phase 4 — run after the v1 registrars are disabled — picks them up
-// once their expiries can no longer change under live renewals.
-const INITIAL_PREMIGRATION_MIN_EXPIRY_DAYS = "7";
 
 const DEFAULT_DEPLOYMENTS_DIR = resolve(import.meta.dirname, "../deployments");
 const BUNDLED_V1_DEPLOYMENTS_DIR = resolve(
@@ -1062,12 +1057,11 @@ export async function runPreMigrationCommand(
     csvFile: string;
     batchSize?: string;
     limit?: string;
-    minExpiryDays?: string;
+    bonusPeriodDays?: string;
     v1Resolver?: Address;
     v1BaseRegistrar?: Address;
     workDir?: string;
     dryRun?: boolean;
-    skipExistingReservations?: boolean;
   },
   resume: boolean,
 ) {
@@ -1129,15 +1123,13 @@ export async function runPreMigrationCommand(
       v1BaseRegistrar,
       "--batch-size",
       String(parseNumber(opts.batchSize, 50)),
-      "--min-expiry-days",
-      String(parseNumber(opts.minExpiryDays, 0)),
     ];
     if (privateKey) args.push("--private-key", privateKey);
     if (opts.account) args.push("--account", opts.account);
     if (opts.limit) args.push("--limit", opts.limit);
     if (opts.dryRun) args.push("--dry-run");
-    if (opts.skipExistingReservations)
-      args.push("--skip-existing-reservations");
+    if (opts.bonusPeriodDays)
+      args.push("--bonus-period-days", opts.bonusPeriodDays);
     if (resume) args.push("--continue");
     await preMigrationMain(args);
   } finally {
@@ -1171,7 +1163,7 @@ async function verifyPreMigration(opts: {
   v1BaseRegistrar?: Address;
   limit?: string;
   expectedStatus?: "reserved" | "registered" | "reserved-or-registered";
-  minExpiryDays?: string;
+  bonusPeriodDays?: string;
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
@@ -1206,14 +1198,14 @@ async function verifyPreMigration(opts: {
   const v2Block = await client.getBlock();
   const v1Now = BigInt(v1Block.timestamp);
   const v2Now = BigInt(v2Block.timestamp);
-  const minExpiryDays = parseNumber(opts.minExpiryDays, 0);
-  const minExpiryThreshold = v1Now + BigInt(minExpiryDays) * SECONDS_PER_DAY;
+  const bonusPeriodDays = parseNumber(opts.bonusPeriodDays, 62);
+  const bonusPeriodSeconds = BigInt(bonusPeriodDays) * SEC_PER_DAY;
   const errors: string[] = [];
   let eligible = 0;
   let skipped = 0;
   let invalid = 0;
   let verifiedActive = 0;
-  let verifiedExpiredContinuity = 0;
+  let verifiedExpiredBonus = 0;
 
   for (
     let start = 0;
@@ -1267,16 +1259,15 @@ async function verifyPreMigration(opts: {
       }
 
       const expiry = expiryResult.result as bigint;
-      if (
-        !isV1ContinuityEligible(expiry, v1Now) ||
-        (minExpiryDays > 0 && expiry > v1Now && expiry <= minExpiryThreshold)
-      ) {
+      const v1IsClaimable =
+        expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > v1Now;
+      if (!v1IsClaimable) {
         skipped++;
         continue;
       }
 
       eligible++;
-      const expectedExpiry = ensV2ContinuityExpiry(expiry);
+      const expectedExpiry = expiry + bonusPeriodSeconds;
       const state = stateResult.result as unknown as {
         status: number;
         expiry: bigint | number;
@@ -1290,7 +1281,7 @@ async function verifyPreMigration(opts: {
       }
 
       if (expectedExpiry <= v2Now) {
-        verifiedExpiredContinuity++;
+        verifiedExpiredBonus++;
         continue;
       }
 
@@ -1346,9 +1337,9 @@ async function verifyPreMigration(opts: {
   console.log(`skipped ineligible names: ${skipped}`);
   console.log(`verified active names: ${verifiedActive}`);
   console.log(
-    `verified expired-continuity names: ${verifiedExpiredContinuity}`,
+    `verified expired-bonus names: ${verifiedExpiredBonus}`,
   );
-  console.log(`verified names: ${verifiedActive + verifiedExpiredContinuity}`);
+  console.log(`verified names: ${verifiedActive + verifiedExpiredBonus}`);
   if (errors.length > 0) {
     console.error(errors.slice(0, 20).join("\n"));
     if (errors.length > 20) {
@@ -3909,7 +3900,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
         v1BaseRegistrar: v1BaseRegistrar.address,
         batchSize: opts.batchSize,
         limit: opts.initialLimit,
-        minExpiryDays: INITIAL_PREMIGRATION_MIN_EXPIRY_DAYS,
         workDir,
       },
       resumeFromPhase === 2,
@@ -3972,8 +3962,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
         v1BaseRegistrar: v1BaseRegistrar.address,
         batchSize: opts.batchSize,
         limit: opts.finishLimit,
-        minExpiryDays: "0",
-        skipExistingReservations: true,
         workDir: finalSyncWorkDir,
       },
       existsSync(join(finalSyncWorkDir, "preMigration-checkpoint.json")),
@@ -4443,9 +4431,8 @@ type PremigrationRunCliOptions = NetworkCliOptions &
     v1BaseRegistrar?: Address;
     batchSize?: string;
     limit?: string;
-    minExpiryDays?: string;
+    bonusPeriodDays?: string;
     workDir?: string;
-    skipExistingReservations?: boolean;
     dryRun?: boolean;
   };
 
@@ -4459,7 +4446,7 @@ type PremigrationVerifyCliOptions = NetworkCliOptions &
     v1BaseRegistrar?: Address;
     limit?: string;
     expectedStatus?: "reserved" | "registered" | "reserved-or-registered";
-    minExpiryDays?: string;
+    bonusPeriodDays?: string;
   };
 
 type DeployV2CliOptions = NetworkCliOptions &
@@ -4555,15 +4542,10 @@ export async function main(argv = process.argv): Promise<void> {
           .option("--batch-size <number>", "Names per batch", "50")
           .option("--limit <number>", "Maximum names to process")
           .option(
-            "--min-expiry-days <days>",
-            "Skip names expiring within this many days",
+            "--bonus-period-days <days>",
+            "Days added to each name's v1 expiry to compute its v2 expiry",
           )
           .option("--work-dir <path>", "Directory for checkpoints and logs")
-          .option(
-            "--skip-existing-reservations",
-            "Skip names already reserved on v2 with the expected expiry",
-            false,
-          )
           .option("--dry-run", "Simulate without transactions", false),
       ),
     );
@@ -4629,9 +4611,9 @@ export async function main(argv = process.argv): Promise<void> {
               "reserved-or-registered",
             )
             .option(
-              "--min-expiry-days <days>",
-              "Treat names expiring within this many days as ineligible",
-              "0",
+              "--bonus-period-days <days>",
+              "Days added to each name's v1 expiry to compute its expected v2 expiry",
+              "62",
             ),
         ),
       ),

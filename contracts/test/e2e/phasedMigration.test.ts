@@ -92,7 +92,6 @@ describe("Phased migration rehearsal", () => {
     await preMigrationMain(
       buildMainArgs(env, csvFilePath, {
         limit: 1,
-        minExpiryDays: 7,
         batchSize: 1,
       }),
     );
@@ -119,7 +118,6 @@ describe("Phased migration rehearsal", () => {
     await preMigrationMain(
       buildMainArgs(env, csvFilePath, {
         continue: true,
-        minExpiryDays: 0,
         batchSize: 1,
       }),
     );
