@@ -279,7 +279,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
 
     /// @inheritdoc IOwnedRegistry
     function findOwner(string calldata label) public view returns (address) {
-        return ownerOf(findTokenId(label));
+        return getOwner(LibLabel.id(label));
     }
 
     /// @inheritdoc ITokenizedRegistry
@@ -308,6 +308,11 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// @inheritdoc IPermissionedRegistry
     function getTokenId(uint256 anyId) public view returns (uint256) {
         return _constructTokenId(anyId, _entry(anyId));
+    }
+
+    /// @inheritdoc IPermissionedRegistry
+    function getOwner(uint256 anyId) public view returns (address) {
+        return _isExpired(getExpiry(anyId)) ? address(0) : super.ownerOf(getTokenId(anyId));
     }
 
     /// @inheritdoc IPermissionedRegistry
@@ -560,7 +565,10 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         returns (uint256)
     {
         uint256 roleBitmap = super._getSettableRoles(resource, account);
-        return resource == ROOT_RESOURCE ? roleBitmap : roleBitmap >> 128;
+        return
+            resource == ROOT_RESOURCE
+                ? roleBitmap
+                : getOwner(resource) == address(0) ? 0 : roleBitmap >> 128;
     }
 
     /// @inheritdoc EnhancedAccessControl
@@ -578,7 +586,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     {
         roleBitmap = super._getRoles(resource, account);
         if (resource != ROOT_RESOURCE) {
-            address owner = ownerOf(_constructTokenId(resource, _entry(resource)));
+            address owner = getOwner(resource);
             if (owner != address(0) && isApprovedForAll(owner, account)) {
                 roleBitmap |= super._getRoles(resource, owner);
             }
