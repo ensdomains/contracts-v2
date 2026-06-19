@@ -250,10 +250,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// @inheritdoc IRegistry
     function getSubregistry(string calldata label) public view virtual returns (IRegistry) {
         Entry storage entry = _entry(LibLabel.id(label));
-        return
-            _isExpired(entry.expiry)
-                ? IRegistry(address(0))
-                : entry.subregistry;
+        return _isExpired(entry.expiry) ? IRegistry(address(0)) : entry.subregistry;
     }
 
     /// @inheritdoc IRegistry
@@ -568,10 +565,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             return 0;
         }
         uint256 roleBitmap = super._getSettableRoles(resource, account);
-        return
-            resource == ROOT_RESOURCE
-                ? roleBitmap
-                : roleBitmap >> 128;
+        return resource == ROOT_RESOURCE ? roleBitmap : roleBitmap >> 128;
     }
 
     /// @inheritdoc EnhancedAccessControl
