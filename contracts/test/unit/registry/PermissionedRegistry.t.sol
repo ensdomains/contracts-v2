@@ -995,6 +995,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(registry.getExpiry(LibLabel.withVersion(tokenId, version)), testExpiry);
     }
 
+    function test_getOwner_anyId(uint32 version) external {
+        uint256 tokenId = this._register();
+        assertEq(registry.getOwner(LibLabel.withVersion(tokenId, version)), testOwner);
+    }
+
     function test_getStatus_anyId(uint32 version) external {
         uint256 tokenId = this._register();
         uint256 anyId = LibLabel.withVersion(tokenId, version);
