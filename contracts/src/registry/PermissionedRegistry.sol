@@ -574,8 +574,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// @inheritdoc EnhancedAccessControl
     /// @dev Override for token-dependent logic:
     ///
-    /// * if token is expired (available or reserved), return null.
-    /// * if caller is approved by token owner, OR the caller's roles with the owner's roles
+    /// * if caller is approved by token owner, combine the caller's roles with the owner's roles
     ///
     function _getRoles(uint256 resource, address account)
         internal
