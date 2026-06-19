@@ -564,11 +564,14 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         override
         returns (uint256)
     {
+        if (resource != ROOT_RESOURCE && getOwner(resource) == address(0)) {
+            return 0;
+        }
         uint256 roleBitmap = super._getSettableRoles(resource, account);
         return
             resource == ROOT_RESOURCE
                 ? roleBitmap
-                : getOwner(resource) == address(0) ? 0 : roleBitmap >> 128;
+                : roleBitmap >> 128;
     }
 
     /// @inheritdoc EnhancedAccessControl
@@ -586,7 +589,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         roleBitmap = super._getRoles(resource, account);
         if (resource != ROOT_RESOURCE) {
             address owner = getOwner(resource);
-            if (owner != address(0) && isApprovedForAll(owner, account)) {
+            if (owner != address(0) && owner != account && isApprovedForAll(owner, account)) {
                 roleBitmap |= super._getRoles(resource, owner);
             }
         }

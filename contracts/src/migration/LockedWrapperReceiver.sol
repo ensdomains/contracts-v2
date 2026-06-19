@@ -136,7 +136,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                     NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
                 } else {
                     resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
-                    if (PUBLIC_RESOLVER_SET.includes(resolver)) {
+                    if (resolver != address(0) && PUBLIC_RESOLVER_SET.includes(resolver)) {
                         resolver = PUBLIC_RESOLVER; // replace with new PublicResolver
                     }
                 }
