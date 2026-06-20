@@ -112,7 +112,7 @@ describe("ENSV2Resolver", () => {
         name,
         resolverAddress: myResolver.address,
       });
-      await myResolver.write.multicall([res.resolutions.map((x) => x.write)]);
+      await myResolver.write.multicall([res.resolutions.map((x) => x.writeV1)]);
       // resolve in v1
       {
         const [answer, resolver] = await F.v1.universalResolver.read.resolve([

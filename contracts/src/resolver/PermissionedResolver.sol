@@ -654,7 +654,6 @@ contract PermissionedResolver is
             }
             results[i] = v;
         }
-        return results;
     }
 
     /// @notice Set the address for `coinType` of the associated ENS node.

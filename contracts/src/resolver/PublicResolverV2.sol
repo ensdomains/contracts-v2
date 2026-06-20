@@ -98,7 +98,7 @@ contract PublicResolverV2 is
         ROOT_REGISTRY = rootRegistry;
     }
 
-    /// @inheritdoc AddrResolver
+    /// @inheritdoc ERC165
     function supportsInterface(bytes4 interfaceId)
         public
         view
