@@ -292,12 +292,6 @@ contract SharedResolver is
                 try this.resolve(name, m[i]) returns (bytes memory v) {
                     m[i] = v;
                 } catch (bytes memory v) {
-                    unchecked {
-                        uint256 pad = (4 - v.length) & 31;
-                        if (pad > 0) {
-                            v = abi.encodePacked(v, new bytes(pad));
-                        }
-                    }
                     m[i] = v;
                 }
             }
@@ -323,7 +317,7 @@ contract SharedResolver is
             (, uint256 coinType) = abi.decode(data[4:], (bytes32, uint256));
             return abi.encode(r.addresses[coinType].length > 0); // boolean
         } else if (selector == IPubkeyResolver.pubkey.selector) {
-            return abi.encode(r.pubkey);
+            return abi.encode(r.pubkey); // (bytes32, bytes32)
         } else if (selector == IInterfaceResolver.interfaceImplementer.selector) {
             (, bytes4 interfaceId) = abi.decode(data[4:], (bytes32, bytes4));
             address implementer = r.interfaces[interfaceId];
@@ -359,11 +353,10 @@ contract SharedResolver is
         if (owner != address(0)) {
             can = owner == operator;
             if (!can) {
-                mapping(bytes32 node => bool approved) storage approvals =
-                    _approvals[owner][operator];
-                can = approvals[node];
+                mapping(bytes32 node => bool approved) storage map = _approvals[owner][operator];
+                can = map[node];
                 if (!can && node != 0) {
-                    can = approvals[0];
+                    can = map[0];
                 }
             }
         }
