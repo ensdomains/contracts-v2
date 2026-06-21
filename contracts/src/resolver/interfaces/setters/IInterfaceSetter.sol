@@ -7,10 +7,15 @@ interface IInterfaceSetter {
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Text was changed.
+    /// @param node The namehash of `name`.
+    /// @param name The DNS-encoded name.
+    /// @param interfaceId The EIP-165 interface ID.
+    /// @param implementer The address of the contract that implements the interface.
     event InterfaceUpdated(
         bytes32 indexed node,
         bytes name,
-        bytes4 interfaceId,
+        bytes4 indexed interfaceId,
         address implementer
     );
 
@@ -21,6 +26,6 @@ interface IInterfaceSetter {
     /// @notice Set implementer for `interfaceId`.
     /// @param name The DNS-encoded name.
     /// @param interfaceId The EIP-165 interface ID.
-    /// @param implementer The address of the contract that implements this interface.
+    /// @param implementer The address of the contract that implements the interface.
     function setInterface(bytes calldata name, bytes4 interfaceId, address implementer) external;
 }

@@ -7,6 +7,12 @@ interface IDataSetter {
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Data was changed.
+    /// @param node The namehash of `name`.
+    /// @param name The DNS-encoded name.
+    /// @param keyHash The hash of `key`.
+    /// @param key The data key.
+    /// @param value The data value.
     event DataUpdated(
         bytes32 indexed node,
         bytes name,
