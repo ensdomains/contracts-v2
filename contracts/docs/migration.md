@@ -27,7 +27,7 @@ Phase numbering below matches the console output of the `runForkFull` orchestrat
 
 † Phase 0 only exists in `clean-testnet`, which deploys a fresh v1 stack (from `lib/ens-contracts/deploy`) into a `deployments/v1/<namespace>` directory before running phases 1–9.
 
-Every phase command takes `--network sepolia|mainnet` plus `--rpc-url` (or the `SEPOLIA_RPC_URL` / `MAINNET_RPC_URL` env var). Contract addresses default to the deployment JSON under `--deployments-dir` / `--deployment-network` (v2) and `--v1-deployments-dir` / `--v1-deployment-network` (v1); explicit address flags override. Owner-signed phase commands accept `--calldata-only` to print the transaction target and calldata for multisig execution instead of broadcasting.
+Every phase command takes `--network sepolia|mainnet` plus `--rpc-url` (or the `SEPOLIA_RPC_URL` / `MAINNET_RPC_URL` env var). Contract addresses default to the deployment JSON under `--deployments-dir` / `--deployment-network` (v2) and `--v1-deployments-dir` / `--v1-deployment-network` (v1); explicit address flags override. The v1-owner-signed and URP-admin phase commands (`disable-v1-registrars`, `activate-v1-graveyard`, `activate-v1-handoff-controllers`, `activate-v1-renewer`, `authorize-testnet-v1-premigration-registrar`, `switch-urp-to-managed`, `upgrade-managed-urp`) accept `--calldata-only` to print the transaction target and calldata for multisig execution instead of broadcasting. The registry root-role admin commands (`disable-batch-registrar`, `enable-v2-registrar`) broadcast or impersonate only.
 
 ### Phase 1: deploy v2 contracts
 
@@ -159,6 +159,8 @@ Spawns a local Anvil fork of the network RPC (default port 8547 sepolia / 8548 m
 - v1 registration succeeds before phase 3 and is rejected after;
 - a pre-migrated name is migrated to v2 via `UnlockedMigrationController` after phase 4;
 - the v2 registrar rejects registrations before phase 9's grant, rejects pre-migrated reserved names after it, and accepts a fresh name after enablement.
+
+When the target chain has already completed the v1 hand-off — re-running against an already-migrated Sepolia, or a repeat mainnet run after a redeploy — `fork full` detects this from the v1 registrar-controller state and skips the smoke checks that require live v1 registration (the first two bullets above and the pre-migrated-reserved-name rejection in the third), while still running the deploy, pre-migration, URP cut-over, the pre-enablement rejection, and the fresh-name registration. A pristine chain runs all of them. There is no flag for this; it is detected automatically.
 
 `--direct` skips Anvil and targets `--rpc-url` directly (e.g. a Tenderly virtual testnet) — it requires explicit `--deployer` and `--ur-manager` addresses, plus `--owner` on sepolia (the Hardhat `migration fork-full` task derives them from the keystore). `--resume-from-phase 2` (requires `--work-dir`) skips phase 1 and reloads saved deployments. `--snapshot-file` records a pre-rehearsal `evm_snapshot` id, which the Hardhat `migration revert` task can restore.
 

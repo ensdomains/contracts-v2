@@ -10,6 +10,8 @@ import {
   PREMIUM_HALVING_PERIOD,
   PREMIUM_PERIOD,
   SEPOLIA_USDC,
+  MAINNET_USDC,
+  MAINNET_DAI,
 } from "../script/deploy-constants.js";
 
 type MockERC20 =
@@ -26,13 +28,21 @@ export default execute(
     tags,
   }) => {
     const mockTokenArtifact = artifacts["test/mocks/MockERC20.sol/MockERC20"];
-    const paymentTokens = [
-      get<MockERC20>("MockUSDC"),
-      get<MockERC20>("MockDAI"),
-      ...(tags.sepolia || tags["clean-testnet"]
-        ? [{ address: SEPOLIA_USDC, abi: mockTokenArtifact.abi }]
-        : []),
-    ];
+    // Mainnet whitelists the real payment tokens; the free-mint mocks are only
+    // deployed (and only accepted) on test/dev networks. The ERC20 metadata
+    // reads below (symbol/decimals) work against the real tokens too.
+    const paymentTokens = tags.hasDao
+      ? [
+          { address: MAINNET_USDC, abi: mockTokenArtifact.abi },
+          { address: MAINNET_DAI, abi: mockTokenArtifact.abi },
+        ]
+      : [
+          get<MockERC20>("MockUSDC"),
+          get<MockERC20>("MockDAI"),
+          ...(tags.sepolia || tags["clean-testnet"]
+            ? [{ address: SEPOLIA_USDC, abi: mockTokenArtifact.abi }]
+            : []),
+        ];
 
     const baseRates = BASE_RATE_PER_CP.flatMap((rate, i) => {
       const yearly = Number(rate * SEC_PER_YEAR) / Number(PRICE_SCALE);

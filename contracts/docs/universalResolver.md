@@ -42,7 +42,7 @@ The phases map to [`deploy/universalResolver/`](../deploy/universalResolver/):
 | `05_setup_ManagedUniversalResolverProxyToUniversalResolverImplementation.ts` | Upgrade managed URP → `UniversalResolverV2` | `urManager` † | `migration:phase6:upgrade-managed-urp` |
 | `06_setup_UniversalResolverToUniversalResolverImplementation.ts` | Point top URP → `UniversalResolverV2` directly | `owner` † | `migration:post-cutover:direct-urp-to-v2` |
 
-† On networks where the proxy admin is external (`hasDao` → DAO, `sepolia` → top URP owner), the setup scripts do not execute the upgrade. They print the target address and `upgradeTo` calldata for the admin to execute out-of-band (see `logUpgradeCalldata` in [`script/universalResolverDeployUtils.ts`](../script/universalResolverDeployUtils.ts)).
+† When a setup script's proxy admin is external, the script does not execute the upgrade. It prints the target address and `upgradeTo` calldata for the admin to execute out-of-band (see `logUpgradeCalldata` in [`script/universalResolverDeployUtils.ts`](../script/universalResolverDeployUtils.ts)). The top-URP scripts (`01`, `03`, `06`) defer on mainnet (DAO) and sepolia (top URP owner); the managed-URP script (`05`) defers only on mainnet (DAO / security council) and executes directly on sepolia, where the managed-URP admin is the deployer.
 
 Setup scripts are idempotent — they read the proxy's current `implementation()` and skip when it already matches.
 
@@ -60,7 +60,7 @@ Named accounts in [`rocketh/config.ts`](../rocketh/config.ts):
 
 ## CLI
 
-The owner-signed steps (3, 5, 6) and verification are also exposed as `script/migration.ts` phase commands, for use against live networks and fork rehearsals:
+Steps 3 (top-URP-owner-signed) and 5 (council-signed), plus verification, are also exposed as `script/migration.ts` phase commands, for use against live networks and fork rehearsals. The post-cutover step 6 has no phase command — it runs only as the `migration:post-cutover:direct-urp-to-v2` deploy script:
 
 ```bash
 # Step 3: top URP → managed URP (top URP owner signature)

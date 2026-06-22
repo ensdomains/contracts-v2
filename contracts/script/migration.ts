@@ -1657,6 +1657,114 @@ async function activateV1HandoffControllers(opts: {
   await activateV1Graveyard(opts);
 }
 
+// Minimal interface of a prior migration's ETHRenewerV1, which holds v1
+// BaseRegistrar ownership once a migration has completed.
+const PRIOR_RENEWER_ABI = [
+  {
+    type: "function",
+    name: "owner",
+    inputs: [],
+    outputs: [{ type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "transferRegistrarOwnership",
+    inputs: [{ name: "newOwner", type: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
+// On a chain that has already completed a migration, the v1 BaseRegistrar is
+// owned by the previous deployment's ETHRenewerV1 contract, so the EOA-signed
+// controller phases (8 and 9) cannot run. Reclaim ownership back to the v1 owner
+// by routing through the prior renewer's `transferRegistrarOwnership`, signed by
+// the prior renewer's own owner. No-op on a pristine chain (BaseRegistrar still
+// owned by the v1 owner EOA) or once ownership is already with the v1 owner.
+async function reclaimV1RegistrarOwnership(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  v1DeploymentsDir?: string;
+  v1DeploymentNetwork?: string;
+  v1Owner: Address;
+  privateKey?: `0x${string}`;
+  impersonateOwner?: boolean;
+}) {
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    "BaseRegistrarImplementation",
+    opts,
+  );
+  const currentOwner = (await client.readContract({
+    address: baseRegistrar.address,
+    abi: baseRegistrar.abi,
+    functionName: "owner",
+  })) as Address;
+  if (getAddress(currentOwner) === getAddress(opts.v1Owner)) return;
+
+  const code = await client.getCode({ address: currentOwner });
+  if (!code || code === "0x") {
+    console.log(
+      `v1 BaseRegistrar owner ${currentOwner} is an EOA other than the v1 owner; skipping reclaim`,
+    );
+    return;
+  }
+
+  const priorRenewerOwner = (await client.readContract({
+    address: currentOwner,
+    abi: PRIOR_RENEWER_ABI,
+    functionName: "owner",
+  })) as Address;
+  console.log(
+    `reclaiming v1 BaseRegistrar ownership from prior renewer ${currentOwner} (owner ${priorRenewerOwner}) to ${opts.v1Owner}`,
+  );
+  if (
+    opts.privateKey &&
+    getAddress(privateKeyToAccount(opts.privateKey).address) !==
+      getAddress(priorRenewerOwner)
+  ) {
+    throw new Error(
+      `private key does not match prior renewer owner ${priorRenewerOwner}`,
+    );
+  }
+  if (opts.impersonateOwner) await impersonate(client, priorRenewerOwner);
+
+  const wallet = walletClient({
+    rpcUrl: opts.rpcUrl,
+    chain,
+    privateKey: opts.privateKey,
+    account: opts.impersonateOwner ? priorRenewerOwner : undefined,
+    provider: opts.provider,
+  });
+  const hash = await wallet.writeContract({
+    address: currentOwner,
+    abi: PRIOR_RENEWER_ABI,
+    functionName: "transferRegistrarOwnership",
+    args: [opts.v1Owner],
+  });
+  await waitForSuccessfulReceipt(
+    client,
+    hash,
+    "reclaim v1 BaseRegistrar ownership to v1 owner",
+  );
+
+  const updatedOwner = (await client.readContract({
+    address: baseRegistrar.address,
+    abi: baseRegistrar.abi,
+    functionName: "owner",
+  })) as Address;
+  if (getAddress(updatedOwner) !== getAddress(opts.v1Owner)) {
+    throw new Error(
+      `v1 BaseRegistrar ownership reclaim failed; owner is ${updatedOwner}`,
+    );
+  }
+}
+
 async function activateV1RenewerAndTransferOwnership(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
@@ -2498,6 +2606,22 @@ function applyAccountOverride(
   if (value !== undefined) {
     accounts[name] = { default: normalizeAccountAddress(value) };
   }
+}
+
+// Returns the first candidate key that controls `target`, or — when no target
+// address is known — the first available key. Used so an owner/admin private
+// key is only applied when it actually signs for the resolved account, keeping
+// an explicit or network-default owner (e.g. the mainnet DAO) from being
+// silently replaced by a fallback deployer key.
+function signerKeyForAccount(
+  target: Address | undefined,
+  candidates: Array<`0x${string}` | undefined>,
+): `0x${string}` | undefined {
+  const keys = candidates.filter((key): key is `0x${string}` => Boolean(key));
+  if (!target) return keys[0];
+  return keys.find(
+    (key) => getAddress(privateKeyToAccount(key).address) === getAddress(target),
+  );
 }
 
 function addressForImpersonation(
@@ -4073,6 +4197,23 @@ export async function runForkFull(opts: RunForkFullOptions) {
       );
     }
 
+    // Re-running against an already-migrated chain leaves the v1 BaseRegistrar
+    // owned by the prior deployment's ETHRenewerV1; reclaim it to the v1 owner
+    // so the controller phases below can authorize the fresh handoff contracts.
+    // (No-op on a pristine chain. Live re-migrations use the standalone
+    // `phase reclaim-v1-registrar-ownership` command beforehand.)
+    if (useRpcStateControls) {
+      await reclaimV1RegistrarOwnership({
+        network: opts.network,
+        rpcUrl,
+        chainId: String(chainId),
+        provider,
+        ...v1Deployments,
+        v1Owner,
+        impersonateOwner: true,
+      });
+    }
+
     console.log("phase 8: authorize v1 handoff controllers");
     await activateV1HandoffControllers({
       network: opts.network,
@@ -4678,11 +4819,28 @@ export async function main(argv = process.argv): Promise<void> {
     ).action(async (opts: DeployV2CliOptions) => {
       const networkOpts = withNetwork(opts);
       const network = networkOpts.network;
+      const deployerKey = envPrivateKey("DEPLOYER_KEY");
+      const deployerAddress = deployerKey
+        ? privateKeyToAccount(deployerKey).address
+        : undefined;
+      // The owner defaults to the DAO on mainnet and to the deployer elsewhere;
+      // urManager defaults to the deployer (securityCouncil -> deployer). Only
+      // attach a key that controls the resolved account so the deployer key is
+      // never used to act as the mainnet DAO.
+      const ownerAddress =
+        opts.owner ?? (network === "mainnet" ? MAINNET_DAO : deployerAddress);
+      const urManagerAddress = opts.urManager ?? deployerAddress;
       await deployV2({
         ...networkOpts,
-        deployerPrivateKey: envPrivateKey("DEPLOYER_KEY"),
-        ownerPrivateKey: envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
-        urManagerPrivateKey: envPrivateKey("UR_MANAGER_KEY", "DEPLOYER_KEY"),
+        deployerPrivateKey: deployerKey,
+        ownerPrivateKey: signerKeyForAccount(ownerAddress, [
+          envPrivateKey("OWNER_KEY"),
+          deployerKey,
+        ]),
+        urManagerPrivateKey: signerKeyForAccount(urManagerAddress, [
+          envPrivateKey("UR_MANAGER_KEY"),
+          deployerKey,
+        ]),
         v1Owner: opts.v1Owner ?? NETWORKS[network].defaultV1Owner,
         tags: opts.tags ? opts.tags.split(",").filter(Boolean) : undefined,
         rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
@@ -4950,6 +5108,45 @@ export async function main(argv = process.argv): Promise<void> {
           privateKey:
             opts.privateKey ??
             envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
+  );
+  phase.addCommand(
+    addV1DeploymentOptions(
+      addNetworkOptions(
+        new Command("reclaim-v1-registrar-ownership")
+          .description(
+            "Reclaim v1 BaseRegistrar ownership from a prior migration's ETHRenewerV1 back to the v1 owner (run before re-migrating an already-migrated chain)",
+          )
+          .option("--v1-owner <address>", "v1 owner to reclaim ownership to")
+          .option(
+            "--private-key <key>",
+            "Prior renewer owner private key (defaults to OWNER_KEY/DEPLOYER_KEY)",
+          )
+          .option(
+            "--impersonate-owner",
+            "Impersonate the prior renewer owner on a fork",
+            false,
+          ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          V1DeploymentCliOptions & {
+            v1Owner?: Address;
+            privateKey?: `0x${string}`;
+            impersonateOwner?: boolean;
+          },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await reclaimV1RegistrarOwnership({
+          ...networkOpts,
+          v1Owner:
+            opts.v1Owner ?? NETWORKS[networkOpts.network].defaultV1Owner,
+          privateKey:
+            opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
           rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },

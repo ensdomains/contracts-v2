@@ -38,12 +38,21 @@ const action: NewTaskActionFunction<DeployV2TaskArgs> = async (args, hre) => {
       connection.networkName,
     );
     const rpcUrl = await networkConfig.url.getUrl();
+    const migrationNetwork = parseMigrationNetwork(args.migrationNetwork);
     const signers = await resolveMigrationSigners({
       args,
       networkConfig,
       ownerFallback: "deployer",
       taskName: "migration deploy-v2",
     });
+
+    // On mainnet the owner is the DAO, not the deployer. When no --owner is
+    // supplied, leave owner/ownerPrivateKey unset so deployV2 uses the
+    // network-configured owner default rather than acting as the deployer.
+    const ownerOverride =
+      args.owner === "" && migrationNetwork === "mainnet"
+        ? { owner: undefined, ownerPrivateKey: undefined }
+        : {};
 
     if (args.snapshotFile !== "") {
       const snapshotId = await createSnapshot(connection.provider);
@@ -53,7 +62,7 @@ const action: NewTaskActionFunction<DeployV2TaskArgs> = async (args, hre) => {
     }
 
     await deployV2({
-      network: parseMigrationNetwork(args.migrationNetwork),
+      network: migrationNetwork,
       rpcUrl,
       provider: connection.provider,
       chainId: args.chainId || undefined,
@@ -71,6 +80,7 @@ const action: NewTaskActionFunction<DeployV2TaskArgs> = async (args, hre) => {
       rpcCompatibility: true,
       debugRpc: args.debugRpc,
       ...signers,
+      ...ownerOverride,
     });
   } finally {
     await connection.close();

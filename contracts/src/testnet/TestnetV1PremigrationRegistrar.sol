@@ -36,9 +36,10 @@ contract TestnetV1PremigrationRegistrar {
     uint256 public constant MIN_REGISTRATION_DURATION = 28 days;
 
     /// @notice Bonus added to the v2 reservation expiry so testnet reservations match
-    ///         the migration's continuity-adjusted expiry (v1 grace minus v2 grace, plus one
-    ///         second) and pass the premigration verifier's expected-expiry check.
-    uint256 public constant CONTINUITY_BONUS_PERIOD = 1 + (90 days - 28 days);
+    ///         the migration's continuity-adjusted expiry (v1 grace minus v2 grace) and
+    ///         pass the premigration verifier's expected-expiry check, which expects
+    ///         `v1Expiry + bonusPeriodDays` (default 62 days, i.e. 90 days - 28 days).
+    uint256 public constant CONTINUITY_BONUS_PERIOD = 90 days - 28 days;
 
     /// @notice The ENS namehash for `eth`.
     bytes32 public constant ETH_NODE =

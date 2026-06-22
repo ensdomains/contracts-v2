@@ -1,7 +1,11 @@
 import { artifacts, execute } from "@rocketh";
 
 export default execute(
-  async ({ deploy, namedAccounts: { deployer } }) => {
+  async ({ deploy, namedAccounts: { deployer }, tags }) => {
+    // Free-mint mock payment tokens must never ship to mainnet; the price
+    // oracle wires real tokens there instead.
+    if (tags.hasDao) return;
+
     const MockERC20 = artifacts["test/mocks/MockERC20.sol/MockERC20"];
 
     await deploy("MockUSDC", {

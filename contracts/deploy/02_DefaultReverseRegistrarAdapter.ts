@@ -7,7 +7,7 @@ export default execute(
     get,
     getV1,
     read,
-    namedAccounts: { deployer, owner },
+    namedAccounts: { deployer, owner, v1Owner },
     name,
     tags,
   }) => {
@@ -34,8 +34,11 @@ export default execute(
     });
 
     if (!adapterIsDefaultController) {
+      // The v1 DefaultReverseRegistrar is owned by the v1 owner, not the v2
+      // admin, so route the controller grant through v1Owner (honouring the
+      // deferred v1-owner transaction flow, which only captures v1Owner sends).
       await write(defaultReverseRegistrar, {
-        account: owner,
+        account: v1Owner ?? owner,
         functionName: "setController",
         args: [adapter.address, true],
       });

@@ -7,6 +7,14 @@ export const DEPLOYED_UNIVERSAL_RESOLVER_PROXY =
 export const SEPOLIA_USDC =
   "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
 
+// Real mainnet payment tokens used by the rent price oracle in place of the
+// free-mint test mocks (which must never ship to mainnet). Confirm/adjust the
+// accepted set before a mainnet deploy.
+export const MAINNET_USDC =
+  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" as const;
+export const MAINNET_DAI =
+  "0x6B175474E89094C44Da98b954EedeAC495271d0F" as const;
+
 export const STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS = 12n;
 export const STANDARD_RENT_PRICE_ORACLE_PRICE_SCALE =
   10n ** STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS;
