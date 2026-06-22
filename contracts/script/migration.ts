@@ -3414,11 +3414,16 @@ export async function runV2RegistrarSmoke(opts: V2RegistrarSmokeOptions) {
     deploymentNetwork,
     "ETHRegistrar",
   );
-  const mockUsdc = loadV2Deployment(
+  const mockUsdc = maybeLoadV2Deployment(
     deploymentsDir,
     deploymentNetwork,
     "MockUSDC",
   );
+  if (!mockUsdc) {
+    throw new Error(
+      `v2 registrar smoke needs a mintable mock payment token, which is not deployed for ${deploymentNetwork}; on networks with real payment tokens, fund a whitelisted token and register directly`,
+    );
+  }
 
   const enabled = (await client.readContract({
     address: ethRegistry.address,
@@ -3470,7 +3475,7 @@ type V2MigrationDeployments = {
   ensV1Resolver: JsonDeployment;
   ethRegistrar: JsonDeployment;
   ethRenewerV1: JsonDeployment | null;
-  mockUsdc: JsonDeployment;
+  mockUsdc: JsonDeployment | null;
   unlockedMigrationController: JsonDeployment;
   universalResolverV2: JsonDeployment;
   managedUrp: JsonDeployment;
@@ -3509,7 +3514,7 @@ function loadV2MigrationDeployments(
       deploymentNetwork,
       "ETHRenewerV1",
     ),
-    mockUsdc: loadV2Deployment(deploymentsDir, deploymentNetwork, "MockUSDC"),
+    mockUsdc: maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, "MockUSDC"),
     unlockedMigrationController: loadV2Deployment(
       deploymentsDir,
       deploymentNetwork,
@@ -3548,7 +3553,7 @@ function collectV2MigrationDeployments(
     ensV1Resolver: deployEnv.get("ENSV1Resolver"),
     ethRegistrar: deployEnv.get("ETHRegistrar"),
     ethRenewerV1: deployEnv.getOrNull("ETHRenewerV1"),
-    mockUsdc: deployEnv.get("MockUSDC"),
+    mockUsdc: deployEnv.getOrNull("MockUSDC"),
     unlockedMigrationController: deployEnv.get("UnlockedMigrationController"),
     universalResolverV2: deployEnv.get("UniversalResolverV2"),
     managedUrp: deployEnv.get("ManagedUniversalResolverProxy"),
@@ -4260,21 +4265,27 @@ export async function runForkFull(opts: RunForkFullOptions) {
     if (beforeEnabled) {
       throw new Error("v2 registrar was enabled before the final phase");
     }
-    await assertRejected(
-      registerViaV2Registrar({
-        rpcUrl,
-        chain,
-        label: smokeLabels.v2BeforeEnable,
-        owner: smokeAccount.address,
-        privateKey: smokeSignerPrivateKey,
-        ethRegistrar,
-        mockUsdc,
-        useRpcStateControls,
-      }),
-      `v2 registrar rejected registration before enablement: ${smokeLabels.v2BeforeEnable}.eth`,
-      // The registrar lacks REGISTRAR/RENEW root roles until phase 9 enables it.
-      /revert/i,
-    );
+    // The paid-registration smokes need a mintable payment token, which only
+    // exists on networks that deploy the mock tokens (mainnet whitelists real
+    // USDC/DAI instead). Where there is no mock, still verify the phase-9 role
+    // grant directly and skip the paid registrations.
+    if (mockUsdc) {
+      await assertRejected(
+        registerViaV2Registrar({
+          rpcUrl,
+          chain,
+          label: smokeLabels.v2BeforeEnable,
+          owner: smokeAccount.address,
+          privateKey: smokeSignerPrivateKey,
+          ethRegistrar,
+          mockUsdc,
+          useRpcStateControls,
+        }),
+        `v2 registrar rejected registration before enablement: ${smokeLabels.v2BeforeEnable}.eth`,
+        // The registrar lacks REGISTRAR/RENEW root roles until phase 9 enables it.
+        /revert/i,
+      );
+    }
     await enableV2Registrar({
       network: opts.network,
       rpcUrl,
@@ -4285,44 +4296,59 @@ export async function runForkFull(opts: RunForkFullOptions) {
       deploymentNetwork,
       ...deploymentAdminSigner,
     });
-    if (!postMigration) {
-      await assertRejected(
-        registerViaV2Registrar({
-          rpcUrl,
-          chain,
-          label: smokeLabels.reservedOnly,
-          owner: smokeAccount.address,
-          privateKey: smokeSignerPrivateKey,
-          ethRegistrar,
-          mockUsdc,
-          useRpcStateControls,
-        }),
-        `v2 registrar rejected pre-migrated reserved name after enablement: ${smokeLabels.reservedOnly}.eth`,
-        // The name is RESERVED from pre-migration, so registration must revert.
-        /revert/i,
+    if (mockUsdc) {
+      if (!postMigration) {
+        await assertRejected(
+          registerViaV2Registrar({
+            rpcUrl,
+            chain,
+            label: smokeLabels.reservedOnly,
+            owner: smokeAccount.address,
+            privateKey: smokeSignerPrivateKey,
+            ethRegistrar,
+            mockUsdc,
+            useRpcStateControls,
+          }),
+          `v2 registrar rejected pre-migrated reserved name after enablement: ${smokeLabels.reservedOnly}.eth`,
+          // The name is RESERVED from pre-migration, so registration must revert.
+          /revert/i,
+        );
+      }
+      await registerViaV2Registrar({
+        rpcUrl,
+        chain,
+        label: smokeLabels.v2AfterEnable,
+        owner: smokeAccount.address,
+        privateKey: smokeSignerPrivateKey,
+        ethRegistrar,
+        mockUsdc,
+        useRpcStateControls,
+      });
+      await assertV2State({
+        rpcUrl,
+        chain,
+        ethRegistry,
+        label: smokeLabels.v2AfterEnable,
+        status: STATUS.REGISTERED,
+        owner: smokeAccount.address,
+      });
+      console.log(
+        `v2 registrar registered ${smokeLabels.v2AfterEnable}.eth after enablement`,
+      );
+    } else {
+      const afterEnabled = await client.readContract({
+        address: ethRegistry.address,
+        abi: ethRegistry.abi,
+        functionName: "hasRootRoles",
+        args: [REGISTRAR_ROLES, ethRegistrar.address],
+      });
+      if (!afterEnabled) {
+        throw new Error("v2 registrar was not enabled by phase 9");
+      }
+      console.log(
+        "v2 registrar enabled (paid-registration smoke skipped: no mintable payment token on this network)",
       );
     }
-    await registerViaV2Registrar({
-      rpcUrl,
-      chain,
-      label: smokeLabels.v2AfterEnable,
-      owner: smokeAccount.address,
-      privateKey: smokeSignerPrivateKey,
-      ethRegistrar,
-      mockUsdc,
-      useRpcStateControls,
-    });
-    await assertV2State({
-      rpcUrl,
-      chain,
-      ethRegistry,
-      label: smokeLabels.v2AfterEnable,
-      status: STATUS.REGISTERED,
-      owner: smokeAccount.address,
-    });
-    console.log(
-      `v2 registrar registered ${smokeLabels.v2AfterEnable}.eth after enablement`,
-    );
     if (opts.network === "mainnet") {
       console.log(
         `mainnet DAO simulation used owner/v1Owner impersonation: ${owner}`,
@@ -4470,12 +4496,24 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
     deployer,
     deployerPrivateKey: opts.deployerPrivateKey,
     owner,
-    ownerPrivateKey: opts.ownerPrivateKey ?? opts.deployerPrivateKey,
+    // Only attach a key that controls the resolved account so an explicit
+    // --owner/--ur-manager/--v1-owner is not silently signed for by the
+    // deployer key; unmatched accounts fall back to fork impersonation.
+    ownerPrivateKey: signerKeyForAccount(owner, [
+      opts.ownerPrivateKey,
+      opts.deployerPrivateKey,
+    ]),
     v1Owner,
-    v1OwnerPrivateKey:
-      opts.v1OwnerPrivateKey ?? opts.ownerPrivateKey ?? opts.deployerPrivateKey,
+    v1OwnerPrivateKey: signerKeyForAccount(v1Owner, [
+      opts.v1OwnerPrivateKey,
+      opts.ownerPrivateKey,
+      opts.deployerPrivateKey,
+    ]),
     urManager,
-    urManagerPrivateKey: opts.urManagerPrivateKey ?? opts.deployerPrivateKey,
+    urManagerPrivateKey: signerKeyForAccount(urManager, [
+      opts.urManagerPrivateKey,
+      opts.deployerPrivateKey,
+    ]),
     resumeFromPhase: undefined,
   });
 }
