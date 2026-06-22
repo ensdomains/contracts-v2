@@ -318,3 +318,52 @@ bun run script/preMigration.ts \
   --mainnet-rpc-url http://localhost:8545 \
   [other options]
 ```
+
+## Testing on a Sepolia fork
+
+To rehearse pre-migration against real Sepolia v1 state without an end-to-end
+`fork full` run, deploy v2 onto a local Anvil fork and run pre-migration against
+it. v2 is not deployed on real Sepolia, so the fork has v1 registrations but
+nothing to reserve into — the v2 stack must be deployed onto the fork first.
+
+**Account requirement:** the deployer/owner must be an address with **no code**
+on Sepolia. The standard Anvil test accounts (`0xf39F…2266`, `0x70997970…79C8`)
+carry an EIP-7702 delegation on Sepolia, so their `onERC1155Received` does not
+return the ERC-1155 acceptance value and the `eth` 2LD mint during deploy
+reverts. Use a fresh throwaway key and fund it via `anvil_setBalance`.
+
+```bash
+# 1. Fork Sepolia locally
+anvil --fork-url "$SEPOLIA_RPC_URL" --port 8547 --chain-id 11155111 &
+
+# 2. Pick a fresh deployer with no Sepolia code and fund it on the fork
+KEY=<fresh 0x… private key>
+ADDR=$(cast wallet address --private-key "$KEY")
+cast rpc anvil_setBalance "$ADDR" 0x21e19e0c9bab2400000 --rpc-url http://127.0.0.1:8547
+
+# 3. Deploy the v2 stack onto the fork (impersonate the v1 owner for the
+#    v1 .eth resolver write; defer it instead with --defer-v1-owner-transactions)
+DEPLOYER_KEY=$KEY OWNER_KEY=$KEY UR_MANAGER_KEY=$KEY \
+  bun run migration -- phase deploy-v2 \
+    --network sepolia --rpc-url http://127.0.0.1:8547 \
+    --deployer "$ADDR" --owner "$ADDR" --ur-manager "$ADDR" \
+    --impersonate-v1-owner \
+    --save-deployments --deployments-dir /tmp/fork-deployments --deployment-network sepolia
+
+# 4. Run pre-migration (BatchRegistrar owner is the deployer); addresses are
+#    read from the deployment JSON, v1 expiry reads use the same fork RPC
+bun run migration -- premigration run \
+  --network sepolia --rpc-url http://127.0.0.1:8547 \
+  --deployments-dir /tmp/fork-deployments --deployment-network sepolia \
+  --csv-file ./csv-data/ens-registrations-sepolia.csv --private-key "$KEY"
+
+# 5. Verify the eligible CSV names were reserved on v2
+bun run migration -- premigration verify \
+  --network sepolia --rpc-url http://127.0.0.1:8547 \
+  --deployments-dir /tmp/fork-deployments --deployment-network sepolia \
+  --csv-file ./csv-data/ens-registrations-sepolia.csv
+```
+
+The Sepolia registration CSV is `csv-data/ens-registrations-sepolia.csv`. For the
+full nine-phase rehearsal instead, see the `fork full` command in
+[migration.md](./migration.md#rehearsals).

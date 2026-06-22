@@ -35,3 +35,6 @@ preMigration.log
 preMigration-checkpoint.json
 preMigration-errors.log
 csv-data/
+
+# Dev scratch (analysis writeups, local rehearsal logs)
+.dev/
