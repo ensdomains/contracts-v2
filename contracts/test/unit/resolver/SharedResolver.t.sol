@@ -5,8 +5,7 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
-
-//import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
+import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
@@ -26,6 +25,7 @@ import {
 } from "@ens/contracts/utils/ENSIP19.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 
+import {IABISetter} from "~src/resolver/interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "~src/resolver/interfaces/setters/IAddressSetter.sol";
 import {IContentHashSetter} from "~src/resolver/interfaces/setters/IContentHashSetter.sol";
 import {IDataSetter} from "~src/resolver/interfaces/setters/IDataSetter.sol";
@@ -83,6 +83,10 @@ contract SharedResolverTest is V2Fixture {
 
         // setters
         assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IABISetter).interfaceId),
+            "IABISetter"
+        );
+        assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(IAddressSetter).interfaceId),
             "IAddressSetter"
         );
@@ -103,6 +107,10 @@ contract SharedResolverTest is V2Fixture {
             "INameSetter"
         );
         assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IPubkeySetter).interfaceId),
+            "IPubkeySetter"
+        );
+        assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(ITextSetter).interfaceId),
             "ITextSetter"
         );
@@ -112,26 +120,26 @@ contract SharedResolverTest is V2Fixture {
         assertTrue(resolver.supportsFeature(ResolverFeatures.RESOLVE_MULTICALL), "RESOLVE_MULTICALL");
     }
 
-    function test_ownerOf() external {
+    function test_ownerOf() external view {
         assertEq(resolver.ownerOf(nullName), address(0), "null");
         assertEq(resolver.ownerOf(unregName), address(0), "unreg");
         assertEq(resolver.ownerOf(testName), address(this), "test");
         assertEq(resolver.ownerOf(otherName), address(this), "other");
     }
 
-    function test_canModifyName_null() external {
+    function test_canModifyName_null() external view {
         assertFalse(resolver.canModifyName(nullName, address(0)), "null");
         assertFalse(resolver.canModifyName(nullName, address(this)), "this");
         assertFalse(resolver.canModifyName(nullName, address(actor)), "actor");
     }
 
-    function test_canModifyName_unregistered() external {
+    function test_canModifyName_unregistered() external view {
         assertFalse(resolver.canModifyName(unregName, address(0)), "null");
         assertFalse(resolver.canModifyName(unregName, address(this)), "this");
         assertFalse(resolver.canModifyName(unregName, address(actor)), "actor");
     }
 
-    function test_canModifyName_registered() external {
+    function test_canModifyName_registered() external view {
         assertFalse(resolver.canModifyName(testName, address(0)), "null");
         assertTrue(resolver.canModifyName(testName, address(this)), "this");
         assertFalse(resolver.canModifyName(testName, address(actor)), "actor");
@@ -203,7 +211,18 @@ contract SharedResolverTest is V2Fixture {
         resolver.resolve(testName, abi.encodeWithSelector(TEST_SELECTOR));
     }
 
-    function test_resolve_multicall_unsupported() external {
+    function test_resolve_anyNode(bytes32 node) external {
+        string memory name = "nick.eth";
+
+        resolver.setName(testName, name);
+
+        assertEq(
+            resolver.resolve(testName, abi.encodeCall(INameResolver.name, (node))),
+            abi.encode(name)
+        );
+    }
+
+    function test_resolve_multicall_unsupported() external view {
         bytes[] memory calls = new bytes[](1);
         calls[0] = abi.encodeWithSelector(TEST_SELECTOR);
 
@@ -219,11 +238,46 @@ contract SharedResolverTest is V2Fixture {
         );
     }
 
-    function test_resolve_emptyMulticall() external {
+    function test_resolve_emptyMulticall() external view {
         assertEq(
             resolver.resolve(testName, abi.encodeCall(IMulticallable.multicall, (new bytes[](0)))),
             abi.encode(new bytes[](0))
         );
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // setABI()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_setABI(uint8 bit, bytes calldata data) external {
+        uint256 contentType = 1 << bit;
+
+        vm.expectEmit();
+        emit IABISetter.ABIUpdated(testNode, testName, contentType);
+        resolver.setABI(testName, contentType, data);
+
+        assertEq(
+            _resolveWithUR(testName, abi.encodeCall(IABIResolver.ABI, (bytes32(0), ~uint256(0)))),
+            data.length > 0 ? abi.encode(contentType, data) : abi.encode(0, "")
+        );
+    }
+
+    function test_setABI_invalidContentType_noBits() external {
+        uint256 contentTypes; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IABISetter.InvalidContentType.selector, contentTypes));
+        resolver.setABI(testName, contentTypes, "");
+    }
+
+    function test_setABI_invalidContentType_manyBits() external {
+        uint256 contentTypes = 3; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IABISetter.InvalidContentType.selector, contentTypes));
+        resolver.setABI(testName, contentTypes, "");
+    }
+
+    function test_setABI_notAuthorized() external {
+        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, testName));
+        vm.prank(actor);
+        resolver.setABI(testName, 1, "");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -235,7 +289,7 @@ contract SharedResolverTest is V2Fixture {
             vm.randomBytes(ENSIP19.isEVMCoinType(coinType) ? 20 : vm.randomUint(1, 1000));
 
         assertEq(
-            resolver.resolve(
+            _resolveWithUR(
                 testName,
                 abi.encodeCall(IHasAddressResolver.hasAddr, (bytes32(0), coinType))
             ),
@@ -248,13 +302,13 @@ contract SharedResolverTest is V2Fixture {
         resolver.setAddress(testName, coinType, a);
 
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(IAddressResolver.addr, (bytes32(0), coinType))),
+            _resolveWithUR(testName, abi.encodeCall(IAddressResolver.addr, (bytes32(0), coinType))),
             abi.encode(a),
             "resolve"
         );
 
         assertEq(
-            resolver.resolve(
+            _resolveWithUR(
                 testName,
                 abi.encodeCall(IHasAddressResolver.hasAddr, (bytes32(0), coinType))
             ),
@@ -267,7 +321,7 @@ contract SharedResolverTest is V2Fixture {
         resolver.setAddress(testName, COIN_TYPE_ETH, abi.encodePacked(addr));
 
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(IAddrResolver.addr, (bytes32(0)))),
+            _resolveWithUR(testName, abi.encodeCall(IAddrResolver.addr, (bytes32(0)))),
             abi.encode(addr)
         );
     }
@@ -280,18 +334,18 @@ contract SharedResolverTest is V2Fixture {
         resolver.setAddress(testName, COIN_TYPE_DEFAULT, a);
 
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(IAddressResolver.addr, (bytes32(0), coinType))),
+            _resolveWithUR(testName, abi.encodeCall(IAddressResolver.addr, (bytes32(0), coinType))),
             abi.encode(a),
             "addr(*)"
         );
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(IAddrResolver.addr, (bytes32(0)))),
+            _resolveWithUR(testName, abi.encodeCall(IAddrResolver.addr, (bytes32(0)))),
             abi.encode(addr),
             "addr()"
         );
 
         assertEq(
-            resolver.resolve(
+            _resolveWithUR(
                 testName,
                 abi.encodeCall(IHasAddressResolver.hasAddr, (bytes32(0), coinType))
             ),
@@ -299,7 +353,7 @@ contract SharedResolverTest is V2Fixture {
             "hasAddr(*)"
         );
         assertEq(
-            resolver.resolve(
+            _resolveWithUR(
                 testName,
                 abi.encodeCall(IHasAddressResolver.hasAddr, (bytes32(0), COIN_TYPE_DEFAULT))
             ),
@@ -320,7 +374,7 @@ contract SharedResolverTest is V2Fixture {
         uint256 coinType = COIN_TYPE_ETH;
 
         assertEq(
-            resolver.resolve(
+            _resolveWithUR(
                 testName,
                 abi.encodeCall(IHasAddressResolver.hasAddr, (bytes32(0), coinType))
             ),
@@ -331,13 +385,13 @@ contract SharedResolverTest is V2Fixture {
         resolver.setAddress(testName, coinType, abi.encodePacked(address(0)));
 
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(IAddrResolver.addr, (bytes32(0)))),
+            _resolveWithUR(testName, abi.encodeCall(IAddrResolver.addr, (bytes32(0)))),
             abi.encode(address(0)),
             "resolve"
         );
 
         assertEq(
-            resolver.resolve(
+            _resolveWithUR(
                 testName,
                 abi.encodeCall(IHasAddressResolver.hasAddr, (bytes32(0), coinType))
             ),
@@ -360,6 +414,11 @@ contract SharedResolverTest is V2Fixture {
         vm.expectEmit();
         emit IContentHashSetter.ContentHashUpdated(testNode, testName, contentHash);
         resolver.setContentHash(testName, contentHash);
+
+        assertEq(
+            _resolveWithUR(testName, abi.encodeCall(IContentHashResolver.contenthash, (bytes32(0)))),
+            abi.encode(contentHash)
+        );
     }
 
     function test_setContentHash_notAuthorized() external {
@@ -378,7 +437,7 @@ contract SharedResolverTest is V2Fixture {
         resolver.setData(testName, key, value);
 
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(IDataResolver.data, (bytes32(0), key))),
+            _resolveWithUR(testName, abi.encodeCall(IDataResolver.data, (bytes32(0), key))),
             abi.encode(value)
         );
     }
@@ -399,7 +458,7 @@ contract SharedResolverTest is V2Fixture {
         resolver.setInterface(testName, interfaceId, impl);
 
         assertEq(
-            resolver.resolve(
+            _resolveWithUR(
                 testName,
                 abi.encodeCall(IInterfaceResolver.interfaceImplementer, (bytes32(0), interfaceId))
             ),
@@ -414,7 +473,7 @@ contract SharedResolverTest is V2Fixture {
         resolver.setAddress(testName, COIN_TYPE_ETH, abi.encodePacked(c));
 
         assertEq(
-            resolver.resolve(
+            _resolveWithUR(
                 testName,
                 abi.encodeCall(IInterfaceResolver.interfaceImplementer, (bytes32(0), TEST_SELECTOR))
             ),
@@ -438,7 +497,7 @@ contract SharedResolverTest is V2Fixture {
         resolver.setName(testName, primaryName);
 
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(INameResolver.name, (bytes32(0)))),
+            _resolveWithUR(testName, abi.encodeCall(INameResolver.name, (bytes32(0)))),
             abi.encode(primaryName)
         );
     }
@@ -459,7 +518,7 @@ contract SharedResolverTest is V2Fixture {
         resolver.setPubkey(testName, x, y);
 
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(IPubkeyResolver.pubkey, (bytes32(0)))),
+            _resolveWithUR(testName, abi.encodeCall(IPubkeyResolver.pubkey, (bytes32(0)))),
             abi.encode(x, y)
         );
     }
@@ -480,7 +539,7 @@ contract SharedResolverTest is V2Fixture {
         resolver.setText(testName, key, value);
 
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(ITextResolver.text, (bytes32(0), key))),
+            _resolveWithUR(testName, abi.encodeCall(ITextResolver.text, (bytes32(0), key))),
             abi.encode(value)
         );
     }
@@ -496,19 +555,19 @@ contract SharedResolverTest is V2Fixture {
     ////////////////////////////////////////////////////////////////////////
 
     function test_clear() external {
-        string memory name = "abc";
+        string memory name = "nick.eth";
 
         resolver.setName(testName, name);
 
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(INameResolver.name, (bytes32(0)))),
+            _resolveWithUR(testName, abi.encodeCall(INameResolver.name, (bytes32(0)))),
             abi.encode(name)
         );
 
         resolver.clear(testName);
 
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(INameResolver.name, (bytes32(0)))),
+            _resolveWithUR(testName, abi.encodeCall(INameResolver.name, (bytes32(0)))),
             abi.encode("")
         );
     }
@@ -525,14 +584,13 @@ contract SharedResolverTest is V2Fixture {
 
     function test_multicall(bool checked) external {
         string memory s = "abc";
-        address addr = address(0x1111);
-        bytes memory v = abi.encodePacked(addr);
+        bytes memory v = abi.encodePacked(friend);
 
         bytes[] memory m = new bytes[](6);
         m[0] = abi.encodeCall(IAddressSetter.setAddress, (testName, COIN_TYPE_DEFAULT, v));
         m[1] = abi.encodeCall(IContentHashSetter.setContentHash, (testName, v));
         m[2] = abi.encodeCall(IDataSetter.setData, (testName, s, v));
-        m[3] = abi.encodeCall(IInterfaceSetter.setInterface, (testName, TEST_SELECTOR, addr));
+        m[3] = abi.encodeCall(IInterfaceSetter.setInterface, (testName, TEST_SELECTOR, friend));
         m[4] = abi.encodeCall(INameSetter.setName, (testName, s));
         m[5] = abi.encodeCall(ITextSetter.setText, (testName, s, s));
 
@@ -561,16 +619,16 @@ contract SharedResolverTest is V2Fixture {
         results[0] = abi.encode(v);
         results[1] = abi.encode(v);
         results[2] = abi.encode(v);
-        results[3] = abi.encode(addr);
+        results[3] = abi.encode(friend);
         results[4] = abi.encode(s);
         results[5] = abi.encode(s);
         //
-        results[6] = abi.encode(addr);
+        results[6] = abi.encode(friend);
         results[7] = abi.encode(true);
         results[8] = abi.encode(false);
 
         assertEq(
-            resolver.resolve(testName, abi.encodeCall(IMulticallable.multicall, (calls))),
+            _resolveWithUR(testName, abi.encodeCall(IMulticallable.multicall, (calls))),
             abi.encode(results)
         );
     }
@@ -599,6 +657,16 @@ contract SharedResolverTest is V2Fixture {
 
     function _coinTypeFromChain(uint32 chain) internal pure returns (uint256) {
         return chain == CHAIN_ID_ETH ? COIN_TYPE_ETH : (COIN_TYPE_DEFAULT | chain);
+    }
+
+    function _resolveWithUR(bytes memory name, bytes memory data)
+        public
+        view
+        returns (bytes memory result)
+    {
+        address resolver_;
+        (result, resolver_) = universalResolver.resolve(name, data);
+        assertEq(resolver_, address(resolver), "resolver");
     }
 
     function _register(string memory label) internal returns (bytes memory) {

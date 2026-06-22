@@ -2,6 +2,7 @@
 pragma solidity ^0.8.13;
 
 import {IMulticallable} from "@ens/contracts/resolvers/Multicallable.sol";
+import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
@@ -31,12 +32,15 @@ import {INameSetter} from "./interfaces/setters/INameSetter.sol";
 import {IPubkeySetter} from "./interfaces/setters/IPubkeySetter.sol";
 import {ITextSetter} from "./interfaces/setters/ITextSetter.sol";
 
+import {IABISetter} from "~src/resolver/interfaces/setters/IABISetter.sol";
+
 /// @notice PublicResolver that respects the ENSv2 registry and uses name-based setters.
 contract SharedResolver is
     DelegatedContractNamer,
     IExtendedResolver,
     IERC7996,
     IMulticallable,
+    IABISetter,
     IAddressSetter,
     IContentHashSetter,
     IDataSetter,
@@ -135,6 +139,7 @@ contract SharedResolver is
             interfaceId == type(IExtendedResolver).interfaceId ||
             interfaceId == type(IERC7996).interfaceId ||
             interfaceId == type(IMulticallable).interfaceId ||
+            interfaceId == type(IABISetter).interfaceId ||
             interfaceId == type(IAddressSetter).interfaceId ||
             interfaceId == type(IContentHashSetter).interfaceId ||
             interfaceId == type(IDataSetter).interfaceId ||
@@ -171,6 +176,16 @@ contract SharedResolver is
         bytes32 node = _checkAuth(name);
         ++_pointers[node].version;
         emit Cleared(node, name);
+    }
+
+    /// @inheritdoc IABISetter
+    function setABI(bytes calldata name, uint256 contentType, bytes calldata data) external {
+        bytes32 node = _checkAuth(name);
+        if (!_isPowerOf2(contentType)) {
+            revert InvalidContentType(contentType);
+        }
+        _record(node).abis[contentType] = data;
+        emit ABIUpdated(node, name, contentType);
     }
 
     /// @inheritdoc IAddressSetter
@@ -318,6 +333,10 @@ contract SharedResolver is
             return abi.encode(r.addresses[coinType].length > 0); // boolean
         } else if (selector == IPubkeyResolver.pubkey.selector) {
             return abi.encode(r.pubkey); // (bytes32, bytes32)
+        } else if (selector == IABIResolver.ABI.selector) {
+            (, uint256 contentTypes) = abi.decode(data[4:], (bytes32, uint256));
+            (uint256 contentType, bytes memory value) = _getABI(r, contentTypes);
+            return abi.encode(contentType, value); // (uint256, bytes)
         } else if (selector == IInterfaceResolver.interfaceImplementer.selector) {
             (, bytes4 interfaceId) = abi.decode(data[4:], (bytes32, bytes4));
             address implementer = r.interfaces[interfaceId];
@@ -354,10 +373,7 @@ contract SharedResolver is
             can = owner == operator;
             if (!can) {
                 mapping(bytes32 node => bool approved) storage map = _approvals[owner][operator];
-                can = map[node];
-                if (!can && node != 0) {
-                    can = map[0];
-                }
+                can = map[node] || (node != bytes32(0) && map[bytes32(0)]);
             }
         }
     }
@@ -391,5 +407,27 @@ contract SharedResolver is
     /// @dev Convenience for mainnet address.
     function _getAddr(Record storage r) internal view returns (address) {
         return address(bytes20(_getAddress(r, COIN_TYPE_ETH)));
+    }
+
+    /// @dev Find ABI matching contentTypes filter.
+    function _getABI(Record storage r, uint256 contentTypes)
+        internal
+        view
+        returns (uint256 contentType, bytes memory value)
+    {
+        for (contentType = 1; contentType > 0 && contentType <= contentTypes; contentType <<= 1) {
+            if ((contentType & contentTypes) != 0) {
+                value = r.abis[contentType];
+                if (value.length > 0) {
+                    return (contentType, value);
+                }
+            }
+        }
+        return (0, "");
+    }
+
+    /// @dev Returns true if `x` has a single bit set.
+    function _isPowerOf2(uint256 x) internal pure returns (bool) {
+        return x > 0 && (x - 1) & x == 0;
     }
 }
