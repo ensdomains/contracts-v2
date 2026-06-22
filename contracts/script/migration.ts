@@ -208,6 +208,18 @@ function forkChain(
   });
 }
 
+function migrationChain(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+}): Chain {
+  return forkChain(
+    opts.network,
+    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
+    opts.rpcUrl,
+  );
+}
+
 function publicClient(rpcUrl: string, chain: Chain, provider?: RpcProvider) {
   return createPublicClient({
     chain,
@@ -970,11 +982,7 @@ async function executePreparedOwnerTransactions(opts: {
     );
   }
 
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
   const wallet = account
     ? walletClient({ rpcUrl: opts.rpcUrl, chain, account })
@@ -1363,11 +1371,7 @@ async function disableV1Registrars(opts: {
   impersonateOwner?: boolean;
   calldataOnly?: boolean;
 }) {
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
   const baseRegistrar = requireV1Deployment(
     opts.network,
@@ -1494,11 +1498,7 @@ async function setV1RegistrarController(opts: {
   impersonateOwner?: boolean;
   calldataOnly?: boolean;
 }) {
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
   const baseRegistrar = requireV1Deployment(
     opts.network,
@@ -1687,11 +1687,7 @@ async function activateV1RenewerAndTransferOwnership(opts: {
     enabled: true,
   });
 
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
   const baseRegistrar = requireV1Deployment(
     opts.network,
@@ -1780,11 +1776,7 @@ async function verifyV1RegistrarsDisabled(opts: {
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
 }) {
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
   const baseRegistrar = requireV1Deployment(
     opts.network,
@@ -1895,11 +1887,7 @@ async function enableV2Registrar(opts: {
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
   const registry = opts.registry
     ? null
@@ -1958,11 +1946,7 @@ async function disableBatchRegistrar(opts: {
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
   const registry = opts.registry
     ? null
@@ -2025,11 +2009,7 @@ async function verifyBatchRegistrarDisabled(opts: {
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
   const registry = opts.registry
     ? null
@@ -2062,11 +2042,7 @@ export async function checkBatchRegistrarOwner(opts: {
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
   const batchRegistrar = resolveDeploymentAddress(
     opts.batchRegistrar,
@@ -2098,11 +2074,7 @@ async function readBatchRegistrarOwner(opts: {
   chainId?: string;
   batchRegistrar: Address;
 }) {
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
   return (await client.readContract({
     address: opts.batchRegistrar,
@@ -2140,11 +2112,7 @@ async function verifyV2Registrar(opts: {
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
   const registry = opts.registry
     ? null
@@ -2178,11 +2146,7 @@ async function verifyUrp(opts: {
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
   const topUrp = opts.topUrp ?? DEPLOYED_UNIVERSAL_RESOLVER_PROXY;
   const managedUrp = resolveDeploymentAddress(
@@ -2246,11 +2210,7 @@ async function switchTopUrpToManaged(opts: {
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
   const topUrp = opts.topUrp ?? DEPLOYED_UNIVERSAL_RESOLVER_PROXY;
   const managedUrp = resolveDeploymentAddress(
@@ -2315,11 +2275,7 @@ async function upgradeManagedUrp(opts: {
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
+  const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
   const managedUrp = resolveDeploymentAddress(
     opts.managedUrp,
@@ -3395,6 +3351,7 @@ type V2MigrationDeployments = {
   universalResolverV2: JsonDeployment;
   managedUrp: JsonDeployment;
   topUrp: JsonDeployment;
+  graveyard: JsonDeployment;
   testnetV1PremigrationRegistrar: JsonDeployment | null;
 };
 
@@ -3449,6 +3406,7 @@ function loadV2MigrationDeployments(
       deploymentNetwork,
       "UpgradableUniversalResolverProxy",
     ),
+    graveyard: loadV2Deployment(deploymentsDir, deploymentNetwork, "Graveyard"),
     testnetV1PremigrationRegistrar: maybeLoadV2Deployment(
       deploymentsDir,
       deploymentNetwork,
@@ -3471,6 +3429,7 @@ function collectV2MigrationDeployments(
     universalResolverV2: deployEnv.get("UniversalResolverV2"),
     managedUrp: deployEnv.get("ManagedUniversalResolverProxy"),
     topUrp: deployEnv.get("UpgradableUniversalResolverProxy"),
+    graveyard: deployEnv.get("Graveyard"),
     testnetV1PremigrationRegistrar: deployEnv.getOrNull(
       "TestnetV1PremigrationRegistrar",
     ),
@@ -3661,6 +3620,30 @@ export async function runForkFull(opts: RunForkFullOptions) {
     })) as Address;
     if (useRpcStateControls) await impersonate(client, v1RegistrarOwner);
 
+    // A chain that has already completed the v1 hand-off (phase 3 disabled the
+    // v1 registrar controllers) cannot perform a fresh v1 registration, so the
+    // live-v1 smokes must be skipped. Detect that from the controller state: a
+    // pristine chain (mainnet today) still exercises them while an
+    // already-migrated chain (sepolia, or a repeat mainnet run) does not.
+    const v1Controller = loadV1Deployment(
+      opts.network,
+      "ETHRegistrarController",
+      v1Deployments,
+    );
+    const postMigration = v1Controller
+      ? !((await client.readContract({
+          address: v1BaseRegistrar.address,
+          abi: v1BaseRegistrar.abi,
+          functionName: "controllers",
+          args: [v1Controller.address],
+        })) as boolean)
+      : false;
+    if (postMigration) {
+      console.log(
+        "post-migration mode: v1 hand-off already complete; skipping live v1 registration smokes",
+      );
+    }
+
     let v2Deployments: V2MigrationDeployments;
 
     if (resumeFromPhase === 2) {
@@ -3693,6 +3676,10 @@ export async function runForkFull(opts: RunForkFullOptions) {
         ownerPrivateKey: opts.ownerPrivateKey,
         v1Owner,
         v1OwnerPrivateKey: opts.v1OwnerPrivateKey,
+        // When the v1 owner is not backed by a private key, the deploy must
+        // impersonate it so writes signed as the v1 owner (e.g. repointing the
+        // .eth resolver) have an unlocked signer on the fork.
+        impersonateV1Owner: useRpcStateControls && !opts.v1OwnerPrivateKey,
         urManager,
         urManagerPrivateKey: opts.urManagerPrivateKey,
       });
@@ -3715,6 +3702,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       universalResolverV2,
       managedUrp,
       topUrp,
+      graveyard,
       testnetV1PremigrationRegistrar,
     } = v2Deployments;
 
@@ -3750,19 +3738,22 @@ export async function runForkFull(opts: RunForkFullOptions) {
           ),
         };
 
-    const v1UniversalResolver = requireV1Deployment(
-      opts.network,
-      "UniversalResolver",
-      v1Deployments,
-    );
+    // The migration wraps whatever the canonical top proxy currently serves;
+    // the freshly deployed managed proxy is seeded to that same implementation,
+    // so both proxies must report it before the phase-5 switch.
+    const baselineImplementation = (await client.readContract({
+      address: topUrp.address,
+      abi: Artifact_UpgradableUniversalResolverProxy.abi,
+      functionName: "implementation",
+    })) as Address;
     await verifyUrp({
       network: opts.network,
       rpcUrl,
       chainId: String(chainId),
       topUrp: topUrp.address,
       managedUrp: managedUrp.address,
-      expectedTopImplementation: v1UniversalResolver.address,
-      expectedManagedImplementation: v1UniversalResolver.address,
+      expectedTopImplementation: baselineImplementation,
+      expectedManagedImplementation: baselineImplementation,
     });
 
     const smokePrefix = `${opts.network === "mainnet" ? "mf" : "sf"}${Date.now().toString(36)}`;
@@ -3808,7 +3799,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       smokeMigrationPrivateKey = undefined;
       if (useRpcStateControls) await impersonate(client, smokeMigrationOwner);
       console.log(`resumed smoke migration owner: ${smokeMigrationOwner}`);
-    } else {
+    } else if (!postMigration) {
       console.log(
         "smoke: v1 registration succeeds before registrar disablement",
       );
@@ -3904,14 +3895,16 @@ export async function runForkFull(opts: RunForkFullOptions) {
       },
       resumeFromPhase === 2,
     );
-    await assertV2State({
-      rpcUrl,
-      chain,
-      ethRegistry,
-      label: smokeLabels.migrate,
-      status: STATUS.RESERVED,
-    });
-    console.log(`smoke pre-migration reserved ${smokeLabels.migrate}.eth`);
+    if (!postMigration) {
+      await assertV2State({
+        rpcUrl,
+        chain,
+        ethRegistry,
+        label: smokeLabels.migrate,
+        status: STATUS.RESERVED,
+      });
+      console.log(`smoke pre-migration reserved ${smokeLabels.migrate}.eth`);
+    }
 
     console.log("phase 3: disable v1 registrars");
     await disableV1Registrars({
@@ -3926,24 +3919,26 @@ export async function runForkFull(opts: RunForkFullOptions) {
             privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner"),
           }),
     });
-    await assertRejected(
-      registerViaV1Controller({
-        network: opts.network,
-        rpcUrl,
-        chain,
-        provider,
-        ...v1Deployments,
-        label: smokeLabels.v1AfterDisable,
-        owner: smokeAccount.address,
-        privateKey: smokePrivateKey,
-        account: smokePrivateKey ? undefined : smokeAccount.address,
-        useRpcStateControls,
-      }),
-      `v1 registration rejected after registrar disablement: ${smokeLabels.v1AfterDisable}.eth`,
-      // The disabled controller can no longer mint on the BaseRegistrar, so the
-      // registration must fail with a revert (at simulation or in the receipt).
-      /revert/i,
-    );
+    if (!postMigration) {
+      await assertRejected(
+        registerViaV1Controller({
+          network: opts.network,
+          rpcUrl,
+          chain,
+          provider,
+          ...v1Deployments,
+          label: smokeLabels.v1AfterDisable,
+          owner: smokeAccount.address,
+          privateKey: smokePrivateKey,
+          account: smokePrivateKey ? undefined : smokeAccount.address,
+          useRpcStateControls,
+        }),
+        `v1 registration rejected after registrar disablement: ${smokeLabels.v1AfterDisable}.eth`,
+        // The disabled controller can no longer mint on the BaseRegistrar, so the
+        // registration must fail with a revert (at simulation or in the receipt).
+        /revert/i,
+      );
+    }
 
     console.log("phase 4: sync remaining names and finish pre-migration");
     const finalSyncWorkDir = join(workDir, "final-sync");
@@ -3966,43 +3961,45 @@ export async function runForkFull(opts: RunForkFullOptions) {
       },
       existsSync(join(finalSyncWorkDir, "preMigration-checkpoint.json")),
     );
-    await assertV2State({
-      rpcUrl,
-      chain,
-      ethRegistry,
-      label: smokeLabels.reservedOnly,
-      status: STATUS.RESERVED,
-    });
-    console.log(
-      `smoke pre-migration reserved ${smokeLabels.reservedOnly}.eth for registrar rejection`,
-    );
+    if (!postMigration) {
+      await assertV2State({
+        rpcUrl,
+        chain,
+        ethRegistry,
+        label: smokeLabels.reservedOnly,
+        status: STATUS.RESERVED,
+      });
+      console.log(
+        `smoke pre-migration reserved ${smokeLabels.reservedOnly}.eth for registrar rejection`,
+      );
 
-    console.log("smoke: migrate a pre-migrated v1 name to v2");
-    await migrateUnwrappedV1Name({
-      network: opts.network,
-      rpcUrl,
-      chain,
-      provider,
-      ...v1Deployments,
-      label: smokeLabels.migrate,
-      owner: smokeMigrationOwner,
-      privateKey: smokeMigrationPrivateKey,
-      ...(smokeMigrationPrivateKey === undefined
-        ? useRpcStateControls
-          ? { impersonateAccount: smokeMigrationOwner }
-          : { account: smokeMigrationOwner }
-        : {}),
-      migrationController: unlockedMigrationController,
-    });
-    await assertV2State({
-      rpcUrl,
-      chain,
-      ethRegistry,
-      label: smokeLabels.migrate,
-      status: STATUS.REGISTERED,
-      owner: smokeMigrationOwner,
-    });
-    console.log(`smoke migration registered ${smokeLabels.migrate}.eth on v2`);
+      console.log("smoke: migrate a pre-migrated v1 name to v2");
+      await migrateUnwrappedV1Name({
+        network: opts.network,
+        rpcUrl,
+        chain,
+        provider,
+        ...v1Deployments,
+        label: smokeLabels.migrate,
+        owner: smokeMigrationOwner,
+        privateKey: smokeMigrationPrivateKey,
+        ...(smokeMigrationPrivateKey === undefined
+          ? useRpcStateControls
+            ? { impersonateAccount: smokeMigrationOwner }
+            : { account: smokeMigrationOwner }
+          : {}),
+        migrationController: unlockedMigrationController,
+      });
+      await assertV2State({
+        rpcUrl,
+        chain,
+        ethRegistry,
+        label: smokeLabels.migrate,
+        status: STATUS.REGISTERED,
+        owner: smokeMigrationOwner,
+      });
+      console.log(`smoke migration registered ${smokeLabels.migrate}.eth on v2`);
+    }
 
     console.log(
       "phase 5: DAO switch UniversalResolverProxy to ManagedUniversalResolverProxy",
@@ -4085,6 +4082,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ...v1Deployments,
       deploymentsDir,
       deploymentNetwork,
+      graveyard: graveyard.address,
       testnetV1PremigrationRegistrar: testnetV1PremigrationRegistrar?.address,
       ...(useRpcStateControls
         ? { impersonateOwner: true }
@@ -4146,21 +4144,23 @@ export async function runForkFull(opts: RunForkFullOptions) {
       deploymentNetwork,
       ...deploymentAdminSigner,
     });
-    await assertRejected(
-      registerViaV2Registrar({
-        rpcUrl,
-        chain,
-        label: smokeLabels.reservedOnly,
-        owner: smokeAccount.address,
-        privateKey: smokeSignerPrivateKey,
-        ethRegistrar,
-        mockUsdc,
-        useRpcStateControls,
-      }),
-      `v2 registrar rejected pre-migrated reserved name after enablement: ${smokeLabels.reservedOnly}.eth`,
-      // The name is RESERVED from pre-migration, so registration must revert.
-      /revert/i,
-    );
+    if (!postMigration) {
+      await assertRejected(
+        registerViaV2Registrar({
+          rpcUrl,
+          chain,
+          label: smokeLabels.reservedOnly,
+          owner: smokeAccount.address,
+          privateKey: smokeSignerPrivateKey,
+          ethRegistrar,
+          mockUsdc,
+          useRpcStateControls,
+        }),
+        `v2 registrar rejected pre-migrated reserved name after enablement: ${smokeLabels.reservedOnly}.eth`,
+        // The name is RESERVED from pre-migration, so registration must revert.
+        /revert/i,
+      );
+    }
     await registerViaV2Registrar({
       rpcUrl,
       chain,
