@@ -157,6 +157,96 @@ Resolved by [`script/migration.ts`](../script/migration.ts) (the CLI also auto-l
 
 For `phase execute-owner-txs`, the key is selected by the `--role` filter: `v1Owner` → the v1-owner variables, `sepolia-top-urp-owner` → the top-URP-owner variables, `deployer` → `DEPLOYER_KEY`; with no role, `OWNER_TX_KEY` and then the role-specific variables are tried in order.
 
+## Live deployment (Sepolia)
+
+End-to-end runbook for a real, fresh Sepolia deployment that replaces the live v2 set and re-runs every phase. Rehearse first (see [Rehearsals](#rehearsals)) — `fork full` exercises this exact sequence against forked state.
+
+### Signer keys
+
+Three keys cover every signature in the migration. On Sepolia the deployer also fills the owner/urManager/securityCouncil roles, so only the two v1-side roles are separate accounts:
+
+- **`DEPLOYER_KEY`** — the deployer EOA that signs phase-1 contract deployments. On Sepolia it also resolves as `owner` (registry root-role admin: `disable-batch-registrar`, `enable-v2-registrar`), `urManager` (managed URP admin: `upgrade-managed-urp`), and `securityCouncil`, because the account config defaults those roles to the deployer. It is also the `BatchRegistrar` owner that drives pre-migration. Must be a freshly funded account with enough Sepolia ETH for ~1300 phase-1 transactions.
+- **`SEPOLIA_V1_OWNER_KEY`** — the v1 owner (`0x0f32b753afc8abad9ca6fe589f707755f4df2353`), which controls the v1 `BaseRegistrar` / `RegistrarSecurityController`. Signs the deferred phase-1 v1-owner transactions (pointing the v1 `.eth` resolver at the new `ENSV2Resolver` and authorizing the reverse-registrar adapters), plus `disable-v1-registrars` (phase 3), `authorize-v1-renewer` (phase 4), and `activate-v1-handoff-controllers` / `activate-v1-renewer` (phase 6).
+- **`SEPOLIA_TOP_URP_OWNER_KEY`** — the admin of the top `UpgradableUniversalResolverProxy` (`0x69420f05A11f617B4B74fFe2E04B2D300dFA556F`), the persistent Universal Resolver entry point. Signs `switch-urp-to-managed` (phase 7), which re-points the top URP at the freshly deployed managed URP.
+
+> **`phase deploy-v2` cannot sign v1-owner transactions itself** — it only wires the deployer/owner/urManager keys. So phase 1 must record its v1-owner transactions with `--defer-v1-owner-transactions` and you replay them with `phase execute-owner-txs --role v1Owner`, which reads `SEPOLIA_V1_OWNER_KEY`. Every later v1-owner / top-URP command reads its key from env directly, except `disable-v1-registrars`, which takes `--private-key` explicitly.
+
+### Setup
+
+```bash
+cd contracts
+bun run compile                     # forge + hardhat → generated/artifacts
+
+export SEPOLIA_RPC_URL=<reliable paid sepolia RPC>     # ~1300 txs in phase 1
+export DEPLOYER_KEY=0x<fresh funded EOA>               # also owner / urManager / securityCouncil / BatchRegistrar owner
+export SEPOLIA_V1_OWNER_KEY=0x<key for 0x0f32…2353>
+export SEPOLIA_TOP_URP_OWNER_KEY=0x<key for 0x6942…556F>
+
+mkdir -p .dev/sepolia-live
+```
+
+Also prepare a **current** Sepolia registration CSV for the pre-migration phases (Dune export — see [premigration.md](./premigration.md)). The repo's `csv-data/ens-registrations-sepolia.csv` is a small sample, not a real export.
+
+### Phase 1 — deploy fresh v2
+
+```bash
+# deployer-signed deploy into deployments/sepolia/; v1-owner txs recorded, not broadcast
+bun run migration -- phase deploy-v2 --network sepolia --fresh \
+  --defer-v1-owner-transactions \
+  --deferred-v1-owner-transactions-file .dev/sepolia-live/phase1-v1owner.jsonl
+
+# v1 owner replays the deferred setResolver + reverse-adapter grants
+bun run migration -- phase execute-owner-txs --network sepolia \
+  --role v1Owner --file .dev/sepolia-live/phase1-v1owner.jsonl
+```
+
+`--fresh` writes to the default `sepolia` namespace (archiving an existing one to `sepolia-<YYYYMMDD>-r<N>`) and implies `--save-deployments`; every later phase auto-resolves addresses from `deployments/sepolia/`.
+
+### Phases 2–7 — wire up and cut over
+
+```bash
+# Phase 2 — initial pre-migration (BatchRegistrar owner = deployer). See premigration.md.
+bun run migration -- premigration run --network sepolia \
+  --csv-file <fresh-sepolia.csv> --work-dir .dev/sepolia-live/premig-1
+bun run migration -- premigration verify --network sepolia --csv-file <fresh-sepolia.csv>
+
+# Phase 3 — freeze v1 registrations (v1 owner; this command needs --private-key)
+bun run migration -- phase disable-v1-registrars --network sepolia \
+  --private-key $SEPOLIA_V1_OWNER_KEY
+bun run migration -- phase verify-v1-registrars-disabled --network sepolia
+
+# Phase 4 — keep unmigrated names renewable (v1 owner via env)
+bun run migration -- phase authorize-v1-renewer --network sepolia
+
+# Phase 5 — final sync from a fresh post-freeze CSV export
+bun run migration -- premigration run --network sepolia \
+  --csv-file <fresh-sepolia-post-freeze.csv> --work-dir .dev/sepolia-live/premig-2
+bun run migration -- premigration verify --network sepolia --csv-file <fresh-sepolia-post-freeze.csv>
+
+# Phase 6 — enable v2 controller (registry root admin = deployer/owner; + v1 owner)
+bun run migration -- phase disable-batch-registrar --network sepolia
+bun run migration -- phase activate-v1-handoff-controllers --network sepolia
+bun run migration -- phase activate-v1-renewer --network sepolia
+bun run migration -- phase enable-v2-registrar --network sepolia
+bun run migration -- phase verify-v2-registrar --network sepolia
+
+# Phase 7 — resolution cutover (top URP owner, then urManager = deployer)
+bun run migration -- phase switch-urp-to-managed --network sepolia
+bun run migration -- phase upgrade-managed-urp --network sepolia
+bun run migration -- phase verify-urp --network sepolia
+```
+
+### After
+
+The new `deployments/sepolia/` namespace is git-ignored by default; to commit it add a `!deployments/sepolia/` line to `contracts/.gitignore` (see [deployments/README.md](../deployments/README.md)).
+
+Two things to plan for:
+
+- **Renewal gap (phases 3→5).** Between the freeze and the end of the long final sync renewals are paused until `authorize-v1-renewer` (phase 4) reopens them. With an EOA v1 owner on Sepolia you can run phases 3 and 4 back-to-back, so the window is small. (The atomic-batch guidance under [phase 4](#phase-4-authorize-ethrenewerv1) is a mainnet/multisig concern.)
+- **Pre-migration is the heavy, stateful part.** Phases 2 and 5 are checkpointed (`premigration resume`) and have their own flags (`--registry`, `--batch-registrar`, `--batch-size`, the v1-expiry RPC). Read [premigration.md](./premigration.md) and confirm the CSV export before the live run.
+
+> **Mainnet differs.** There the owner, top URP admin, and v1 owner are all the DAO/multisig, so the owner-signed and URP-admin phases are run with `--calldata-only` (or deferred) and executed through the Safe rather than with local keys.
+
 ## Rehearsals
 
 ### `fork full`
