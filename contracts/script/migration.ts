@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -2464,6 +2465,7 @@ type DeployV2Options = {
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
   saveDeployments?: boolean;
+  fresh?: boolean;
   tags?: readonly string[];
   tenderly?: boolean;
   includeTestnetPremigrationRegistrar?: boolean;
@@ -2926,6 +2928,10 @@ async function deployV1(opts: DeployV1Options) {
 export async function deployV2(opts: DeployV2Options) {
   const network = NETWORKS[opts.network];
   const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
+  const deploymentsDir = resolve(opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR);
+  // A fresh deployment archives any existing namespace and therefore must
+  // persist the new one, so it implies saving regardless of the flag.
+  const persist = Boolean(opts.saveDeployments) || Boolean(opts.fresh);
   if (!opts.rpcUrl && !opts.provider) {
     throw new Error("Missing rpcUrl or provider");
   }
@@ -2965,11 +2971,15 @@ export async function deployV2(opts: DeployV2Options) {
     await impersonate(impersonationProvider(opts) ?? provider!, v1Owner);
   }
 
+  if (opts.fresh) {
+    archiveExistingDeploymentNamespace(deploymentsDir, deploymentNetwork);
+  }
+
   const env = await loadAndExecuteDeploymentsFromFilesWithConfig(
     {
       environment: deploymentNetwork,
       askBeforeProceeding: false,
-      saveDeployments: Boolean(opts.saveDeployments),
+      saveDeployments: persist,
       tags: opts.tags ? [...opts.tags] : [...MIGRATION_DEPLOY_TAGS],
       provider: provider as any,
       extra: {
@@ -2983,6 +2993,10 @@ export async function deployV2(opts: DeployV2Options) {
     },
     buildDeployV2RockethConfig(opts, chainId, chain),
   );
+
+  if (persist) {
+    recordDeploymentMetadata(deploymentsDir, deploymentNetwork, chainId);
+  }
 
   const names = [
     "ETHRegistry",
@@ -4626,6 +4640,81 @@ function assertCleanDeploymentNamespace(
   }
 }
 
+const DEPLOYMENT_METADATA_FILE = ".deployment.json";
+
+// Records when a namespace was first deployed. rocketh ignores dotfiles other
+// than `.migrations.json`, so this metadata never interferes with artifact
+// loading. Written once so the timestamp reflects the original deployment and
+// survives idempotent re-runs; the fresh-deploy archiver reads it back to name
+// the archived folder.
+function recordDeploymentMetadata(
+  root: string,
+  environment: string,
+  chainId: number,
+) {
+  const dir = join(root, environment);
+  if (!existsSync(dir)) return;
+  const metadataPath = join(dir, DEPLOYMENT_METADATA_FILE);
+  if (existsSync(metadataPath)) return;
+  writeFileSync(
+    metadataPath,
+    `${JSON.stringify(
+      { environment, chainId, deployedAt: new Date().toISOString() },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+// Resolves a namespace's deploy time, preferring the recorded metadata and
+// falling back to the latest `.migrations.json` entry (unix-epoch seconds).
+function readDeploymentDeployedAt(path: string): string | undefined {
+  const metadataPath = join(path, DEPLOYMENT_METADATA_FILE);
+  if (existsSync(metadataPath)) {
+    try {
+      const { deployedAt } = JSON.parse(readFileSync(metadataPath, "utf-8"));
+      if (typeof deployedAt === "string") return deployedAt;
+    } catch {}
+  }
+  const migrationsPath = join(path, ".migrations.json");
+  if (existsSync(migrationsPath)) {
+    try {
+      const migrations = JSON.parse(readFileSync(migrationsPath, "utf-8")) as
+        Record<string, number>;
+      const timestamps = Object.values(migrations).filter(
+        (value) => typeof value === "number" && Number.isFinite(value),
+      );
+      if (timestamps.length > 0) {
+        return new Date(Math.max(...timestamps) * 1000).toISOString();
+      }
+    } catch {}
+  }
+  return undefined;
+}
+
+// Moves an existing deployment namespace aside so a fresh deployment can take
+// its place. The archive is suffixed with the archived deployment's date and an
+// auto-incrementing revision, e.g. `sepolia-20260525-r1`.
+function archiveExistingDeploymentNamespace(root: string, environment: string) {
+  const path = join(root, environment);
+  if (!existsSync(path)) return;
+  const hasArtifacts = readdirSync(path).some(
+    (file) => file.endsWith(".json") || file === ".chain",
+  );
+  if (!hasArtifacts) return;
+  const deployedAt =
+    readDeploymentDeployedAt(path) ?? new Date().toISOString();
+  const stamp = deployedAt.slice(0, 10).replace(/-/g, "");
+  let revision = 1;
+  let archive = `${environment}-${stamp}-r${revision}`;
+  while (existsSync(join(root, archive))) {
+    revision += 1;
+    archive = `${environment}-${stamp}-r${revision}`;
+  }
+  renameSync(path, join(root, archive));
+  console.log(`archived existing ${environment} deployment to ${archive}`);
+}
+
 // Minimal CLI option shapes. Commander hands us plain strings; the address and
 // private-key fields below are boundary assertions for downstream signatures.
 type NetworkCliOptions = {
@@ -4691,6 +4780,7 @@ type DeployV2CliOptions = NetworkCliOptions &
   DeploymentCliOptions &
   V1DeploymentCliOptions & {
     saveDeployments?: boolean;
+    fresh?: boolean;
     includeTestnetPremigrationRegistrar?: boolean;
     deferV1OwnerTransactions?: boolean;
     deferredV1OwnerTransactionsFile?: string;
@@ -4879,6 +4969,11 @@ export async function main(argv = process.argv): Promise<void> {
             )
             .option("--save-deployments", "Persist deployment files", false)
             .option(
+              "--fresh",
+              "Archive any existing deployment namespace (suffixed with its deploy date) and deploy fresh; implies --save-deployments",
+              false,
+            )
+            .option(
               "--include-testnet-premigration-registrar",
               "Deploy the testnet v1 premigration registrar helper",
               false,
@@ -4939,6 +5034,7 @@ export async function main(argv = process.argv): Promise<void> {
           deployerKey,
         ]),
         v1Owner: opts.v1Owner ?? NETWORKS[network].defaultV1Owner,
+        fresh: opts.fresh,
         tags: opts.tags ? opts.tags.split(",").filter(Boolean) : undefined,
         rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
       });

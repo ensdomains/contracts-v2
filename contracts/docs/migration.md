@@ -74,6 +74,14 @@ The resolution cutover, run last so public resolution flips to v2 only once ever
 
 > **Relation to `prepareMigration.ts`:** phase 6 replaces the all-at-once role swap performed by [prepareMigration.md](./prepareMigration.md); that script remains the path for non-phased deployments.
 
+## Deployment artifacts
+
+Phase 1 reads and writes rocketh deployment artifacts under [`deployments/`](../deployments/README.md). Each deployment set is a **namespace** directory (e.g. the existing Sepolia v2 set `sepolia-official-v1-20260525-r2`) holding one JSON per contract plus `.chain`/`.migrations.json`/`.deployment.json` metadata; v1 reference contracts live under `deployments/v1/<network>`. A command selects the namespace with `--deployments-dir` (root, defaults to `deployments/`) and `--deployment-network` (subdirectory, defaults to the network name), and the v1 references with `--v1-deployments-dir` / `--v1-deployment-network`.
+
+rocketh deploys are **idempotent against the namespace** by default: a script that finds an artifact of the same name reuses it instead of redeploying. Pointing a deploy at a populated namespace therefore reloads the existing addresses rather than producing fresh contracts.
+
+To deploy genuinely fresh, pass `--fresh` to `phase deploy-v2`. It archives the current namespace to `deployments/<env>-<YYYYMMDD>-r<N>` — where the date is the archived set's original deploy time (from `.deployment.json`, falling back to the latest `.migrations.json` timestamp) and `<N>` auto-increments per same-date archive — then deploys fresh into `deployments/<env>/` and stamps a new `.deployment.json`. `--fresh` **implies `--save-deployments`** and works for both sepolia and mainnet. See [`deployments/README.md`](../deployments/README.md) for the full layout, git-tracking model, and conventions.
+
 ## CLI reference
 
 `bun run migration -- <command>` from `contracts/` (entrypoint [`script/migration.ts`](../script/migration.ts), wired through `package.json`). The CLI auto-loads `contracts/.env` (already-set environment variables win). Run `bun run migration -- <command> --help` for full options.
@@ -85,7 +93,7 @@ The resolution cutover, run last so public resolution flips to v2 only once ever
 | `premigration resume` | Resume pre-migration from the checkpoint |
 | `premigration status` | Print the current pre-migration checkpoint JSON |
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 |
-| `phase deploy-v2` | Phase 1: deploy the v2 migration contracts (incl. reverse-registrar adapters) with the registrar deferred |
+| `phase deploy-v2` | Phase 1: deploy the v2 migration contracts (incl. reverse-registrar adapters) with the registrar deferred; `--fresh` archives any existing namespace and deploys fresh (implies `--save-deployments`) |
 | `phase disable-v1-registrars` | Phase 3: disable v1 registrar controllers |
 | `phase verify-v1-registrars-disabled` | Verify v1 registrar controllers are disabled |
 | `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable |
@@ -179,6 +187,7 @@ Sepolia only. Runs phase 0 — a fresh v1 stack deployed into `deployments/v1/<n
 
 ## Related docs
 
+- [deployments/README.md](../deployments/README.md) — deployment artifact layout, namespace naming, and the idempotency rule for fresh re-deploys.
 - [premigration.md](./premigration.md) — the `BatchRegistrar` seeding step in detail (phases 2 and 5): CSV format, continuity expiry, checkpoints, verification.
 - [universalResolver.md](./universalResolver.md) — the URP proxy chain behind phase 7, and the post-cutover step.
 - [prepareMigration.md](./prepareMigration.md) — the non-phased, all-at-once role hand-off script that phase 6 supersedes.
