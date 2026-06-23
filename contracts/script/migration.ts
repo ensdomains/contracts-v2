@@ -1765,7 +1765,7 @@ async function reclaimV1RegistrarOwnership(opts: {
   }
 }
 
-async function activateV1RenewerAndTransferOwnership(opts: {
+async function authorizeV1Renewer(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
@@ -1794,6 +1794,25 @@ async function activateV1RenewerAndTransferOwnership(opts: {
     label: "ETHRenewerV1",
     enabled: true,
   });
+
+  return ethRenewerV1;
+}
+
+async function activateV1RenewerAndTransferOwnership(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
+  v1DeploymentsDir?: string;
+  v1DeploymentNetwork?: string;
+  ethRenewerV1?: Address;
+  privateKey?: `0x${string}`;
+  impersonateOwner?: boolean;
+  calldataOnly?: boolean;
+}) {
+  const ethRenewerV1 = await authorizeV1Renewer(opts);
 
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
@@ -2978,6 +2997,8 @@ export async function deployV2(opts: DeployV2Options) {
     "UniversalResolverV2",
     "ManagedUniversalResolverProxy",
     "UpgradableUniversalResolverProxy",
+    "ReverseRegistrarAdapter",
+    "DefaultReverseRegistrarAdapter",
   ];
   for (const name of names) {
     try {
@@ -4069,7 +4090,62 @@ export async function runForkFull(opts: RunForkFullOptions) {
       );
     }
 
-    console.log("phase 4: sync remaining names and finish pre-migration");
+    // Re-running against an already-migrated chain leaves the v1 BaseRegistrar
+    // owned by the prior deployment's ETHRenewerV1; reclaim it to the v1 owner
+    // before any owner-signed controller change below. (No-op on a pristine
+    // chain. Live re-migrations use the standalone
+    // `phase reclaim-v1-registrar-ownership` command beforehand.)
+    if (useRpcStateControls) {
+      await reclaimV1RegistrarOwnership({
+        network: opts.network,
+        rpcUrl,
+        chainId: String(chainId),
+        provider,
+        ...v1Deployments,
+        v1Owner,
+        impersonateOwner: true,
+      });
+    }
+
+    console.log(
+      "phase 4: authorize ETHRenewerV1 so unmigrated names stay renewable",
+    );
+    if (!ethRenewerV1) {
+      throw new Error("missing ETHRenewerV1 deployment for phase 4");
+    }
+    await authorizeV1Renewer({
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      provider,
+      ...v1Deployments,
+      deploymentsDir,
+      deploymentNetwork,
+      ethRenewerV1: ethRenewerV1.address,
+      ...(useRpcStateControls
+        ? { impersonateOwner: true }
+        : {
+            privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner"),
+          }),
+    });
+    {
+      const renewerAuthorized = (await client.readContract({
+        address: v1BaseRegistrar.address,
+        abi: v1BaseRegistrar.abi,
+        functionName: "controllers",
+        args: [ethRenewerV1.address],
+      })) as boolean;
+      if (!renewerAuthorized) {
+        throw new Error(
+          "ETHRenewerV1 was not authorized as a v1 BaseRegistrar controller in phase 4",
+        );
+      }
+      console.log(
+        "smoke ETHRenewerV1 authorized as a v1 renewal controller",
+      );
+    }
+
+    console.log("phase 5: sync remaining names and finish pre-migration");
     const finalSyncWorkDir = join(workDir, "final-sync");
     await runPreMigrationCommand(
       {
@@ -4131,61 +4207,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
     }
 
     console.log(
-      "phase 5: DAO switch UniversalResolverProxy to ManagedUniversalResolverProxy",
+      "phase 6: enable the v2 controller (disable batch registrar, hand off v1, enable v2 ETHRegistrar)",
     );
-    const topUrpAdmin = (await client.readContract({
-      address: topUrp.address,
-      abi: Artifact_UpgradableUniversalResolverProxy.abi,
-      functionName: "admin",
-    })) as Address;
-    if (getAddress(topUrpAdmin) === getAddress(zeroAddress)) {
-      throw new Error(
-        "top URP admin is address(0); cannot impersonate admin for fork switch",
-      );
-    }
-    console.log(`top URP admin: ${topUrpAdmin}`);
-    await switchTopUrpToManaged({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      topUrp: topUrp.address,
-      managedUrp: managedUrp.address,
-      ...(useRpcStateControls
-        ? { impersonateAccount: topUrpAdmin }
-        : {
-            privateKey: requirePrivateKeyForAddress(
-              topUrpAdmin,
-              keys,
-              "top URP admin",
-            ),
-          }),
-    });
-    console.log(`top URP switched to managed URP: ${managedUrp.address}`);
-
-    console.log("phase 6: upgrade managed URP to UniversalResolverV2");
-    await upgradeManagedUrp({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      managedUrp: managedUrp.address,
-      implementation: universalResolverV2.address,
-      ...(!useRpcStateControls
-        ? {
-            privateKey: requirePrivateKeyForAddress(
-              urManager,
-              keys,
-              "managed URP admin",
-            ),
-          }
-        : urManager === DEFAULT_ANVIL_DEPLOYER
-          ? { privateKey: DEFAULT_ANVIL_KEY }
-          : { impersonateAccount: urManager }),
-    });
-    console.log(`managed URP upgraded to: ${universalResolverV2.address}`);
-
-    console.log("phase 7: disable pre-migration batch registrar");
     await disableAndVerifyBatchRegistrar({
       network: opts.network,
       rpcUrl,
@@ -4202,24 +4225,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
       );
     }
 
-    // Re-running against an already-migrated chain leaves the v1 BaseRegistrar
-    // owned by the prior deployment's ETHRenewerV1; reclaim it to the v1 owner
-    // so the controller phases below can authorize the fresh handoff contracts.
-    // (No-op on a pristine chain. Live re-migrations use the standalone
-    // `phase reclaim-v1-registrar-ownership` command beforehand.)
-    if (useRpcStateControls) {
-      await reclaimV1RegistrarOwnership({
-        network: opts.network,
-        rpcUrl,
-        chainId: String(chainId),
-        provider,
-        ...v1Deployments,
-        v1Owner,
-        impersonateOwner: true,
-      });
-    }
-
-    console.log("phase 8: authorize v1 handoff controllers");
     await activateV1HandoffControllers({
       network: opts.network,
       rpcUrl,
@@ -4237,10 +4242,9 @@ export async function runForkFull(opts: RunForkFullOptions) {
           }),
     });
 
-    console.log("phase 9: activate ETHRenewerV1 and v2 ETHRegistrar");
-    if (!ethRenewerV1) {
-      throw new Error("missing ETHRenewerV1 deployment for phase 9");
-    }
+    // Final lock-down of the v1 BaseRegistrar: hand its ownership to
+    // ETHRenewerV1. This must follow the owner-signed handoff-controller grants
+    // above, since the EOA can no longer manage controllers once ownership moves.
     await activateV1RenewerAndTransferOwnership({
       network: opts.network,
       rpcUrl,
@@ -4267,8 +4271,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
     }
     // The paid-registration smokes need a mintable payment token, which only
     // exists on networks that deploy the mock tokens (mainnet whitelists real
-    // USDC/DAI instead). Where there is no mock, still verify the phase-9 role
-    // grant directly and skip the paid registrations.
+    // USDC/DAI instead). Where there is no mock, still verify the role grant
+    // directly and skip the paid registrations.
     if (mockUsdc) {
       await assertRejected(
         registerViaV2Registrar({
@@ -4282,7 +4286,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
           useRpcStateControls,
         }),
         `v2 registrar rejected registration before enablement: ${smokeLabels.v2BeforeEnable}.eth`,
-        // The registrar lacks REGISTRAR/RENEW root roles until phase 9 enables it.
+        // The registrar lacks REGISTRAR/RENEW root roles until they are granted.
         /revert/i,
       );
     }
@@ -4343,12 +4347,67 @@ export async function runForkFull(opts: RunForkFullOptions) {
         args: [REGISTRAR_ROLES, ethRegistrar.address],
       });
       if (!afterEnabled) {
-        throw new Error("v2 registrar was not enabled by phase 9");
+        throw new Error("v2 registrar was not enabled in phase 6");
       }
       console.log(
         "v2 registrar enabled (paid-registration smoke skipped: no mintable payment token on this network)",
       );
     }
+
+    console.log(
+      "phase 7: switch the Universal Resolver to v2 (resolution cutover)",
+    );
+    const topUrpAdmin = (await client.readContract({
+      address: topUrp.address,
+      abi: Artifact_UpgradableUniversalResolverProxy.abi,
+      functionName: "admin",
+    })) as Address;
+    if (getAddress(topUrpAdmin) === getAddress(zeroAddress)) {
+      throw new Error(
+        "top URP admin is address(0); cannot impersonate admin for fork switch",
+      );
+    }
+    console.log(`top URP admin: ${topUrpAdmin}`);
+    await switchTopUrpToManaged({
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      provider,
+      topUrp: topUrp.address,
+      managedUrp: managedUrp.address,
+      ...(useRpcStateControls
+        ? { impersonateAccount: topUrpAdmin }
+        : {
+            privateKey: requirePrivateKeyForAddress(
+              topUrpAdmin,
+              keys,
+              "top URP admin",
+            ),
+          }),
+    });
+    console.log(`top URP switched to managed URP: ${managedUrp.address}`);
+
+    await upgradeManagedUrp({
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      provider,
+      managedUrp: managedUrp.address,
+      implementation: universalResolverV2.address,
+      ...(!useRpcStateControls
+        ? {
+            privateKey: requirePrivateKeyForAddress(
+              urManager,
+              keys,
+              "managed URP admin",
+            ),
+          }
+        : urManager === DEFAULT_ANVIL_DEPLOYER
+          ? { privateKey: DEFAULT_ANVIL_KEY }
+          : { impersonateAccount: urManager }),
+    });
+    console.log(`managed URP upgraded to: ${universalResolverV2.address}`);
+
     if (opts.network === "mainnet") {
       console.log(
         `mainnet DAO simulation used owner/v1Owner impersonation: ${owner}`,
@@ -5042,7 +5101,7 @@ export async function main(argv = process.argv): Promise<void> {
         addNetworkOptions(
           new Command("activate-v1-graveyard")
             .description(
-              "Phase 8: authorize Graveyard as a v1 BaseRegistrar controller",
+              "Phase 6: authorize Graveyard as a v1 BaseRegistrar controller",
             )
             .option("--graveyard <address>", "Graveyard address")
             .option("--private-key <key>", "V1 owner private key")
@@ -5078,7 +5137,7 @@ export async function main(argv = process.argv): Promise<void> {
         addNetworkOptions(
           new Command("activate-v1-handoff-controllers")
             .description(
-              "Phase 8: authorize Graveyard and the testnet premigration helper as v1 BaseRegistrar controllers",
+              "Phase 6: authorize Graveyard and the testnet premigration helper as v1 BaseRegistrar controllers",
             )
             .option("--graveyard <address>", "Graveyard address")
             .option(
@@ -5119,9 +5178,45 @@ export async function main(argv = process.argv): Promise<void> {
     addV1DeploymentOptions(
       addDeploymentOptions(
         addNetworkOptions(
+          new Command("authorize-v1-renewer")
+            .description(
+              "Phase 4: authorize ETHRenewerV1 as a v1 BaseRegistrar controller so unmigrated names stay renewable during the migration",
+            )
+            .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address")
+            .option("--private-key <key>", "V1 owner private key")
+            .option("--impersonate-owner", "Impersonate owner on a fork", false)
+            .option(
+              "--calldata-only",
+              "Print transaction target and calldata",
+              false,
+            ),
+        ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          V1DeploymentCliOptions &
+          V1OwnerWriteCliOptions & { ethRenewerV1?: Address },
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await authorizeV1Renewer({
+          ...networkOpts,
+          privateKey:
+            opts.privateKey ??
+            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
+  );
+  phase.addCommand(
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
           new Command("activate-v1-renewer")
             .description(
-              "Phase 9: authorize ETHRenewerV1 on v1 and transfer BaseRegistrar ownership to it",
+              "Phase 6: transfer v1 BaseRegistrar ownership to ETHRenewerV1 (re-authorizes it as a controller if needed)",
             )
             .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address")
             .option("--private-key <key>", "V1 owner private key")

@@ -45,7 +45,7 @@ export default execute(
     }
   },
   {
-    tags: ["DefaultReverseRegistrarAdapter", "v2"],
+    tags: ["DefaultReverseRegistrarAdapter", "migration:phase1:deploy-v2", "v2"],
     dependencies: ["ContractNamer"],
   },
 );
