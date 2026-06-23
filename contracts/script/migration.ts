@@ -1098,13 +1098,22 @@ export async function runPreMigrationCommand(
   const v1BaseRegistrar =
     opts.v1BaseRegistrar ??
     requireV1Deployment(network, "BaseRegistrarImplementation", opts).address;
-  const privateKey =
-    opts.privateKey ??
-    envPrivateKey(
-      "PREMIGRATION_PRIVATE_KEY",
-      "BATCH_REGISTRAR_OWNER_KEY",
-      "DEPLOYER_KEY",
-    );
+  const envFallbackKey = envPrivateKey(
+    "PREMIGRATION_PRIVATE_KEY",
+    "BATCH_REGISTRAR_OWNER_KEY",
+    "DEPLOYER_KEY",
+  );
+  // When the caller supplies an impersonated account, only consult the env
+  // fallback key if it actually controls that account; otherwise the batch run
+  // would sign as the wrong address and BatchRegistrar.onlyOwner would revert.
+  const fallbackKey =
+    opts.account && envFallbackKey
+      ? getAddress(privateKeyToAccount(envFallbackKey).address) ===
+        getAddress(opts.account)
+        ? envFallbackKey
+        : undefined
+      : envFallbackKey;
+  const privateKey = opts.privateKey ?? fallbackKey;
   const previousCwd = process.cwd();
 
   if (opts.workDir) {
