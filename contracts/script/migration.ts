@@ -4788,8 +4788,7 @@ type PremigrationVerifyCliOptions = NetworkCliOptions &
 type DeployV2CliOptions = NetworkCliOptions &
   DeploymentCliOptions &
   V1DeploymentCliOptions & {
-    saveDeployments?: boolean;
-    fresh?: boolean;
+    resume?: boolean;
     includeTestnetPremigrationRegistrar?: boolean;
     deferV1OwnerTransactions?: boolean;
     deferredV1OwnerTransactionsFile?: string;
@@ -4974,12 +4973,11 @@ export async function main(argv = process.argv): Promise<void> {
         addNetworkOptions(
           new Command("deploy-v2")
             .description(
-              "Deploy the v2 migration contracts with the registrar deferred",
+              "Deploy the v2 migration contracts with the registrar deferred (archives any existing namespace and deploys fresh; use --resume to continue an interrupted deploy)",
             )
-            .option("--save-deployments", "Persist deployment files", false)
             .option(
-              "--fresh",
-              "Archive any existing deployment namespace (suffixed with its deploy date) and deploy fresh; implies --save-deployments",
+              "--resume",
+              "Continue an interrupted deploy into the existing namespace instead of archiving and deploying fresh",
               false,
             )
             .option(
@@ -5043,7 +5041,8 @@ export async function main(argv = process.argv): Promise<void> {
           deployerKey,
         ]),
         v1Owner: opts.v1Owner ?? NETWORKS[network].defaultV1Owner,
-        fresh: opts.fresh,
+        fresh: !opts.resume,
+        saveDeployments: true,
         tags: opts.tags ? opts.tags.split(",").filter(Boolean) : undefined,
         rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
       });

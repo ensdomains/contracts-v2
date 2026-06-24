@@ -78,9 +78,9 @@ The resolution cutover, run last so public resolution flips to v2 only once ever
 
 Phase 1 reads and writes rocketh deployment artifacts under [`deployments/`](../deployments/README.md). Each deployment set is a **namespace** directory (e.g. the existing Sepolia v2 set `sepolia-official-v1-20260525-r2`) holding one JSON per contract plus `.chain`/`.migrations.json`/`.deployment.json` metadata; v1 reference contracts live under `deployments/v1/<network>`. A command selects the namespace with `--deployments-dir` (root, defaults to `deployments/`) and `--deployment-network` (subdirectory, defaults to the network name), and the v1 references with `--v1-deployments-dir` / `--v1-deployment-network`.
 
-rocketh deploys are **idempotent against the namespace** by default: a script that finds an artifact of the same name reuses it instead of redeploying. Pointing a deploy at a populated namespace therefore reloads the existing addresses rather than producing fresh contracts.
+`phase deploy-v2` **deploys fresh by default**: it archives the current namespace to `deployments/<env>-<YYYYMMDD>-r<N>` — where the date is the archived set's original deploy time (from `.deployment.json`, falling back to the latest `.migrations.json` timestamp) and `<N>` auto-increments per same-date archive — then deploys into a clean `deployments/<env>/` and stamps a new `.deployment.json`. This applies to both sepolia and mainnet.
 
-To deploy genuinely fresh, pass `--fresh` to `phase deploy-v2`. It archives the current namespace to `deployments/<env>-<YYYYMMDD>-r<N>` — where the date is the archived set's original deploy time (from `.deployment.json`, falling back to the latest `.migrations.json` timestamp) and `<N>` auto-increments per same-date archive — then deploys fresh into `deployments/<env>/` and stamps a new `.deployment.json`. `--fresh` **implies `--save-deployments`** and works for both sepolia and mainnet. See [`deployments/README.md`](../deployments/README.md) for the full layout, git-tracking model, and conventions.
+Phase 1 sends many transactions, so a deploy can be interrupted partway. Re-run with `--resume` to continue into the **existing** namespace instead of archiving: rocketh is idempotent against the namespace, so each script reuses an artifact of the same name and only the not-yet-deployed contracts are sent. See [`deployments/README.md`](../deployments/README.md) for the full layout, git-tracking model, and conventions.
 
 ## CLI reference
 
@@ -93,7 +93,7 @@ To deploy genuinely fresh, pass `--fresh` to `phase deploy-v2`. It archives the 
 | `premigration resume` | Resume pre-migration from the checkpoint |
 | `premigration status` | Print the current pre-migration checkpoint JSON |
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 |
-| `phase deploy-v2` | Phase 1: deploy the v2 migration contracts (incl. reverse-registrar adapters) with the registrar deferred; `--fresh` archives any existing namespace and deploys fresh (implies `--save-deployments`) |
+| `phase deploy-v2` | Phase 1: deploy the v2 migration contracts (incl. reverse-registrar adapters) with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy instead) |
 | `phase disable-v1-registrars` | Phase 3: disable v1 registrar controllers |
 | `phase verify-v1-registrars-disabled` | Verify v1 registrar controllers are disabled |
 | `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable |
@@ -165,7 +165,7 @@ End-to-end runbook for a real, fresh Sepolia deployment that replaces the live v
 
 Three keys cover every signature in the migration. On Sepolia the deployer also fills the owner/urManager/securityCouncil roles, so only the two v1-side roles are separate accounts:
 
-- **`DEPLOYER_KEY`** — the deployer EOA that signs phase-1 contract deployments. On Sepolia it also resolves as `owner` (registry root-role admin: `disable-batch-registrar`, `enable-v2-registrar`), `urManager` (managed URP admin: `upgrade-managed-urp`), and `securityCouncil`, because the account config defaults those roles to the deployer. It is also the `BatchRegistrar` owner that drives pre-migration. Must be a freshly funded account with enough Sepolia ETH for ~1300 phase-1 transactions.
+- **`DEPLOYER_KEY`** — the deployer EOA that signs phase-1 contract deployments. On Sepolia it also resolves as `owner` (registry root-role admin: `disable-batch-registrar`, `enable-v2-registrar`), `urManager` (managed URP admin: `upgrade-managed-urp`), and `securityCouncil`, because the account config defaults those roles to the deployer. It is also the `BatchRegistrar` owner that drives pre-migration. Must be a freshly funded account with enough Sepolia ETH for the many transactions in phase 1.
 - **`SEPOLIA_V1_OWNER_KEY`** — the v1 owner (`0x0f32b753afc8abad9ca6fe589f707755f4df2353`), which controls the v1 `BaseRegistrar` / `RegistrarSecurityController`. Signs the deferred phase-1 v1-owner transactions (pointing the v1 `.eth` resolver at the new `ENSV2Resolver` and authorizing the reverse-registrar adapters), plus `disable-v1-registrars` (phase 3), `authorize-v1-renewer` (phase 4), and `activate-v1-handoff-controllers` / `activate-v1-renewer` (phase 6).
 - **`SEPOLIA_TOP_URP_OWNER_KEY`** — the admin of the top `UpgradableUniversalResolverProxy` (`0x69420f05A11f617B4B74fFe2E04B2D300dFA556F`), the persistent Universal Resolver entry point. Signs `switch-urp-to-managed` (phase 7), which re-points the top URP at the freshly deployed managed URP.
 
@@ -177,7 +177,7 @@ Three keys cover every signature in the migration. On Sepolia the deployer also 
 cd contracts
 bun run compile                     # forge + hardhat → generated/artifacts
 
-export SEPOLIA_RPC_URL=<reliable paid sepolia RPC>     # ~1300 txs in phase 1
+export SEPOLIA_RPC_URL=<reliable paid sepolia RPC>     # phase 1 sends many txs
 export DEPLOYER_KEY=0x<fresh funded EOA>               # also owner / urManager / securityCouncil / BatchRegistrar owner
 export SEPOLIA_V1_OWNER_KEY=0x<key for 0x0f32…2353>
 export SEPOLIA_TOP_URP_OWNER_KEY=0x<key for 0x6942…556F>
@@ -191,7 +191,7 @@ Also prepare a **current** Sepolia registration CSV for the pre-migration phases
 
 ```bash
 # deployer-signed deploy into deployments/sepolia/; v1-owner txs recorded, not broadcast
-bun run migration -- phase deploy-v2 --network sepolia --fresh \
+bun run migration -- phase deploy-v2 --network sepolia \
   --defer-v1-owner-transactions \
   --deferred-v1-owner-transactions-file .dev/sepolia-live/phase1-v1owner.jsonl
 
@@ -200,7 +200,7 @@ bun run migration -- phase execute-owner-txs --network sepolia \
   --role v1Owner --file .dev/sepolia-live/phase1-v1owner.jsonl
 ```
 
-`--fresh` writes to the default `sepolia` namespace (archiving an existing one to `sepolia-<YYYYMMDD>-r<N>`) and implies `--save-deployments`; every later phase auto-resolves addresses from `deployments/sepolia/`.
+`phase deploy-v2` archives any existing `sepolia` namespace (to `sepolia-<YYYYMMDD>-r<N>`) and deploys fresh into the default `sepolia` namespace; every later phase auto-resolves addresses from `deployments/sepolia/`. If phase 1 is interrupted, re-run the same command with `--resume` to continue.
 
 ### Phases 2–7 — wire up and cut over
 

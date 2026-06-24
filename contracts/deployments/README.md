@@ -55,32 +55,22 @@ contents are the v2 set (`ETHRegistry`, `ENSV2Resolver`, `ETHRegistrar`,
 
 The date/revision suffix is deliberate: **a previous deployment is kept as a
 standalone, immutable record** rather than being overwritten, and rocketh always
-gets a clean folder to deploy into (see below). This folder predates the `--fresh`
-flag and was named by hand; `--fresh` now produces the same shape automatically,
-archiving the prior set to `<env>-<YYYYMMDD>-r<N>`.
+gets a clean folder to deploy into (see below). This folder was named by hand;
+`phase deploy-v2` now produces the same shape automatically, archiving the prior
+set to `<env>-<YYYYMMDD>-r<N>`.
 
 Because this namespace is not the default (`sepolia`), routine commands and the
 `fork full` rehearsal do not load it unless you pass
 `--deployment-network sepolia-official-v1-20260525-r2`.
 
-## Re-deploying: idempotent by default, `--fresh` to replace
+## Re-deploying: fresh by default, `--resume` to continue
 
-rocketh deploys are idempotent against the namespace folder. A deploy script that
-finds an artifact of the same name **reuses it instead of redeploying** (scripts
-guard with `getOrNull(name) ?? deploy(name, …)`, and `.migrations.json` lets the
-runner skip scripts that already completed). So pointing a second deploy at a
-populated namespace does **not** produce fresh contracts — it reloads the existing
-addresses and re-runs only the wiring around them. This is the default and is what
-you want for resuming or re-verifying a deployment.
-
-To deploy genuinely fresh, pass `--fresh` to `phase deploy-v2`:
+`phase deploy-v2` deploys fresh by default — it archives the current namespace out
+of the way and deploys into a clean one:
 
 ```bash
-bun run migration -- phase deploy-v2 --network sepolia --fresh
+bun run migration -- phase deploy-v2 --network sepolia
 ```
-
-`--fresh` archives the current namespace out of the way and deploys into a clean
-one:
 
 - The existing `deployments/<env>/` is renamed to `deployments/<env>-<YYYYMMDD>-r<N>`,
   where the date is the archived deployment's `deployedAt` (from `.deployment.json`,
@@ -88,12 +78,23 @@ one:
   if a same-date archive already exists.
 - A fresh deployment is then written into `deployments/<env>/` and a new
   `.deployment.json` is stamped.
-- `--fresh` **implies `--save-deployments`** — archiving without persisting the
-  replacement would be pointless, so it always saves.
 
 This works identically for `--network mainnet` (the namespace defaults to the
 network name). Manually moving or clearing the namespace directory first is
-equivalent; `--fresh` just automates it with a dated archive name.
+equivalent; the default archive just automates it with a dated name.
+
+Phase 1 sends many transactions and can be interrupted partway. Re-run with
+`--resume` to continue into the **existing** namespace instead of archiving:
+
+```bash
+bun run migration -- phase deploy-v2 --network sepolia --resume
+```
+
+rocketh is idempotent against the namespace folder — a deploy script that finds an
+artifact of the same name **reuses it instead of redeploying** (scripts guard with
+`getOrNull(name) ?? deploy(name, …)`, and `.migrations.json` lets the runner skip
+scripts that already completed) — so `--resume` reloads the contracts already
+deployed and sends only the not-yet-deployed ones.
 
 The persistent `UpgradableUniversalResolverProxy` entry point
 (`0xeEeE…EeEe`) is fixed by constant and is never re-deployed; a fresh run
@@ -104,15 +105,15 @@ is cut over.
 ## Saving artifacts
 
 The rehearsal (`fork full`) does not persist artifacts unless `--save-deployments`
-is passed, so a fork run leaves `deployments/` untouched by default. A real deploy
-that should be recorded must run with `--save-deployments` (or `--fresh`, which
-implies it) and a deliberately chosen `--deployment-network`.
+is passed, so a fork run leaves `deployments/` untouched by default. `phase
+deploy-v2` always persists its deployment into the chosen `--deployment-network`
+(both a fresh run and a `--resume`).
 
 ## Git tracking
 
 `.gitignore` ignores everything under `deployments/` except this `README.md` and
-an explicit allow-list of namespaces, so throwaway rehearsal and `--fresh` archive
-runs do not clutter the repository:
+an explicit allow-list of namespaces, so throwaway rehearsal and archived
+deployment runs do not clutter the repository:
 
 ```
 deployments/*
