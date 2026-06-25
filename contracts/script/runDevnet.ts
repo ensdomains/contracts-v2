@@ -19,6 +19,9 @@ const args = parseArgs({
     chainId: {
       type: "string",
     },
+    host: {
+      type: "string",
+    },
     forkUrl: {
       type: "string",
     },
@@ -38,6 +41,8 @@ const args = parseArgs({
 const forkUrl = args.values.forkUrl ?? process.env.FORK_URL;
 const forkBlock = args.values.forkBlock ?? process.env.FORK_BLOCK;
 const quiet = args.values.quiet ?? process.env.DEVNET_QUIET === "1";
+const host =
+  args.values.host ?? process.env.DEVNET_HOST ?? process.env.ANVIL_IP_ADDR;
 
 if (forkUrl && args.values.testNames) {
   console.error("--testNames is incompatible with --forkUrl");
@@ -46,6 +51,7 @@ if (forkUrl && args.values.testNames) {
 
 const env = await setupDevnet({
   port: 8545,
+  host,
   chainId: forkUrl ? undefined : Number(args.values.chainId) || undefined,
   saveDeployments: true,
   procLog: args.values.procLog,

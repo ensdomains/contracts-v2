@@ -3,7 +3,6 @@ import type { DevnetAccount, DevnetEnvironment } from "../setup.js";
 import { idFromLabel } from "../../test/utils/utils.js";
 import { formatExpiry } from "./display.js";
 import { trackGas } from "./gas.js";
-import { MAX_EXPIRY } from "../deploy-constants.js";
 
 const ONE_DAY_SECONDS = 86400;
 
@@ -65,13 +64,11 @@ export async function registerTestNames(
   // Step 3: Approve total payment
   let totalPrice = 0n;
   for (const label of labels) {
-    const [base, premium] =
-      await env.v2.StandardRentPriceOracle.read.getRegisterPrice([
-        label,
-        MAX_EXPIRY,
-        duration,
-        paymentToken,
-      ]);
+    const [base, premium] = await env.v2.ETHRegistrar.read.getRegisterPrice([
+      label,
+      duration,
+      paymentToken,
+    ]);
     totalPrice += base + premium;
   }
 
@@ -139,8 +136,14 @@ export async function reregisterName(
     `Initial expiry: ${new Date(Number(initialExpiry) * 1000).toISOString()}`,
   );
 
-  // Time warp past expiry (must exceed the registration duration, default 28 days)
-  const warpSeconds = 28 * ONE_DAY_SECONDS + 1;
+  // Time warp until registrar availability opens after the grace period.
+  const gracePeriod = await env.v2.ETHRegistrar.read.GRACE_PERIOD();
+  const currentTimestamp = (await env.client.getBlock()).timestamp;
+  const availableTimestamp = initialExpiry + gracePeriod + 1n;
+  const warpSeconds =
+    availableTimestamp > currentTimestamp
+      ? Number(availableTimestamp - currentTimestamp)
+      : 1;
   console.log(`\nTime warping ${warpSeconds} seconds...`);
   await env.sync({ warpSec: warpSeconds });
 
