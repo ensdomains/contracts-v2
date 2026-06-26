@@ -253,7 +253,10 @@ contract WrapperRegistry is
             address parent = address(_parentRegistry); // virtual owner
             if (parent != address(0)) {
                 address owner = PermissionedRegistry(parent).findOwner(_childLabel);
-                if (account == owner || PermissionedRegistry(parent).isApprovedForAll(owner, account)) {
+                if (
+                    account == owner ||
+                    PermissionedRegistry(parent).isApprovedForAll(owner, account)
+                ) {
                     return super._getRoles(resource, parent); // replace, instead of OR
                 }
             }
