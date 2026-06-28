@@ -38,71 +38,42 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// * IHasAddressResolver: hasAddr(coinType)
 ///
 /// Records are created automatically by setters and assigned internal ID numbers (starting at 1).
-/// To create a new record, `ROLE_NEW_RECORD` is required on root.
+///
 /// `getRecordId(node)` reveals the internal record ID.
 ///
 /// `link(name, node)` makes `name` use the record currently used by `node`.
-/// To link an existing record, `ROLE_LINK_RECORD` is required on root.
-///
 /// `link(name, bytes32(0))` unlinks `name` from the record.
-/// Once a record is no longer referenced, it becomes unreachable and is effectively deleted.
+/// `clear(name)` makes `name` use a new record.
 ///
-/// Names without a record fall back to the default record, which can be updated using the root name (`0x00`).
+/// To link or clear, `ROLE_MANAGER` is required on root.
+///
+/// Once a record is no longer linked to, it becomes unreachable and is effectively deleted.
+///
+/// Names without a record use the default record, which can be managed using the root name (`0x00`).
+///
+/// Every record setter has a corresponding role.
+///
+/// | Function           | Role                   | Argument            |
+/// | ------------------ | ---------------------- | ------------------- |
+/// | `setABI()`         | `ROLE_SET_ABI`         | uint256 contentType |
+/// | `setAddress()`     | `ROLE_SET_ADDRESS`     | uint256 coinType    |
+/// | `setContentHash()` | `ROLE_SET_CONTENTHASH` |                     |
+/// | `setData()`        | `ROLE_SET_DATA`        | string key          |
+/// | `setInterface()`   | `ROLE_SET_INTERFACE`   | bytes4 interfaceId  |
+/// | `setName()`        | `ROLE_SET_NAME`        |                     |
+/// | `setText()`        | `ROLE_SET_TEXT`        | string key          |
 ///
 /// Every record setter has the form: `f(name, ...)`
+/// Some record setters have the form: `f(name, <argument>, ...)`
 ///
-/// Every record setter has a corresponding role:
-/// | Function           | Role                   |
-/// | ------------------ | ---------------------- |
-/// | `setABI()`         | `ROLE_SET_ABI`         |
-/// | `setAddress()`     | `ROLE_SET_ADDRESS`     |
-/// | `setContentHash()` | `ROLE_SET_CONTENTHASH` |
-/// | `setData()`        | `ROLE_SET_DATA`        |
-/// | `setInterface()`   | `ROLE_SET_INTERFACE`   |
-/// | `setName()`        | `ROLE_SET_NAME`        |
-/// | `setText()`        | `ROLE_SET_TEXT`        |
+/// `grantSetterRoles(setter, account)` gives argument-specific permission.
 ///
-/// Record setters can be granted with `authorizeRecordRoles()` and are annotated
-/// using ABI-encoded calldata: `abi.encodeWithSelector(bytes4(0), name)`.
+/// Every setter can be decoded with `decodeSetter(setter)`.
+/// Every argument can be converted to a resource with `PermissionedResolverLib.resource(<argument>)`.
 ///
-/// Fine-grained record setters have the form: `f(name, <arg>, ...)`
-/// They can be granted with `authorizeSetterRoles()` and are annotated
-/// using truncated ABI-encoded calldata:
-/// * w/data: `abi.encodeCall(setAddr, (name, coinType, "..."))`
-/// * w/o data: `abi.encodeCall(setAddr, (name, coinType, ""))`
-/// * truncated: `abi.encodeWithSelector(setAddr.selector, name, coinType)`
-/// The `roleBitmap` can be derived from the setter selector.
-///
-/// The following setters are fine-grained:
-/// * `setAddress(name, coinType, ...)`
-/// * `setData(name, key, ...)`
-/// * `setText(name, key, ...)`
-/// * `setABI(name, contentType, ...)`
-/// * `setInterface(name, interfaceId, ...)`
-///
-/// The argument is hashed accordingly:
-/// | Argument      | Part                                    |
-/// | ------------- | --------------------------------------- |
-/// | `uint256 arg` | `PermissionedResolverLib.partHash(arg)` |
-/// | `string arg`  | `PermissionedResolverLib.partHash(arg)` |
-/// | `bytes4 arg`  | `PermissionedResolverLib.partHash(arg)` |
-///
-/// Record setters check (4) EAC resources:
-///                                                      Part Hash
-///             Resources      +-----------------------------+----------------------------------+
-///                            |           Any (*)           |           Specific (1)           |
-///             +--------------+-----------------------------+----------------------------------+
-///             |      Any (*) |       resource(0, 0)        |      resource(0, <partHash>)     |
-///  Record ID  |--------------+-----------------------------+----------------------------------+
-///             | Specific (1) |   resource(<recordId>, 0)   | resource(<recordId>, <partHash>) |
-///             +--------------+-----------------------------+----------------------------------+
-///
-/// eg. `setText(name, "key", ...)` with `recordId = getRecordId(namehash(name))`
-///      will check the following resources for `ROLE_SET_TEXT` permission:
-/// 1. `resource(recordId, partHash("key"))` => `arg="key"` for that record
-/// 2. `resource(recordId, 0)` => ANY part of that record
-/// 3. `resource(0, partHash("key"))` => `arg="key"` for ANY record
-/// 4. `resource(0, 0)` => ANY part of ANY record
+/// eg. `setText(<name>, "key", <value>)` will check the following resources for `ROLE_SET_TEXT` permission:
+/// 1. `PermissionedResolverLib.resource("key")` => only "key"
+/// 2. `ROOT_RESOURCE` => any key
 ///
 contract PermissionedResolver is
     IPermissionedResolver,
@@ -174,23 +145,26 @@ contract PermissionedResolver is
 
     /// @notice Associate `name` with a new record.
     /// @param name The DNS-encoded name.
-    function clear(bytes calldata name) external {
+    function clear(bytes calldata name)
+        external
+        onlyRootRoles(PermissionedResolverLib.ROLE_MANAGER)
+    {
         bytes32 node = NameCoder.namehash(name, 0);
-        _checkRecordRoles(_recordIds[node], PermissionedResolverLib.ROLE_MANAGER, bytes32(0));
         uint256 recordId = ++_recordCount;
         _recordIds[node] = recordId;
         emit Linked(node, name, recordId);
     }
 
     /// @inheritdoc IABISetter
-    function setABI(bytes calldata name, uint256 contentType, bytes calldata data) external {
+    function setABI(bytes calldata name, uint256 contentType, bytes calldata data)
+        external
+        onlyRoles(
+            PermissionedResolverLib.resource(contentType),
+            PermissionedResolverLib.ROLE_SET_ABI
+        )
+    {
         _checkContentType(contentType);
         uint256 recordId = _ensureRecord(name);
-        _checkRecordRoles(
-            recordId,
-            PermissionedResolverLib.ROLE_SET_ABI,
-            PermissionedResolverLib.partHash(contentType)
-        );
         _records[recordId].abis[contentType] = data;
         emit ABIUpdated(recordId, contentType);
     }
@@ -198,74 +172,76 @@ contract PermissionedResolver is
     /// @inheritdoc IAddressSetter
     function setAddress(bytes calldata name, uint256 coinType, bytes calldata addressBytes)
         external
+        onlyRoles(
+            PermissionedResolverLib.resource(coinType),
+            PermissionedResolverLib.ROLE_SET_ADDRESS
+        )
     {
         _checkAddress(coinType, addressBytes);
         uint256 recordId = _ensureRecord(name);
-        _checkRecordRoles(
-            recordId,
-            PermissionedResolverLib.ROLE_SET_ADDRESS,
-            PermissionedResolverLib.partHash(coinType)
-        );
         _records[recordId].addresses[coinType] = addressBytes;
         emit AddressUpdated(recordId, coinType, addressBytes);
     }
 
     /// @inheritdoc IContentHashSetter
-    function setContentHash(bytes calldata name, bytes calldata contentHash) external {
+    function setContentHash(bytes calldata name, bytes calldata contentHash)
+        external
+        onlyRootRoles(PermissionedResolverLib.ROLE_SET_CONTENTHASH)
+    {
         uint256 recordId = _ensureRecord(name);
-        _checkRecordRoles(recordId, PermissionedResolverLib.ROLE_SET_CONTENTHASH, bytes32(0));
         _records[recordId].contentHash = contentHash;
         emit ContentHashUpdated(recordId, contentHash);
     }
 
     /// @inheritdoc IDataSetter
-    function setData(bytes calldata name, string calldata key, bytes calldata value) external {
+    function setData(bytes calldata name, string calldata key, bytes calldata value)
+        external
+        onlyRoles(PermissionedResolverLib.resource(key), PermissionedResolverLib.ROLE_SET_DATA)
+    {
         uint256 recordId = _ensureRecord(name);
-        _checkRecordRoles(
-            recordId,
-            PermissionedResolverLib.ROLE_SET_DATA,
-            PermissionedResolverLib.partHash(key)
-        );
         _records[recordId].datas[key] = value;
         emit DataUpdated(recordId, key, key, value);
     }
 
     /// @inheritdoc IInterfaceSetter
-    function setInterface(bytes calldata name, bytes4 interfaceId, address implementer) external {
+    function setInterface(bytes calldata name, bytes4 interfaceId, address implementer)
+        external
+        onlyRoles(
+            PermissionedResolverLib.resource(interfaceId),
+            PermissionedResolverLib.ROLE_SET_INTERFACE
+        )
+    {
         uint256 recordId = _ensureRecord(name);
-        _checkRecordRoles(
-            recordId,
-            PermissionedResolverLib.ROLE_SET_INTERFACE,
-            PermissionedResolverLib.partHash(interfaceId)
-        );
         _records[recordId].interfaces[interfaceId] = implementer;
         emit InterfaceUpdated(recordId, interfaceId, implementer);
     }
 
     /// @inheritdoc INameSetter
-    function setName(bytes calldata name, string calldata primaryName) external {
+    function setName(bytes calldata name, string calldata primaryName)
+        external
+        onlyRootRoles(PermissionedResolverLib.ROLE_SET_NAME)
+    {
         uint256 recordId = _ensureRecord(name);
-        _checkRecordRoles(recordId, PermissionedResolverLib.ROLE_SET_NAME, bytes32(0));
         _records[recordId].name = primaryName;
         emit NameUpdated(recordId, primaryName);
     }
 
     /// @inheritdoc IPubkeySetter
-    function setPubkey(bytes calldata name, bytes32 x, bytes32 y) external {
+    function setPubkey(bytes calldata name, bytes32 x, bytes32 y)
+        external
+        onlyRootRoles(PermissionedResolverLib.ROLE_SET_PUBKEY)
+    {
         uint256 recordId = _ensureRecord(name);
-        _checkRecordRoles(recordId, PermissionedResolverLib.ROLE_SET_PUBKEY, bytes32(0));
         _records[recordId].pubkey = [x, y];
         emit PubkeyUpdated(recordId, x, y);
     }
 
     /// @inheritdoc ITextSetter
-    function setText(bytes calldata name, string calldata key, string calldata value) external {
+    function setText(bytes calldata name, string calldata key, string calldata value)
+        external
+        onlyRoles(PermissionedResolverLib.resource(key), PermissionedResolverLib.ROLE_SET_TEXT)
+    {
         uint256 recordId = _ensureRecord(name);
-        _checkRecordRoles(
-            recordId,
-            PermissionedResolverLib.ROLE_SET_TEXT,
-            PermissionedResolverLib.partHash(key)
-        );
         _records[recordId].texts[key] = value;
         emit TextUpdated(recordId, key, key, value);
     }
@@ -292,30 +268,13 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IPermissionedResolver
-    function authorizeRoles(bytes calldata name, uint256 roleBitmap, address account, bool grant)
-        external
-        returns (bool)
-    {
-        return
-            _authorizeRoles(
-                name,
-                bytes32(0),
-                PermissionedResolverLib.anySetter(name),
-                account,
-                roleBitmap,
-                grant
-            );
-    }
-
-    /// @inheritdoc IPermissionedResolver
-    function authorizeSubroles(bytes calldata setter, address account, bool grant)
-        external
-        returns (bool)
-    {
-        (bytes memory name, bytes32 part, uint256 roleBitmap, bytes memory prefix) =
-            decodeSetter(setter);
-        assert(part != bytes32(0));
-        return _authorizeRoles(name, part, prefix, account, roleBitmap, grant);
+    function grantSetterRoles(bytes calldata setter, address account) external returns (bool) {
+        (bytes memory arg, uint256 resource, uint256 roleBitmap) = decodeSetter(setter);
+        _checkCanGrantRoles(resource, roleBitmap, msg.sender);
+        if (roleCount(resource) == 0) {
+            emit ResourcePart(resource, bytes4(setter), arg);
+        }
+        return _grantRoles(resource, roleBitmap, account, true);
     }
 
     /// @inheritdoc IPermissionedResolver
@@ -351,7 +310,7 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc EnhancedAccessControl
-    /// @notice Function is disabled.  Use `authorize{Record|Setter}Roles()` instead.
+    /// @notice Function is disabled.  Use `grantSetterRoles()` instead.
     function grantRoles(uint256 resource, uint256 roleBitmap, address account)
         public
         pure
@@ -361,111 +320,42 @@ contract PermissionedResolver is
         revert EACCannotGrantRoles(resource, roleBitmap, account);
     }
 
-    /// @inheritdoc EnhancedAccessControl
-    /// @notice Function is disabled.  Use `authorize{Record|Setter}Roles()` instead.
-    function revokeRoles(uint256 resource, uint256 roleBitmap, address account)
-        public
-        pure
-        override(EnhancedAccessControl, IEnhancedAccessControl)
-        returns (bool)
-    {
-        revert EACCannotRevokeRoles(resource, roleBitmap, account);
-    }
-
     /// @inheritdoc IPermissionedResolver
     function decodeSetter(bytes calldata setter)
         public
         pure
-        returns (bytes memory name, bytes32 part, uint256 roleBitmap, bytes memory setterPrefix)
+        returns (bytes memory arg, uint256 resource, uint256 roleBitmap)
     {
         bytes4 selector = bytes4(setter);
         if (selector == this.setAddress.selector) {
-            uint256 coinType;
-            (name, coinType) = abi.decode(setter[4:], (bytes, uint256));
-            part = PermissionedResolverLib.partHash(coinType);
+            (, uint256 coinType) = abi.decode(setter[4:], (bytes, uint256));
+            arg = abi.encodePacked(coinType);
             roleBitmap = PermissionedResolverLib.ROLE_SET_ADDRESS;
-            setterPrefix = abi.encodeWithSelector(selector, name, coinType);
         } else if (selector == this.setText.selector) {
-            string memory key;
-            (name, key) = abi.decode(setter[4:], (bytes, string));
-            part = PermissionedResolverLib.partHash(key);
+            (, string memory key) = abi.decode(setter[4:], (bytes, string));
+            arg = bytes(key);
             roleBitmap = PermissionedResolverLib.ROLE_SET_TEXT;
-            setterPrefix = abi.encodeWithSelector(selector, name, key);
         } else if (selector == this.setData.selector) {
-            string memory key;
-            (name, key) = abi.decode(setter[4:], (bytes, string));
-            part = PermissionedResolverLib.partHash(key);
+            (, string memory key) = abi.decode(setter[4:], (bytes, string));
+            arg = bytes(key);
             roleBitmap = PermissionedResolverLib.ROLE_SET_DATA;
-            setterPrefix = abi.encodeWithSelector(selector, name, key);
         } else if (selector == this.setABI.selector) {
-            uint256 contentType;
-            (name, contentType) = abi.decode(setter[4:], (bytes, uint256));
-            part = PermissionedResolverLib.partHash(contentType);
+            (, uint256 contentType) = abi.decode(setter[4:], (bytes, uint256));
+            arg = abi.encodePacked(contentType);
             roleBitmap = PermissionedResolverLib.ROLE_SET_ABI;
-            setterPrefix = abi.encodeWithSelector(selector, name, contentType);
         } else if (selector == this.setInterface.selector) {
-            bytes4 interfaceId;
-            (name, interfaceId) = abi.decode(setter[4:], (bytes, bytes4));
-            part = PermissionedResolverLib.partHash(interfaceId);
+            (, bytes4 interfaceId) = abi.decode(setter[4:], (bytes, bytes4));
+            arg = abi.encodePacked(interfaceId);
             roleBitmap = PermissionedResolverLib.ROLE_SET_INTERFACE;
-            setterPrefix = abi.encodeWithSelector(selector, name, interfaceId);
         } else {
             revert UnsupportedResolverProfile(selector);
         }
+        resource = uint256(keccak256(arg)); // same as PermissionedResolverLib.resource()
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Authorize EAC roles.
-    function _authorizeRoles(
-        bytes memory name,
-        bytes32 part,
-        bytes memory setterPrefix,
-        address account,
-        uint256 roleBitmap,
-        bool grant
-    )
-        internal
-        returns (bool)
-    {
-        (uint8 size, ) = NameCoder.nextLabel(name, 0);
-        uint256 recordId;
-        if (grant) {
-            if (size > 0) {
-                recordId = _ensureRecord(name);
-            }
-            uint256 resource = PermissionedResolverLib.resource(recordId, part);
-            _checkCanGrantRoles(PermissionedResolverLib.resource(recordId), roleBitmap, msg.sender);
-            if (roleCount(resource) == 0) {
-                emit RecordResource(recordId, resource, setterPrefix);
-            }
-            return _grantRoles(resource, roleBitmap, account, true);
-        } else {
-            if (size > 0) {
-                recordId = _recordIds[NameCoder.namehash(name, 0)];
-                if (recordId == 0) {
-                    revert InvalidRecord();
-                }
-            }
-            uint256 resource = PermissionedResolverLib.resource(recordId, part);
-            _checkCanRevokeRoles(PermissionedResolverLib.resource(recordId), roleBitmap, msg.sender);
-            return _revokeRoles(resource, roleBitmap, account, true);
-        }
-    }
-
-    /// @dev Ensure record exists for `name`.
-    function _ensureRecord(bytes memory name) internal returns (uint256 recordId) {
-        bytes32 node = NameCoder.namehash(name, 0);
-        recordId = _recordIds[node];
-        if (recordId == 0) {
-            //_checkRoles(ROOT_RESOURCE, PermissionedResolverLib.ROLE_MANAGER, msg.sender);
-            recordId = ++_recordCount;
-            _recordIds[node] = recordId;
-            emit Linked(node, name, recordId);
-        }
-    }
 
     /// @dev Allow `ROLE_UPGRADE` to upgrade.
     function _authorizeUpgrade(address newImplementation)
@@ -474,14 +364,14 @@ contract PermissionedResolver is
         onlyRootRoles(PermissionedResolverLib.ROLE_UPGRADE)
     {}
 
-    /// @dev Assert `sender` has necessary roles to update record.
-    function _checkRecordRoles(uint256 recordId, uint256 roleBitmap, bytes32 part) internal view {
-        if (
-            part == bytes32(0) ||
-            (!hasRoles(PermissionedResolverLib.resource(recordId, part), roleBitmap, msg.sender) &&
-                !hasRoles(PermissionedResolverLib.resource(0, part), roleBitmap, msg.sender))
-        ) {
-            _checkRoles(PermissionedResolverLib.resource(recordId), roleBitmap, msg.sender); // reverts with "widest" resource
+    /// @dev Ensure record exists for `name`.
+    function _ensureRecord(bytes memory name) internal returns (uint256 recordId) {
+        bytes32 node = NameCoder.namehash(name, 0);
+        recordId = _recordIds[node];
+        if (recordId == 0) {
+            recordId = ++_recordCount;
+            _recordIds[node] = recordId;
+            emit Linked(node, name, recordId);
         }
     }
 

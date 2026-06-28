@@ -68,42 +68,27 @@ library PermissionedResolverLib {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Generate generic record setter calldata.
-    function anySetter(bytes memory name) internal pure returns (bytes memory) {
-        return abi.encodeWithSelector(bytes4(0), name);
+    /// @dev Compute EAC resource from `string` argument.
+    ///      Equivalent to `uint256(keccak256(bytes(s)))`.
+    function resource(string calldata s) internal pure returns (uint256 ret) {
+        return uint256(keccak256(bytes(s)));
     }
 
-    /// @dev Compute unique EAC resource ID.
-    /// @param recordId The resource ID.
-    /// @param part The part hash.
-    /// @return The computed resource ID.
-    function resource(uint256 recordId, bytes32 part) internal pure returns (uint256) {
-        if (recordId == 0 && part == bytes32(0)) {
-            return 0;
-        }
-        return uint256(keccak256(abi.encodePacked(bytes2(0x1900), recordId, part)));
-    }
-
-    /// @dev Convience for resource with any part.
-    function resource(uint256 recordId) internal pure returns (uint256) {
-        return resource(recordId, bytes32(0));
-    }
-
-    /// @dev Compute `part` from `string` key.
-    function partHash(string memory s) internal pure returns (bytes32) {
-        return keccak256(bytes(s));
-    }
-
-    /// @dev Compute `part` from `uint256` key.
-    function partHash(uint256 x) internal pure returns (bytes32 part) {
+    /// @dev Compute EAC resource from `uint256` argument.
+    ///      Equivalent to `uint256(keccak256(abi.encodePacked(x)))`.
+    function resource(uint256 x) internal pure returns (uint256 ret) {
         assembly {
             mstore(0, x)
-            part := keccak256(0, 32)
+            ret := keccak256(0, 32)
         }
     }
 
-    /// @dev Compute `part` from `bytes4` key.
-    function partHash(bytes4 x) internal pure returns (bytes32) {
-        return partHash(uint32(x));
+    /// @dev Compute EAC resource from `bytes4` argument.
+    ///      Equivalent to `uint256(keccak256(abi.encodePacked(x)))`.
+    function resource(bytes4 x) internal pure returns (uint256 ret) {
+        assembly {
+            mstore(0, x)
+            ret := keccak256(0, 4)
+        }
     }
 }

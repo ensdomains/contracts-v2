@@ -15,7 +15,7 @@ import {INameSetter} from "./setters/INameSetter.sol";
 import {IPubkeySetter} from "./setters/IPubkeySetter.sol";
 import {ITextSetter} from "./setters/ITextSetter.sol";
 
-/// @dev Interface selector: `0x64ba7075`
+/// @dev Interface selector: `0xd3fb9e08`
 interface IPermissionedResolver is
     IEnhancedAccessControl,
     IExtendedResolver,
@@ -40,11 +40,11 @@ interface IPermissionedResolver is
     /// @param recordId The record ID.
     event Linked(bytes32 indexed node, bytes name, uint256 indexed recordId);
 
-    /// @notice Associate `recordId` with an EAC resource.
-    /// @param recordId The record ID.
+    /// @notice Associate EAC resource with setter selector and argument.
     /// @param resource The resource to associate.
-    /// @param setter The ABI-encoded setter calldata.
-    event RecordResource(uint256 indexed recordId, uint256 indexed resource, bytes setter);
+    /// @param selector The setter selector.
+    /// @param arg The setter argument.
+    event ResourcePart(uint256 indexed resource, bytes4 indexed selector, bytes arg);
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -62,25 +62,11 @@ interface IPermissionedResolver is
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Authorize `roleBitmap` permissions to `account` for record of `name`.
-    ///         Same as `{grant,revoke}RootRoles()` if name is root.
-    /// @param name The DNS-encoded name.
-    /// @param roleBitmap The roles bitmap to authorize.
-    /// @param account The account to be authorize for roles.
-    /// @param grant If `true`, grants, otherwise revokes.
-    /// @return `true` if an authorization was changed.
-    function authorizeRoles(bytes calldata name, uint256 roleBitmap, address account, bool grant)
-        external
-        returns (bool);
-
-    /// @notice Authorize fine-grained permission to `account` for record of `name`.
+    /// @notice Authorize fine-grained permission to `account`.
     /// @param setter The ABI-encoded setter calldata to authorize.
     /// @param account The account to be authorize for role.
-    /// @param grant If `true`, grants, otherwise revokes.
     /// @return `true` if an authorization was changed.
-    function authorizeSubroles(bytes calldata setter, address account, bool grant)
-        external
-        returns (bool);
+    function grantSetterRoles(bytes calldata setter, address account) external returns (bool);
 
     /// @notice Associate `name` with `targetNode`.
     /// @param sourceName The DNS-encoded name to link.
@@ -97,12 +83,11 @@ interface IPermissionedResolver is
 
     /// @notice Decode setter calldata into parts and corresponding role.
     /// @param setter The ABI-encoded setter calldata.
-    /// @return name The DNS-encoded name from the setter.
-    /// @return part The part hash from the setter's argument.
-    /// @return roleBitmap The role bit corresponding to the setter selector.
-    /// @return setterPrefix The ABI-encoded setter calldata without values.
+    /// @return arg The setter argument.
+    /// @return roleBitmap The corresponding role bit.
+    /// @return resource The EAC resource.
     function decodeSetter(bytes calldata setter)
         external
         pure
-        returns (bytes memory name, bytes32 part, uint256 roleBitmap, bytes memory setterPrefix);
+        returns (bytes memory arg, uint256 roleBitmap, uint256 resource);
 }
