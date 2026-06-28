@@ -38,14 +38,13 @@ import {ITextSetter} from "~src/resolver/interfaces/setters/ITextSetter.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {AbstractResolverBase} from "~src/resolver/AbstractResolverBase.sol";
 import {IPermissionedResolver} from "~src/resolver/interfaces/IPermissionedResolver.sol";
 import {PermissionedResolverLib} from "~src/resolver/libraries/PermissionedResolverLib.sol";
 import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
 bytes4 constant TEST_SELECTOR = 0x12345678;
-
-bytes constant TEST_BYTES = hex"0123456789abcdef";
 
 contract PermissionedResolverTest is V2Fixture {
     uint256 constant DEFAULT_ROLES = EACBaseRolesLib.ALL_ROLES;
@@ -113,8 +112,8 @@ contract PermissionedResolverTest is V2Fixture {
 
     function test_initalize_with_setters() external {
         bytes[] memory m = new bytes[](2);
-        m[0] = abi.encodeCall(PermissionedResolver.setName, (testName, "NAME"));
-        m[1] = abi.encodeCall(PermissionedResolver.setContentHash, (testName, TEST_BYTES));
+        m[0] = abi.encodeCall(PermissionedResolver.setName, (testName, "A"));
+        m[1] = abi.encodeCall(PermissionedResolver.setContentHash, (testName, "B"));
 
         bytes memory initData = abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, m));
         PermissionedResolver r =
@@ -128,13 +127,11 @@ contract PermissionedResolverTest is V2Fixture {
 
         assertEq(
             r.resolve(testName, abi.encodeCall(INameResolver.name, bytes32(0))),
-            abi.encode("NAME"),
-            "name"
+            abi.encode("A")
         );
         assertEq(
             r.resolve(testName, abi.encodeCall(IContentHashResolver.contenthash, bytes32(0))),
-            abi.encode(TEST_BYTES),
-            "contenthash"
+            abi.encode("B")
         );
     }
 
@@ -301,6 +298,12 @@ contract PermissionedResolverTest is V2Fixture {
             )
         );
         vm.prank(actor);
+        resolver.link(testName, bytes32(0));
+    }
+
+    function test_link_alreadyUnlinked() external {
+        vm.expectRevert(abi.encodeWithSelector(IPermissionedResolver.AlreadyUnlinked.selector));
+        vm.prank(owner);
         resolver.link(testName, bytes32(0));
     }
 
@@ -483,6 +486,18 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(
             _resolveWithUR(testName, abi.encodeCall(IABIResolver.ABI, (bytes32(0), contentType))),
             data.length > 0 ? abi.encode(contentType, data) : abi.encode(0, "")
+        );
+    }
+
+    function test_setABI_lastBit() external {
+        uint256 contentType = 1 << 255;
+
+        vm.prank(owner);
+        resolver.setABI(testName, contentType, "A");
+
+        assertEq(
+            _resolveWithUR(testName, abi.encodeCall(IABIResolver.ABI, (bytes32(0), ~uint256(0)))),
+            abi.encode(contentType, "A")
         );
     }
 
@@ -878,6 +893,11 @@ contract PermissionedResolverTest is V2Fixture {
         resolver.setText(testName, key, "A");
 
         // give friend setText(key)
+        vm.expectEmit();
+        emit IPermissionedResolver.ResourceArgument(
+            PermissionedResolverLib.resource(key),
+            bytes(key)
+        );
         vm.prank(owner);
         assertTrue(
             resolver.grantSetterRoles(
@@ -906,6 +926,30 @@ contract PermissionedResolverTest is V2Fixture {
         );
         vm.prank(friend);
         resolver.setText(testName, key2, "D");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // resolve()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_resolve_noCalldata() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AbstractResolverBase.UnsupportedResolverProfile.selector,
+                bytes4(0)
+            )
+        );
+        resolver.resolve(testName, "");
+    }
+
+    function test_resolve_unsupported() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AbstractResolverBase.UnsupportedResolverProfile.selector,
+                TEST_SELECTOR
+            )
+        );
+        resolver.resolve(testName, abi.encodeWithSelector(TEST_SELECTOR));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -956,28 +1000,39 @@ contract PermissionedResolverTest is V2Fixture {
 
     function test_multicall_getters() external {
         vm.startPrank(owner);
+        resolver.setABI(testName, 1, "A");
         resolver.setAddress(testName, COIN_TYPE_DEFAULT, testAddress);
-        resolver.setContentHash(testName, TEST_BYTES);
-        resolver.setData(testName, "DATA_KEY", TEST_BYTES);
-        resolver.setName(testName, "NAME");
-        resolver.setText(testName, "TEXT_KEY", "TEXT_VALUE");
+        resolver.setContentHash(testName, "B");
+        resolver.setData(testName, "DATA", "C");
+        resolver.setInterface(testName, TEST_SELECTOR, testAddr);
+        resolver.setName(testName, "D");
+        resolver.setText(testName, "TEXT", "E");
         vm.stopPrank();
 
-        bytes[] memory calls = new bytes[](6);
-        calls[0] = abi.encodeCall(IAddrResolver.addr, (bytes32(0)));
+        bytes[] memory calls = new bytes[](8);
+        calls[0] = abi.encodeCall(IABIResolver.ABI, (bytes32(0), ~uint256(0)));
         calls[1] = abi.encodeCall(IAddressResolver.addr, (bytes32(0), COIN_TYPE_ETH));
         calls[2] = abi.encodeCall(IContentHashResolver.contenthash, (bytes32(0)));
-        calls[3] = abi.encodeCall(IDataResolver.data, (bytes32(0), "DATA_KEY"));
-        calls[4] = abi.encodeCall(INameResolver.name, (bytes32(0)));
-        calls[5] = abi.encodeCall(ITextResolver.text, (bytes32(0), "TEXT_KEY"));
+        calls[3] = abi.encodeCall(IDataResolver.data, (bytes32(0), "DATA"));
+        calls[4] = abi.encodeCall(
+            IInterfaceResolver.interfaceImplementer,
+            (bytes32(0), TEST_SELECTOR)
+        );
+        calls[5] = abi.encodeCall(INameResolver.name, (bytes32(0)));
+        calls[6] = abi.encodeCall(ITextResolver.text, (bytes32(0), "TEXT"));
+        //
+        calls[7] = abi.encodeCall(IAddrResolver.addr, (bytes32(0)));
 
         bytes[] memory answers = new bytes[](calls.length);
-        answers[0] = abi.encode(testAddr);
+        answers[0] = abi.encode(1, "A");
         answers[1] = abi.encode(testAddress);
-        answers[2] = abi.encode(TEST_BYTES);
-        answers[3] = abi.encode(TEST_BYTES);
-        answers[4] = abi.encode("NAME");
-        answers[5] = abi.encode("TEXT_VALUE");
+        answers[2] = abi.encode("B");
+        answers[3] = abi.encode("C");
+        answers[4] = abi.encode(testAddr);
+        answers[5] = abi.encode("D");
+        answers[6] = abi.encode("E");
+        //
+        answers[7] = abi.encode(testAddr);
 
         assertEq(
             _resolveWithUR(testName, abi.encodeCall(IMulticallable.multicall, (calls))),

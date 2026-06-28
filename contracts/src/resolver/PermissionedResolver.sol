@@ -111,6 +111,18 @@ contract PermissionedResolver is
         _disableInitializers();
     }
 
+    /// @notice Initialize the resolver.
+    /// @param rootAccount Account granted root roles.
+    /// @param roleBitmap The role bitmap granted to `rootAccount`.
+    /// @param setters The setter calldata that avoids permission checks.
+    function initialize(address rootAccount, uint256 roleBitmap, bytes[] calldata setters)
+        external
+        initializer
+    {
+        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
+        multicall(setters);
+    }
+
     /// @inheritdoc AbstractResolverBase
     function supportsInterface(bytes4 interfaceId)
         public
@@ -125,18 +137,6 @@ contract PermissionedResolver is
             type(UUPSUpgradeable).interfaceId == interfaceId ||
             type(IProxyAuthorization).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
-    }
-
-    /// @notice Initialize the resolver.
-    /// @param rootAccount Account granted root roles.
-    /// @param roleBitmap The role bitmap granted to `rootAccount`.
-    /// @param setters The setter calldata that avoids permission checks.
-    function initialize(address rootAccount, uint256 roleBitmap, bytes[] calldata setters)
-        external
-        initializer
-    {
-        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
-        multicall(setters);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -272,7 +272,7 @@ contract PermissionedResolver is
         (bytes memory arg, uint256 resource, uint256 roleBitmap) = decodeSetter(setter);
         _checkCanGrantRoles(resource, roleBitmap, msg.sender);
         if (roleCount(resource) == 0) {
-            emit ResourcePart(resource, bytes4(setter), arg);
+            emit ResourceArgument(resource, arg);
         }
         return _grantRoles(resource, roleBitmap, account, true);
     }
@@ -351,6 +351,7 @@ contract PermissionedResolver is
             revert UnsupportedResolverProfile(selector);
         }
         resource = uint256(keccak256(arg)); // same as PermissionedResolverLib.resource()
+        assert(resource != ROOT_RESOURCE);
     }
 
     ////////////////////////////////////////////////////////////////////////

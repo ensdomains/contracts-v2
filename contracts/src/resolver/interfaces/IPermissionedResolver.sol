@@ -40,11 +40,10 @@ interface IPermissionedResolver is
     /// @param recordId The record ID.
     event Linked(bytes32 indexed node, bytes name, uint256 indexed recordId);
 
-    /// @notice Associate EAC resource with setter selector and argument.
+    /// @notice Associate EAC resource with setter argument.
     /// @param resource The resource to associate.
-    /// @param selector The setter selector.
     /// @param arg The setter argument.
-    event ResourcePart(uint256 indexed resource, bytes4 indexed selector, bytes arg);
+    event ResourceArgument(uint256 indexed resource, bytes arg);
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
