@@ -32,6 +32,7 @@ import {
   deployVerifiableProxy,
 } from "../test/integration/fixtures/deployVerifiableProxy.js";
 import {
+  COIN_TYPE_ETH,
   dnsEncodeName,
   getReverseName,
   splitName,
@@ -939,13 +940,17 @@ export async function setupDevnet({
             { account: namer },
           );
           await resolver.write.setName([
-            namehash(getReverseName(address)),
+            dnsEncodeName(getReverseName(address)),
             name,
           ]);
         } catch (err) {
           console.log(`Cannot name: ${name}`);
         }
-        await resolver.write.setAddr([namehash(name), 60n, address]);
+        await resolver.write.setAddress([
+          dnsEncodeName(name),
+          COIN_TYPE_ETH,
+          address,
+        ]);
       }
     }
 

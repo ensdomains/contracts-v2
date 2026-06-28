@@ -493,7 +493,7 @@ describe("Migration", () => {
       await unwrapped.checkMigrated();
       await resolver.write.multicall([
         makeResolutions({ name: unwrapped.name, ...defaultProfile }).map(
-          (x) => x.writeV1,
+          (x) => x.writeV2,
         ),
       ]);
       await unwrapped.checkResolution();

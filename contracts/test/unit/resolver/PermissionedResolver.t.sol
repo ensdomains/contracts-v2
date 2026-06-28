@@ -471,6 +471,16 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(roleBitmap, PermissionedResolverLib.ROLE_SET_TEXT, "role");
     }
 
+    function test_decodeSetter_unknown() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AbstractResolverBase.UnsupportedResolverProfile.selector,
+                TEST_SELECTOR
+            )
+        );
+        resolver.decodeSetter(abi.encodeWithSelector(TEST_SELECTOR));
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // setABI()
     ////////////////////////////////////////////////////////////////////////
