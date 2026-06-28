@@ -8,10 +8,9 @@ interface IContentHashSetter {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Primary name was changed.
-    /// @param node The namehash of `name`.
-    /// @param name The DNS-encoded name.
-    /// @param contentHash The content hahs.
-    event ContentHashUpdated(bytes32 indexed node, bytes name, bytes contentHash);
+    /// @param recordId The record ID.
+    /// @param contentHash The content hash.
+    event ContentHashUpdated(uint256 indexed recordId, bytes contentHash);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions

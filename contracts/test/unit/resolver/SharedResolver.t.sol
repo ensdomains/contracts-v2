@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
+import {Vm} from "forge-std/Test.sol";
+
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
@@ -9,8 +11,8 @@ import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
 import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHashResolver.sol";
-import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {IDataResolver} from "@ens/contracts/resolvers/profiles/IDataResolver.sol";
+import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
 import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
 import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
@@ -33,6 +35,7 @@ import {IInterfaceSetter} from "~src/resolver/interfaces/setters/IInterfaceSette
 import {INameSetter} from "~src/resolver/interfaces/setters/INameSetter.sol";
 import {IPubkeySetter} from "~src/resolver/interfaces/setters/IPubkeySetter.sol";
 import {ITextSetter} from "~src/resolver/interfaces/setters/ITextSetter.sol";
+import {AbstractResolverBase} from "~src/resolver/AbstractResolverBase.sol";
 import {SharedResolver} from "~src/resolver/SharedResolver.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
@@ -46,18 +49,19 @@ contract SharedResolverTest is V2Fixture {
     address actor = makeAddr("actor");
     address friend = makeAddr("friend");
 
-    bytes nullName;
-    bytes unregName;
+    bytes rootName;
+    bytes dneName;
     bytes testName;
     bytes32 testNode;
     bytes otherName;
 
     function setUp() external {
         deployV2Fixture();
+
         resolver = new SharedResolver(rootRegistry, contractNamer);
 
-        nullName = NameCoder.encode("");
-        unregName = NameCoder.encode("unreg");
+        rootName = NameCoder.encode("");
+        dneName = NameCoder.encode("dne");
         testName = _register("test");
         testNode = NameCoder.namehash(testName, 0);
         otherName = _register("other");
@@ -121,22 +125,22 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_ownerOf() external view {
-        assertEq(resolver.ownerOf(nullName), address(0), "null");
-        assertEq(resolver.ownerOf(unregName), address(0), "unreg");
+        assertEq(resolver.ownerOf(rootName), address(0), "null");
+        assertEq(resolver.ownerOf(dneName), address(0), "unreg");
         assertEq(resolver.ownerOf(testName), address(this), "test");
         assertEq(resolver.ownerOf(otherName), address(this), "other");
     }
 
     function test_canModifyName_null() external view {
-        assertFalse(resolver.canModifyName(nullName, address(0)), "null");
-        assertFalse(resolver.canModifyName(nullName, address(this)), "this");
-        assertFalse(resolver.canModifyName(nullName, address(actor)), "actor");
+        assertFalse(resolver.canModifyName(rootName, address(0)), "null");
+        assertFalse(resolver.canModifyName(rootName, address(this)), "this");
+        assertFalse(resolver.canModifyName(rootName, address(actor)), "actor");
     }
 
     function test_canModifyName_unregistered() external view {
-        assertFalse(resolver.canModifyName(unregName, address(0)), "null");
-        assertFalse(resolver.canModifyName(unregName, address(this)), "this");
-        assertFalse(resolver.canModifyName(unregName, address(actor)), "actor");
+        assertFalse(resolver.canModifyName(dneName, address(0)), "null");
+        assertFalse(resolver.canModifyName(dneName, address(this)), "this");
+        assertFalse(resolver.canModifyName(dneName, address(actor)), "actor");
     }
 
     function test_canModifyName_registered() external view {
@@ -150,7 +154,7 @@ contract SharedResolverTest is V2Fixture {
         assertFalse(resolver.canModifyName(testName, address(friend)), "before:modify");
 
         vm.expectEmit();
-        emit SharedResolver.ApprovalUpdated(testNode, testName, address(this), friend, true);
+        emit SharedResolver.ApprovalUpdated(uint256(testNode), address(this), friend, true);
         resolver.approve(testName, friend, true);
 
         assertTrue(resolver.isApproved(testName, address(this), friend), "approved:testName");
@@ -158,7 +162,7 @@ contract SharedResolverTest is V2Fixture {
         assertFalse(resolver.canModifyName(testName, address(actor)), "modify:actor");
 
         vm.expectEmit();
-        emit SharedResolver.ApprovalUpdated(testNode, testName, address(this), friend, false);
+        emit SharedResolver.ApprovalUpdated(uint256(testNode), address(this), friend, false);
         resolver.approve(testName, friend, false);
 
         assertFalse(resolver.isApproved(testName, address(this), friend), "revoked:approved");
@@ -166,16 +170,16 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_approve_any() external {
-        assertFalse(resolver.isApproved(nullName, address(this), friend), "before:null");
+        assertFalse(resolver.isApproved(rootName, address(this), friend), "before:null");
         assertFalse(resolver.isApproved(testName, address(this), friend), "before:approved");
         assertFalse(resolver.canModifyName(testName, address(friend)), "before:modify");
 
         vm.expectEmit();
-        emit SharedResolver.ApprovalUpdated(bytes32(0), nullName, address(this), friend, true);
-        resolver.approve(nullName, friend, true);
+        emit SharedResolver.ApprovalUpdated(0, address(this), friend, true);
+        resolver.approve(rootName, friend, true);
 
-        assertTrue(resolver.isApproved(nullName, address(this), friend), "approved:null");
-        assertFalse(resolver.canModifyName(nullName, address(this)), "modify:null");
+        assertTrue(resolver.isApproved(rootName, address(this), friend), "approved:null");
+        assertFalse(resolver.canModifyName(rootName, address(this)), "modify:null");
 
         assertFalse(resolver.isApproved(testName, address(this), friend), "approved:test");
         assertTrue(resolver.canModifyName(testName, address(friend)), "modify:friend");
@@ -184,13 +188,23 @@ contract SharedResolverTest is V2Fixture {
         assertTrue(resolver.canModifyName(otherName, address(friend)), "modify:other");
 
         vm.expectEmit();
-        emit SharedResolver.ApprovalUpdated(bytes32(0), nullName, address(this), friend, false);
-        resolver.approve(nullName, friend, false);
+        emit SharedResolver.ApprovalUpdated(0, address(this), friend, false);
+        resolver.approve(rootName, friend, false);
 
-        assertFalse(resolver.isApproved(nullName, address(this), friend), "revoked:null");
+        assertFalse(resolver.isApproved(rootName, address(this), friend), "revoked:null");
         assertFalse(resolver.isApproved(testName, address(this), friend), "revoked:approved");
         assertFalse(resolver.canModifyName(testName, address(friend)), "revoked:modify");
         assertFalse(resolver.canModifyName(otherName, address(friend)), "revoked:other");
+    }
+
+    function test_Named_emit_once() external {
+        vm.expectEmit();
+        emit SharedResolver.Named(uint256(testNode), testName);
+        resolver.setName(testName, "a");
+
+        vm.recordLogs();
+        resolver.setName(testName, "b");
+        _expectNoEmit(vm.getRecordedLogs(), SharedResolver.Named.selector);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -199,14 +213,20 @@ contract SharedResolverTest is V2Fixture {
 
     function test_resolve_noCalldata() external {
         vm.expectRevert(
-            abi.encodeWithSelector(SharedResolver.UnsupportedResolverProfile.selector, bytes4(0))
+            abi.encodeWithSelector(
+                AbstractResolverBase.UnsupportedResolverProfile.selector,
+                bytes4(0)
+            )
         );
         resolver.resolve(testName, "");
     }
 
     function test_resolve_unsupported() external {
         vm.expectRevert(
-            abi.encodeWithSelector(SharedResolver.UnsupportedResolverProfile.selector, TEST_SELECTOR)
+            abi.encodeWithSelector(
+                AbstractResolverBase.UnsupportedResolverProfile.selector,
+                TEST_SELECTOR
+            )
         );
         resolver.resolve(testName, abi.encodeWithSelector(TEST_SELECTOR));
     }
@@ -228,7 +248,7 @@ contract SharedResolverTest is V2Fixture {
 
         bytes[] memory results = new bytes[](1);
         results[0] = abi.encodeWithSelector(
-            SharedResolver.UnsupportedResolverProfile.selector,
+            AbstractResolverBase.UnsupportedResolverProfile.selector,
             TEST_SELECTOR
         );
 
@@ -253,7 +273,7 @@ contract SharedResolverTest is V2Fixture {
         uint256 contentType = 1 << bit;
 
         vm.expectEmit();
-        emit IABISetter.ABIUpdated(testNode, testName, contentType);
+        emit IABISetter.ABIUpdated(uint256(testNode), contentType);
         resolver.setABI(testName, contentType, data);
 
         assertEq(
@@ -298,7 +318,7 @@ contract SharedResolverTest is V2Fixture {
         );
 
         vm.expectEmit();
-        emit IAddressSetter.AddressUpdated(testNode, testName, coinType, a);
+        emit IAddressSetter.AddressUpdated(uint256(testNode), coinType, a);
         resolver.setAddress(testName, coinType, a);
 
         assertEq(
@@ -412,7 +432,7 @@ contract SharedResolverTest is V2Fixture {
 
     function test_setContentHash(bytes calldata contentHash) external {
         vm.expectEmit();
-        emit IContentHashSetter.ContentHashUpdated(testNode, testName, contentHash);
+        emit IContentHashSetter.ContentHashUpdated(uint256(testNode), contentHash);
         resolver.setContentHash(testName, contentHash);
 
         assertEq(
@@ -433,7 +453,7 @@ contract SharedResolverTest is V2Fixture {
 
     function test_setData(string calldata key, bytes calldata value) external {
         vm.expectEmit();
-        emit IDataSetter.DataUpdated(testNode, testName, key, key, value);
+        emit IDataSetter.DataUpdated(uint256(testNode), key, key, value);
         resolver.setData(testName, key, value);
 
         assertEq(
@@ -454,7 +474,7 @@ contract SharedResolverTest is V2Fixture {
 
     function test_setInterface(bytes4 interfaceId, address impl) external {
         vm.expectEmit();
-        emit IInterfaceSetter.InterfaceUpdated(testNode, testName, interfaceId, impl);
+        emit IInterfaceSetter.InterfaceUpdated(uint256(testNode), interfaceId, impl);
         resolver.setInterface(testName, interfaceId, impl);
 
         assertEq(
@@ -493,7 +513,7 @@ contract SharedResolverTest is V2Fixture {
 
     function test_setName(string calldata primaryName) external {
         vm.expectEmit();
-        emit INameSetter.NameUpdated(testNode, testName, primaryName);
+        emit INameSetter.NameUpdated(uint256(testNode), primaryName);
         resolver.setName(testName, primaryName);
 
         assertEq(
@@ -514,7 +534,7 @@ contract SharedResolverTest is V2Fixture {
 
     function test_setPubkey(bytes32 x, bytes32 y) external {
         vm.expectEmit();
-        emit IPubkeySetter.PubkeyUpdated(testNode, testName, x, y);
+        emit IPubkeySetter.PubkeyUpdated(uint256(testNode), x, y);
         resolver.setPubkey(testName, x, y);
 
         assertEq(
@@ -535,7 +555,7 @@ contract SharedResolverTest is V2Fixture {
 
     function test_setText(string calldata key, string calldata value) external {
         vm.expectEmit();
-        emit ITextSetter.TextUpdated(testNode, testName, key, key, value);
+        emit ITextSetter.TextUpdated(uint256(testNode), key, key, value);
         resolver.setText(testName, key, value);
 
         assertEq(
@@ -636,9 +656,9 @@ contract SharedResolverTest is V2Fixture {
     function test_multicall_oneError_notAuthorized() external {
         bytes[] memory m = new bytes[](2);
         m[0] = abi.encodeCall(INameSetter.setName, (testName, ""));
-        m[1] = abi.encodeCall(INameSetter.setName, (unregName, "")); // wrong
+        m[1] = abi.encodeCall(INameSetter.setName, (dneName, "")); // wrong
 
-        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, unregName));
+        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, dneName));
         resolver.multicall(m);
     }
 
@@ -679,6 +699,12 @@ contract SharedResolverTest is V2Fixture {
             type(uint64).max
         );
         return NameCoder.ethName(label);
+    }
+
+    function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {
+        for (uint256 i; i < logs.length; ++i) {
+            assertNotEq(logs[i].topics[0], topic0, "found unexpected event");
+        }
     }
 }
 

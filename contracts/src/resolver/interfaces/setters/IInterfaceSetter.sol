@@ -8,13 +8,11 @@ interface IInterfaceSetter {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Text was changed.
-    /// @param node The namehash of `name`.
-    /// @param name The DNS-encoded name.
+    /// @param recordId The record ID.
     /// @param interfaceId The EIP-165 interface ID.
     /// @param implementer The address of the contract that implements the interface.
     event InterfaceUpdated(
-        bytes32 indexed node,
-        bytes name,
+        uint256 indexed recordId,
         bytes4 indexed interfaceId,
         address implementer
     );

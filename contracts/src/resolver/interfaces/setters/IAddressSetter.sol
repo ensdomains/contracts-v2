@@ -8,11 +8,10 @@ interface IAddressSetter {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Address was changed.
-    /// @param node The namehash of `name`.
-    /// @param name The DNS-encoded name.
+    /// @param recordId The record ID.
     /// @param coinType The coin type.
     /// @param addressBytes The encoded address.
-    event AddressUpdated(bytes32 indexed node, bytes name, uint256 coinType, bytes addressBytes);
+    event AddressUpdated(uint256 indexed recordId, uint256 coinType, bytes addressBytes);
 
     ////////////////////////////////////////////////////////////////////////
     // Errors

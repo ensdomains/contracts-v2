@@ -8,11 +8,10 @@ interface IPubkeySetter {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Public key was changed.
-    /// @param node The namehash of `name`.
-    /// @param name The DNS-encoded name.
+    /// @param recordId The record ID.
     /// @param x The x-coordinate of the public key.
     /// @param y The y-coordinate of the public key.
-    event PubkeyUpdated(bytes32 indexed node, bytes name, bytes32 x, bytes32 y);
+    event PubkeyUpdated(uint256 indexed recordId, bytes32 x, bytes32 y);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions

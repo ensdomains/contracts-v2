@@ -8,10 +8,9 @@ interface IABISetter {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice ABI was changed.
-    /// @param node The namehash of `name`.
-    /// @param name The DNS-encoded name.
+    /// @param recordId The record ID.
     /// @param contentType The ABI content type.
-    event ABIUpdated(bytes32 indexed node, bytes name, uint256 indexed contentType);
+    event ABIUpdated(uint256 indexed recordId, uint256 indexed contentType);
 
     ////////////////////////////////////////////////////////////////////////
     // Errors

@@ -8,10 +8,9 @@ interface INameSetter {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Primary name was changed.
-    /// @param node The namehash of `name`.
-    /// @param name The DNS-encoded name.
+    /// @param recordId The record ID.
     /// @param primaryName The primary name.
-    event NameUpdated(bytes32 indexed node, bytes name, string primaryName);
+    event NameUpdated(uint256 indexed recordId, string primaryName);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
