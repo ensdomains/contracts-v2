@@ -137,7 +137,11 @@ async function fixture() {
       name,
       resolverAddress: myResolver.address,
     });
-    await myResolver.write.setAddr([namehash(name), resolver]);
+    await myResolver.write.setAddress([
+      dnsEncodeName(name),
+      COIN_TYPE_ETH,
+      resolver,
+    ]);
   }
 }
 
@@ -282,7 +286,7 @@ describe("DNSTLDResolver", () => {
       resolverAddress: F.myResolver.address,
     });
     await F.myResolver.write.multicall([
-      bundle.resolutions.map((x) => x.writeV1),
+      bundle.resolutions.map((x) => x.writeV2),
     ]);
     const [answer, resolverAddress] = await F.v2.universalResolver.read.resolve(
       [dnsEncodeName(basicProfile.name), bundle.call],
@@ -317,7 +321,7 @@ describe("DNSTLDResolver", () => {
           encodeRRs([makeTXT(kp.name, `ENS1 ${F.myResolver.address}`)]),
         ]);
         await F.myResolver.write.multicall([
-          makeResolutions(kp).map((x) => x.writeV1),
+          makeResolutions(kp).map((x) => x.writeV2),
         ]);
         await F.expectGasless(kp, F.myResolver.address);
       });

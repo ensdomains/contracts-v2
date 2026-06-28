@@ -83,10 +83,10 @@ interface IPermissionedResolver is
     /// @notice Decode setter calldata into parts and corresponding role.
     /// @param setter The ABI-encoded setter calldata.
     /// @return arg The setter argument.
-    /// @return roleBitmap The corresponding role bit.
     /// @return resource The EAC resource.
+    /// @return roleBitmap The corresponding role bit.
     function decodeSetter(bytes calldata setter)
         external
         pure
-        returns (bytes memory arg, uint256 roleBitmap, uint256 resource);
+        returns (bytes memory arg, uint256 resource, uint256 roleBitmap);
 }

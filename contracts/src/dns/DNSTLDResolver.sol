@@ -357,8 +357,18 @@ contract DNSTLDResolver is
         (, address r, , ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
         if (r != address(0)) {
             // according to ENSv1, this must be immediate onchain
-            try IAddrResolver(r).addr(NameCoder.namehash(name, 0)) returns (address payable a) {
-                resolver = a;
+            // however this should support IExtendedResolver
+            try this.callResolver(
+                r,
+                name,
+                abi.encodeCall(IAddrResolver.addr, (NameCoder.namehash(name, 0))),
+                false,
+                "",
+                new string[](0)
+            ) returns (bytes memory a) {
+                if (a.length == 32) {
+                    resolver = abi.decode(a, (address));
+                }
             } catch {}
         }
     }

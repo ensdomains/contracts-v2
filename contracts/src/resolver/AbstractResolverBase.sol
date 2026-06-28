@@ -226,7 +226,7 @@ abstract contract AbstractResolverBase is
     }
 
     /// @dev If `coinType` is EVM, ensure it is the proper size.
-    function _checkAddress(uint256 coinType, bytes calldata addressBytes) internal view {
+    function _checkAddress(uint256 coinType, bytes calldata addressBytes) internal pure {
         if (
             addressBytes.length != 0 && addressBytes.length != 20 && ENSIP19.isEVMCoinType(coinType)
         ) {
@@ -235,7 +235,7 @@ abstract contract AbstractResolverBase is
     }
 
     /// @dev Ensure `contentType` is a single bit.
-    function _checkContentType(uint256 contentType) internal view {
+    function _checkContentType(uint256 contentType) internal pure {
         if (contentType == 0 || (contentType - 1) & contentType != 0) {
             revert InvalidContentType(contentType);
         }
