@@ -1412,6 +1412,137 @@ async function verifyPreMigration(opts: {
   }
 }
 
+type ContractRef = { address: Address; abi: readonly any[] };
+
+// Read owner() from the gating contract, reject a private key that does not
+// control it, optionally impersonate it on a fork, and return a wallet able to
+// sign as the owner.
+async function resolveOwnerGatedWallet(opts: {
+  client: ReturnType<typeof publicClient>;
+  chain: Chain;
+  rpcUrl: string;
+  provider?: RpcProvider;
+  gate: ContractRef;
+  ownerLabel: string;
+  privateKey?: `0x${string}`;
+  impersonateOwner?: boolean;
+}): Promise<{ owner: Address; wallet: ReturnType<typeof walletClient> }> {
+  const owner = (await opts.client.readContract({
+    address: opts.gate.address,
+    abi: opts.gate.abi,
+    functionName: "owner",
+  })) as Address;
+  if (
+    opts.privateKey &&
+    getAddress(privateKeyToAccount(opts.privateKey).address) !==
+      getAddress(owner)
+  ) {
+    throw new Error(`private key does not match ${opts.ownerLabel} ${owner}`);
+  }
+  if (opts.impersonateOwner) await impersonate(opts.client, owner);
+  const wallet = walletClient({
+    rpcUrl: opts.rpcUrl,
+    chain: opts.chain,
+    privateKey: opts.privateKey,
+    account: opts.impersonateOwner ? owner : undefined,
+    provider: opts.provider,
+  });
+  return { owner, wallet };
+}
+
+// Send a single owner-gated write: print calldata when only preparing a
+// multisig transaction, otherwise resolve the owner-signing wallet, broadcast,
+// and assert the receipt did not revert.
+async function sendOwnerGatedWrite(opts: {
+  client: ReturnType<typeof publicClient>;
+  chain: Chain;
+  rpcUrl: string;
+  provider?: RpcProvider;
+  target: ContractRef;
+  gate?: ContractRef;
+  functionName: string;
+  args: readonly unknown[];
+  ownerLabel: string;
+  calldataLabel: string;
+  receiptLabel: string;
+  privateKey?: `0x${string}`;
+  impersonateOwner?: boolean;
+  calldataOnly?: boolean;
+}): Promise<void> {
+  const data = encodeFunctionData({
+    abi: opts.target.abi,
+    functionName: opts.functionName,
+    args: opts.args,
+  });
+  if (opts.calldataOnly) {
+    printPreparedCall(opts.calldataLabel, opts.target.address, data);
+    return;
+  }
+  const { wallet } = await resolveOwnerGatedWallet({
+    client: opts.client,
+    chain: opts.chain,
+    rpcUrl: opts.rpcUrl,
+    provider: opts.provider,
+    gate: opts.gate ?? opts.target,
+    ownerLabel: opts.ownerLabel,
+    privateKey: opts.privateKey,
+    impersonateOwner: opts.impersonateOwner,
+  });
+  const hash = await wallet.writeContract({
+    address: opts.target.address,
+    abi: opts.target.abi,
+    functionName: opts.functionName,
+    args: opts.args,
+  });
+  await waitForSuccessfulReceipt(opts.client, hash, opts.receiptLabel);
+}
+
+// Send an admin-gated write where the authorized account is supplied directly
+// rather than read from the contract's owner().
+async function sendAdminWrite(opts: {
+  client: ReturnType<typeof publicClient>;
+  chain: Chain;
+  rpcUrl: string;
+  provider?: RpcProvider;
+  target: ContractRef;
+  functionName: string;
+  args: readonly unknown[];
+  receiptLabel: string;
+  calldataLabel?: string;
+  privateKey?: `0x${string}`;
+  impersonateAccount?: Address;
+  calldataOnly?: boolean;
+}): Promise<void> {
+  const data = encodeFunctionData({
+    abi: opts.target.abi,
+    functionName: opts.functionName,
+    args: opts.args,
+  });
+  if (opts.calldataOnly) {
+    printPreparedCall(
+      opts.calldataLabel ?? opts.receiptLabel,
+      opts.target.address,
+      data,
+    );
+    return;
+  }
+  if (opts.impersonateAccount) await impersonate(opts.client, opts.impersonateAccount);
+  const wallet = walletClient({
+    rpcUrl: opts.rpcUrl,
+    chain: opts.chain,
+    privateKey: opts.privateKey,
+    account: opts.impersonateAccount,
+    provider: opts.provider,
+  });
+  const hash = await wallet.writeContract({
+    address: opts.target.address,
+    abi: opts.target.abi,
+    functionName: opts.functionName,
+    args: opts.args,
+  });
+  await waitForSuccessfulReceipt(opts.client, hash, opts.receiptLabel);
+}
+
 async function disableV1Registrars(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
@@ -1444,24 +1575,20 @@ async function disableV1Registrars(opts: {
   ];
 
   const target = registrarSecurityController ?? baseRegistrar;
-  const owner = (await client.readContract({
-    address: target.address,
-    abi: target.abi,
-    functionName: "owner",
-  })) as Address;
-
-  if (opts.impersonateOwner) {
-    await impersonate(client, owner);
-  }
   const wallet = opts.calldataOnly
     ? null
-    : walletClient({
-        rpcUrl: opts.rpcUrl,
-        chain,
-        privateKey: opts.privateKey,
-        account: opts.impersonateOwner ? owner : undefined,
-        provider: opts.provider,
-      });
+    : (
+        await resolveOwnerGatedWallet({
+          client,
+          chain,
+          rpcUrl: opts.rpcUrl,
+          provider: opts.provider,
+          gate: target,
+          ownerLabel: "v1 registrar owner",
+          privateKey: opts.privateKey,
+          impersonateOwner: opts.impersonateOwner,
+        })
+      ).wallet;
 
   const controllers = [
     ...controllerNames.flatMap((name) => {
@@ -1580,48 +1707,22 @@ async function setV1RegistrarController(opts: {
     : opts.enabled
       ? "addController"
       : "removeController";
-  const data = encodeFunctionData({
-    abi: target.abi,
-    functionName,
-    args: [opts.controller],
-  });
-  if (opts.calldataOnly) {
-    printPreparedCall(
-      `${opts.enabled ? "authorize" : "disable"} ${opts.label}`,
-      target.address,
-      data,
-    );
-    return;
-  }
-
-  const owner = (await client.readContract({
-    address: target.address,
-    abi: target.abi,
-    functionName: "owner",
-  })) as Address;
-  if (
-    opts.privateKey &&
-    getAddress(privateKeyToAccount(opts.privateKey).address) !==
-      getAddress(owner)
-  ) {
-    throw new Error(`private key does not match v1 registrar owner ${owner}`);
-  }
-  if (opts.impersonateOwner) await impersonate(client, owner);
-
-  const wallet = walletClient({
-    rpcUrl: opts.rpcUrl,
+  await sendOwnerGatedWrite({
+    client,
     chain,
-    privateKey: opts.privateKey,
-    account: opts.impersonateOwner ? owner : undefined,
+    rpcUrl: opts.rpcUrl,
     provider: opts.provider,
-  });
-  const hash = await wallet.writeContract({
-    address: target.address,
-    abi: target.abi,
+    target,
     functionName,
     args: [opts.controller],
+    ownerLabel: "v1 registrar owner",
+    calldataLabel: `${opts.enabled ? "authorize" : "disable"} ${opts.label}`,
+    receiptLabel: `${functionName} ${opts.label}`,
+    privateKey: opts.privateKey,
+    impersonateOwner: opts.impersonateOwner,
+    calldataOnly: opts.calldataOnly,
   });
-  await waitForSuccessfulReceipt(client, hash, `${functionName} ${opts.label}`);
+  if (opts.calldataOnly) return;
 
   const updated = (await client.readContract({
     address: baseRegistrar.address,
@@ -1787,32 +1888,20 @@ async function reclaimV1RegistrarOwnership(opts: {
     return;
   }
 
-  const priorRenewerOwner = (await client.readContract({
-    address: currentOwner,
-    abi: PRIOR_RENEWER_ABI,
-    functionName: "owner",
-  })) as Address;
+  const gate: ContractRef = { address: currentOwner, abi: PRIOR_RENEWER_ABI };
+  const { owner: priorRenewerOwner, wallet } = await resolveOwnerGatedWallet({
+    client,
+    chain,
+    rpcUrl: opts.rpcUrl,
+    provider: opts.provider,
+    gate,
+    ownerLabel: "prior renewer owner",
+    privateKey: opts.privateKey,
+    impersonateOwner: opts.impersonateOwner,
+  });
   console.log(
     `reclaiming v1 BaseRegistrar ownership from prior renewer ${currentOwner} (owner ${priorRenewerOwner}) to ${opts.v1Owner}`,
   );
-  if (
-    opts.privateKey &&
-    getAddress(privateKeyToAccount(opts.privateKey).address) !==
-      getAddress(priorRenewerOwner)
-  ) {
-    throw new Error(
-      `private key does not match prior renewer owner ${priorRenewerOwner}`,
-    );
-  }
-  if (opts.impersonateOwner) await impersonate(client, priorRenewerOwner);
-
-  const wallet = walletClient({
-    rpcUrl: opts.rpcUrl,
-    chain,
-    privateKey: opts.privateKey,
-    account: opts.impersonateOwner ? priorRenewerOwner : undefined,
-    provider: opts.provider,
-  });
   const hash = await wallet.writeContract({
     address: currentOwner,
     abi: PRIOR_RENEWER_ABI,
@@ -1910,52 +1999,22 @@ async function activateV1RenewerAndTransferOwnership(opts: {
   const functionName = registrarSecurityController
     ? "transferRegistrarOwnership"
     : "transferOwnership";
-  const data = encodeFunctionData({
-    abi: target.abi,
-    functionName,
-    args: [ethRenewerV1],
-  });
-  if (opts.calldataOnly) {
-    printPreparedCall(
-      "transfer v1 BaseRegistrar ownership to ETHRenewerV1",
-      target.address,
-      data,
-    );
-    return;
-  }
-
-  const owner = (await client.readContract({
-    address: target.address,
-    abi: target.abi,
-    functionName: "owner",
-  })) as Address;
-  if (
-    opts.privateKey &&
-    getAddress(privateKeyToAccount(opts.privateKey).address) !==
-      getAddress(owner)
-  ) {
-    throw new Error(`private key does not match v1 registrar owner ${owner}`);
-  }
-  if (opts.impersonateOwner) await impersonate(client, owner);
-
-  const wallet = walletClient({
-    rpcUrl: opts.rpcUrl,
-    chain,
-    privateKey: opts.privateKey,
-    account: opts.impersonateOwner ? owner : undefined,
-    provider: opts.provider,
-  });
-  const hash = await wallet.writeContract({
-    address: target.address,
-    abi: target.abi,
-    functionName,
-    args: [ethRenewerV1],
-  });
-  await waitForSuccessfulReceipt(
+  await sendOwnerGatedWrite({
     client,
-    hash,
-    "transfer v1 BaseRegistrar ownership to ETHRenewerV1",
-  );
+    chain,
+    rpcUrl: opts.rpcUrl,
+    provider: opts.provider,
+    target,
+    functionName,
+    args: [ethRenewerV1],
+    ownerLabel: "v1 registrar owner",
+    calldataLabel: "transfer v1 BaseRegistrar ownership to ETHRenewerV1",
+    receiptLabel: "transfer v1 BaseRegistrar ownership to ETHRenewerV1",
+    privateKey: opts.privateKey,
+    impersonateOwner: opts.impersonateOwner,
+    calldataOnly: opts.calldataOnly,
+  });
+  if (opts.calldataOnly) return;
 
   const updatedOwner = (await client.readContract({
     address: baseRegistrar.address,
@@ -2050,56 +2109,26 @@ export async function setV1ReverseDefaultResolver(opts: {
     return;
   }
 
-  const data = encodeFunctionData({
-    abi: reverseRegistrar.abi,
-    functionName: "setDefaultResolver",
-    args: [publicResolver.address],
-  });
-  if (opts.calldataOnly) {
-    printPreparedCall(
-      "set v1 reverse default resolver",
-      reverseRegistrar.address,
-      data,
-    );
-    return;
-  }
-
   // setDefaultResolver is owner-gated; the v1 ReverseRegistrar owner is the v1
-  // owner, not the deployer, so require a key that controls it (or impersonation).
-  const owner = (await client.readContract({
-    address: reverseRegistrar.address,
-    abi: reverseRegistrar.abi,
-    functionName: "owner",
-  })) as Address;
-  if (
-    opts.privateKey &&
-    getAddress(privateKeyToAccount(opts.privateKey).address) !==
-      getAddress(owner)
-  ) {
-    throw new Error(
-      `private key does not match v1 reverse registrar owner ${owner}`,
-    );
-  }
-  if (opts.impersonateOwner) await impersonate(client, owner);
-
-  const wallet = walletClient({
-    rpcUrl,
+  // owner, not the deployer, so a key controlling it (or impersonation) is
+  // required.
+  await sendOwnerGatedWrite({
+    client,
     chain,
-    privateKey: opts.privateKey,
-    account: opts.impersonateOwner ? owner : undefined,
+    rpcUrl,
     provider: opts.provider,
-  });
-  const hash = await wallet.writeContract({
-    address: reverseRegistrar.address,
-    abi: reverseRegistrar.abi,
+    target: reverseRegistrar,
     functionName: "setDefaultResolver",
     args: [publicResolver.address],
+    ownerLabel: "v1 reverse registrar owner",
+    calldataLabel: "set v1 reverse default resolver",
+    receiptLabel: "set v1 reverse default resolver",
+    privateKey: opts.privateKey,
+    impersonateOwner: opts.impersonateOwner,
+    calldataOnly: opts.calldataOnly,
   });
-  await waitForSuccessfulReceipt(
-    client,
-    hash,
-    "set v1 reverse default resolver",
-  );
+  if (opts.calldataOnly) return;
+
   const updatedResolver = (await client.readContract({
     address: reverseRegistrar.address,
     abi: reverseRegistrar.abi,
@@ -2150,21 +2179,17 @@ async function enableV2Registrar(opts: {
   console.log(`v2 registrar already enabled: ${beforeEnabled}`);
   if (beforeEnabled) return;
 
-  if (opts.impersonateAccount)
-    await impersonate(client, opts.impersonateAccount);
-  const wallet = walletClient({
-    rpcUrl: opts.rpcUrl,
+  await sendAdminWrite({
+    client,
     chain,
-    privateKey: opts.privateKey,
-    account: opts.impersonateAccount,
-  });
-  const hash = await wallet.writeContract({
-    address: registryAddress,
-    abi: registryAbi,
+    rpcUrl: opts.rpcUrl,
+    target: { address: registryAddress, abi: registryAbi },
     functionName: "grantRootRoles",
     args: [REGISTRAR_ROLES, ethRegistrar],
+    receiptLabel: "enable v2 registrar",
+    privateKey: opts.privateKey,
+    impersonateAccount: opts.impersonateAccount,
   });
-  await waitForSuccessfulReceipt(client, hash, "enable v2 registrar");
   const afterEnabled = await client.readContract({
     address: registryAddress,
     abi: registryAbi,
@@ -2209,25 +2234,17 @@ async function disableBatchRegistrar(opts: {
   console.log(`batch registrar enabled before phase: ${beforeEnabled}`);
   if (!beforeEnabled) return;
 
-  if (opts.impersonateAccount)
-    await impersonate(client, opts.impersonateAccount);
-  const wallet = walletClient({
-    rpcUrl: opts.rpcUrl,
+  await sendAdminWrite({
+    client,
     chain,
-    privateKey: opts.privateKey,
-    account: opts.impersonateAccount,
-  });
-  const hash = await wallet.writeContract({
-    address: registryAddress,
-    abi: registryAbi,
+    rpcUrl: opts.rpcUrl,
+    target: { address: registryAddress, abi: registryAbi },
     functionName: "revokeRootRoles",
     args: [REGISTRAR_ROLES, batchRegistrar],
+    receiptLabel: `disable batch registrar ${batchRegistrar}`,
+    privateKey: opts.privateKey,
+    impersonateAccount: opts.impersonateAccount,
   });
-  await waitForSuccessfulReceipt(
-    client,
-    hash,
-    `disable batch registrar ${batchRegistrar}`,
-  );
   const afterEnabled = await client.readContract({
     address: registryAddress,
     abi: registryAbi,
@@ -2471,35 +2488,24 @@ async function switchTopUrpToManaged(opts: {
     console.log(`top URP already fronts managed URP: ${managedUrp}`);
     return;
   }
-  const data = encodeFunctionData({
-    abi: Artifact_UpgradableUniversalResolverProxy.abi,
-    functionName: "upgradeTo",
-    args: [managedUrp],
-  });
-  if (opts.calldataOnly) {
-    printPreparedCall(
-      "switch UniversalResolverProxy to managed URP",
-      topUrp,
-      data,
-    );
-    return;
-  }
-  if (opts.impersonateAccount)
-    await impersonate(client, opts.impersonateAccount);
-  const wallet = walletClient({
-    rpcUrl: opts.rpcUrl,
+  await sendAdminWrite({
+    client,
     chain,
-    privateKey: opts.privateKey,
-    account: opts.impersonateAccount,
+    rpcUrl: opts.rpcUrl,
     provider: opts.provider,
-  });
-  const hash = await wallet.writeContract({
-    address: topUrp,
-    abi: Artifact_UpgradableUniversalResolverProxy.abi,
+    target: {
+      address: topUrp,
+      abi: Artifact_UpgradableUniversalResolverProxy.abi,
+    },
     functionName: "upgradeTo",
     args: [managedUrp],
+    calldataLabel: "switch UniversalResolverProxy to managed URP",
+    receiptLabel: "switch top URP to managed URP",
+    privateKey: opts.privateKey,
+    impersonateAccount: opts.impersonateAccount,
+    calldataOnly: opts.calldataOnly,
   });
-  await waitForSuccessfulReceipt(client, hash, "switch top URP to managed URP");
+  if (opts.calldataOnly) return;
   const top = getContract({
     address: topUrp,
     abi: Artifact_UpgradableUniversalResolverProxy.abi,
@@ -2541,31 +2547,24 @@ async function upgradeManagedUrp(opts: {
     deploymentNetwork,
     "UniversalResolverV2",
   );
-  const data = encodeFunctionData({
-    abi: Artifact_UpgradableUniversalResolverProxy.abi,
-    functionName: "upgradeTo",
-    args: [implementation],
-  });
-  if (opts.calldataOnly) {
-    printPreparedCall("upgrade managed URP", managedUrp, data);
-    return;
-  }
-  if (opts.impersonateAccount)
-    await impersonate(client, opts.impersonateAccount);
-  const wallet = walletClient({
-    rpcUrl: opts.rpcUrl,
+  await sendAdminWrite({
+    client,
     chain,
-    privateKey: opts.privateKey,
-    account: opts.impersonateAccount,
+    rpcUrl: opts.rpcUrl,
     provider: opts.provider,
-  });
-  const hash = await wallet.writeContract({
-    address: managedUrp,
-    abi: Artifact_UpgradableUniversalResolverProxy.abi,
+    target: {
+      address: managedUrp,
+      abi: Artifact_UpgradableUniversalResolverProxy.abi,
+    },
     functionName: "upgradeTo",
     args: [implementation],
+    calldataLabel: "upgrade managed URP",
+    receiptLabel: "upgrade managed URP",
+    privateKey: opts.privateKey,
+    impersonateAccount: opts.impersonateAccount,
+    calldataOnly: opts.calldataOnly,
   });
-  await waitForSuccessfulReceipt(client, hash, "upgrade managed URP");
+  if (opts.calldataOnly) return;
   const managed = getContract({
     address: managedUrp,
     abi: Artifact_UpgradableUniversalResolverProxy.abi,
