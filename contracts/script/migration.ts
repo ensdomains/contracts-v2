@@ -2559,6 +2559,18 @@ async function upgradeManagedUrp(opts: {
     deploymentNetwork,
     "UniversalResolverV2",
   );
+  // When reusing an existing managed URP that already fronts this implementation
+  // (e.g. a deterministic redeploy to the same address), the upgrade is a no-op
+  // and the proxy reverts with SameImplementation; treat it as already done.
+  const currentImplementation = (await client.readContract({
+    address: managedUrp,
+    abi: Artifact_UpgradableUniversalResolverProxy.abi,
+    functionName: "implementation",
+  })) as Address;
+  if (getAddress(currentImplementation) === getAddress(implementation)) {
+    console.log(`managed URP already at implementation: ${implementation}`);
+    return;
+  }
   await sendAdminWrite({
     client,
     chain,
