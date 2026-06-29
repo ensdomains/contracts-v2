@@ -2,131 +2,57 @@
 
 ## Overview
 
-The prepare-migration script (`contracts/script/prepareMigration.ts`) rewires role grants on the `.eth` `PermissionedRegistry` to flip the registry from its **seeding** configuration (only `BatchRegistrar` can register names) to its **live** configuration (`ETHRegistrar` handles new registrations and renewals; `UnlockedMigrationController` and `LockedMigrationController` promote reserved names to registered as ENSv1 owners migrate in). `BatchRegistrar` retains no roles after this script runs — it is fully decommissioned on hand-off.
+The prepare-migration script (`contracts/script/prepareMigration.ts`) flips the `.eth` `PermissionedRegistry` from its **seeding** configuration (only `BatchRegistrar` can register) to its **live** configuration (`ETHRegistrar` handles new registrations and renewals; the two migration controllers promote reserved names to registered as ENSv1 owners migrate in). `BatchRegistrar` is fully decommissioned. Run it once, after all pre-migration seeding via [`preMigration.ts`](./premigration.md) has completed and before opening registration to users. It is idempotent: re-running against an already-live registry simply re-issues the same grants/revokes.
 
-Run this once, after all pre-migration seeding via [`preMigration.ts`](./premigration.md) has completed and before opening registration traffic to users. The script is idempotent at the role level — re-running it against a registry that is already in the live configuration will show every planned op as already satisfied and simply broadcast the same grants/revokes again.
+> **The phased flow supersedes this.** In the phased v1 → v2 migration ([migration.md](./migration.md)) the same hand-off happens in [phase 6](./migration.md#phase-6-enable-the-v2-controller) — `phase disable-batch-registrar` revokes the `BatchRegistrar` roles and `phase enable-v2-registrar` grants `REGISTRAR | RENEW` to `ETHRegistrar`, while the migration controllers receive `ROLE_REGISTER_RESERVED` already at deploy time. This script remains the path for non-phased, all-at-once deployments (e.g. devnets deployed outside the phased flow).
 
 ## Role changes
 
-The script performs exactly four root-level role operations on the target registry:
+Four root-level role operations on the target registry. For the roles themselves and the EAC admin/base pairing, see the [EAC section of the contracts README](../README.md#access-control).
 
 | Target | Op | Roles | Expected prior state |
 |---|---|---|---|
-| `BatchRegistrar` | **REVOKE** | `ROLE_REGISTRAR` · `ROLE_REGISTRAR_ADMIN` · `ROLE_REGISTER_RESERVED` · `ROLE_REGISTER_RESERVED_ADMIN` · `ROLE_RENEW` · `ROLE_RENEW_ADMIN` | Holds `ROLE_REGISTRAR \| ROLE_RENEW` on a canonically-deployed registry. The four admin bits and `ROLE_REGISTER_RESERVED` are revoked defensively and are no-ops on a canonical deploy — they exist in the bitmap to guarantee the post-state is unambiguously "no roles" regardless of what the registry looked like going in. |
+| `BatchRegistrar` | **REVOKE** | `ROLE_REGISTRAR` · `ROLE_REGISTER_RESERVED` · `ROLE_RENEW` (+ their admin bits) | Holds `ROLE_REGISTRAR \| ROLE_RENEW`. The admin bits and `ROLE_REGISTER_RESERVED` are revoked defensively so the post-state is unambiguously "no roles"; they are no-ops on a canonical deploy. |
 | `ETHRegistrar` | **GRANT** | `ROLE_REGISTRAR` · `ROLE_RENEW` | None of the granted bits. |
 | `UnlockedMigrationController` | **GRANT** | `ROLE_REGISTER_RESERVED` | None of the granted bit. |
 | `LockedMigrationController` | **GRANT** | `ROLE_REGISTER_RESERVED` | None of the granted bit. |
 
-> **Note for devnet users.** The canonical devnet deploy scripts (`deploy/03_ETHRegistrar.ts`, `deploy/02_UnlockedMigrationController.ts`, `deploy/04_LockedMigrationController.ts`) *already* pre-grant the roles this script would otherwise grant, as a convenience for local dev. That means running this script against a fresh devnet will show every GRANT op as already satisfied and only the `BatchRegistrar` revoke will produce observable state change. The test fixture `revertPrePrepareMigrationRoles` in `test/utils/mockPrepareMigration.ts` undoes those pre-grants so the grant paths can be exercised end-to-end in the e2e tests.
-
-For background on these roles and the EAC admin/base pairing used by registry contracts, see the [EAC section of the contracts README](../README.md#access-control) and [`RegistryRolesLib.sol`](../src/registry/libraries/RegistryRolesLib.sol).
-
-### Why these specific roles
-
-- `ROLE_REGISTRAR` is checked by `PermissionedRegistry.register()` when the entry is expired or never existed. `BatchRegistrar` seeds names via this path (`owner = address(0)`, entering the expired branch), so it holds the role during pre-migration. After hand-off, `ETHRegistrar` holds it to handle live new registrations.
-- `ROLE_REGISTER_RESERVED` is checked by the same `register()` entry point when the entry is currently **reserved** (owner zero, not expired) and an actual owner is being set. This is the promotion path the migration controllers use to flip a pre-seeded reserved name into a registered name owned by its ENSv1 claimant — hence both controllers receive it here.
-- `ROLE_RENEW` gates `PermissionedRegistry.renew()`. During pre-migration `BatchRegistrar` uses it to bump expiries on reserved names; afterwards the live renewal path runs through `ETHRegistrar.renew()` (see `src/registrar/ETHRegistrar.sol`), so the role moves from `BatchRegistrar` to `ETHRegistrar`.
-
-## Prerequisites
-
-- **Bun** runtime installed
-- **Forge artifacts** compiled (`forge build` in `contracts/`) — the script loads the `PermissionedRegistry` ABI from `contracts/out/`
-- **Deployed contracts:**
-  - `PermissionedRegistry` (the `.eth` registry)
-  - `BatchRegistrar` — currently holding the seeding roles
-  - `ETHRegistrar` — will receive `ROLE_REGISTRAR`
-  - `UnlockedMigrationController` — will receive `ROLE_REGISTER_RESERVED`
-  - `LockedMigrationController` — will receive `ROLE_REGISTER_RESERVED`
-- **Signer** holding the admin-role counterparts for every role being moved. In practice this means holding `ROLE_REGISTRAR_ADMIN`, `ROLE_REGISTER_RESERVED_ADMIN`, and `ROLE_RENEW_ADMIN` at the registry root. The script runs a pre-flight check against the signer's root roles and aborts with a clear error if any required admin bits are missing — no transactions are broadcast.
-- **RPC endpoint** for the chain the registry is deployed on. The chain ID is auto-detected from the RPC.
-
-`--execute` additionally requires `--private-key`; without it the script stays in dry-run mode.
+> **Devnet note.** The canonical deploy scripts (`deploy/03_ETHRegistrar.ts`, `deploy/02_UnlockedMigrationController.ts`, `deploy/04_LockedMigrationController.ts`) pre-grant these roles for local convenience — except `deploy/03_ETHRegistrar.ts` skips the `ETHRegistrar` grant when the `deferV2Registrar` tag is set (the phased deploy always sets it; the grant is deferred to phase 6). So against a fresh devnet deployed *without* `deferV2Registrar`, every GRANT is already satisfied and only the `BatchRegistrar` revoke changes state. The fixture `revertPrePrepareMigrationRoles` in `test/utils/mockPrepareMigration.ts` undoes the pre-grants so the grant paths can be exercised in e2e tests.
 
 ## CLI Reference
 
-Run from the `contracts/` directory:
+Run from `contracts/`:
 
 ```bash
 bun run script/prepareMigration.ts [options]
 ```
 
-### Required Options
-
-| Option | Description |
-|---|---|
-| `--rpc-url <url>` | JSON-RPC endpoint for the target chain |
-| `--registry <address>` | `.eth` `PermissionedRegistry` address |
-| `--batch-registrar <address>` | `BatchRegistrar` address (roles revoked from this target) |
-| `--eth-registrar <address>` | `ETHRegistrar` address (receives `ROLE_REGISTRAR`) |
-| `--unlocked-migration-controller <address>` | `UnlockedMigrationController` address (receives `ROLE_REGISTER_RESERVED`) |
-| `--locked-migration-controller <address>` | `LockedMigrationController` address (receives `ROLE_REGISTER_RESERVED`) |
-
-### Optional
-
-| Option | Default | Description |
+| Option | Required | Description |
 |---|---|---|
-| `--private-key <hex>` | — | Signer private key. Required when `--execute` is passed; enables the admin-role pre-flight check when running dry. |
-| `--execute` | `false` | Broadcast transactions. Without this flag the script performs a dry run and never sends anything on-chain. |
+| `--rpc-url <url>` | yes | JSON-RPC endpoint for the target chain (chain ID auto-detected) |
+| `--registry <address>` | yes | `.eth` `PermissionedRegistry` address |
+| `--batch-registrar <address>` | yes | `BatchRegistrar` (roles revoked) |
+| `--eth-registrar <address>` | yes | `ETHRegistrar` (receives `ROLE_REGISTRAR \| ROLE_RENEW`) |
+| `--unlocked-migration-controller <address>` | yes | receives `ROLE_REGISTER_RESERVED` |
+| `--locked-migration-controller <address>` | yes | receives `ROLE_REGISTER_RESERVED` |
+| `--private-key <hex>` | for `--execute` | Signer key. When supplied in dry-run, enables the admin-role pre-flight check. |
+| `--execute` | — | Broadcast transactions. Without it the script is a dry run and sends nothing. |
 
-## How It Works
+The signer must hold the admin counterparts of every role being moved (`ROLE_REGISTRAR_ADMIN`, `ROLE_REGISTER_RESERVED_ADMIN`, `ROLE_RENEW_ADMIN`) at the registry root. Forge artifacts must be compiled (`forge build`) — the script loads the `PermissionedRegistry` ABI from `contracts/out/`.
 
-1. **Parse CLI options** and build viem clients via `createV2Clients` in `scriptUtils.ts`. When no private key is supplied the script runs with a read-only public client.
-2. **Load the `PermissionedRegistry` ABI** from the forge artifact under `contracts/out/`.
-3. **Build the op list** — the fixed four-entry sequence shown in the [Role changes](#role-changes) table.
-4. **Preview each op.** For every target the script reads the current root-role bitmap from the registry and prints it next to the planned change, so the diff is visible before anything is broadcast.
-5. **Signer admin-role pre-flight** (when a signer is configured). The script computes the admin bits required for each planned grant/revoke and checks the signer's root roles on the registry. Any missing admin bit aborts the run with a description of which op needs which missing admin role.
-6. **Dry-run exit.** If `--execute` is not set (or no wallet client is available) the script stops here after printing a "Dry run complete" summary.
-7. **Execute.** If `--execute` is set, the script submits `grantRootRoles` / `revokeRootRoles` transactions sequentially, waiting for each receipt before moving on. After the last op it re-reads the role bitmap for every target and prints the final state.
+## Dry run vs. execute
 
-## Dry Run vs. Execute
+Dry run is the default: it previews each planned op next to the current on-chain role bitmap for every target, and (when a signer is supplied) runs the admin-role pre-flight and aborts if any admin bit is missing — no transactions are sent.
 
-**Dry run is the default.** Running without `--execute` always produces the full preview — planned operations, the current on-chain state for every target, and (if a signer is supplied) the admin pre-flight result. No transactions are broadcast.
-
-Passing `--execute` along with `--private-key` broadcasts the role changes. Transactions run **sequentially, one per op**, so an interruption part-way through leaves the registry in a partially-applied state. Re-running the script with `--execute` is safe: ops that have already been applied simply re-issue the same grant/revoke, and the preview will show the current state matching the desired state before each re-broadcast.
-
-## Examples
-
-### Dry run without a signer
-
-Prints planned ops and current on-chain state for each target. No admin pre-flight (nothing to check against).
+`--execute` (with `--private-key`) broadcasts the grants/revokes sequentially, one per op, then re-reads and prints the final role state. An interruption leaves a partially-applied state; re-running is safe.
 
 ```bash
+# Dry run (add --private-key to also run the admin pre-flight)
 bun run script/prepareMigration.ts \
-  --rpc-url https://v2-rpc.example.com \
-  --registry 0x1234...abcd \
-  --batch-registrar 0x5678...ef01 \
-  --eth-registrar 0xaaaa...1111 \
-  --unlocked-migration-controller 0xbbbb...2222 \
-  --locked-migration-controller 0xcccc...3333
-```
+  --rpc-url <url> --registry <addr> --batch-registrar <addr> \
+  --eth-registrar <addr> --unlocked-migration-controller <addr> \
+  --locked-migration-controller <addr>
 
-### Dry run with a signer (admin pre-flight)
-
-Same preview, plus the pre-flight check that the signer holds every admin bit the execute phase would need.
-
-```bash
-bun run script/prepareMigration.ts \
-  --rpc-url https://v2-rpc.example.com \
-  --registry 0x1234...abcd \
-  --batch-registrar 0x5678...ef01 \
-  --eth-registrar 0xaaaa...1111 \
-  --unlocked-migration-controller 0xbbbb...2222 \
-  --locked-migration-controller 0xcccc...3333 \
-  --private-key 0xabc...def
-```
-
-### Execute
-
-Broadcasts the full role swap. Prints the final on-chain role state for every target on completion.
-
-```bash
-bun run script/prepareMigration.ts \
-  --rpc-url https://v2-rpc.example.com \
-  --registry 0x1234...abcd \
-  --batch-registrar 0x5678...ef01 \
-  --eth-registrar 0xaaaa...1111 \
-  --unlocked-migration-controller 0xbbbb...2222 \
-  --locked-migration-controller 0xcccc...3333 \
-  --private-key 0xabc...def \
-  --execute
+# Execute
+bun run script/prepareMigration.ts <same addresses> --private-key <hex> --execute
 ```

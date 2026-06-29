@@ -1,15 +1,19 @@
 import { artifacts, execute } from "@rocketh";
-import { namehash } from "viem";
+import { getAddress, namehash, zeroAddress } from "viem";
 
 export default execute(
   async ({
     get,
+    getOrNull,
+    getV1,
     deploy,
     execute: write,
     read,
-    namedAccounts: { deployer, owner },
+    namedAccounts: { deployer, owner, v1Owner },
   }) => {
-    const batchGatewayProvider = get<(typeof artifacts.GatewayProvider)["abi"]>(
+    const batchGatewayProvider = await getV1<
+      (typeof artifacts.GatewayProvider)["abi"]
+    >(
       "BatchGatewayProvider",
     );
 
@@ -20,21 +24,29 @@ export default execute(
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
     const ensRegistry =
-      get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
+      await getV1<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
-    const registrarSecurityController = get<
+    const registrarSecurityController = await getV1<
       (typeof artifacts.RegistrarSecurityController)["abi"]
-    >("RegistrarSecurityController");
+    >("RegistrarSecurityController").catch(() => null);
 
     console.log("Deploying ENSV2Resolver");
     console.log("  - Getting ENSv1 .eth resolver");
-    const ethResolver = await read(ensRegistry, {
+    const currentResolver = await read(ensRegistry, {
       functionName: "resolver",
       args: [namehash("eth")],
     });
+    const ethResolver = getAddress(currentResolver) === getAddress(zeroAddress)
+      ? await getV1<(typeof artifacts.OwnedResolver)["abi"]>("OwnedResolver")
+        .then((deployment) => deployment.address)
+        .catch(() => currentResolver)
+      : currentResolver;
     console.log(`  - Got: ${ethResolver}`);
 
-    const ensV2Resolver = await deploy("ENSV2Resolver", {
+    const existingEnsV2Resolver = getOrNull<
+      (typeof artifacts.ENSV2Resolver)["abi"]
+    >("ENSV2Resolver");
+    const ensV2Resolver = existingEnsV2Resolver ?? await deploy("ENSV2Resolver", {
       account: deployer,
       artifact: artifacts.ENSV2Resolver,
       args: [
@@ -45,15 +57,28 @@ export default execute(
       ],
     });
 
+    if (getAddress(currentResolver) === getAddress(ensV2Resolver.address)) return;
+
     console.log("  - Setting ENSv1 .eth resolver to ENSV2Resolver");
-    await write(registrarSecurityController, {
-      account: owner,
-      functionName: "setRegistrarResolver",
-      args: [ensV2Resolver.address],
-    });
+    if (registrarSecurityController) {
+      await write(registrarSecurityController, {
+        account: v1Owner ?? owner,
+        functionName: "setRegistrarResolver",
+        args: [ensV2Resolver.address],
+      });
+    } else {
+      const baseRegistrar = await getV1<
+        (typeof artifacts.BaseRegistrarImplementation)["abi"]
+      >("BaseRegistrarImplementation");
+      await write(baseRegistrar, {
+        account: v1Owner ?? owner,
+        functionName: "setResolver",
+        args: [ensV2Resolver.address],
+      });
+    }
   },
   {
-    tags: ["ENSV2Resolver", "v2"],
+    tags: ["ENSV2Resolver", "migration:phase1:deploy-v2", "v2"],
     dependencies: [
       "BatchGatewayProvider",
       "ContractNamer",

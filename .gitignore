@@ -9,6 +9,3 @@ node_modules/
 .claude/settings.local.json
 
 .devdocs/
-
-# for now
-deployments/

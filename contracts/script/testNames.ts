@@ -1,6 +1,6 @@
 import { encodeFunctionData, getContract, namehash, zeroAddress } from "viem";
 
-import { artifacts } from "@rocketh";
+import { Artifact_PermissionedResolver } from "generated/artifacts/PermissionedResolver.js";
 import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
 import { dnsEncodeName, dnsDecodeName } from "../test/utils/utils.js";
 import type { DevnetEnvironment } from "./setup.js";
@@ -41,7 +41,7 @@ export {
 };
 
 const ONE_DAY_SECONDS = 86400;
-const PermissionedResolverAbi = artifacts.PermissionedResolver.abi;
+const PermissionedResolverAbi = Artifact_PermissionedResolver.abi;
 
 /**
  * Set up test names with various states and configurations for development/testing

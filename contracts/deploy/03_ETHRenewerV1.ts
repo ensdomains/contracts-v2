@@ -10,6 +10,7 @@ export default execute(
     deploy,
     execute: write,
     get,
+    getV1,
     namedAccounts: { deployer, owner },
   }) => {
     const ethRegistry =
@@ -20,9 +21,9 @@ export default execute(
     );
 
     const nameWrapper =
-      get<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
+      await getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
-    const wrappedController = get<
+    const wrappedController = await getV1<
       (typeof artifacts.IWrappedETHRegistrarController)["abi"]
     >("WrappedETHRegistrarController");
 
@@ -48,7 +49,7 @@ export default execute(
     });
   },
   {
-    tags: ["ETHRenewerV1", "v2"],
+    tags: ["ETHRenewerV1", "migration:phase1:deploy-v2", "v2"],
     dependencies: [
       "ETHRegistry",
       "StandardRentPriceOracle",

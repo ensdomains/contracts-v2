@@ -1244,27 +1244,43 @@ describe("PreMigration", () => {
 describe("PreMigration - Live Mainnet v1 Verification", () => {
   const mainnetClient = createPublicClient({
     chain: mainnet,
-    transport: http("https://eth.drpc.org", { retryCount: 2, timeout: 15_000 }),
+    transport: http(process.env.MAINNET_RPC_URL, {
+      retryCount: 2,
+      timeout: 15_000,
+    }),
   });
 
-  it("verifies well-known names are registered on v1 mainnet", async () => {
-    const wellKnownNames = ["nick", "vitalik"];
+  // The two cases below read live mainnet state through the configured RPC
+  // (defaulting to a public endpoint), so they depend on external availability
+  // and rate limits. They are opt-in to keep CI independent of those; set a
+  // reliable MAINNET_RPC_URL when enabling.
+  const itLiveMainnet =
+    process.env.RUN_LIVE_MAINNET_TESTS === "1" ? it : it.skip;
 
-    for (const name of wellKnownNames) {
-      const result = await verifyNameOnV1(name, mainnetClient);
-      expect(result.isRegistered).toBe(true);
-      expect(result.expiry).toBeGreaterThan(
-        BigInt(Math.floor(Date.now() / 1000)),
-      );
-    }
-  });
+  itLiveMainnet(
+    "verifies well-known names are registered on v1 mainnet",
+    async () => {
+      const wellKnownNames = ["nick", "vitalik"];
 
-  it("verifies a non-existent name returns not-registered on v1 mainnet", async () => {
-    const nonExistentName =
-      "thisisaverylongnamethatwillneverberegistered12345678";
-    const result = await verifyNameOnV1(nonExistentName, mainnetClient);
-    expect(result.isRegistered).toBe(false);
-  });
+      for (const name of wellKnownNames) {
+        const result = await verifyNameOnV1(name, mainnetClient);
+        expect(result.isRegistered).toBe(true);
+        expect(result.expiry).toBeGreaterThan(
+          BigInt(Math.floor(Date.now() / 1000)),
+        );
+      }
+    },
+  );
+
+  itLiveMainnet(
+    "verifies a non-existent name returns not-registered on v1 mainnet",
+    async () => {
+      const nonExistentName =
+        "thisisaverylongnamethatwillneverberegistered12345678";
+      const result = await verifyNameOnV1(nonExistentName, mainnetClient);
+      expect(result.isRegistered).toBe(false);
+    },
+  );
 
   it("throws InvalidLabelNameError for empty label", async () => {
     try {

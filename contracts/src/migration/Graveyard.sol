@@ -111,12 +111,12 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
     /// Wrapped labels are 1-255 bytes and always have a preimage.
     /// see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort` and `test_nameWrapper_labelTooLong`
     /// see: https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/NameWrapper.sol#L865-L876
-    /// 
-    /// This function supports a modified DNS-encoding where zero-length labels 
+    ///
+    /// This function supports a modified DNS-encoding where zero-length labels
     /// in the middle of name must be followed with exactly 32 bytes of labelhash.
     ///
     /// This is safe because zero-length non-terminating labels normally revert.
-    /// 
+    ///
     function _clear(bytes calldata name, uint256 offset) internal returns (bytes32 node, State) {
         bytes32 labelHash;
         uint256 nextOffset;

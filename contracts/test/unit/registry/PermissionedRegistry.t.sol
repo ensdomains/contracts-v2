@@ -589,10 +589,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     function test_setResolver() external {
         testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
         uint256 tokenId = this._register();
-        vm.expectEmit();
-        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, testOwner);
+        vm.recordLogs();
         vm.prank(testOwner);
         registry.setResolver(tokenId, testResolver);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 1, "logs");
+        _assertResolverUpdated(logs[0], tokenId, testResolver, testOwner);
         vm.assertEq(registry.getResolver(testLabel), testResolver, "before");
         vm.warp(testExpiry);
         vm.assertEq(registry.getResolver(testLabel), address(0), "after");
@@ -1781,6 +1783,23 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         for (uint256 i; i < logs.length; ++i) {
             assertNotEq(logs[i].topics[0], topic0, "found unexpected event");
         }
+    }
+
+    function _assertResolverUpdated(
+        Vm.Log memory log,
+        uint256 tokenId,
+        address resolver,
+        address sender
+    )
+        internal
+        pure
+    {
+        assertEq(log.topics.length, 4, "topic count");
+        assertEq(log.topics[0], IRegistryEvents.ResolverUpdated.selector, "topic0");
+        assertEq(log.topics[1], bytes32(tokenId), "tokenId");
+        assertEq(log.topics[2], bytes32(uint256(uint160(resolver))), "resolver");
+        assertEq(log.topics[3], bytes32(uint256(uint160(sender))), "sender");
+        assertEq(log.data.length, 0, "data");
     }
 
     /// @dev Randomly pick a role corresponding to the enable regions.

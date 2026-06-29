@@ -5,11 +5,11 @@ export default execute(
     deploy,
     execute: write,
     get,
+    getV1,
     read,
-    namedAccounts: { deployer, owner },
-    network,
+    namedAccounts: { deployer, owner, v1Owner },
   }) => {
-    const defaultReverseRegistrar = get<
+    const defaultReverseRegistrar = await getV1<
       (typeof artifacts.DefaultReverseRegistrar)["abi"]
     >("DefaultReverseRegistrar");
 
@@ -22,23 +22,24 @@ export default execute(
       args: [defaultReverseRegistrar.address, contractNamer.address],
     });
 
-    if (network.name === "mainnet" && !network.tags?.tenderly) return;
-
     const adapterIsDefaultController = await read(defaultReverseRegistrar, {
       functionName: "controllers",
       args: [adapter.address],
     });
 
     if (!adapterIsDefaultController) {
+      // The v1 DefaultReverseRegistrar is owned by the v1 owner, not the v2
+      // admin, so route the controller grant through v1Owner (honouring the
+      // deferred v1-owner transaction flow, which only captures v1Owner sends).
       await write(defaultReverseRegistrar, {
-        account: owner,
+        account: v1Owner ?? owner,
         functionName: "setController",
         args: [adapter.address, true],
       });
     }
   },
   {
-    tags: ["DefaultReverseRegistrarAdapter", "v2"],
-    dependencies: ["DefaultReverseRegistrar", "ContractNamer"],
+    tags: ["DefaultReverseRegistrarAdapter", "migration:phase1:deploy-v2", "v2"],
+    dependencies: ["ContractNamer"],
   },
 );
