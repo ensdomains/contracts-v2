@@ -147,26 +147,9 @@ Legend: A = admin only, R = regular only, AR = admin and regular
 
 _`ETHRegistrar`, `ETHRenewerV1`, and `ApprovedUpgradeGate` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
 
-_Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 9](docs/migration.md#phase-9-activate-ethrenewerv1-and-enable-the-v2-ethregistrar)._
+_Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 6](docs/migration.md#phase-6-enable-the-v2-controller)._
 
 _The token for `eth` is registered to the deployer; `reverse` and `addr.reverse` are reserved._
-
-#### Usage Examples
-
-```solidity
-// Grant a base role for a specific name
-registry.grantRoles(tokenId, ROLE_SET_RESOLVER, alice);
-
-// Grant multiple roles at once
-uint256 roles = ROLE_SET_RESOLVER | ROLE_SET_SUBREGISTRY;
-registry.grantRoles(tokenId, roles, operator);
-
-// Set global permissions (requires registry owner)
-registry.grantRootRoles(ROLE_SET_RESOLVER, admin);
-
-// Check permissions
-registry.hasRoles(tokenId, ROLE_SET_RESOLVER, alice);
-```
 
 #### Creating Emancipated Names
 
@@ -176,7 +159,7 @@ You can create the equivalent of Name Wrapper "emancipated" names by:
 2. Locking the subregistry into the parent registry
 3. Result: Parent registry owner cannot interfere with subname operations
 
-#### Example Usage
+#### Usage Examples
 
 ```solidity
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
@@ -195,6 +178,9 @@ registry.grantRoles(
 uint256 operatorRoles = RegistryRolesLib.ROLE_SET_RESOLVER |
                         RegistryRolesLib.ROLE_SET_SUBREGISTRY;
 registry.grantRoles(tokenId, operatorRoles, operator);
+
+// Grant a role at the registry root (applies to every name; requires the root admin role)
+registry.grantRootRoles(RegistryRolesLib.ROLE_SET_RESOLVER, admin);
 
 // Check if user has required permissions
 bool canSetResolver = registry.hasRoles(

@@ -53,7 +53,7 @@ Removes `LegacyETHRegistrarController`, `ETHRegistrarController`, `WrappedETHReg
 
 Because `ETHRenewerV1` can only renew names that are already `RESERVED` on v2, this phase is effective only once the initial pre-migration (phase 2) has completed.
 
-> **Mainnet renewal continuity.** Between phase 3 (freeze) and phase 4 (authorize) there is no renewal path, and the long final sync (phase 5) can run for days. To avoid a multi-day renewal outage when the v1 owner is a DAO/multisig, execute phases 3 and 4 **atomically in a single v1-owner batch** — both commands support `--calldata-only`, so their calldata can be combined into one Safe/multisend transaction. The lengthy pre-migration steps (phases 2 and 5) run via the checkpointed `premigration run` / `resume` commands, independent of these one-shot owner transactions.
+> **Mainnet renewal continuity.** Renewals are paused between phase 3 (freeze) and phase 4 (authorize), and the phase 5 sync can run for days. When the v1 owner is a DAO/multisig, execute phases 3 and 4 **atomically in one v1-owner batch** — both support `--calldata-only`, so their calldata combines into a single Safe/multisend transaction.
 
 ### Phase 5: final pre-migration sync
 
@@ -70,17 +70,15 @@ The "enable the v2 controller" cutover bundles four owner-gated steps, in order:
 
 ### Phase 7: switch the Universal Resolver to v2
 
-The resolution cutover, run last so public resolution flips to v2 only once everything else is live. On sepolia the top `UpgradableUniversalResolverProxy` already fronts the long-lived intermediate `ManagedUniversalResolverProxy`, so the cutover is a single transaction: the intermediate URP admin (`urManager`) upgrades the intermediate URP implementation to `UniversalResolverV2` (`phase upgrade-managed-urp`, deploy tag `migration:phase6:upgrade-managed-urp`) — **this is the v2 resolution cutover.** The externally-administered top URP is never touched. On bootstrap networks (mainnet, fresh chains) the top URP admin (DAO on mainnet) first points the top URP at the freshly deployed intermediate URP (`phase switch-urp-to-managed`, deploy tag `migration:phase5:switch-urp-to-managed`; a no-op where the wiring already exists) before the upgrade, and the post-cutover step (tag `migration:post-cutover:direct-urp-to-v2`) can later retire the managed hop. `phase verify-urp` confirms both implementations. See [universalResolver.md](./universalResolver.md).
+The resolution cutover, run last so public resolution flips to v2 only once everything else is live. On **reuse** networks (sepolia) the top `UpgradableUniversalResolverProxy` already fronts the long-lived intermediate `ManagedUniversalResolverProxy`, so the cutover is a single transaction — the intermediate URP admin (`urManager`) upgrades it to `UniversalResolverV2` (`phase upgrade-managed-urp`); the externally-administered top URP is never touched. On **bootstrap** networks (mainnet, fresh chains) the top URP admin first points the top URP at the intermediate URP (`phase switch-urp-to-managed`) before the upgrade. `phase verify-urp` confirms both implementations. See [universalResolver.md](./universalResolver.md) for the proxy chain, deploy scripts, and the optional post-cutover step.
 
 > **Relation to `prepareMigration.ts`:** phase 6 replaces the all-at-once role swap performed by [prepareMigration.md](./prepareMigration.md); that script remains the path for non-phased deployments.
 
 ## Deployment artifacts
 
-Phase 1 reads and writes rocketh deployment artifacts under [`deployments/`](../deployments/README.md). Each deployment set is a **namespace** directory (e.g. the existing Sepolia v2 set `sepolia-official-v1-20260525-r2`) holding one JSON per contract plus `.chain`/`.migrations.json`/`.deployment.json` metadata; v1 reference contracts live under `deployments/v1/<network>`. A command selects the namespace with `--deployments-dir` (root, defaults to `deployments/`) and `--deployment-network` (subdirectory, defaults to the network name), and the v1 references with `--v1-deployments-dir` / `--v1-deployment-network`.
+Phase 1 reads and writes rocketh deployment artifacts under [`deployments/`](../deployments/README.md), grouped into per-deployment **namespace** directories selected with `--deployments-dir` / `--deployment-network` (v1 references via `--v1-deployments-dir` / `--v1-deployment-network`).
 
-`phase deploy-v2` **deploys fresh by default**: it archives the current namespace to `deployments/<env>-<YYYYMMDD>-r<N>` — where the date is the archived set's original deploy time (from `.deployment.json`, falling back to the latest `.migrations.json` timestamp) and `<N>` auto-increments per same-date archive — then deploys into a clean `deployments/<env>/` and stamps a new `.deployment.json`. This applies to both sepolia and mainnet.
-
-Phase 1 sends many transactions, so a deploy can be interrupted partway. Re-run with `--resume` to continue into the **existing** namespace instead of archiving: rocketh is idempotent against the namespace, so each script reuses an artifact of the same name and only the not-yet-deployed contracts are sent. See [`deployments/README.md`](../deployments/README.md) for the full layout, git-tracking model, and conventions.
+`phase deploy-v2` **deploys fresh by default** — it archives the current namespace to `deployments/<env>-<YYYYMMDD>-r<N>` and deploys into a clean one. Since phase 1 sends many transactions and can be interrupted, re-run with `--resume` to continue into the existing namespace instead (rocketh is idempotent, sending only the not-yet-deployed contracts). See [`deployments/README.md`](../deployments/README.md) for the namespace layout, archiving, git-tracking, and idempotency rules.
 
 ## CLI reference
 
@@ -258,7 +256,7 @@ bun run migration -- phase verify-urp --network sepolia
 
 ### After
 
-The new `deployments/sepolia/` namespace is git-ignored by default; to commit it add a `!deployments/sepolia/` line to `contracts/.gitignore` (see [deployments/README.md](../deployments/README.md)).
+The new `deployments/sepolia/` namespace (and any dated archive) is committed automatically — `.gitignore` tracks real namespaces by default and ignores only the `-fork` / `-clean-` runtime sets (see [deployments/README.md](../deployments/README.md)).
 
 Two things to plan for:
 
