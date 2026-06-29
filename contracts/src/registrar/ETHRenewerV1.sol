@@ -88,9 +88,17 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Transfers ownership of the registrar.
+    /// @dev Same as `RegistrarSecurityController`.
     /// @param newOwner The new owner for the registrar.
     function transferRegistrarOwnership(address newOwner) external onlyOwner {
         BASE_REGISTRAR.transferOwnership(newOwner);
+    }
+
+    /// @notice Sets the registrar's resolver for the base node.
+    /// @dev Same as `RegistrarSecurityController`.
+    /// @param resolver The resolver address to set.
+    function setRegistrarResolver(address resolver) external onlyOwner {
+        BASE_REGISTRAR.setResolver(resolver);
     }
 
     /// @notice Sync `NameWrapper` expiry with `BaseRegistrarImplementation` expiry.

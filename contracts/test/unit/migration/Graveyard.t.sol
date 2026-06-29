@@ -134,13 +134,24 @@ contract GraveyardTest is MigrationControllerFixture {
         assertEq(registryV1.resolver(node), address(0), "after");
     }
 
-    function test_clear_unregistered(uint256) external {
+    function test_clear_unregistered() external {
+        vm.expectRevert(abi.encodeWithSelector(Graveyard.NameNotClearable.selector));
+        graveyard.clear(_oneName(_randomEthName()));
+    }
+
+    function test_clear_expired(uint256) external {
+        registerUnwrapped(testLabel); // ensure expiry > 0
+        _simulateExpiry(NameCoder.ethName(testLabel)); // ensure expired
+
         graveyard.clear(_oneName(_randomEthName()));
     }
 
     function test_clear_junk_deep(uint256) external {
         bytes memory name = _randomEthName();
         bytes32 node = NameCoder.namehash(name, 0);
+
+        registerUnwrapped(testLabel); // ensure expiry > 0
+        _simulateExpiry(NameCoder.ethName(testLabel)); // ensure expired
 
         _claimNodes(name, 0, address(testOwner));
         vm.prank(testOwner);
@@ -472,10 +483,10 @@ contract GraveyardTest is MigrationControllerFixture {
         }
     }
 
-    /// @dev Create random .eth name.
+    /// @dev Create random .eth name with known 2LD.
     function _randomEthName() internal returns (bytes memory name) {
-        name = NameCoder.encode("eth");
-        for (uint256 n = vm.randomUint(1, 10); n > 0; --n) {
+        name = NameCoder.ethName(testLabel);
+        for (uint256 n = vm.randomUint(0, 10); n > 0; --n) {
             name = NameCoder.addLabel(name, new string(vm.randomUint(1, 255)));
         }
     }

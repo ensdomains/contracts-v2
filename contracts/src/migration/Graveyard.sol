@@ -155,6 +155,9 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
                 // resolver is cleared by migration
                 return (node, State.LOCKED);
             }
+            if (_BASE_REGISTRAR.nameExpires(uint256(labelHash)) == 0) {
+                revert NameNotClearable();
+            }
             _BASE_REGISTRAR.register(
                 uint256(labelHash),
                 address(this),

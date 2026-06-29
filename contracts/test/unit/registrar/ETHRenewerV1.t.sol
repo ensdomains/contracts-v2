@@ -5,6 +5,7 @@ import {console} from "forge-std/Test.sol";
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 
 import {LibLabel} from "~src/utils/LibLabel.sol";
@@ -89,6 +90,20 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, actor));
         vm.prank(actor);
         ethRenewerV1.transferRegistrarOwnership(actor);
+    }
+
+    function test_setRegistrarResolver() external {
+        assertEq(registryV1.resolver(NameCoder.ETH_NODE), address(ensV2Resolver));
+
+        ethRenewerV1.setRegistrarResolver(address(1));
+
+        assertEq(registryV1.resolver(NameCoder.ETH_NODE), address(1));
+    }
+
+    function test_setRegistrarResolver_notAuthorized() external {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, actor));
+        vm.prank(actor);
+        ethRenewerV1.setRegistrarResolver(address(1));
     }
 
     ////////////////////////////////////////////////////////////////////////

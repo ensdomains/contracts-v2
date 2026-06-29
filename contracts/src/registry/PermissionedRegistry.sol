@@ -250,10 +250,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// @inheritdoc IRegistry
     function getSubregistry(string calldata label) public view virtual returns (IRegistry) {
         Entry storage entry = _entry(LibLabel.id(label));
-        return
-            _isExpired(entry.expiry)
-                ? IRegistry(address(0))
-                : entry.subregistry;
+        return _isExpired(entry.expiry) ? IRegistry(address(0)) : entry.subregistry;
     }
 
     /// @inheritdoc IRegistry
@@ -279,7 +276,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
 
     /// @inheritdoc IOwnedRegistry
     function findOwner(string calldata label) public view returns (address) {
-        return ownerOf(findTokenId(label));
+        return getOwner(LibLabel.id(label));
     }
 
     /// @inheritdoc ITokenizedRegistry
@@ -308,6 +305,11 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// @inheritdoc IPermissionedRegistry
     function getTokenId(uint256 anyId) public view returns (uint256) {
         return _constructTokenId(anyId, _entry(anyId));
+    }
+
+    /// @inheritdoc IPermissionedRegistry
+    function getOwner(uint256 anyId) public view returns (address) {
+        return _isExpired(getExpiry(anyId)) ? address(0) : super.ownerOf(getTokenId(anyId));
     }
 
     /// @inheritdoc IPermissionedRegistry
@@ -559,6 +561,9 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         override
         returns (uint256)
     {
+        if (resource != ROOT_RESOURCE && getOwner(resource) == address(0)) {
+            return 0;
+        }
         uint256 roleBitmap = super._getSettableRoles(resource, account);
         return resource == ROOT_RESOURCE ? roleBitmap : roleBitmap >> 128;
     }
@@ -566,8 +571,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// @inheritdoc EnhancedAccessControl
     /// @dev Override for token-dependent logic:
     ///
-    /// * if token is expired (available or reserved), return null.
-    /// * if caller is approved by token owner, OR the caller's roles with the owner's roles
+    /// * if caller is approved by token owner, combine the caller's roles with the owner's roles
     ///
     function _getRoles(uint256 resource, address account)
         internal
@@ -578,8 +582,8 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     {
         roleBitmap = super._getRoles(resource, account);
         if (resource != ROOT_RESOURCE) {
-            address owner = ownerOf(_constructTokenId(resource, _entry(resource)));
-            if (owner != address(0) && isApprovedForAll(owner, account)) {
+            address owner = getOwner(resource);
+            if (owner != address(0) && owner != account && isApprovedForAll(owner, account)) {
                 roleBitmap |= super._getRoles(resource, owner);
             }
         }

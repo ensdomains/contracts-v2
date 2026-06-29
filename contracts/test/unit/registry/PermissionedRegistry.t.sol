@@ -641,6 +641,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256 tokenId = this._register();
         assertEq(registry.ownerOf(tokenId), testOwner, "exact");
         assertEq(registry.ownerOf(tokenId + 1), address(0), "+1");
+        vm.warp(testExpiry);
+        assertEq(registry.ownerOf(tokenId), address(0), "expired");
     }
 
     // cleared after burn
@@ -995,6 +997,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(registry.getExpiry(LibLabel.withVersion(tokenId, version)), testExpiry);
     }
 
+    function test_getOwner_anyId(uint32 version) external {
+        uint256 tokenId = this._register();
+        assertEq(registry.getOwner(LibLabel.withVersion(tokenId, version)), testOwner);
+    }
+
     function test_getStatus_anyId(uint32 version) external {
         uint256 tokenId = this._register();
         uint256 anyId = LibLabel.withVersion(tokenId, version);
@@ -1234,6 +1241,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             )
         );
         registry.grantRoles(tokenId, roleBitmap, user2);
+    }
+
+    function test_grantRoles_whileUnregistered(uint256 anyId) external {
+        vm.assume(anyId > 0);
+        uint256 roleBitmap = _randomRoleBitmap(true, true);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                LibLabel.withVersion(anyId, 1), // next
+                roleBitmap,
+                address(this)
+            )
+        );
+        registry.grantRoles(anyId, roleBitmap, user2);
     }
 
     function test_grantRoles_whileExpired(uint256) external {
@@ -1781,18 +1802,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(log.data.length, 0, "data");
     }
 
+    /// @dev Randomly pick a role corresponding to the enable regions.
+    //       If both regions are enabled, pick 1-2 roles.
     function _randomRoleBitmap(bool admin, bool normal) internal returns (uint256 roleBitmap) {
-        uint256 bits;
-        if (normal) {
-            bits |= vm.randomUint(1, (1 << 32) - 1); // 1+ bits 0-31
-        }
-        if (admin) {
-            bits |= vm.randomUint((1 << 32), (1 << 64) - 1); // 1+ bits 32-63
-        }
-        for (uint256 i; i < 64; ++i) {
-            if ((bits & (1 << i)) != 0) {
-                roleBitmap |= 1 << (i << 2);
+        if (admin && normal) {
+            roleBitmap = 1 << (vm.randomUint(0, 63) << 2);
+            if (vm.randomBool()) {
+                roleBitmap |= 1 << (vm.randomUint(0, 63) << 2);
             }
+        } else if (normal) {
+            roleBitmap = 1 << (vm.randomUint(0, 31) << 2);
+        } else if (admin) {
+            roleBitmap = 1 << (vm.randomUint(32, 63) << 2);
+        } else {
+            revert("bug");
         }
     }
 }
