@@ -381,6 +381,12 @@ const plugin: HardhatPlugin = {
         description: "Chain id override",
         defaultValue: "",
       })
+      .addOption({
+        name: "privateKey",
+        description:
+          "V1 owner private key (defaults to SEPOLIA_V1_OWNER_KEY/V1_OWNER_KEY, then the Hardhat account)",
+        defaultValue: "",
+      })
       .setAction(() => import("./tasks/set-v1-reverse-default-resolver.ts"))
       .build(),
     task(["migration", "deploy-v2"], "Deploy the v2 migration contracts")

@@ -1,6 +1,10 @@
 import { getAddress, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
+import { isTenderlyVirtualRpc } from "../../../script/migration.js";
+
+export { isTenderlyVirtualRpc };
+
 type HttpNetworkConfig = {
   type: "http";
   url: { getUrl(): Promise<string> };
@@ -49,16 +53,6 @@ export function requireHttpNetwork(
   return networkConfig as HttpNetworkConfig;
 }
 
-export function isTenderlyVirtualRpc(rpcUrl: string): boolean {
-  try {
-    const hostname = new URL(rpcUrl).hostname.toLowerCase();
-    return (
-      hostname.startsWith("virtual.") && hostname.endsWith(".rpc.tenderly.co")
-    );
-  } catch {
-    return false;
-  }
-}
 
 export async function defaultHardhatAccount(
   provider: RpcAccountProvider,

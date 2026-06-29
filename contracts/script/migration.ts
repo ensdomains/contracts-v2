@@ -382,17 +382,34 @@ function parseResumeFromPhase(value: string | undefined): 2 | undefined {
   throw new Error(`Unsupported --resume-from-phase value: ${value}`);
 }
 
+// Locate the label column case-insensitively (matching the premigration run
+// parser), accepting either a `labelName` or `label` header. Returns -1 when
+// neither is present so callers can fail loudly instead of guessing a column.
+function csvLabelColumnIndex(header: string[]): number {
+  const normalized = header.map((field) => field.trim().toLowerCase());
+  const labelNameIndex = normalized.indexOf("labelname");
+  if (labelNameIndex >= 0) return labelNameIndex;
+  return normalized.indexOf("label");
+}
+
+// Quote a CSV field when it contains a delimiter, quote, or newline so labels
+// with such characters survive a round-trip through the premigration reader.
+function escapeCsvField(value: string): string {
+  return /[",\n\r]/.test(value)
+    ? `"${value.replace(/"/g, '""')}"`
+    : value;
+}
+
 function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
   const lines = readFileSync(csvFile, "utf-8").trim().split(/\r?\n/);
   if (lines.length === 0 || !lines[0]) return [];
   const header = parseCSVLine(lines[0]);
-  const labelIndex = (() => {
-    const labelNameIndex = header.indexOf("labelName");
-    if (labelNameIndex >= 0) return labelNameIndex;
-    const labelIndex = header.indexOf("label");
-    if (labelIndex >= 0) return labelIndex;
-    return 6;
-  })();
+  const labelIndex = csvLabelColumnIndex(header);
+  if (labelIndex < 0) {
+    throw new Error(
+      `CSV must contain a labelName or label column: ${csvFile}`,
+    );
+  }
   const labels: string[] = [];
   for (const line of lines.slice(1)) {
     if (limit !== undefined && labels.length >= limit) break;
@@ -410,10 +427,7 @@ function transformCsvForPreMigration(
   if (lines.length === 0) throw new Error(`CSV is empty: ${sourcePath}`);
 
   const sourceHeader = parseCSVLine(lines[0]);
-  const labelIndex =
-    sourceHeader.indexOf("labelName") >= 0
-      ? sourceHeader.indexOf("labelName")
-      : sourceHeader.indexOf("label");
+  const labelIndex = csvLabelColumnIndex(sourceHeader);
   if (labelIndex < 0) {
     throw new Error(
       `CSV must contain either a labelName or label column: ${sourcePath}`,
@@ -426,7 +440,7 @@ function transformCsvForPreMigration(
   for (const line of lines.slice(1)) {
     const columns = parseCSVLine(line);
     const label = columns[labelIndex]?.trim();
-    if (label) output.push(`,,,,,,${label},,`);
+    if (label) output.push(`,,,,,,${escapeCsvField(label)},,`);
   }
   writeFileSync(targetPath, `${output.join("\n")}\n`);
   return output.length - 1;
@@ -811,6 +825,20 @@ function installRpcCompatibility(debugRpc: boolean): void {
 
 function isLocalRpcUrl(rpcUrl: string): boolean {
   return /^https?:\/\/(127\.0\.0\.1|localhost)(?::|\/|$)/i.test(rpcUrl);
+}
+
+// Tenderly virtual testnets expose state-control RPC methods (impersonation, time
+// travel, setBalance) just like a local node, so they can run the rehearsal
+// without configured signer keys.
+export function isTenderlyVirtualRpc(rpcUrl: string): boolean {
+  try {
+    const hostname = new URL(rpcUrl).hostname.toLowerCase();
+    return (
+      hostname.startsWith("virtual.") && hostname.endsWith(".rpc.tenderly.co")
+    );
+  } catch {
+    return false;
+  }
 }
 
 function printPreparedCall(
@@ -1325,7 +1353,11 @@ async function verifyPreMigration(opts: {
         errors.push(`${label}.eth has status ${status}`);
         continue;
       }
-      if (expectedResolver) {
+      // The premigration fallback resolver is only asserted for names that remain
+      // RESERVED. A REGISTERED name has already been migrated and carries the
+      // resolver from its migration data (custom or zero), not the fallback, so
+      // asserting the fallback here would fail legitimate migrated names.
+      if (expectedResolver && status === STATUS.RESERVED) {
         resolverChecks.push(label);
       } else {
         verifiedActive++;
@@ -1736,6 +1768,25 @@ async function reclaimV1RegistrarOwnership(opts: {
     return;
   }
 
+  // On a pristine chain the BaseRegistrar is owned by the live
+  // RegistrarSecurityController, not a prior deployment's ETHRenewerV1. Treating
+  // it as a prior renewer would move ownership to the v1 owner EOA and break the
+  // controller phases, which route addController through the security controller.
+  const registrarSecurityController = loadV1Deployment(
+    opts.network,
+    "RegistrarSecurityController",
+    opts,
+  );
+  if (
+    registrarSecurityController &&
+    getAddress(currentOwner) === getAddress(registrarSecurityController.address)
+  ) {
+    console.log(
+      `v1 BaseRegistrar owner ${currentOwner} is the RegistrarSecurityController, not a prior renewer; skipping reclaim`,
+    );
+    return;
+  }
+
   const priorRenewerOwner = (await client.readContract({
     address: currentOwner,
     abi: PRIOR_RENEWER_ABI,
@@ -1965,9 +2016,12 @@ export async function setV1ReverseDefaultResolver(opts: {
   network: MigrationNetwork;
   rpcUrl?: string;
   chainId?: string;
+  provider?: RpcProvider;
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
-  privateKey: `0x${string}`;
+  privateKey?: `0x${string}`;
+  impersonateOwner?: boolean;
+  calldataOnly?: boolean;
 }) {
   const rpcUrl = requireRpcUrl(opts, opts.network);
   const chain = forkChain(
@@ -1975,8 +2029,7 @@ export async function setV1ReverseDefaultResolver(opts: {
     parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
     rpcUrl,
   );
-  const client = publicClient(rpcUrl, chain);
-  const wallet = walletClient({ rpcUrl, chain, privateKey: opts.privateKey });
+  const client = publicClient(rpcUrl, chain, opts.provider);
   const reverseRegistrar = requireV1Deployment(
     opts.network,
     "ReverseRegistrar",
@@ -1996,6 +2049,46 @@ export async function setV1ReverseDefaultResolver(opts: {
   if (getAddress(currentResolver) === getAddress(publicResolver.address)) {
     return;
   }
+
+  const data = encodeFunctionData({
+    abi: reverseRegistrar.abi,
+    functionName: "setDefaultResolver",
+    args: [publicResolver.address],
+  });
+  if (opts.calldataOnly) {
+    printPreparedCall(
+      "set v1 reverse default resolver",
+      reverseRegistrar.address,
+      data,
+    );
+    return;
+  }
+
+  // setDefaultResolver is owner-gated; the v1 ReverseRegistrar owner is the v1
+  // owner, not the deployer, so require a key that controls it (or impersonation).
+  const owner = (await client.readContract({
+    address: reverseRegistrar.address,
+    abi: reverseRegistrar.abi,
+    functionName: "owner",
+  })) as Address;
+  if (
+    opts.privateKey &&
+    getAddress(privateKeyToAccount(opts.privateKey).address) !==
+      getAddress(owner)
+  ) {
+    throw new Error(
+      `private key does not match v1 reverse registrar owner ${owner}`,
+    );
+  }
+  if (opts.impersonateOwner) await impersonate(client, owner);
+
+  const wallet = walletClient({
+    rpcUrl,
+    chain,
+    privateKey: opts.privateKey,
+    account: opts.impersonateOwner ? owner : undefined,
+    provider: opts.provider,
+  });
   const hash = await wallet.writeContract({
     address: reverseRegistrar.address,
     abi: reverseRegistrar.abi,
@@ -2674,6 +2767,34 @@ function signerKeyForAccount(
   return keys.find(
     (key) => getAddress(privateKeyToAccount(key).address) === getAddress(target),
   );
+}
+
+// Resolve env-configured signer keys for the standalone rehearsal CLIs, attaching
+// each key only when it controls the requested account so an env key is never used
+// to sign for a different address. Used by the direct/real-RPC paths that lack the
+// impersonation a local node or Tenderly fork would provide.
+function envMigrationSignerKeys(accounts: {
+  deployer?: Address;
+  owner?: Address;
+  v1Owner?: Address;
+  urManager?: Address;
+}): PrivateKeyOptions {
+  const deployerKey = envPrivateKey("DEPLOYER_KEY");
+  return {
+    deployerPrivateKey: signerKeyForAccount(accounts.deployer, [deployerKey]),
+    ownerPrivateKey: signerKeyForAccount(accounts.owner, [
+      envPrivateKey("OWNER_KEY"),
+      deployerKey,
+    ]),
+    v1OwnerPrivateKey: signerKeyForAccount(accounts.v1Owner, [
+      envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
+      deployerKey,
+    ]),
+    urManagerPrivateKey: signerKeyForAccount(accounts.urManager, [
+      envPrivateKey("UR_MANAGER_KEY"),
+      deployerKey,
+    ]),
+  };
 }
 
 function addressForImpersonation(
@@ -4493,7 +4614,10 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
 
   const network = NETWORKS[opts.network];
   const forkRpcUrl = requireRpcUrl(opts, opts.network);
-  const useRpcStateControls = opts.tenderly || isLocalRpcUrl(forkRpcUrl);
+  const useRpcStateControls =
+    opts.tenderly ||
+    isLocalRpcUrl(forkRpcUrl) ||
+    isTenderlyVirtualRpc(forkRpcUrl);
   if (!useRpcStateControls && !opts.deployerPrivateKey) {
     throw new Error(
       "clean testnet full deploy requires a configured deployer private key",
@@ -4581,10 +4705,15 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
       deployer,
       deployerPrivateKey: opts.deployerPrivateKey,
       owner: v1Owner,
-      ownerPrivateKey:
-        opts.v1OwnerPrivateKey ??
-        opts.ownerPrivateKey ??
+      // Only attach a key that actually controls v1Owner; otherwise leave it unset
+      // so the fresh v1 stack is owned by the impersonated v1Owner rather than the
+      // deployer (whose key would otherwise be used as a blanket fallback and make
+      // later v1Owner-impersonated writes revert).
+      ownerPrivateKey: signerKeyForAccount(v1Owner, [
+        opts.v1OwnerPrivateKey,
+        opts.ownerPrivateKey,
         opts.deployerPrivateKey,
+      ]),
     });
   }
 
@@ -5067,9 +5196,15 @@ export async function main(argv = process.argv): Promise<void> {
         opts.owner ?? (network === "mainnet" ? MAINNET_DAO : deployerAddress);
       const urManagerAddress = opts.urManager ?? deployerAddress;
       const v1OwnerAddress = opts.v1Owner ?? NETWORKS[network].defaultV1Owner;
+      // Respect an explicit --deployer override (e.g. an impersonated/unlocked
+      // account during a rehearsal or a key rotation): only attach the env key
+      // when it actually controls the requested deployer, so DEPLOYER_KEY never
+      // silently replaces the supplied sender.
+      const deployerAccount = opts.deployer ?? deployerAddress;
       await deployV2({
         ...networkOpts,
-        deployerPrivateKey: deployerKey,
+        deployer: opts.deployer,
+        deployerPrivateKey: signerKeyForAccount(deployerAccount, [deployerKey]),
         ownerPrivateKey: signerKeyForAccount(ownerAddress, [
           envPrivateKey("OWNER_KEY"),
           deployerKey,
@@ -5117,6 +5252,38 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetwork(opts);
         await disableV1Registrars({
           ...networkOpts,
+          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+        });
+      },
+    ),
+  );
+  phase.addCommand(
+    addV1DeploymentOptions(
+      addNetworkOptions(
+        new Command("set-v1-reverse-default-resolver")
+          .description(
+            "Point the v1 ReverseRegistrar default resolver at the v1 PublicResolver (v1-owner write)",
+          )
+          .option("--private-key <key>", "V1 owner private key")
+          .option("--impersonate-owner", "Impersonate owner on a fork", false)
+          .option(
+            "--calldata-only",
+            "Print transaction target and calldata",
+            false,
+          ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          V1DeploymentCliOptions &
+          V1OwnerWriteCliOptions,
+      ) => {
+        const networkOpts = withNetwork(opts);
+        await setV1ReverseDefaultResolver({
+          ...networkOpts,
+          privateKey:
+            opts.privateKey ??
+            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
           rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
@@ -5721,7 +5888,32 @@ export async function main(argv = process.argv): Promise<void> {
         ),
       ),
     ).action(async (opts: ForkFullCliOptions) => {
-      await runForkFull(withNetwork(opts));
+      const networkOpts = withNetwork(opts);
+      const forkRpcUrl = requireRpcUrl(networkOpts, networkOpts.network);
+      // Tenderly virtual testnets support state controls; the standalone CLI has
+      // no --tenderly flag, so detect it from the RPC like the Hardhat task does.
+      const tenderly =
+        networkOpts.tenderly ??
+        (networkOpts.direct ? isTenderlyVirtualRpc(forkRpcUrl) : undefined);
+      // Only the direct path against a non-state-control RPC needs configured
+      // signer keys; Anvil forks and Tenderly/local RPCs provide impersonation.
+      const needsKeys =
+        Boolean(networkOpts.direct) &&
+        !(Boolean(tenderly) || isLocalRpcUrl(forkRpcUrl));
+      await runForkFull({
+        ...networkOpts,
+        tenderly,
+        ...(needsKeys
+          ? envMigrationSignerKeys({
+              deployer: networkOpts.deployer,
+              owner: networkOpts.owner,
+              v1Owner:
+                networkOpts.v1Owner ??
+                NETWORKS[networkOpts.network].defaultV1Owner,
+              urManager: networkOpts.urManager,
+            })
+          : {}),
+      });
     }),
   );
   program.addCommand(fork);
@@ -5763,7 +5955,29 @@ export async function main(argv = process.argv): Promise<void> {
         ),
       ),
     ).action(async (opts: CleanTestnetCliOptions) => {
-      await runCleanTestnetFull(withNetwork(opts));
+      const networkOpts = withNetwork(opts);
+      const forkRpcUrl = requireRpcUrl(networkOpts, networkOpts.network);
+      // Hydrate signer keys only when the RPC lacks state controls; a local node
+      // or Tenderly virtual testnet impersonates the configured accounts instead.
+      const needsKeys = !(
+        Boolean(networkOpts.tenderly) ||
+        isLocalRpcUrl(forkRpcUrl) ||
+        isTenderlyVirtualRpc(forkRpcUrl)
+      );
+      await runCleanTestnetFull({
+        ...networkOpts,
+        ...(needsKeys
+          ? envMigrationSignerKeys({
+              deployer: networkOpts.deployer,
+              owner: networkOpts.owner ?? networkOpts.deployer,
+              v1Owner:
+                networkOpts.v1Owner ??
+                networkOpts.owner ??
+                networkOpts.deployer,
+              urManager: networkOpts.urManager ?? networkOpts.deployer,
+            })
+          : {}),
+      });
     }),
   );
 

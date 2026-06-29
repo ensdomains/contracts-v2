@@ -95,9 +95,24 @@ const extensions = {
       const extra = (env.extra ?? {}) as V1DeploymentOverrides;
       if (!extra.deferV1OwnerTransactions) return execute(deployment, args);
 
-      const from = env.resolveAccount(args.account);
+      const from = getAddress(env.resolveAccount(args.account));
       const v1Owner = env.namedAccounts?.v1Owner;
-      if (!v1Owner || getAddress(from) !== getAddress(v1Owner)) {
+      const owner = env.namedAccounts?.owner;
+      const deployer = env.namedAccounts?.deployer;
+      // Defer writes whose signer cannot sign during a live phase-1 deploy and
+      // must instead be replayed via execute-owner-txs (or a Safe): the v1 owner,
+      // and the admin owner when it is a distinct account (the DAO on mainnet)
+      // rather than the deployer itself.
+      const role =
+        v1Owner && from === getAddress(v1Owner)
+          ? "v1Owner"
+          : owner &&
+              deployer &&
+              getAddress(owner) !== getAddress(deployer) &&
+              from === getAddress(owner)
+            ? "owner"
+            : undefined;
+      if (!role) {
         return execute(deployment, args);
       }
 
@@ -107,8 +122,8 @@ const extensions = {
         args: args.args,
       } as any);
       const deferred = {
-        account: "v1Owner",
-        from: getAddress(from),
+        account: role,
+        from,
         to: getAddress(deployment.address),
         value: args.value?.toString() ?? "0",
         data,
@@ -119,7 +134,7 @@ const extensions = {
       };
 
       env.showMessage(
-        `  - Deferred v1 owner tx: ${deferred.functionName} -> ${deferred.to}`,
+        `  - Deferred ${role} tx: ${deferred.functionName} -> ${deferred.to}`,
       );
       if (extra.deferredV1OwnerTransactionsFile) {
         const file = resolve(extra.deferredV1OwnerTransactionsFile);

@@ -183,6 +183,7 @@ async function exportRegistrations(config: ExportConfig): Promise<void> {
   let skip = config.startIndex;
   let hasMore = true;
   let totalCount = 0;
+  let skippedNoLabel = 0;
 
   const csvHeader =
     "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate\n";
@@ -209,8 +210,19 @@ async function exportRegistrations(config: ExportConfig): Promise<void> {
         hasMore = false;
       }
 
-      const csvRows = registrations.map(registrationToCSVRow).join("\n") + "\n";
-      appendFileSync(config.outputFile, csvRows, "utf-8");
+      // Drop rows without a decodable label: the premigration reader treats an
+      // empty labelName cell as a fatal CSVFormatError, so a single unknown-label
+      // registration would otherwise abort the entire downstream run.
+      const labelledRegistrations = registrations.filter(
+        (reg) => (reg.labelName ?? "").trim() !== "",
+      );
+      skippedNoLabel += registrations.length - labelledRegistrations.length;
+
+      if (labelledRegistrations.length > 0) {
+        const csvRows =
+          labelledRegistrations.map(registrationToCSVRow).join("\n") + "\n";
+        appendFileSync(config.outputFile, csvRows, "utf-8");
+      }
 
       totalCount += registrations.length;
       skip += registrations.length;
@@ -232,7 +244,14 @@ async function exportRegistrations(config: ExportConfig): Promise<void> {
     }
   }
 
-  logger.info(`\nTotal registrations exported: ${bold(totalCount.toString())}`);
+  logger.info(
+    `\nTotal registrations exported: ${bold((totalCount - skippedNoLabel).toString())}`,
+  );
+  if (skippedNoLabel > 0) {
+    logger.info(
+      `Skipped ${bold(skippedNoLabel.toString())} registration(s) with no decodable labelName`,
+    );
+  }
   logger.success(`Successfully exported to ${config.outputFile}`);
 }
 

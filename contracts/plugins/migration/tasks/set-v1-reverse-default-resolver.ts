@@ -15,6 +15,7 @@ type SetV1ReverseDefaultResolverTaskArgs = {
   chainId: string;
   v1DeploymentsDir: string;
   v1DeploymentNetwork: string;
+  privateKey: string;
 };
 
 const action: NewTaskActionFunction<
@@ -27,10 +28,18 @@ const action: NewTaskActionFunction<
       "migration set-v1-reverse-default-resolver",
       connection.networkName,
     );
-    const privateKey = await defaultHardhatPrivateKey(networkConfig);
+    // setDefaultResolver is owner-gated on the v1 ReverseRegistrar, whose owner is
+    // the v1 owner rather than the deployer. Prefer an explicitly supplied v1-owner
+    // key, then the configured v1-owner env key, and only fall back to the Hardhat
+    // account for the clean-testnet case where the deployer owns the fresh v1.
+    const privateKey =
+      (nonEmptyString(args.privateKey) as `0x${string}` | undefined) ??
+      (process.env.SEPOLIA_V1_OWNER_KEY as `0x${string}` | undefined) ??
+      (process.env.V1_OWNER_KEY as `0x${string}` | undefined) ??
+      (await defaultHardhatPrivateKey(networkConfig));
     if (privateKey === undefined) {
       throw new Error(
-        "migration set-v1-reverse-default-resolver could not resolve a Hardhat private key; configure DEPLOYER_KEY",
+        "migration set-v1-reverse-default-resolver could not resolve a signer; pass --private-key, configure SEPOLIA_V1_OWNER_KEY/V1_OWNER_KEY, or DEPLOYER_KEY",
       );
     }
     await setV1ReverseDefaultResolver({

@@ -8,8 +8,6 @@ export default execute(
     getV1,
     read,
     namedAccounts: { deployer, owner, v1Owner },
-    name,
-    tags,
   }) => {
     const reverseRegistrar =
       await getV1<(typeof artifacts.ReverseRegistrar)["abi"]>(
@@ -24,10 +22,6 @@ export default execute(
       artifact: artifacts.ReverseRegistrarAdapter,
       args: [reverseRegistrar.address, contractNamer.address],
     });
-
-    if (name === "mainnet" && !tags.tenderly) {
-      return;
-    }
 
     const adapterIsReverseController = await read(reverseRegistrar, {
       functionName: "controllers",

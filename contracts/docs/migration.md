@@ -27,7 +27,7 @@ Phase numbering below matches the console output of the `runForkFull` orchestrat
 
 † Phase 0 only exists in `clean-testnet`, which deploys a fresh v1 stack (from `lib/ens-contracts/deploy`) into a `deployments/v1/<namespace>` directory before running phases 1–7.
 
-Every phase command takes `--network sepolia|mainnet` plus `--rpc-url` (or the `SEPOLIA_RPC_URL` / `MAINNET_RPC_URL` env var). Contract addresses default to the deployment JSON under `--deployments-dir` / `--deployment-network` (v2) and `--v1-deployments-dir` / `--v1-deployment-network` (v1); explicit address flags override. The v1-owner-signed and URP-admin phase commands (`disable-v1-registrars`, `authorize-v1-renewer`, `activate-v1-graveyard`, `activate-v1-handoff-controllers`, `activate-v1-renewer`, `authorize-testnet-v1-premigration-registrar`, `switch-urp-to-managed`, `upgrade-managed-urp`) accept `--calldata-only` to print the transaction target and calldata for multisig execution instead of broadcasting. The registry root-role admin commands (`disable-batch-registrar`, `enable-v2-registrar`) broadcast or impersonate only.
+Every phase command takes `--network sepolia|mainnet` plus `--rpc-url` (or the `SEPOLIA_RPC_URL` / `MAINNET_RPC_URL` env var). Contract addresses default to the deployment JSON under `--deployments-dir` / `--deployment-network` (v2) and `--v1-deployments-dir` / `--v1-deployment-network` (v1); explicit address flags override. The v1-owner-signed and URP-admin phase commands (`disable-v1-registrars`, `set-v1-reverse-default-resolver`, `authorize-v1-renewer`, `activate-v1-graveyard`, `activate-v1-handoff-controllers`, `activate-v1-renewer`, `authorize-testnet-v1-premigration-registrar`, `switch-urp-to-managed`, `upgrade-managed-urp`) accept `--calldata-only` to print the transaction target and calldata for multisig execution instead of broadcasting. The registry root-role admin commands (`disable-batch-registrar`, `enable-v2-registrar`) broadcast or impersonate only.
 
 ### Phase 1: deploy v2 contracts
 
@@ -96,6 +96,7 @@ Phase 1 sends many transactions, so a deploy can be interrupted partway. Re-run 
 | `phase deploy-v2` | Phase 1: deploy the v2 migration contracts (incl. reverse-registrar adapters) with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy instead) |
 | `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the Phase 1 deferred-tx replay on an already-migrated chain); signed by the prior renewer's owner / urManager |
 | `phase disable-v1-registrars` | Phase 3: disable v1 registrar controllers |
+| `phase set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` (v1-owner write) |
 | `phase verify-v1-registrars-disabled` | Verify v1 registrar controllers are disabled |
 | `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable |
 | `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`) |
@@ -147,7 +148,7 @@ Resolved by [`script/migration.ts`](../script/migration.ts) (the CLI also auto-l
 | `DEPLOYER_KEY` | Deployer key (`phase deploy-v2`); fallback for owner/urManager keys |
 | `OWNER_KEY` | Owner / registry root-role admin (`phase deploy-v2`, `disable-batch-registrar`, `enable-v2-registrar`; falls back to `DEPLOYER_KEY`) |
 | `UR_MANAGER_KEY` | Intermediate URP admin (`phase upgrade-managed-urp`; falls back to `DEPLOYER_KEY`) |
-| `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` | v1 owner (`disable-v1-registrars` †, `authorize-v1-renewer`, `activate-v1-*`, `authorize-testnet-v1-premigration-registrar`) |
+| `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` | v1 owner (`disable-v1-registrars` †, `set-v1-reverse-default-resolver`, `authorize-v1-renewer`, `activate-v1-*`, `authorize-testnet-v1-premigration-registrar`) |
 | `SEPOLIA_TOP_URP_OWNER_KEY` / `TOP_URP_OWNER_KEY` | Top URP admin (`phase switch-urp-to-managed`) |
 | `OWNER_TX_KEY` | Generic signer for `phase execute-owner-txs` when no role-specific key matches |
 | `<PREFIX>_MNEMONIC`, `<PREFIX>_MNEMONIC_PATH`, `<PREFIX>_MNEMONIC_INDEX`, `<PREFIX>_MNEMONIC_PASSPHRASE` | Mnemonic-backed signer alternatives for `phase execute-owner-txs`; prefixes `OWNER_TX`, `SEPOLIA_V1_OWNER` / `V1_OWNER`, `SEPOLIA_TOP_URP_OWNER` / `TOP_URP_OWNER` |
