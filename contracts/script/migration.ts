@@ -2144,6 +2144,36 @@ export async function setV1ReverseDefaultResolver(opts: {
   }
 }
 
+// Resolve the v2 ETHRegistry to write to: an explicit address (with the default
+// PermissionedRegistry abi) or the deployment artifact (carrying its own abi).
+function resolveRegistry(opts: {
+  registry?: Address;
+  deploymentsDir: string;
+  deploymentNetwork: string;
+}): ContractRef {
+  const registry = opts.registry
+    ? null
+    : loadV2Deployment(opts.deploymentsDir, opts.deploymentNetwork, "ETHRegistry");
+  return {
+    address: opts.registry ?? registry!.address,
+    abi: registry?.abi ?? Artifact_PermissionedRegistry.abi,
+  };
+}
+
+// Read whether an account holds the registrar/renew root roles on the registry.
+async function readHasRegistrarRoles(
+  client: ReturnType<typeof publicClient>,
+  registry: ContractRef,
+  account: Address,
+): Promise<boolean> {
+  return (await client.readContract({
+    address: registry.address,
+    abi: registry.abi,
+    functionName: "hasRootRoles",
+    args: [REGISTRAR_ROLES, account],
+  })) as boolean;
+}
+
 async function enableV2Registrar(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
@@ -2159,23 +2189,18 @@ async function enableV2Registrar(opts: {
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
-  const registry = opts.registry
-    ? null
-    : loadV2Deployment(deploymentsDir, deploymentNetwork, "ETHRegistry");
+  const registry = resolveRegistry({
+    registry: opts.registry,
+    deploymentsDir,
+    deploymentNetwork,
+  });
   const ethRegistrar = resolveDeploymentAddress(
     opts.ethRegistrar,
     deploymentsDir,
     deploymentNetwork,
     "ETHRegistrar",
   );
-  const registryAddress = opts.registry ?? registry!.address;
-  const registryAbi = registry?.abi ?? Artifact_PermissionedRegistry.abi;
-  const beforeEnabled = await client.readContract({
-    address: registryAddress,
-    abi: registryAbi,
-    functionName: "hasRootRoles",
-    args: [REGISTRAR_ROLES, ethRegistrar],
-  });
+  const beforeEnabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
   console.log(`v2 registrar already enabled: ${beforeEnabled}`);
   if (beforeEnabled) return;
 
@@ -2183,19 +2208,14 @@ async function enableV2Registrar(opts: {
     client,
     chain,
     rpcUrl: opts.rpcUrl,
-    target: { address: registryAddress, abi: registryAbi },
+    target: registry,
     functionName: "grantRootRoles",
     args: [REGISTRAR_ROLES, ethRegistrar],
     receiptLabel: "enable v2 registrar",
     privateKey: opts.privateKey,
     impersonateAccount: opts.impersonateAccount,
   });
-  const afterEnabled = await client.readContract({
-    address: registryAddress,
-    abi: registryAbi,
-    functionName: "hasRootRoles",
-    args: [REGISTRAR_ROLES, ethRegistrar],
-  });
+  const afterEnabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
   console.log(`v2 registrar enabled after phase: ${afterEnabled}`);
 }
 
@@ -2214,23 +2234,22 @@ async function disableBatchRegistrar(opts: {
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
-  const registry = opts.registry
-    ? null
-    : loadV2Deployment(deploymentsDir, deploymentNetwork, "ETHRegistry");
+  const registry = resolveRegistry({
+    registry: opts.registry,
+    deploymentsDir,
+    deploymentNetwork,
+  });
   const batchRegistrar = resolveDeploymentAddress(
     opts.batchRegistrar,
     deploymentsDir,
     deploymentNetwork,
     "BatchRegistrar",
   );
-  const registryAddress = opts.registry ?? registry!.address;
-  const registryAbi = registry?.abi ?? Artifact_PermissionedRegistry.abi;
-  const beforeEnabled = await client.readContract({
-    address: registryAddress,
-    abi: registryAbi,
-    functionName: "hasRootRoles",
-    args: [REGISTRAR_ROLES, batchRegistrar],
-  });
+  const beforeEnabled = await readHasRegistrarRoles(
+    client,
+    registry,
+    batchRegistrar,
+  );
   console.log(`batch registrar enabled before phase: ${beforeEnabled}`);
   if (!beforeEnabled) return;
 
@@ -2238,19 +2257,18 @@ async function disableBatchRegistrar(opts: {
     client,
     chain,
     rpcUrl: opts.rpcUrl,
-    target: { address: registryAddress, abi: registryAbi },
+    target: registry,
     functionName: "revokeRootRoles",
     args: [REGISTRAR_ROLES, batchRegistrar],
     receiptLabel: `disable batch registrar ${batchRegistrar}`,
     privateKey: opts.privateKey,
     impersonateAccount: opts.impersonateAccount,
   });
-  const afterEnabled = await client.readContract({
-    address: registryAddress,
-    abi: registryAbi,
-    functionName: "hasRootRoles",
-    args: [REGISTRAR_ROLES, batchRegistrar],
-  });
+  const afterEnabled = await readHasRegistrarRoles(
+    client,
+    registry,
+    batchRegistrar,
+  );
   console.log(`batch registrar enabled after phase: ${afterEnabled}`);
   if (afterEnabled)
     throw new Error("batch registrar still has registrar/renew roles");
@@ -2269,21 +2287,18 @@ async function verifyBatchRegistrarDisabled(opts: {
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
-  const registry = opts.registry
-    ? null
-    : loadV2Deployment(deploymentsDir, deploymentNetwork, "ETHRegistry");
+  const registry = resolveRegistry({
+    registry: opts.registry,
+    deploymentsDir,
+    deploymentNetwork,
+  });
   const batchRegistrar = resolveDeploymentAddress(
     opts.batchRegistrar,
     deploymentsDir,
     deploymentNetwork,
     "BatchRegistrar",
   );
-  const enabled = await client.readContract({
-    address: opts.registry ?? registry!.address,
-    abi: registry?.abi ?? Artifact_PermissionedRegistry.abi,
-    functionName: "hasRootRoles",
-    args: [REGISTRAR_ROLES, batchRegistrar],
-  });
+  const enabled = await readHasRegistrarRoles(client, registry, batchRegistrar);
   console.log(`batch registrar enabled: ${enabled}`);
   if (enabled)
     throw new Error("batch registrar still has registrar/renew roles");
@@ -2372,21 +2387,18 @@ async function verifyV2Registrar(opts: {
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
-  const registry = opts.registry
-    ? null
-    : loadV2Deployment(deploymentsDir, deploymentNetwork, "ETHRegistry");
+  const registry = resolveRegistry({
+    registry: opts.registry,
+    deploymentsDir,
+    deploymentNetwork,
+  });
   const ethRegistrar = resolveDeploymentAddress(
     opts.ethRegistrar,
     deploymentsDir,
     deploymentNetwork,
     "ETHRegistrar",
   );
-  const enabled = await client.readContract({
-    address: opts.registry ?? registry!.address,
-    abi: registry?.abi ?? Artifact_PermissionedRegistry.abi,
-    functionName: "hasRootRoles",
-    args: [REGISTRAR_ROLES, ethRegistrar],
-  });
+  const enabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
   console.log(`v2 registrar enabled: ${enabled}`);
   if (!enabled) throw new Error("v2 registrar is not enabled");
 }
