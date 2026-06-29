@@ -4745,6 +4745,19 @@ function addV1DeploymentOptions(command: Command): Command {
     );
 }
 
+// The signer options shared by every v1-owner-gated write command: a key, fork
+// impersonation, or calldata-only preparation for a multisig.
+function addV1OwnerWriteOptions(command: Command): Command {
+  return command
+    .option("--private-key <key>", "V1 owner private key")
+    .option("--impersonate-owner", "Impersonate owner on a fork", false)
+    .option(
+      "--calldata-only",
+      "Print transaction target and calldata",
+      false,
+    );
+}
+
 function assertCleanDeploymentNamespace(
   root: string,
   environment: string,
@@ -4936,6 +4949,28 @@ function withNetwork<T extends NetworkCliOptions>(
   } as Omit<T, "network"> & { network: MigrationNetwork };
 }
 
+// Parse the network and resolve the RPC URL (option or env) in one step, the
+// pair every live/fork command needs before calling into the migration logic.
+function withNetworkRpc<T extends NetworkCliOptions>(
+  input: T,
+): Omit<T, "network"> & { network: MigrationNetwork; rpcUrl: string } {
+  const networkOpts = withNetwork(input);
+  return {
+    ...networkOpts,
+    rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+  };
+}
+
+// The v1-owner key for an owner-gated write: an explicit option, otherwise the
+// conventional environment variables.
+function v1OwnerKeyFromEnv(opts: {
+  privateKey?: `0x${string}`;
+}): `0x${string}` | undefined {
+  return (
+    opts.privateKey ?? envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY")
+  );
+}
+
 export async function main(argv = process.argv): Promise<void> {
   loadDotEnv(resolve(import.meta.dirname, "../.env"));
 
@@ -5011,11 +5046,10 @@ export async function main(argv = process.argv): Promise<void> {
         "Start pre-migration from a fresh checkpoint",
       ),
     ).action(async (opts: PremigrationRunCliOptions) => {
-      const networkOpts = withNetwork(opts);
+      const networkOpts = withNetworkRpc(opts);
       await runPreMigrationCommand(
         {
           ...networkOpts,
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         },
         false,
       );
@@ -5025,11 +5059,10 @@ export async function main(argv = process.argv): Promise<void> {
     addPremigrationOptions(
       new Command("resume").description("Resume pre-migration from checkpoint"),
     ).action(async (opts: PremigrationRunCliOptions) => {
-      const networkOpts = withNetwork(opts);
+      const networkOpts = withNetworkRpc(opts);
       await runPreMigrationCommand(
         {
           ...networkOpts,
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         },
         true,
       );
@@ -5073,10 +5106,9 @@ export async function main(argv = process.argv): Promise<void> {
         ),
       ),
     ).action(async (opts: PremigrationVerifyCliOptions) => {
-      const networkOpts = withNetwork(opts);
+      const networkOpts = withNetworkRpc(opts);
       await verifyPreMigration({
         ...networkOpts,
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
       });
     }),
   );
@@ -5135,7 +5167,7 @@ export async function main(argv = process.argv): Promise<void> {
         ),
       ),
     ).action(async (opts: DeployV2CliOptions) => {
-      const networkOpts = withNetwork(opts);
+      const networkOpts = withNetworkRpc(opts);
       const network = networkOpts.network;
       const deployerKey = envPrivateKey("DEPLOYER_KEY");
       const deployerAddress = deployerKey
@@ -5179,22 +5211,17 @@ export async function main(argv = process.argv): Promise<void> {
         fresh: !opts.resume,
         saveDeployments: true,
         tags: opts.tags ? opts.tags.split(",").filter(Boolean) : undefined,
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
       });
     }),
   );
   phase.addCommand(
-    addV1DeploymentOptions(
-      addNetworkOptions(
-        new Command("disable-v1-registrars")
-          .description("Disable v1 registrar controllers")
-          .option("--private-key <key>", "Owner private key")
-          .option("--impersonate-owner", "Impersonate owner on a fork", false)
-          .option(
-            "--calldata-only",
-            "Print transaction targets and calldata",
-            false,
+    addV1OwnerWriteOptions(
+      addV1DeploymentOptions(
+        addNetworkOptions(
+          new Command("disable-v1-registrars").description(
+            "Disable v1 registrar controllers",
           ),
+        ),
       ),
     ).action(
       async (
@@ -5202,28 +5229,21 @@ export async function main(argv = process.argv): Promise<void> {
           V1DeploymentCliOptions &
           V1OwnerWriteCliOptions,
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await disableV1Registrars({
           ...networkOpts,
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
     ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(
-      addNetworkOptions(
-        new Command("set-v1-reverse-default-resolver")
-          .description(
+    addV1OwnerWriteOptions(
+      addV1DeploymentOptions(
+        addNetworkOptions(
+          new Command("set-v1-reverse-default-resolver").description(
             "Point the v1 ReverseRegistrar default resolver at the v1 PublicResolver (v1-owner write)",
-          )
-          .option("--private-key <key>", "V1 owner private key")
-          .option("--impersonate-owner", "Impersonate owner on a fork", false)
-          .option(
-            "--calldata-only",
-            "Print transaction target and calldata",
-            false,
           ),
+        ),
       ),
     ).action(
       async (
@@ -5231,13 +5251,11 @@ export async function main(argv = process.argv): Promise<void> {
           V1DeploymentCliOptions &
           V1OwnerWriteCliOptions,
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await setV1ReverseDefaultResolver({
           ...networkOpts,
           privateKey:
-            opts.privateKey ??
-            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+            v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5250,10 +5268,9 @@ export async function main(argv = process.argv): Promise<void> {
         ),
       ),
     ).action(async (opts: NetworkCliOptions & V1DeploymentCliOptions) => {
-      const networkOpts = withNetwork(opts);
+      const networkOpts = withNetworkRpc(opts);
       await verifyV1RegistrarsDisabled({
         ...networkOpts,
-        rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
       });
     }),
   );
@@ -5284,11 +5301,10 @@ export async function main(argv = process.argv): Promise<void> {
           dryRun?: boolean;
         },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await executePreparedOwnerTransactions({
           ...networkOpts,
           privateKey: opts.privateKey,
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
     ),
@@ -5319,33 +5335,27 @@ export async function main(argv = process.argv): Promise<void> {
             expectedManagedImplementation?: Address;
           },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await verifyUrp({
           ...networkOpts,
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
     ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(
-      addDeploymentOptions(
-        addNetworkOptions(
-          new Command("authorize-testnet-v1-premigration-registrar")
-            .description(
-              "Authorize the testnet premigration helper as a v1 registrar controller",
-            )
-            .option(
-              "--registrar <address>",
-              "TestnetV1PremigrationRegistrar address",
-            )
-            .option("--private-key <key>", "V1 owner private key")
-            .option("--impersonate-owner", "Impersonate owner on a fork", false)
-            .option(
-              "--calldata-only",
-              "Print transaction target and calldata",
-              false,
-            ),
+    addV1OwnerWriteOptions(
+      addV1DeploymentOptions(
+        addDeploymentOptions(
+          addNetworkOptions(
+            new Command("authorize-testnet-v1-premigration-registrar")
+              .description(
+                "Authorize the testnet premigration helper as a v1 registrar controller",
+              )
+              .option(
+                "--registrar <address>",
+                "TestnetV1PremigrationRegistrar address",
+              ),
+          ),
         ),
       ),
     ).action(
@@ -5355,33 +5365,26 @@ export async function main(argv = process.argv): Promise<void> {
           V1DeploymentCliOptions &
           V1OwnerWriteCliOptions & { registrar?: Address },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await authorizeTestnetV1PremigrationRegistrar({
           ...networkOpts,
           privateKey:
-            opts.privateKey ??
-            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+            v1OwnerKeyFromEnv(opts),
         });
       },
     ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(
-      addDeploymentOptions(
-        addNetworkOptions(
-          new Command("activate-v1-graveyard")
-            .description(
-              "Phase 6: authorize Graveyard as a v1 BaseRegistrar controller",
-            )
-            .option("--graveyard <address>", "Graveyard address")
-            .option("--private-key <key>", "V1 owner private key")
-            .option("--impersonate-owner", "Impersonate owner on a fork", false)
-            .option(
-              "--calldata-only",
-              "Print transaction target and calldata",
-              false,
-            ),
+    addV1OwnerWriteOptions(
+      addV1DeploymentOptions(
+        addDeploymentOptions(
+          addNetworkOptions(
+            new Command("activate-v1-graveyard")
+              .description(
+                "Phase 6: authorize Graveyard as a v1 BaseRegistrar controller",
+              )
+              .option("--graveyard <address>", "Graveyard address"),
+          ),
         ),
       ),
     ).action(
@@ -5391,37 +5394,30 @@ export async function main(argv = process.argv): Promise<void> {
           V1DeploymentCliOptions &
           V1OwnerWriteCliOptions & { graveyard?: Address },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await activateV1Graveyard({
           ...networkOpts,
           privateKey:
-            opts.privateKey ??
-            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+            v1OwnerKeyFromEnv(opts),
         });
       },
     ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(
-      addDeploymentOptions(
-        addNetworkOptions(
-          new Command("activate-v1-handoff-controllers")
-            .description(
-              "Phase 6: authorize Graveyard and the testnet premigration helper as v1 BaseRegistrar controllers",
-            )
-            .option("--graveyard <address>", "Graveyard address")
-            .option(
-              "--testnet-v1-premigration-registrar <address>",
-              "TestnetV1PremigrationRegistrar address",
-            )
-            .option("--private-key <key>", "V1 owner private key")
-            .option("--impersonate-owner", "Impersonate owner on a fork", false)
-            .option(
-              "--calldata-only",
-              "Print transaction targets and calldata",
-              false,
-            ),
+    addV1OwnerWriteOptions(
+      addV1DeploymentOptions(
+        addDeploymentOptions(
+          addNetworkOptions(
+            new Command("activate-v1-handoff-controllers")
+              .description(
+                "Phase 6: authorize Graveyard and the testnet premigration helper as v1 BaseRegistrar controllers",
+              )
+              .option("--graveyard <address>", "Graveyard address")
+              .option(
+                "--testnet-v1-premigration-registrar <address>",
+                "TestnetV1PremigrationRegistrar address",
+              ),
+          ),
         ),
       ),
     ).action(
@@ -5434,33 +5430,26 @@ export async function main(argv = process.argv): Promise<void> {
             testnetV1PremigrationRegistrar?: Address;
           },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await activateV1HandoffControllers({
           ...networkOpts,
           privateKey:
-            opts.privateKey ??
-            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+            v1OwnerKeyFromEnv(opts),
         });
       },
     ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(
-      addDeploymentOptions(
-        addNetworkOptions(
-          new Command("authorize-v1-renewer")
-            .description(
-              "Phase 4: authorize ETHRenewerV1 as a v1 BaseRegistrar controller so unmigrated names stay renewable during the migration",
-            )
-            .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address")
-            .option("--private-key <key>", "V1 owner private key")
-            .option("--impersonate-owner", "Impersonate owner on a fork", false)
-            .option(
-              "--calldata-only",
-              "Print transaction target and calldata",
-              false,
-            ),
+    addV1OwnerWriteOptions(
+      addV1DeploymentOptions(
+        addDeploymentOptions(
+          addNetworkOptions(
+            new Command("authorize-v1-renewer")
+              .description(
+                "Phase 4: authorize ETHRenewerV1 as a v1 BaseRegistrar controller so unmigrated names stay renewable during the migration",
+              )
+              .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address"),
+          ),
         ),
       ),
     ).action(
@@ -5470,33 +5459,26 @@ export async function main(argv = process.argv): Promise<void> {
           V1DeploymentCliOptions &
           V1OwnerWriteCliOptions & { ethRenewerV1?: Address },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await authorizeV1Renewer({
           ...networkOpts,
           privateKey:
-            opts.privateKey ??
-            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+            v1OwnerKeyFromEnv(opts),
         });
       },
     ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(
-      addDeploymentOptions(
-        addNetworkOptions(
-          new Command("activate-v1-renewer")
-            .description(
-              "Phase 6: transfer v1 BaseRegistrar ownership to ETHRenewerV1 (re-authorizes it as a controller if needed)",
-            )
-            .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address")
-            .option("--private-key <key>", "V1 owner private key")
-            .option("--impersonate-owner", "Impersonate owner on a fork", false)
-            .option(
-              "--calldata-only",
-              "Print transaction targets and calldata",
-              false,
-            ),
+    addV1OwnerWriteOptions(
+      addV1DeploymentOptions(
+        addDeploymentOptions(
+          addNetworkOptions(
+            new Command("activate-v1-renewer")
+              .description(
+                "Phase 6: transfer v1 BaseRegistrar ownership to ETHRenewerV1 (re-authorizes it as a controller if needed)",
+              )
+              .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address"),
+          ),
         ),
       ),
     ).action(
@@ -5506,13 +5488,11 @@ export async function main(argv = process.argv): Promise<void> {
           V1DeploymentCliOptions &
           V1OwnerWriteCliOptions & { ethRenewerV1?: Address },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await activateV1RenewerAndTransferOwnership({
           ...networkOpts,
           privateKey:
-            opts.privateKey ??
-            envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
+            v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5544,14 +5524,13 @@ export async function main(argv = process.argv): Promise<void> {
             impersonateOwner?: boolean;
           },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await reclaimV1RegistrarOwnership({
           ...networkOpts,
           v1Owner:
             opts.v1Owner ?? NETWORKS[networkOpts.network].defaultV1Owner,
           privateKey:
             opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
     ),
@@ -5586,13 +5565,12 @@ export async function main(argv = process.argv): Promise<void> {
             calldataOnly?: boolean;
           },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await switchTopUrpToManaged({
           ...networkOpts,
           privateKey:
             opts.privateKey ??
             envPrivateKey("SEPOLIA_TOP_URP_OWNER_KEY", "TOP_URP_OWNER_KEY"),
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
     ),
@@ -5628,12 +5606,11 @@ export async function main(argv = process.argv): Promise<void> {
             calldataOnly?: boolean;
           },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await upgradeManagedUrp({
           ...networkOpts,
           privateKey:
             opts.privateKey ?? envPrivateKey("UR_MANAGER_KEY", "DEPLOYER_KEY"),
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
     ),
@@ -5660,12 +5637,11 @@ export async function main(argv = process.argv): Promise<void> {
             batchRegistrar?: Address;
           },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await disableBatchRegistrar({
           ...networkOpts,
           privateKey:
             opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
     ),
@@ -5688,10 +5664,9 @@ export async function main(argv = process.argv): Promise<void> {
             batchRegistrar?: Address;
           },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await verifyBatchRegistrarDisabled({
           ...networkOpts,
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
     ),
@@ -5715,10 +5690,9 @@ export async function main(argv = process.argv): Promise<void> {
             expectedOwner?: Address;
           },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await checkBatchRegistrarOwner({
           ...networkOpts,
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
     ),
@@ -5745,12 +5719,11 @@ export async function main(argv = process.argv): Promise<void> {
             ethRegistrar?: Address;
           },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await enableV2Registrar({
           ...networkOpts,
           privateKey:
             opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
     ),
@@ -5771,10 +5744,9 @@ export async function main(argv = process.argv): Promise<void> {
             ethRegistrar?: Address;
           },
       ) => {
-        const networkOpts = withNetwork(opts);
+        const networkOpts = withNetworkRpc(opts);
         await verifyV2Registrar({
           ...networkOpts,
-          rpcUrl: requireRpcUrl(networkOpts, networkOpts.network),
         });
       },
     ),
@@ -5841,8 +5813,8 @@ export async function main(argv = process.argv): Promise<void> {
         ),
       ),
     ).action(async (opts: ForkFullCliOptions) => {
-      const networkOpts = withNetwork(opts);
-      const forkRpcUrl = requireRpcUrl(networkOpts, networkOpts.network);
+      const networkOpts = withNetworkRpc(opts);
+      const forkRpcUrl = networkOpts.rpcUrl;
       // Tenderly virtual testnets support state controls; the standalone CLI has
       // no --tenderly flag, so detect it from the RPC like the Hardhat task does.
       const tenderly =
@@ -5908,8 +5880,8 @@ export async function main(argv = process.argv): Promise<void> {
         ),
       ),
     ).action(async (opts: CleanTestnetCliOptions) => {
-      const networkOpts = withNetwork(opts);
-      const forkRpcUrl = requireRpcUrl(networkOpts, networkOpts.network);
+      const networkOpts = withNetworkRpc(opts);
+      const forkRpcUrl = networkOpts.rpcUrl;
       // Hydrate signer keys only when the RPC lacks state controls; a local node
       // or Tenderly virtual testnet impersonates the configured accounts instead.
       const needsKeys = !(
