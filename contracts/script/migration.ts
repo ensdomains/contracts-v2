@@ -4052,6 +4052,13 @@ export async function runForkFull(opts: RunForkFullOptions) {
             "deployment admin",
           ),
         };
+    // Signer for the v1-owner-gated controller changes (disable registrars,
+    // authorize the renewer, hand off ownership). On a fork we impersonate the
+    // owner; for a live run we require the key that controls it.
+    const v1OwnerSigner: { impersonateOwner: true } | { privateKey: `0x${string}` } =
+      useRpcStateControls
+        ? { impersonateOwner: true }
+        : { privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner") };
 
     // The migration wraps whatever the canonical top proxy currently serves.
     // When reusing a long-lived intermediate URP, the top proxy already fronts
@@ -4108,6 +4115,25 @@ export async function runForkFull(opts: RunForkFullOptions) {
 
     let smokeMigrationOwner = smokeAccount.address;
     let smokeMigrationPrivateKey: `0x${string}` | undefined = smokePrivateKey;
+
+    const sharedSmokeV1 = {
+      network: opts.network,
+      rpcUrl,
+      chain,
+      provider,
+      ...v1Deployments,
+    };
+    const registerSmokeV1 = (label: string) =>
+      registerViaV1Controller({
+        ...sharedSmokeV1,
+        label,
+        owner: smokeAccount.address,
+        privateKey: smokePrivateKey,
+        account: smokePrivateKey ? undefined : smokeAccount.address,
+        useRpcStateControls,
+      });
+    const assertSmokeV1Owner = (label: string) =>
+      assertV1Owner({ ...sharedSmokeV1, label, owner: smokeAccount.address });
     if (resumeFromPhase === 2) {
       smokeMigrationOwner = await readV1Owner({
         network: opts.network,
@@ -4124,69 +4150,12 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         "smoke: v1 registration succeeds before registrar disablement",
       );
-      await registerViaV1Controller({
-        network: opts.network,
-        rpcUrl,
-        chain,
-        provider,
-        ...v1Deployments,
-        label: smokeLabels.v1BeforeDisable,
-        owner: smokeAccount.address,
-        privateKey: smokePrivateKey,
-        account: smokePrivateKey ? undefined : smokeAccount.address,
-        useRpcStateControls,
-      });
-      await assertV1Owner({
-        network: opts.network,
-        rpcUrl,
-        chain,
-        provider,
-        ...v1Deployments,
-        label: smokeLabels.v1BeforeDisable,
-        owner: smokeAccount.address,
-      });
-      await registerViaV1Controller({
-        network: opts.network,
-        rpcUrl,
-        chain,
-        provider,
-        ...v1Deployments,
-        label: smokeLabels.migrate,
-        owner: smokeAccount.address,
-        privateKey: smokePrivateKey,
-        account: smokePrivateKey ? undefined : smokeAccount.address,
-        useRpcStateControls,
-      });
-      await assertV1Owner({
-        network: opts.network,
-        rpcUrl,
-        chain,
-        provider,
-        ...v1Deployments,
-        label: smokeLabels.migrate,
-        owner: smokeAccount.address,
-      });
-      await registerViaV1Controller({
-        network: opts.network,
-        rpcUrl,
-        chain,
-        provider,
-        ...v1Deployments,
-        label: smokeLabels.reservedOnly,
-        owner: smokeAccount.address,
-        privateKey: smokePrivateKey,
-        account: smokePrivateKey ? undefined : smokeAccount.address,
-        useRpcStateControls,
-      });
-      await assertV1Owner({
-        network: opts.network,
-        rpcUrl,
-        chain,
-        provider,
-        ...v1Deployments,
-        label: smokeLabels.reservedOnly,
-        owner: smokeAccount.address,
-      });
+      await registerSmokeV1(smokeLabels.v1BeforeDisable);
+      await assertSmokeV1Owner(smokeLabels.v1BeforeDisable);
+      await registerSmokeV1(smokeLabels.migrate);
+      await assertSmokeV1Owner(smokeLabels.migrate);
+      await registerSmokeV1(smokeLabels.reservedOnly);
+      await assertSmokeV1Owner(smokeLabels.reservedOnly);
       prependCsvLabels(transformedCsv, [
         smokeLabels.migrate,
         smokeLabels.reservedOnly,
@@ -4234,26 +4203,11 @@ export async function runForkFull(opts: RunForkFullOptions) {
       chainId: String(chainId),
       provider,
       ...v1Deployments,
-      ...(useRpcStateControls
-        ? { impersonateOwner: true }
-        : {
-            privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner"),
-          }),
+      ...v1OwnerSigner,
     });
     if (!postMigration) {
       await assertRejected(
-        registerViaV1Controller({
-          network: opts.network,
-          rpcUrl,
-          chain,
-          provider,
-          ...v1Deployments,
-          label: smokeLabels.v1AfterDisable,
-          owner: smokeAccount.address,
-          privateKey: smokePrivateKey,
-          account: smokePrivateKey ? undefined : smokeAccount.address,
-          useRpcStateControls,
-        }),
+        registerSmokeV1(smokeLabels.v1AfterDisable),
         `v1 registration rejected after registrar disablement: ${smokeLabels.v1AfterDisable}.eth`,
         // The disabled controller can no longer mint on the BaseRegistrar, so the
         // registration must fail with a revert (at simulation or in the receipt).
@@ -4293,11 +4247,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       deploymentsDir,
       deploymentNetwork,
       ethRenewerV1: ethRenewerV1.address,
-      ...(useRpcStateControls
-        ? { impersonateOwner: true }
-        : {
-            privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner"),
-          }),
+      ...v1OwnerSigner,
     });
     {
       const renewerAuthorized = (await client.readContract({
@@ -4406,11 +4356,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       deploymentNetwork,
       graveyard: graveyard.address,
       testnetV1PremigrationRegistrar: testnetV1PremigrationRegistrar?.address,
-      ...(useRpcStateControls
-        ? { impersonateOwner: true }
-        : {
-            privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner"),
-          }),
+      ...v1OwnerSigner,
     });
 
     // Final lock-down of the v1 BaseRegistrar: hand its ownership to
@@ -4425,11 +4371,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       deploymentsDir,
       deploymentNetwork,
       ethRenewerV1: ethRenewerV1.address,
-      ...(useRpcStateControls
-        ? { impersonateOwner: true }
-        : {
-            privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner"),
-          }),
+      ...v1OwnerSigner,
     });
     const beforeEnabled = await client.readContract({
       address: ethRegistry.address,
