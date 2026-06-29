@@ -62,7 +62,7 @@ contract ReverseRegistrarAdapter is DelegatedContractNamer, HCAAuthorizer {
     /// @param resolver The resolver to set.
     /// @return The ENS node hash for the contract's reverse record.
     function claimWithHCA(address account, address resolver) external returns (bytes32) {
-        address hcaOwner = _requireHCAForAccount(account);
-        return REVERSE_REGISTRAR.claimForAddr(account, hcaOwner, resolver);
+        _requireHCAForAccount(account);
+        return REVERSE_REGISTRAR.claimForAddr(account, account, resolver);
     }
 }

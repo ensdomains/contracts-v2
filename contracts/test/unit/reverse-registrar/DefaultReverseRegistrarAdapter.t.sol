@@ -169,26 +169,31 @@ contract DefaultReverseRegistrarAdapterTest is Test {
         assertEq(defaultReverseRegistrar.nameForAddr(hca), "");
     }
 
-    function test_setNameWithHCA_revert_hcaOwnerMismatch_ownable() external {
+    function test_setNameWithHCA_revert_notOwner_ownable() external {
         address hca = _deployHCA(owner, address(hcaImplementation));
         MockOwnable c = new MockOwnable(owner);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(HCAAuthorizer.HCAOwnerMismatch.selector, address(c), owner)
-        );
+        vm.expectRevert(abi.encodeWithSelector(HCAAuthorizer.HCANotOwner.selector, hca, address(c)));
         vm.prank(hca);
         defaultAdapter.setNameWithHCA(address(c), name);
     }
 
-    function test_setNameWithHCA_revert_hcaOwnerMismatch_contractNamer() external {
+    function test_setNameWithHCA_revert_notOwner_contractNamer() external {
         address hca = _deployHCA(owner, address(hcaImplementation));
         MockContractNamer c = new MockContractNamer(owner);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(HCAAuthorizer.HCAOwnerMismatch.selector, address(c), owner)
-        );
+        vm.expectRevert(abi.encodeWithSelector(HCAAuthorizer.HCANotOwner.selector, hca, address(c)));
         vm.prank(hca);
         defaultAdapter.setNameWithHCA(address(c), name);
+    }
+
+    function test_setNameWithHCA_revert_notOwner_whenExpired() external {
+        address hca = _deployHCA(owner, address(hcaImplementation));
+        MockHCA(hca).setExpired(true);
+
+        vm.expectRevert(abi.encodeWithSelector(HCAAuthorizer.HCANotOwner.selector, hca, owner));
+        vm.prank(hca);
+        defaultAdapter.setNameWithHCA(owner, name);
     }
 
     function test_setNameWithHCA_revert_hcaImplementationNotTrusted() external {
@@ -204,12 +209,10 @@ contract DefaultReverseRegistrarAdapterTest is Test {
         defaultAdapter.setNameWithHCA(owner, name);
     }
 
-    function test_setNameWithHCA_revert_hcaOwnerMismatch() external {
+    function test_setNameWithHCA_revert_notOwner() external {
         address hca = _deployHCA(owner, address(hcaImplementation));
 
-        vm.expectRevert(
-            abi.encodeWithSelector(HCAAuthorizer.HCAOwnerMismatch.selector, other, owner)
-        );
+        vm.expectRevert(abi.encodeWithSelector(HCAAuthorizer.HCANotOwner.selector, hca, other));
         vm.prank(hca);
         defaultAdapter.setNameWithHCA(other, name);
     }

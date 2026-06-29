@@ -33,7 +33,7 @@ See the [contracts README](../contracts/README.md) for detailed architecture doc
 | [OpenZeppelin Contracts v4](https://github.com/OpenZeppelin/openzeppelin-contracts) | Used by vendored ENSv1 contracts |
 | [ENSv1 contracts](https://github.com/ensdomains/ens-contracts) | V1 registry, NameWrapper, BaseRegistrar (for migration) |
 | [ENS metadata service](https://github.com/ensdomains/ens-metadata-service) | ENS metadata service |
-| [Rhinestone ENS Modules](https://github.com/rhinestone-external/ens-modules) | Custom HCA (Hierarchical Context Authority) module and cross-chain intent for registration/renewal (**separate audit scope**) |
+| [Rhinestone ENS Modules](https://github.com/rhinestone-external/ens-modules) | Custom HCA (Hidden Contract Account) module and cross-chain intent for registration/renewal (**separate audit scope**) |
 | [Verifiable Factory](https://github.com/ensdomains/verifiable-factory) | Deterministic deployment with verification (**in scope**, see below) |
 | [Unruggable Gateways](https://github.com/unruggable-eth/unruggable-gateways) | CCIP-Read gateway support |
 
