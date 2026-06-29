@@ -23,7 +23,7 @@ Phase numbering below matches the console output of the `runForkFull` orchestrat
 | 4 | Authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable | `phase authorize-v1-renewer` | v1 owner |
 | 5 | Final pre-migration sync from a fresh post-freeze export (picks up renewed expiries) | `premigration run`, then `premigration verify` | BatchRegistrar owner |
 | 6 | Enable the v2 controller: revoke `REGISTRAR \| RENEW` from `BatchRegistrar` → authorize v1 handoff controllers (`Graveyard`, testnet helper) → transfer v1 `BaseRegistrar` ownership to `ETHRenewerV1` → grant `REGISTRAR \| RENEW` to `ETHRegistrar` | `phase disable-batch-registrar`, `phase activate-v1-handoff-controllers`, `phase activate-v1-renewer`, `phase enable-v2-registrar` (+ the matching `verify-*`) | registry root-role admin + v1 owner |
-| 7 | Switch Universal Resolver to v2 (resolution cutover): top URP → managed URP → `UniversalResolverV2` | `phase switch-urp-to-managed`, `phase upgrade-managed-urp`, then `phase verify-urp` | top URP admin (DAO on mainnet, top URP owner on sepolia), then `urManager` (security council) |
+| 7 | Switch Universal Resolver to v2 (resolution cutover): intermediate URP → `UniversalResolverV2` (sepolia reuses the existing top URP → intermediate URP wiring; bootstrap networks first switch top URP → intermediate URP) | `phase upgrade-managed-urp`, then `phase verify-urp` (bootstrap also runs `phase switch-urp-to-managed` first) | `urManager` (intermediate URP admin); bootstrap also needs the top URP admin (DAO on mainnet) for the switch |
 
 † Phase 0 only exists in `clean-testnet`, which deploys a fresh v1 stack (from `lib/ens-contracts/deploy`) into a `deployments/v1/<namespace>` directory before running phases 1–7.
 
@@ -70,7 +70,7 @@ The "enable the v2 controller" cutover bundles four owner-gated steps, in order:
 
 ### Phase 7: switch the Universal Resolver to v2
 
-The resolution cutover, run last so public resolution flips to v2 only once everything else is live. The top `UpgradableUniversalResolverProxy` admin (DAO on mainnet, top URP owner on sepolia) first points the top URP at `ManagedUniversalResolverProxy` (`phase switch-urp-to-managed`, deploy tag `migration:phase5:switch-urp-to-managed`); resolution behavior is unchanged at this point. The managed URP admin (`urManager` / security council) then upgrades the managed URP implementation to `UniversalResolverV2` (`phase upgrade-managed-urp`, deploy tag `migration:phase6:upgrade-managed-urp`) — **this is the v2 resolution cutover.** `phase verify-urp` confirms both implementations. After the migration stabilizes, the post-cutover step (tag `migration:post-cutover:direct-urp-to-v2`) retires the managed hop. See [universalResolver.md](./universalResolver.md).
+The resolution cutover, run last so public resolution flips to v2 only once everything else is live. On sepolia the top `UpgradableUniversalResolverProxy` already fronts the long-lived intermediate `ManagedUniversalResolverProxy`, so the cutover is a single transaction: the intermediate URP admin (`urManager`) upgrades the intermediate URP implementation to `UniversalResolverV2` (`phase upgrade-managed-urp`, deploy tag `migration:phase6:upgrade-managed-urp`) — **this is the v2 resolution cutover.** The externally-administered top URP is never touched. On bootstrap networks (mainnet, fresh chains) the top URP admin (DAO on mainnet) first points the top URP at the freshly deployed intermediate URP (`phase switch-urp-to-managed`, deploy tag `migration:phase5:switch-urp-to-managed`; a no-op where the wiring already exists) before the upgrade, and the post-cutover step (tag `migration:post-cutover:direct-urp-to-v2`) can later retire the managed hop. `phase verify-urp` confirms both implementations. See [universalResolver.md](./universalResolver.md).
 
 > **Relation to `prepareMigration.ts`:** phase 6 replaces the all-at-once role swap performed by [prepareMigration.md](./prepareMigration.md); that script remains the path for non-phased deployments.
 
@@ -145,7 +145,7 @@ Resolved by [`script/migration.ts`](../script/migration.ts) (the CLI also auto-l
 | `SEPOLIA_RPC_URL` / `MAINNET_RPC_URL` | Default RPC when `--rpc-url` is omitted |
 | `DEPLOYER_KEY` | Deployer key (`phase deploy-v2`); fallback for owner/urManager keys |
 | `OWNER_KEY` | Owner / registry root-role admin (`phase deploy-v2`, `disable-batch-registrar`, `enable-v2-registrar`; falls back to `DEPLOYER_KEY`) |
-| `UR_MANAGER_KEY` | Managed URP admin (`phase upgrade-managed-urp`; falls back to `DEPLOYER_KEY`) |
+| `UR_MANAGER_KEY` | Intermediate URP admin (`phase upgrade-managed-urp`; falls back to `DEPLOYER_KEY`) |
 | `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` | v1 owner (`disable-v1-registrars` †, `authorize-v1-renewer`, `activate-v1-*`, `authorize-testnet-v1-premigration-registrar`) |
 | `SEPOLIA_TOP_URP_OWNER_KEY` / `TOP_URP_OWNER_KEY` | Top URP admin (`phase switch-urp-to-managed`) |
 | `OWNER_TX_KEY` | Generic signer for `phase execute-owner-txs` when no role-specific key matches |
@@ -163,13 +163,15 @@ End-to-end runbook for a real, fresh Sepolia deployment that replaces the live v
 
 ### Signer keys
 
-Three keys cover every signature in the migration. On Sepolia the deployer also fills the owner/urManager/securityCouncil roles, so only the two v1-side roles are separate accounts:
+Three keys cover every signature in the sepolia reuse flow. The deployer fills the `owner`/registry-root-admin role, the v1 owner is a separate account, and the intermediate URP admin is the wallet that controls the long-lived intermediate URP. The top URP owner key is **not** needed here — the top URP already fronts the intermediate URP, so the cutover never touches it:
 
-- **`DEPLOYER_KEY`** — the deployer EOA that signs phase-1 contract deployments. On Sepolia it also resolves as `owner` (registry root-role admin: `disable-batch-registrar`, `enable-v2-registrar`), `urManager` (managed URP admin: `upgrade-managed-urp`), and `securityCouncil`, because the account config defaults those roles to the deployer. It is also the `BatchRegistrar` owner that drives pre-migration. Must be a freshly funded account with enough Sepolia ETH for the many transactions in phase 1.
+- **`DEPLOYER_KEY`** — the deployer EOA that signs phase-1 contract deployments. On Sepolia it also resolves as `owner` (registry root-role admin: `disable-batch-registrar`, `enable-v2-registrar`). It is also the `BatchRegistrar` owner that drives pre-migration. Must be a freshly funded account with enough Sepolia ETH for the many transactions in phase 1.
 - **`SEPOLIA_V1_OWNER_KEY`** — the v1 owner (`0x0f32b753afc8abad9ca6fe589f707755f4df2353`), which controls the v1 `BaseRegistrar` / `RegistrarSecurityController`. Signs the deferred phase-1 v1-owner transactions (pointing the v1 `.eth` resolver at the new `ENSV2Resolver` and authorizing the reverse-registrar adapters), plus `disable-v1-registrars` (phase 3), `authorize-v1-renewer` (phase 4), and `activate-v1-handoff-controllers` / `activate-v1-renewer` (phase 6).
-- **`SEPOLIA_TOP_URP_OWNER_KEY`** — the admin of the top `UpgradableUniversalResolverProxy` (`0x69420f05A11f617B4B74fFe2E04B2D300dFA556F`), the persistent Universal Resolver entry point. Signs `switch-urp-to-managed` (phase 7), which re-points the top URP at the freshly deployed managed URP.
+- **`UR_MANAGER_KEY`** — the admin of the long-lived intermediate `ManagedUniversalResolverProxy` (`0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1`, admin `0xffFffFFfFF52D316B7Bd028358089bc8066b8f80`). Signs `upgrade-managed-urp` (phase 7), the v2 resolution cutover. Configured as `securityCouncil`/`urManager` for sepolia in the account config.
 
-> **`phase deploy-v2` cannot sign v1-owner transactions itself** — it only wires the deployer/owner/urManager keys. So phase 1 must record its v1-owner transactions with `--defer-v1-owner-transactions` and you replay them with `phase execute-owner-txs --role v1Owner`, which reads `SEPOLIA_V1_OWNER_KEY`. Every later v1-owner / top-URP command reads its key from env directly, except `disable-v1-registrars`, which takes `--private-key` explicitly.
+> **`SEPOLIA_TOP_URP_OWNER_KEY`** is only needed on bootstrap networks (mainnet, fresh chains) where the top URP does not yet front an intermediate URP and the top URP admin (`0x69420f05A11f617B4B74fFe2E04B2D300dFA556F` on sepolia, the DAO on mainnet) must first run `switch-urp-to-managed`. On sepolia that switch is a no-op.
+
+> **`phase deploy-v2` cannot sign v1-owner transactions itself** — it only wires the deployer/owner keys. So phase 1 must record its v1-owner transactions with `--defer-v1-owner-transactions` and you replay them with `phase execute-owner-txs --role v1Owner`, which reads `SEPOLIA_V1_OWNER_KEY`. Every later v1-owner / top-URP command reads its key from env directly, except `disable-v1-registrars`, which takes `--private-key` explicitly.
 
 ### Setup
 
@@ -230,8 +232,8 @@ bun run migration -- phase activate-v1-renewer --network sepolia
 bun run migration -- phase enable-v2-registrar --network sepolia
 bun run migration -- phase verify-v2-registrar --network sepolia
 
-# Phase 7 — resolution cutover (top URP owner, then urManager = deployer)
-bun run migration -- phase switch-urp-to-managed --network sepolia
+# Phase 7 — resolution cutover (intermediate URP admin = UR_MANAGER_KEY).
+# The top URP already fronts the intermediate URP, so only the upgrade is needed.
 bun run migration -- phase upgrade-managed-urp --network sepolia
 bun run migration -- phase verify-urp --network sepolia
 ```

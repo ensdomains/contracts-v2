@@ -1,4 +1,5 @@
 import { artifacts, execute } from "@rocketh";
+import { getAddress } from "viem";
 
 import {
   externalTopProxyOwnerLabel,
@@ -22,6 +23,18 @@ export default execute(
     const managedUrp = get<
       typeof artifacts.UpgradableUniversalResolverProxy.abi
     >("ManagedUniversalResolverProxy");
+
+    // When the top URP already fronts the intermediate URP (the reuse flow), the
+    // switch is already done — never re-point the externally-administered top URP.
+    const currentImplementation = (await read(topUrp, {
+      functionName: "implementation",
+    })) as `0x${string}`;
+    if (getAddress(currentImplementation) === getAddress(managedUrp.address)) {
+      console.log(
+        `UniversalResolver implementation: already ${managedUrp.address} (intermediate URP)`,
+      );
+      return true;
+    }
 
     const ownerLabel = externalTopProxyOwnerLabel(tags);
     if (ownerLabel) {

@@ -1,4 +1,5 @@
 import { artifacts, execute } from "@rocketh";
+import { getAddress, zeroAddress } from "viem";
 
 import {
   externalTopProxyOwnerLabel,
@@ -20,6 +21,20 @@ export default execute(
     const topUrp = get<
       typeof artifacts.UpgradableUniversalResolverProxy.abi
     >("UpgradableUniversalResolverProxy");
+
+    // Only a freshly bootstrapped top URP with an unset implementation needs
+    // initializing to v1. An adopted top URP already serves either v1 or the
+    // intermediate URP and must never be re-pointed here.
+    const currentImplementation = (await read(topUrp, {
+      functionName: "implementation",
+    })) as `0x${string}`;
+    if (getAddress(currentImplementation) !== getAddress(zeroAddress)) {
+      console.log(
+        `UniversalResolver implementation: already ${currentImplementation}`,
+      );
+      return true;
+    }
+
     const v1UniversalResolver =
       await getV1<(typeof artifacts.UniversalResolver)["abi"]>(
         "UniversalResolver",

@@ -2,8 +2,8 @@ import { artifacts, execute } from "@rocketh";
 
 import {
   isDeployedTopProxy,
+  knownProxyNetworkName,
   loadKnownTopProxyDeployment,
-  TOP_URP_CREATE3_SALT,
 } from "../../script/universalResolverDeployUtils.js";
 
 export default execute(
@@ -18,11 +18,13 @@ export default execute(
   }) => {
     if (tags.local) return true;
 
-    const v1UniversalResolver =
-      await getV1<(typeof artifacts.UniversalResolver)["abi"]>(
-        "UniversalResolver",
-      );
+    // A clean-testnet run builds a self-owned stack from scratch (including its
+    // own v1), so it deploys its own top URP it can administer.
     if (tags["clean-testnet"]) {
+      const v1UniversalResolver =
+        await getV1<(typeof artifacts.UniversalResolver)["abi"]>(
+          "UniversalResolver",
+        );
       await deploy("UpgradableUniversalResolverProxy", {
         account: deployer,
         artifact: artifacts.UpgradableUniversalResolverProxy,
@@ -31,6 +33,9 @@ export default execute(
       return true;
     }
 
+    // Otherwise the top URP is a pre-existing, long-lived deployment: adopt the
+    // canonical address for the network. Deploying a fresh top URP is no longer
+    // supported here — the migration reuses the existing one.
     const currentDeployment = getOrNull<
       typeof artifacts.UpgradableUniversalResolverProxy.abi
     >("UpgradableUniversalResolverProxy");
@@ -38,38 +43,21 @@ export default execute(
       currentDeployment && isDeployedTopProxy(currentDeployment)
         ? currentDeployment
         : null;
-    const knownProxyNetwork = tags.sepolia
-      ? "sepolia"
-      : tags.hasDao
-        ? "mainnet"
-        : name;
+    const knownProxyNetwork = knownProxyNetworkName(tags, name);
     const knownTopProxyDeployment =
       await loadKnownTopProxyDeployment(knownProxyNetwork);
     const topProxyDeployment =
       currentTopProxyDeployment ?? knownTopProxyDeployment;
 
-    if (topProxyDeployment) {
-      if (!currentTopProxyDeployment) {
-        await save("UpgradableUniversalResolverProxy", topProxyDeployment);
-      }
-      return true;
+    if (!topProxyDeployment) {
+      throw new Error(
+        `No known top URP for network "${knownProxyNetwork}". A pre-existing top URP is required; deploying a fresh top URP is not supported (re-add the create3 deploy to bootstrap a new network).`,
+      );
     }
 
-    await deploy(
-      "UpgradableUniversalResolverProxy",
-      {
-        account: deployer,
-        artifact: artifacts.UpgradableUniversalResolverProxy,
-        args: [owner, v1UniversalResolver.address],
-      },
-      {
-        deterministic: {
-          type: "create3",
-          salt: TOP_URP_CREATE3_SALT,
-        },
-        alwaysOverride: true,
-      },
-    );
+    if (!currentTopProxyDeployment) {
+      await save("UpgradableUniversalResolverProxy", topProxyDeployment);
+    }
     return true;
   },
   {

@@ -9,12 +9,16 @@ import {
 } from "viem";
 
 import artifacts from "./artifacts.js";
-import { DEPLOYED_UNIVERSAL_RESOLVER_PROXY } from "./deploy-constants.js";
+import {
+  DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+  KNOWN_INTERMEDIATE_URP,
+} from "./deploy-constants.js";
 
 export const TOP_URP_CREATE3_SALT =
   "0xdeac7148fb7f566f1fc8c8d6720530de8809f3658cf10141ceee7ba0d45eef85" as const;
 
 const KNOWN_TOP_PROXY_NETWORKS = new Set(["holesky", "mainnet", "sepolia"]);
+
 const universalResolverProxyArtifact =
   artifacts.UpgradableUniversalResolverProxy;
 
@@ -30,6 +34,20 @@ export async function loadKnownTopProxyDeployment(
   }
   return {
     address: DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+    argsData: "0x",
+    ...universalResolverProxyArtifact,
+  } as UpgradableUniversalResolverProxyDeployment;
+}
+
+export async function loadKnownIntermediateUrpDeployment(
+  networkName: string,
+): Promise<UpgradableUniversalResolverProxyDeployment | null> {
+  const address = KNOWN_INTERMEDIATE_URP[networkName];
+  if (!address) {
+    return null;
+  }
+  return {
+    address,
     argsData: "0x",
     ...universalResolverProxyArtifact,
   } as UpgradableUniversalResolverProxyDeployment;
@@ -62,6 +80,16 @@ export function logUpgradeCalldata(
 
 export function externalTopProxyOwnerLabel(tags: Record<string, unknown>) {
   return tags.hasDao ? "DAO" : tags.sepolia ? "top URP owner" : undefined;
+}
+
+// Normalizes a deploy environment to the network key used by the known-proxy
+// lookups, collapsing tag-aliased environments (e.g. dev variants) onto their
+// base network and otherwise falling back to the environment name.
+export function knownProxyNetworkName(
+  tags: Record<string, unknown>,
+  name: string,
+): string {
+  return tags.sepolia ? "sepolia" : tags.hasDao ? "mainnet" : name;
 }
 
 // matches the bound `execute` deploy-script extension (see rocketh/config.ts);

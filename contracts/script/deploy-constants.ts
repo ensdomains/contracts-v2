@@ -4,6 +4,13 @@ export const LOCAL_BATCH_GATEWAY_URL = "x-batch-gateway:true";
 export const DEPLOYED_UNIVERSAL_RESOLVER_PROXY =
   "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe" as const;
 
+// Networks whose top URP already fronts a long-lived intermediate (managed) URP
+// whose admin we control, keyed by network name. On these networks a fresh v2
+// deployment reuses the existing intermediate URP instead of deploying a new one.
+export const KNOWN_INTERMEDIATE_URP: Record<string, `0x${string}`> = {
+  sepolia: "0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1",
+};
+
 export const SEPOLIA_USDC =
   "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
 

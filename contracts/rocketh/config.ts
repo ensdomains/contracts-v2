@@ -30,6 +30,9 @@ export const config = {
       // admin of ManagedUniversalResolverProxy; set per-network to the
       // security council multisig once one is designated
       default: "deployer",
+      // admin of the long-lived intermediate URP that the top URP already fronts
+      sepolia: "0xffFffFFfFF52D316B7Bd028358089bc8066b8f80",
+      11155111: "0xffFffFFfFF52D316B7Bd028358089bc8066b8f80",
     },
     urManager: {
       default: "securityCouncil",

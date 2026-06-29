@@ -2356,6 +2356,17 @@ async function switchTopUrpToManaged(opts: {
     deploymentNetwork,
     "ManagedUniversalResolverProxy",
   );
+  // When the top URP already fronts the managed URP (the reuse flow), the switch
+  // is already done — never touch the externally-administered top URP.
+  const currentTopImplementation = (await client.readContract({
+    address: topUrp,
+    abi: Artifact_UpgradableUniversalResolverProxy.abi,
+    functionName: "implementation",
+  })) as Address;
+  if (getAddress(currentTopImplementation) === getAddress(managedUrp)) {
+    console.log(`top URP already fronts managed URP: ${managedUrp}`);
+    return;
+  }
   const data = encodeFunctionData({
     abi: Artifact_UpgradableUniversalResolverProxy.abi,
     functionName: "upgradeTo",
@@ -3911,14 +3922,18 @@ export async function runForkFull(opts: RunForkFullOptions) {
           ),
         };
 
-    // The migration wraps whatever the canonical top proxy currently serves;
-    // the freshly deployed managed proxy is seeded to that same implementation,
-    // so both proxies must report it before the phase-5 switch.
+    // The migration wraps whatever the canonical top proxy currently serves.
+    // When reusing a long-lived intermediate URP, the top proxy already fronts
+    // it and the intermediate URP serves its own implementation (about to be
+    // upgraded). Otherwise the freshly deployed managed proxy is seeded to the
+    // top proxy's implementation, so both must report it before the switch.
     const baselineImplementation = (await client.readContract({
       address: topUrp.address,
       abi: Artifact_UpgradableUniversalResolverProxy.abi,
       functionName: "implementation",
     })) as Address;
+    const topAlreadyFrontsManaged =
+      getAddress(baselineImplementation) === getAddress(managedUrp.address);
     await verifyUrp({
       network: opts.network,
       rpcUrl,
@@ -3926,7 +3941,9 @@ export async function runForkFull(opts: RunForkFullOptions) {
       topUrp: topUrp.address,
       managedUrp: managedUrp.address,
       expectedTopImplementation: baselineImplementation,
-      expectedManagedImplementation: baselineImplementation,
+      ...(topAlreadyFrontsManaged
+        ? {}
+        : { expectedManagedImplementation: baselineImplementation }),
     });
 
     const smokePrefix = `${opts.network === "mainnet" ? "mf" : "sf"}${Date.now().toString(36)}`;
@@ -4380,35 +4397,44 @@ export async function runForkFull(opts: RunForkFullOptions) {
     console.log(
       "phase 7: switch the Universal Resolver to v2 (resolution cutover)",
     );
-    const topUrpAdmin = (await client.readContract({
-      address: topUrp.address,
-      abi: Artifact_UpgradableUniversalResolverProxy.abi,
-      functionName: "admin",
-    })) as Address;
-    if (getAddress(topUrpAdmin) === getAddress(zeroAddress)) {
-      throw new Error(
-        "top URP admin is address(0); cannot impersonate admin for fork switch",
+    // Reuse flow: the top URP already fronts the intermediate URP, so the switch
+    // is skipped and only the intermediate URP is upgraded below. Bootstrap flow:
+    // point the top URP at the freshly deployed managed URP first.
+    if (topAlreadyFrontsManaged) {
+      console.log(
+        `top URP already fronts managed URP: ${managedUrp.address}; skipping switch`,
       );
+    } else {
+      const topUrpAdmin = (await client.readContract({
+        address: topUrp.address,
+        abi: Artifact_UpgradableUniversalResolverProxy.abi,
+        functionName: "admin",
+      })) as Address;
+      if (getAddress(topUrpAdmin) === getAddress(zeroAddress)) {
+        throw new Error(
+          "top URP admin is address(0); cannot impersonate admin for fork switch",
+        );
+      }
+      console.log(`top URP admin: ${topUrpAdmin}`);
+      await switchTopUrpToManaged({
+        network: opts.network,
+        rpcUrl,
+        chainId: String(chainId),
+        provider,
+        topUrp: topUrp.address,
+        managedUrp: managedUrp.address,
+        ...(useRpcStateControls
+          ? { impersonateAccount: topUrpAdmin }
+          : {
+              privateKey: requirePrivateKeyForAddress(
+                topUrpAdmin,
+                keys,
+                "top URP admin",
+              ),
+            }),
+      });
+      console.log(`top URP switched to managed URP: ${managedUrp.address}`);
     }
-    console.log(`top URP admin: ${topUrpAdmin}`);
-    await switchTopUrpToManaged({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      topUrp: topUrp.address,
-      managedUrp: managedUrp.address,
-      ...(useRpcStateControls
-        ? { impersonateAccount: topUrpAdmin }
-        : {
-            privateKey: requirePrivateKeyForAddress(
-              topUrpAdmin,
-              keys,
-              "top URP admin",
-            ),
-          }),
-    });
-    console.log(`top URP switched to managed URP: ${managedUrp.address}`);
 
     await upgradeManagedUrp({
       network: opts.network,
