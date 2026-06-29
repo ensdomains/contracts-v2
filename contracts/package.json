@@ -62,7 +62,10 @@
     "clean": "forge clean && hardhat clean && rm -rf coverage/",
     "devnet": "bun run compile && bun ./script/runDevnet.ts",
     "migration": "bun ./script/migration.ts",
-    "aakit": "bun ./script/deployAAkit.ts"
+    "aakit": "bun ./script/deployAAkit.ts",
+    "verify": "bun ./script/verify.ts",
+    "verify:sepolia": "bun ./script/verify.ts --network sepolia",
+    "verify:mainnet": "bun ./script/verify.ts --network mainnet"
   },
   "type": "module"
 }

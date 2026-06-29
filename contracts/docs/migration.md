@@ -154,6 +154,7 @@ Resolved by [`script/migration.ts`](../script/migration.ts) (the CLI also auto-l
 | `<PREFIX>_MNEMONIC`, `<PREFIX>_MNEMONIC_PATH`, `<PREFIX>_MNEMONIC_INDEX`, `<PREFIX>_MNEMONIC_PASSPHRASE` | Mnemonic-backed signer alternatives for `phase execute-owner-txs`; prefixes `OWNER_TX`, `SEPOLIA_V1_OWNER` / `V1_OWNER`, `SEPOLIA_TOP_URP_OWNER` / `TOP_URP_OWNER` |
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
 | `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` |
+| `ETHERSCAN_API_KEY` | Etherscan v2 (multichain) API key for source-code verification (`bun run verify:<network>`); not needed for Sourcify |
 
 † `phase disable-v1-registrars` takes the key via `--private-key`; the env fallbacks apply when it is executed through `phase execute-owner-txs` with `--role v1Owner`.
 
@@ -265,6 +266,20 @@ Two things to plan for:
 - **Pre-migration is the heavy, stateful part.** Phases 2 and 5 are checkpointed (`premigration resume`) and have their own flags (`--registry`, `--batch-registrar`, `--batch-size`, the v1-expiry RPC). Read [premigration.md](./premigration.md) and confirm the CSV export before the live run.
 
 > **Mainnet differs.** There the owner, top URP admin, and v1 owner are all the DAO/multisig, so the owner-signed and URP-admin phases are run with `--calldata-only` (or deferred) and executed through the Safe rather than with local keys.
+
+### Verify source code
+
+Once the deployment is live, submit the deployed contracts for source-code verification on Etherscan and Sourcify. This reads the deployment artifacts under `deployments/<network>/` (each carries the solc metadata and constructor args needed) — no recompilation or redeploy is required.
+
+```bash
+cd contracts
+export ETHERSCAN_API_KEY=<etherscan v2 api key>   # one key covers all chains; not needed for Sourcify
+bun run verify:sepolia                            # → verify:mainnet for the mainnet set
+```
+
+`verify:<network>` runs [`script/verify.ts`](../script/verify.ts), which submits every contract to both Etherscan and Sourcify via [`@rocketh/verifier`](https://www.npmjs.com/package/@rocketh/verifier). It is idempotent and re-runnable: contracts already verified on a backend are detected and skipped, so it is safe to re-run after a partial deploy or to pick up newly added contracts. Proxy entries are verified from their `*_Proxy` / `*_Implementation` artifacts.
+
+The verifier rebuilds the solc standard-JSON input from each artifact's recorded metadata, which needs the literal content of every source file. Hardhat-compiled artifacts embed that content, but forge-compiled ones record only each source's hash and URLs; for those, `verify.ts` backfills the missing content from disk (keyed by the metadata source paths and checked against the recorded hash) before submitting, so a contract verifies regardless of which compiler produced its artifact. Flags after `--` pass through to the underlying CLI (e.g. `bun run verify -- --network sepolia --etherscan-only`).
 
 ## Rehearsals
 
