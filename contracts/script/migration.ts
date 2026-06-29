@@ -1731,7 +1731,7 @@ const PRIOR_RENEWER_ABI = [
 
 // On a chain that has already completed a migration, the v1 BaseRegistrar is
 // owned by the previous deployment's ETHRenewerV1 contract, so the EOA-signed
-// controller phases (8 and 9) cannot run. Reclaim ownership back to the v1 owner
+// v1-owner controller steps cannot run. Reclaim ownership back to the v1 owner
 // by routing through the prior renewer's `transferRegistrarOwnership`, signed by
 // the prior renewer's own owner. No-op on a pristine chain (BaseRegistrar still
 // owned by the v1 owner EOA) or once ownership is already with the v1 owner.
