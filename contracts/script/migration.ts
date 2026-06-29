@@ -3032,9 +3032,17 @@ async function waitForSuccessfulReceipt(
   return receipt;
 }
 
-async function deployV1(opts: DeployV1Options) {
+// Normalize the provider (RPC-compatibility shim, chain-id override) and resolve
+// the chain id and chain, shared by the v1 and v2 deploy entrypoints.
+async function resolveDeployProviderAndChain(opts: {
+  network: MigrationNetwork;
+  rpcUrl?: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  rpcCompatibility?: boolean;
+  debugRpc?: boolean;
+}): Promise<{ provider?: RpcProvider; chainId: number; chain: Chain }> {
   const network = NETWORKS[opts.network];
-  const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
   if (!opts.rpcUrl && !opts.provider) {
     throw new Error("Missing rpcUrl or provider");
   }
@@ -3055,6 +3063,30 @@ async function deployV1(opts: DeployV1Options) {
     chainId,
     opts.rpcUrl ?? network.chain.rpcUrls.default.http[0],
   );
+  return { provider, chainId, chain };
+}
+
+// Print each deployed contract's address, or a placeholder when the artifact is
+// absent from the namespace.
+function logDeployedAddresses(
+  env: { get(name: string): { address: Address } },
+  names: readonly string[],
+  prefix = "",
+): void {
+  for (const name of names) {
+    try {
+      console.log(`${prefix}${name}: ${env.get(name).address}`);
+    } catch {
+      console.log(`${prefix}${name}: <not deployed>`);
+    }
+  }
+}
+
+async function deployV1(opts: DeployV1Options) {
+  const network = NETWORKS[opts.network];
+  const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
+  const { provider, chainId, chain } =
+    await resolveDeployProviderAndChain(opts);
   const env = await loadAndExecuteDeploymentsFromFilesWithConfig(
     {
       environment: deploymentNetwork,
@@ -3065,25 +3097,23 @@ async function deployV1(opts: DeployV1Options) {
     buildDeployV1RockethConfig(opts, chainId, chain),
   );
 
-  for (const name of [
-    "ENSRegistry",
-    "Root",
-    "BaseRegistrarImplementation",
-    "RegistrarSecurityController",
-    "ReverseRegistrar",
-    "DefaultReverseRegistrar",
-    "NameWrapper",
-    "PublicResolver",
-    "BatchGatewayProvider",
-    "UniversalResolver",
-    "MigrationHelper",
-  ]) {
-    try {
-      console.log(`v1 ${name}: ${env.get(name).address}`);
-    } catch {
-      console.log(`v1 ${name}: <not deployed>`);
-    }
-  }
+  logDeployedAddresses(
+    env,
+    [
+      "ENSRegistry",
+      "Root",
+      "BaseRegistrarImplementation",
+      "RegistrarSecurityController",
+      "ReverseRegistrar",
+      "DefaultReverseRegistrar",
+      "NameWrapper",
+      "PublicResolver",
+      "BatchGatewayProvider",
+      "UniversalResolver",
+      "MigrationHelper",
+    ],
+    "v1 ",
+  );
 
   return env;
 }
@@ -3095,26 +3125,8 @@ export async function deployV2(opts: DeployV2Options) {
   // A fresh deployment archives any existing namespace and therefore must
   // persist the new one, so it implies saving regardless of the flag.
   const persist = Boolean(opts.saveDeployments) || Boolean(opts.fresh);
-  if (!opts.rpcUrl && !opts.provider) {
-    throw new Error("Missing rpcUrl or provider");
-  }
-  let provider =
-    opts.provider && opts.rpcCompatibility
-      ? withRpcCompatibility(opts.provider, Boolean(opts.debugRpc))
-      : opts.provider;
-  const chainId = opts.chainId
-    ? parseNumber(opts.chainId, network.chain.id)
-    : provider
-      ? await getProviderChainId(provider)
-      : network.chain.id;
-  if (provider && opts.chainId) {
-    provider = chainIdOverrideProvider(provider, chainId);
-  }
-  const chain = forkChain(
-    opts.network,
-    chainId,
-    opts.rpcUrl ?? network.chain.rpcUrls.default.http[0],
-  );
+  const { provider, chainId, chain } =
+    await resolveDeployProviderAndChain(opts);
   if (opts.deferV1OwnerTransactions && !opts.deferredV1OwnerTransactionsFile) {
     throw new Error(
       "deferring v1 owner transactions requires an output file; pass --deferred-v1-owner-transactions-file so the deferred calldata is persisted for execute-owner-txs",
@@ -3161,7 +3173,7 @@ export async function deployV2(opts: DeployV2Options) {
     recordDeploymentMetadata(deploymentsDir, deploymentNetwork, chainId);
   }
 
-  const names = [
+  logDeployedAddresses(env, [
     "ETHRegistry",
     "UserRegistryImpl",
     "PermissionedResolverImpl",
@@ -3176,14 +3188,7 @@ export async function deployV2(opts: DeployV2Options) {
     "UpgradableUniversalResolverProxy",
     "ReverseRegistrarAdapter",
     "DefaultReverseRegistrarAdapter",
-  ];
-  for (const name of names) {
-    try {
-      console.log(`${name}: ${env.get(name).address}`);
-    } catch {
-      console.log(`${name}: <not deployed>`);
-    }
-  }
+  ]);
   return env;
 }
 
