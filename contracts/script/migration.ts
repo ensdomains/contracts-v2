@@ -175,11 +175,22 @@ export function parseMigrationNetwork(
 function loadDotEnv(filePath: string): void {
   if (!existsSync(filePath)) return;
   for (const line of readFileSync(filePath, "utf-8").split(/\r?\n/)) {
-    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)\s*$/);
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
     if (!match) continue;
-    const [, key, rawValue] = match;
+    const [, key] = match;
     if (process.env[key]) continue;
-    process.env[key] = rawValue.replace(/^["']|["']$/g, "");
+    let value = match[2].trim();
+    const quoted =
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"));
+    if (quoted) {
+      value = value.slice(1, -1);
+    } else {
+      // An unquoted value ends where an inline comment begins (whitespace
+      // followed by '#'); surrounding whitespace is not part of the value.
+      value = value.replace(/\s+#.*$/, "").trim();
+    }
+    process.env[key] = value;
   }
 }
 
@@ -5055,6 +5066,7 @@ export async function main(argv = process.argv): Promise<void> {
       const ownerAddress =
         opts.owner ?? (network === "mainnet" ? MAINNET_DAO : deployerAddress);
       const urManagerAddress = opts.urManager ?? deployerAddress;
+      const v1OwnerAddress = opts.v1Owner ?? NETWORKS[network].defaultV1Owner;
       await deployV2({
         ...networkOpts,
         deployerPrivateKey: deployerKey,
@@ -5066,7 +5078,16 @@ export async function main(argv = process.argv): Promise<void> {
           envPrivateKey("UR_MANAGER_KEY"),
           deployerKey,
         ]),
-        v1Owner: opts.v1Owner ?? NETWORKS[network].defaultV1Owner,
+        v1Owner: v1OwnerAddress,
+        // Wire the v1-owner account to a local key when one controls it, so it
+        // is not left as a keyless node-signed address. Signers are keyed by
+        // address, so a keyless v1-owner sharing the deployer's address would
+        // otherwise overwrite the deployer's local signer and route every
+        // deploy transaction through node-side signing the RPC cannot perform.
+        v1OwnerPrivateKey: signerKeyForAccount(v1OwnerAddress, [
+          envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
+          deployerKey,
+        ]),
         fresh: !opts.resume,
         saveDeployments: true,
         tags: opts.tags ? opts.tags.split(",").filter(Boolean) : undefined,

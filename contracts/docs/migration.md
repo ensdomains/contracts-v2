@@ -94,6 +94,7 @@ Phase 1 sends many transactions, so a deploy can be interrupted partway. Re-run 
 | `premigration status` | Print the current pre-migration checkpoint JSON |
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 |
 | `phase deploy-v2` | Phase 1: deploy the v2 migration contracts (incl. reverse-registrar adapters) with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy instead) |
+| `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the Phase 1 deferred-tx replay on an already-migrated chain); signed by the prior renewer's owner / urManager |
 | `phase disable-v1-registrars` | Phase 3: disable v1 registrar controllers |
 | `phase verify-v1-registrars-disabled` | Verify v1 registrar controllers are disabled |
 | `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable |
@@ -197,12 +198,27 @@ bun run migration -- phase deploy-v2 --network sepolia \
   --defer-v1-owner-transactions \
   --deferred-v1-owner-transactions-file .dev/sepolia-live/phase1-v1owner.jsonl
 
+# Re-deploying onto an ALREADY-MIGRATED chain only: the v1 BaseRegistrar is still
+# owned by the prior deployment's ETHRenewerV1, so reclaim it to the v1 owner before
+# replaying the deferred txs — one of them is a v1 BaseRegistrar setResolver, which is
+# owner-gated. Signed by the prior renewer's owner (urManager). No-op on a pristine chain.
+bun run migration -- phase reclaim-v1-registrar-ownership --network sepolia \
+  --private-key $UR_MANAGER_KEY
+
 # v1 owner replays the deferred setResolver + reverse-adapter grants
 bun run migration -- phase execute-owner-txs --network sepolia \
   --role v1Owner --file .dev/sepolia-live/phase1-v1owner.jsonl
 ```
 
 `phase deploy-v2` archives any existing `sepolia` namespace (to `sepolia-<YYYYMMDD>-r<N>`) and deploys fresh into the default `sepolia` namespace; every later phase auto-resolves addresses from `deployments/sepolia/`. If phase 1 is interrupted, re-run the same command with `--resume` to continue.
+
+> **Deployer and `.env` hygiene.** `DEPLOYER_KEY` should be a freshly funded EOA. If it
+> happens to be the same address as the v1 owner, `phase deploy-v2` now wires that address
+> with the v1-owner key (from `SEPOLIA_V1_OWNER_KEY`/`V1_OWNER_KEY`, falling back to
+> `DEPLOYER_KEY`) so it keeps a local signer; previously a keyless same-address v1 owner
+> would shadow the deployer's signer and every deploy tx would fail node-side signing.
+> Keep `.env` values free of inline `#` comments — the loader trims a whitespace-introduced
+> inline comment, but quote the value if it must contain a literal `#`.
 
 ### Phases 2–7 — wire up and cut over
 

@@ -26,7 +26,8 @@ generated/
 # Deployment records: ignore runtime/rehearsal runs, track the real deploys
 deployments/*
 !deployments/README.md
-!deployments/sepolia-official-v1-20260525-r2/
+!deployments/sepolia/
+!deployments/sepolia-*/
 !deployments/v1/
 deployments/v1/*
 !deployments/v1/sepolia/
