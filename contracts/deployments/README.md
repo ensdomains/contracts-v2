@@ -111,19 +111,18 @@ deploy-v2` always persists its deployment into the chosen `--deployment-network`
 
 ## Git tracking
 
-`.gitignore` ignores everything under `deployments/` except this `README.md` and
-an explicit allow-list of namespaces, so throwaway rehearsal and archived
-deployment runs do not clutter the repository:
+`.gitignore` tracks real deployment namespaces by default and ignores only the
+local rehearsal/runtime ones, so committed sets are not dimmed by editors while
+throwaway runs stay out of the repository:
 
 ```
-deployments/*
-!deployments/README.md
-!deployments/sepolia-official-v1-20260525-r2/   # the tracked canonical v2 set
-!deployments/v1/
-deployments/v1/*
-!deployments/v1/sepolia/                         # the tracked v1 references
+deployments/*-fork/        # fork full --save-deployments rehearsal namespaces
+deployments/*-clean-*/      # clean-testnet runtime namespaces
+deployments/v1/*            # v1 references are ignored …
+!deployments/v1/sepolia/    # … except the tracked sepolia v1 references
 ```
 
-To commit a new deployment (e.g. a fresh set, or an archived predecessor worth
-keeping), add a matching `!deployments/<namespace>/` allow-list line. Everything
-else stays local-only by design.
+A live namespace (`deployments/sepolia/`) and dated archives
+(`deployments/sepolia-<YYYYMMDD>-r<N>/`) are therefore committed automatically —
+no allow-list entry needed. To deliberately keep a namespace local-only, name it
+with a `-fork` / `-clean-` suffix or add a matching ignore line.

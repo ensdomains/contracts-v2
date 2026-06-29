@@ -23,12 +23,11 @@ lcov.info
 
 generated/
 
-# Deployment records: ignore runtime/rehearsal runs, track the real deploys
-deployments/*
-!deployments/README.md
-!deployments/sepolia/
-!deployments/sepolia-*/
-!deployments/v1/
+# Deployment records: track real deploys (live namespaces + dated archives) by
+# default; ignore only the local rehearsal/runtime namespaces so editors do not
+# dim the committed sets and throwaway runs stay out of the repo.
+deployments/*-fork/
+deployments/*-clean-*/
 deployments/v1/*
 !deployments/v1/sepolia/
 
