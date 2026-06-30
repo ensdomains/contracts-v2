@@ -1,6 +1,7 @@
 import { loadDeploymentsFromFiles } from "@rocketh/node";
 import { Command } from "commander";
 import { resolve } from "path";
+import { isProxyArtifact } from "./addressDocs.js";
 
 const currentPath = new URL(import.meta.url).pathname;
 const defaultDeploymentsDir = resolve(currentPath, "../..", "deployments");
@@ -48,15 +49,6 @@ for (const [chain, root] of Object.entries(deploymentRoots)) {
 
   console.log(chain);
   console.log(formatMarkdownTable(contracts));
-}
-
-function isProxyArtifact(name: string, names: Set<string>): boolean {
-  for (const suffix of ["_Implementation", "_Proxy"]) {
-    if (name.endsWith(suffix) && names.has(name.slice(0, -suffix.length))) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function formatMarkdownTable(contracts: Array<{ name: string; address: string }>): string {

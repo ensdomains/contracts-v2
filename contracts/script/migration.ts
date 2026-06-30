@@ -43,6 +43,7 @@ import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedR
 import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
 import { config as rockethConfig } from "../rocketh/config.js";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
+import { generateAddressMarkdown } from "./addressDocs.js";
 import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
   ROLES,
@@ -3201,6 +3202,18 @@ export async function deployV2(opts: DeployV2Options) {
     "ReverseRegistrarAdapter",
     "DefaultReverseRegistrarAdapter",
   ]);
+
+  // Refresh the generated address table for a persisted deploy so the docs
+  // track the namespace just written. Fork/non-persisted rehearsals are skipped.
+  if (persist) {
+    const docPath = await generateAddressMarkdown({
+      deploymentsDir,
+      namespace: deploymentNetwork,
+      docName: opts.network,
+    });
+    console.log(`address docs: ${docPath}`);
+  }
+
   return env;
 }
 
