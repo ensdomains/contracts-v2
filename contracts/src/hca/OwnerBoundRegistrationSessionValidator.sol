@@ -513,12 +513,6 @@ contract OwnerBoundRegistrationSessionValidator {
                     continue;
                 }
                 if (selector == REGISTER_SELECTOR) {
-                    if (_readAddress(execution.callData, 4 + 32) != owner) {
-                        revert PolicyRuleFailed();
-                    }
-                    if (_readAddress(execution.callData, 4 + 128) != policyResolver) {
-                        revert PolicyRuleFailed();
-                    }
                     continue;
                 }
                 revert ActionNotAllowed(execution.target, selector);
