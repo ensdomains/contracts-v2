@@ -107,26 +107,44 @@ contract MockRegistrationIntentExecutor is IExecutor {
         internal
         pure
     {
-        (, , , , , , , , , , , bytes memory signedOperationData) =
-            abi.decode(
-                signature[20:],
-                (
-                    address,
-                    address,
-                    uint48,
-                    address,
-                    uint256,
-                    address,
-                    address,
-                    uint256,
-                    uint256,
-                    bytes,
-                    bytes,
-                    bytes
-                )
-            );
+        if (signature.length < 20 + 12 * 32) {
+            revert OperationDataMismatch();
+        }
 
-        if (keccak256(signedOperationData) != keccak256(operationData)) {
+        uint256 operationDataHead = 20 + 11 * 32;
+        uint256 operationDataOffset;
+        assembly ("memory-safe") {
+            operationDataOffset := calldataload(add(signature.offset, operationDataHead))
+        }
+
+        uint256 lengthOffset = 20 + operationDataOffset;
+        if (signature.length < lengthOffset + 32) {
+            revert OperationDataMismatch();
+        }
+
+        uint256 signedOperationDataLength;
+        assembly ("memory-safe") {
+            signedOperationDataLength := calldataload(add(signature.offset, lengthOffset))
+        }
+
+        uint256 signedOperationDataOffset = lengthOffset + 32;
+        if (signature.length < signedOperationDataOffset + signedOperationDataLength) {
+            revert OperationDataMismatch();
+        }
+
+        bytes32 signedOperationDataHash;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            calldatacopy(
+                ptr,
+                add(signature.offset, signedOperationDataOffset),
+                signedOperationDataLength
+            )
+            signedOperationDataHash := keccak256(ptr, signedOperationDataLength)
+            mstore(0x40, add(ptr, and(add(signedOperationDataLength, 0x3f), not(0x1f))))
+        }
+
+        if (signedOperationDataHash != keccak256(operationData)) {
             revert OperationDataMismatch();
         }
     }
