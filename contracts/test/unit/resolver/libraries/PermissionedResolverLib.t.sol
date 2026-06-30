@@ -7,7 +7,7 @@ import {PermissionedResolverLib} from "~src/resolver/libraries/PermissionedResol
 
 contract PermissionedResolverLibTest is Test {
     function test_resource_string(string calldata s) external {
-        assertEq(PermissionedResolverLib.resource(s), _hash(bytes(s)));
+        assertEq(PermissionedResolverLib.resource(s), _hash(abi.encodePacked(s)));
     }
 
     function test_resource_uint256(uint256 x) external {

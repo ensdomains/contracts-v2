@@ -1,17 +1,15 @@
 import {
   decodeFunctionResult,
   encodeFunctionData,
-  getContract,
   namehash,
   zeroAddress,
 } from "viem";
-import { artifacts } from "@rocketh";
 
 import type { DevnetEnvironment } from "../setup.js";
 import { MAX_EXPIRY, STATUS } from "../deploy-constants.js";
-import { dnsEncodeName } from "../../test/utils/utils.js";
-import { dnsDecodeName } from "../../lib/ens-contracts/test/fixtures/dnsDecodeName.js";
+import { COIN_TYPE_ETH, dnsEncodeName } from "../../test/utils/utils.js";
 import { getNameData } from "./registry.js";
+import { MULTICALL_ABI, PROFILE_ABI } from "../../test/utils/resolvers.js";
 
 /**
  * Display name information in a formatted table
@@ -25,24 +23,23 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
     const node = namehash(name);
 
     const data = await getNameData(env, name);
-    const { abi } = env.v2.PermissionedResolverImpl;
 
     // Batch addr and text resolution using resolver multicall
     const resolverCalls = [
       encodeFunctionData({
-        abi,
+        abi: PROFILE_ABI,
         functionName: "addr",
-        args: [node],
+        args: [node, COIN_TYPE_ETH],
       }),
       encodeFunctionData({
-        abi,
+        abi: PROFILE_ABI,
         functionName: "text",
         args: [node, "description"],
       }),
     ];
 
     const multicallData = encodeFunctionData({
-      abi,
+      abi: MULTICALL_ABI,
       functionName: "multicall",
       args: [resolverCalls],
     });
@@ -59,19 +56,19 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
 
       // Decode the multicall result - returns array of bytes directly
       const results = decodeFunctionResult({
-        abi,
+        abi: MULTICALL_ABI,
         functionName: "multicall",
         data: result,
       });
 
       // Decode individual results
       ethAddress = decodeFunctionResult({
-        abi,
+        abi: PROFILE_ABI,
         functionName: "addr",
         data: results[0],
       });
       description = decodeFunctionResult({
-        abi,
+        abi: PROFILE_ABI,
         functionName: "text",
         data: results[1],
       });
@@ -104,35 +101,33 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
  * AliasChanged events, see Approach 2 (planned for the indexer script).
  */
 export async function showAlias(env: DevnetEnvironment, names: string[]) {
-  const aliasData = [];
-
-  for (const name of names) {
-    const [resolverAddress] = await env.v2.UniversalResolver.read.findResolver([
-      dnsEncodeName(name),
-    ]);
-    if (resolverAddress === zeroAddress) continue;
-    const resolver = env.castPermissionedResolver(resolverAddress);
-    try {
-      const aliasResult = await resolver.read.getAlias([dnsEncodeName(name)]);
-      if (aliasResult.length > 2) {
-        const aliasTarget = dnsDecodeName(aliasResult);
-        aliasData.push({
-          Name: name,
-          Resolver: truncateAddress(resolverAddress),
-          "Alias Target": aliasTarget,
-        });
-      }
-    } catch {
-      // getAlias may fail if resolver doesn't support it
-    }
-  }
-
-  if (aliasData.length > 0) {
-    console.log(`\nAlias Information:`);
-    console.table(aliasData);
-  } else {
-    console.log(`\nNo aliases found.`);
-  }
+  // const aliasData = [];
+  // for (const name of names) {
+  //   const [resolverAddress] = await env.v2.UniversalResolver.read.findResolver([
+  //     dnsEncodeName(name),
+  //   ]);
+  //   if (resolverAddress === zeroAddress) continue;
+  //   const resolver = env.castPermissionedResolver(resolverAddress);
+  //   try {
+  //     const aliasResult = await resolver.read.getAlias([dnsEncodeName(name)]);
+  //     if (aliasResult.length > 2) {
+  //       const aliasTarget = dnsDecodeName(aliasResult);
+  //       aliasData.push({
+  //         Name: name,
+  //         Resolver: truncateAddress(resolverAddress),
+  //         "Alias Target": aliasTarget,
+  //       });
+  //     }
+  //   } catch {
+  //     // getAlias may fail if resolver doesn't support it
+  //   }
+  // }
+  // if (aliasData.length > 0) {
+  //   console.log(`\nAlias Information:`);
+  //   console.table(aliasData);
+  // } else {
+  //   console.log(`\nNo aliases found.`);
+  // }
 }
 
 export function truncateAddress(addr: string | undefined) {
