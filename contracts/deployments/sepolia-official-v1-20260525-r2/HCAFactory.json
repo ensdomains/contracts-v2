@@ -1,0 +1,688 @@
+{
+  "address": "0x358680728dedb552adaa9f5eb5d4395b291cf943",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation_",
+          "type": "address"
+        },
+        {
+          "internalType": "contract IHCAInitDataParser",
+          "name": "initDataParser_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "EthTransferFailed",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ],
+      "name": "HCAImplementationNotSelectable",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableInvalidOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "hcaOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "hca",
+          "type": "address"
+        }
+      ],
+      "name": "AccountCreated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ],
+      "name": "AccountImplementationSet",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "accountImplementation",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "initDataParser",
+          "type": "address"
+        }
+      ],
+      "name": "NewHCAImplementation",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "DEFERRED_IMPLEMENTATION",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "accountHCAOf",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "hca",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "accountImplementationOf",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "accountImplementation",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "computeAccountAddress",
+      "outputs": [
+        {
+          "internalType": "address payable",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes",
+          "name": "initData",
+          "type": "bytes"
+        }
+      ],
+      "name": "createAccount",
+      "outputs": [
+        {
+          "internalType": "address payable",
+          "name": "hca",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "hca",
+          "type": "address"
+        }
+      ],
+      "name": "getAccountOwner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "hcaOwner",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes",
+          "name": "initData",
+          "type": "bytes"
+        }
+      ],
+      "name": "getOwnerFromHCAInitdata",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "hcaOwner",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "implementation",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "initDataParser",
+      "outputs": [
+        {
+          "internalType": "contract IHCAInitDataParser",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "accountImplementation",
+          "type": "address"
+        }
+      ],
+      "name": "setAccountImplementation",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation_",
+          "type": "address"
+        },
+        {
+          "internalType": "contract IHCAInitDataParser",
+          "name": "initDataParser_",
+          "type": "address"
+        }
+      ],
+      "name": "setImplementation",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "contractName": "HCAFactory",
+  "sourceName": "src/hca/HCAFactory.sol",
+  "bytecode": "0x60a060405234801561000f575f5ffd5b5060405161155c38038061155c83398101604081905261002e91610156565b806001600160a01b03811661005c57604051631e4fbdf760e01b81525f600482015260240160405180910390fd5b610065816100e3565b50600180546001600160a01b038086166001600160a01b031992831617909255600280549285169290911691909117905560405130906100a490610132565b6001600160a01b039091168152602001604051809103905ff0801580156100cd573d5f5f3e3d5ffd5b506001600160a01b0316608052506101a0915050565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6104e58061107783390190565b6001600160a01b0381168114610153575f5ffd5b50565b5f5f5f60608486031215610168575f5ffd5b83516101738161013f565b60208501519093506101848161013f565b60408501519092506101958161013f565b809150509250925092565b608051610eb16101c65f395f81816101f6015281816104b001526106960152610eb15ff3fe6080604052600436106100d9575f3560e01c80638f8fbab41161007c578063cade6a5d11610057578063cade6a5d1461022b578063d2f308f71461024a578063eaeae2e014610281578063f2fde38b146102a0575f5ffd5b80638f8fbab4146101c6578063a73d253b146101e5578063a9ea858f14610218575f5ffd5b806351df58b6116100b757806351df58b6146101585780635c60da1b14610177578063715018a6146101965780638da5cb5b146101aa575f5ffd5b806309766da2146100dd578063128af67c146100fe578063442b172c14610139575b5f5ffd5b3480156100e8575f5ffd5b506100fc6100f7366004610b0f565b6102bf565b005b348015610109575f5ffd5b5061011d610118366004610b2a565b61032b565b6040516001600160a01b03909116815260200160405180910390f35b348015610144575f5ffd5b5061011d610153366004610b0f565b6103bc565b348015610163575f5ffd5b5060025461011d906001600160a01b031681565b348015610182575f5ffd5b5060015461011d906001600160a01b031681565b3480156101a1575f5ffd5b506100fc61040e565b3480156101b5575f5ffd5b505f546001600160a01b031661011d565b3480156101d1575f5ffd5b506100fc6101e0366004610b98565b610421565b3480156101f0575f5ffd5b5061011d7f000000000000000000000000000000000000000000000000000000000000000081565b61011d610226366004610b2a565b610493565b348015610236575f5ffd5b5061011d610245366004610b0f565b6105b0565b348015610255575f5ffd5b5061011d610264366004610b0f565b6001600160a01b039081165f908152600460205260409020541690565b34801561028c575f5ffd5b5061011d61029b366004610b0f565b6105c0565b3480156102ab575f5ffd5b506100fc6102ba366004610b0f565b61060c565b6102c881610667565b335f81815260046020526040808220805473ffffffffffffffffffffffffffffffffffffffff19166001600160a01b03861690811790915590519092917f95e97e89102832f2ee5f59162c972c394da5c44eba158043aa5d227ea27ea5ae91a350565b6002546040517ff9660ea10000000000000000000000000000000000000000000000000000000081525f916001600160a01b03169063f9660ea1906103769086908690600401610bcf565b602060405180830381865afa158015610391573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906103b59190610bfd565b9392505050565b6001600160a01b038082165f90815260036020526040902054168015806103fd5750816001600160a01b03166103f182610722565b6001600160a01b031614155b1561040957505f919050565b919050565b61041661073f565b61041f5f610784565b565b61042961073f565b6001805473ffffffffffffffffffffffffffffffffffffffff199081166001600160a01b03858116918217909355600280549092169284169283179091556040517f608e8e3695b40b0624fa99fb9ddc5d031b73505828e0a23810d212f26aebe558905f90a35050565b5f5f61049f848461032b565b90505f6104ab826107e0565b90505f7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316826001600160a01b0316036104fa576104f18284610810565b9450905061053f565b61053a828488888080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201919091525061083692505050565b945090505b806105a7576001600160a01b038481165f81815260036020526040808220805473ffffffffffffffffffffffffffffffffffffffff19169488169485179055519192917fac631f3001b55ea1509cf3d7e74898f85392a61a76e8149181ae1259622dabc89190a35b50505092915050565b5f6105ba82610722565b92915050565b5f6001600160a01b0382166105d657505f919050565b6105df82610722565b6001600160a01b038181165f9081526003602052604090205491925083811691161461040957505f919050565b61061461073f565b6001600160a01b03811661065b576040517f1e4fbdf70000000000000000000000000000000000000000000000000000000081525f60048201526024015b60405180910390fd5b61066481610784565b50565b6001546001600160a01b03828116911614801561068c57506001600160a01b03811615155b156106945750565b7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316816001600160a01b03161480156106dd57506001600160a01b03811615155b156106e55750565b6040517fbf4480a40000000000000000000000000000000000000000000000000000000081526001600160a01b0382166004820152602401610652565b5f6105ba606083901b6bffffffffffffffffffffffff19166108b8565b5f546001600160a01b0316331461041f576040517f118cdaa7000000000000000000000000000000000000000000000000000000008152336004820152602401610652565b5f80546001600160a01b0383811673ffffffffffffffffffffffffffffffffffffffff19831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6001600160a01b038082165f9081526004602052604090205416806104095750506001546001600160a01b031690565b5f5f61082b848460405180602001604052805f8152506108c3565b915091509250929050565b5f5f6108ab85858560405160240161084e9190610c18565b60408051601f198184030181529190526020810180517bffffffffffffffffffffffffffffffffffffffffffffffffffffffff167f4b6a1419000000000000000000000000000000000000000000000000000000001790526108c3565b915091505b935093915050565b5f6105ba82306109a3565b5f5f6108ce84610722565b90505f816001600160a01b03163b119150816109115761090b346108f287866109fa565b606087901b6bffffffffffffffffffffffff1916610a92565b506108b0565b5f816001600160a01b0316346040515f6040518083038185875af1925050503d805f811461095a576040519150601f19603f3d011682016040523d82523d5f602084013e61095f565b606091505b505090508061099a576040517f6d963f8800000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b50935093915050565b5f604051825f5260ff600b53836020527f21c35dbe1b344a2488cf3321d6ce542f8e9f305544ff09e4993a62319a497c1f6040526055600b20601452806040525061d6945f52600160345350506017601e20919050565b606081515f03610a48576040518060e0016040528060b88152602001610cc260b891398360601b604051602001610a32929190610c64565b60405160208183030381529060405290506105ba565b6040518061014001604052806101028152602001610d7a61010291398360601b83604051602001610a7b93929190610c8d565b604051602081830303815290604052905092915050565b5f6f67363d3d37363d34f03d5260086018f35f52816010805ff580610abe5763301164255f526004601cfd5b8060145261d6945f5260016034536017601e2091505f5f85516020870188855af1823b02610af35763301164255f526004601cfd5b509392505050565b6001600160a01b0381168114610664575f5ffd5b5f60208284031215610b1f575f5ffd5b81356103b581610afb565b5f5f60208385031215610b3b575f5ffd5b823567ffffffffffffffff811115610b51575f5ffd5b8301601f81018513610b61575f5ffd5b803567ffffffffffffffff811115610b77575f5ffd5b856020828401011115610b88575f5ffd5b6020919091019590945092505050565b5f5f60408385031215610ba9575f5ffd5b8235610bb481610afb565b91506020830135610bc481610afb565b809150509250929050565b60208152816020820152818360408301375f818301604090810191909152601f909201601f19160101919050565b5f60208284031215610c0d575f5ffd5b81516103b581610afb565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f83011684010191505092915050565b5f81518060208401855e5f93019283525090919050565b5f610c6f8285610c4d565b6bffffffffffffffffffffffff199390931683525050601401919050565b5f610c988286610c4d565b6bffffffffffffffffffffffff1985168152610cb76014820185610c4d565b969550505050505056fe607660426014828201600c395f5191823b156062578282937f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc557fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b5f80a25f395ff35b82634c9c8ce360e01b5f5260045260245ffdfe3615604057365f80375f8036817f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d5f803e15603c573d5ff35b3d5ffd5b0060426100c0818101601481600c395f5190813b1560ac5760145f8381949382947f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc55817fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b8480a260017f90b772c2cb8a51aa7a8a65fc23543c6d022d5b3f8e2b92eed79fba7eef8293005d601319813803019384910183395af43d5f803e1560a85781905f395ff35b3d5ffd5b50634c9c8ce360e01b5f5260045260245ffdfe3615604057365f80375f8036817f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d5f803e15603c573d5ff35b3d5ffd5b00a2646970667358221220ccf07aaffe3a782a26f10d43239e1493fa3b1a104f0ea0b4f6803087f29beb7964736f6c634300081b003360a0604052348015600e575f5ffd5b506040516104e53803806104e5833981016040819052602b916061565b6001600160a01b03811660515760405163420eb10160e11b815260040160405180910390fd5b6001600160a01b0316608052608c565b5f602082840312156070575f5ffd5b81516001600160a01b03811681146085575f5ffd5b9392505050565b60805161043c6100a95f395f8181603d015260c0015261043c5ff3fe608060405260043610610028575f3560e01c8063319c22bb1461002c5780634f1ef2861461007b575b5f5ffd5b348015610037575f5ffd5b5061005f7f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b03909116815260200160405180910390f35b61008e610089366004610355565b610090565b005b6040517f442b172c0000000000000000000000000000000000000000000000000000000081523060048201525f907f00000000000000000000000000000000000000000000000000000000000000006001600160a01b03169063442b172c90602401602060405180830381865afa15801561010d573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061013191906103d5565b90506001600160a01b038116610173576040517fd815aa7d00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b336001600160a01b038216146101cb576040517f633d83ce0000000000000000000000000000000000000000000000000000000081523360048201526001600160a01b03821660248201526044015b60405180910390fd5b836001600160a01b03163b5f03610219576040517f1e1228950000000000000000000000000000000000000000000000000000000081526001600160a01b03851660048201526024016101c2565b7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc80547fffffffffffffffffffffffff0000000000000000000000000000000000000000166001600160a01b0386169081179091556040517fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b905f90a25f8290036102a45750505050565b5f846001600160a01b031684846040516102bf9291906103f7565b5f60405180830381855af49150503d805f81146102f7576040519150601f19603f3d011682016040523d82523d5f602084013e6102fc565b606091505b5050905080610337576040517f107fd27400000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b5050505050565b6001600160a01b0381168114610352575f5ffd5b50565b5f5f5f60408486031215610367575f5ffd5b83356103728161033e565b9250602084013567ffffffffffffffff81111561038d575f5ffd5b8401601f8101861361039d575f5ffd5b803567ffffffffffffffff8111156103b3575f5ffd5b8660208284010111156103c4575f5ffd5b939660209190910195509293505050565b5f602082840312156103e5575f5ffd5b81516103f08161033e565b9392505050565b818382375f910190815291905056fea2646970667358221220b691fa0ff58a82add9194235591310228bb81fde4de3e7c3299de2ce8d4c7d8664736f6c634300081b0033",
+  "deployedBytecode": "0x6080604052600436106100d9575f3560e01c80638f8fbab41161007c578063cade6a5d11610057578063cade6a5d1461022b578063d2f308f71461024a578063eaeae2e014610281578063f2fde38b146102a0575f5ffd5b80638f8fbab4146101c6578063a73d253b146101e5578063a9ea858f14610218575f5ffd5b806351df58b6116100b757806351df58b6146101585780635c60da1b14610177578063715018a6146101965780638da5cb5b146101aa575f5ffd5b806309766da2146100dd578063128af67c146100fe578063442b172c14610139575b5f5ffd5b3480156100e8575f5ffd5b506100fc6100f7366004610b0f565b6102bf565b005b348015610109575f5ffd5b5061011d610118366004610b2a565b61032b565b6040516001600160a01b03909116815260200160405180910390f35b348015610144575f5ffd5b5061011d610153366004610b0f565b6103bc565b348015610163575f5ffd5b5060025461011d906001600160a01b031681565b348015610182575f5ffd5b5060015461011d906001600160a01b031681565b3480156101a1575f5ffd5b506100fc61040e565b3480156101b5575f5ffd5b505f546001600160a01b031661011d565b3480156101d1575f5ffd5b506100fc6101e0366004610b98565b610421565b3480156101f0575f5ffd5b5061011d7f000000000000000000000000000000000000000000000000000000000000000081565b61011d610226366004610b2a565b610493565b348015610236575f5ffd5b5061011d610245366004610b0f565b6105b0565b348015610255575f5ffd5b5061011d610264366004610b0f565b6001600160a01b039081165f908152600460205260409020541690565b34801561028c575f5ffd5b5061011d61029b366004610b0f565b6105c0565b3480156102ab575f5ffd5b506100fc6102ba366004610b0f565b61060c565b6102c881610667565b335f81815260046020526040808220805473ffffffffffffffffffffffffffffffffffffffff19166001600160a01b03861690811790915590519092917f95e97e89102832f2ee5f59162c972c394da5c44eba158043aa5d227ea27ea5ae91a350565b6002546040517ff9660ea10000000000000000000000000000000000000000000000000000000081525f916001600160a01b03169063f9660ea1906103769086908690600401610bcf565b602060405180830381865afa158015610391573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906103b59190610bfd565b9392505050565b6001600160a01b038082165f90815260036020526040902054168015806103fd5750816001600160a01b03166103f182610722565b6001600160a01b031614155b1561040957505f919050565b919050565b61041661073f565b61041f5f610784565b565b61042961073f565b6001805473ffffffffffffffffffffffffffffffffffffffff199081166001600160a01b03858116918217909355600280549092169284169283179091556040517f608e8e3695b40b0624fa99fb9ddc5d031b73505828e0a23810d212f26aebe558905f90a35050565b5f5f61049f848461032b565b90505f6104ab826107e0565b90505f7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316826001600160a01b0316036104fa576104f18284610810565b9450905061053f565b61053a828488888080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201919091525061083692505050565b945090505b806105a7576001600160a01b038481165f81815260036020526040808220805473ffffffffffffffffffffffffffffffffffffffff19169488169485179055519192917fac631f3001b55ea1509cf3d7e74898f85392a61a76e8149181ae1259622dabc89190a35b50505092915050565b5f6105ba82610722565b92915050565b5f6001600160a01b0382166105d657505f919050565b6105df82610722565b6001600160a01b038181165f9081526003602052604090205491925083811691161461040957505f919050565b61061461073f565b6001600160a01b03811661065b576040517f1e4fbdf70000000000000000000000000000000000000000000000000000000081525f60048201526024015b60405180910390fd5b61066481610784565b50565b6001546001600160a01b03828116911614801561068c57506001600160a01b03811615155b156106945750565b7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316816001600160a01b03161480156106dd57506001600160a01b03811615155b156106e55750565b6040517fbf4480a40000000000000000000000000000000000000000000000000000000081526001600160a01b0382166004820152602401610652565b5f6105ba606083901b6bffffffffffffffffffffffff19166108b8565b5f546001600160a01b0316331461041f576040517f118cdaa7000000000000000000000000000000000000000000000000000000008152336004820152602401610652565b5f80546001600160a01b0383811673ffffffffffffffffffffffffffffffffffffffff19831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6001600160a01b038082165f9081526004602052604090205416806104095750506001546001600160a01b031690565b5f5f61082b848460405180602001604052805f8152506108c3565b915091509250929050565b5f5f6108ab85858560405160240161084e9190610c18565b60408051601f198184030181529190526020810180517bffffffffffffffffffffffffffffffffffffffffffffffffffffffff167f4b6a1419000000000000000000000000000000000000000000000000000000001790526108c3565b915091505b935093915050565b5f6105ba82306109a3565b5f5f6108ce84610722565b90505f816001600160a01b03163b119150816109115761090b346108f287866109fa565b606087901b6bffffffffffffffffffffffff1916610a92565b506108b0565b5f816001600160a01b0316346040515f6040518083038185875af1925050503d805f811461095a576040519150601f19603f3d011682016040523d82523d5f602084013e61095f565b606091505b505090508061099a576040517f6d963f8800000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b50935093915050565b5f604051825f5260ff600b53836020527f21c35dbe1b344a2488cf3321d6ce542f8e9f305544ff09e4993a62319a497c1f6040526055600b20601452806040525061d6945f52600160345350506017601e20919050565b606081515f03610a48576040518060e0016040528060b88152602001610cc260b891398360601b604051602001610a32929190610c64565b60405160208183030381529060405290506105ba565b6040518061014001604052806101028152602001610d7a61010291398360601b83604051602001610a7b93929190610c8d565b604051602081830303815290604052905092915050565b5f6f67363d3d37363d34f03d5260086018f35f52816010805ff580610abe5763301164255f526004601cfd5b8060145261d6945f5260016034536017601e2091505f5f85516020870188855af1823b02610af35763301164255f526004601cfd5b509392505050565b6001600160a01b0381168114610664575f5ffd5b5f60208284031215610b1f575f5ffd5b81356103b581610afb565b5f5f60208385031215610b3b575f5ffd5b823567ffffffffffffffff811115610b51575f5ffd5b8301601f81018513610b61575f5ffd5b803567ffffffffffffffff811115610b77575f5ffd5b856020828401011115610b88575f5ffd5b6020919091019590945092505050565b5f5f60408385031215610ba9575f5ffd5b8235610bb481610afb565b91506020830135610bc481610afb565b809150509250929050565b60208152816020820152818360408301375f818301604090810191909152601f909201601f19160101919050565b5f60208284031215610c0d575f5ffd5b81516103b581610afb565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f83011684010191505092915050565b5f81518060208401855e5f93019283525090919050565b5f610c6f8285610c4d565b6bffffffffffffffffffffffff199390931683525050601401919050565b5f610c988286610c4d565b6bffffffffffffffffffffffff1985168152610cb76014820185610c4d565b969550505050505056fe607660426014828201600c395f5191823b156062578282937f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc557fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b5f80a25f395ff35b82634c9c8ce360e01b5f5260045260245ffdfe3615604057365f80375f8036817f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d5f803e15603c573d5ff35b3d5ffd5b0060426100c0818101601481600c395f5190813b1560ac5760145f8381949382947f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc55817fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b8480a260017f90b772c2cb8a51aa7a8a65fc23543c6d022d5b3f8e2b92eed79fba7eef8293005d601319813803019384910183395af43d5f803e1560a85781905f395ff35b3d5ffd5b50634c9c8ce360e01b5f5260045260245ffdfe3615604057365f80375f8036817f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d5f803e15603c573d5ff35b3d5ffd5b00a2646970667358221220ccf07aaffe3a782a26f10d43239e1493fa3b1a104f0ea0b4f6803087f29beb7964736f6c634300081b0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {
+    "60188": [
+      {
+        "length": 32,
+        "start": 502
+      },
+      {
+        "length": 32,
+        "start": 1200
+      },
+      {
+        "length": 32,
+        "start": 1686
+      }
+    ]
+  },
+  "inputSourceName": "project/src/hca/HCAFactory.sol",
+  "devdoc": {
+    "details": "HCA-aware protocol calls resolve deployed HCAs after the deterministic account is recorded      for its owner.",
+    "errors": {
+      "EthTransferFailed()": [
+        {
+          "details": "Error selector: `0x6d963f88`"
+        }
+      ],
+      "HCAImplementationNotSelectable(address)": [
+        {
+          "details": "Error selector: `0xbf4480a4`",
+          "params": {
+            "implementation": "The rejected implementation address."
+          }
+        }
+      ],
+      "OwnableInvalidOwner(address)": [
+        {
+          "details": "The owner is not a valid owner account. (eg. `address(0)`)"
+        }
+      ],
+      "OwnableUnauthorizedAccount(address)": [
+        {
+          "details": "The caller account is not authorized to perform an operation."
+        }
+      ]
+    },
+    "events": {
+      "AccountCreated(address,address)": {
+        "params": {
+          "hca": "The address of the deployed HCA proxy.",
+          "hcaOwner": "The owner of the newly created account."
+        }
+      },
+      "AccountImplementationSet(address,address)": {
+        "params": {
+          "account": "The account selecting the implementation.",
+          "implementation": "The selected implementation."
+        }
+      },
+      "NewHCAImplementation(address,address)": {
+        "params": {
+          "accountImplementation": "The implementation contract selectable for newly deployed HCA proxies.",
+          "initDataParser": "The parser used to extract account ownership from initialization data."
+        }
+      }
+    },
+    "kind": "dev",
+    "methods": {
+      "accountHCAOf(address)": {
+        "params": {
+          "account": "The account to inspect."
+        },
+        "returns": {
+          "hca": "The recorded HCA address."
+        }
+      },
+      "accountImplementationOf(address)": {
+        "params": {
+          "account": "The account to inspect."
+        },
+        "returns": {
+          "accountImplementation": "The selected implementation."
+        }
+      },
+      "computeAccountAddress(address)": {
+        "params": {
+          "owner": "The owner whose HCA address to predict."
+        },
+        "returns": {
+          "_0": "The deterministic proxy address."
+        }
+      },
+      "constructor": {
+        "params": {
+          "implementation_": "The HCA implementation contract to proxy to.",
+          "initDataParser_": "The parser used to parse account-specific init data.",
+          "owner_": "The owner of this factory."
+        }
+      },
+      "createAccount(bytes)": {
+        "details": "Uses the owner's selected implementation when set, otherwise the current implementation.",
+        "params": {
+          "initData": "The initialization data used to initialize the HCA proxy and identify its owner."
+        },
+        "returns": {
+          "hca": "The deployed or existing HCA proxy address."
+        }
+      },
+      "getAccountOwner(address)": {
+        "details": "Returns zero for non-HCA callers and for HCAs that are not recorded for their owner.",
+        "params": {
+          "hca": "The HCA or caller address to look up."
+        },
+        "returns": {
+          "hcaOwner": "The recorded HCA owner, or zero when the caller has no recorded HCA mapping."
+        }
+      },
+      "getOwnerFromHCAInitdata(bytes)": {
+        "params": {
+          "initData": "The initialization data to parse."
+        },
+        "returns": {
+          "hcaOwner": "The owner encoded in the initialization data."
+        }
+      },
+      "owner()": {
+        "details": "Returns the address of the current owner."
+      },
+      "renounceOwnership()": {
+        "details": "Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner."
+      },
+      "setAccountImplementation(address)": {
+        "params": {
+          "accountImplementation": "The implementation to select."
+        }
+      },
+      "setImplementation(address,address)": {
+        "params": {
+          "implementation_": "The new implementation address.",
+          "initDataParser_": "The new parser used to extract account ownership from initialization data."
+        }
+      },
+      "transferOwnership(address)": {
+        "details": "Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner."
+      }
+    },
+    "stateVariables": {
+      "_accountImplementations": {
+        "details": "Maps an account to the implementation selected for its deterministic HCA."
+      },
+      "_hcaOwners": {
+        "details": "Maps each deployed HCA proxy address to its owner."
+      }
+    },
+    "title": "HCAFactory",
+    "version": 1
+  },
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "752200",
+        "executionCost": "infinite",
+        "totalCost": "infinite"
+      },
+      "external": {
+        "DEFERRED_IMPLEMENTATION()": "infinite",
+        "accountHCAOf(address)": "infinite",
+        "accountImplementationOf(address)": "2590",
+        "computeAccountAddress(address)": "infinite",
+        "createAccount(bytes)": "infinite",
+        "getAccountOwner(address)": "infinite",
+        "getOwnerFromHCAInitdata(bytes)": "infinite",
+        "implementation()": "2369",
+        "initDataParser()": "2347",
+        "owner()": "2406",
+        "renounceOwnership()": "infinite",
+        "setAccountImplementation(address)": "infinite",
+        "setImplementation(address,address)": "infinite",
+        "transferOwnership(address)": "infinite"
+      },
+      "internal": {
+        "_deploymentImplementationOf(address)": "4354",
+        "_requireSelectableImplementation(address)": "infinite"
+      }
+    }
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.27+commit.40a35a09\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"implementation_\",\"type\":\"address\"},{\"internalType\":\"contract IHCAInitDataParser\",\"name\":\"initDataParser_\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"owner_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"EthTransferFailed\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"}],\"name\":\"HCAImplementationNotSelectable\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"hcaOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"hca\",\"type\":\"address\"}],\"name\":\"AccountCreated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"}],\"name\":\"AccountImplementationSet\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"accountImplementation\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"initDataParser\",\"type\":\"address\"}],\"name\":\"NewHCAImplementation\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"DEFERRED_IMPLEMENTATION\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"accountHCAOf\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"hca\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"accountImplementationOf\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"accountImplementation\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"computeAccountAddress\",\"outputs\":[{\"internalType\":\"address payable\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"initData\",\"type\":\"bytes\"}],\"name\":\"createAccount\",\"outputs\":[{\"internalType\":\"address payable\",\"name\":\"hca\",\"type\":\"address\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"hca\",\"type\":\"address\"}],\"name\":\"getAccountOwner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"hcaOwner\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"initData\",\"type\":\"bytes\"}],\"name\":\"getOwnerFromHCAInitdata\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"hcaOwner\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"implementation\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"initDataParser\",\"outputs\":[{\"internalType\":\"contract IHCAInitDataParser\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"accountImplementation\",\"type\":\"address\"}],\"name\":\"setAccountImplementation\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"implementation_\",\"type\":\"address\"},{\"internalType\":\"contract IHCAInitDataParser\",\"name\":\"initDataParser_\",\"type\":\"address\"}],\"name\":\"setImplementation\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"details\":\"HCA-aware protocol calls resolve deployed HCAs after the deterministic account is recorded      for its owner.\",\"errors\":{\"EthTransferFailed()\":[{\"details\":\"Error selector: `0x6d963f88`\"}],\"HCAImplementationNotSelectable(address)\":[{\"details\":\"Error selector: `0xbf4480a4`\",\"params\":{\"implementation\":\"The rejected implementation address.\"}}],\"OwnableInvalidOwner(address)\":[{\"details\":\"The owner is not a valid owner account. (eg. `address(0)`)\"}],\"OwnableUnauthorizedAccount(address)\":[{\"details\":\"The caller account is not authorized to perform an operation.\"}]},\"events\":{\"AccountCreated(address,address)\":{\"params\":{\"hca\":\"The address of the deployed HCA proxy.\",\"hcaOwner\":\"The owner of the newly created account.\"}},\"AccountImplementationSet(address,address)\":{\"params\":{\"account\":\"The account selecting the implementation.\",\"implementation\":\"The selected implementation.\"}},\"NewHCAImplementation(address,address)\":{\"params\":{\"accountImplementation\":\"The implementation contract selectable for newly deployed HCA proxies.\",\"initDataParser\":\"The parser used to extract account ownership from initialization data.\"}}},\"kind\":\"dev\",\"methods\":{\"accountHCAOf(address)\":{\"params\":{\"account\":\"The account to inspect.\"},\"returns\":{\"hca\":\"The recorded HCA address.\"}},\"accountImplementationOf(address)\":{\"params\":{\"account\":\"The account to inspect.\"},\"returns\":{\"accountImplementation\":\"The selected implementation.\"}},\"computeAccountAddress(address)\":{\"params\":{\"owner\":\"The owner whose HCA address to predict.\"},\"returns\":{\"_0\":\"The deterministic proxy address.\"}},\"constructor\":{\"params\":{\"implementation_\":\"The HCA implementation contract to proxy to.\",\"initDataParser_\":\"The parser used to parse account-specific init data.\",\"owner_\":\"The owner of this factory.\"}},\"createAccount(bytes)\":{\"details\":\"Uses the owner's selected implementation when set, otherwise the current implementation.\",\"params\":{\"initData\":\"The initialization data used to initialize the HCA proxy and identify its owner.\"},\"returns\":{\"hca\":\"The deployed or existing HCA proxy address.\"}},\"getAccountOwner(address)\":{\"details\":\"Returns zero for non-HCA callers and for HCAs that are not recorded for their owner.\",\"params\":{\"hca\":\"The HCA or caller address to look up.\"},\"returns\":{\"hcaOwner\":\"The recorded HCA owner, or zero when the caller has no recorded HCA mapping.\"}},\"getOwnerFromHCAInitdata(bytes)\":{\"params\":{\"initData\":\"The initialization data to parse.\"},\"returns\":{\"hcaOwner\":\"The owner encoded in the initialization data.\"}},\"owner()\":{\"details\":\"Returns the address of the current owner.\"},\"renounceOwnership()\":{\"details\":\"Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner.\"},\"setAccountImplementation(address)\":{\"params\":{\"accountImplementation\":\"The implementation to select.\"}},\"setImplementation(address,address)\":{\"params\":{\"implementation_\":\"The new implementation address.\",\"initDataParser_\":\"The new parser used to extract account ownership from initialization data.\"}},\"transferOwnership(address)\":{\"details\":\"Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner.\"}},\"stateVariables\":{\"_accountImplementations\":{\"details\":\"Maps an account to the implementation selected for its deterministic HCA.\"},\"_hcaOwners\":{\"details\":\"Maps each deployed HCA proxy address to its owner.\"}},\"title\":\"HCAFactory\",\"version\":1},\"userdoc\":{\"errors\":{\"EthTransferFailed()\":[{\"notice\":\"Thrown when ETH forwarding to an existing proxy fails.\"}],\"HCAImplementationNotSelectable(address)\":[{\"notice\":\"Thrown when an account selects an unsupported implementation.\"}]},\"events\":{\"AccountCreated(address,address)\":{\"notice\":\"Emitted when a new HCA is deployed.\"},\"AccountImplementationSet(address,address)\":{\"notice\":\"Emitted when an account selects its HCA implementation.\"},\"NewHCAImplementation(address,address)\":{\"notice\":\"Emitted when the implementation and init data parser selectable for new HCA proxies change.\"}},\"kind\":\"user\",\"methods\":{\"DEFERRED_IMPLEMENTATION()\":{\"notice\":\"The implementation that lets an HCA owner defer the final account upgrade target.\"},\"accountHCAOf(address)\":{\"notice\":\"Returns the deterministic HCA address recorded for an account.\"},\"accountImplementationOf(address)\":{\"notice\":\"Returns the implementation explicitly selected by an account.\"},\"computeAccountAddress(address)\":{\"notice\":\"Computes the deterministic HCA proxy address for an owner.\"},\"constructor\":{\"notice\":\"Initializes the factory with an implementation, init data parser, owner, and deferred implementation.\"},\"createAccount(bytes)\":{\"notice\":\"Deploys a new HCA proxy for the owner encoded in the initialization data, or forwards ETH if already deployed.\"},\"getAccountOwner(address)\":{\"notice\":\"Returns the owner recorded for a deployed HCA proxy.\"},\"getOwnerFromHCAInitdata(bytes)\":{\"notice\":\"Extracts the HCA owner from initialization data.\"},\"implementation()\":{\"notice\":\"The current HCA implementation contract selectable by accounts.\"},\"initDataParser()\":{\"notice\":\"The parser contract that extracts account ownership from HCA initialization data.\"},\"setAccountImplementation(address)\":{\"notice\":\"Selects the implementation used when deploying the sender's deterministic HCA.\"},\"setImplementation(address,address)\":{\"notice\":\"Updates the implementation and init data parser selectable for new HCA proxies.\"}},\"notice\":\"Factory for deploying Hidden Contract Accounts as deterministic ERC-1967 proxies.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/src/hca/HCAFactory.sol\":\"HCAFactory\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ens/contracts/=project/lib/ens-contracts/contracts/\",\"project/:@ensdomains/buffer/=project/lib/buffer/\",\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts-upgradeable/=project/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:solady/=project/lib/solady/src/\",\"project/:~src/=project/src/\",\"project/lib/ens-contracts/:@ensdomains/solsha1/contracts/=project/lib/solsha1/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts-v5/=project/lib/openzeppelin-contracts/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-v4/contracts/\",\"project/lib/ens-contracts/:@unruggable/gateways/=project/lib/unruggable-gateways/contracts/\",\"project/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts-upgradeable/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"project/lib/openzeppelin-contracts/contracts/access/Ownable.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.0) (access/Ownable.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {Context} from \\\"../utils/Context.sol\\\";\\n\\n/**\\n * @dev Contract module which provides a basic access control mechanism, where\\n * there is an account (an owner) that can be granted exclusive access to\\n * specific functions.\\n *\\n * The initial owner is set to the address provided by the deployer. This can\\n * later be changed with {transferOwnership}.\\n *\\n * This module is used through inheritance. It will make available the modifier\\n * `onlyOwner`, which can be applied to your functions to restrict their use to\\n * the owner.\\n */\\nabstract contract Ownable is Context {\\n    address private _owner;\\n\\n    /**\\n     * @dev The caller account is not authorized to perform an operation.\\n     */\\n    error OwnableUnauthorizedAccount(address account);\\n\\n    /**\\n     * @dev The owner is not a valid owner account. (eg. `address(0)`)\\n     */\\n    error OwnableInvalidOwner(address owner);\\n\\n    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);\\n\\n    /**\\n     * @dev Initializes the contract setting the address provided by the deployer as the initial owner.\\n     */\\n    constructor(address initialOwner) {\\n        if (initialOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(initialOwner);\\n    }\\n\\n    /**\\n     * @dev Throws if called by any account other than the owner.\\n     */\\n    modifier onlyOwner() {\\n        _checkOwner();\\n        _;\\n    }\\n\\n    /**\\n     * @dev Returns the address of the current owner.\\n     */\\n    function owner() public view virtual returns (address) {\\n        return _owner;\\n    }\\n\\n    /**\\n     * @dev Throws if the sender is not the owner.\\n     */\\n    function _checkOwner() internal view virtual {\\n        if (owner() != _msgSender()) {\\n            revert OwnableUnauthorizedAccount(_msgSender());\\n        }\\n    }\\n\\n    /**\\n     * @dev Leaves the contract without owner. It will not be possible to call\\n     * `onlyOwner` functions. Can only be called by the current owner.\\n     *\\n     * NOTE: Renouncing ownership will leave the contract without an owner,\\n     * thereby disabling any functionality that is only available to the owner.\\n     */\\n    function renounceOwnership() public virtual onlyOwner {\\n        _transferOwnership(address(0));\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Can only be called by the current owner.\\n     */\\n    function transferOwnership(address newOwner) public virtual onlyOwner {\\n        if (newOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(newOwner);\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Internal function without access restriction.\\n     */\\n    function _transferOwnership(address newOwner) internal virtual {\\n        address oldOwner = _owner;\\n        _owner = newOwner;\\n        emit OwnershipTransferred(oldOwner, newOwner);\\n    }\\n}\\n\",\"keccak256\":\"0xff6d0bb2e285473e5311d9d3caacb525ae3538a80758c10649a4d61029b017bb\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/interfaces/IERC1967.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.0) (interfaces/IERC1967.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev ERC-1967: Proxy Storage Slots. This interface contains the events defined in the ERC.\\n */\\ninterface IERC1967 {\\n    /**\\n     * @dev Emitted when the implementation is upgraded.\\n     */\\n    event Upgraded(address indexed implementation);\\n\\n    /**\\n     * @dev Emitted when the admin account has changed.\\n     */\\n    event AdminChanged(address previousAdmin, address newAdmin);\\n\\n    /**\\n     * @dev Emitted when the beacon is changed.\\n     */\\n    event BeaconUpgraded(address indexed beacon);\\n}\\n\",\"keccak256\":\"0xb25a4f11fa80c702bf5cd85adec90e6f6f507f32f4a8e6f5dbc31e8c10029486\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/Context.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.1) (utils/Context.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Provides information about the current execution context, including the\\n * sender of the transaction and its data. While these are generally available\\n * via msg.sender and msg.data, they should not be accessed in such a direct\\n * manner, since when dealing with meta-transactions the account sending and\\n * paying for execution may not be the actual sender (as far as an application\\n * is concerned).\\n *\\n * This contract is only required for intermediate, library-like contracts.\\n */\\nabstract contract Context {\\n    function _msgSender() internal view virtual returns (address) {\\n        return msg.sender;\\n    }\\n\\n    function _msgData() internal view virtual returns (bytes calldata) {\\n        return msg.data;\\n    }\\n\\n    function _contextSuffixLength() internal view virtual returns (uint256) {\\n        return 0;\\n    }\\n}\\n\",\"keccak256\":\"0x493033a8d1b176a037b2cc6a04dad01a5c157722049bbecf632ca876224dd4b2\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/StorageSlot.sol)\\n// This file was procedurally generated from scripts/generate/templates/StorageSlot.js.\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Library for reading and writing primitive types to specific storage slots.\\n *\\n * Storage slots are often used to avoid storage conflict when dealing with upgradeable contracts.\\n * This library helps with reading and writing to such slots without the need for inline assembly.\\n *\\n * The functions in this library return Slot structs that contain a `value` member that can be used to read or write.\\n *\\n * Example usage to set ERC-1967 implementation slot:\\n * ```solidity\\n * contract ERC1967 {\\n *     // Define the slot. Alternatively, use the SlotDerivation library to derive the slot.\\n *     bytes32 internal constant _IMPLEMENTATION_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;\\n *\\n *     function _getImplementation() internal view returns (address) {\\n *         return StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value;\\n *     }\\n *\\n *     function _setImplementation(address newImplementation) internal {\\n *         require(newImplementation.code.length > 0);\\n *         StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value = newImplementation;\\n *     }\\n * }\\n * ```\\n *\\n * TIP: Consider using this library along with {SlotDerivation}.\\n */\\nlibrary StorageSlot {\\n    struct AddressSlot {\\n        address value;\\n    }\\n\\n    struct BooleanSlot {\\n        bool value;\\n    }\\n\\n    struct Bytes32Slot {\\n        bytes32 value;\\n    }\\n\\n    struct Uint256Slot {\\n        uint256 value;\\n    }\\n\\n    struct Int256Slot {\\n        int256 value;\\n    }\\n\\n    struct StringSlot {\\n        string value;\\n    }\\n\\n    struct BytesSlot {\\n        bytes value;\\n    }\\n\\n    /**\\n     * @dev Returns an `AddressSlot` with member `value` located at `slot`.\\n     */\\n    function getAddressSlot(bytes32 slot) internal pure returns (AddressSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `BooleanSlot` with member `value` located at `slot`.\\n     */\\n    function getBooleanSlot(bytes32 slot) internal pure returns (BooleanSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `Bytes32Slot` with member `value` located at `slot`.\\n     */\\n    function getBytes32Slot(bytes32 slot) internal pure returns (Bytes32Slot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `Uint256Slot` with member `value` located at `slot`.\\n     */\\n    function getUint256Slot(bytes32 slot) internal pure returns (Uint256Slot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `Int256Slot` with member `value` located at `slot`.\\n     */\\n    function getInt256Slot(bytes32 slot) internal pure returns (Int256Slot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `StringSlot` with member `value` located at `slot`.\\n     */\\n    function getStringSlot(bytes32 slot) internal pure returns (StringSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns an `StringSlot` representation of the string storage pointer `store`.\\n     */\\n    function getStringSlot(string storage store) internal pure returns (StringSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := store.slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `BytesSlot` with member `value` located at `slot`.\\n     */\\n    function getBytesSlot(bytes32 slot) internal pure returns (BytesSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns an `BytesSlot` representation of the bytes storage pointer `store`.\\n     */\\n    function getBytesSlot(bytes storage store) internal pure returns (BytesSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := store.slot\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0xcf74f855663ce2ae00ed8352666b7935f6cddea2932fdf2c3ecd30a9b1cd0e97\",\"license\":\"MIT\"},\"project/lib/solady/src/utils/CREATE3.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.4;\\n\\n/// @notice Deterministic deployments agnostic to the initialization code.\\n/// @author Solady (https://github.com/vectorized/solady/blob/main/src/utils/CREATE3.sol)\\n/// @author Modified from Solmate (https://github.com/transmissions11/solmate/blob/main/src/utils/CREATE3.sol)\\n/// @author Modified from 0xSequence (https://github.com/0xSequence/create3/blob/master/contracts/Create3.sol)\\nlibrary CREATE3 {\\n    /*\\u00b4:\\u00b0\\u2022.\\u00b0+.*\\u2022\\u00b4.*:\\u02da.\\u00b0*.\\u02da\\u2022\\u00b4.\\u00b0:\\u00b0\\u2022.\\u00b0\\u2022.*\\u2022\\u00b4.*:\\u02da.\\u00b0*.\\u02da\\u2022\\u00b4.\\u00b0:\\u00b0\\u2022.\\u00b0+.*\\u2022\\u00b4.*:*/\\n    /*                        CUSTOM ERRORS                       */\\n    /*.\\u2022\\u00b0:\\u00b0.\\u00b4+\\u02da.*\\u00b0.\\u02da:*.\\u00b4\\u2022*.+\\u00b0.\\u2022\\u00b0:\\u00b4*.\\u00b4\\u2022*.\\u2022\\u00b0.\\u2022\\u00b0:\\u00b0.\\u00b4:\\u2022\\u02da\\u00b0.*\\u00b0.\\u02da:*.\\u00b4+\\u00b0.\\u2022*/\\n\\n    /// @dev Unable to deploy the contract.\\n    error DeploymentFailed();\\n\\n    /*\\u00b4:\\u00b0\\u2022.\\u00b0+.*\\u2022\\u00b4.*:\\u02da.\\u00b0*.\\u02da\\u2022\\u00b4.\\u00b0:\\u00b0\\u2022.\\u00b0\\u2022.*\\u2022\\u00b4.*:\\u02da.\\u00b0*.\\u02da\\u2022\\u00b4.\\u00b0:\\u00b0\\u2022.\\u00b0+.*\\u2022\\u00b4.*:*/\\n    /*                      BYTECODE CONSTANTS                    */\\n    /*.\\u2022\\u00b0:\\u00b0.\\u00b4+\\u02da.*\\u00b0.\\u02da:*.\\u00b4\\u2022*.+\\u00b0.\\u2022\\u00b0:\\u00b4*.\\u00b4\\u2022*.\\u2022\\u00b0.\\u2022\\u00b0:\\u00b0.\\u00b4:\\u2022\\u02da\\u00b0.*\\u00b0.\\u02da:*.\\u00b4+\\u00b0.\\u2022*/\\n\\n    /**\\n     * -------------------------------------------------------------------+\\n     * Opcode      | Mnemonic         | Stack        | Memory             |\\n     * -------------------------------------------------------------------|\\n     * 36          | CALLDATASIZE     | cds          |                    |\\n     * 3d          | RETURNDATASIZE   | 0 cds        |                    |\\n     * 3d          | RETURNDATASIZE   | 0 0 cds      |                    |\\n     * 37          | CALLDATACOPY     |              | [0..cds): calldata |\\n     * 36          | CALLDATASIZE     | cds          | [0..cds): calldata |\\n     * 3d          | RETURNDATASIZE   | 0 cds        | [0..cds): calldata |\\n     * 34          | CALLVALUE        | value 0 cds  | [0..cds): calldata |\\n     * f0          | CREATE           | newContract  | [0..cds): calldata |\\n     * -------------------------------------------------------------------|\\n     * Opcode      | Mnemonic         | Stack        | Memory             |\\n     * -------------------------------------------------------------------|\\n     * 67 bytecode | PUSH8 bytecode   | bytecode     |                    |\\n     * 3d          | RETURNDATASIZE   | 0 bytecode   |                    |\\n     * 52          | MSTORE           |              | [0..8): bytecode   |\\n     * 60 0x08     | PUSH1 0x08       | 0x08         | [0..8): bytecode   |\\n     * 60 0x18     | PUSH1 0x18       | 0x18 0x08    | [0..8): bytecode   |\\n     * f3          | RETURN           |              | [0..8): bytecode   |\\n     * -------------------------------------------------------------------+\\n     */\\n\\n    /// @dev The proxy initialization code.\\n    uint256 private constant _PROXY_INITCODE = 0x67363d3d37363d34f03d5260086018f3;\\n\\n    /// @dev Hash of the `_PROXY_INITCODE`.\\n    /// Equivalent to `keccak256(abi.encodePacked(hex\\\"67363d3d37363d34f03d5260086018f3\\\"))`.\\n    bytes32 internal constant PROXY_INITCODE_HASH =\\n        0x21c35dbe1b344a2488cf3321d6ce542f8e9f305544ff09e4993a62319a497c1f;\\n\\n    /*\\u00b4:\\u00b0\\u2022.\\u00b0+.*\\u2022\\u00b4.*:\\u02da.\\u00b0*.\\u02da\\u2022\\u00b4.\\u00b0:\\u00b0\\u2022.\\u00b0\\u2022.*\\u2022\\u00b4.*:\\u02da.\\u00b0*.\\u02da\\u2022\\u00b4.\\u00b0:\\u00b0\\u2022.\\u00b0+.*\\u2022\\u00b4.*:*/\\n    /*                      CREATE3 OPERATIONS                    */\\n    /*.\\u2022\\u00b0:\\u00b0.\\u00b4+\\u02da.*\\u00b0.\\u02da:*.\\u00b4\\u2022*.+\\u00b0.\\u2022\\u00b0:\\u00b4*.\\u00b4\\u2022*.\\u2022\\u00b0.\\u2022\\u00b0:\\u00b0.\\u00b4:\\u2022\\u02da\\u00b0.*\\u00b0.\\u02da:*.\\u00b4+\\u00b0.\\u2022*/\\n\\n    /// @dev Deploys `initCode` deterministically with a `salt`.\\n    /// Returns the deterministic address of the deployed contract,\\n    /// which solely depends on `salt`.\\n    function deployDeterministic(bytes memory initCode, bytes32 salt)\\n        internal\\n        returns (address deployed)\\n    {\\n        deployed = deployDeterministic(0, initCode, salt);\\n    }\\n\\n    /// @dev Deploys `initCode` deterministically with a `salt`.\\n    /// The deployed contract is funded with `value` (in wei) ETH.\\n    /// Returns the deterministic address of the deployed contract,\\n    /// which solely depends on `salt`.\\n    function deployDeterministic(uint256 value, bytes memory initCode, bytes32 salt)\\n        internal\\n        returns (address deployed)\\n    {\\n        /// @solidity memory-safe-assembly\\n        assembly {\\n            mstore(0x00, _PROXY_INITCODE) // Store the `_PROXY_INITCODE`.\\n            let proxy := create2(0, 0x10, 0x10, salt)\\n            if iszero(proxy) {\\n                mstore(0x00, 0x30116425) // `DeploymentFailed()`.\\n                revert(0x1c, 0x04)\\n            }\\n            mstore(0x14, proxy) // Store the proxy's address.\\n            // 0xd6 = 0xc0 (short RLP prefix) + 0x16 (length of: 0x94 ++ proxy ++ 0x01).\\n            // 0x94 = 0x80 + 0x14 (0x14 = the length of an address, 20 bytes, in hex).\\n            mstore(0x00, 0xd694)\\n            mstore8(0x34, 0x01) // Nonce of the proxy contract (1).\\n            deployed := keccak256(0x1e, 0x17)\\n            if iszero(\\n                mul( // The arguments of `mul` are evaluated last to first.\\n                    extcodesize(deployed),\\n                    call(gas(), proxy, value, add(initCode, 0x20), mload(initCode), 0x00, 0x00)\\n                )\\n            ) {\\n                mstore(0x00, 0x30116425) // `DeploymentFailed()`.\\n                revert(0x1c, 0x04)\\n            }\\n        }\\n    }\\n\\n    /// @dev Returns the deterministic address for `salt`.\\n    function predictDeterministicAddress(bytes32 salt) internal view returns (address deployed) {\\n        deployed = predictDeterministicAddress(salt, address(this));\\n    }\\n\\n    /// @dev Returns the deterministic address for `salt` with `deployer`.\\n    function predictDeterministicAddress(bytes32 salt, address deployer)\\n        internal\\n        pure\\n        returns (address deployed)\\n    {\\n        /// @solidity memory-safe-assembly\\n        assembly {\\n            let m := mload(0x40) // Cache the free memory pointer.\\n            mstore(0x00, deployer) // Store `deployer`.\\n            mstore8(0x0b, 0xff) // Store the prefix.\\n            mstore(0x20, salt) // Store the salt.\\n            mstore(0x40, PROXY_INITCODE_HASH) // Store the bytecode hash.\\n\\n            mstore(0x14, keccak256(0x0b, 0x55)) // Store the proxy's address.\\n            mstore(0x40, m) // Restore the free memory pointer.\\n            // 0xd6 = 0xc0 (short RLP prefix) + 0x16 (length of: 0x94 ++ proxy ++ 0x01).\\n            // 0x94 = 0x80 + 0x14 (0x14 = the length of an address, 20 bytes, in hex).\\n            mstore(0x00, 0xd694)\\n            mstore8(0x34, 0x01) // Nonce of the proxy contract (1).\\n            deployed := keccak256(0x1e, 0x17)\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0x7c5f5a0bd6f3cfa30101ed769ac090e54e1235d412d2859ea11c5de8f00a094d\",\"license\":\"MIT\"},\"project/src/hca/HCADeferredImplementation.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.25;\\n\\nimport {IERC1967} from \\\"@openzeppelin/contracts/interfaces/IERC1967.sol\\\";\\nimport {StorageSlot} from \\\"@openzeppelin/contracts/utils/StorageSlot.sol\\\";\\n\\nimport {IHCAFactoryBasic} from \\\"./interfaces/IHCAFactoryBasic.sol\\\";\\n\\n/// @title HCADeferredImplementation\\n/// @notice Minimal implementation for HCAs whose owner has deferred the final account implementation.\\n/// @dev Calls are expected to arrive through an ERC-1967 proxy registered in the HCA factory.\\ncontract HCADeferredImplementation is IERC1967 {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Constants & Immutables\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev ERC-1967 implementation slot.\\n    bytes32 internal constant IMPLEMENTATION_SLOT =\\n        0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;\\n\\n    /// @notice The HCA factory used to authorize owner upgrades.\\n    IHCAFactoryBasic public immutable HCA_FACTORY;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Errors\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Thrown when the HCA factory is the zero address.\\n    /// @dev Error selector: `0x841d6202`\\n    error HCAFactoryCannotBeZero();\\n\\n    /// @notice Thrown when a caller is not the registered HCA owner.\\n    /// @param caller The unauthorized caller.\\n    /// @param owner The registered HCA owner.\\n    /// @dev Error selector: `0x633d83ce`\\n    error HCADeferredUpgradeUnauthorized(address caller, address owner);\\n\\n    /// @notice Thrown when the HCA factory has no owner registered for the proxy.\\n    /// @dev Error selector: `0xd815aa7d`\\n    error HCADeferredOwnerNotSet();\\n\\n    /// @notice Thrown when the target implementation has no contract code.\\n    /// @param implementation The rejected implementation address.\\n    /// @dev Error selector: `0x1e122895`\\n    error HCADeferredImplementationHasNoCode(address implementation);\\n\\n    /// @notice Thrown when the post-upgrade delegatecall fails.\\n    /// @dev Error selector: `0x107fd274`\\n    error HCADeferredInitializationFailed();\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @param hcaFactory The HCA factory used for ownership lookup.\\n    constructor(IHCAFactoryBasic hcaFactory) {\\n        if (address(hcaFactory) == address(0))\\n            revert HCAFactoryCannotBeZero();\\n        HCA_FACTORY = hcaFactory;\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Upgrades the proxy to a final implementation and optionally initializes it.\\n    /// @param newImplementation The implementation to install in the proxy.\\n    /// @param data Optional initialization call data delegated to the new implementation.\\n    function upgradeToAndCall(address newImplementation, bytes calldata data) external payable {\\n        address owner = HCA_FACTORY.getAccountOwner(address(this));\\n        if (owner == address(0))\\n            revert HCADeferredOwnerNotSet();\\n        if (msg.sender != owner)\\n            revert HCADeferredUpgradeUnauthorized(msg.sender, owner);\\n        if (newImplementation.code.length == 0)\\n            revert HCADeferredImplementationHasNoCode(newImplementation);\\n\\n        StorageSlot.getAddressSlot(IMPLEMENTATION_SLOT).value = newImplementation;\\n        emit Upgraded(newImplementation);\\n\\n        if (data.length == 0)\\n            return;\\n\\n        (bool success, ) = newImplementation.delegatecall(data);\\n        if (!success)\\n            revert HCADeferredInitializationFailed();\\n    }\\n}\\n\",\"keccak256\":\"0xe25ae415c16a4491968d62096aade8886475c3608335bdfbe684fff1da0b21d9\",\"license\":\"MIT\"},\"project/src/hca/HCAFactory.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.27;\\n\\nimport {Ownable} from \\\"@openzeppelin/contracts/access/Ownable.sol\\\";\\n\\nimport {HCADeferredImplementation} from \\\"./HCADeferredImplementation.sol\\\";\\nimport {IHCAFactory} from \\\"./interfaces/IHCAFactory.sol\\\";\\nimport {IHCAFactoryBasic} from \\\"./interfaces/IHCAFactoryBasic.sol\\\";\\nimport {IHCAInitDataParser} from \\\"./interfaces/IHCAInitDataParser.sol\\\";\\nimport {ProxyLib} from \\\"./ProxyLib.sol\\\";\\n\\n/// @title HCAFactory\\n/// @notice Factory for deploying Hidden Contract Accounts as deterministic ERC-1967 proxies.\\n/// @dev HCA-aware protocol calls resolve deployed HCAs after the deterministic account is recorded\\n///      for its owner.\\ncontract HCAFactory is Ownable, IHCAFactory {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Immutables\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice The implementation that lets an HCA owner defer the final account upgrade target.\\n    address public immutable DEFERRED_IMPLEMENTATION;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Storage\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice The current HCA implementation contract selectable by accounts.\\n    address public implementation;\\n\\n    /// @notice The parser contract that extracts account ownership from HCA initialization data.\\n    IHCAInitDataParser public initDataParser;\\n\\n    /// @dev Maps each deployed HCA proxy address to its owner.\\n    mapping(address hca => address owner) internal _hcaOwners;\\n\\n    /// @dev Maps an account to the implementation selected for its deterministic HCA.\\n    mapping(address account => address implementation) internal _accountImplementations;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Events\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Emitted when a new HCA is deployed.\\n    /// @param hcaOwner The owner of the newly created account.\\n    /// @param hca The address of the deployed HCA proxy.\\n    event AccountCreated(address indexed hcaOwner, address indexed hca);\\n\\n    /// @notice Emitted when the implementation and init data parser selectable for new HCA proxies change.\\n    /// @param accountImplementation The implementation contract selectable for newly deployed HCA proxies.\\n    /// @param initDataParser The parser used to extract account ownership from initialization data.\\n    event NewHCAImplementation(\\n        address indexed accountImplementation,\\n        address indexed initDataParser\\n    );\\n\\n    /// @notice Emitted when an account selects its HCA implementation.\\n    /// @param account The account selecting the implementation.\\n    /// @param implementation The selected implementation.\\n    event AccountImplementationSet(address indexed account, address indexed implementation);\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Errors\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Thrown when an account selects an unsupported implementation.\\n    /// @param implementation The rejected implementation address.\\n    /// @dev Error selector: `0xbf4480a4`\\n    error HCAImplementationNotSelectable(address implementation);\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Initializes the factory with an implementation, init data parser, owner, and deferred implementation.\\n    /// @param implementation_ The HCA implementation contract to proxy to.\\n    /// @param initDataParser_ The parser used to parse account-specific init data.\\n    /// @param owner_ The owner of this factory.\\n    constructor(address implementation_, IHCAInitDataParser initDataParser_, address owner_)\\n        Ownable(owner_)\\n    {\\n        implementation = implementation_;\\n        initDataParser = initDataParser_;\\n        DEFERRED_IMPLEMENTATION = address(\\n            new HCADeferredImplementation(IHCAFactoryBasic(address(this)))\\n        );\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Updates the implementation and init data parser selectable for new HCA proxies.\\n    /// @param implementation_ The new implementation address.\\n    /// @param initDataParser_ The new parser used to extract account ownership from initialization data.\\n    function setImplementation(address implementation_, IHCAInitDataParser initDataParser_)\\n        external\\n        onlyOwner\\n    {\\n        implementation = implementation_;\\n        initDataParser = initDataParser_;\\n        emit NewHCAImplementation(implementation_, address(initDataParser_));\\n    }\\n\\n    /// @notice Selects the implementation used when deploying the sender's deterministic HCA.\\n    /// @param accountImplementation The implementation to select.\\n    function setAccountImplementation(address accountImplementation) external {\\n        _requireSelectableImplementation(accountImplementation);\\n        _accountImplementations[msg.sender] = accountImplementation;\\n        emit AccountImplementationSet(msg.sender, accountImplementation);\\n    }\\n\\n    /// @notice Deploys a new HCA proxy for the owner encoded in the initialization data, or forwards ETH if already deployed.\\n    /// @dev Uses the owner's selected implementation when set, otherwise the current implementation.\\n    /// @param initData The initialization data used to initialize the HCA proxy and identify its owner.\\n    /// @return hca The deployed or existing HCA proxy address.\\n    function createAccount(bytes calldata initData) external payable returns (address payable hca) {\\n        address hcaOwner = getOwnerFromHCAInitdata(initData);\\n        address accountImplementation = _deploymentImplementationOf(hcaOwner);\\n        bool alreadyDeployed;\\n        if (accountImplementation == DEFERRED_IMPLEMENTATION) {\\n            (alreadyDeployed, hca) = ProxyLib.deployProxyWithoutInitialization(\\n                accountImplementation,\\n                hcaOwner\\n            );\\n        } else {\\n            (alreadyDeployed, hca) = ProxyLib.deployProxy(accountImplementation, hcaOwner, initData);\\n        }\\n        if (!alreadyDeployed) {\\n            _hcaOwners[hca] = hcaOwner;\\n            emit AccountCreated(hcaOwner, hca);\\n        }\\n    }\\n\\n    /// @notice Returns the owner recorded for a deployed HCA proxy.\\n    /// @dev Returns zero for non-HCA callers and for HCAs that are not recorded for their owner.\\n    /// @param hca The HCA or caller address to look up.\\n    /// @return hcaOwner The recorded HCA owner, or zero when the caller has no recorded HCA mapping.\\n    function getAccountOwner(address hca) external view returns (address hcaOwner) {\\n        hcaOwner = _hcaOwners[hca];\\n        if (hcaOwner == address(0) || ProxyLib.predictProxyAddress(hcaOwner) != hca) {\\n            return address(0);\\n        }\\n    }\\n\\n    /// @inheritdoc IHCAFactory\\n    function accountHCAOf(address account) external view returns (address hca) {\\n        if (account == address(0)) {\\n            return address(0);\\n        }\\n        hca = ProxyLib.predictProxyAddress(account);\\n        if (_hcaOwners[hca] != account) {\\n            return address(0);\\n        }\\n    }\\n\\n    /// @inheritdoc IHCAFactory\\n    function accountImplementationOf(address account)\\n        external\\n        view\\n        returns (address accountImplementation)\\n    {\\n        accountImplementation = _accountImplementations[account];\\n    }\\n\\n    /// @inheritdoc IHCAFactory\\n    function computeAccountAddress(address owner) external view returns (address payable) {\\n        return ProxyLib.predictProxyAddress(owner);\\n    }\\n\\n    /// @inheritdoc IHCAFactory\\n    function getOwnerFromHCAInitdata(bytes calldata initData)\\n        public\\n        view\\n        returns (address hcaOwner)\\n    {\\n        hcaOwner = initDataParser.getOwnerFromInitData(initData);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Internal Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Returns an account's selected implementation, or the current implementation when unset.\\n    function _deploymentImplementationOf(address account)\\n        internal\\n        view\\n        returns (address accountImplementation)\\n    {\\n        accountImplementation = _accountImplementations[account];\\n        if (accountImplementation == address(0)) {\\n            accountImplementation = implementation;\\n        }\\n    }\\n\\n    /// @dev Reverts unless the implementation is selectable by this factory.\\n    function _requireSelectableImplementation(address accountImplementation) internal view {\\n        if (accountImplementation == implementation && accountImplementation != address(0)) {\\n            return;\\n        }\\n        if (accountImplementation == DEFERRED_IMPLEMENTATION && accountImplementation != address(0)) {\\n            return;\\n        }\\n        revert HCAImplementationNotSelectable(accountImplementation);\\n    }\\n}\\n\",\"keccak256\":\"0x1cf573fb4447067f5f63fbd18c6d689b4ee9b623456101b88a07cdc66d99a410\",\"license\":\"MIT\"},\"project/src/hca/ProxyLib.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.27;\\n\\nimport {CREATE3} from \\\"solady/utils/CREATE3.sol\\\";\\n\\n/// @notice Minimal initializer interface for HCA account implementations.\\n/// @dev Interface selector: `0x4b6a1419`\\ninterface IHCAAccountInitializer {\\n    /// @notice Initializes the account with implementation-specific data.\\n    /// @param initData Encoded account initialization data.\\n    function initializeAccount(bytes calldata initData) external payable;\\n}\\n\\n\\n/// @title ProxyLib\\n/// @notice Deploys deterministic HCA proxy accounts using CREATE3 and owner-derived salts.\\n/// @dev Existing proxy addresses receive any attached ETH instead of being redeployed.\\nlibrary ProxyLib {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Constants\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Init-code prefix compiled from `src/hca/HCAProxyInitCode.yul`.\\n    ///      Regenerate with `FOUNDRY_PROFILE=yul forge inspect src/hca/HCAProxyInitCode.yul:HCAProxyInitCode bytecode`.\\n    bytes internal constant INITIALIZED_HCA_PROXY_INIT_CODE_PREFIX =\\n        hex\\\"60426100c0818101601481600c395f5190813b1560ac5760145f8381949382947f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc55817fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b8480a260017f90b772c2cb8a51aa7a8a65fc23543c6d022d5b3f8e2b92eed79fba7eef8293005d601319813803019384910183395af43d5f803e1560a85781905f395ff35b3d5ffd5b50634c9c8ce360e01b5f5260045260245ffdfe3615604057365f80375f8036817f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d5f803e15603c573d5ff35b3d5ffd5b00\\\";\\n\\n    /// @dev Init-code prefix compiled from `src/hca/HCAProxyNoInitCode.yul`.\\n    ///      Regenerate with `FOUNDRY_PROFILE=yul forge inspect src/hca/HCAProxyNoInitCode.yul:HCAProxyNoInitCode bytecode`.\\n    bytes internal constant UNINITIALIZED_HCA_PROXY_INIT_CODE_PREFIX =\\n        hex\\\"607660426014828201600c395f5191823b156062578282937f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc557fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b5f80a25f395ff35b82634c9c8ce360e01b5f5260045260245ffdfe3615604057365f80375f8036817f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc545af43d5f803e15603c573d5ff35b3d5ffd5b00\\\";\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Errors\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Thrown when ETH forwarding to an existing proxy fails.\\n    /// @dev Error selector: `0x6d963f88`\\n    error EthTransferFailed();\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Deploys an initialized deterministic HCA proxy or funds the existing proxy.\\n    /// @dev Encodes the account initializer call for fresh deployments.\\n    /// @param implementation The implementation stored in the proxy.\\n    /// @param owner The owner used to derive the proxy address.\\n    /// @param initData The data passed to the account initializer.\\n    /// @return alreadyDeployed Whether the proxy already existed.\\n    /// @return account The deployed or existing proxy address.\\n    function deployProxy(address implementation, address owner, bytes memory initData)\\n        internal\\n        returns (bool alreadyDeployed, address payable account)\\n    {\\n        return\\n            _deployProxy({implementation: implementation, owner: owner, initializationData: abi.encodeCall(\\n                IHCAAccountInitializer.initializeAccount,\\n                initData\\n            )});\\n    }\\n\\n    /// @notice Deploys an uninitialized deterministic HCA proxy or funds the existing proxy.\\n    /// @dev Used for implementations that intentionally expose no initialization function.\\n    /// @param implementation The implementation stored in the proxy.\\n    /// @param owner The owner used to derive the proxy address.\\n    /// @return alreadyDeployed Whether the proxy already existed.\\n    /// @return account The deployed or existing proxy address.\\n    function deployProxyWithoutInitialization(address implementation, address owner)\\n        internal\\n        returns (bool alreadyDeployed, address payable account)\\n    {\\n        return _deployProxy({implementation: implementation, owner: owner, initializationData: \\\"\\\"});\\n    }\\n\\n    /// @notice Predicts the deterministic HCA proxy address for an owner.\\n    /// @dev Uses the current contract address as the CREATE3 deployer.\\n    /// @param owner The owner used to derive the proxy address.\\n    /// @return predictedAddress The deterministic proxy address.\\n    function predictProxyAddress(address owner)\\n        internal\\n        view\\n        returns (address payable predictedAddress)\\n    {\\n        predictedAddress = payable(CREATE3.predictDeterministicAddress(_getSalt(owner)));\\n    }\\n\\n    /// @dev Returns the Yul-derived init-code prefix for initialized proxy deployment.\\n    function initializedHCAProxyInitCodePrefix() internal pure returns (bytes memory) {\\n        return INITIALIZED_HCA_PROXY_INIT_CODE_PREFIX;\\n    }\\n\\n    /// @dev Returns the Yul-derived init-code prefix for uninitialized proxy deployment.\\n    function uninitializedHCAProxyInitCodePrefix() internal pure returns (bytes memory) {\\n        return UNINITIALIZED_HCA_PROXY_INIT_CODE_PREFIX;\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Private Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Deploys a proxy if absent. Existing proxies receive any attached ETH.\\n    function _deployProxy(address implementation, address owner, bytes memory initializationData)\\n        private\\n        returns (bool alreadyDeployed, address payable account)\\n    {\\n        account = predictProxyAddress(owner);\\n        alreadyDeployed = account.code.length > 0;\\n        if (!alreadyDeployed) {\\n            CREATE3.deployDeterministic(\\n                msg.value,\\n                _proxyInitCode(implementation, initializationData),\\n                _getSalt(owner)\\n            );\\n        } else {\\n            // solgrid-disable-next-line security/arbitrary-send-eth\\n            (bool success, ) = account.call{value: msg.value}(\\\"\\\");\\n            require(success, EthTransferFailed());\\n        }\\n    }\\n\\n    /// @dev Converts an owner address into the deterministic CREATE3 salt used for that owner's proxy.\\n    function _getSalt(address owner) private pure returns (bytes32) {\\n        return bytes32(bytes20(owner));\\n    }\\n\\n    /// @dev Builds CREATE3 init code for a constructor-initialized ERC-1967 HCA proxy.\\n    function _proxyInitCode(address implementation, bytes memory initializationData)\\n        private\\n        pure\\n        returns (bytes memory initCode)\\n    {\\n        if (initializationData.length == 0) {\\n            return bytes.concat(UNINITIALIZED_HCA_PROXY_INIT_CODE_PREFIX, bytes20(implementation));\\n        }\\n        return\\n            bytes.concat(\\n                INITIALIZED_HCA_PROXY_INIT_CODE_PREFIX,\\n                bytes20(implementation),\\n                initializationData\\n            );\\n    }\\n}\\n\",\"keccak256\":\"0x2315f5accdff73012f1bb967b8b628eba4209809417785b33d494296eade4543\",\"license\":\"MIT\"},\"project/src/hca/interfaces/IHCAFactory.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.27;\\n\\nimport {IHCAFactoryBasic} from \\\"./IHCAFactoryBasic.sol\\\";\\nimport {IHCAInitDataParser} from \\\"./IHCAInitDataParser.sol\\\";\\n\\n/// @title IHCAFactory\\n/// @notice Full interface for deterministic Hidden Contract Account deployment and lookup.\\n/// @dev Interface selector: `0x65dc8339`\\ninterface IHCAFactory is IHCAFactoryBasic {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Deploys or funds the deterministic HCA for the owner encoded in `initData`.\\n    /// @dev Deploys with the owner's selected implementation when present, otherwise with the current implementation.\\n    /// @param initData Initialization data used to identify and initialize the HCA owner.\\n    /// @return hca The deployed or existing HCA proxy address.\\n    function createAccount(bytes calldata initData) external payable returns (address payable hca);\\n\\n    /// @notice Selects the implementation used when deploying this account's HCA.\\n    /// @param accountImplementation The implementation to select.\\n    function setAccountImplementation(address accountImplementation) external;\\n\\n    /// @notice Updates the implementation and init data parser selectable for new HCA proxies.\\n    /// @param implementation_ The new implementation address.\\n    /// @param initDataParser_ The parser used to extract account ownership from initialization data.\\n    function setImplementation(address implementation_, IHCAInitDataParser initDataParser_)\\n        external;\\n\\n    /// @notice Returns the implementation selectable for newly deployed HCA proxies.\\n    function implementation() external view returns (address);\\n\\n    /// @notice Returns the parser used to extract account ownership from initialization data.\\n    function initDataParser() external view returns (IHCAInitDataParser);\\n\\n    /// @notice Returns the immutable implementation that lets an owner defer their HCA upgrade target.\\n    function DEFERRED_IMPLEMENTATION() external view returns (address);\\n\\n    /// @notice Returns the implementation explicitly selected by an account.\\n    /// @param account The account to inspect.\\n    /// @return implementation The selected implementation.\\n    function accountImplementationOf(address account)\\n        external\\n        view\\n        returns (address implementation);\\n\\n    /// @notice Returns the deterministic HCA address recorded for an account.\\n    /// @param account The account to inspect.\\n    /// @return hca The recorded HCA address.\\n    function accountHCAOf(address account) external view returns (address hca);\\n\\n    /// @notice Computes the deterministic HCA proxy address for an owner.\\n    /// @param owner The owner whose HCA address to predict.\\n    /// @return hca The deterministic proxy address.\\n    function computeAccountAddress(address owner) external view returns (address payable hca);\\n\\n    /// @notice Extracts the HCA owner from initialization data.\\n    /// @param initData The initialization data to parse.\\n    /// @return hcaOwner The owner encoded in the initialization data.\\n    function getOwnerFromHCAInitdata(bytes calldata initData)\\n        external\\n        view\\n        returns (address hcaOwner);\\n}\\n\",\"keccak256\":\"0x8aa87104f06533de48c351f678bade92eaf2f7f5d4aa11c80d9cd3305ef2241f\",\"license\":\"MIT\"},\"project/src/hca/interfaces/IHCAFactoryBasic.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.25;\\n\\n/// @notice Basic interface for Hidden Contract Account ownership lookup.\\n/// @dev Interface selector: `0x442b172c`\\ninterface IHCAFactoryBasic {\\n    /// @notice Returns the account owner of the given HCA.\\n    /// @dev Returns zero when the queried address is not a recorded HCA.\\n    /// @param hca The HCA to get the account owner of.\\n    /// @return The account owner of the given HCA.\\n    function getAccountOwner(address hca) external view returns (address);\\n}\\n\",\"keccak256\":\"0xf298e05861b1072dd368683794cae5670e5170a414ed1151336663378f5a63ed\",\"license\":\"MIT\"},\"project/src/hca/interfaces/IHCAInitDataParser.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.27;\\n\\n/// @title IHCAInitDataParser\\n/// @notice Extracts Hidden Contract Account ownership from account initialization data.\\n/// @dev Interface selector: `0xf9660ea1`\\ninterface IHCAInitDataParser {\\n    /// @notice Extracts the HCA owner from initialization data.\\n    /// @param initData The initialization data to parse.\\n    /// @return hcaOwner The owner encoded in the initialization data.\\n    function getOwnerFromInitData(bytes calldata initData) external view returns (address hcaOwner);\\n}\\n\",\"keccak256\":\"0x7e04b480fb10b2c9be0956b61c3aa3d231f9a66b90a883d925ab3d34b6f5aded\",\"license\":\"MIT\"}},\"version\":1}",
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 34237,
+        "contract": "project/src/hca/HCAFactory.sol:HCAFactory",
+        "label": "_owner",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_address"
+      },
+      {
+        "astId": 60191,
+        "contract": "project/src/hca/HCAFactory.sol:HCAFactory",
+        "label": "implementation",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_address"
+      },
+      {
+        "astId": 60195,
+        "contract": "project/src/hca/HCAFactory.sol:HCAFactory",
+        "label": "initDataParser",
+        "offset": 0,
+        "slot": "2",
+        "type": "t_contract(IHCAInitDataParser)60910"
+      },
+      {
+        "astId": 60200,
+        "contract": "project/src/hca/HCAFactory.sol:HCAFactory",
+        "label": "_hcaOwners",
+        "offset": 0,
+        "slot": "3",
+        "type": "t_mapping(t_address,t_address)"
+      },
+      {
+        "astId": 60205,
+        "contract": "project/src/hca/HCAFactory.sol:HCAFactory",
+        "label": "_accountImplementations",
+        "offset": 0,
+        "slot": "4",
+        "type": "t_mapping(t_address,t_address)"
+      }
+    ],
+    "types": {
+      "t_address": {
+        "encoding": "inplace",
+        "label": "address",
+        "numberOfBytes": "20"
+      },
+      "t_contract(IHCAInitDataParser)60910": {
+        "encoding": "inplace",
+        "label": "contract IHCAInitDataParser",
+        "numberOfBytes": "20"
+      },
+      "t_mapping(t_address,t_address)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => address)",
+        "numberOfBytes": "32",
+        "value": "t_address"
+      }
+    }
+  },
+  "userdoc": {
+    "errors": {
+      "EthTransferFailed()": [
+        {
+          "notice": "Thrown when ETH forwarding to an existing proxy fails."
+        }
+      ],
+      "HCAImplementationNotSelectable(address)": [
+        {
+          "notice": "Thrown when an account selects an unsupported implementation."
+        }
+      ]
+    },
+    "events": {
+      "AccountCreated(address,address)": {
+        "notice": "Emitted when a new HCA is deployed."
+      },
+      "AccountImplementationSet(address,address)": {
+        "notice": "Emitted when an account selects its HCA implementation."
+      },
+      "NewHCAImplementation(address,address)": {
+        "notice": "Emitted when the implementation and init data parser selectable for new HCA proxies change."
+      }
+    },
+    "kind": "user",
+    "methods": {
+      "DEFERRED_IMPLEMENTATION()": {
+        "notice": "The implementation that lets an HCA owner defer the final account upgrade target."
+      },
+      "accountHCAOf(address)": {
+        "notice": "Returns the deterministic HCA address recorded for an account."
+      },
+      "accountImplementationOf(address)": {
+        "notice": "Returns the implementation explicitly selected by an account."
+      },
+      "computeAccountAddress(address)": {
+        "notice": "Computes the deterministic HCA proxy address for an owner."
+      },
+      "constructor": {
+        "notice": "Initializes the factory with an implementation, init data parser, owner, and deferred implementation."
+      },
+      "createAccount(bytes)": {
+        "notice": "Deploys a new HCA proxy for the owner encoded in the initialization data, or forwards ETH if already deployed."
+      },
+      "getAccountOwner(address)": {
+        "notice": "Returns the owner recorded for a deployed HCA proxy."
+      },
+      "getOwnerFromHCAInitdata(bytes)": {
+        "notice": "Extracts the HCA owner from initialization data."
+      },
+      "implementation()": {
+        "notice": "The current HCA implementation contract selectable by accounts."
+      },
+      "initDataParser()": {
+        "notice": "The parser contract that extracts account ownership from HCA initialization data."
+      },
+      "setAccountImplementation(address)": {
+        "notice": "Selects the implementation used when deploying the sender's deterministic HCA."
+      },
+      "setImplementation(address,address)": {
+        "notice": "Updates the implementation and init data parser selectable for new HCA proxies."
+      }
+    },
+    "notice": "Factory for deploying Hidden Contract Accounts as deterministic ERC-1967 proxies.",
+    "version": 1
+  },
+  "argsData": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffffffffff52d316b7bd028358089bc8066b8f80",
+  "transaction": {
+    "hash": "0xb3bd3ddbda9a50c1130cada000dca7bfe917619ebefad19ad7a1bda4be7034db",
+    "nonce": "0x1e4b",
+    "origin": "0xffffffffff52d316b7bd028358089bc8066b8f80"
+  },
+  "receipt": {
+    "blockHash": "0xda2d75d5ef8f3faaad9017a3ed644bfcc9d0533524b8deef6858a51cbcef8ec6",
+    "blockNumber": "0xa6a7be",
+    "transactionIndex": "0x4c"
+  }
+}

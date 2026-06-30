@@ -16,5 +16,9 @@
   "resolutions": {
     "esbuild": "0.25.11"
   },
-  "engineStrict": true
+  "engineStrict": true,
+  "patchedDependencies": {
+    "@rocketh/node@0.19.3": "patches/@rocketh-node@0.19.3.patch",
+    "rocketh@0.19.3": "patches/rocketh@0.19.3.patch"
+  }
 }

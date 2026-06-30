@@ -8,6 +8,6 @@ export default execute(
     });
   },
   {
-    tags: ["VerifiableFactory", "v2"],
+    tags: ["VerifiableFactory", "migration:phase1:deploy-v2", "v2"],
   },
 );

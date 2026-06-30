@@ -2,319 +2,152 @@
 
 ## Overview
 
-The pre-migration script (`contracts/script/preMigration.ts`) migrates ENS v1 `.eth` second-level domain (2LD) registrations to the v2 registry. It reads a CSV export of v1 registrations, verifies each name on-chain against the v1 BaseRegistrar, and reserves or renews the name on v2 via the `BatchRegistrar` contract.
+The pre-migration script (`contracts/script/preMigration.ts`) seeds ENS v1 `.eth` second-level (2LD) registrations into the v2 registry. It reads a CSV export of v1 registrations, verifies each name on-chain against the v1 `BaseRegistrar`, and reserves or renews it on v2 via the `BatchRegistrar` contract.
 
-Names are registered on v2 in a **reserved** state (owner set to `address(0)`) with the v1 expiry date preserved and the ENSV1Resolver set as the fallback resolver. Actual ownership transfer happens in a later migration phase.
+Names are written to v2 in a **reserved** state (owner `address(0)`) with the v1 expiry preserved (plus a configurable bonus period) and `ENSV1Resolver` set as the fallback resolver. Ownership transfer happens in a later migration phase.
+
+In the phased migration this script is driven through the operator CLI (`bun run migration -- premigration run` / `resume`, then `verify`); see [migration.md](./migration.md). The reference below documents the underlying script directly.
 
 ## Prerequisites
 
-- **Bun** runtime installed
-- **Forge artifacts** compiled (`forge build` in `contracts/`)
-- **Deployed contracts:**
-  - `PermissionedRegistry` (the v2 ETH registry)
-  - `BatchRegistrar` (owned by the deployer account)
-  - `ENSV1Resolver` (deployed on v2 for fallback resolution)
-- **Private key** for the `BatchRegistrar` owner account — provided via `--private-key` or the `PREMIGRATION_PRIVATE_KEY` environment variable
-- **RPC endpoint** for Ethereum mainnet (where both v1 and v2 contracts live). The chain ID is auto-detected from the RPC.
-  - Optionally, a separate `--mainnet-rpc-url` if v1 reads should go to a different endpoint (e.g. when running v2 on a local devnet that also has v1 contracts deployed)
-- **CSV file** of v1 registrations (see [CSV Format](#csv-format))
+- **Bun** runtime, and forge artifacts compiled (`forge build` in `contracts/`).
+- **Deployed contracts:** the v2 `PermissionedRegistry`, `BatchRegistrar` (owned by the signer), and `ENSV1Resolver`.
+- **Signer key** for the `BatchRegistrar` owner — `--private-key` or the `PREMIGRATION_PRIVATE_KEY` env var.
+- **RPC endpoint** where both v1 and v2 contracts live (chain ID auto-detected). Optionally a separate `--mainnet-rpc-url` for v1 reads (e.g. when v2 runs on a devnet with its own v1 set).
+- **CSV file** of v1 registrations (see [CSV input](#csv-input)).
 
 ## CLI Reference
 
-Run from the `contracts/` directory:
+Run from `contracts/`:
 
 ```bash
 bun run script/preMigration.ts [options]
 ```
 
-### Required Options
+### Required
 
 | Option | Description |
 |---|---|
-| `--rpc-url <url>` | Ethereum mainnet RPC endpoint |
-| `--registry <address>` | v2 PermissionedRegistry contract address |
-| `--batch-registrar <address>` | BatchRegistrar contract address |
-| `--csv-file <path>` | Path to the CSV file of v1 registrations |
-| `--v1-resolver <address>` | ENSV1Resolver address on v2 for fallback resolution |
+| `--rpc-url <url>` | RPC endpoint (where v1 + v2 live) |
+| `--registry <address>` | v2 `PermissionedRegistry` address |
+| `--batch-registrar <address>` | `BatchRegistrar` address |
+| `--csv-file <path>` | CSV of v1 registrations |
+| `--v1-resolver <address>` | `ENSV1Resolver` address (set as fallback resolver) |
 
 ### Optional
 
 | Option | Default | Description |
 |---|---|---|
-| `--private-key <key>` | `PREMIGRATION_PRIVATE_KEY` env var | Deployer private key. If omitted, falls back to the `PREMIGRATION_PRIVATE_KEY` environment variable. The script exits with an error if neither is provided. |
-| `--mainnet-rpc-url <url>` | `https://eth.drpc.org` | Mainnet RPC for v1 BaseRegistrar expiry lookups. Useful when v2 is running on a local devnet with its own v1 contracts, so v1 reads can be pointed at the devnet instead of real mainnet. |
-| `--batch-size <number>` | `50` | Names per on-chain batch transaction |
-| `--start-index <number>` | `-1` | CSV line number to start from (used internally with `--continue`) |
-| `--limit <number>` | none | Maximum total names to process |
-| `--dry-run` | `false` | Simulate without sending transactions |
-| `--continue` | `false` | Resume from the last checkpoint |
-| `--bonus-period-days <days>` | `62` | Days added to each name's v1 expiry to compute its v2 expiry. |
-| `--v1-base-registrar <address>` | `0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85` | v1 BaseRegistrar address for expiry lookups |
+| `--private-key <key>` | `PREMIGRATION_PRIVATE_KEY` | `BatchRegistrar` owner key. Exits if neither is set. |
+| `--account <address>` | — | Impersonated/unlocked `BatchRegistrar` owner (forks/devnets). |
+| `--mainnet-rpc-url <url>` | `https://eth.drpc.org` | RPC for v1 `BaseRegistrar` expiry reads; point at a devnet when v2 runs locally. |
+| `--batch-size <number>` | `50` | Names per on-chain batch. |
+| `--start-index <number>` | `-1` | CSV line to start from (set automatically by `--continue`). |
+| `--limit <number>` | none | Max names to process. |
+| `--dry-run` | `false` | Simulate without sending transactions. |
+| `--continue` | `false` | Resume from the last checkpoint. |
+| `--bonus-period-days <days>` | `62` | Days added to each name's v1 expiry to compute its v2 expiry. `0` preserves v1 expiries exactly. |
+| `--v1-base-registrar <address>` | mainnet `BaseRegistrar` | v1 `BaseRegistrar` for expiry lookups (override for testing). |
 
-## CSV Format
+> Eligibility is independently gated by v1's hard-coded 90-day grace: a name expired more than 90 days ago is past grace and skipped, regardless of `--bonus-period-days`. Choose a bonus period large enough that the deepest in-grace name you want migrated does not compute a past v2 expiry (which would fail registration).
 
-Parsing is **header-driven**. The script reads the first line as the header, locates the label column by name, and ignores everything else. Two column names are accepted (case-insensitive, leading/trailing whitespace trimmed):
+## CSV input
 
-- **`labelName`** — the v1 subgraph schema. Preferred when both names are present.
-- **`label`** — the name used by the `exportTheGraphRegistrations.ts` exporter.
-
-Both of these inputs work without any flag:
+Parsing is **header-driven**: the first line is the header, the label column is located by name, everything else is ignored. Two column names are accepted (case-insensitive, trimmed): **`labelName`** (v1 subgraph schema, preferred) or **`label`** (the `exportTheGraphRegistrations.ts` exporter). Both work with no flag:
 
 ```csv
 node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate
 ,,,,,,vitalik,,
-,,,,,,nick,,
-,,,,,,ens,,
 ```
 
 ```csv
 name,label,labelhash,registrant,expiryDate,registrationDate
 vitalik.eth,vitalik,0x...,0x...,...,...
-nick.eth,nick,0x...,0x...,...,...
 ```
 
-The parser handles quoted fields and `""`-escaped quotes within values. A UTF-8 BOM on the header line and a single trailing blank line at end of file are tolerated. CRLF line endings are normalized to LF.
+Quoted fields and `""`-escaped quotes are handled; a UTF-8 BOM, a single trailing blank line, and CRLF endings are tolerated.
 
-### Strict-mode behavior
+**Strict structural parsing.** Any structural problem aborts the run with the CSV path and 1-based line number (header = line 1); fix the file and re-run. Aborts on: missing both `labelName` and `label` columns; unbalanced quotes (header or row); a data row whose column count differs from the header; an empty/whitespace-only label cell; a blank line anywhere but a single trailing one; an empty file.
 
-Any structural problem aborts the run with a clear error that includes the CSV path and 1-based line number (the header counts as line 1). The script does not try to recover — fix the file and re-run.
+**Application-level filtering** happens *after* structural parsing and does **not** abort: labels longer than 255 bytes and the bracketed-labelhash form (`[0x…]`) are skipped and counted as `invalidLabelCount`.
 
-| Condition | Behavior |
-|---|---|
-| Header has no `labelName` and no `label` column | Abort. Error lists the columns that were found. |
-| Header has unbalanced quotes | Abort. |
-| Data row column count does not match header column count | Abort. Error shows declared and actual counts and the first ~200 chars of the row. |
-| Data row has unbalanced quotes | Abort. |
-| Data row has an empty (or whitespace-only) value in the label column | Abort. |
-| Blank line in the middle of the file | Abort. Only a single trailing blank line is tolerated. |
-| File is empty (no header) | Abort. |
+> **Limitation:** `readline` splits on `\n`, so a field containing a literal newline inside quotes is misread. No exporter we control produces these; pre-process the file if you have one.
 
-Application-level filtering still applies *after* structural parsing — labels longer than 255 bytes and the bracketed-labelhash form (`[0x…]`) are skipped and counted as `invalidLabelCount` rather than aborting the run.
+## How it works
 
-### Known limitation
+Names stream from the CSV in batches of `--batch-size`. Each batch is verified with a single multicall (two RPC calls regardless of size) reading v2 state (`PermissionedRegistry.getState()`) and v1 expiry (`BaseRegistrar.nameExpires()`), then submitted as one `BatchRegistrar.batchRegister()` transaction. Per-name action:
 
-`readline` splits on `\n`, so a field that contains a literal newline inside quotes will be misread. No exporter we control produces such fields. If you have one, pre-process the file to strip or escape the embedded newline.
-
-## How It Works
-
-### End-to-End Pipeline
-
-1. **Parse CLI options** and build configuration
-2. **Load checkpoint** if `--continue` is set and a checkpoint file exists
-3. **Connect** to the v2 chain and Ethereum mainnet via RPC
-4. **Validate** that the `BatchRegistrar` contract is deployed
-5. **Stream** the CSV file, reading names in batches of `--batch-size`
-6. **Filter** invalid/empty labels from the batch
-7. **Verify all names in the batch via multicall** — a single multicall reads v2 state (`PermissionedRegistry.getState()`) and v1 expiry (`BaseRegistrar.nameExpires()`) for all names in two RPC calls
-8. **For each verified name:**
-   - If already **registered** (status 2): fail — name is fully owned on v2
-   - If already **reserved** (status 1): mark for potential renewal
-   - If never registered on v1, or past v1's 90-day grace period (`v1Expiry + 90 days < now`): skip — v1 owner has lost their claim
-   - Otherwise add to the batch reservation list with v2 expiry = `v1Expiry + --bonus-period-days`. If the result is in the past, registration will fail — operators should choose `--bonus-period-days` large enough to cover the deepest-in-grace name they want migrated
-9. **Estimate gas** for the batch and preemptively split if estimated gas exceeds 80% of the block gas limit
-10. **Submit batch transaction** via `BatchRegistrar.batchRegister()`. If a batch reverts, recursively split it in half (binary-search fallback) until individual failing names are isolated.
-11. **Save checkpoint** after each batch
-12. **Print final summary**
-
-### Name Processing States
-
-| v2 Status | v1 Status | Action |
+| v2 status | v1 status | Action |
 |---|---|---|
-| Available (0) | Registered, or expired but within v1's 90-day grace period | **Reserve** on v2 with expiry `v1Expiry + bonusPeriodDays` |
-| Reserved (1) | Registered with different expiry | **Renew** on v2 (sync expiry) |
-| Reserved (1) | Registered with same expiry | **Skip** (already up-to-date) |
-| Registered (2) | Any | **Fail** (already fully registered) |
-| Any | Never registered, or past v1's 90-day grace | **Skip** (v1 owner has lost their claim) |
+| Available (0) | Registered, or expired but within v1's 90-day grace | **Reserve** with expiry `v1Expiry + bonusPeriodDays` |
+| Reserved (1) | Registered, different expiry | **Renew** (sync expiry) |
+| Reserved (1) | Registered, same expiry | **Skip** (up to date) |
+| Registered (2) | Any | **Fail** (already fully owned on v2) |
+| Any | Never registered, or past v1's 90-day grace | **Skip** (v1 owner lost the claim) |
 
-### On-Chain Registration Parameters
+Reserved names are written with owner/registry `address(0)`, resolver = `ENSV1Resolver`, roleBitmap `0`, and the computed expiry.
 
-Each name is reserved with:
-- **owner**: `address(0)` (reserved, not yet claimed)
-- **registry**: `address(0)`
-- **resolver**: The ENSV1Resolver address (for fallback resolution to v1 records)
-- **roleBitmap**: `0`
-- **expires**: The v1 expiry timestamp plus `--bonus-period-days`
+**Gas safety.** Before submitting, the script estimates gas; if it exceeds 80% of the block limit the batch is split in half and re-estimated (recursively). If a batch reverts at execution, it is recursively halved and retried (binary search) until failing names are isolated — preserving partial progress. A checkpoint is saved after each batch.
 
-## Batch Processing
+## Checkpoint & resume
 
-Names are grouped into batches (default size 50) and submitted as a single `batchRegister()` transaction. Verification of v1 and v2 state is done via multicall, reducing per-batch RPC calls to 2 regardless of batch size.
-
-### Gas Estimation & Dynamic Splitting
-
-Before submitting a batch, the script estimates gas usage. If the estimate exceeds 80% of the block gas limit, the batch is preemptively split in half and each half is estimated independently (recursively). This prevents out-of-gas reverts for large batches or batches with high-calldata names.
-
-### Binary-Search Batch Fallback
-
-If a batch transaction reverts at execution time, the script recursively splits it in half and retries each half. This continues until either a sub-batch succeeds or individual failing names are isolated. This preserves partial progress — names that can be registered will succeed even if something in the batch caused a revert.
-
-## BatchRegistrar Contract
-
-The `BatchRegistrar` contract (`contracts/src/registrar/BatchRegistrar.sol`) is a simple owner-gated batch wrapper around `PermissionedRegistry`. For each name in a batch:
-
-- **Already registered** (not expired, has owner): skip silently
-- **Not registered or expired**: call `register()`
-- **Reserved with lower expiry**: call `renew()` to sync
-- **Reserved with same/higher expiry**: skip (no-op)
-
-The contract is `Ownable` — only the owner can call `batchRegister()`.
-
-## Checkpoint & Resume
-
-The script writes a checkpoint file (`preMigration-checkpoint.json`) after each batch. The checkpoint contains:
-
-```json
-{
-  "lastProcessedLineNumber": 499,
-  "totalProcessed": 500,
-  "totalExpected": 500,
-  "successCount": 480,
-  "renewedCount": 5,
-  "failureCount": 3,
-  "skippedCount": 10,
-  "invalidLabelCount": 2,
-  "timestamp": "2026-03-10T12:00:00.000Z"
-}
-```
-
-To resume after an interruption:
+A checkpoint (`preMigration-checkpoint.json`) is written after each batch, tracking the last processed line and accumulated counters (reserved, renewed, skipped, invalid, failed). `--continue` loads it, sets `--start-index` to the last processed line, and resumes; counters accumulate across runs.
 
 ```bash
 bun run script/preMigration.ts --continue [same options as before]
 ```
 
-The `--continue` flag loads the checkpoint, sets `--start-index` to the last processed line, and resumes from there. Counters accumulate across runs.
+## Dry run
 
-## Dry Run Mode
+`--dry-run` runs the full pipeline — CSV parse, v1/v2 verification, expiry computation, checkpointing — and logs what would happen, but sends no transactions.
 
-Use `--dry-run` to simulate the entire pipeline without sending transactions:
+## Output
 
-```bash
-bun run script/preMigration.ts --dry-run [options]
-```
-
-Dry run still:
-- Reads and parses the CSV
-- Checks v2 state for each name
-- Verifies v1 registration and expiry
-- Applies `--bonus-period-days` to each expiry
-- Logs what would happen
-- Saves checkpoints
-
-It does **not** send any on-chain transactions.
-
-## Output & Logging
-
-### Log Files
-
-| File | Contents |
-|---|---|
-| `preMigration.log` | All informational output (processing steps, results) |
-| `preMigration-errors.log` | Errors only (failed names, RPC issues) |
-
-### Console Output
-
-The script uses color-coded console output:
-- Green: successful reservations
-- Cyan: renewals
-- Yellow: skipped names
-- Red: failures
-- Magenta: progress summaries
-
-### Final Summary
-
-At completion, a summary table is printed:
-
-```
-Total names processed:          500
-Successfully reserved:          480
-Successfully renewed:             5
-Skipped:                         10
-Invalid labels:                   2
-Failed:                           3
-Actual reservations/renewals:   488
-Success rate:                   99%
-```
-
-## Error Handling
-
-| Scenario | Behavior |
-|---|---|
-| CSV structural problem (bad header, wrong column count, unbalanced quotes, empty label cell, mid-file blank line) | Abort the run. See [CSV Format](#csv-format) for the full list. |
-| Label longer than 255 bytes or in the `[0x…]` bracketed-labelhash form | Filtered out before processing, counted as `invalidLabelCount` |
-| Name not registered on v1 | Skipped, counted as `skippedCount` |
-| Name already fully registered on v2 | Counted as failure |
-| Batch transaction reverts | Binary-search split: recursively halves the batch until individual failures are isolated |
-| Batch gas estimate exceeds 80% of block limit | Preemptively splits the batch before submitting |
-| Gas estimation fails | Falls back to binary-search batch submission |
-| Individual transaction reverts | Counted as failure, logged to error file |
-| RPC timeout | 30-second timeout per call; failure counted and logged |
-| Checkpoint write failure | Logged as error, processing continues |
+Informational output goes to `preMigration.log` and errors to `preMigration-errors.log`; the console mirrors progress with a final summary table (processed / reserved / renewed / skipped / invalid / failed / success rate). Non-CSV failures (individual name reverts, RPC timeouts at a 30s per-call limit, checkpoint write errors) are counted and logged without aborting the run.
 
 ## Examples
 
-### Full migration (dry run first)
-
 ```bash
-# Set private key via environment variable
-export PREMIGRATION_PRIVATE_KEY=0xabc...def
+export PREMIGRATION_PRIVATE_KEY=0x...
 
-# Dry run to verify
+# Dry run first
 bun run script/preMigration.ts \
-  --rpc-url https://v2-rpc.example.com \
-  --registry 0x1234...abcd \
-  --batch-registrar 0x5678...ef01 \
-  --csv-file ./data/v1-registrations.csv \
-  --v1-resolver 0x9876...5432 \
-  --dry-run
+  --rpc-url <url> --registry <addr> --batch-registrar <addr> \
+  --v1-resolver <addr> --csv-file ./data/v1-registrations.csv --dry-run
 
-# Execute for real
+# Execute (drop --dry-run); resume after an interruption with --continue
 bun run script/preMigration.ts \
-  --rpc-url https://v2-rpc.example.com \
-  --registry 0x1234...abcd \
-  --batch-registrar 0x5678...ef01 \
-  --csv-file ./data/v1-registrations.csv \
-  --v1-resolver 0x9876...5432
-
-# Or pass the private key directly
-bun run script/preMigration.ts \
-  --rpc-url https://v2-rpc.example.com \
-  --registry 0x1234...abcd \
-  --batch-registrar 0x5678...ef01 \
-  --private-key 0xabc...def \
-  --csv-file ./data/v1-registrations.csv \
-  --v1-resolver 0x9876...5432
+  --rpc-url <url> --registry <addr> --batch-registrar <addr> \
+  --v1-resolver <addr> --csv-file ./data/v1-registrations.csv
 ```
 
-### Process a limited number of names
+## Testing on a Sepolia fork
+
+To rehearse pre-migration against real Sepolia v1 state without a full `fork full` run, deploy the v2 stack onto a local Anvil fork (v2 is not on real Sepolia) and run pre-migration against it.
+
+> **Account requirement:** the deployer/owner must be an address with **no code** on Sepolia. The standard Anvil test accounts carry an EIP-7702 delegation there, so their `onERC1155Received` does not return the ERC-1155 acceptance value and the `eth` 2LD mint during deploy reverts. Use a fresh throwaway key funded via `anvil_setBalance`.
 
 ```bash
-bun run script/preMigration.ts \
-  --limit 100 \
-  --batch-size 25 \
-  [other options]
+# 1. Fork Sepolia
+anvil --fork-url "$SEPOLIA_RPC_URL" --port 8547 --chain-id 11155111 &
+
+# 2. Fresh deployer with no Sepolia code, funded on the fork
+KEY=<fresh 0x… key>; ADDR=$(cast wallet address --private-key "$KEY")
+cast rpc anvil_setBalance "$ADDR" 0x21e19e0c9bab2400000 --rpc-url http://127.0.0.1:8547
+
+# 3. Deploy v2 onto the fork (impersonate the v1 owner for the .eth resolver write)
+DEPLOYER_KEY=$KEY OWNER_KEY=$KEY UR_MANAGER_KEY=$KEY \
+  bun run migration -- phase deploy-v2 --network sepolia --rpc-url http://127.0.0.1:8547 \
+    --deployer "$ADDR" --owner "$ADDR" --ur-manager "$ADDR" --impersonate-v1-owner \
+    --save-deployments --deployments-dir /tmp/fork-deployments --deployment-network sepolia
+
+# 4. Run + verify (addresses read from the deployment JSON; v1 reads use the same fork RPC)
+bun run migration -- premigration run --network sepolia --rpc-url http://127.0.0.1:8547 \
+  --deployments-dir /tmp/fork-deployments --deployment-network sepolia \
+  --csv-file ./csv-data/ens-registrations-sepolia.csv --private-key "$KEY"
+bun run migration -- premigration verify --network sepolia --rpc-url http://127.0.0.1:8547 \
+  --deployments-dir /tmp/fork-deployments --deployment-network sepolia \
+  --csv-file ./csv-data/ens-registrations-sepolia.csv
 ```
 
-### Resume after interruption
-
-```bash
-bun run script/preMigration.ts --continue [same options]
-```
-
-### Custom expiry buffer
-
-```bash
-bun run script/preMigration.ts --bonus-period-days 180 [other options]
-```
-
-Every reserved name's v2 expiry is set to `v1Expiry + 180 days`. Pass `0` to preserve v1 expiries exactly.
-
-Note: eligibility for migration is gated by v1's hard-coded 90-day grace period regardless of this value. A name expired more than 90 days ago is past v1 grace and is skipped.
-
-### Custom v1 BaseRegistrar (for testing)
-
-```bash
-bun run script/preMigration.ts \
-  --v1-base-registrar 0xCustomBaseRegistrar... \
-  --mainnet-rpc-url http://localhost:8545 \
-  [other options]
-```
+For the full phased rehearsal instead, see the `fork full` command in [migration.md](./migration.md#rehearsals).

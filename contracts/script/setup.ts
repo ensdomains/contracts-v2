@@ -1,8 +1,12 @@
-import { artifacts } from "@rocketh";
+import artifacts from "./artifacts.js";
 import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { anvil as createAnvil } from "prool/instances";
-import { executeDeployScripts, resolveConfig } from "rocketh";
+import type {
+  UnresolvedNetworkSpecificData,
+  UnresolvedUnknownNamedAccounts,
+  UserConfig,
+} from "rocketh/types";
 import {
   type Account,
   type Address,
@@ -27,6 +31,15 @@ import {
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 
+import { Artifact_DNSAliasResolver } from "generated/artifacts/DNSAliasResolver.js";
+import { Artifact_DNSTLDResolver } from "generated/artifacts/DNSTLDResolver.js";
+import { Artifact_DNSTXTResolver } from "generated/artifacts/DNSTXTResolver.js";
+import { Artifact_ENSV1Resolver } from "generated/artifacts/ENSV1Resolver.js";
+import { Artifact_ENSV2Resolver } from "generated/artifacts/ENSV2Resolver.js";
+import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
+import { Artifact_UniversalResolverV2 } from "generated/artifacts/UniversalResolverV2.js";
+
+import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
 import {
   computeVerifiableProxyAddress as computeVerifiableProxyAddress_,
   deployVerifiableProxy,
@@ -246,28 +259,46 @@ export async function setupDevnet({
       });
     }
     process.env.BATCH_GATEWAY_URLS = JSON.stringify([LOCAL_BATCH_GATEWAY_URL]);
-    const rocketh = await executeDeployScripts(
-      resolveConfig({
-        network: {
-          nodeUrl: httpURL,
-          name: deploymentName,
-          tags: [
-            "v2",
-            "local",
-            "use_root", // deploy root contracts
-            "allow_unsafe", // state hacks
-            "legacy", // legacy registry
-          ],
-          fork: false,
-          // on fork, v1 contracts come from the live mainnet state we just
-          // pre-populated; only the v2 deploy scripts run on top
-          scripts: isFork ? ["deploy"] : ["lib/ens-contracts/deploy", "deploy"],
-          pollingInterval: 0.001, // cannot be zero
-        },
+    const rocketh = await loadAndExecuteDeploymentsFromFilesWithConfig(
+      {
+        environment: deploymentName,
         askBeforeProceeding: false,
         saveDeployments,
-        accounts: Object.fromEntries(accounts.map((x) => [x.name, x.address])),
-      }),
+        defaultPollingInterval: 0.001, // cannot be zero
+      },
+      {
+        accounts: Object.fromEntries(
+          accounts.map((x) => [x.name, x.address]),
+        ) as never,
+        chains: {
+          [activeChainId]: {
+            info: chain,
+            rpcUrl: httpURL,
+            pollingInterval: 0.001,
+            tags: [
+              "v2",
+              "local",
+              "use_root", // deploy root contracts
+              "allow_unsafe", // state hacks
+              "legacy", // legacy registry
+              "tenderly", // let ENS deploy scripts run full setup on chain id 1 forks
+            ],
+          },
+        },
+        environments: {
+          [deploymentName]: {
+            chain: activeChainId,
+            // on fork, v1 contracts come from the live mainnet state we just
+            // pre-populated; only the v2 deploy scripts run on top
+            scripts: isFork
+              ? ["deploy"]
+              : ["lib/ens-contracts/deploy", "deploy"],
+          },
+        },
+      } satisfies UserConfig<
+        UnresolvedUnknownNamedAccounts,
+        UnresolvedNetworkSpecificData
+      >,
     );
     console.log("Deployed contracts");
 
@@ -448,33 +479,33 @@ export async function setupDevnet({
       }),
       // resolvers
       UniversalResolver: getContract({
-        abi: artifacts.UniversalResolverV2.abi,
-        address: rocketh.get("UniversalResolverV2").address,
+        abi: Artifact_UniversalResolverV2.abi,
+        address: rocketh.deployments["UniversalResolverV2"].address,
         client,
       }),
       DNSTLDResolver: getContract({
-        abi: artifacts.DNSTLDResolver.abi,
-        address: rocketh.get("DNSTLDResolver").address,
+        abi: Artifact_DNSTLDResolver.abi,
+        address: rocketh.deployments["DNSTLDResolver"].address,
         client,
       }),
       DNSTXTResolver: getContract({
-        abi: artifacts.DNSTXTResolver.abi,
-        address: rocketh.get("DNSTXTResolver").address,
+        abi: Artifact_DNSTXTResolver.abi,
+        address: rocketh.deployments["DNSTXTResolver"].address,
         client,
       }),
       DNSAliasResolver: getContract({
-        abi: artifacts.DNSAliasResolver.abi,
-        address: rocketh.get("DNSAliasResolver").address,
+        abi: Artifact_DNSAliasResolver.abi,
+        address: rocketh.deployments["DNSAliasResolver"].address,
         client,
       }),
       ENSV1Resolver: getContract({
-        abi: artifacts.ENSV1Resolver.abi,
-        address: rocketh.get("ENSV1Resolver").address,
+        abi: Artifact_ENSV1Resolver.abi,
+        address: rocketh.deployments["ENSV1Resolver"].address,
         client,
       }),
       ENSV2Resolver: getContract({
-        abi: artifacts.ENSV2Resolver.abi,
-        address: rocketh.get("ENSV2Resolver").address,
+        abi: Artifact_ENSV2Resolver.abi,
+        address: rocketh.deployments["ENSV2Resolver"].address,
         client,
       }),
       PublicResolver: getContract({
@@ -486,13 +517,13 @@ export async function setupDevnet({
 
     const erc20 = {
       MockUSDC: getContract({
-        abi: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
-        address: rocketh.get("MockUSDC").address,
+        abi: Artifact_MockERC20.abi,
+        address: rocketh.deployments["MockUSDC"].address,
         client,
       }),
       MockDAI: getContract({
-        abi: artifacts["test/mocks/MockERC20.sol/MockERC20"].abi,
-        address: rocketh.get("MockDAI").address,
+        abi: Artifact_MockERC20.abi,
+        address: rocketh.deployments["MockDAI"].address,
         client,
       }),
     };
@@ -633,7 +664,7 @@ export async function setupDevnet({
     function computeVerifiableProxyAddress(deployer: Address, salt: bigint) {
       return computeVerifiableProxyAddress_({
         factoryAddress: v2.VerifiableFactory.address,
-        proxyLogic: verifiableProxyLogic,
+        proxyLogic: verifiableProxyLogic as Address,
         deployer,
         salt,
       });

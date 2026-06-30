@@ -97,7 +97,8 @@ export interface PreMigrationConfig {
   mainnetRpcUrl: string;
   registryAddress: Address;
   batchRegistrarAddress: Address;
-  privateKey: `0x${string}`;
+  privateKey?: `0x${string}`;
+  account?: Address;
   csvFilePath: string;
   batchSize: number;
   startIndex: number;
@@ -517,7 +518,7 @@ async function* readCSVInBatches(
   }
 }
 
-function parseCSVLine(line: string): string[] {
+export function parseCSVLine(line: string): string[] {
   const result: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -561,8 +562,17 @@ async function createMigrationClients(
 ): Promise<MigrationClients> {
   const v2Chain = await resolveChain(config.rpcUrl, RPC_TIMEOUT_MS);
 
+  const account = config.privateKey
+    ? privateKeyToAccount(config.privateKey)
+    : config.account;
+  if (!account) {
+    throw new Error(
+      "Missing signer: provide --private-key, PREMIGRATION_PRIVATE_KEY, or --account",
+    );
+  }
+
   const client = createWalletClient({
-    account: privateKeyToAccount(config.privateKey),
+    account,
     chain: v2Chain,
     transport: http(config.rpcUrl, { retryCount: 0, timeout: RPC_TIMEOUT_MS }),
   }).extend(publicActions);
@@ -1134,6 +1144,10 @@ export async function main(argv = process.argv): Promise<void> {
       "--private-key <key>",
       "Deployer private key (default: PREMIGRATION_PRIVATE_KEY env var)",
     )
+    .option(
+      "--account <address>",
+      "Impersonated or unlocked BatchRegistrar owner account",
+    )
     .requiredOption(
       "--csv-file <path>",
       "Path to CSV file containing ENS registrations",
@@ -1183,9 +1197,10 @@ export async function main(argv = process.argv): Promise<void> {
 
   const privateKey = (opts.privateKey ??
     process.env.PREMIGRATION_PRIVATE_KEY) as `0x${string}` | undefined;
-  if (!privateKey) {
+  const account = opts.account as Address | undefined;
+  if (!privateKey && !account) {
     console.error(
-      "Error: private key must be provided via --private-key or PREMIGRATION_PRIVATE_KEY env var",
+      "Error: signer must be provided via --private-key, PREMIGRATION_PRIVATE_KEY, or --account",
     );
     process.exit(1);
   }
@@ -1196,6 +1211,7 @@ export async function main(argv = process.argv): Promise<void> {
     registryAddress: opts.registry as Address,
     batchRegistrarAddress: opts.batchRegistrar as Address,
     privateKey,
+    account,
     csvFilePath: opts.csvFile,
     batchSize: parseInt(opts.batchSize) || 100,
     startIndex: parseInt(opts.startIndex) || 0,
@@ -1218,8 +1234,9 @@ export async function main(argv = process.argv): Promise<void> {
     logger.config("Registry", config.registryAddress);
     logger.config("BatchRegistrar", config.batchRegistrarAddress);
     logger.config(
-      "Private Key Source",
-      opts.privateKey ? "CLI argument" : "env var",
+      "Signer Account",
+      config.account ??
+        (opts.privateKey ? "private key (CLI)" : "private key (env)"),
     );
     logger.config("Mainnet RPC (v1)", config.mainnetRpcUrl);
     logger.config("CSV File", config.csvFilePath);

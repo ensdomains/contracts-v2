@@ -1,6 +1,5 @@
 import { describe, it } from "bun:test";
 import {
-  type AbiParameter,
   type AbiParameterToPrimitiveType,
   type Account,
   type Address,
@@ -16,6 +15,7 @@ import {
   SEC_PER_YEAR,
   GRACE_PERIOD_V2,
 } from "../../script/deploy-constants.js";
+import { migrationDataComponents } from "../../script/migration.js";
 import { expect, expectVar } from "../utils/expectVar.js";
 import {
   COIN_TYPE_ETH,
@@ -32,13 +32,6 @@ import {
 } from "../utils/resolutions.js";
 
 // see: LibMigration.sol
-const migrationDataComponents = [
-  { name: "label", type: "string" },
-  { name: "owner", type: "address" },
-  { name: "subregistry", type: "address" },
-  { name: "resolver", type: "address" },
-] as const satisfies AbiParameter[];
-
 type MigrationData = AbiParameterToPrimitiveType<{
   type: "tuple";
   components: typeof migrationDataComponents;

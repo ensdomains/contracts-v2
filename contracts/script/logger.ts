@@ -24,6 +24,7 @@ export interface LoggerOptions {
  */
 export class Logger {
   protected options: LoggerOptions;
+  private fileLoggingDisabledReason?: string;
 
   constructor(options: LoggerOptions = {}) {
     this.options = { enableFileLogging: false, ...options };
@@ -48,7 +49,17 @@ export class Logger {
     if (!file) return;
 
     const timestamp = new Date().toISOString();
-    writeFileSync(file, `[${timestamp}]${prefix} ${message}\n`, { flag: "a" });
+    if (this.fileLoggingDisabledReason) return;
+
+    try {
+      writeFileSync(file, `[${timestamp}]${prefix} ${message}\n`, { flag: "a" });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.fileLoggingDisabledReason = errorMessage;
+      console.warn(
+        yellow(`WARNING: file logging disabled after write failure: ${errorMessage}`),
+      );
+    }
   }
 
   /**

@@ -11,9 +11,12 @@ import {
   type PublicClient,
 } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
-import { mainnet } from "viem/chains";
+import { mainnet, sepolia } from "viem/chains";
 
 export const DEFAULT_RPC_TIMEOUT_MS = 30_000;
+
+/// Canonical CREATE2 Multicall3 deployment address, identical across EVM chains.
+const MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11" as const;
 
 /// Load an ABI from the forge compilation artifact under `contracts/out/`.
 export function loadArtifact(contractName: string): { abi: any[] } {
@@ -36,11 +39,13 @@ export async function resolveChain(
   });
   const chainId = await probe.getChainId();
   if (chainId === 1) return mainnet;
+  if (chainId === sepolia.id) return sepolia;
   return defineChain({
     id: chainId,
     name: "Custom",
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: { default: { http: [rpcUrl] } },
+    contracts: { multicall3: { address: MULTICALL3_ADDRESS } },
   });
 }
 

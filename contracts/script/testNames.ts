@@ -1,6 +1,5 @@
-import { encodeFunctionData, getContract, namehash, zeroAddress } from "viem";
+import { encodeFunctionData, namehash, zeroAddress } from "viem";
 
-import { artifacts } from "@rocketh";
 import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
 import { dnsEncodeName, dnsDecodeName } from "../test/utils/utils.js";
 import type { DevnetEnvironment } from "./setup.js";
@@ -24,7 +23,7 @@ import {
   renewName,
 } from "./testNames/registrar.js";
 import { showName, showAlias, formatStatus } from "./testNames/display.js";
-import { ADDR_ABI } from "../test/utils/resolvers.ts";
+import { ADDR_ABI } from "../test/utils/resolvers.js";
 
 // Re-export all utilities for external consumers
 export {

@@ -1,15 +1,14 @@
-import {
-  decodeFunctionResult,
-  encodeFunctionData,
-  namehash,
-  zeroAddress,
-} from "viem";
+import { decodeFunctionResult, encodeFunctionData, namehash } from "viem";
 
 import type { DevnetEnvironment } from "../setup.js";
 import { MAX_EXPIRY, STATUS } from "../deploy-constants.js";
-import { COIN_TYPE_ETH, dnsEncodeName } from "../../test/utils/utils.js";
+import { dnsEncodeName } from "../../test/utils/utils.js";
 import { getNameData } from "./registry.js";
-import { MULTICALL_ABI, PROFILE_ABI } from "../../test/utils/resolvers.js";
+import {
+  ADDR_ABI,
+  MULTICALL_ABI,
+  PROFILE_ABI,
+} from "../../test/utils/resolvers.js";
 
 /**
  * Display name information in a formatted table
@@ -27,9 +26,9 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
     // Batch addr and text resolution using resolver multicall
     const resolverCalls = [
       encodeFunctionData({
-        abi: PROFILE_ABI,
+        abi: ADDR_ABI,
         functionName: "addr",
-        args: [node, COIN_TYPE_ETH],
+        args: [node],
       }),
       encodeFunctionData({
         abi: PROFILE_ABI,
@@ -59,7 +58,7 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
         abi: MULTICALL_ABI,
         functionName: "multicall",
         data: result,
-      });
+      }) as readonly `0x${string}`[];
 
       // Decode individual results
       ethAddress = decodeFunctionResult({
@@ -71,7 +70,7 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
         abi: PROFILE_ABI,
         functionName: "text",
         data: results[1],
-      });
+      }) as string;
     } catch {
       // Resolution may fail for names without a resolver (e.g., reserved or unregistered names)
     }
