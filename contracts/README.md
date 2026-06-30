@@ -324,6 +324,8 @@ Single contract for resolving any ENS name:
 
 On live networks, clients reach it through a chain of upgradable proxies that manages the v1 → v2 cutover — see [Universal Resolver structure](docs/universalResolver.md).
 
+> **Operational note (Sepolia, temporary):** the intermediate URP `0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1` has been repointed from the current fresh deployment (`deployments/sepolia`) back to the previous deployment's `UniversalResolverV2` `0x2f8a180604c42457cb56c7c4f708748ff1f91df1` (`deployments/sepolia-official-v1-20260525-r2`), so the public entrypoint `0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe` again resolves v1 names. This is a temporary measure at the team's request until the fresh deployment's v1 mirror is wired up; to revert, run `phase upgrade-managed-urp --network sepolia --deployment-network sepolia` (the current stack).
+
 **Example**:
 
 ```solidity
