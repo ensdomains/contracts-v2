@@ -3,25 +3,26 @@ pragma solidity ^0.8.27;
 
 // solhint-disable private-vars-leading-underscore, func-name-mixedcase, gas-custom-errors
 
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 
 import {Test} from "forge-std/Test.sol";
 
-import {IExecutor} from "nexus/interfaces/modules/IExecutor.sol";
-import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
-import {EncodedModuleTypes} from "nexus/lib/ModuleTypeLib.sol";
-
 import {
-    IStandaloneRegistrationCommitter,
-    IStandaloneVerifiableFactory,
-    RegistrationBootstrapper
-} from "~src/hca/RegistrationBootstrapper.sol";
+    MockExecutorModule,
+    MockRegistrationCommitter,
+    MockStandaloneHCA,
+    MockValidatorModule,
+    MockVerifiableFactory
+} from "../../mocks/MockStandaloneHCAStack.sol";
+import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
+import {RegistrationBootstrapper} from "~src/hca/RegistrationBootstrapper.sol";
 import {
     OwnerBoundRegistrationSessionValidator
 } from "~src/hca/OwnerBoundRegistrationSessionValidator.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 
-contract StandaloneHCATest is Test {
+contract StandaloneSingleOwnerHCATest is Test {
     struct Permit2Fields {
         uint256 sourceChainId;
         address permit2Contract;
@@ -34,10 +35,10 @@ contract StandaloneHCATest is Test {
 
     bytes4 constant COMMIT_SELECTOR = 0xf14fcbc8;
     bytes4 constant REGISTER_SELECTOR = 0xcff3e7c2;
-    bytes4 constant RENEW_SELECTOR = 0x545064a7;
+    bytes4 constant RENEW_SELECTOR = 0x89d779c3;
     bytes4 constant APPROVE_SELECTOR = 0x095ea7b3;
     bytes4 constant DEPLOY_PROXY_SELECTOR = 0x5d84121a;
-    bytes4 constant CLAIM_WITH_HCA_SELECTOR = 0xc90695df;
+    bytes4 constant SET_NAME_WITH_HCA_SELECTOR = 0xab863445;
     bytes4 constant SET_ADDR_SELECTOR = 0xd5fa2b00;
     bytes4 constant SET_TEXT_SELECTOR = 0x10f13a8c;
     bytes4 constant SET_NAME_SELECTOR = 0x77372213;
@@ -71,7 +72,7 @@ contract StandaloneHCATest is Test {
 
     address owner = vm.addr(ownerKey);
     address sessionSigner = vm.addr(sessionKey);
-    address reverseRegistrarHCAAdapter = makeAddr("reverse-adapter");
+    address defaultReverseRegistrarHCAAdapter = makeAddr("default-reverse-adapter");
     address permittedResolverImpl = makeAddr("resolver-impl");
     address ethRegistrar = makeAddr("eth-registrar");
     address verifiableFactory = makeAddr("verifiable-factory");
@@ -88,7 +89,7 @@ contract StandaloneHCATest is Test {
 
     function setUp() public {
         validator = new OwnerBoundRegistrationSessionValidator(
-            reverseRegistrarHCAAdapter,
+            defaultReverseRegistrarHCAAdapter,
             permittedResolverImpl,
             ethRegistrar,
             verifiableFactory,
@@ -96,7 +97,7 @@ contract StandaloneHCATest is Test {
             dai
         );
         validatorHarness = new OwnerBoundRegistrationSessionValidatorHarness(
-            reverseRegistrarHCAAdapter,
+            defaultReverseRegistrarHCAAdapter,
             permittedResolverImpl,
             ethRegistrar,
             verifiableFactory,
@@ -115,11 +116,11 @@ contract StandaloneHCATest is Test {
 
         address deployed =
             bootstrapper.deployAndCommit(
-                factory,
+                IVerifiableFactory(address(factory)),
                 address(0x1234),
                 123,
                 initData,
-                registrar,
+                IETHRegistrar(address(registrar)),
                 commitment
             );
 
@@ -460,6 +461,27 @@ contract StandaloneHCATest is Test {
             address(0),
             OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector
         );
+
+        executions[0] = OwnerBoundRegistrationSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+            owner,
+            address(0)
+        )});
+        executions[1] = OwnerBoundRegistrationSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+            owner,
+            resolver
+        )});
+
+        _expectValidationRevert(
+            _operationData(executions),
+            address(0),
+            OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector
+        );
+
+        _expectValidationRevert(
+            _registrationOperationDataWithDefaultReverseName(owner, resolver, "bob.eth"),
+            resolver,
+            OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector
+        );
     }
 
     function test_validator_rejectsTargetPolicyFailures() public {
@@ -474,7 +496,7 @@ contract StandaloneHCATest is Test {
         );
         _expectValidationRevert(
             _singleOperationData(
-                reverseRegistrarHCAAdapter,
+                defaultReverseRegistrarHCAAdapter,
                 0,
                 abi.encodeWithSelector(COMMIT_SELECTOR, bytes32("commitment"))
             ),
@@ -483,27 +505,27 @@ contract StandaloneHCATest is Test {
         );
         _expectValidationRevert(
             _singleOperationData(
-                reverseRegistrarHCAAdapter,
+                defaultReverseRegistrarHCAAdapter,
                 0,
-                abi.encodeWithSelector(CLAIM_WITH_HCA_SELECTOR, owner, resolver)
+                abi.encodeWithSelector(SET_NAME_WITH_HCA_SELECTOR, owner, "alice.eth")
             ),
             address(0),
             OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector
         );
         _expectValidationRevert(
             _singleOperationData(
-                reverseRegistrarHCAAdapter,
+                defaultReverseRegistrarHCAAdapter,
                 0,
-                abi.encodeWithSelector(CLAIM_WITH_HCA_SELECTOR, vm.addr(badKey), resolver)
+                abi.encodeWithSelector(SET_NAME_WITH_HCA_SELECTOR, owner, "alice.eth")
             ),
             resolver,
             OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector
         );
         _expectValidationRevert(
             _singleOperationData(
-                reverseRegistrarHCAAdapter,
+                defaultReverseRegistrarHCAAdapter,
                 0,
-                abi.encodeWithSelector(CLAIM_WITH_HCA_SELECTOR, owner, otherResolver)
+                abi.encodeWithSelector(SET_NAME_WITH_HCA_SELECTOR, vm.addr(badKey), "alice.eth")
             ),
             resolver,
             OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector
@@ -517,7 +539,7 @@ contract StandaloneHCATest is Test {
             _singleOperationData(
                 dai,
                 0,
-                abi.encodeWithSelector(APPROVE_SELECTOR, reverseRegistrarHCAAdapter, 1 ether)
+                abi.encodeWithSelector(APPROVE_SELECTOR, defaultReverseRegistrarHCAAdapter, 1 ether)
             ),
             address(0),
             OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector
@@ -633,6 +655,23 @@ contract StandaloneHCATest is Test {
         view
         returns (bytes memory)
     {
+        return
+            _registrationOperationDataWithDefaultReverseName(
+                registrant,
+                registrationResolver,
+                "alice.eth"
+            );
+    }
+
+    function _registrationOperationDataWithDefaultReverseName(
+        address registrant,
+        address registrationResolver,
+        string memory defaultReverseName
+    )
+        internal
+        view
+        returns (bytes memory)
+    {
         bytes[] memory resolverCalls = new bytes[](2);
         resolverCalls[0] = abi.encodeWithSelector(
             SET_TEXT_SELECTOR,
@@ -662,21 +701,21 @@ contract StandaloneHCATest is Test {
             bytes32("node"),
             resolverCalls
         )});
-        executions[4] = OwnerBoundRegistrationSessionValidator.Execution({target: reverseRegistrarHCAAdapter, value: 0, callData: abi.encodeWithSelector(
-            CLAIM_WITH_HCA_SELECTOR,
-            registrant,
-            registrationResolver
-        )});
-        executions[5] = OwnerBoundRegistrationSessionValidator.Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
+        executions[4] = OwnerBoundRegistrationSessionValidator.Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
             APPROVE_SELECTOR,
             ethRegistrar,
             1 ether
         )});
-        executions[6] = OwnerBoundRegistrationSessionValidator.Execution({target: verifiableFactory, value: 0, callData: abi.encodeWithSelector(
+        executions[5] = OwnerBoundRegistrationSessionValidator.Execution({target: verifiableFactory, value: 0, callData: abi.encodeWithSelector(
             DEPLOY_PROXY_SELECTOR,
             permittedResolverImpl,
             123,
             ""
+        )});
+        executions[6] = OwnerBoundRegistrationSessionValidator.Execution({target: defaultReverseRegistrarHCAAdapter, value: 0, callData: abi.encodeWithSelector(
+            SET_NAME_WITH_HCA_SELECTOR,
+            registrant,
+            defaultReverseName
         )});
 
         return _operationData(executions);
@@ -722,7 +761,8 @@ contract StandaloneHCATest is Test {
             RENEW_SELECTOR,
             "alice",
             uint64(365 days),
-            usdc
+            usdc,
+            bytes32(0)
         )});
         return _operationData(executions);
     }
@@ -755,7 +795,7 @@ contract StandaloneHCATest is Test {
     {
         bytes32 operationHash = keccak256(operationData);
         if (selector == OwnerBoundRegistrationSessionValidator.ActionNotAllowed.selector) {
-            vm.expectRevert();
+            vm.expectPartialRevert(selector);
         } else {
             vm.expectRevert(selector);
         }
@@ -995,20 +1035,20 @@ contract StandaloneHCATest is Test {
 
 contract OwnerBoundRegistrationSessionValidatorHarness is OwnerBoundRegistrationSessionValidator {
     constructor(
-        address reverseRegistrarHCAAdapter,
+        address defaultReverseRegistrarHCAAdapter,
         address permittedResolverImpl,
         address ethRegistrar,
         address verifiableFactory,
-        address mockUsdc,
-        address mockDai
+        address paymentToken,
+        address secondaryPaymentToken
     )
         OwnerBoundRegistrationSessionValidator(
-            reverseRegistrarHCAAdapter,
+            defaultReverseRegistrarHCAAdapter,
             permittedResolverImpl,
             ethRegistrar,
             verifiableFactory,
-            mockUsdc,
-            mockDai
+            paymentToken,
+            secondaryPaymentToken
         )
     {}
 
@@ -1030,98 +1070,6 @@ contract StandaloneSingleOwnerHCAHarness is StandaloneSingleOwnerHCA {
 
     function authorizeUpgradeHarness(address newImplementation) external pure {
         _authorizeUpgrade(newImplementation);
-    }
-}
-
-
-contract MockStandaloneHCA {
-    address public owner;
-
-    constructor(address owner_) {
-        owner = owner_;
-    }
-
-    function validate(
-        OwnerBoundRegistrationSessionValidator validator,
-        bytes32 operationHash,
-        bytes calldata signature
-    )
-        external
-        view
-        returns (bytes4)
-    {
-        return validator.isValidSignatureWithSender(address(this), operationHash, signature);
-    }
-}
-
-
-contract MockValidatorModule is IValidator {
-    function validateUserOp(PackedUserOperation calldata, bytes32) external pure returns (uint256) {
-        return 1;
-    }
-
-    function isValidSignatureWithSender(address, bytes32, bytes calldata)
-        external
-        pure
-        returns (bytes4)
-    {
-        return bytes4(0);
-    }
-
-    function onInstall(bytes calldata) external pure {}
-
-    function onUninstall(bytes calldata) external pure {}
-
-    function isModuleType(uint256 moduleTypeId) external pure returns (bool) {
-        return moduleTypeId == 1;
-    }
-
-    function isInitialized(address) external pure returns (bool) {
-        return true;
-    }
-}
-
-
-contract MockExecutorModule is IExecutor {
-    function onInstall(bytes calldata) external pure {}
-
-    function onUninstall(bytes calldata) external pure {}
-
-    function isModuleType(uint256 moduleTypeId) external pure returns (bool) {
-        return moduleTypeId == 2;
-    }
-
-    function getModuleTypes() external pure returns (EncodedModuleTypes) {}
-
-    function isInitialized(address) external pure returns (bool) {
-        return true;
-    }
-}
-
-
-contract MockVerifiableFactory is IStandaloneVerifiableFactory {
-    address public implementation;
-    uint256 public salt;
-    bytes public initData;
-    address public proxy = address(0xBEEF);
-
-    function deployProxy(address implementation_, uint256 salt_, bytes calldata data_)
-        external
-        returns (address)
-    {
-        implementation = implementation_;
-        salt = salt_;
-        initData = data_;
-        return proxy;
-    }
-}
-
-
-contract MockRegistrationCommitter is IStandaloneRegistrationCommitter {
-    bytes32 public commitment;
-
-    function commit(bytes32 commitment_) external {
-        commitment = commitment_;
     }
 }
 

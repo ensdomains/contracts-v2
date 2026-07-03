@@ -1,13 +1,10 @@
 import { describe, it } from "bun:test";
-import { readFile } from "node:fs/promises";
 import {
-  type Abi,
   type Account,
   type Address,
   encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
-  getContract,
   keccak256,
   namehash,
   parseAbiParameters,
@@ -22,6 +19,12 @@ import artifacts from "../../script/artifacts.js";
 import { ROLES, STATUS } from "../../script/deploy-constants.js";
 import { expect, expectVar } from "../utils/expectVar.js";
 import {
+  PERMIT2_ADDRESS,
+  type Permit2SessionAuthorization,
+  permit2SessionDigest,
+  SESSION_GRANT_TYPEHASH,
+} from "../utils/hcaSessions.js";
+import {
   COIN_TYPE_ETH,
   getReverseName,
   idFromLabel,
@@ -30,35 +33,7 @@ import {
 const REGISTRATION_DURATION = 28n * 86400n;
 const BURNER_SESSION_SIGNER_KEY =
   "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 const PERMIT2_SOURCE_CHAIN_ID = 8453n;
-const PERMIT2_DOMAIN_TYPEHASH =
-  "0x8cad95687ba82c2ce50e74f7b754645e5117c3a5bec8151c0726d5857980a866";
-const PERMIT2_NAME_HASH =
-  "0x9ac997416e8ff9d2ff6bebeb7149f65cdae5e32e2b90440b566bb3044041d36a";
-const PERMIT2_JIT_TYPEHASH =
-  "0x1b355fbc76f14a5aefe5c85df793a0f876f90d66f457273501c13ac311b5f3f8";
-const PERMIT2_MANDATE_TYPEHASH =
-  "0xc988b4da10503879cf4b893fed09620229f5ade301ef5e4af6124b22823627dc";
-const EMPTY_ARRAY_HASH =
-  "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
-const NO_OPS_HASH =
-  "0x0c7bea50822ae8a3846eccbda4961a80e1e08aa92f2bf046be0011514ad2ddf1";
-const SESSION_GRANT_TYPEHASH = keccak256(
-  stringToHex(
-    "RegistrationSessionGrant(uint256 chainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver)",
-  ),
-);
-const PERMIT2_SESSION_GRANT_TYPEHASH = keccak256(
-  stringToHex(
-    "RegistrationPermit2SessionGrant(uint256 destinationChainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver)",
-  ),
-);
-
-type ContractArtifact = {
-  abi: Abi;
-  bytecode: Hex | { object: Hex };
-};
 
 type HCAExecution = {
   target: Address;
@@ -66,100 +41,20 @@ type HCAExecution = {
   callData: Hex;
 };
 
-type Permit2SessionAuthorization = {
-  sourceChainId: bigint;
-  permit2Contract: Address;
-  arbiter: Address;
-  nonce: bigint;
-  expires: bigint;
-};
-
 describe("Standalone HCA", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
 
-  let stack: Awaited<ReturnType<typeof deployStandaloneHCAStack>>;
+  // The devnet deploy scripts (deploy/hca/00-04) deploy the full HCA stack and
+  // register the implementation with the default reverse adapter, so the e2e
+  // exercises the same pipeline that ships to real networks.
+  const stack = {
+    bootstrapper: env.hca.RegistrationBootstrapper,
+    executor: env.hca.HCARegistrationIntentExecutor,
+    hcaImplementation: env.hca.StandaloneHCAImplementation,
+    validator: env.hca.OwnerBoundRegistrationSessionValidator,
+  };
 
-  setupEnv({
-    resetOnEach: true,
-    initialize: async () => {
-      stack = await deployStandaloneHCAStack();
-    },
-  });
-
-  async function readContractArtifact(name: string): Promise<ContractArtifact> {
-    return JSON.parse(
-      await readFile(
-        new URL(`../../out/${name}.sol/${name}.json`, import.meta.url),
-        "utf8",
-      ),
-    ) as ContractArtifact;
-  }
-
-  function bytecodeOf(artifact: ContractArtifact): Hex {
-    return typeof artifact.bytecode === "string"
-      ? artifact.bytecode
-      : artifact.bytecode.object;
-  }
-
-  async function deployContract(name: string, args: unknown[] = []) {
-    const artifact = await readContractArtifact(name);
-    const client = env.createClient(env.namedAccounts.deployer);
-    const hash = await client.deployContract({
-      abi: artifact.abi,
-      bytecode: bytecodeOf(artifact),
-      args,
-    });
-    const receipt = await env.waitFor(hash);
-    const address = receipt.contractAddress;
-    if (!address) {
-      throw new Error(`${name} deployment did not return a contract address`);
-    }
-    return {
-      abi: artifact.abi,
-      address,
-      contract: getContract({
-        abi: artifact.abi,
-        address,
-        client,
-      }),
-    };
-  }
-
-  async function deployStandaloneHCAStack() {
-    const executor = await deployContract("MockRegistrationIntentExecutor");
-    const validator = await deployContract(
-      "OwnerBoundRegistrationSessionValidator",
-      [
-        env.shared.ReverseRegistrarAdapter.address,
-        env.v2.PermissionedResolverImpl.address,
-        env.v2.ETHRegistrar.address,
-        env.v2.VerifiableFactory.address,
-        env.erc20.MockUSDC.address,
-        env.erc20.MockDAI.address,
-      ],
-    );
-    const hcaImplementation = await deployContract("StandaloneSingleOwnerHCA", [
-      env.namedAccounts.deployer.address,
-      validator.address,
-      executor.address,
-      "0x",
-    ]);
-    const bootstrapper = await deployContract("RegistrationBootstrapper");
-
-    await env.waitFor(
-      env.shared.ReverseRegistrarAdapter.write.setTrustedHCAImplementation(
-        [hcaImplementation.address, true],
-        { account: env.namedAccounts.owner },
-      ),
-    );
-
-    return {
-      bootstrapper,
-      executor,
-      hcaImplementation,
-      validator,
-    };
-  }
+  setupEnv({ resetOnEach: true });
 
   function computeStandaloneHcaSalt(label: string): bigint {
     return BigInt(keccak256(stringToHex(`StandaloneHCA:${label}`)));
@@ -181,88 +76,6 @@ describe("Standalone HCA", () => {
       throw new Error("HCA e2e signer account must support raw signing");
     }
     return rawSigner.sign({ hash });
-  }
-
-  function permit2SessionDigest({
-    hca,
-    owner,
-    sessionKey,
-    validUntil,
-    resolver,
-    permit2,
-  }: {
-    hca: Address;
-    owner: Address;
-    sessionKey: Address;
-    validUntil: number;
-    resolver: Address;
-    permit2: Permit2SessionAuthorization;
-  }): Hex {
-    const grantHash = keccak256(
-      encodeAbiParameters(
-        parseAbiParameters(
-          "bytes32,uint256,address,address,address,uint48,address",
-        ),
-        [
-          PERMIT2_SESSION_GRANT_TYPEHASH,
-          BigInt(env.client.chain.id),
-          hca,
-          owner,
-          sessionKey,
-          validUntil,
-          resolver,
-        ],
-      ),
-    );
-    const mandate = keccak256(
-      encodeAbiParameters(
-        parseAbiParameters(
-          "bytes32,bytes32,uint128,bytes32,bytes32,bytes32",
-        ),
-        [
-          PERMIT2_MANDATE_TYPEHASH,
-          zeroHash,
-          0n,
-          grantHash,
-          NO_OPS_HASH,
-          zeroHash,
-        ],
-      ),
-    );
-    const permit2Hash = keccak256(
-      encodeAbiParameters(
-        parseAbiParameters(
-          "bytes32,bytes32,address,uint256,uint256,bytes32",
-        ),
-        [
-          PERMIT2_JIT_TYPEHASH,
-          EMPTY_ARRAY_HASH,
-          permit2.arbiter,
-          permit2.nonce,
-          permit2.expires,
-          mandate,
-        ],
-      ),
-    );
-    const domainSeparator = keccak256(
-      encodeAbiParameters(
-        parseAbiParameters("bytes32,bytes32,uint256,address"),
-        [
-          PERMIT2_DOMAIN_TYPEHASH,
-          PERMIT2_NAME_HASH,
-          permit2.sourceChainId,
-          permit2.permit2Contract,
-        ],
-      ),
-    );
-
-    return keccak256(
-      encodePacked(["bytes2", "bytes32", "bytes32"], [
-        "0x1901",
-        domainSeparator,
-        permit2Hash,
-      ]),
-    );
   }
 
   async function operationData(executions: HCAExecution[]): Promise<Hex> {
@@ -302,6 +115,7 @@ describe("Standalone HCA", () => {
         ownerSignature = await signRawHash(
           owner,
           permit2SessionDigest({
+            chainId: BigInt(env.client.chain.id),
             hca,
             owner: owner.address,
             sessionKey: sessionKey.address,
@@ -390,7 +204,7 @@ describe("Standalone HCA", () => {
     expectVar({ hcaCodeBefore }).toBeUndefined();
 
     await env.waitFor(
-      stack.bootstrapper.contract.write.deployAndCommit([
+      stack.bootstrapper.write.deployAndCommit([
         env.v2.VerifiableFactory.address,
         stack.hcaImplementation.address,
         salt,
@@ -501,21 +315,21 @@ describe("Standalone HCA", () => {
         }),
       },
       {
-        target: env.shared.ReverseRegistrarAdapter.address,
-        value: 0n,
-        callData: encodeFunctionData({
-          abi: env.shared.ReverseRegistrarAdapter.abi,
-          functionName: "claimWithHCA",
-          args: [owner.address, resolver],
-        }),
-      },
-      {
         target: resolver,
         value: 0n,
         callData: encodeFunctionData({
           abi: artifacts.PermissionedResolver.abi,
           functionName: "setName",
           args: [reverseNode, `${label}.eth`],
+        }),
+      },
+      {
+        target: env.shared.DefaultReverseRegistrarAdapter.address,
+        value: 0n,
+        callData: encodeFunctionData({
+          abi: env.shared.DefaultReverseRegistrarAdapter.abi,
+          functionName: "setNameWithHCA",
+          args: [owner.address, `${label}.eth`],
         }),
       },
     ];
@@ -566,7 +380,7 @@ describe("Standalone HCA", () => {
     signature: Hex;
   }) {
     await env.waitFor(
-      stack.executor.contract.write.execute([hca, executions, signature]),
+      stack.executor.write.execute([hca, executions, signature]),
     );
   }
 
@@ -626,7 +440,7 @@ describe("Standalone HCA", () => {
     const reverseResolver = await env.v1.ENSRegistry.read.resolver([
       reverseNode,
     ]);
-    expectVar({ reverseResolver }).toEqualAddress(resolver);
+    expectVar({ reverseResolver }).toEqualAddress(zeroAddress);
 
     const primary = await env.client.readContract({
       address: resolver,
@@ -635,6 +449,11 @@ describe("Standalone HCA", () => {
       args: [reverseNode],
     });
     expectVar({ primary }).toStrictEqual(`${label}.eth`);
+
+    const defaultPrimary = await env.shared.DefaultReverseRegistrar.read.nameForAddr([
+      owner.address,
+    ]);
+    expectVar({ defaultPrimary }).toStrictEqual(`${label}.eth`);
   }
 
   it("deploys a standalone HCA and commits through the registration bootstrapper", async () => {
@@ -706,7 +525,7 @@ describe("Standalone HCA", () => {
       executions: blockedExecutions,
     });
     await expect(
-      stack.executor.contract.write.execute([
+      stack.executor.write.execute([
         hca,
         blockedExecutions,
         blockedSignature,
@@ -765,7 +584,7 @@ describe("Standalone HCA", () => {
       permit2,
     });
     await expect(
-      stack.executor.contract.write.execute([
+      stack.executor.write.execute([
         hca,
         blockedExecutions,
         blockedSignature,

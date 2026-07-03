@@ -1,30 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-/// @title Standalone Verifiable Factory Interface
-/// @notice Minimal VerifiableFactory interface used by the registration bootstrapper.
-/// @dev Interface selector: `0x5d84121a`
-interface IStandaloneVerifiableFactory {
-    /// @notice Deploys a verifiable proxy.
-    /// @param implementation The implementation address.
-    /// @param salt The deployment salt.
-    /// @param data Initialization calldata for the proxy.
-    /// @return proxy The deployed proxy address.
-    function deployProxy(address implementation, uint256 salt, bytes calldata data)
-        external
-        returns (address proxy);
-}
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
-
-/// @title Standalone Registration Committer Interface
-/// @notice Minimal registrar interface for writing a registration commitment.
-/// @dev Interface selector: `0xf14fcbc8`
-interface IStandaloneRegistrationCommitter {
-    /// @notice Writes a registration commitment.
-    /// @param commitment The commitment hash.
-    function commit(bytes32 commitment) external;
-}
-
+import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
 
 /// @title Registration Bootstrapper
 /// @notice Deploys a standalone HCA and writes a registration commitment in one transaction.
@@ -38,11 +17,11 @@ contract RegistrationBootstrapper {
     /// @param commitment The commitment hash.
     /// @return hca The deployed HCA proxy address.
     function deployAndCommit(
-        IStandaloneVerifiableFactory verifiableFactory,
+        IVerifiableFactory verifiableFactory,
         address hcaImplementation,
         uint256 salt,
         bytes calldata initData,
-        IStandaloneRegistrationCommitter registrar,
+        IETHRegistrar registrar,
         bytes32 commitment
     )
         external

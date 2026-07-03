@@ -13,7 +13,7 @@ import {
 
 type DeploymentLike = { address: Address };
 
-function resolveUsdc({
+function resolvePaymentToken({
   getOrNull,
   tags,
 }: {
@@ -21,6 +21,7 @@ function resolveUsdc({
   tags: Record<string, unknown>;
 }) {
   return (
+    optionalEnvAddress("HCA_PAYMENT_TOKEN") ??
     optionalEnvAddress("HCA_USDC") ??
     getOrNull("MockUSDC")?.address ??
     (tags.hasDao ? MAINNET_USDC : undefined) ??
@@ -28,20 +29,21 @@ function resolveUsdc({
   );
 }
 
-function resolveDai({
+function resolveSecondaryPaymentToken({
   getOrNull,
   tags,
-  usdc,
+  paymentToken,
 }: {
   getOrNull: (name: string) => DeploymentLike | null | undefined;
   tags: Record<string, unknown>;
-  usdc: Address;
+  paymentToken: Address;
 }) {
   return (
+    optionalEnvAddress("HCA_SECONDARY_PAYMENT_TOKEN") ??
     optionalEnvAddress("HCA_DAI") ??
     getOrNull("MockDAI")?.address ??
     (tags.hasDao ? MAINNET_DAI : undefined) ??
-    usdc
+    paymentToken
   );
 }
 
@@ -49,9 +51,9 @@ export default execute(
   async ({ deploy, get, getOrNull, namedAccounts: { deployer }, tags }) => {
     if (!shouldDeployStandaloneHCA(tags)) return;
 
-    const reverseRegistrarAdapter =
-      get<(typeof artifacts.ReverseRegistrarAdapter)["abi"]>(
-        "ReverseRegistrarAdapter",
+    const defaultReverseRegistrarAdapter =
+      get<(typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]>(
+        "DefaultReverseRegistrarAdapter",
       );
     const permittedResolverImpl =
       get<(typeof artifacts.PermissionedResolver)["abi"]>(
@@ -61,22 +63,28 @@ export default execute(
       get<(typeof artifacts.ETHRegistrar)["abi"]>("ETHRegistrar");
     const verifiableFactory =
       get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
-    const usdc = resolveUsdc({ getOrNull, tags });
-    if (!usdc) {
-      throw new Error("HCA_USDC must be set when MockUSDC is not deployed");
+    const paymentToken = resolvePaymentToken({ getOrNull, tags });
+    if (!paymentToken) {
+      throw new Error(
+        "HCA_PAYMENT_TOKEN or HCA_USDC must be set when no payment token deployment is available",
+      );
     }
-    const dai = resolveDai({ getOrNull, tags, usdc });
+    const secondaryPaymentToken = resolveSecondaryPaymentToken({
+      getOrNull,
+      tags,
+      paymentToken,
+    });
 
     await deploy("OwnerBoundRegistrationSessionValidator", {
       account: deployer,
       artifact: artifacts.OwnerBoundRegistrationSessionValidator,
       args: [
-        reverseRegistrarAdapter.address,
+        defaultReverseRegistrarAdapter.address,
         permittedResolverImpl.address,
         ethRegistrar.address,
         verifiableFactory.address,
-        usdc,
-        dai,
+        paymentToken,
+        secondaryPaymentToken,
       ],
     });
   },
@@ -88,7 +96,7 @@ export default execute(
       "v2",
     ],
     dependencies: [
-      "ReverseRegistrarAdapter",
+      "DefaultReverseRegistrarAdapter",
       "PermissionedResolverImpl",
       "ETHRegistrar",
       "VerifiableFactory",
