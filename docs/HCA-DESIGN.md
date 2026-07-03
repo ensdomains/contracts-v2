@@ -554,8 +554,12 @@ variant choice above.
 **B. Post-registration lifecycle.** Renewals: the policy permits `renew`, but
 the rail is registration-session-shaped — "renew from my phone with USDC on
 Base, two years later" has no decided story (reuse the HCA? spawn another?).
-Dust: leftover USDC on a frozen, module-less account has no exit
-(`ownerExecute` from the June spike was not ported). Both need product calls.
+Dust: leftover USDC on a module-less account has no direct exit
+(`ownerExecute` from the June spike was not ported) — but decision A's
+implementation (2026-07-03) created an indirect one: gate-approve a
+single-purpose "exit" implementation and the owner can upgrade + withdraw.
+Whether to ship that implementation is now the concrete form of the dust
+question. Both need product calls.
 
 **C. Orchestrator re-validation — upgraded from nice-to-have to required
 (2026-07-02).** Run the real Rhinestone route once with the current account +
@@ -616,6 +620,17 @@ bump (leaked session key, kills grants) → gated upgrade per decision A
 (compromised implementation, kills the validator relationship itself). The
 validator itself stays stateless — session state lives in the account's
 existing owner slot.
+
+**G. Session lifetime cap (new 2026-07-03).** `validUntil` is
+client-chosen and unbounded — a buggy or malicious frontend can mint
+week-long grants, and the whole leaked-key story assumes minutes-scale
+lifetimes. The validator could enforce a maximum
+(`validUntil <= block.timestamp + MAX_SESSION_LIFETIME`) for one comparison.
+The catch: post-registration record-management sessions (T10) may
+legitimately want longer windows than registration sessions, so the cap
+value — or a per-shape cap, or no cap now that `revokeSessions` exists — is
+a real product/security call, not a one-liner. Decide before the Sepolia
+redeploy if a cap is wanted, since it changes validation semantics.
 
 ## Audience handoffs (derived from this doc, 2026-07-02)
 
