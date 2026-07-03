@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {IModule} from "nexus/interfaces/modules/IModule.sol";
 import {Nexus} from "nexus/Nexus.sol";
 
+import {ApprovedUpgradeGate} from "../registry/ApprovedUpgradeGate.sol";
+
 /// @title Standalone Single Owner HCA
 /// @notice Nexus account whose owner is set once during account initialization.
-/// @dev Module changes and upgrades are disabled after initialization. The configured default
-///      validator remains the only validator path for the account.
-contract StandaloneSingleOwnerHCA is Nexus {
+/// @dev Module changes are disabled after initialization and the configured default validator
+///      remains the only validator path for the account. Upgrades are owner-triggered and
+///      restricted to implementations approved by the upgrade gate.
+contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Constants & Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Selector for ERC-721 token receipt.
@@ -25,6 +29,9 @@ contract StandaloneSingleOwnerHCA is Nexus {
     /// @dev Returned by `onERC1155BatchReceived`.
     bytes4 internal constant ERC1155_BATCH_RECEIVED_SELECTOR = 0xbc197c81;
 
+    /// @notice The allowlist gating upgrade target implementations.
+    ApprovedUpgradeGate public immutable UPGRADE_GATE;
+
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
@@ -32,6 +39,19 @@ contract StandaloneSingleOwnerHCA is Nexus {
     /// @notice The initialized account owner.
     /// @dev Set once during `initializeAccount`.
     address private _owner;
+
+    /// @notice The session-grant nonce bound into every session-grant digest.
+    /// @dev Packed into the `_owner` slot. Incremented by `revokeSessions` to invalidate all
+    ///      outstanding session grants at once.
+    uint96 private _sessionNonce;
+
+    ////////////////////////////////////////////////////////////////////////
+    // Events
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice All outstanding session grants were revoked.
+    /// @param sessionNonce The new session-grant nonce.
+    event SessionsRevoked(uint96 indexed sessionNonce);
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -46,8 +66,12 @@ contract StandaloneSingleOwnerHCA is Nexus {
     /// @dev Error selector: `0xca962ccf`
     error NoModuleChangeAllowed();
 
-    /// @dev Error selector: `0x9bc73842`
-    error HCAUpgradeDisabled();
+    /// @dev Error selector: `0x5cd83192`
+    error CallerNotOwner();
+
+    /// @dev Error selector: `0xf74d7dd0`
+    /// @param implementation The disallowed implementation address.
+    error UpgradeTargetNotApproved(address implementation);
 
     /// @dev Error selector: `0x6e29a697`
     error NoNFTAllowed();
@@ -60,14 +84,18 @@ contract StandaloneSingleOwnerHCA is Nexus {
     /// @param defaultValidator_ Validator module used as the account's default validator.
     /// @param intentExecutor_ Executor module used by the intent execution flow.
     /// @param validatorInitData_ Initialization data passed to the default validator.
+    /// @param upgradeGate_ The allowlist gating upgrade target implementations.
     constructor(
         address entryPoint_,
         address defaultValidator_,
         address intentExecutor_,
-        bytes memory validatorInitData_
+        bytes memory validatorInitData_,
+        ApprovedUpgradeGate upgradeGate_
     )
         Nexus(entryPoint_, defaultValidator_, intentExecutor_, validatorInitData_, "")
-    {}
+    {
+        UPGRADE_GATE = upgradeGate_;
+    }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
@@ -121,14 +149,52 @@ contract StandaloneSingleOwnerHCA is Nexus {
         revert NoModuleChangeAllowed();
     }
 
+    /// @notice Invalidates every outstanding session grant for this account.
+    /// @dev Increments the nonce bound into session-grant digests. Only callable by the owner
+    ///      directly; account execution paths cannot reach it because self-calls carry the
+    ///      account as `msg.sender`.
+    function revokeSessions() external {
+        if (msg.sender != _owner) {
+            revert CallerNotOwner();
+        }
+        uint96 sessionNonce;
+        unchecked {
+            sessionNonce = ++_sessionNonce;
+        }
+        emit SessionsRevoked(sessionNonce);
+    }
+
     /// @notice Returns the account owner.
     function owner() external view returns (address) {
         return _owner;
     }
 
+    /// @notice Returns the account owner and the current session-grant nonce.
+    /// @return owner_ The account owner.
+    /// @return sessionNonce_ The current session-grant nonce.
+    function ownerAndSessionNonce() external view returns (address owner_, uint96 sessionNonce_) {
+        return (_owner, _sessionNonce);
+    }
+
+    /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
+    /// @dev Compatibility hook only — upgrade authorization is enforced by the current
+    ///      implementation's `_authorizeUpgrade` during the UUPS upgrade call.
+    /// @param {previousImplementation} Ignored.
+    /// @return allowed Always `true` for implementations in this account family.
+    function canUpgradeFrom(
+        address /* previousImplementation */
+    )
+        external
+        pure
+        override
+        returns (bool allowed)
+    {
+        return true;
+    }
+
     /// @notice Returns the account implementation identifier.
     function accountId() external pure override returns (string memory) {
-        return "ens-standalone-hca.1.0.0";
+        return "ens-standalone-hca.1.1.0";
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -153,8 +219,14 @@ contract StandaloneSingleOwnerHCA is Nexus {
         super._fallback(callData);
     }
 
-    /// @dev Disables UUPS upgrades.
-    function _authorizeUpgrade(address) internal pure override {
-        revert HCAUpgradeDisabled();
+    /// @dev Requires the owner as caller and gate approval for the target implementation.
+    /// @param newImplementation The implementation to upgrade to.
+    function _authorizeUpgrade(address newImplementation) internal view override {
+        if (msg.sender != _owner) {
+            revert CallerNotOwner();
+        }
+        if (!UPGRADE_GATE.approvedImplementations(newImplementation)) {
+            revert UpgradeTargetNotApproved(newImplementation);
+        }
     }
 }

@@ -32,10 +32,12 @@ identity: **any design that parks durable authority on the HCA is a bug.**
 
 ## The redeploy work-package (Sepolia redeploy required regardless)
 
-The 7→6 constructor and renew-selector fix already force a redeploy. Land
-these with it:
+The 7→6 constructor and renew-selector fix already force a redeploy.
+**Status 2026-07-03: items 1–3 are implemented on the branch** (941 forge +
+full e2e green; account id bumped to `ens-standalone-hca.1.1.0`); item 4
+stays blocked on decision C; item 5 remains optional.
 
-### 1. Gated upgrades (decision A — resolved)
+### 1. Gated upgrades (decision A — implemented 2026-07-03)
 
 Frozen **owner model**, upgradeable **account**, reusing the existing
 `ApprovedUpgradeGate` pattern exactly as `WrapperRegistry` consumes it:
@@ -59,7 +61,7 @@ Frozen **owner model**, upgradeable **account**, reusing the existing
   gate-curation invariant (no admitted version may mutate the owner or
   break slot layout).
 
-### 2. Session revocation nonce (decision F — resolved)
+### 2. Session revocation nonce (decision F — implemented 2026-07-03)
 
 - `uint96 _sessionNonce` packed into the **same slot** as `_owner`.
 - Replace the validator's per-validation `owner()` staticcall with a
@@ -74,7 +76,7 @@ Frozen **owner model**, upgradeable **account**, reusing the existing
   `msg.sender == account`).
 - Direct-owner path stays nonce-free.
 
-### 3. Resolver grant-to-owner policy rule (fixes the permanence leak)
+### 3. Resolver grant-to-owner policy rule (implemented 2026-07-03)
 
 The registration batch initializes the resolver `(hca, ROLES.ALL, [])`; the
 EOA gets nothing and the policy blocks role grants — durable user state
@@ -83,8 +85,10 @@ admin'd by a disposable account, and EOA-direct record writes revert.
 - Extend `_checkResolverCall` to allow the resolver role-grant selector(s)
   **constrained to grantee == owner** (one selector rule + one
   `_requireArgAddress`).
-- Frontend will include the grant in the registration batch, ending with the
-  EOA co-admin of its own resolver. Every HCA becomes genuinely abandonable.
+- The e2e registration batch includes the grant (`authorizeNameRoles` with
+  DNS-encoded root + `ROLES.ALL` to the owner), ending with the EOA co-admin
+  of its own resolver — verified by an owner-direct record write in e2e.
+  Every HCA becomes genuinely abandonable.
 
 Independently confirmed: a clean-room design derivation (goals only, no
 code) initialized the resolver with `admin = EOA` + account as revocable

@@ -16,9 +16,25 @@ contract MockStandaloneHCA {
     /// @notice The owner reported to the validator.
     address public owner;
 
+    /// @notice The session-grant nonce reported to the validator.
+    uint96 public sessionNonce;
+
     /// @param owner_ The owner reported to the validator.
     constructor(address owner_) {
         owner = owner_;
+    }
+
+    /// @notice Sets the reported session-grant nonce.
+    /// @param sessionNonce_ The nonce to report.
+    function setSessionNonce(uint96 sessionNonce_) external {
+        sessionNonce = sessionNonce_;
+    }
+
+    /// @notice Returns the owner and session-grant nonce as one call.
+    /// @return owner_ The reported owner.
+    /// @return sessionNonce_ The reported session-grant nonce.
+    function ownerAndSessionNonce() external view returns (address owner_, uint96 sessionNonce_) {
+        return (owner, sessionNonce);
     }
 
     /// @notice Forwards an ERC-1271 validation to the validator as this account.

@@ -73,13 +73,13 @@ Two things:
    0 transactions, 0 user gas — a session grant bound to the user's resolver
    (plain EIP-191 shape, no Permit2/funding leg since nothing is paid),
    session key signs the multicall, sponsored relayer executes.
-2. **The blocker you must not ship into:** on the standalone stack the
-   resolver is initialized with the **HCA as sole role-holder — the EOA has
-   no write roles**, so your current EOA-signer editors will revert
-   onchain against HCA-deployed resolvers. The fix (resolver role grant to
-   the owner inside the registration batch) is in the protocol team's
-   redeploy package. Gate EOA-direct editing on that grant existing; check
-   `hasRoles` on the resolver before offering the EOA path.
+2. **The former blocker is fixed on the branch (2026-07-03):** the
+   registration batch now grants the EOA root roles on its resolver
+   (`authorizeNameRoles`, policy-permitted for grantee == owner only), so
+   EOA-signer editors work against names registered on the new stack.
+   Still check `hasRoles` on the resolver before offering the EOA path —
+   names registered before the fix carry no EOA roles until a one-off
+   HCA-mediated grant.
 
 ### Primary name (`primaryName.machine.ts`) — 2 → 1, and simpler
 
@@ -114,9 +114,11 @@ lands. Today's EOA path keeps working.
 - Read the account's **session nonce** (new `ownerAndSessionNonce()` /
   `sessionNonce()` view after the redeploy) when building a grant — the
   nonce is part of the signed grant struct but is **not** sent onchain.
-- **Typehashes change at the redeploy** (a `sessionNonce` field is added to
+- **Typehashes changed 2026-07-03** (a `sessionNonce` field was added to
   both grant structs): the constants in `test/utils/hcaSessions.ts` are the
-  reference; expect one breaking bump.
+  reference. The nonce is read from `ownerAndSessionNonce()` on a deployed
+  account and is 0 for a counterfactual (not-yet-deployed) HCA; it is never
+  sent in the signature envelope.
 - Keep `validUntil` at minutes, not days. It's the primary safety bound.
 - Expose "revoke sessions": one EOA tx to `revokeSessions()` on the user's
   HCA (~26k gas) kills every outstanding grant. A revoked/stale grant fails

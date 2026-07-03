@@ -57,7 +57,7 @@ transaction-manager machines, and the 2026-06-24 decisions.
 | # | Target | Status |
 |---|--------|--------|
 | T14 | Hard (cryptographic) frozen single owner (2026-06-24) | **Met** today via frozen code; under resolved decision A becomes an allowlist-curation invariant |
-| T15 | Upgradeable (2026-06-24) | **Direction resolved 2026-07-02** (owner-triggered, registry-bounded VF upgrade — decision A); code still reverts, lands with next redeploy |
+| T15 | Upgradeable (2026-06-24) | **Implemented 2026-07-03** (owner-triggered, gate-bounded VF upgrade — decision A); Sepolia deploy pending |
 | T16 | No per-user state in protocol contracts; consumers verify via factory + allowlist + `owner()` | **Met** (HCAAuthorizer pattern) |
 
 The unmet cluster (T11/T12/T13, plus T3's L1 start) is one theme: the flows
@@ -283,10 +283,13 @@ initializes the resolver with the HCA as sole role-holder
 validator policy does not allow `authorizeNameRoles` — so the HCA cannot even
 grant them through a session. The app's EOA-signer record editors
 (`ProfileEdit.transactions.ts`, `saveRecords.ts`) would revert against an
-HCA-deployed resolver. Recommended fix (see the model assessment in the flow
-map): extend the policy with resolver role-grant selectors constrained to
-grantee == owner and perform the grant inside the registration batch, making
-the EOA co-admin of its own resolver (see decision D).
+HCA-deployed resolver. **Fixed 2026-07-03**: the policy now permits
+`authorizeNameRoles` on the policy resolver constrained to grantee == owner,
+and the registration batch grants the EOA root roles — registration ends
+with the EOA co-admin of its own resolver (verified e2e: an owner-direct
+record write succeeds post-registration). App editors work against
+registrations made on the new stack; names registered before the fix still
+need a one-off HCA-mediated grant (see decision D).
 
 ## Flow map: ideal wallet interactions and HCA auth modes (2026-07-02)
 
@@ -352,14 +355,13 @@ and intent rails need a destination account. **A bespoke settlement
 contract** means rebuilding Across/Rhinestone's cross-chain atomicity — the
 HCA is the price of renting existing rails.
 
-The one violation of the model's own principle: **the resolver permanence
-leak.** Durable user state (the resolver) is Captured by a disposable
-account — HCA holds `ROLES.ALL`, EOA holds nothing, policy blocks granting
-out. Recommended fix (upgrades the fifth-gap "options" to a decision):
-extend the resolver-call policy with role-grant selectors constrained to
-**grantee == owner**, and include that grant in the registration batch, so
-registration ends with the EOA co-admin of its own resolver and every HCA
-is genuinely abandonable. One selector rule + one arg check.
+The one violation of the model's own principle was **the resolver permanence
+leak**: durable user state (the resolver) Captured by a disposable account —
+HCA holds `ROLES.ALL`, EOA holds nothing, policy blocked granting out.
+**Fixed 2026-07-03**: the resolver-call policy permits `authorizeNameRoles`
+constrained to **grantee == owner**, and the registration batch includes the
+grant, so registration ends with the EOA co-admin of its own resolver and
+every HCA is genuinely abandonable. One selector rule + one arg check.
 
 Shelf-life caveat, held honestly: this is **bridge-era infrastructure**.
 7702+7715 maturing (wallet-native sessions) and EIP-8037 (decision E) both
@@ -472,9 +474,10 @@ Findings that fall out of the map:
    for later: recurring subname management via an HCA-admin'd subregistry
    (the resolver's Captured pattern applied to `UserRegistry`), which would
    turn N subname txs into 1 grant signature — needs a policy extension.
-5. **EOA-direct record writes are blocked** on HCA-deployed resolvers (fifth
-   frontend gap above) — the one place where Captured auth cuts the *user*
-   out along with everyone else.
+5. **EOA-direct record writes were blocked** on HCA-deployed resolvers (fifth
+   frontend gap above) — the one place where Captured auth cut the *user*
+   out along with everyone else. **Fixed 2026-07-03** via the grant-to-owner
+   policy rule + in-batch root-role grant.
 6. **The Permit2 allowance bootstrap is identical on both starts**
    (2026-07-02 correction — the L2 row originally omitted it). Permit2 needs
    a one-time ERC20 approval on whichever chain the funds leave from. Active
@@ -492,9 +495,12 @@ Findings that fall out of the map:
 
 **A. Frozen vs upgradeable — direction resolved 2026-07-02: frozen owner
 model, upgradeable account via the VF mechanism, allowlist-bounded.**
-Not yet implemented — `_authorizeUpgrade` still reverts (`HCAUpgradeDisabled`);
-this lands with the next redeploy (needed anyway for the 7→6 validator
-constructor and the renew-selector fix).
+**Implemented 2026-07-03** on `feat/hca-final-maybe`: `_authorizeUpgrade`
+requires `msg.sender == owner()` + `HCAUpgradeGate.approvedImplementations`,
+`canUpgradeFrom` returns true, a separate `HCAUpgradeGate` deploys in the
+`hca` group, and the full upgrade path is exercised through a real
+VerifiableFactory proxy in the unit suite. Account id bumped to
+`ens-standalone-hca.1.1.0`. Sepolia deploy pending.
 
 The VF proxy (`UUPSProxyLogic`) has no admin: `upgradeToAndCall` (1) requires
 the **new** implementation to accept the migration via
@@ -581,7 +587,7 @@ trigger point (e.g., revisit if 8037 reaches last-call).
 
 **F. Session revocation nonce — direction resolved 2026-07-02.** Worst-case
 lever for a leaked session key: the owner bumps a nonce and every outstanding
-grant dies. Not yet implemented; lands with the same redeploy as decision A.
+grant dies. **Implemented 2026-07-03** alongside decision A (nonce packed with `_owner`, `ownerAndSessionNonce()`, `revokeSessions()`, both typehashes carry `sessionNonce`).
 Chosen shape (nearly gas-free via slot packing):
 
 - `uint96 _sessionNonce` packed into the same storage slot as `_owner` on the

@@ -9,6 +9,7 @@ import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 
 import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
 import {IETHRenewer} from "../registrar/interfaces/IETHRenewer.sol";
+import {PermissionedResolver} from "../resolver/PermissionedResolver.sol";
 import {DefaultReverseRegistrarAdapter} from "../reverse-registrar/DefaultReverseRegistrarAdapter.sol";
 
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
@@ -117,18 +118,24 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @notice Selector for PermissionedResolver.multicallWithNodeCheck(bytes32,bytes[]).
     bytes4 public constant MULTICALL_WITH_NODE_CHECK_SELECTOR = 0xe32954eb;
 
+    /// @notice Selector for PermissionedResolver.authorizeNameRoles(bytes,uint256,address,bool).
+    bytes4 public constant AUTHORIZE_NAME_ROLES_SELECTOR =
+        PermissionedResolver.authorizeNameRoles.selector;
+
     /// @notice Hash for the owner-signed stateless session grant.
-    /// @dev Type hash for `RegistrationSessionGrant`.
+    /// @dev Type hash for `RegistrationSessionGrant`. The session nonce is read from the
+    ///      calling account, never from the signature envelope.
     bytes32 internal constant SESSION_GRANT_TYPEHASH =
         keccak256(
-            "RegistrationSessionGrant(uint256 chainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver)"
+            "RegistrationSessionGrant(uint256 chainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver,uint256 sessionNonce)"
         );
 
     /// @notice Hash for a Permit2-shaped registration session grant.
     /// @dev This is the validator's session-grant payload carried by the JIT Permit2 witness.
+    ///      The session nonce is read from the calling account, never from the envelope.
     bytes32 internal constant PERMIT2_SESSION_GRANT_TYPEHASH =
         keccak256(
-            "RegistrationPermit2SessionGrant(uint256 destinationChainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver)"
+            "RegistrationPermit2SessionGrant(uint256 destinationChainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver,uint256 sessionNonce)"
         );
 
     /// @notice Permit2 EIP-712 domain type hash used by the Rhinestone IntentExecutor.
@@ -261,10 +268,16 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
 
         address hca = msg.sender;
 
-        // Phase 1: the envelope's owner must be the calling HCA's owner.
+        // Phase 1: the envelope's owner must be the calling HCA's owner. The account also
+        // supplies the authoritative session nonce bound into grant digests.
         address expectedOwner;
-        try IStandaloneHCAOwner(hca).owner() returns (address owner_) {
+        uint96 sessionNonce;
+        try IStandaloneHCAOwner(hca).ownerAndSessionNonce() returns (
+            address owner_,
+            uint96 sessionNonce_
+        ) {
             expectedOwner = owner_;
+            sessionNonce = sessionNonce_;
         } catch {
             revert OwnerUnavailable();
         }
@@ -277,7 +290,8 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
 
         // Phase 2: the owner must have authorized the digest — directly, or through an
         // owner-signed session grant (EIP-191 legacy or Permit2-shaped) plus a session-key
-        // signature over the digest.
+        // signature over the digest. Grants signed before a `revokeSessions` nonce bump
+        // rebuild to a different digest and fail signer recovery.
         if (sigData.sessionKey == address(0)) {
             if (_recover(hash, sigData.ownerSignature) != sigData.owner) {
                 revert InvalidSigner();
@@ -289,13 +303,13 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
             bytes32 grantDigest;
             if (sigData.permit2Contract == address(0)) {
                 grantDigest = MessageHashUtils.toEthSignedMessageHash(
-                    _sessionGrantHash(SESSION_GRANT_TYPEHASH, hca, sigData)
+                    _sessionGrantHash(SESSION_GRANT_TYPEHASH, hca, sigData, sessionNonce)
                 );
             } else {
                 if (block.timestamp > sigData.permit2Expires) {
                     revert SessionExpired();
                 }
-                grantDigest = _permit2SessionDigest(hca, sigData);
+                grantDigest = _permit2SessionDigest(hca, sigData, sessionNonce);
             }
             if (_recover(grantDigest, sigData.ownerSignature) != sigData.owner) {
                 revert InvalidSigner();
@@ -359,11 +373,18 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
 
     /// @notice Computes the owner-signed session grant struct hash for this chain.
     /// @dev Shared by the legacy grant (signed with the EIP-191 prefix) and the Permit2 witness.
-    ///      Uses the destination chain id so grants cannot be replayed across chains.
+    ///      Uses the destination chain id so grants cannot be replayed across chains, and the
+    ///      account-supplied session nonce so `revokeSessions` invalidates outstanding grants.
     /// @param typehash The grant type hash to bind the fields to.
     /// @param hca The calling standalone HCA.
     /// @param sigData The decoded signature envelope.
-    function _sessionGrantHash(bytes32 typehash, address hca, SignatureData calldata sigData)
+    /// @param sessionNonce The account's current session-grant nonce.
+    function _sessionGrantHash(
+        bytes32 typehash,
+        address hca,
+        SignatureData calldata sigData,
+        uint96 sessionNonce
+    )
         internal
         view
         returns (bytes32)
@@ -377,7 +398,8 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
                     sigData.owner,
                     sigData.sessionKey,
                     sigData.validUntil,
-                    sigData.resolver
+                    sigData.resolver,
+                    uint256(sessionNonce)
                 )
             );
     }
@@ -386,12 +408,18 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @dev Mirrors the Rhinestone JIT Permit2 hashing shape; nonce consumption happens upstream.
     /// @param hca The calling standalone HCA.
     /// @param sigData The decoded signature envelope.
-    function _permit2SessionDigest(address hca, SignatureData calldata sigData)
+    /// @param sessionNonce The account's current session-grant nonce.
+    function _permit2SessionDigest(
+        address hca,
+        SignatureData calldata sigData,
+        uint96 sessionNonce
+    )
         internal
         view
         returns (bytes32)
     {
-        bytes32 grantHash = _sessionGrantHash(PERMIT2_SESSION_GRANT_TYPEHASH, hca, sigData);
+        bytes32 grantHash =
+            _sessionGrantHash(PERMIT2_SESSION_GRANT_TYPEHASH, hca, sigData, sessionNonce);
         bytes32 mandate =
             keccak256(
                 abi.encode(
@@ -508,7 +536,7 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
             }
 
             if (policyResolver != address(0) && execution.target == policyResolver) {
-                _checkResolverCall(execution.callData);
+                _checkResolverCall(execution.callData, owner);
                 continue;
             }
 
@@ -563,18 +591,28 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     }
 
     /// @notice Validates resolver record writes on the owner-authorized resolver.
-    /// @dev Allows known resolver setters directly or recursively through supported multicalls.
+    /// @dev Allows known resolver setters directly or recursively through supported multicalls,
+    ///      plus `authorizeNameRoles` restricted to the owner as grantee (so a registration
+    ///      batch can make the owner co-admin of its resolver; grant and revoke of the owner's
+    ///      own roles are both harmless).
     /// @param callData ABI-encoded resolver call data.
-    function _checkResolverCall(bytes memory callData) internal pure {
+    /// @param owner The owner recorded for the HCA.
+    function _checkResolverCall(bytes memory callData, address owner) internal pure {
         bytes4 selector = _selector(callData);
         if (selector == MULTICALL_SELECTOR) {
             bytes[] memory calls = abi.decode(_callArgs(callData), (bytes[]));
-            _checkResolverCalls(calls);
+            _checkResolverCalls(calls, owner);
             return;
         }
         if (selector == MULTICALL_WITH_NODE_CHECK_SELECTOR) {
             (, bytes[] memory calls) = abi.decode(_callArgs(callData), (bytes32, bytes[]));
-            _checkResolverCalls(calls);
+            _checkResolverCalls(calls, owner);
+            return;
+        }
+        if (selector == AUTHORIZE_NAME_ROLES_SELECTOR) {
+            // authorizeNameRoles(bytes toName, uint256 roleBitmap, address account, bool grant):
+            // the account head word sits after the toName offset and roleBitmap words.
+            _requireArgAddress(callData, 4 + 64, owner);
             return;
         }
         if (_isResolverRecordSelector(selector)) {
@@ -586,9 +624,10 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @notice Validates nested resolver calls.
     /// @dev Recursively validates each encoded resolver call.
     /// @param calls ABI-encoded resolver calls.
-    function _checkResolverCalls(bytes[] memory calls) internal pure {
+    /// @param owner The owner recorded for the HCA.
+    function _checkResolverCalls(bytes[] memory calls, address owner) internal pure {
         for (uint256 i; i < calls.length; ++i) {
-            _checkResolverCall(calls[i]);
+            _checkResolverCall(calls[i], owner);
         }
     }
 

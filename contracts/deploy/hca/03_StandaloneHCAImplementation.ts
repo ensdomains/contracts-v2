@@ -8,7 +8,7 @@ import {
 } from "./_helpers.js";
 
 export default execute(
-  async ({ deploy, get, getOrNull, namedAccounts: { deployer }, tags }) => {
+  async ({ deploy, get, getOrNull, namedAccounts: { deployer, owner }, tags }) => {
     if (!shouldDeployStandaloneHCA(tags)) return;
 
     const validator = get<
@@ -29,6 +29,15 @@ export default execute(
       );
     }
 
+    // Separate gate instance for the HCA family: the gate mapping is flat, so sharing the
+    // v2 ApprovedUpgradeGate would cross-approve registry implementations as HCA upgrade
+    // targets.
+    const upgradeGate = await deploy("HCAUpgradeGate", {
+      account: deployer,
+      artifact: artifacts.ApprovedUpgradeGate,
+      args: [owner],
+    });
+
     await deploy("StandaloneHCAImplementation", {
       account: deployer,
       artifact: artifacts.StandaloneSingleOwnerHCA,
@@ -37,6 +46,7 @@ export default execute(
         validator.address,
         intentExecutor,
         "0x",
+        upgradeGate.address,
       ],
     });
   },

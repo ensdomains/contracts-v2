@@ -26,12 +26,12 @@ export const NO_OPS_HASH: Hex =
 
 export const SESSION_GRANT_TYPEHASH = keccak256(
   stringToHex(
-    "RegistrationSessionGrant(uint256 chainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver)",
+    "RegistrationSessionGrant(uint256 chainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver,uint256 sessionNonce)",
   ),
 );
 export const PERMIT2_SESSION_GRANT_TYPEHASH = keccak256(
   stringToHex(
-    "RegistrationPermit2SessionGrant(uint256 destinationChainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver)",
+    "RegistrationPermit2SessionGrant(uint256 destinationChainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver,uint256 sessionNonce)",
   ),
 );
 
@@ -50,6 +50,7 @@ export function permit2SessionDigest({
   sessionKey,
   validUntil,
   resolver,
+  sessionNonce = 0n,
   permit2,
 }: {
   chainId: bigint;
@@ -58,12 +59,14 @@ export function permit2SessionDigest({
   sessionKey: Address;
   validUntil: number | bigint;
   resolver: Address;
+  /** Account session-grant nonce; 0 for a not-yet-deployed (counterfactual) HCA. */
+  sessionNonce?: bigint;
   permit2: Permit2SessionAuthorization;
 }): Hex {
   const grantHash = keccak256(
     encodeAbiParameters(
       parseAbiParameters(
-        "bytes32,uint256,address,address,address,uint48,address",
+        "bytes32,uint256,address,address,address,uint48,address,uint256",
       ),
       [
         PERMIT2_SESSION_GRANT_TYPEHASH,
@@ -73,6 +76,7 @@ export function permit2SessionDigest({
         sessionKey,
         Number(validUntil),
         resolver,
+        sessionNonce,
       ],
     ),
   );

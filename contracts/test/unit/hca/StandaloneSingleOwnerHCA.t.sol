@@ -3,7 +3,9 @@ pragma solidity ^0.8.27;
 
 // solhint-disable private-vars-leading-underscore, func-name-mixedcase, gas-custom-errors
 
+import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 
 import {Test} from "forge-std/Test.sol";
@@ -21,6 +23,7 @@ import {
     OwnerBoundRegistrationSessionValidator
 } from "~src/hca/OwnerBoundRegistrationSessionValidator.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
+import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
 
 contract StandaloneSingleOwnerHCATest is Test {
     struct Permit2Fields {
@@ -44,14 +47,15 @@ contract StandaloneSingleOwnerHCATest is Test {
     bytes4 constant SET_NAME_SELECTOR = 0x77372213;
     bytes4 constant MULTICALL_SELECTOR = 0xac9650d8;
     bytes4 constant MULTICALL_WITH_NODE_CHECK_SELECTOR = 0xe32954eb;
+    bytes4 constant AUTHORIZE_NAME_ROLES_SELECTOR = 0xbbd9abb5;
 
     bytes32 constant SESSION_GRANT_TYPEHASH =
         keccak256(
-            "RegistrationSessionGrant(uint256 chainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver)"
+            "RegistrationSessionGrant(uint256 chainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver,uint256 sessionNonce)"
         );
     bytes32 constant PERMIT2_SESSION_GRANT_TYPEHASH =
         keccak256(
-            "RegistrationPermit2SessionGrant(uint256 destinationChainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver)"
+            "RegistrationPermit2SessionGrant(uint256 destinationChainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver,uint256 sessionNonce)"
         );
     bytes32 constant PERMIT2_DOMAIN_TYPEHASH =
         0x8cad95687ba82c2ce50e74f7b754645e5117c3a5bec8151c0726d5857980a866;
@@ -83,11 +87,15 @@ contract StandaloneSingleOwnerHCATest is Test {
     address subregistry = makeAddr("subregistry");
     address entryPoint = makeAddr("entry-point");
 
+    address gateOwner = makeAddr("gate-owner");
+
     OwnerBoundRegistrationSessionValidator validator;
     OwnerBoundRegistrationSessionValidatorHarness validatorHarness;
     MockStandaloneHCA hca;
+    ApprovedUpgradeGate upgradeGate;
 
     function setUp() public {
+        upgradeGate = new ApprovedUpgradeGate(gateOwner);
         validator = new OwnerBoundRegistrationSessionValidator(
             defaultReverseRegistrarHCAAdapter,
             permittedResolverImpl,
@@ -137,7 +145,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         account.initializeAccount(abi.encode(owner));
 
         assertEq(account.owner(), owner);
-        assertEq(account.accountId(), "ens-standalone-hca.1.0.0");
+        assertEq(account.accountId(), "ens-standalone-hca.1.1.0");
     }
 
     function test_standaloneSingleOwnerHCA_rejectsInvalidLifecycleActions() public {
@@ -158,9 +166,73 @@ contract StandaloneSingleOwnerHCATest is Test {
         account.uninstallModule(1, address(validator), "");
 
         StandaloneSingleOwnerHCAHarness accountHarness = _newAccountHarness();
+        accountHarness.initializeAccount(abi.encode(owner));
+        address target = address(0xBEEF);
 
-        vm.expectRevert(StandaloneSingleOwnerHCA.HCAUpgradeDisabled.selector);
-        accountHarness.authorizeUpgradeHarness(address(0xBEEF));
+        vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotOwner.selector);
+        accountHarness.authorizeUpgradeHarness(target);
+
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StandaloneSingleOwnerHCA.UpgradeTargetNotApproved.selector,
+                target
+            )
+        );
+        accountHarness.authorizeUpgradeHarness(target);
+
+        vm.prank(gateOwner);
+        upgradeGate.setImplementationApproval(target, true);
+
+        vm.prank(owner);
+        accountHarness.authorizeUpgradeHarness(target);
+
+        assertTrue(accountHarness.canUpgradeFrom(address(0)));
+    }
+
+    function test_standaloneSingleOwnerHCA_upgradesThroughVerifiableFactoryProxy() public {
+        VerifiableFactory factory = new VerifiableFactory();
+        StandaloneSingleOwnerHCA implementation = _newAccount();
+        StandaloneSingleOwnerHCA nextImplementation = _newAccount();
+
+        address proxy =
+            factory.deployProxy(
+                address(implementation),
+                1,
+                abi.encodeCall(StandaloneSingleOwnerHCA.initializeAccount, (abi.encode(owner)))
+            );
+        assertEq(StandaloneSingleOwnerHCA(payable(proxy)).owner(), owner);
+
+        vm.prank(gateOwner);
+        upgradeGate.setImplementationApproval(address(nextImplementation), true);
+
+        vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotOwner.selector);
+        IUUPSProxyUpgrade(proxy).upgradeToAndCall(address(nextImplementation), "");
+
+        vm.prank(owner);
+        IUUPSProxyUpgrade(proxy).upgradeToAndCall(address(nextImplementation), "");
+
+        (, address currentImplementation) = IUUPSProxy(proxy).getVerifiableProxyData();
+        assertEq(currentImplementation, address(nextImplementation));
+        assertEq(StandaloneSingleOwnerHCA(payable(proxy)).owner(), owner);
+    }
+
+    function test_standaloneSingleOwnerHCA_revokeSessionsBumpsNonce() public {
+        StandaloneSingleOwnerHCA account = _newAccount();
+        account.initializeAccount(abi.encode(owner));
+
+        (address owner_, uint96 nonce) = account.ownerAndSessionNonce();
+        assertEq(owner_, owner);
+        assertEq(nonce, 0);
+
+        vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotOwner.selector);
+        account.revokeSessions();
+
+        vm.prank(owner);
+        account.revokeSessions();
+
+        (, nonce) = account.ownerAndSessionNonce();
+        assertEq(nonce, 1);
     }
 
     function test_standaloneSingleOwnerHCA_rejectsNftReceivers() public {
@@ -221,7 +293,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                     owner,
                     sessionSigner,
                     validUntil,
-                    resolver
+                    resolver,
+                    uint256(hca.sessionNonce())
                 )
             );
 
@@ -246,6 +319,94 @@ contract StandaloneSingleOwnerHCATest is Test {
         bytes memory signature = _permit2SignatureData(operationHash, operationData, validUntil);
 
         assertEq(hca.validate(validator, operationHash, signature), ERC1271_MAGICVALUE);
+    }
+
+    function test_validator_rejectsGrantsAfterSessionNonceBump() public {
+        bytes memory operationData = _registrationOperationData(owner, resolver);
+        bytes32 operationHash = keccak256(operationData);
+        uint48 validUntil = uint48(block.timestamp + 1 days);
+
+        // Grants signed against the current nonce stop validating once the nonce moves.
+        bytes memory legacySignature =
+            _legacySessionSignature(operationHash, operationData, validUntil, ownerKey, sessionKey);
+        bytes memory permit2Signature =
+            _permit2SignatureData(operationHash, operationData, validUntil);
+        assertEq(hca.validate(validator, operationHash, legacySignature), ERC1271_MAGICVALUE);
+        assertEq(hca.validate(validator, operationHash, permit2Signature), ERC1271_MAGICVALUE);
+
+        hca.setSessionNonce(1);
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, operationHash, legacySignature);
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, operationHash, permit2Signature);
+
+        // Grants signed against the bumped nonce validate, and direct owner signatures are
+        // unaffected by the nonce entirely.
+        bytes memory refreshedSignature =
+            _legacySessionSignature(operationHash, operationData, validUntil, ownerKey, sessionKey);
+        assertEq(hca.validate(validator, operationHash, refreshedSignature), ERC1271_MAGICVALUE);
+        assertEq(
+            hca.validate(
+                validator,
+                operationHash,
+                _directSignature(operationData, resolver, ownerKey)
+            ),
+            ERC1271_MAGICVALUE
+        );
+    }
+
+    function test_validator_allowsResolverRoleGrantsToOwnerOnly() public {
+        bytes memory grantToOwner =
+            abi.encodeWithSelector(
+                AUTHORIZE_NAME_ROLES_SELECTOR,
+                bytes(""),
+                uint256(1),
+                owner,
+                true
+            );
+        bytes memory operationData = _singleOperationData(resolver, 0, grantToOwner);
+        bytes32 operationHash = keccak256(operationData);
+
+        assertEq(
+            hca.validate(
+                validator,
+                operationHash,
+                _directSignature(operationData, resolver, ownerKey)
+            ),
+            ERC1271_MAGICVALUE
+        );
+
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = grantToOwner;
+        bytes memory multicallData =
+            _singleOperationData(
+                resolver,
+                0,
+                abi.encodeWithSelector(MULTICALL_SELECTOR, calls)
+            );
+        assertEq(
+            hca.validate(
+                validator,
+                keccak256(multicallData),
+                _directSignature(multicallData, resolver, ownerKey)
+            ),
+            ERC1271_MAGICVALUE
+        );
+
+        bytes memory grantToOther =
+            abi.encodeWithSelector(
+                AUTHORIZE_NAME_ROLES_SELECTOR,
+                bytes(""),
+                uint256(1),
+                sessionSigner,
+                true
+            );
+        _expectValidationRevert(
+            _singleOperationData(resolver, 0, grantToOther),
+            resolver,
+            OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector
+        );
     }
 
     function test_validator_acceptsDirectOwnerSignatureWithV01() public view {
@@ -304,19 +465,16 @@ contract StandaloneSingleOwnerHCATest is Test {
         bytes32 operationHash = keccak256(operationData);
         uint48 validUntil = uint48(block.timestamp + 1 days);
 
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(
-            validator,
-            operationHash,
-            _legacySessionSignature(operationHash, operationData, validUntil, badKey, sessionKey)
-        );
+        bytes memory badGrantSigner =
+            _legacySessionSignature(operationHash, operationData, validUntil, badKey, sessionKey);
+        bytes memory badSessionSigner =
+            _legacySessionSignature(operationHash, operationData, validUntil, ownerKey, badKey);
 
         vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(
-            validator,
-            operationHash,
-            _legacySessionSignature(operationHash, operationData, validUntil, ownerKey, badKey)
-        );
+        hca.validate(validator, operationHash, badGrantSigner);
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, operationHash, badSessionSigner);
     }
 
     function test_validator_rejectsPermit2SessionFailures() public {
@@ -324,10 +482,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         bytes32 operationHash = keccak256(operationData);
         uint48 validUntil = uint48(block.timestamp + 1 days);
 
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.SessionExpired.selector);
-        hca.validate(
-            validator,
-            operationHash,
+        bytes memory expiredPermit2 =
             _permit2SignatureData(
                 operationHash,
                 operationData,
@@ -335,13 +490,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 block.timestamp - 1,
                 ownerKey,
                 sessionKey
-            )
-        );
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(
-            validator,
-            operationHash,
+            );
+        bytes memory badGrantSigner =
             _permit2SignatureData(
                 operationHash,
                 operationData,
@@ -349,13 +499,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 block.timestamp + 2 days,
                 badKey,
                 sessionKey
-            )
-        );
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(
-            validator,
-            operationHash,
+            );
+        bytes memory badSessionSigner =
             _permit2SignatureData(
                 operationHash,
                 operationData,
@@ -363,8 +508,16 @@ contract StandaloneSingleOwnerHCATest is Test {
                 block.timestamp + 2 days,
                 ownerKey,
                 badKey
-            )
-        );
+            );
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.SessionExpired.selector);
+        hca.validate(validator, operationHash, expiredPermit2);
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, operationHash, badGrantSigner);
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, operationHash, badSessionSigner);
     }
 
     function test_validator_rejectsWrongOwnerAndExpiredSession() public {
@@ -634,7 +787,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 entryPoint,
                 address(defaultValidator),
                 address(defaultExecutor),
-                ""
+                "",
+                upgradeGate
             );
     }
 
@@ -646,7 +800,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 entryPoint,
                 address(defaultValidator),
                 address(defaultExecutor),
-                ""
+                "",
+                upgradeGate
             );
     }
 
@@ -844,7 +999,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                     owner,
                     sessionSigner,
                     validUntil,
-                    resolver
+                    resolver,
+                    uint256(hca.sessionNonce())
                 )
             );
 
@@ -979,7 +1135,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                     signer,
                     session,
                     validUntil,
-                    allowedResolver
+                    allowedResolver,
+                    uint256(hca.sessionNonce())
                 )
             );
         bytes32 mandate =
@@ -1063,14 +1220,26 @@ contract StandaloneSingleOwnerHCAHarness is StandaloneSingleOwnerHCA {
         address entryPoint,
         address defaultValidator,
         address defaultExecutor,
-        bytes memory validatorInitData
+        bytes memory validatorInitData,
+        ApprovedUpgradeGate upgradeGate
     )
-        StandaloneSingleOwnerHCA(entryPoint, defaultValidator, defaultExecutor, validatorInitData)
+        StandaloneSingleOwnerHCA(
+            entryPoint,
+            defaultValidator,
+            defaultExecutor,
+            validatorInitData,
+            upgradeGate
+        )
     {}
 
-    function authorizeUpgradeHarness(address newImplementation) external pure {
+    function authorizeUpgradeHarness(address newImplementation) external view {
         _authorizeUpgrade(newImplementation);
     }
+}
+
+
+interface IUUPSProxyUpgrade {
+    function upgradeToAndCall(address newImplementation, bytes calldata data) external payable;
 }
 
 

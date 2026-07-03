@@ -783,6 +783,8 @@ async function main() {
       sessionKey: sessionKey.address,
       validUntil,
       resolver,
+      // Fresh HCA per run (fresh label + salt), so the session-grant nonce is always 0.
+      sessionNonce: 0n,
       permit2: {
         sourceChainId: PERMIT2_SOURCE_CHAIN_ID,
         permit2Contract: PERMIT2_ADDRESS,

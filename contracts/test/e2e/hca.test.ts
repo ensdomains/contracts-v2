@@ -93,6 +93,8 @@ describe("Standalone HCA", () => {
     sessionKey,
     validUntil = 0,
     resolver,
+    // Account session-grant nonce; 0 for a not-yet-deployed (counterfactual) HCA.
+    sessionNonce = 0n,
     executions,
     permit2,
   }: {
@@ -101,6 +103,7 @@ describe("Standalone HCA", () => {
     sessionKey?: Account;
     validUntil?: number;
     resolver: Address;
+    sessionNonce?: bigint;
     executions: HCAExecution[];
     permit2?: Permit2SessionAuthorization;
   }): Promise<Hex> {
@@ -121,6 +124,7 @@ describe("Standalone HCA", () => {
             sessionKey: sessionKey.address,
             validUntil,
             resolver,
+            sessionNonce,
             permit2,
           }),
         );
@@ -128,7 +132,7 @@ describe("Standalone HCA", () => {
         const grantHash = keccak256(
           encodeAbiParameters(
             parseAbiParameters(
-              "bytes32,uint256,address,address,address,uint48,address",
+              "bytes32,uint256,address,address,address,uint48,address,uint256",
             ),
             [
               SESSION_GRANT_TYPEHASH,
@@ -138,6 +142,7 @@ describe("Standalone HCA", () => {
               sessionKey.address,
               validUntil,
               resolver,
+              sessionNonce,
             ],
           ),
         );
@@ -332,6 +337,18 @@ describe("Standalone HCA", () => {
           args: [owner.address, `${label}.eth`],
         }),
       },
+      // Make the owner co-admin of its resolver ("0x00" = DNS-encoded root, i.e. root
+      // resource) so record management never depends on the disposable HCA. The policy
+      // only permits this grant when the grantee is the owner.
+      {
+        target: resolver,
+        value: 0n,
+        callData: encodeFunctionData({
+          abi: artifacts.PermissionedResolver.abi,
+          functionName: "authorizeNameRoles",
+          args: ["0x00", ROLES.ALL, owner.address, true],
+        }),
+      },
     ];
   }
 
@@ -454,6 +471,14 @@ describe("Standalone HCA", () => {
       owner.address,
     ]);
     expectVar({ defaultPrimary }).toStrictEqual(`${label}.eth`);
+
+    const ownerIsResolverAdmin = await env.client.readContract({
+      address: resolver,
+      abi: artifacts.PermissionedResolver.abi,
+      functionName: "hasRoles",
+      args: [0n, ROLES.ALL, owner.address],
+    });
+    expectVar({ ownerIsResolverAdmin }).toStrictEqual(true);
   }
 
   it("deploys a standalone HCA and commits through the registration bootstrapper", async () => {
@@ -492,6 +517,26 @@ describe("Standalone HCA", () => {
     await executeRegistrationIntent({ hca, executions, signature });
 
     await expectRegistered({ label, owner, hca, price, resolver });
+
+    // The in-batch role grant makes the EOA co-admin: a direct owner record write must
+    // succeed without any HCA involvement.
+    const node = namehash(`${label}.eth`);
+    await env.waitFor(
+      env.client.writeContract({
+        address: resolver,
+        abi: artifacts.PermissionedResolver.abi,
+        functionName: "setText",
+        args: [node, "com.example", "owner-direct"],
+        account: owner,
+      }),
+    );
+    const ownerDirectText = await env.client.readContract({
+      address: resolver,
+      abi: artifacts.PermissionedResolver.abi,
+      functionName: "text",
+      args: [node, "com.example"],
+    });
+    expectVar({ ownerDirectText }).toStrictEqual("owner-direct");
   });
 
   it("registers with an owner-granted session key and rejects a resolver outside the grant", async () => {

@@ -549,6 +549,11 @@ export async function setupDevnet({
         address: rocketh.deployments["RegistrationBootstrapper"].address,
         client,
       }),
+      HCAUpgradeGate: getContract({
+        abi: artifacts.ApprovedUpgradeGate.abi,
+        address: rocketh.deployments["HCAUpgradeGate"].address,
+        client,
+      }),
     };
 
     const verifiableProxyLogic = await v2.VerifiableFactory.read.proxyLogic();
