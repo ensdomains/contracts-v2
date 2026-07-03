@@ -3,35 +3,34 @@ pragma solidity >=0.8.13;
 
 // solhint-disable no-console, private-vars-leading-underscore, state-visibility, func-name-mixedcase, contracts-v2/ordering, one-contract-per-file
 
-import {Vm, Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
+import {LibLabel} from "~src/utils/LibLabel.sol";
+import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
-import {
-    PermissionedRegistry,
-    IPermissionedRegistry,
-    IEnhancedAccessControl,
-    IRegistry,
-    IStandardRegistry,
-    IRegistryMetadata,
-    IHCAFactoryBasic,
-    RegistryRolesLib,
-    NameCoder,
-    LibLabel
-} from "~src/registry/PermissionedRegistry.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
-import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
+import {IOwnedRegistry} from "~src/registry/interfaces/IOwnedRegistry.sol";
+import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
+import {ITemporalRegistry} from "~src/registry/interfaces/ITemporalRegistry.sol";
+import {ITokenizedRegistry} from "~src/registry/interfaces/ITokenizedRegistry.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
+import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 
-uint256 constant ROOT_ROLES = EACBaseRolesLib.ALL_ROLES;
+uint256 constant DEFAULT_ROLE_BITMAP = EACBaseRolesLib.ALL_ROLES;
 
-contract PermissionedRegistryTest is Test, ERC1155Holder {
+contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     MockPermissionedRegistry registry;
-    MockHCAFactoryBasic hcaFactory;
-    IRegistryMetadata metadata;
+    LabelStore labelStore;
 
     address user1 = makeAddr("user1");
     address user2 = makeAddr("user2");
@@ -44,14 +43,24 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     uint64 testExpiry = uint64(block.timestamp + 1000);
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
 
-    function setUp() public {
-        hcaFactory = new MockHCAFactoryBasic();
-        metadata = new SimpleRegistryMetadata(hcaFactory);
-        registry = new MockPermissionedRegistry(hcaFactory, metadata, address(this), ROOT_ROLES);
+    function setUp() external {
+        labelStore = new LabelStore(IContractNamer(address(0)));
+
+        vm.expectEmit();
+        emit IRegistryEvents.RegistryCreated();
+        registry = new MockPermissionedRegistry(labelStore, address(this), DEFAULT_ROLE_BITMAP);
+    }
+
+    function test_initForProxyImplementation() external {
+        vm.expectEmit();
+        emit IRegistryEvents.RegistryCreated();
+        new PermissionedRegistry(labelStore, address(0), 0);
     }
 
     function test_constructor() external view {
-        assertTrue(registry.hasRootRoles(ROOT_ROLES, address(this)));
+        assertEq(address(registry.LABEL_STORE()), address(labelStore), "LABEL_STORE");
+
+        assertTrue(registry.hasRootRoles(DEFAULT_ROLE_BITMAP, address(this)));
     }
 
     function test_supportsInterface() external view {
@@ -60,10 +69,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             registry.supportsInterface(type(IStandardRegistry).interfaceId),
             "IStandardRegistry"
         );
+        assertTrue(registry.supportsInterface(type(IOwnedRegistry).interfaceId), "IOwnedRegistry");
+        assertTrue(
+            registry.supportsInterface(type(ITokenizedRegistry).interfaceId),
+            "ITokenizedRegistry"
+        );
+        assertTrue(
+            registry.supportsInterface(type(ITemporalRegistry).interfaceId),
+            "ITemporalRegistry"
+        );
         assertTrue(
             registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
             "IPermissionedRegistry"
         );
+        assertTrue(registry.supportsInterface(type(IContractNamer).interfaceId), "IContractNamer");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -72,10 +91,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function test_register() external {
         uint256 labelId = LibLabel.id(testLabel);
-        uint256 expectedTokenId = LibLabel.withVersion(labelId, 0);
+        uint256 tokenId = LibLabel.withVersion(labelId, 0);
+        vm.expectEmit();
+        emit ILabelStore.Label(bytes32(labelId), testLabel);
         vm.expectEmit();
         emit IRegistryEvents.LabelRegistered(
-            expectedTokenId,
+            tokenId,
             bytes32(labelId),
             testLabel,
             testOwner,
@@ -83,19 +104,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
             address(this)
         );
         vm.expectEmit();
-        emit IERC1155.TransferSingle(address(this), address(0), testOwner, expectedTokenId, 1);
+        emit IERC1155.TransferSingle(address(this), address(0), testOwner, tokenId, 1);
         vm.expectEmit();
-        emit IPermissionedRegistry.TokenResource(expectedTokenId, expectedTokenId);
+        emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
-        emit IRegistryEvents.SubregistryUpdated(expectedTokenId, testRegistry, address(this));
+        emit IRegistryEvents.SubregistryUpdated(tokenId, testRegistry, address(this));
         vm.expectEmit();
-        emit IRegistryEvents.ResolverUpdated(expectedTokenId, testResolver, address(this));
-        uint256 tokenId = this._register();
+        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, address(this));
+        assertEq(this._register(), tokenId, "token");
         assertEq(registry.getExpiry(tokenId), testExpiry, "expiry");
         assertEq(registry.ownerOf(tokenId), testOwner, "owner");
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
         assertEq(address(registry.getSubregistry(testLabel)), address(testRegistry), "registry");
         assertTrue(registry.hasRoles(tokenId, testRoles, testOwner), "roles");
+        assertEq(labelStore.getLabel(tokenId), testLabel, "label");
     }
 
     function test_register_expired() external {
@@ -144,7 +166,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     function test_register_cannotSetPastExpiry() external {
-        testExpiry = 0;
+        vm.warp(2);
+        testExpiry = uint64(block.timestamp) - 1;
         vm.expectRevert(
             abi.encodeWithSelector(IStandardRegistry.CannotSetPastExpiry.selector, testExpiry)
         );
@@ -176,10 +199,13 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
 
     function test_reserve() external {
+        uint256 labelId = LibLabel.id(testLabel);
+        vm.expectEmit();
+        emit ILabelStore.Label(bytes32(labelId), testLabel);
         vm.expectEmit();
         emit IRegistryEvents.LabelReserved(
-            LibLabel.withVersion(LibLabel.id(testLabel), 0),
-            bytes32(LibLabel.id(testLabel)),
+            LibLabel.withVersion(labelId, 0),
+            bytes32(labelId),
             testLabel,
             testExpiry,
             address(this)
@@ -191,6 +217,21 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(state.expiry, testExpiry, "expiry");
         assertEq(registry.getResolver(testLabel), testResolver, "resolver");
         assertEq(address(registry.getSubregistry(testLabel)), address(0), "registry");
+        assertEq(labelStore.getLabel(tokenId), testLabel, "label");
+    }
+
+    function test_reserve_canSetPastExpiry() external {
+        vm.warp(2);
+        testExpiry = 1;
+        this._reserve();
+    }
+
+    function test_reserve_cannotSetPastExpiryAtGenesis() external {
+        testExpiry = 0; // genesis
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.CannotSetPastExpiry.selector, testExpiry)
+        );
+        this._reserve();
     }
 
     function test_reserve_alreadyReserved() external {
@@ -199,6 +240,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         vm.expectRevert(
             abi.encodeWithSelector(IPermissionedRegistry.LabelAlreadyReserved.selector, testLabel)
         );
+        vm.prank(actor);
         this._reserve();
     }
 
@@ -295,11 +337,30 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.renew(tokenId, testExpiry);
     }
 
-    function test_renew_expired() external {
+    function test_renew_expiredReservation_asRoot() external {
+        uint256 tokenId = this._reserve();
+        vm.warp(testExpiry);
+        testExpiry += testExpiry;
+
+        registry.renew(tokenId, testExpiry);
+        assertEq(registry.getExpiry(tokenId), testExpiry);
+    }
+
+    function test_renew_expiredRegistration_asRoot() external {
+        uint256 tokenId = this._register();
+        vm.warp(testExpiry);
+        testExpiry += testExpiry;
+        registry.renew(tokenId, testExpiry);
+        assertEq(registry.getExpiry(tokenId), testExpiry);
+    }
+
+    function test_renew_expiredRegistration_asOwner() external {
+        testRoles = RegistryRolesLib.ROLE_RENEW;
         uint256 tokenId = this._register();
         vm.warp(testExpiry);
         testExpiry += testExpiry;
         vm.expectRevert(abi.encodeWithSelector(IStandardRegistry.LabelExpired.selector, tokenId));
+        vm.prank(testOwner);
         registry.renew(tokenId, testExpiry);
     }
 
@@ -528,10 +589,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     function test_setResolver() external {
         testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
         uint256 tokenId = this._register();
-        vm.expectEmit();
-        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, testOwner);
+        vm.recordLogs();
         vm.prank(testOwner);
         registry.setResolver(tokenId, testResolver);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 1, "logs");
+        _assertResolverUpdated(logs[0], tokenId, testResolver, testOwner);
         vm.assertEq(registry.getResolver(testLabel), testResolver, "before");
         vm.warp(testExpiry);
         vm.assertEq(registry.getResolver(testLabel), address(0), "after");
@@ -578,6 +641,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256 tokenId = this._register();
         assertEq(registry.ownerOf(tokenId), testOwner, "exact");
         assertEq(registry.ownerOf(tokenId + 1), address(0), "+1");
+        vm.warp(testExpiry);
+        assertEq(registry.ownerOf(tokenId), address(0), "expired");
     }
 
     // cleared after burn
@@ -590,6 +655,39 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         tokenId = this._register();
         vm.warp(testExpiry);
         assertEq(registry.latestOwnerOf(tokenId), testOwner, "expired");
+    }
+
+    function test_balanceOf() external {
+        assertEq(registry.balanceOf(address(0), 0), 0, "zero");
+        assertEq(
+            registry.balanceOf(testOwner, LibLabel.withVersion(LibLabel.id(testLabel), 0)),
+            0,
+            "available"
+        );
+        uint256 tokenId = this._register();
+        assertEq(registry.balanceOf(testOwner, tokenId), 1, "registered");
+        assertEq(registry.balanceOf(testOwner, LibLabel.withVersion(tokenId, 1)), 0, "next");
+        registry.unregister(tokenId);
+        assertEq(registry.balanceOf(testOwner, tokenId), 0, "unregistered");
+    }
+
+    function test_balanceOfBatch() external {
+        address[] memory acs = new address[](3);
+        uint256[] memory ids = new uint256[](3);
+        ids[0] = ids[1] = this._register();
+        ids[2] = ids[0] + 1;
+        acs[0] = acs[2] = testOwner;
+        uint256[] memory bals = registry.balanceOfBatch(acs, ids);
+        assertEq(bals[0], 1);
+        assertEq(bals[1], 0, "wrong owner");
+        assertEq(bals[2], 0, "wrong token");
+    }
+
+    function test_balanceOfBatch_arrayLength() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidArrayLength.selector, 1, 0)
+        );
+        registry.balanceOfBatch(new address[](0), new uint256[](1));
     }
 
     function test_safeTransferFrom() external {
@@ -632,6 +730,35 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         );
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, amount, "");
+    }
+
+    function test_safeTransferFrom_invalidReceiver() external {
+        uint256 tokenId = this._register();
+        address to; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, to));
+        vm.prank(user1);
+        registry.safeTransferFrom(user1, to, tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_invalidSender() external {
+        uint256 tokenId = this._register();
+        address from; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
+        vm.prank(user1);
+        registry.__safeTransferFrom(from, user2, tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_missingApproval() external {
+        uint256 tokenId = this._register();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC1155Errors.ERC1155MissingApprovalForAll.selector,
+                user2,
+                user1
+            )
+        );
+        vm.prank(user2);
+        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
 
     function test_safeTransferFrom_notAuthorized() external {
@@ -719,11 +846,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1;
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IStandardRegistry.TransferDisallowed.selector,
-                tokenIds[1],
-                user1
-            )
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenIds[1], user1)
         );
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
@@ -749,14 +872,28 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         amounts[0] = 1;
         amounts[1] = 1;
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IStandardRegistry.TransferDisallowed.selector,
-                tokenIds[0],
-                user1
-            )
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenIds[0], user1)
         );
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
+    }
+
+    function test_safeBatchTransferFrom_invalidReceiver() external {
+        uint256 tokenId = this._register();
+        uint256[] memory v;
+        address to; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, to));
+        vm.prank(user1);
+        registry.safeBatchTransferFrom(user1, to, v, v, "");
+    }
+
+    function test_safeBatchTransferFrom_invalidSender() external {
+        uint256 tokenId = this._register();
+        uint256[] memory v;
+        address from; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
+        vm.prank(user1);
+        registry.__safeBatchTransferFrom(from, user2, v, v, "");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -860,6 +997,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertEq(registry.getExpiry(LibLabel.withVersion(tokenId, version)), testExpiry);
     }
 
+    function test_getOwner_anyId(uint32 version) external {
+        uint256 tokenId = this._register();
+        assertEq(registry.getOwner(LibLabel.withVersion(tokenId, version)), testOwner);
+    }
+
     function test_getStatus_anyId(uint32 version) external {
         uint256 tokenId = this._register();
         uint256 anyId = LibLabel.withVersion(tokenId, version);
@@ -956,8 +1098,48 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // Low-level Interfaces
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_findExpiry() external {
+        assertEq(registry.findExpiry(testLabel), 0);
+        uint256 tokenId = this._register();
+        assertEq(registry.findExpiry(testLabel), testExpiry);
+        registry.unregister(tokenId);
+        assertEq(registry.findExpiry(testLabel), block.timestamp, "burn");
+        this._register();
+        assertEq(registry.findExpiry(testLabel), testExpiry, "again");
+    }
+
+    function test_findTokenId() external {
+        assertEq(registry.findTokenId(testLabel), LibLabel.withVersion(LibLabel.id(testLabel), 0));
+        uint256 tokenId = this._register();
+        assertEq(registry.findTokenId(testLabel), tokenId);
+        registry.unregister(tokenId);
+        assertEq(registry.findTokenId(testLabel), tokenId + 1, "burn");
+        tokenId = this._register();
+        assertEq(registry.findTokenId(testLabel), tokenId, "again");
+    }
+
+    function test_findOwner() external {
+        assertEq(registry.findOwner(testLabel), address(0));
+        uint256 tokenId = this._register();
+        assertEq(registry.findOwner(testLabel), testOwner);
+        registry.unregister(tokenId);
+        assertEq(registry.findOwner(testLabel), address(0), "burn");
+        tokenId = this._register();
+        assertEq(registry.findOwner(testLabel), testOwner, "again");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // Token Regeneration
     ////////////////////////////////////////////////////////////////////////
+
+    function test_burn_invalidSender() external {
+        address from; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
+        registry.__burn(from, 0, 0);
+    }
 
     function test_regenerate_mintBurn() external {
         IPermissionedRegistry.State memory s0 = registry.getState(this._register());
@@ -1007,7 +1189,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     // EAC Override: grantRoles() and revokeRoles()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_grantRolesAsOwner(uint256) external {
+    function test_grantRoles_asOwner(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(false, true);
 
         testRoles = roleBitmap << 128; // admin
@@ -1019,7 +1201,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.grantRoles(tokenId, roleBitmap, user2));
     }
 
-    function test_grantRolesAsRoot(uint256) external {
+    function test_grantRoles_asRoot(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(false, true);
 
         uint256 tokenId = this._register();
@@ -1027,7 +1209,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.grantRoles(tokenId, roleBitmap, testOwner));
     }
 
-    function test_grantRolesWithAdminAsOwner(uint256) external {
+    function test_grantRoles_withAdminAsOwner(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, false);
 
         uint256 tokenId = this._register();
@@ -1044,7 +1226,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWithAdminAsOwnerAndRoot(uint256) external {
+    function test_grantRoles_withAdminAsOwnerAndRoot(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, false);
 
         testOwner = address(this); // mint to account with root
@@ -1061,7 +1243,21 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWhileExpired(uint256) external {
+    function test_grantRoles_whileUnregistered(uint256 anyId) external {
+        vm.assume(anyId > 0);
+        uint256 roleBitmap = _randomRoleBitmap(true, true);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                LibLabel.withVersion(anyId, 1), // next
+                roleBitmap,
+                address(this)
+            )
+        );
+        registry.grantRoles(anyId, roleBitmap, user2);
+    }
+
+    function test_grantRoles_whileExpired(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._register();
@@ -1078,7 +1274,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_grantRolesWhileReserved(uint256) external {
+    function test_grantRoles_whileReserved(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._reserve();
@@ -1094,7 +1290,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.grantRoles(tokenId, roleBitmap, user2);
     }
 
-    function test_revokeRolesAsOwnerHavingAdmin(uint256) external {
+    function test_revokeRoles_asOwnerHavingAdmin(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(false, true);
         uint256 adminRoleBitmap = roleBitmap << 128;
 
@@ -1112,7 +1308,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.revokeRoles(tokenId, adminRoleBitmap, testOwner));
     }
 
-    function test_revokeRolesAsOwnerLackingAdmin(uint256) external {
+    function test_revokeRoles_asOwnerLackingAdmin(uint256) external {
         testRoles = _randomRoleBitmap(false, true);
 
         uint256 tokenId = this._register();
@@ -1129,7 +1325,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.revokeRoles(tokenId, testRoles, testOwner);
     }
 
-    function test_revokeRolesAsRoot(uint256) external {
+    function test_revokeRoles_asRoot(uint256) external {
         testRoles = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._register();
@@ -1137,37 +1333,222 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
     }
 
-    function test_revokeRolesWhileExpired(uint256) external {
+    function test_revokeRoles_whileExpired(uint256) external {
         testRoles = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._register();
         vm.warp(testExpiry);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
-                tokenId + 1, // next
-                testRoles,
-                address(this)
-            )
-        );
-        registry.revokeRoles(tokenId, testRoles, testOwner);
+        assertFalse(registry.revokeRoles(tokenId, testRoles, testOwner));
     }
 
-    function test_revokeRolesWhileReserved(uint256) external {
+    function test_revokeRoles_whileReserved(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._reserve();
 
+        assertFalse(registry.revokeRoles(tokenId, roleBitmap, testOwner));
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // EAC Override: setApprovalForAll()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_setApprovalForAll_invalidOperator() external {
+        address to; // wrong
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidOperator.selector, to));
+        registry.setApprovalForAll(to, true);
+    }
+
+    function test_setApprovalForAll_roles(uint256) external {
+        testRoles = _randomRoleBitmap(true, false);
+        uint256 tokenId = this._register();
+        testRoles >>= 128; // convert to normal
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        vm.prank(user2);
+        registry.grantRoles(tokenId, testRoles, actor);
+        vm.prank(user2);
+        registry.revokeRoles(tokenId, testRoles, actor);
+        assertEq(registry.roles(tokenId, actor), 0);
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, false);
+
         vm.expectRevert(
             abi.encodeWithSelector(
-                IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
                 tokenId, // same as resource
-                roleBitmap,
-                address(this)
+                testRoles,
+                user2
             )
         );
-        registry.revokeRoles(tokenId, roleBitmap, testOwner);
+        vm.prank(user2);
+        registry.grantRoles(tokenId, testRoles, actor);
+    }
+
+    function test_setApprovalForAll_revokeRoles() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        uint256 tokenId = this._register();
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        // approval roles are aliased and not an actual assignee
+        (uint256 counts, ) = registry.getAssigneeCount(tokenId, testRoles);
+        assertEq(counts, EACBaseRolesLib.ALL_ROLES * 1); // not * 2
+        assertEq(registry.roles(tokenId, testOwner), testRoles, "before:owner"); // real
+        assertEq(registry.roles(tokenId, user2), testRoles, "before:approved"); // alias
+
+        // cant revoke aliased roles
+        vm.prank(user2);
+        assertFalse(registry.revokeRoles(tokenId, testRoles, user2));
+
+        // can revoke real roles via approval
+        vm.prank(user2);
+        assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
+
+        // since roles are aliased, revoking real roles => aliased roles
+        (counts, ) = registry.getAssigneeCount(tokenId, testRoles);
+        assertEq(counts, 0);
+        assertEq(registry.roles(tokenId, testOwner), 0, "after:owner");
+        assertEq(registry.roles(tokenId, user2), 0, "after:approved");
+    }
+
+    function test_setApprovalForAll_blendedRoles() external {
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+        uint256 tokenId = this._register();
+
+        // user2 has token roles via approval
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        // user2 has token roles via grant
+        vm.prank(testOwner);
+        registry.grantRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user2);
+
+        // user2 has root roles
+        registry.grantRootRoles(RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN, user2);
+
+        // user2 effectively has roles from all sources
+        assertTrue(
+            registry.hasRoles(
+                tokenId,
+                RegistryRolesLib.ROLE_SET_RESOLVER |
+                RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
+                RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN,
+                user2
+            )
+        );
+    }
+
+    function test_setApprovalForAll_setResolver() external {
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
+        uint256 tokenId = this._register();
+
+        // without approval
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                tokenId, // same as resource
+                testRoles,
+                user2
+            )
+        );
+        vm.prank(user2);
+        registry.setResolver(tokenId, testResolver);
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        // with approval
+        vm.prank(user2);
+        registry.setResolver(tokenId, testResolver);
+    }
+
+    function test_setApprovalForAll_setSubregistry() external {
+        testRoles = RegistryRolesLib.ROLE_SET_SUBREGISTRY;
+        uint256 tokenId = this._register();
+
+        // without approval
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                tokenId, // same as resource
+                testRoles,
+                user2
+            )
+        );
+        vm.prank(user2);
+        registry.setSubregistry(tokenId, testRegistry);
+
+        vm.prank(testOwner);
+        registry.setApprovalForAll(user2, true);
+
+        // with approval
+        vm.prank(user2);
+        registry.setSubregistry(tokenId, testRegistry);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // IContractNamer
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_isContractNamer() external {
+        assertTrue(registry.isContractNamer(address(this)));
+
+        assertFalse(registry.isContractNamer(user1), "before");
+        registry.grantRootRoles(RegistryRolesLib.ROLE_CAN_NAME, user1);
+        assertTrue(registry.isContractNamer(user1), "granted");
+        registry.revokeRootRoles(RegistryRolesLib.ROLE_CAN_NAME, user1);
+        assertFalse(registry.isContractNamer(user1), "revoked");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // setURI() and uri()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_uri_unset() external view {
+        assertEq(registry.uri(0), "");
+        assertEq(registry.uri(1), "");
+    }
+
+    function test_setURI_onlyURI() external {
+        string memory uri = "ipfs://base/{id}";
+        registry.setURI(uri, IRegistryURIRenderer(address(0)));
+
+        uint256 tokenId = this._register();
+        assertEq(registry.uri(0), uri);
+        assertEq(registry.uri(tokenId), uri);
+    }
+
+    // IRegistryURIRenderer
+    function renderURI(IRegistry, uint256 tokenId) external pure returns (string memory) {
+        return vm.toString(tokenId);
+    }
+
+    function test_setURI_withRenderer() external {
+        IRegistryURIRenderer renderer = IRegistryURIRenderer(address(this)); // see: renderURI()
+        registry.setURI("<ignored>", renderer);
+
+        uint256 tokenId = this._register();
+        assertEq(registry.uri(0), renderer.renderURI(registry, 0));
+        assertEq(registry.uri(tokenId), renderer.renderURI(registry, tokenId));
+    }
+
+    function test_setURI_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_SET_URI,
+                actor
+            )
+        );
+        vm.prank(actor);
+        registry.setURI("", IRegistryURIRenderer(address(0)));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1194,8 +1575,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
     // 3. user2 receives crippled token => angry!
     function test_transferAbortsAfterRevoke() external {
         testRoles =
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
-            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
         uint256 tokenId = this._register();
         // make token available for sale
         vm.prank(user1);
@@ -1319,6 +1699,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
         registry.revokeRoles(tokenId, role1, testOwner);
     }
 
+    // scenerio: emanicipation concern: root can revoke token
+    function test_rootRevokeToken(uint8 role) external {
+        vm.assume(role >= 32 && role < 64);
+        testRoles = 1 << (role << 2); // every admin role
+        uint256 tokenId = this._register();
+        assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Internals
     ////////////////////////////////////////////////////////////////////////
@@ -1393,40 +1781,80 @@ contract PermissionedRegistryTest is Test, ERC1155Holder {
 
     function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {
         for (uint256 i; i < logs.length; ++i) {
-            if (logs[i].topics[0] == topic0) {
-                revert(string.concat("found unexpected event: ", vm.toString(topic0)));
-            }
+            assertNotEq(logs[i].topics[0], topic0, "found unexpected event");
         }
     }
 
+    function _assertResolverUpdated(
+        Vm.Log memory log,
+        uint256 tokenId,
+        address resolver,
+        address sender
+    )
+        internal
+        pure
+    {
+        assertEq(log.topics.length, 4, "topic count");
+        assertEq(log.topics[0], IRegistryEvents.ResolverUpdated.selector, "topic0");
+        assertEq(log.topics[1], bytes32(tokenId), "tokenId");
+        assertEq(log.topics[2], bytes32(uint256(uint160(resolver))), "resolver");
+        assertEq(log.topics[3], bytes32(uint256(uint160(sender))), "sender");
+        assertEq(log.data.length, 0, "data");
+    }
+
+    /// @dev Randomly pick a role corresponding to the enable regions.
+    //       If both regions are enabled, pick 1-2 roles.
     function _randomRoleBitmap(bool admin, bool normal) internal returns (uint256 roleBitmap) {
-        uint256 bits;
-        if (normal) {
-            bits |= vm.randomUint(1, (1 << 32) - 1); // 1+ bits 0-31
-        }
-        if (admin) {
-            bits |= vm.randomUint((1 << 32), (1 << 64) - 1); // 1+ bits 32-63
-        }
-        for (uint256 i; i < 64; ++i) {
-            if ((bits & (1 << i)) != 0) {
-                roleBitmap |= 1 << (i << 2);
+        if (admin && normal) {
+            roleBitmap = 1 << (vm.randomUint(0, 63) << 2);
+            if (vm.randomBool()) {
+                roleBitmap |= 1 << (vm.randomUint(0, 63) << 2);
             }
+        } else if (normal) {
+            roleBitmap = 1 << (vm.randomUint(0, 31) << 2);
+        } else if (admin) {
+            roleBitmap = 1 << (vm.randomUint(32, 63) << 2);
+        } else {
+            revert("bug");
         }
     }
 }
 
-contract MockPermissionedRegistry is PermissionedRegistry {
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadata,
-        address ownerAddress,
-        uint256 ownerRoles
-    ) PermissionedRegistry(hcaFactory, metadata, ownerAddress, ownerRoles) {}
 
+contract MockPermissionedRegistry is PermissionedRegistry {
+    constructor(ILabelStore labelStore, address rootAccount, uint256 roleBitmap)
+        PermissionedRegistry(labelStore, rootAccount, roleBitmap)
+    {}
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
     }
+    function __safeTransferFrom(
+        address from,
+        address to,
+        uint256 id,
+        uint256 value,
+        bytes memory data
+    )
+        external
+    {
+        _safeTransferFrom(from, to, id, value, data);
+    }
+    function __safeBatchTransferFrom(
+        address from,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory values,
+        bytes memory data
+    )
+        external
+    {
+        _safeBatchTransferFrom(from, to, ids, values, data);
+    }
+    function __burn(address from, uint256 id, uint256 value) external {
+        _burn(from, id, value);
+    }
 }
+
 
 contract ReentrantReceiver is ERC1155Holder {
     PermissionedRegistry immutable REGISTRY;
@@ -1443,7 +1871,11 @@ contract ReentrantReceiver is ERC1155Holder {
         uint256 id,
         uint256 value,
         bytes memory data
-    ) public override returns (bytes4) {
+    )
+        public
+        override
+        returns (bytes4)
+    {
         if (from == address(0)) {
             // during mint(), eg. token regeneration(), mutate the registry
             bytes memory v = _data;
@@ -1462,6 +1894,7 @@ contract ReentrantReceiver is ERC1155Holder {
     }
 }
 
+
 contract StrictERC1155Holder is ERC1155Holder {
     bool immutable BATCH;
     constructor(bool batch) {
@@ -1473,7 +1906,11 @@ contract StrictERC1155Holder is ERC1155Holder {
         uint256 id,
         uint256 value,
         bytes memory data
-    ) public override returns (bytes4) {
+    )
+        public
+        override
+        returns (bytes4)
+    {
         require(!BATCH);
         return super.onERC1155Received(operator, from, id, value, data);
     }
@@ -1483,7 +1920,11 @@ contract StrictERC1155Holder is ERC1155Holder {
         uint256[] memory ids,
         uint256[] memory values,
         bytes memory data
-    ) public override returns (bytes4) {
+    )
+        public
+        override
+        returns (bytes4)
+    {
         require(BATCH);
         return super.onERC1155BatchReceived(operator, from, ids, values, data);
     }

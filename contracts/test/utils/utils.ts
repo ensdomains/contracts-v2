@@ -4,6 +4,7 @@ import { keccak256, stringToBytes } from "viem";
 
 export { dnsEncodeName } from "../../lib/ens-contracts/test/fixtures/dnsEncodeName.js";
 export { dnsDecodeName } from "../../lib/ens-contracts/test/fixtures/dnsDecodeName.js";
+export * from "../../lib/ens-contracts/test/fixtures/ensip19.js";
 
 // LibLabel.id()
 export function idFromLabel(label: string): bigint {
@@ -25,7 +26,7 @@ export function splitName(name: string): string[] {
 // "a.b.c" => "b.c"
 export function getParentName(name: string) {
   const i = name.indexOf(".");
-  return i == -1 ? "" : name.slice(i + 1);
+  return i === -1 ? "" : name.slice(i + 1);
 }
 
 // "a.b.c"  0 => "a" aka firstLabel()

@@ -1,0 +1,21 @@
+{
+  "address": "0xFED6a969AaA60E4961FCD3EBF1A2e8913ac65B72",
+  "abi": [
+    {
+      "type": "function",
+      "name": "renew",
+      "stateMutability": "payable",
+      "inputs": [
+        {
+          "name": "label",
+          "type": "string"
+        },
+        {
+          "name": "duration",
+          "type": "uint256"
+        }
+      ],
+      "outputs": []
+    }
+  ]
+}

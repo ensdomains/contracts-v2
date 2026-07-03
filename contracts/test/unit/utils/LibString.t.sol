@@ -405,7 +405,7 @@ contract LibStringTest is Test {
         return address(result);
     }
 
-    /// @dev Converts a hex character to its uint value
+    /// @dev Converts a hex character to its uint256 value
     function _hexCharToUint(bytes1 c) internal pure returns (uint8) {
         if (c >= 0x30 && c <= 0x39) {
             return uint8(c) - 0x30; // 0-9
@@ -430,7 +430,8 @@ contract LibStringTest is Test {
 
     /// @dev Counts the number of decimal digits in a value
     function _countDigits(uint256 value) internal pure returns (uint256) {
-        if (value == 0) return 1;
+        if (value == 0)
+            return 1;
         uint256 digits = 0;
         while (value > 0) {
             digits++;
@@ -442,8 +443,10 @@ contract LibStringTest is Test {
     /// @dev Verifies an EIP-55 checksummed address string
     function _verifyEIP55Checksum(string memory addr) internal pure returns (bool) {
         bytes memory b = bytes(addr);
-        if (b.length != 42) return false;
-        if (b[0] != 0x30 || b[1] != 0x78) return false; // "0x"
+        if (b.length != 42)
+            return false;
+        if (b[0] != 0x30 || b[1] != 0x78)
+            return false; // "0x"
 
         // Extract lowercase hex (without 0x prefix)
         bytes memory lowercase = new bytes(40);
@@ -474,7 +477,8 @@ contract LibStringTest is Test {
             if ((c >= 0x61 && c <= 0x66) || (c >= 0x41 && c <= 0x46)) {
                 bool shouldBeUpper = hashNibble >= 8;
                 bool isUpper = c >= 0x41 && c <= 0x46;
-                if (shouldBeUpper != isUpper) return false;
+                if (shouldBeUpper != isUpper)
+                    return false;
             }
         }
 

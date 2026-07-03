@@ -1,5 +1,5 @@
 import type { NetworkConnection } from "hardhat/types/network";
-import { type Address, zeroAddress } from "viem";
+import { type Address, encodeFunctionData, type Hex, zeroAddress } from "viem";
 import {
   DEPLOYMENT_ROLES,
   LOCAL_BATCH_GATEWAY_URL,
@@ -17,12 +17,26 @@ export async function deployV2Fixture(
     ccipRead: enableCcipRead ? undefined : false,
   });
   const [walletClient] = await network.viem.getWalletClients();
-  const hcaFactory = await network.viem.deployContract("MockHCAFactoryBasic");
+  const contractNamerImpl = await network.viem.deployContract("ContractNamer");
+  const contractNamerProxy = await network.viem.deployContract("ERC1967Proxy", [
+    contractNamerImpl.address,
+    encodeFunctionData({
+      abi: contractNamerImpl.abi,
+      functionName: "initialize",
+      args: [walletClient.account.address],
+    }),
+  ]);
+  const contractNamer = await network.viem.getContractAt(
+    "ContractNamer",
+    contractNamerProxy.address,
+  );
+  const labelStore = await network.viem.deployContract("LabelStore", [
+    contractNamer.address,
+  ]);
   const rootRegistry = await network.viem.deployContract(
     "PermissionedRegistry",
     [
-      hcaFactory.address,
-      zeroAddress,
+      labelStore.address,
       walletClient.account.address,
       DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
     ],
@@ -30,8 +44,7 @@ export async function deployV2Fixture(
   const ethRegistry = await network.viem.deployContract(
     "PermissionedRegistry",
     [
-      hcaFactory.address,
-      zeroAddress,
+      labelStore.address,
       walletClient.account.address,
       DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
     ],
@@ -42,7 +55,7 @@ export async function deployV2Fixture(
   );
   const universalResolver = await network.viem.deployContract(
     "UniversalResolverV2",
-    [rootRegistry.address, batchGatewayProvider.address],
+    [rootRegistry.address, batchGatewayProvider.address, contractNamer.address],
     { client: { public: publicClient } },
   );
   await rootRegistry.write.register([
@@ -64,13 +77,14 @@ export async function deployV2Fixture(
     await network.viem.deployContract("VerifiableFactory");
   const PermissionedResolverImpl = await network.viem.deployContract(
     "PermissionedResolver",
-    [hcaFactory.address],
+    [contractNamer.address],
   );
   return {
     network,
     publicClient,
     walletClient,
-    hcaFactory,
+    contractNamer,
+    labelStore,
     rootRegistry,
     ethRegistry,
     batchGatewayProvider,
@@ -81,10 +95,12 @@ export async function deployV2Fixture(
   async function deployPermissionedResolver({
     owner = walletClient.account.address,
     roles = ROLES.ALL,
+    setters = [],
     salt = idFromLabel(new Date().toISOString()),
   }: {
     owner?: Address;
     roles?: bigint;
+    setters?: Hex[];
     salt?: bigint;
   } = {}) {
     return deployVerifiableProxy({
@@ -93,7 +109,7 @@ export async function deployV2Fixture(
       implAddress: PermissionedResolverImpl.address,
       abi: PermissionedResolverImpl.abi,
       functionName: "initialize",
-      args: [walletClient.account.address, roles],
+      args: [walletClient.account.address, roles, setters],
       salt,
     });
   }
@@ -105,7 +121,6 @@ export async function deployV2Fixture(
     expiry = MAX_EXPIRY,
     roles = ROLES.ALL,
     resolverAddress,
-    metadataAddress = zeroAddress,
     exact,
   }: {
     name: string;
@@ -113,7 +128,6 @@ export async function deployV2Fixture(
     expiry?: bigint;
     roles?: bigint;
     resolverAddress?: Address;
-    metadataAddress?: Address;
     exact?: exact_;
   }) {
     const labels = splitName(name);
@@ -131,12 +145,7 @@ export async function deployV2Fixture(
           // registry does not exist, create it
           const registry = await network.viem.deployContract(
             "PermissionedRegistry",
-            [
-              hcaFactory.address,
-              metadataAddress,
-              walletClient.account.address,
-              roles,
-            ],
+            [labelStore.address, walletClient.account.address, roles],
           );
           registryAddress = registry.address;
           if (exists) {

@@ -1,0 +1,51 @@
+# Solgrid settings for Foundry tests, fixtures, mocks, and Solidity scripts.
+# These files intentionally use test-oriented naming, layout, and documentation style.
+
+[lint]
+preset = "recommended"
+
+[lint.rules]
+"best-practices/code-complexity" = "off"
+"best-practices/duplicated-imports" = "error"
+"best-practices/function-max-lines" = "off"
+"best-practices/imports-on-top" = "error"
+"best-practices/max-states-count" = "off"
+"best-practices/no-empty-blocks" = "off"
+"best-practices/no-floating-pragma" = "off"
+"best-practices/no-global-import" = "error"
+"best-practices/no-unused-error" = "off"
+"best-practices/no-unused-event" = "off"
+"best-practices/no-unused-imports" = "error"
+"best-practices/no-unused-state" = "off"
+"best-practices/one-contract-per-file" = "off"
+"best-practices/reason-string" = "warn"
+"best-practices/visibility-modifier-order" = "error"
+"docs/natspec" = "off"
+"docs/selector-tags" = "off"
+"naming/const-name-snakecase" = "error"
+"naming/contract-name-capwords" = "error"
+"naming/func-name-mixedcase" = "off"
+"naming/immutable-name-snakecase" = "error"
+"naming/modifier-name-mixedcase" = "error"
+"naming/named-parameters-mapping" = "error"
+"naming/param-name-mixedcase" = "off"
+"naming/private-vars-underscore" = "off"
+"naming/var-name-mixedcase" = "warn"
+"security/compiler-version" = "error"
+"security/low-level-calls" = "off"
+"security/no-delegatecall-in-loop" = "off"
+"security/no-inline-assembly" = "off"
+"security/not-rely-on-time" = "off"
+"security/payable-fallback" = "off"
+"security/state-visibility" = "off"
+"style/category-headers" = "off"
+"style/imports-ordering" = "off"
+"style/ordering" = "off"
+
+[lint.settings."security/compiler-version"]
+allowed = [">=0.8.13"]
+
+[format]
+line_length = 100
+operator_line_break = "trailing"
+tab_width = 4

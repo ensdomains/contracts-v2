@@ -1,106 +1,106 @@
 import { artifacts, execute } from "@rocketh";
-import { zeroAddress } from "viem";
-import { dnsEncodeName } from "../test/utils/utils.js";
-import { MAX_EXPIRY } from "../script/deploy-constants.js";
-
-async function fetchPublicSuffixes() {
-  const res = await fetch(
-    "https://publicsuffix.org/list/public_suffix_list.dat",
-    { headers: { Connection: "close" } },
-  );
-  if (!res.ok) throw new Error(`expected suffixes: ${res.status}`);
-  return (await res.text())
-    .split("\n")
-    .map((x) => x.trim())
-    .filter((x) => x && !x.startsWith("//"));
-}
+import {
+  fetchPublicSuffixes,
+  filterAvailableSuffixes,
+  registerSuffixesViaBatchRegistrar,
+} from "../script/publicSuffixes.js";
 
 export default execute(
   async ({
     deploy,
     execute: write,
     get,
+    getV1,
     read,
     namedAccounts: { deployer },
-    network,
+    tags,
   }) => {
-    const ensRegistryV1 =
-      get<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
+    const ensRegistry =
+      await getV1<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
 
-    const dnsTLDResolverV1 = get<(typeof artifacts.OffchainDNSResolver)["abi"]>(
-      "OffchainDNSResolver",
-    );
+    const dnsTLDResolverV1 = await getV1<
+      (typeof artifacts.OffchainDNSResolver)["abi"]
+    >("OffchainDNSResolver");
 
-    const publicSuffixList = get<
+    const publicSuffixList = await getV1<
       (typeof artifacts.SimplePublicSuffixList)["abi"]
     >("SimplePublicSuffixList");
 
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 
-    const dnssecOracle = get<(typeof artifacts.DNSSEC)["abi"]>("DNSSECImpl");
+    const dnssecOracle =
+      await getV1<(typeof artifacts.DNSSECImpl)["abi"]>("DNSSECImpl");
 
-    const batchGatewayProvider = get<(typeof artifacts.GatewayProvider)["abi"]>(
-      "BatchGatewayProvider",
-    );
+    const batchGatewayProvider = await getV1<
+      (typeof artifacts.GatewayProvider)["abi"]
+    >("BatchGatewayProvider");
 
     const dnssecGatewayProvider = get<
       (typeof artifacts.GatewayProvider)["abi"]
     >("DNSSECGatewayProvider");
 
+    const contractNamer =
+      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+
     const dnsTLDResolver = await deploy("DNSTLDResolver", {
       account: deployer,
       artifact: artifacts.DNSTLDResolver,
       args: [
-        ensRegistryV1.address,
+        ensRegistry.address,
         dnsTLDResolverV1.address,
         rootRegistry.address,
         dnssecOracle.address,
         dnssecGatewayProvider.address,
         batchGatewayProvider.address,
+        contractNamer.address,
       ],
     });
 
-    let suffixes = network.tags.local
+    const candidates = tags.local
       ? ["com", "org", "net", "xyz"]
       : await fetchPublicSuffixes();
-    suffixes = (
-      await Promise.all(
-        suffixes.map((suffix) =>
-          read(publicSuffixList, {
-            functionName: "isPublicSuffix",
-            args: [dnsEncodeName(suffix)],
-          }).then((pub) => (pub ? suffix : "")),
-        ),
-      )
-    ).filter(Boolean);
+    const suffixes = await filterAvailableSuffixes({
+      read,
+      publicSuffixList,
+      rootRegistry,
+      candidates,
+    });
 
-    // TODO: this create 1000+ transactions
-    // batching is a mess in rocketh
-    // anvil batching appears broken (only mines 1-2 tx)
-    for (const suffix of suffixes) {
-      await write(rootRegistry, {
-        account: deployer,
-        functionName: "register",
-        args: [
-          suffix,
-          deployer, // TODO: ownership
-          zeroAddress,
-          dnsTLDResolver.address,
-          0n, // TODO: roles
-          MAX_EXPIRY,
-        ],
-      });
+    if (suffixes.length === 0) {
+      console.warn("  - No suffixes found");
+      return;
     }
+
+    const batchRegistrar = await deploy("RootBatchRegistrar", {
+      account: deployer,
+      artifact: artifacts.BatchRegistrar,
+      args: [rootRegistry.address, deployer],
+    });
+
+    await registerSuffixesViaBatchRegistrar({
+      write,
+      account: deployer,
+      rootRegistry,
+      batchRegistrar,
+      resolver: dnsTLDResolver.address,
+      suffixes,
+    });
   },
   {
     tags: ["DNSTLDResolver", "v2"],
     dependencies: [
       "RootRegistry",
-      "OffchainDNSResolver", // "ENSRegistry" + "DNSSECImpl"
+      "ENSRegistry",
+      "DNSSECImpl",
+      "OffchainDNSResolver",
       "SimplePublicSuffixList",
       "BatchGatewayProvider",
       "DNSSECGatewayProvider",
+      "ContractNamer",
+      // Run the v1 root-TLD mirror first so it claims root TLDs for v1 fallback;
+      // this resolver then registers only the remaining (non-root) public suffixes.
+      "DNSV1MirrorTLDs",
     ],
   },
 );

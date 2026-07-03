@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
-import {HCAEquivalence} from "../hca/HCAEquivalence.sol";
-import {IHCAFactoryBasic} from "../hca/interfaces/IHCAFactoryBasic.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
+import {IOwnedRegistry} from "./interfaces/IOwnedRegistry.sol";
 import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
-import {IRegistryMetadata} from "./interfaces/IRegistryMetadata.sol";
+import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
+import {ITemporalRegistry} from "./interfaces/ITemporalRegistry.sol";
+import {ITokenizedRegistry} from "./interfaces/ITokenizedRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
-import {MetadataMixin} from "./MetadataMixin.sol";
 
 /// @notice A tokenized (ERC1155) registry with resource-scoped access control for subdomain management.
 ///
@@ -54,13 +55,7 @@ import {MetadataMixin} from "./MetadataMixin.sol";
 ///                     unregister()
 ///                  +ROLE_UNREGISTER
 ///
-contract PermissionedRegistry is
-    IRegistry,
-    ERC1155Singleton,
-    EnhancedAccessControl,
-    IPermissionedRegistry,
-    MetadataMixin
-{
+contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermissionedRegistry {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -79,6 +74,13 @@ contract PermissionedRegistry is
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // Immutables
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice The shared label database.
+    ILabelStore public immutable LABEL_STORE;
+
+    ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
@@ -87,6 +89,12 @@ contract PermissionedRegistry is
 
     /// @dev The child label of this registry.
     string internal _childLabel;
+
+    /// @dev The metadata URI.
+    string internal _uri;
+
+    /// @dev The metadata renderer.
+    IRegistryURIRenderer internal _uriRenderer;
 
     /// @dev The entries of this registry.
     mapping(uint256 storageId => Entry entry) internal _entries;
@@ -98,24 +106,17 @@ contract PermissionedRegistry is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the PermissionedRegistry.
-    /// @param hcaFactory The HCA factory to use.
-    /// @param metadata The metadata provider to use.
-    /// @param ownerAddress The address that will receive the specified roles.
-    /// @param ownerRoles The roles to grant to `ownerAddress`.
-    constructor(
-        IHCAFactoryBasic hcaFactory,
-        IRegistryMetadata metadata,
-        address ownerAddress,
-        uint256 ownerRoles
-    ) HCAEquivalence(hcaFactory) MetadataMixin(metadata) {
-        _grantRoles(ROOT_RESOURCE, ownerRoles, ownerAddress, false);
+    /// @param labelStore The shared label database.
+    /// @param rootAccount Account granted root roles.
+    /// @param roleBitmap The role bitmap granted to `rootAccount`.
+    constructor(ILabelStore labelStore, address rootAccount, uint256 roleBitmap) {
+        emit RegistryCreated();
+        LABEL_STORE = labelStore;
+        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    )
+    function supportsInterface(bytes4 interfaceId)
         public
         view
         virtual
@@ -125,7 +126,11 @@ contract PermissionedRegistry is
         return
             interfaceId == type(IPermissionedRegistry).interfaceId ||
             interfaceId == type(IStandardRegistry).interfaceId ||
+            interfaceId == type(ITokenizedRegistry).interfaceId ||
+            interfaceId == type(ITemporalRegistry).interfaceId ||
+            interfaceId == type(IOwnedRegistry).interfaceId ||
             interfaceId == type(IRegistry).interfaceId ||
+            interfaceId == type(IContractNamer).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -135,32 +140,41 @@ contract PermissionedRegistry is
 
     /// @inheritdoc IStandardRegistry
     function setSubregistry(uint256 anyId, IRegistry registry) public virtual {
-        (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
-            anyId,
-            RegistryRolesLib.ROLE_SET_SUBREGISTRY
-        );
+        (uint256 tokenId, Entry storage entry) =
+            _checkExpiryAndTokenRoles(anyId, RegistryRolesLib.ROLE_SET_SUBREGISTRY);
         entry.subregistry = registry;
-        emit SubregistryUpdated(tokenId, registry, _msgSender());
+        emit SubregistryUpdated(tokenId, registry, msg.sender);
     }
 
     /// @inheritdoc IStandardRegistry
     function setResolver(uint256 anyId, address resolver) public virtual {
-        (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
-            anyId,
-            RegistryRolesLib.ROLE_SET_RESOLVER
-        );
+        (uint256 tokenId, Entry storage entry) =
+            _checkExpiryAndTokenRoles(anyId, RegistryRolesLib.ROLE_SET_RESOLVER);
         entry.resolver = resolver;
-        emit ResolverUpdated(tokenId, resolver, _msgSender());
+        emit ResolverUpdated(tokenId, resolver, msg.sender);
+    }
+
+    /// @notice Set the URI for the registry.
+    /// @param uri_ The new URI.
+    /// @param renderer The new renderer address.
+    function setURI(string calldata uri_, IRegistryURIRenderer renderer)
+        public
+        virtual
+        onlyRootRoles(RegistryRolesLib.ROLE_SET_URI)
+    {
+        _uri = uri_;
+        _uriRenderer = renderer;
+        emit URIUpdated(uri_, address(renderer), msg.sender);
     }
 
     /// @inheritdoc IStandardRegistry
-    function setParent(
-        IRegistry parent,
-        string memory label
-    ) public onlyRootRoles(RegistryRolesLib.ROLE_SET_PARENT) {
+    function setParent(IRegistry parent, string memory label)
+        public
+        onlyRootRoles(RegistryRolesLib.ROLE_SET_PARENT)
+    {
         _parentRegistry = parent;
         _childLabel = label;
-        emit ParentUpdated(parent, label, _msgSender());
+        emit ParentUpdated(parent, label, msg.sender);
     }
 
     /// @inheritdoc IStandardRegistry
@@ -171,18 +185,20 @@ contract PermissionedRegistry is
         address resolver,
         uint256 roleBitmap,
         uint64 expiry
-    ) public virtual returns (uint256) {
+    )
+        public
+        virtual
+        returns (uint256)
+    {
         return _register(label, owner, registry, resolver, roleBitmap, expiry, true);
     }
 
     /// @inheritdoc IStandardRegistry
     /// @dev Requires `REGISTERED | RESERVED` and `ROLE_UNREGISTER`.
     function unregister(uint256 anyId) public {
-        (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
-            anyId,
-            RegistryRolesLib.ROLE_UNREGISTER
-        );
-        emit LabelUnregistered(tokenId, _msgSender());
+        (uint256 tokenId, Entry storage entry) =
+            _checkExpiryAndTokenRoles(anyId, RegistryRolesLib.ROLE_UNREGISTER);
+        emit LabelUnregistered(tokenId, msg.sender);
         address owner = super.ownerOf(tokenId);
         if (owner != address(0)) {
             _burn(owner, tokenId, 1);
@@ -193,34 +209,41 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IStandardRegistry
-    /// @dev Requires `REGISTERED | RESERVED` and `ROLE_RENEW`.
-    function renew(uint256 anyId, uint64 newExpiry) public {
-        (uint256 tokenId, Entry storage entry) = _checkExpiryAndTokenRoles(
-            anyId,
-            RegistryRolesLib.ROLE_RENEW
-        );
-        if (newExpiry < entry.expiry) {
-            revert CannotReduceExpiry(entry.expiry, newExpiry);
+    /// @dev If `REGISTERED | RESERVED`, requires `ROLE_RENEW`.
+    ///      If `AVAILABLE`, requires expiry > 0 and `ROLE_RENEW` on root.
+    function renew(uint256 anyId, uint64 newExpiry) public override {
+        Entry storage entry = _entry(anyId);
+        uint256 tokenId = _constructTokenId(anyId, entry);
+        uint64 expiry = entry.expiry;
+        if (_isExpired(expiry)) {
+            if (expiry == 0 || !_canRevive(tokenId, msg.sender)) {
+                revert LabelExpired(tokenId); // never registered OR cannot revive
+            }
+        } else {
+            _checkRoles(_constructResource(anyId, entry), RegistryRolesLib.ROLE_RENEW, msg.sender);
+        }
+        if (newExpiry < expiry) {
+            revert CannotReduceExpiry(expiry, newExpiry);
         }
         entry.expiry = newExpiry;
-        emit ExpiryUpdated(tokenId, newExpiry, _msgSender());
+        emit ExpiryUpdated(tokenId, newExpiry, msg.sender);
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function grantRoles(
-        uint256 anyId,
-        uint256 roleBitmap,
-        address account
-    ) public override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
+    function grantRoles(uint256 anyId, uint256 roleBitmap, address account)
+        public
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (bool)
+    {
         return super.grantRoles(getResource(anyId), roleBitmap, account);
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function revokeRoles(
-        uint256 anyId,
-        uint256 roleBitmap,
-        address account
-    ) public override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
+    function revokeRoles(uint256 anyId, uint256 roleBitmap, address account)
+        public
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (bool)
+    {
         return super.revokeRoles(getResource(anyId), roleBitmap, account);
     }
 
@@ -241,9 +264,32 @@ contract PermissionedRegistry is
         return (_parentRegistry, _childLabel);
     }
 
+    /// @inheritdoc IContractNamer
+    function isContractNamer(address namer) public view virtual returns (bool) {
+        return hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, namer);
+    }
+
+    /// @inheritdoc ITemporalRegistry
+    function findExpiry(string calldata label) public view returns (uint64) {
+        return getExpiry(LibLabel.id(label));
+    }
+
+    /// @inheritdoc IOwnedRegistry
+    function findOwner(string calldata label) public view returns (address) {
+        return getOwner(LibLabel.id(label));
+    }
+
+    /// @inheritdoc ITokenizedRegistry
+    function findTokenId(string calldata label) public view returns (uint256) {
+        return getTokenId(LibLabel.id(label));
+    }
+
     /// @inheritdoc ERC1155Singleton
     function uri(uint256 tokenId) public view override returns (string memory) {
-        return _tokenURI(tokenId);
+        return
+            address(_uriRenderer) != address(0)
+                ? _uriRenderer.renderURI(this, tokenId)
+                : _uri;
     }
 
     /// @inheritdoc IStandardRegistry
@@ -259,6 +305,11 @@ contract PermissionedRegistry is
     /// @inheritdoc IPermissionedRegistry
     function getTokenId(uint256 anyId) public view returns (uint256) {
         return _constructTokenId(anyId, _entry(anyId));
+    }
+
+    /// @inheritdoc IPermissionedRegistry
+    function getOwner(uint256 anyId) public view returns (address) {
+        return _isExpired(getExpiry(anyId)) ? address(0) : super.ownerOf(getTokenId(anyId));
     }
 
     /// @inheritdoc IPermissionedRegistry
@@ -286,9 +337,12 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IERC1155Singleton
-    function ownerOf(
-        uint256 tokenId
-    ) public view override(ERC1155Singleton, IERC1155Singleton) returns (address) {
+    function ownerOf(uint256 tokenId)
+        public
+        view
+        override(ERC1155Singleton, IERC1155Singleton)
+        returns (address)
+    {
         Entry storage entry = _entry(tokenId);
         return
             tokenId != _constructTokenId(tokenId, entry) || _isExpired(entry.expiry)
@@ -297,42 +351,47 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function roles(
-        uint256 anyId,
-        address account
-    ) public view override(EnhancedAccessControl, IEnhancedAccessControl) returns (uint256) {
+    function roles(uint256 anyId, address account)
+        public
+        view
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (uint256)
+    {
         return super.roles(getResource(anyId), account);
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function roleCount(
-        uint256 anyId
-    ) public view override(EnhancedAccessControl, IEnhancedAccessControl) returns (uint256) {
+    function roleCount(uint256 anyId)
+        public
+        view
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (uint256)
+    {
         return super.roleCount(getResource(anyId));
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasRoles(
-        uint256 anyId,
-        uint256 roleBitmap,
-        address account
-    ) public view override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
+    function hasRoles(uint256 anyId, uint256 roleBitmap, address account)
+        public
+        view
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (bool)
+    {
         return super.hasRoles(getResource(anyId), roleBitmap, account);
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasAssignees(
-        uint256 anyId,
-        uint256 roleBitmap
-    ) public view override(EnhancedAccessControl, IEnhancedAccessControl) returns (bool) {
+    function hasAssignees(uint256 anyId, uint256 roleBitmap)
+        public
+        view
+        override(EnhancedAccessControl, IEnhancedAccessControl)
+        returns (bool)
+    {
         return super.hasAssignees(getResource(anyId), roleBitmap);
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function getAssigneeCount(
-        uint256 anyId,
-        uint256 roleBitmap
-    )
+    function getAssigneeCount(uint256 anyId, uint256 roleBitmap)
         public
         view
         override(EnhancedAccessControl, IEnhancedAccessControl)
@@ -357,34 +416,37 @@ contract PermissionedRegistry is
         uint256 roleBitmap,
         uint64 expiry,
         bool checkRoles
-    ) internal returns (uint256 tokenId) {
-        NameCoder.assertLabelSize(label);
+    )
+        internal
+        returns (uint256 tokenId)
+    {
+        LABEL_STORE.setLabel(label);
         uint256 labelId = LibLabel.id(label);
         Entry storage entry = _entry(labelId);
         tokenId = _constructTokenId(labelId, entry);
         address prevOwner = super.ownerOf(tokenId);
-        address sender = _msgSender(); // the registrar, not the registrant
         if (_isExpired(entry.expiry)) {
             if (checkRoles) {
-                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, sender);
+                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, msg.sender);
             }
             if (owner == address(0) && roleBitmap != 0) {
-                revert EACCannotGrantRoles(ROOT_RESOURCE, roleBitmap, sender); // strict
+                revert EACCannotGrantRoles(ROOT_RESOURCE, roleBitmap, msg.sender); // strict
             }
         } else {
             if (prevOwner != address(0)) {
                 revert LabelAlreadyRegistered(label); // cannot overwrite REGISTERED
             } else if (owner == address(0)) {
-                revert LabelAlreadyReserved(label); // cannot reserve/register RESERVED
+                revert LabelAlreadyReserved(label); // cannot overwrite RESERVED
             }
             if (checkRoles) {
-                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, sender);
+                _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTER_RESERVED, msg.sender);
             }
             if (expiry == 0) {
-                expiry = entry.expiry; // use current expiry
+                expiry = entry.expiry; // use RESERVED expiry
             }
+            roleBitmap |= RegistryRolesLib.ROLE_WAS_RESERVED; // remember
         }
-        if (_isExpired(expiry)) {
+        if (owner == address(0) ? expiry == 0 : _isExpired(expiry)) {
             revert CannotSetPastExpiry(expiry);
         }
         if (prevOwner != address(0)) {
@@ -397,9 +459,9 @@ contract PermissionedRegistry is
         entry.subregistry = registry;
         entry.resolver = resolver;
         if (owner == address(0)) {
-            emit LabelReserved(tokenId, bytes32(labelId), label, expiry, sender);
+            emit LabelReserved(tokenId, bytes32(labelId), label, expiry, msg.sender);
         } else {
-            emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, sender);
+            emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, msg.sender);
             _mint(owner, tokenId, 1, "");
             uint256 resource = _constructResource(tokenId, entry);
             assert(resource != ROOT_RESOURCE);
@@ -407,20 +469,18 @@ contract PermissionedRegistry is
             _grantRoles(resource, roleBitmap, owner, false);
         }
         if (address(registry) != address(0)) {
-            emit SubregistryUpdated(tokenId, registry, sender);
+            emit SubregistryUpdated(tokenId, registry, msg.sender);
         }
         if (address(resolver) != address(0)) {
-            emit ResolverUpdated(tokenId, resolver, sender);
+            emit ResolverUpdated(tokenId, resolver, msg.sender);
         }
     }
 
     /// @dev Override `ERC1155Singleton._update()` to transfer the roles to the new owner if the token is transferred.
-    function _update(
-        address from,
-        address to,
-        uint256[] memory tokenIds,
-        uint256[] memory amounts
-    ) internal override {
+    function _update(address from, address to, uint256[] memory tokenIds, uint256[] memory amounts)
+        internal
+        override
+    {
         super._update(from, to, tokenIds, amounts); // ensures amounts[i] is 0 or 1
         if (to != address(0) && from != address(0)) {
             // only transfers (skip mint and burn)
@@ -444,7 +504,10 @@ contract PermissionedRegistry is
         uint256 /*oldRoles*/,
         uint256 /*newRoles*/,
         uint256 /*roleBitmap*/
-    ) internal override {
+    )
+        internal
+        override
+    {
         _regenerate(resource);
     }
 
@@ -455,7 +518,10 @@ contract PermissionedRegistry is
         uint256 /*oldRoles*/,
         uint256 /*newRoles*/,
         uint256 /*roleBitmap*/
-    ) internal override {
+    )
+        internal
+        override
+    {
         _regenerate(resource);
     }
 
@@ -488,37 +554,39 @@ contract PermissionedRegistry is
     /// @param resource The resource to get settable roles for.
     /// @param account The account to get settable roles for.
     /// @return The settable roles (regular roles only, not admin roles).
-    function _getSettableRoles(
-        uint256 resource,
-        address account
-    ) internal view override returns (uint256) {
-        uint256 roleBitmap = super._getSettableRoles(resource, account);
-        if (resource == ROOT_RESOURCE) {
-            return roleBitmap;
-        } else if (ownerOf(_constructTokenId(resource, _entry(resource))) == address(0)) {
-            return 0; // available or reserved
+    function _getSettableRoles(uint256 resource, address account)
+        internal
+        view
+        virtual
+        override
+        returns (uint256)
+    {
+        if (resource != ROOT_RESOURCE && getOwner(resource) == address(0)) {
+            return 0;
         }
-        return roleBitmap >> 128; // remove admin
+        uint256 roleBitmap = super._getSettableRoles(resource, account);
+        return resource == ROOT_RESOURCE ? roleBitmap : roleBitmap >> 128;
     }
 
     /// @inheritdoc EnhancedAccessControl
     /// @dev Override for token-dependent logic:
     ///
-    /// Token roles can only be revoked from registered tokens.
+    /// * if caller is approved by token owner, combine the caller's roles with the owner's roles
     ///
-    /// Root roles are unaffected.
-    ///
-    function _getRevokableRoles(
-        uint256 resource,
-        address account
-    ) internal view override returns (uint256) {
-        if (
-            resource != ROOT_RESOURCE &&
-            ownerOf(_constructTokenId(resource, _entry(resource))) == address(0)
-        ) {
-            return 0; // available or reserved
+    function _getRoles(uint256 resource, address account)
+        internal
+        view
+        virtual
+        override
+        returns (uint256 roleBitmap)
+    {
+        roleBitmap = super._getRoles(resource, account);
+        if (resource != ROOT_RESOURCE) {
+            address owner = getOwner(resource);
+            if (owner != address(0) && owner != account && isApprovedForAll(owner, account)) {
+                roleBitmap |= super._getRoles(resource, owner);
+            }
         }
-        return super._getRevokableRoles(resource, account);
     }
 
     /// @dev Zeroes version bits in `anyId` to return the canonical storage entry for the name.
@@ -526,17 +594,31 @@ contract PermissionedRegistry is
         return _entries[LibLabel.withVersion(anyId, 0)];
     }
 
+    /// @dev Determine if token can be revived.
+    function _canRevive(
+        uint256 /*tokenId*/,
+        address sender
+    )
+        internal
+        view
+        virtual
+        returns (bool)
+    {
+        return hasRootRoles(RegistryRolesLib.ROLE_RENEW, sender);
+    }
+
     /// @dev Assert token is not expired and caller has necessary roles.
-    function _checkExpiryAndTokenRoles(
-        uint256 anyId,
-        uint256 roleBitmap
-    ) internal view returns (uint256 tokenId, Entry storage entry) {
+    function _checkExpiryAndTokenRoles(uint256 anyId, uint256 roleBitmap)
+        internal
+        view
+        returns (uint256 tokenId, Entry storage entry)
+    {
         entry = _entry(anyId);
         tokenId = _constructTokenId(anyId, entry);
         if (_isExpired(entry.expiry)) {
             revert LabelExpired(tokenId);
         }
-        _checkRoles(_constructResource(anyId, entry), roleBitmap, _msgSender());
+        _checkRoles(_constructResource(anyId, entry), roleBitmap, msg.sender);
     }
 
     /// @dev Internal logic for expired status.
@@ -547,17 +629,16 @@ contract PermissionedRegistry is
     /// @dev Create `resource` from parts.
     ///      Does nothing if `ROOT_RESOURCE`.
     ///      Returns next resource if expired.
-    function _constructResource(
-        uint256 anyId,
-        Entry storage entry
-    ) internal view returns (uint256) {
+    function _constructResource(uint256 anyId, Entry storage entry) internal view returns (uint256) {
         if (anyId == ROOT_RESOURCE) {
             return anyId;
         }
         return
             LibLabel.withVersion(
                 anyId,
-                _isExpired(entry.expiry) ? entry.eacVersionId + 1 : entry.eacVersionId
+                _isExpired(entry.expiry)
+                    ? entry.eacVersionId + 1
+                    : entry.eacVersionId
             );
     }
 

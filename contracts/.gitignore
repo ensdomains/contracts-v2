@@ -1,5 +1,6 @@
 # Compiler files
 cache/
+.solgrid_cache/
 out/
 
 # Ignores development broadcast logs
@@ -22,10 +23,19 @@ lcov.info
 
 generated/
 
-deployments/devnet-local/
+# Deployment records: track real deploys (live namespaces + dated archives) by
+# default; ignore only the local rehearsal/runtime namespaces so editors do not
+# dim the committed sets and throwaway runs stay out of the repo.
+deployments/*-fork/
+deployments/*-clean-*/
+deployments/v1/*
+!deployments/v1/sepolia/
 
 # pre-migration
 preMigration.log
 preMigration-checkpoint.json
 preMigration-errors.log
 csv-data/
+
+# Dev scratch (analysis writeups, local rehearsal logs)
+.dev/

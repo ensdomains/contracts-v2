@@ -2,7 +2,7 @@
 pragma solidity >=0.8.13;
 
 import {ENS} from "@ens/contracts/registry/ENS.sol";
-import {INameWrapper, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {ERC165, IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
@@ -23,15 +23,18 @@ import {LibMigration} from "./libraries/LibMigration.sol";
 /// 1. UnlockedMigrationController accepts unlocked tokens.
 /// 2. LockedWrapperReceiver accepts locked tokens.
 ///
-/// `_isLocked()` determines lock status.
+/// `LibMigration.isLocked()` determines lock status.
 ///
 abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The ENSv1 `NameWrapper` contract that holds wrapped names as ERC1155 tokens.
     INameWrapper public immutable NAME_WRAPPER;
+
+    /// @notice The ENSv1 `BaseRegistrar` token graveyard.
+    address public immutable GRAVEYARD;
 
     /// @dev The ENSv1 `ENSRegistry` contract.
     ENS internal immutable _REGISTRY_V1;
@@ -55,9 +58,7 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     ///      Reverts wrapped errors for use inside of legacy IERC1155Receiver handler.
     modifier withData(bytes calldata data, uint256 minimumSize) {
         if (data.length < minimumSize) {
-            WrappedErrorLib.wrapAndRevert(
-                abi.encodeWithSelector(LibMigration.InvalidData.selector)
-            );
+            WrappedErrorLib.wrapAndRevert(abi.encodeWithSelector(LibMigration.InvalidData.selector));
         }
         _;
     }
@@ -66,17 +67,22 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes AbstractWrapperReceiver.
     /// @param nameWrapper The ENSv1 `NameWrapper` contract.
-    constructor(INameWrapper nameWrapper) {
+    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
+    constructor(INameWrapper nameWrapper, address graveyard) {
         NAME_WRAPPER = nameWrapper;
+        GRAVEYARD = graveyard;
         _REGISTRY_V1 = nameWrapper.ens();
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(ERC165, IERC165) returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(ERC165, IERC165)
+        returns (bool)
+    {
         return
             interfaceId == type(IERC1155Receiver).interfaceId ||
             super.supportsInterface(interfaceId);
@@ -98,7 +104,12 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
         uint256 id,
         uint256 /*amount*/,
         bytes calldata data
-    ) external onlyWrapper withData(data, LibMigration.MIN_DATA_SIZE) returns (bytes4) {
+    )
+        external
+        onlyWrapper
+        withData(data, LibMigration.MIN_DATA_SIZE)
+        returns (bytes4)
+    {
         // if (amount != 1) { ... } => never happens :: caught by ERC1155Fuse
         // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L293
         uint256[] memory ids = new uint256[](1);
@@ -150,10 +161,9 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     ///
     /// @param ids The NameWrapper token IDs (namehashes) of the names being migrated.
     /// @param mds The migration parameters for each name, indexed in parallel with `ids`.
-    function finishERC1155Migration(
-        uint256[] calldata ids,
-        LibMigration.Data[] calldata mds
-    ) external {
+    function finishERC1155Migration(uint256[] calldata ids, LibMigration.Data[] calldata mds)
+        external
+    {
         if (msg.sender != address(this)) {
             revert UnauthorizedCaller(msg.sender);
         }
@@ -170,15 +180,7 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     /// @dev Migrate received NameWrapper tokens.
     ///      Token owner is this contract.
     ///      Token is not expired.
-    function _migrateWrapped(
-        uint256[] calldata ids,
-        LibMigration.Data[] calldata mds
-    ) internal virtual;
-
-    /// @dev Returns `true` if the NameWrapper token is locked.
-    function _isLocked(uint32 fuses) internal pure returns (bool) {
-        // PARENT_CANNOT_CONTROL is required to set CANNOT_UNWRAP, so CANNOT_UNWRAP is sufficient
-        // see: V1Fixture.t.sol: `test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL()`
-        return (fuses & CANNOT_UNWRAP) != 0;
-    }
+    function _migrateWrapped(uint256[] calldata ids, LibMigration.Data[] calldata mds)
+        internal
+        virtual;
 }

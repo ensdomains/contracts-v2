@@ -14,10 +14,11 @@ interface IL2ReverseRegistrarV1 {
     function nameForAddr(address addr) external view returns (string memory);
 }
 
+
 /// @notice An L2 Reverse Registrar that allows migrating from a prior registrar.
 contract L2ReverseRegistrarWithMigration is L2ReverseRegistrar, Ownable {
     ////////////////////////////////////////////////////////////////////////
-    // Constants & Immutables
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The v1 reverse registrar to migrate from
@@ -37,7 +38,10 @@ contract L2ReverseRegistrarWithMigration is L2ReverseRegistrar, Ownable {
         string memory label,
         address owner,
         IL2ReverseRegistrarV1 oldL2ReverseRegistrar
-    ) L2ReverseRegistrar(chainId, label) Ownable(owner) {
+    )
+        L2ReverseRegistrar(chainId, label)
+        Ownable(owner)
+    {
         OLD_L2_REVERSE_REGISTRAR = oldL2ReverseRegistrar;
     }
 

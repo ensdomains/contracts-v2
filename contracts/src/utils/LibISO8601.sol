@@ -9,7 +9,8 @@ library LibISO8601 {
 
     /// @dev Converts a timestamp to an ISO 8601 string.
     function toISO8601(uint256 ts) internal pure returns (string memory result) {
-        if (ts >= 253402300800) revert TimestampOutOfRange(ts);
+        if (ts >= 253402300800)
+            revert TimestampOutOfRange(ts);
 
         assembly {
             // Allocate memory

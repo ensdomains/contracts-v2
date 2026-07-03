@@ -1,9 +1,9 @@
 import { type Hex, namehash, zeroAddress } from "viem";
-
 import type { DevnetAccount, DevnetEnvironment } from "../setup.js";
 import { idFromLabel } from "../../test/utils/utils.js";
 import { formatExpiry } from "./display.js";
 import { trackGas } from "./gas.js";
+import { MAX_EXPIRY } from "../deploy-constants.js";
 
 const ONE_DAY_SECONDS = 86400;
 
@@ -65,12 +65,13 @@ export async function registerTestNames(
   // Step 3: Approve total payment
   let totalPrice = 0n;
   for (const label of labels) {
-    const [base, premium] = await env.v2.ETHRegistrar.read.rentPrice([
-      label,
-      account.address,
-      duration,
-      paymentToken,
-    ]);
+    const [base, premium] =
+      await env.v2.StandardRentPriceOracle.read.getRegisterPrice([
+        label,
+        MAX_EXPIRY,
+        duration,
+        paymentToken,
+      ]);
     totalPrice += base + premium;
   }
 
@@ -203,9 +204,8 @@ export async function renewName(
   const referrer =
     "0x0000000000000000000000000000000000000000000000000000000000000000";
 
-  const [price] = await env.v2.ETHRegistrar.read.rentPrice([
+  const price = await env.v2.ETHRegistrar.read.getRenewPrice([
     label,
-    account.address,
     duration,
     paymentToken,
   ]);

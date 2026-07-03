@@ -1,6 +1,74 @@
 export const MAX_EXPIRY = (1n << 64n) - 1n; // see: DatastoreUtils.sol
 
 export const LOCAL_BATCH_GATEWAY_URL = "x-batch-gateway:true";
+export const DEPLOYED_UNIVERSAL_RESOLVER_PROXY =
+  "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe" as const;
+
+// Networks whose top URP already fronts a long-lived intermediate (managed) URP
+// whose admin we control, keyed by network name. On these networks a fresh v2
+// deployment reuses the existing intermediate URP instead of deploying a new one.
+export const KNOWN_INTERMEDIATE_URP: Record<string, `0x${string}`> = {
+  sepolia: "0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1",
+};
+
+export const SEPOLIA_USDC =
+  "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
+
+// Real mainnet payment tokens used by the rent price oracle in place of the
+// free-mint test mocks (which must never ship to mainnet). Confirm/adjust the
+// accepted set before a mainnet deploy.
+export const MAINNET_USDC =
+  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" as const;
+export const MAINNET_DAI =
+  "0x6B175474E89094C44Da98b954EedeAC495271d0F" as const;
+
+export const STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS = 12n;
+export const STANDARD_RENT_PRICE_ORACLE_PRICE_SCALE =
+  10n ** STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS;
+
+export const STANDARD_RENT_PRICE_ORACLE_BASE_RATE_SPECS = [
+  { codepointCount: 1, yearlyPrice: 0n },
+  { codepointCount: 2, yearlyPrice: 0n },
+  { codepointCount: 3, yearlyPrice: 640n },
+  { codepointCount: 4, yearlyPrice: 160n },
+  { codepointCount: 5, yearlyPrice: 8n },
+] as const;
+
+export const STANDARD_RENT_PRICE_ORACLE_DISCOUNT_SCALE = (1n << 128n) - 1n;
+
+export const STANDARD_RENT_PRICE_ORACLE_DISCOUNT_POINT_SPECS = [
+  { t: 31_557_600n, numer: 0n, denom: 1n },
+  { t: 31_557_600n, numer: 1n, denom: 4n },
+  { t: 31_557_600n, numer: 11n, denom: 16n },
+  { t: 31_557_600n, numer: 5n, denom: 16n },
+  { t: 31_557_600n, numer: 3n, denom: 8n },
+  { t: 31_557_600n, numer: 1n, denom: 1n },
+] as const;
+
+export function standardRentPriceOracleDiscountRatio(
+  numer: bigint,
+  denom: bigint,
+) {
+  return (
+    (STANDARD_RENT_PRICE_ORACLE_DISCOUNT_SCALE * numer + denom - 1n) / denom
+  );
+}
+
+export function standardRentPriceOracleDiscountPoints() {
+  return STANDARD_RENT_PRICE_ORACLE_DISCOUNT_POINT_SPECS.map(
+    ({ t, numer, denom }) => ({
+      t,
+      value: standardRentPriceOracleDiscountRatio(numer, denom),
+    }),
+  );
+}
+
+export function standardRentPriceOracleBaseRates(secPerYear: bigint) {
+  return STANDARD_RENT_PRICE_ORACLE_BASE_RATE_SPECS.map(({ yearlyPrice }) => {
+    const yearlyUnits = STANDARD_RENT_PRICE_ORACLE_PRICE_SCALE * yearlyPrice;
+    return (yearlyUnits + secPerYear - 1n) / secPerYear;
+  });
+}
 
 interface Flags {
   [key: string]: bigint | Flags;
@@ -19,11 +87,10 @@ const FLAGS = {
     SET_SUBREGISTRY: 1n << 20n,
     SET_RESOLVER: 1n << 24n,
     CAN_TRANSFER: 1n << 28n,
+    WAS_RESERVED: 1n << 32n,
+    SET_URI: 1n << 36n,
+    CAN_NAME: 1n << 120n,
     UPGRADE: 1n << 124n,
-  },
-  // see: ETHRegistrar.sol
-  REGISTRAR: {
-    SET_ORACLE: 1n << 0n,
   },
   // see: PermissionedResolver.sol / PermissionedResolverLib.sol
   RESOLVER: {
@@ -37,6 +104,17 @@ const FLAGS = {
     SET_ALIAS: 1n << 28n,
     CLEAR: 1n << 32n,
     UPGRADE: 1n << 124n,
+  },
+  // see: StandardRentPriceOracle.sol
+  ORACLE: {
+    UPDATE_TOKEN: 1n << 0n,
+    DISABLE_TOKEN: 1n << 4n,
+    CAN_NAME: 1n << 8n,
+  },
+  // see: PermissionedAddressSet.sol
+  ADDRESS_SET: {
+    APPROVE: 1n << 0n,
+    CAN_NAME: 1n << 4n,
   },
 } as const satisfies Flags;
 
@@ -67,26 +145,34 @@ export const DEPLOYMENT_ROLES = {
     ROLES.REGISTRY.SET_PARENT |
     ROLES.ADMIN.REGISTRY.SET_PARENT |
     ROLES.REGISTRY.RENEW |
-    ROLES.ADMIN.REGISTRY.RENEW,
+    ROLES.ADMIN.REGISTRY.RENEW |
+    ROLES.REGISTRY.CAN_NAME |
+    ROLES.ADMIN.REGISTRY.CAN_NAME |
+    ROLES.REGISTRY.SET_URI |
+    ROLES.ADMIN.REGISTRY.SET_URI,
   // .eth token: SET_SUBREGISTRY AR, SET_RESOLVER AR
   ETH_TOKEN:
     ROLES.REGISTRY.SET_SUBREGISTRY |
     ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
     ROLES.REGISTRY.SET_RESOLVER |
     ROLES.ADMIN.REGISTRY.SET_RESOLVER,
-  // Full registry role bitmap for ReverseRegistry root, .reverse token, and .addr token.
+  // .reverse token: full role bitmap.
   // Granting all roles is harmless; some (e.g. REGISTRAR) are root-only and don't apply to tokens.
-  REVERSE_AND_ADDR: FLAGS.ALL,
+  REVERSE_REGISTRY_ROOT: FLAGS.ALL,
   // ETHRegistry root deployer: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓, RENEW✓
   ETH_REGISTRY_ROOT:
     ROLES.ADMIN.REGISTRY.REGISTRAR |
     ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
     ROLES.REGISTRY.SET_PARENT |
     ROLES.ADMIN.REGISTRY.SET_PARENT |
-    ROLES.ADMIN.REGISTRY.RENEW,
-  // ETHRegistrar and BatchRegistrar are granted REGISTRAR and RENEW at the
-  // ETHRegistry root at static deploy.
+    ROLES.ADMIN.REGISTRY.RENEW |
+    ROLES.REGISTRY.CAN_NAME |
+    ROLES.ADMIN.REGISTRY.CAN_NAME |
+    ROLES.REGISTRY.SET_URI |
+    ROLES.ADMIN.REGISTRY.SET_URI,
+  // ETHRegistrar and BatchRegistrar are granted REGISTRAR and RENEW on ETHRegistry root at static deploy.
   ETH_REGISTRAR_ROOT: ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
+  ETH_RENEWER_V1_ROOT: ROLES.REGISTRY.RENEW,
   // UnlockedMigrationController and LockedMigrationController
   // only need to register() pre-migrated reservations on ETHRegistry (see: "ENSv2 Migration Case Study")
   MIGRATION_CONTROLLER_ROOT: ROLES.REGISTRY.REGISTER_RESERVED,
@@ -119,3 +205,43 @@ export const FUSE_MASKS = {
   PARENT_RESERVED: 0x0000ff80, // bits 7-15 (docs say 17-32)
   USER_SETTABLE: 0xfffdffff, // ~IS_DOT_ETH
 } as const;
+
+// see: StandardRegistrar.sol
+export const SEC_PER_DAY = 86400n;
+export const SEC_PER_YEAR = 365n * SEC_PER_DAY;
+
+export const MIN_COMMITMENT_AGE = 60n; // 1 minute
+export const MAX_COMMITMENT_AGE = SEC_PER_DAY;
+
+export const GRACE_PERIOD_V1 = 90n * SEC_PER_DAY;
+export const GRACE_PERIOD_V2 = 28n * SEC_PER_DAY;
+export const PREMIGRATION_BONUS_PERIOD =
+  1n + (GRACE_PERIOD_V1 - GRACE_PERIOD_V2);
+
+export const PRICE_DECIMALS = 12;
+export const PRICE_SCALE = 10n ** BigInt(PRICE_DECIMALS);
+
+export const MIN_REGISTER_DURATION = 28n * SEC_PER_DAY;
+export const MIN_RENEW_DURATION = 1n;
+
+export const PREMIUM_PRICE_INITIAL = PRICE_SCALE * 100_000_000n;
+export const PREMIUM_HALVING_PERIOD = SEC_PER_DAY;
+export const PREMIUM_PERIOD = SEC_PER_DAY * 21n;
+
+export const BASE_RATE_PER_CP = [
+  0n,
+  0n,
+  PRICE_SCALE * 640n,
+  PRICE_SCALE * 160n,
+  PRICE_SCALE * 8n,
+].map((x) => (x + SEC_PER_YEAR - 1n) / SEC_PER_YEAR);
+
+export const DISCOUNT_DENOMINATOR = 10n ** 38n;
+function discountNumer(numer: bigint, denom: bigint) {
+  return (DISCOUNT_DENOMINATOR * numer) / denom;
+}
+export const DISCOUNT_POINTS: { duration: bigint; numer: bigint }[] = [
+  { duration: SEC_PER_YEAR * 2n, numer: discountNumer(7n, 8n) }, //// 1 - 14/16 = 12.50%
+  { duration: SEC_PER_YEAR * 3n, numer: discountNumer(11n, 16n) }, // 1 - 11/16 = 31.25%
+  { duration: SEC_PER_YEAR * 6n, numer: discountNumer(9n, 16n) }, /// 1 -  9/16 = 43.75%
+];

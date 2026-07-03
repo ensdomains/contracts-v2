@@ -5,7 +5,7 @@ import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedReso
 
 import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedAccessControl.sol";
 
-/// @dev Interface selector: `0x2c7442c9`
+/// @dev Interface selector: `0x91413117`
 interface IPermissionedResolver is IExtendedResolver, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -46,7 +46,8 @@ interface IPermissionedResolver is IExtendedResolver, IEnhancedAccessControl {
     /// @notice Initialize the contract.
     /// @param admin The resolver owner.
     /// @param roleBitmap The roles granted to `admin`.
-    function initialize(address admin, uint256 roleBitmap) external;
+    /// @param setters The setter calldata that avoids permission checks.
+    function initialize(address admin, uint256 roleBitmap, bytes[] calldata setters) external;
 
     /// @notice Create an alias from `fromName` to `toName`.
     /// @param fromName The source DNS-encoded name.

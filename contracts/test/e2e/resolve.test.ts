@@ -1,17 +1,26 @@
 import { describe, it } from "bun:test";
-import { type Address, namehash, zeroAddress } from "viem";
+import type { Address } from "viem";
 
-import { MAX_EXPIRY } from "../../script/deploy-constants.js";
 import { expectVar } from "../utils/expectVar.js";
 import {
   bundleCalls,
-  COIN_TYPE_DEFAULT,
-  COIN_TYPE_ETH,
-  getReverseName,
   type KnownProfile,
   makeResolutions,
 } from "../utils/resolutions.js";
-import { dnsEncodeName } from "../utils/utils.js";
+import {
+  coinTypeFromChain,
+  COIN_TYPE_DEFAULT,
+  COIN_TYPE_ETH,
+  dnsEncodeName,
+  getReverseNamespace,
+} from "../utils/utils.js";
+
+const COIN_TYPE_OPTIMISM = coinTypeFromChain(10);
+
+// Some DNS cases resolve real third-party domains through the live
+// dnssec-oracle.ens.domains CCIP gateway, so they depend on external DNS state
+// and gateway availability. They are opt-in to keep CI independent of those.
+const itLiveDns = process.env.RUN_LIVE_DNS_TESTS === "1" ? it : it.skip;
 
 describe("Resolve", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
@@ -28,7 +37,7 @@ describe("Resolve", () => {
   }
 
   describe("Protocol", () => {
-    async function named(name: string, fn: () => Address) {
+    function expectNamed(name: string, fn: () => Address) {
       it(name, async () => {
         const [resolver] = await env.v2.UniversalResolver.read.findResolver([
           dnsEncodeName(name),
@@ -37,11 +46,22 @@ describe("Resolve", () => {
       });
     }
 
-    named("reverse", () => env.shared.DefaultReverseResolver.address);
-    named("addr.reverse", () => env.shared.ETHReverseResolver.address);
+    expectNamed("reverse", () => env.v2.ENSV1Resolver.address);
+    expectNamed(
+      getReverseNamespace(COIN_TYPE_ETH),
+      () => env.v2.ENSV1Resolver.address,
+    );
+    expectNamed(
+      getReverseNamespace(COIN_TYPE_DEFAULT),
+      () => env.v2.ENSV1Resolver.address,
+    );
+    expectNamed(
+      getReverseNamespace(COIN_TYPE_OPTIMISM),
+      () => env.v2.ENSV1Resolver.address,
+    );
   });
 
-  describe("L1", () => {
+  describe("DNS", () => {
     it("dnstxt.ens.eth + addr() => DNSTXTResolver", () =>
       expectResolve({
         name: "dnstxt.ens.eth",
@@ -63,99 +83,8 @@ describe("Resolve", () => {
           },
         ],
       }));
-  });
 
-  describe("Reverse", () => {
-    describe("addr.reverse", () => {
-      const label = "user";
-      const name = `${label}.eth`;
-
-      it("addr.reverse", async () => {
-        const account = env.namedAccounts.owner;
-
-        // setup addr(default)
-        const resolver = await env.deployPermissionedResolver({
-          account,
-        });
-        await resolver.write.setAddr([
-          namehash(name),
-          COIN_TYPE_ETH,
-          account.address,
-        ]);
-        // hack: create name
-        await env.v2.ETHRegistry.write.register([
-          label,
-          account.address,
-          zeroAddress,
-          resolver.address,
-          0n,
-          MAX_EXPIRY,
-        ]);
-        // setup name()
-        await env.shared.ETHReverseRegistrar.write.setName([name], {
-          account,
-        });
-
-        await expectResolve({
-          name: getReverseName(account.address),
-          primary: { value: name },
-        });
-        await expectResolve({
-          name,
-          addresses: [{ coinType: COIN_TYPE_ETH, value: account.address }],
-        });
-        const [primary] = await env.v2.UniversalResolver.read.reverse([
-          account.address,
-          COIN_TYPE_ETH,
-        ]);
-        expectVar({ primary }).toStrictEqual(name);
-      });
-
-      it("default.reverse", async () => {
-        const account = env.namedAccounts.owner;
-
-        // setup addr(default)
-        const resolver = await env.deployPermissionedResolver({
-          account,
-        });
-        await resolver.write.setAddr([
-          namehash(name),
-          COIN_TYPE_DEFAULT,
-          account.address,
-        ]);
-        // hack: create name
-        await env.v2.ETHRegistry.write.register([
-          label,
-          account.address,
-          zeroAddress,
-          resolver.address,
-          0n,
-          MAX_EXPIRY,
-        ]);
-        // setup name()
-        await env.shared.DefaultReverseRegistrar.write.setName([name], {
-          account,
-        });
-
-        await expectResolve({
-          name: getReverseName(account.address, COIN_TYPE_DEFAULT),
-          primary: { value: name },
-        });
-        await expectResolve({
-          name,
-          addresses: [{ coinType: COIN_TYPE_ETH, value: account.address }],
-        });
-        const [primary] = await env.v2.UniversalResolver.read.reverse([
-          account.address,
-          COIN_TYPE_ETH,
-        ]);
-        expectVar({ primary }).toStrictEqual(name);
-      });
-    });
-  });
-
-  describe("DNS", () => {
-    it("onchain txt: taytems.xyz", () =>
+    itLiveDns("onchain txt: taytems.xyz", () =>
       // Uses real DNS TXT record for taytems.xyz
       expectResolve({
         name: "taytems.xyz",
@@ -165,9 +94,10 @@ describe("Resolve", () => {
             value: "0x8e8Db5CcEF88cca9d624701Db544989C996E3216",
           },
         ],
-      }));
+      }),
+    );
 
-    it("onchain txt: dnstxt.raffy.xyz", () =>
+    itLiveDns("onchain txt: dnstxt.raffy.xyz", () =>
       // `dnstxt.ens.eth t[avatar]=https://raffy.xyz/ens.jpg a[e0]=0x51050ec063d393217B436747617aD1C2285Aeeee`
       expectResolve({
         name: "dnstxt.raffy.xyz",
@@ -178,9 +108,10 @@ describe("Resolve", () => {
           },
         ],
         texts: [{ key: "avatar", value: "https://raffy.xyz/ens.jpg" }],
-      }));
+      }),
+    );
 
-    it("alias rewrite: dnsalias[.raffy.xyz] => dnsalias[.ens.eth]", () =>
+    itLiveDns("alias rewrite: dnsalias[.raffy.xyz] => dnsalias[.ens.eth]", () =>
       // `dnsalias.ens.eth raffy.xyz ens.eth`
       expectResolve({
         name: "dnsalias.raffy.xyz",
@@ -190,6 +121,7 @@ describe("Resolve", () => {
             value: env.v2.DNSAliasResolver.address,
           },
         ],
-      }));
+      }),
+    );
   });
 });

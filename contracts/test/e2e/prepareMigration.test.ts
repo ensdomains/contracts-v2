@@ -1,14 +1,10 @@
 import { describe, expect, it, setDefaultTimeout } from "bun:test";
 setDefaultTimeout(60_000);
 
-import type { Address } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { toHex, type Address } from "viem";
 import { ROLES } from "../../script/deploy-constants.js";
 import { main } from "../../script/prepareMigration.js";
 import { revertPrePrepareMigrationRoles } from "../utils/mockPrepareMigration.js";
-
-const DEPLOYER_PRIVATE_KEY =
-  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
 
 const ROLE_REGISTRAR = ROLES.REGISTRY.REGISTRAR;
 const ROLE_REGISTRAR_ADMIN = ROLES.ADMIN.REGISTRY.REGISTRAR;
@@ -40,7 +36,7 @@ describe("PrepareMigration", () => {
 
   function buildArgs(
     addrs: ReturnType<typeof getAddresses>,
-    overrides: { privateKey?: string | null; execute?: boolean } = {},
+    overrides: { privateKey?: string; execute?: boolean } = {},
   ): string[] {
     const args = [
       "node",
@@ -59,10 +55,9 @@ describe("PrepareMigration", () => {
       addrs.locked,
     ];
     const pk =
-      overrides.privateKey === undefined
-        ? DEPLOYER_PRIVATE_KEY
-        : overrides.privateKey;
-    if (pk !== null) args.push("--private-key", pk);
+      overrides.privateKey ??
+      toHex(env.namedAccounts.deployer.getHdKey().privateKey!);
+    if (pk) args.push("--private-key", pk);
     if (overrides.execute) args.push("--execute");
     return args;
   }
@@ -159,26 +154,25 @@ describe("PrepareMigration", () => {
 
   it("aborts when signer lacks required admin roles", async () => {
     const addrs = getAddresses();
-    // user account is funded but has no root admin roles on ETHRegistry
-    const userPk =
-      "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
-    const userAddr = privateKeyToAccount(userPk).address;
-    expect(await readRoles(userAddr)).toBe(0n);
+    // "owner" account is funded but has CAN_NAME for root on ETHRegistry
+    const { owner } = env.namedAccounts;
+    const privateKey = toHex(owner.getHdKey().privateKey!);
+    expect(await readRoles(owner.address)).toBe(ROLES.REGISTRY.CAN_NAME);
 
     await expect(
-      main(buildArgs(addrs, { privateKey: userPk, execute: true })),
+      main(buildArgs(addrs, { privateKey, execute: true })),
     ).rejects.toThrow(/admin roles/);
 
     // state untouched
-    expect(
-      (await readRoles(addrs.batchRegistrar)) & ROLE_REGISTRAR,
-    ).toBe(ROLE_REGISTRAR);
+    expect((await readRoles(addrs.batchRegistrar)) & ROLE_REGISTRAR).toBe(
+      ROLE_REGISTRAR,
+    );
   });
 
   it("rejects --execute without --private-key", async () => {
     const addrs = getAddresses();
     await expect(
-      main(buildArgs(addrs, { privateKey: null, execute: true })),
+      main(buildArgs(addrs, { privateKey: "", execute: true })),
     ).rejects.toThrow(/--execute requires --private-key/);
   });
 });

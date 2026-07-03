@@ -5,11 +5,11 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
-import {IRentPriceOracle} from "./IRentPriceOracle.sol";
+import {IETHRenewer} from "./IETHRenewer.sol";
 
-/// @notice Interface for the ".eth" registrar which manages the ".eth" registry.
-/// @dev Interface selector: `0x29071951`
-interface IETHRegistrar is IRentPriceOracle {
+/// @notice Interface for registering ".eth" names.
+/// @dev Interface selector: `0xc1401b80`
+interface IETHRegistrar is IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
@@ -18,17 +18,17 @@ interface IETHRegistrar is IRentPriceOracle {
     /// @param commitment The commitment hash from `makeCommitment()`.
     event CommitmentMade(bytes32 commitment);
 
-    /// @notice `{label}.eth` was registered for `duration`.
+    /// @notice A name was registered.
     /// @param tokenId The registry token id.
     /// @param label The name of the registration.
     /// @param owner The owner address.
     /// @param subregistry The initial registry address.
     /// @param resolver The initial resolver address.
     /// @param duration The registration duration, in seconds.
-    /// @param paymentToken The ERC-20 used for payment.
+    /// @param paymentToken The payment token.
     /// @param referrer The referrer hash.
-    /// @param base The base price, relative to `paymentToken`.
-    /// @param premium The premium price, relative to `paymentToken`.
+    /// @param base The amount of `paymentToken` for the registration.
+    /// @param premium The amount of `paymentToken` due to premium.
     event NameRegistered(
         uint256 indexed tokenId,
         string label,
@@ -37,48 +37,14 @@ interface IETHRegistrar is IRentPriceOracle {
         address resolver,
         uint64 duration,
         IERC20 paymentToken,
-        bytes32 referrer,
+        bytes32 indexed referrer,
         uint256 base,
         uint256 premium
-    );
-
-    /// @notice `{label}.eth` was extended by `duration`.
-    /// @param tokenId The registry token id.
-    /// @param label The name of the renewal.
-    /// @param duration The duration extension, in seconds.
-    /// @param newExpiry The new expiry, in seconds.
-    /// @param paymentToken The ERC-20 used for payment.
-    /// @param referrer The referrer hash.
-    /// @param base The base price, relative to `paymentToken`.
-    event NameRenewed(
-        uint256 indexed tokenId,
-        string label,
-        uint64 duration,
-        uint64 newExpiry,
-        IERC20 paymentToken,
-        bytes32 referrer,
-        uint256 base
     );
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice `label` is AVAILABLE.
-    /// @dev Error selector: `0xf7681f14`
-    error NameIsAvailable(string label);
-
-    /// @notice `label` is not AVAILABLE.
-    /// @dev Error selector: `0x477707e8`
-    error NameNotAvailable(string label);
-
-    /// @notice `duration` less than `minDuration`.
-    /// @dev Error selector: `0xa096b844`
-    error DurationTooShort(uint64 duration, uint64 minDuration);
-
-    /// @notice `maxCommitmentAge` was not greater than `minCommitmentAge`.
-    /// @dev Error selector: `0x3e5aa838`
-    error MaxCommitmentAgeTooLow();
 
     /// @notice `commitment` is still usable for registration.
     /// @dev Error selector: `0x0a059d71`
@@ -92,6 +58,10 @@ interface IETHRegistrar is IRentPriceOracle {
     /// @dev Error selector: `0x0cb9df3f`
     error CommitmentTooOld(bytes32 commitment, uint64 validTo, uint64 blockTimestamp);
 
+    /// @notice `label` cannot be registered.
+    /// @dev Error selector: `0x477707e8`
+    error NameNotAvailable(string label);
+
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
@@ -101,17 +71,16 @@ interface IETHRegistrar is IRentPriceOracle {
     /// @param commitment The commitment hash.
     function commit(bytes32 commitment) external;
 
-    /// @notice Registration step #2: reveal committed registration parameters, then register `{label}.eth`.
-    /// @dev Emits `NameRegistered` or reverts with a variety of errors.
+    /// @notice Register a name.
     /// @param label The name from commitment.
     /// @param owner The owner from commitment.
     /// @param secret The secret from commitment.
     /// @param subregistry The registry from commitment.
     /// @param resolver The resolver from commitment.
     /// @param duration The registration from commitment.
-    /// @param paymentToken The ERC-20 to use for payment.
+    /// @param paymentToken The payment token.
     /// @param referrer The referrer hash.
-    /// @return tokenId The registered token ID.
+    /// @return The registered token ID.
     function register(
         string memory label,
         address owner,
@@ -121,30 +90,30 @@ interface IETHRegistrar is IRentPriceOracle {
         uint64 duration,
         IERC20 paymentToken,
         bytes32 referrer
-    ) external returns (uint256 tokenId);
+    )
+        external
+        returns (uint256);
 
-    /// @notice Renew an existing registration.
-    /// @dev Emits `NameRenewed` or reverts with a variety of errors.
-    /// @param label The name to renew.
-    /// @param duration The registration extension, in seconds.
-    /// @param paymentToken The ERC-20 to use for payment.
-    /// @param referrer The referrer hash.
-    function renew(
-        string memory label,
-        uint64 duration,
-        IERC20 paymentToken,
-        bytes32 referrer
-    ) external;
-
-    /// @notice Check if `label` is available for registration.
-    /// @param label The name to check.
-    /// @return `true` if the `label` is available.
-    function isAvailable(string memory label) external view returns (bool);
-
-    /// @notice Get timestamp of `commitment`.
+    /// @notice Get timestamp of a prior commitment.
     /// @param commitment The commitment hash.
-    /// @return The commitment time, in seconds.
+    /// @return The commitment time, in seconds, or 0 if unknown.
     function commitmentAt(bytes32 commitment) external view returns (uint64);
+
+    /// @notice Determine register price for a name.
+    /// @param label The name to register.
+    /// @param duration The registration duration, in seconds.
+    /// @param paymentToken The payment token.
+    /// @return base The amount of `paymentToken` for registration.
+    /// @return premium The amount of `paymentToken` due to premium.
+    function getRegisterPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+        external
+        view
+        returns (uint256 base, uint256 premium);
+
+    /// @notice Check if name is available.
+    /// @param label The name to check.
+    /// @return `true` if registerable.
+    function isAvailable(string memory label) external view returns (bool);
 
     /// @notice Compute hash of registration parameters.
     /// @param label The name to register.
@@ -156,12 +125,15 @@ interface IETHRegistrar is IRentPriceOracle {
     /// @param referrer The referrer hash.
     /// @return The commitment hash.
     function makeCommitment(
-        string memory label,
+        string calldata label,
         address owner,
         bytes32 secret,
         IRegistry subregistry,
         address resolver,
         uint64 duration,
         bytes32 referrer
-    ) external pure returns (bytes32);
+    )
+        external
+        pure
+        returns (bytes32);
 }

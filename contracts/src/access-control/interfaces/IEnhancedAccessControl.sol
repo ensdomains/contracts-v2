@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-
 /// @notice Interface for Enhanced Access Control system that allows for:
 /// * Resource-based roles
 /// * Obtaining assignee count for each role in each resource
@@ -11,7 +9,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 /// * Up to 15 assignees per role
 ///
 /// @dev Interface selector: `0x8f452d62`
-interface IEnhancedAccessControl is IERC165 {
+interface IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
@@ -65,11 +63,9 @@ interface IEnhancedAccessControl is IERC165 {
     /// @param roleBitmap The roles bitmap to grant.
     /// @param account The account to grant roles to.
     /// @return `true` if the roles were granted, `false` otherwise.
-    function grantRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) external returns (bool);
+    function grantRoles(uint256 resource, uint256 roleBitmap, address account)
+        external
+        returns (bool);
 
     /// @notice Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE.
     /// @param roleBitmap The roles bitmap to grant.
@@ -82,11 +78,9 @@ interface IEnhancedAccessControl is IERC165 {
     /// @param roleBitmap The roles bitmap to revoke.
     /// @param account The account to revoke roles from.
     /// @return `true` if the roles were revoked, `false` otherwise.
-    function revokeRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) external returns (bool);
+    function revokeRoles(uint256 resource, uint256 roleBitmap, address account)
+        external
+        returns (bool);
 
     /// @notice Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE.
     /// @param roleBitmap The roles bitmap to revoke.
@@ -119,11 +113,10 @@ interface IEnhancedAccessControl is IERC165 {
     /// @param roleBitmap The roles bitmap to check.
     /// @param account The account to check.
     /// @return `true` if `account` has been granted all the given roles in the given resource or the `ROOT_RESOURCE`, `false` otherwise.
-    function hasRoles(
-        uint256 resource,
-        uint256 roleBitmap,
-        address account
-    ) external view returns (bool);
+    function hasRoles(uint256 resource, uint256 roleBitmap, address account)
+        external
+        view
+        returns (bool);
 
     /// @notice Checks if any of the roles in the given role bitmap has assignees.
     /// @param resource The resource to check.
@@ -136,8 +129,8 @@ interface IEnhancedAccessControl is IERC165 {
     /// @param roleBitmap The roles bitmap to check.
     /// @return counts The number of assignees for each of the roles in the given role bitmap, expressed as a packed array of 4-bit ints.
     /// @return mask The mask for the given role bitmap.
-    function getAssigneeCount(
-        uint256 resource,
-        uint256 roleBitmap
-    ) external view returns (uint256 counts, uint256 mask);
+    function getAssigneeCount(uint256 resource, uint256 roleBitmap)
+        external
+        view
+        returns (uint256 counts, uint256 mask);
 }

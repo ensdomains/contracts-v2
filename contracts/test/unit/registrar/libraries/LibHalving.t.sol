@@ -28,12 +28,7 @@ contract LibHalvingTest is Test {
         _assertNear(LibHalving.halving(226801697741, 2055, 7691), 16944188740, 16944070054, 6);
         _assertNear(LibHalving.halving(8346969424321, 2447, 14567), 134739948345, 134739878463, 7);
         _assertNear(LibHalving.halving(45287518154421, 3882, 57451), 1588328639, 1588313410, 6);
-        _assertNear(
-            LibHalving.halving(570920124541253, 9882, 107044),
-            313151078238,
-            313149809990,
-            6
-        );
+        _assertNear(LibHalving.halving(570920124541253, 9882, 107044), 313151078238, 313149809990, 6);
         _assertNear(
             LibHalving.halving(7645843420289247, 2217, 5130),
             1537665107975056,

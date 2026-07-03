@@ -2,11 +2,12 @@
 pragma solidity >=0.8.13;
 
 import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedAccessControl.sol";
+import {IContractNamer} from "../../reverse-registrar/interfaces/IContractNamer.sol";
 
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0xafff3a63`
-interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
+/// @dev Interface selector: `0x6be50c69`
+interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -73,4 +74,9 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl {
     /// @param anyId The labelhash, token ID, or resource.
     /// @return tokenId The token ID.
     function getTokenId(uint256 anyId) external view returns (uint256 tokenId);
+
+    /// @notice Get token owner from `anyId`.
+    /// @param anyId The labelhash, token ID, or resource.
+    /// @return owner The token owner.
+    function getOwner(uint256 anyId) external view returns (address owner);
 }
