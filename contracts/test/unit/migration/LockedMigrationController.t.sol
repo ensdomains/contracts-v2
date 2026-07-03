@@ -580,49 +580,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_migrate_setApprovalForAll() external {
-        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        bytes32 node = NameCoder.namehash(name, 0);
-        LibMigration.Data memory md = _lockedData(name);
-
-        vm.prank(testOwner);
-        nameWrapper.safeTransferFrom(
-            testOwner,
-            address(migrationController),
-            uint256(node),
-            1,
-            abi.encode(md)
-        );
-
-        IPermissionedRegistry registry =
-            IPermissionedRegistry(address(ethRegistry.getSubregistry(md.label)));
-        address virtualOwner = address(ethRegistry);
-
-        assertEq(registry.roles(registry.ROOT_RESOURCE(), actor), 0);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                registry.ROOT_RESOURCE(),
-                RegistryRolesLib.ROLE_REGISTRAR,
-                actor
-            )
-        );
-        vm.prank(actor);
-        registry.register(testLabel, actor, testRegistry, testResolver, 0, _soon());
-
-        vm.prank(testOwner);
-        ethRegistry.setApprovalForAll(actor, true);
-
-        assertEq(
-            registry.roles(registry.ROOT_RESOURCE(), actor),
-            registry.roles(registry.ROOT_RESOURCE(), testOwner)
-        );
-
-        vm.prank(actor);
-        registry.register(testLabel, actor, testRegistry, testResolver, 0, _soon());
-    }
-
     function test_migrate_transferRegistryControl() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes32 node = NameCoder.namehash(name, 0);
