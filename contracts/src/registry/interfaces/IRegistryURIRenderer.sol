@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {IRegistry} from "./IRegistry.sol";
+import {IStandardRegistry} from "./IStandardRegistry.sol";
 
 /// @dev Interface selector: `0x6c55e19b`
 interface IRegistryURIRenderer {
@@ -9,5 +9,8 @@ interface IRegistryURIRenderer {
     /// @param registry The registry.
     /// @param tokenId The token ID in the registry.
     /// @return The generated URI.
-    function renderURI(IRegistry registry, uint256 tokenId) external view returns (string memory);
+    function renderURI(IStandardRegistry registry, uint256 tokenId)
+        external
+        view
+        returns (string memory);
 }
