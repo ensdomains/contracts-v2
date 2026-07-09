@@ -41,7 +41,7 @@ Several steps require a v1-owner signature: pointing the v1 `.eth` resolver at `
 
 ### Phase 2: initial pre-migration
 
-Seeds every active or in-grace v1 `.eth` 2LD into the v2 registry as a **reserved** entry via `BatchRegistrar`, driven by a registration CSV — see [premigration.md](./premigration.md) for the CSV format, the bonus-period expiry rule, checkpointing, and verification. Each reservation's v2 expiry is the name's v1 expiry plus the configurable `--bonus-period-days` (default 62).
+Seeds every active or in-grace v1 `.eth` 2LD into the v2 registry as a **reserved** entry via `BatchRegistrar`, driven by a registration CSV — see [premigration.md](./premigration.md) for the CSV format, the bonus-period expiry rule, checkpointing, and verification. Each reservation's v2 expiry is the name's v1 expiry plus the configurable `--bonus-period-days` (default 62). This run's counts are persisted to the namespace's `.premigration.json` (see [Deployment artifacts](#deployment-artifacts)).
 
 ### Phase 3: disable v1 registrars
 
@@ -57,7 +57,7 @@ Because `ETHRenewerV1` can only renew names that are already `RESERVED` on v2, t
 
 ### Phase 5: final pre-migration sync
 
-After the freeze, export a fresh registration CSV (Dune for Sepolia, BigQuery for mainnet — see [premigration.md](./premigration.md#cli-reference)) and re-run pre-migration so names registered or renewed since phase 2 are caught up. Names already reserved on v2 are re-reserved with their bonus-adjusted expiry — picking up any expiry extensions from renewals performed via `ETHRenewerV1` since phase 4 — and newly eligible names are reserved for the first time.
+After the freeze, export a fresh registration CSV (Dune for Sepolia, BigQuery for mainnet — see [premigration.md](./premigration.md#cli-reference)) and re-run pre-migration so names registered or renewed since phase 2 are caught up. Names already reserved on v2 are re-reserved with their bonus-adjusted expiry — picking up any expiry extensions from renewals performed via `ETHRenewerV1` since phase 4 — and newly eligible names are reserved for the first time. Being the final pass over the whole corpus, this run's counts (recorded to `.premigration.json`) drive the sidecar's `resolved` roll-up (see [Deployment artifacts](#deployment-artifacts)).
 
 ### Phase 6: enable the v2 controller
 
@@ -79,6 +79,8 @@ The resolution cutover, run last so public resolution flips to v2 only once ever
 Phase 1 reads and writes rocketh deployment artifacts under [`deployments/`](../deployments/README.md), grouped into per-deployment **namespace** directories selected with `--deployments-dir` / `--deployment-network` (v1 references via `--v1-deployments-dir` / `--v1-deployment-network`).
 
 `phase deploy-v2` **deploys fresh by default** — it archives the current namespace to `deployments/<env>-<YYYYMMDD>-r<N>` and deploys into a clean one. Since phase 1 sends many transactions and can be interrupted, re-run with `--resume` to continue into the existing namespace instead (rocketh is idempotent, sending only the not-yet-deployed contracts). See [`deployments/README.md`](../deployments/README.md) for the namespace layout, archiving, git-tracking, and idempotency rules.
+
+The pre-migration phases (2 and 5) additionally write a durable `.premigration.json` counts sidecar into the same namespace: a per-run array upserted by a run label, plus a `resolved` roll-up (the most recently finished run) of the final numbers — names pre-migrated, expiry re-syncs, skips split by reason (never registered on v1 / lapsed past v1's grace), names already on v2, and failures. The `fork full` / `clean-testnet` orchestrator labels its two passes `initial` and `final-sync`, so both survive in one file; the standalone `premigration run` / `resume` commands (used by the live runbook below) both label their entry `run`, so the phase-5 sync upserts over the phase-2 entry and the file keeps the latest counts. It holds counts only, never label strings, and is written whenever the namespace persists (so a `fork full` rehearsal without `--save-deployments` leaves it untouched). Names already fully owned on v2 are tallied in their own counter rather than as failures, so a run reporting zero failures is the normal, healthy case even when some names were already migrated. See [`deployments/README.md`](../deployments/README.md) for the file's shape.
 
 ## CLI reference
 
