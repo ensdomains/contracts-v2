@@ -5,6 +5,7 @@ import {
   createReadStream,
   existsSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import {
@@ -339,6 +340,18 @@ export function saveCheckpoint(checkpoint: Checkpoint): void {
     writeFileSync(CHECKPOINT_FILE, JSON.stringify(checkpoint, null, 2));
   } catch (error) {
     logger.error(`Failed to save checkpoint: ${error}`);
+  }
+}
+
+// Removes any checkpoint left in the work directory so a fresh run cannot
+// inherit stale counts from a previous one. A run that processes zero batches
+// writes no new checkpoint, so without this a lingering file would otherwise be
+// mistaken for this run's result by anything that reads the checkpoint after.
+export function clearCheckpoint(path: string = CHECKPOINT_FILE): void {
+  try {
+    rmSync(path, { force: true });
+  } catch (error) {
+    logger.error(`Failed to clear checkpoint: ${error}`);
   }
 }
 
@@ -1294,6 +1307,8 @@ export async function main(argv = process.argv): Promise<void> {
         );
         logger.info(`Resuming from CSV line ${config.startIndex}`);
       }
+    } else if (!config.disableCheckpoint) {
+      clearCheckpoint();
     }
     logger.info("");
 

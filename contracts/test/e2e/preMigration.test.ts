@@ -735,6 +735,25 @@ describe("PreMigration", () => {
     expect(checkpointAfter!.successCount).toBe(0);
   });
 
+  it("fresh run clears a stale checkpoint left by a previous run", async () => {
+    writeTestCheckpoint(
+      createTestCheckpoint({
+        totalProcessed: 5,
+        successCount: 5,
+        totalExpected: 5,
+      }),
+    );
+
+    // Header-only CSV: a fresh run processes zero batches and writes no new
+    // checkpoint, so the stale one must be cleared rather than left to be
+    // mistaken for this run's result.
+    createCSVFile(csvFilePath, []);
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    expect(readTestCheckpoint()).toBeNull();
+  });
+
   // ─── Invalid label handling ────────────────────────────────────────
 
   it("fails fast on empty labelName cell", async () => {
@@ -1213,7 +1232,7 @@ describe("PreMigration", () => {
     expect(checkpoint!.failureCount).toBe(0);
   });
 
-  it("multiple registered names in batch are all counted as failures", async () => {
+  it("multiple already-registered names in batch are all counted separately from failures", async () => {
     const registeredLabels = ["mreg1", "mreg2"];
     const validLabel = "mregvalid";
     const { user, deployer } = env.namedAccounts;
@@ -1239,7 +1258,8 @@ describe("PreMigration", () => {
 
     const checkpoint = readTestCheckpoint();
     expect(checkpoint!.successCount).toBe(1);
-    expect(checkpoint!.failureCount).toBe(2);
+    expect(checkpoint!.alreadyRegisteredCount).toBe(2);
+    expect(checkpoint!.failureCount).toBe(0);
   });
 
   it("re-running same batch after successful reservation uses renewal path", async () => {

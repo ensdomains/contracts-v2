@@ -82,8 +82,10 @@ Names stream from the CSV in batches of `--batch-size`. Each batch is verified w
 | Available (0) | Registered, or expired but within v1's 90-day grace | **Reserve** with expiry `v1Expiry + bonusPeriodDays` |
 | Reserved (1) | Registered, different expiry | **Renew** (sync expiry) |
 | Reserved (1) | Registered, same expiry | **Skip** (up to date) |
-| Registered (2) | Any | **Fail** (already fully owned on v2) |
+| Registered (2) | Any | **Already on v2** (fully owned; counted separately, not a failure) |
 | Any | Never registered, or past v1's 90-day grace | **Skip** (v1 owner lost the claim) |
+
+Names already fully owned on v2 (`Registered (2)`) are tallied in their own `alreadyRegisteredCount`, kept distinct from `failureCount` so the latter reflects only genuine errors (reverts, RPC failures). Skips are likewise split into `skippedNeverRegisteredCount` (never registered on v1) and `skippedPastGraceCount` (registration lapsed past v1's grace), which together make up `skippedCount`.
 
 Reserved names are written with owner/registry `address(0)`, resolver = `ENSV1Resolver`, roleBitmap `0`, and the computed expiry.
 
@@ -91,7 +93,7 @@ Reserved names are written with owner/registry `address(0)`, resolver = `ENSV1Re
 
 ## Checkpoint & resume
 
-A checkpoint (`preMigration-checkpoint.json`) is written after each batch, tracking the last processed line and accumulated counters (reserved, renewed, skipped, invalid, failed). `--continue` loads it, sets `--start-index` to the last processed line, and resumes; counters accumulate across runs.
+A checkpoint (`preMigration-checkpoint.json`) is written after each batch, tracking the last processed line and accumulated counters (reserved, renewed, skipped — split into never-registered and past-grace — already-on-v2, invalid, failed). `--continue` loads it, sets `--start-index` to the last processed line, and resumes; counters accumulate across runs. A run started **without** `--continue` first clears any stale checkpoint so its counts reflect only the current run.
 
 ```bash
 bun run script/preMigration.ts --continue [same options as before]
@@ -103,7 +105,9 @@ bun run script/preMigration.ts --continue [same options as before]
 
 ## Output
 
-Informational output goes to `preMigration.log` and errors to `preMigration-errors.log`; the console mirrors progress with a final summary table (processed / reserved / renewed / skipped / invalid / failed / success rate). Non-CSV failures (individual name reverts, RPC timeouts at a 30s per-call limit, checkpoint write errors) are counted and logged without aborting the run.
+Informational output goes to `preMigration.log` and errors to `preMigration-errors.log`; the console mirrors progress with a final summary table (processed / reserved / renewed / skipped — with never-registered and past-grace sub-totals / already-on-v2 / invalid / failed / success rate). Non-CSV failures (individual name reverts, RPC timeouts at a 30s per-call limit, checkpoint write errors) are counted and logged without aborting the run.
+
+When pre-migration is driven through the migration CLI (see [migration.md](./migration.md)) against a persisted deployment namespace, these counts are also written to a durable `.premigration.json` sidecar in the namespace — counts only, never label strings. See [deployments/README.md](../deployments/README.md) for its shape.
 
 ## Examples
 
