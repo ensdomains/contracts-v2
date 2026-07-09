@@ -17,6 +17,7 @@ deployments/
     .chain                # { chainId, genesisHash } the set was deployed against
     .migrations.json      # rocketh's record of completed deploy scripts (id → unix-epoch-seconds)
     .deployment.json      # { environment, chainId, deployedAt } — when this set was first deployed
+    .premigration.json    # pre-migration counts sidecar (names reserved/renewed/skipped/…), no label strings
     <Contract>.json       # one file per deployed contract (address, abi, bytecode, receipt, …)
   v1/
     <network>/            # local v1-reference overrides (searched before the bundled set)
@@ -24,12 +25,22 @@ deployments/
       <Contract>.json
 ```
 
-The `.chain`, `.migrations.json`, and `.deployment.json` dotfiles are metadata;
-rocketh loads only `.migrations.json` and the `<Contract>.json` artifacts and
-ignores every other dotfile, so `.deployment.json` is never mistaken for a
-contract. `.deployment.json` is written once, on the first deploy into a
-namespace, so its `deployedAt` records the original deployment time and survives
-idempotent re-runs.
+The `.chain`, `.migrations.json`, `.deployment.json`, and `.premigration.json`
+dotfiles are metadata; rocketh loads only `.migrations.json` and the
+`<Contract>.json` artifacts and ignores every other dotfile, so none of them are
+mistaken for a contract. `.deployment.json` is written once, on the first deploy
+into a namespace, so its `deployedAt` records the original deployment time and
+survives idempotent re-runs.
+
+`.premigration.json` is the durable record of the v1→v2 pre-migration run(s) that
+targeted this namespace. It holds counts only — never the reserved label strings
+(the corpus is large) — with one entry per logical run (`initial`, `final-sync`,
+or a standalone `run`, upserted by label) plus a `resolved` roll-up of the final
+numbers: names pre-migrated, expiry re-syncs, names skipped because they were
+never registered on v1 or lapsed past the v1 grace period, invalid labels, names
+already on v2, and failures. It is written by the pre-migration command whenever
+the target namespace persists (so `fork full` rehearsals without
+`--save-deployments` leave it untouched).
 
 A namespace is addressed by two inputs on every migration command:
 

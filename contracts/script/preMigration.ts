@@ -118,13 +118,21 @@ export interface Checkpoint {
   successCount: number;
   renewedCount: number;
   failureCount: number;
+  /// Aggregate of the two skip sub-counters below (names not claimable on v1).
   skippedCount: number;
+  /// Names skipped because they were never registered on v1.
+  skippedNeverRegisteredCount: number;
+  /// Names skipped because their v1 registration lapsed past the grace period.
+  skippedPastGraceCount: number;
+  /// Names skipped because they are already registered (owned) on v2. Tracked
+  /// separately from genuine failures.
+  alreadyRegisteredCount: number;
   invalidLabelCount: number;
   timestamp: string;
 }
 
 // Constants
-const CHECKPOINT_FILE = "preMigration-checkpoint.json";
+export const CHECKPOINT_FILE = "preMigration-checkpoint.json";
 const ERROR_LOG_FILE = "preMigration-errors.log";
 const INFO_LOG_FILE = "preMigration.log";
 
@@ -151,6 +159,9 @@ export function createFreshCheckpoint(): Checkpoint {
     renewedCount: 0,
     failureCount: 0,
     skippedCount: 0,
+    skippedNeverRegisteredCount: 0,
+    skippedPastGraceCount: 0,
+    alreadyRegisteredCount: 0,
     invalidLabelCount: 0,
     timestamp: new Date().toISOString(),
   };
@@ -300,20 +311,23 @@ class PreMigrationLogger extends Logger {
       `  → ⊘ Skipping: ${domainName} (invalid label name)`,
     );
   }
-
 }
 
 const logger = new PreMigrationLogger();
 
 // Checkpoint management
-export function loadCheckpoint(): Checkpoint | null {
-  if (!existsSync(CHECKPOINT_FILE)) {
+export function loadCheckpoint(
+  path: string = CHECKPOINT_FILE,
+): Checkpoint | null {
+  if (!existsSync(path)) {
     return null;
   }
 
   try {
-    const data = readFileSync(CHECKPOINT_FILE, "utf-8");
-    return JSON.parse(data);
+    const data = readFileSync(path, "utf-8");
+    // Spread over a fresh checkpoint so counters added after an older run was
+    // written default to 0 rather than undefined (which would break `count++`).
+    return { ...createFreshCheckpoint(), ...JSON.parse(data) };
   } catch (error) {
     logger.error(`Failed to load checkpoint: ${error}`);
     return null;
@@ -979,7 +993,7 @@ async function processBatch(
       logger.error(
         `Name ${registration.labelName}.eth is already registered with owner: ${result.v2LatestOwner}`,
       );
-      checkpoint.failureCount++;
+      checkpoint.alreadyRegisteredCount++;
       checkpoint.totalProcessed++;
       logger.finishedName(registration.labelName, "failed");
       continue;
@@ -989,12 +1003,17 @@ async function processBatch(
     }
 
     if (!result.v1IsClaimable) {
-      const reason =
-        result.v1Expiry === 0n
-          ? "never registered on v1"
-          : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
+      const neverRegistered = result.v1Expiry === 0n;
+      const reason = neverRegistered
+        ? "never registered on v1"
+        : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
       logger.v1NotRegistered(registration.labelName, reason);
       checkpoint.skippedCount++;
+      if (neverRegistered) {
+        checkpoint.skippedNeverRegisteredCount++;
+      } else {
+        checkpoint.skippedPastGraceCount++;
+      }
       checkpoint.totalProcessed++;
       logger.finishedName(registration.labelName, "skipped");
       continue;
@@ -1096,8 +1115,20 @@ function printFinalSummary(checkpoint: Checkpoint): void {
     cyan(checkpoint.renewedCount.toString()),
   );
   logger.config(
-    "Skipped (already up-to-date/expired)",
+    "Skipped (not claimable on v1)",
     yellow(checkpoint.skippedCount.toString()),
+  );
+  logger.config(
+    "  → never registered on v1",
+    yellow(checkpoint.skippedNeverRegisteredCount.toString()),
+  );
+  logger.config(
+    "  → expired past v1 grace period",
+    yellow(checkpoint.skippedPastGraceCount.toString()),
+  );
+  logger.config(
+    "Already registered on v2",
+    yellow(checkpoint.alreadyRegisteredCount.toString()),
   );
   logger.config(
     "Invalid labels",
