@@ -29,7 +29,7 @@ COPY package.json bun.lock ./
 COPY contracts/package.json ./contracts/
 
 # Copy patches for post script execution
-#COPY /patches ./patches
+COPY patches ./patches
 
 # Install all dependencies
 RUN bun i
