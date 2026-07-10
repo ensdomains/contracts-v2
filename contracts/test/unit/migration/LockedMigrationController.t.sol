@@ -596,7 +596,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         IPermissionedRegistry registry =
             IPermissionedRegistry(address(ethRegistry.getSubregistry(md.label)));
-  
+
         assertEq(registry.roles(registry.ROOT_RESOURCE(), actor), 0);
 
         vm.expectRevert(
