@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {AbstractETHRegistrar} from "./AbstractETHRegistrar.sol";
@@ -75,6 +77,8 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.
     /// @param beneficiary Address that receives payments.
     /// @param oracle Initial oracle for registration and renewal costs.
+    /// @param verifiableFactory Shared factory for verifiable deployments.
+    /// @param trustedHCASet Set of trusted HCA implementations.
     /// @param gracePeriod Post-expiry period where still renewable and not available, in seconds.
     /// @param minCommitmentAge Minimum seconds a commitment must age before registration can proceed.
     /// @param maxCommitmentAge Maximum seconds a commitment remains valid; expired commitments are rejected.
@@ -84,12 +88,21 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
         IPermissionedRegistry ethRegistry,
         address beneficiary,
         IRentPriceOracle oracle,
+        IVerifiableFactory verifiableFactory,
+        IAddressSet trustedHCASet,
         uint64 gracePeriod,
         uint64 minCommitmentAge,
         uint64 maxCommitmentAge,
         uint64 minRegisterDuration
     )
-        AbstractETHRegistrar(owner_, ethRegistry, beneficiary, oracle)
+        AbstractETHRegistrar(
+            owner_,
+            ethRegistry,
+            beneficiary,
+            oracle,
+            verifiableFactory,
+            trustedHCASet
+        )
     {
         if (maxCommitmentAge <= minCommitmentAge) {
             revert MaxCommitmentAgeTooLow();
@@ -147,7 +160,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
                 duration,
                 paymentToken
             ); // reverts if invalid
-        SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, base + premium); // reverts if payment failed
+        SafeERC20.safeTransferFrom(paymentToken, _unwrapSender(), BENEFICIARY, base + premium); // reverts if payment failed
         tokenId = ETH_REGISTRY.register(
             label,
             owner,

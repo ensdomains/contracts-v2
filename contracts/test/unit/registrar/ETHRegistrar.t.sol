@@ -19,9 +19,14 @@ import {ETHRegistrar, REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistra
 import {MockERC20, MockERC20Blacklist} from "~test/mocks/MockERC20.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOracleFixture.sol";
+import {HCAFixture} from "~test/fixtures/HCAFixture.sol";
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 
-contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracleFixture {
+contract ETHRegistrarTest is
+    MigrationControllerFixture,
+    StandardRentPriceOracleFixture,
+    HCAFixture
+{
     ETHRegistrar ethRegistrar;
 
     bytes32 testReferrer = keccak256("referrer");
@@ -32,12 +37,15 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
     function setUp() external {
         deployMigrationControllerFixture();
         deployStandardRentPriceOracleFixture();
+        deployHCAFixture();
 
         ethRegistrar = new ETHRegistrar(
             address(this),
             ethRegistry,
             beneficiary,
             rentPriceOracle,
+            verifiableFactory,
+            trustedHCASet,
             StandardRegistrar.GRACE_PERIOD_V2,
             StandardRegistrar.MIN_COMMITMENT_AGE,
             StandardRegistrar.MAX_COMMITMENT_AGE,
@@ -94,6 +102,8 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
             ethRegistry,
             beneficiary,
             rentPriceOracle,
+            verifiableFactory,
+            trustedHCASet,
             0,
             1, // minCommitmentAge
             1, // maxCommitmentAge
@@ -108,6 +118,8 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
             ethRegistry,
             beneficiary,
             rentPriceOracle,
+            verifiableFactory,
+            trustedHCASet,
             0,
             1, // minCommitmentAge
             0, // maxCommitmentAge

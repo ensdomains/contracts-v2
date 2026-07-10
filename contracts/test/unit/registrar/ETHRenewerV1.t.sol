@@ -15,6 +15,7 @@ import {IETHRenewer} from "~src/registrar/interfaces/IETHRenewer.sol";
 import {ETHRenewerV1} from "~src/registrar/ETHRenewerV1.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOracleFixture.sol";
+import {HCAFixture} from "~test/fixtures/HCAFixture.sol";
 import {MockERC20} from "~test/mocks/MockERC20.sol";
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 
@@ -30,7 +31,11 @@ import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 //   4 | 69819
 //   5 | 80833
 
-contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracleFixture {
+contract ETHRenewerV1Test is
+    MigrationControllerFixture,
+    StandardRentPriceOracleFixture,
+    HCAFixture
+{
     ETHRenewerV1 ethRenewerV1;
 
     bytes32 testReferrer = keccak256("referrer");
@@ -39,12 +44,15 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
     function setUp() external {
         deployMigrationControllerFixture();
         deployStandardRentPriceOracleFixture();
+        deployHCAFixture();
 
         ethRenewerV1 = new ETHRenewerV1(
             address(this),
             ethRegistry,
             beneficiary,
             rentPriceOracle,
+            verifiableFactory,
+            trustedHCASet,
             StandardRegistrar.GRACE_PERIOD_V2,
             StandardRegistrar.BONUS_PERIOD,
             nameWrapper,

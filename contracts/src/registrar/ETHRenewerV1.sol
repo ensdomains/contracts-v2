@@ -5,8 +5,10 @@ import {
     BaseRegistrarImplementation
 } from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {AbstractETHRegistrar} from "./AbstractETHRegistrar.sol";
@@ -60,6 +62,8 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
     /// @param ethRegistry ENSv2 .eth `PermissionedRegistry`.
     /// @param beneficiary Address that receives payments.
     /// @param oracle Initial oracle for registration and renewal costs.
+    /// @param verifiableFactory Shared factory for verifiable deployments.
+    /// @param trustedHCASet Set of trusted HCA implementations.
     /// @param gracePeriod Post-expiry period where renewable and not available, in seconds.
     /// @param bonusPeriod Duration added by premigration, in seconds.
     /// @param nameWrapper ENSv1 `NameWrapper` contract.
@@ -69,12 +73,21 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
         IPermissionedRegistry ethRegistry,
         address beneficiary,
         IRentPriceOracle oracle,
+        IVerifiableFactory verifiableFactory,
+        IAddressSet trustedHCASet,
         uint64 gracePeriod,
         uint64 bonusPeriod,
         INameWrapper nameWrapper,
         address wrappedController
     )
-        AbstractETHRegistrar(owner_, ethRegistry, beneficiary, oracle)
+        AbstractETHRegistrar(
+            owner_,
+            ethRegistry,
+            beneficiary,
+            oracle,
+            verifiableFactory,
+            trustedHCASet
+        )
     {
         GRACE_PERIOD = bonusPeriod + gracePeriod;
         _GRACE_PERIOD_V2 = gracePeriod;

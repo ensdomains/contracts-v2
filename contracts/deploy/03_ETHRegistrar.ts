@@ -22,6 +22,12 @@ export default execute(
       "StandardRentPriceOracle",
     );
 
+    const verifiableFactory =
+      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
+
+    const trustedHCASet =
+      get<(typeof artifacts.PermissionedAddressSet)["abi"]>("TrustedHCASet");
+
     const ethRegistrar = await deploy("ETHRegistrar", {
       account: deployer,
       artifact: artifacts.ETHRegistrar,
@@ -30,6 +36,8 @@ export default execute(
         ethRegistry.address,
         owner, // TODO: beneficiary,
         rentPriceOracle.address,
+        verifiableFactory.address,
+        trustedHCASet.address,
         GRACE_PERIOD_V2,
         MIN_COMMITMENT_AGE,
         MAX_COMMITMENT_AGE,
@@ -40,16 +48,18 @@ export default execute(
     if (!tags.deferV2Registrar) {
       await write(ethRegistry, {
         functionName: "grantRootRoles",
-        args: [
-          DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
-          ethRegistrar.address,
-        ],
+        args: [DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT, ethRegistrar.address],
         account: deployer,
       });
     }
   },
   {
     tags: ["ETHRegistrar", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["ETHRegistry", "StandardRentPriceOracle"],
+    dependencies: [
+      "ETHRegistry",
+      "StandardRentPriceOracle",
+      "VerifiableFactory",
+      "TrustedHCASet",
+    ],
   },
 );

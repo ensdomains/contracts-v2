@@ -22,6 +22,12 @@ export default execute(
       "StandardRentPriceOracle",
     );
 
+    const verifiableFactory =
+      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
+
+    const trustedHCASet =
+      get<(typeof artifacts.PermissionedAddressSet)["abi"]>("TrustedHCASet");
+
     const SEC_PER_DAY = 86400n;
     const ethRegistrar = await deploy("FastETHRegistrar", {
       account: deployer,
@@ -31,6 +37,8 @@ export default execute(
         ethRegistry.address,
         owner, // beneficiary
         rentPriceOracle.address,
+        verifiableFactory.address,
+        trustedHCASet.address,
         GRACE_PERIOD_V2,
         0n, // minCommitmentAge
         SEC_PER_DAY, // maxCommitmentAge
@@ -46,6 +54,11 @@ export default execute(
   },
   {
     tags: ["FastETHRegistrar", "v2", "testnet"],
-    dependencies: ["ETHRegistry", "StandardRentPriceOracle"],
+    dependencies: [
+      "ETHRegistry",
+      "StandardRentPriceOracle",
+      "VerifiableFactory",
+      "TrustedHCASet",
+    ],
   },
 );

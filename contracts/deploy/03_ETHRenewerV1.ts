@@ -20,6 +20,12 @@ export default execute(
       "StandardRentPriceOracle",
     );
 
+    const verifiableFactory =
+      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
+
+    const trustedHCASet =
+      get<(typeof artifacts.PermissionedAddressSet)["abi"]>("TrustedHCASet");
+
     const nameWrapper =
       await getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 
@@ -35,6 +41,8 @@ export default execute(
         ethRegistry.address,
         owner, // TODO: beneficiary,
         rentPriceOracle.address,
+        verifiableFactory.address,
+        trustedHCASet.address,
         GRACE_PERIOD_V2,
         PREMIGRATION_BONUS_PERIOD,
         nameWrapper.address,
@@ -53,6 +61,8 @@ export default execute(
     dependencies: [
       "ETHRegistry",
       "StandardRentPriceOracle",
+      "VerifiableFactory",
+      "TrustedHCASet",
       "NameWrapper",
       "WrappedETHRegistrarController",
     ],
