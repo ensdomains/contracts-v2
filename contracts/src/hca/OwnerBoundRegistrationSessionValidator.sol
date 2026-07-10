@@ -10,7 +10,9 @@ import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
 import {IETHRenewer} from "../registrar/interfaces/IETHRenewer.sol";
 import {PermissionedResolver} from "../resolver/PermissionedResolver.sol";
-import {DefaultReverseRegistrarAdapter} from "../reverse-registrar/DefaultReverseRegistrarAdapter.sol";
+import {
+    DefaultReverseRegistrarAdapter
+} from "../reverse-registrar/DefaultReverseRegistrarAdapter.sol";
 
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
 
@@ -409,11 +411,7 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @param hca The calling standalone HCA.
     /// @param sigData The decoded signature envelope.
     /// @param sessionNonce The account's current session-grant nonce.
-    function _permit2SessionDigest(
-        address hca,
-        SignatureData calldata sigData,
-        uint96 sessionNonce
-    )
+    function _permit2SessionDigest(address hca, SignatureData calldata sigData, uint96 sessionNonce)
         internal
         view
         returns (bytes32)

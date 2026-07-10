@@ -17,6 +17,7 @@ import {
     MockValidatorModule,
     MockVerifiableFactory
 } from "../../mocks/MockStandaloneHCAStack.sol";
+
 import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
 import {RegistrationBootstrapper} from "~src/hca/RegistrationBootstrapper.sol";
 import {
@@ -358,13 +359,7 @@ contract StandaloneSingleOwnerHCATest is Test {
 
     function test_validator_allowsResolverRoleGrantsToOwnerOnly() public {
         bytes memory grantToOwner =
-            abi.encodeWithSelector(
-                AUTHORIZE_NAME_ROLES_SELECTOR,
-                bytes(""),
-                uint256(1),
-                owner,
-                true
-            );
+            abi.encodeWithSelector(AUTHORIZE_NAME_ROLES_SELECTOR, bytes(""), uint256(1), owner, true);
         bytes memory operationData = _singleOperationData(resolver, 0, grantToOwner);
         bytes32 operationHash = keccak256(operationData);
 
@@ -380,11 +375,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         bytes[] memory calls = new bytes[](1);
         calls[0] = grantToOwner;
         bytes memory multicallData =
-            _singleOperationData(
-                resolver,
-                0,
-                abi.encodeWithSelector(MULTICALL_SELECTOR, calls)
-            );
+            _singleOperationData(resolver, 0, abi.encodeWithSelector(MULTICALL_SELECTOR, calls));
         assertEq(
             hca.validate(
                 validator,
