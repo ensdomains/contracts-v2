@@ -23,6 +23,7 @@ import {
   reregisterName,
   renewName,
 } from "./testNames/registrar.js";
+import { deployHCA } from "./testNames/hca.js";
 import { showName, showAlias, formatStatus } from "./testNames/display.js";
 
 // Re-export all utilities for external consumers
@@ -38,6 +39,7 @@ export {
   reregisterName,
   reserveName,
   unregisterName,
+  deployHCA,
 };
 
 const ONE_DAY_SECONDS = 86400;
@@ -335,6 +337,9 @@ export async function testNames(env: DevnetEnvironment) {
 
   // Verify all names are properly registered
   await verifyNames(env, allNames);
+
+  // Deploy a standalone HCA per user to track creation gas cost
+  await deployHCA(env);
 
   // Display gas report at the end
   displayGasReport();
