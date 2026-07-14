@@ -11,7 +11,12 @@ import {
   type Address,
 } from "viem";
 
-import { FUSES, STATUS } from "./deploy-constants.js";
+import {
+  FUSES,
+  PREMIGRATION_BONUS_PERIOD,
+  SEC_PER_DAY,
+  STATUS,
+} from "./deploy-constants.js";
 import { main as preMigrationMain } from "./preMigration.js";
 import { buildMainArgs, createCSVFile, verifyV2State } from "./preMigrationUtils.js";
 import type { DevnetEnvironment } from "./setup.js";
@@ -148,7 +153,15 @@ export async function preMigrateDevnetNames(
 
   const csvPath = join(tmpdir(), `devnet-premigrate-${env.client.chain.id}.csv`);
   createCSVFile(csvPath, labels);
-  await preMigrationMain(buildMainArgs(env, csvPath, { limit: labels.length }));
+  // Mirror the DAO pre-migration by extending each v2 expiry with the
+  // production bonus period, so names within the v1 grace period (or expiring
+  // during testing) stay RESERVED on v2 rather than reading back as AVAILABLE.
+  await preMigrationMain(
+    buildMainArgs(env, csvPath, {
+      limit: labels.length,
+      bonusPeriodDays: Number(PREMIGRATION_BONUS_PERIOD / SEC_PER_DAY),
+    }),
+  );
 
   if (target) {
     console.log(`\nReassigning v1 ownership to ${target}...`);
