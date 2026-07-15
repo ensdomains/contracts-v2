@@ -8,8 +8,8 @@ interface IStandaloneHCAOwner {
     /// @notice Returns the account owner.
     function owner() external view returns (address);
 
-    /// @notice Returns the account owner and the current session-grant nonce.
+    /// @notice Returns the account owner and current session nonce.
     /// @return owner_ The account owner.
-    /// @return sessionNonce_ The current session-grant nonce.
+    /// @return sessionNonce_ The current session nonce.
     function ownerAndSessionNonce() external view returns (address owner_, uint96 sessionNonce_);
 }

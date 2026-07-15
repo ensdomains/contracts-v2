@@ -16,7 +16,7 @@ contract MockStandaloneHCA {
     /// @notice The owner reported to the validator.
     address public owner;
 
-    /// @notice The session-grant nonce reported to the validator.
+    /// @notice The session nonce reported to the validator.
     uint96 public sessionNonce;
 
     /// @param owner_ The owner reported to the validator.
@@ -24,15 +24,15 @@ contract MockStandaloneHCA {
         owner = owner_;
     }
 
-    /// @notice Sets the reported session-grant nonce.
+    /// @notice Sets the reported session nonce.
     /// @param sessionNonce_ The nonce to report.
     function setSessionNonce(uint96 sessionNonce_) external {
         sessionNonce = sessionNonce_;
     }
 
-    /// @notice Returns the owner and session-grant nonce as one call.
+    /// @notice Returns the owner and session nonce as one call.
     /// @return owner_ The reported owner.
-    /// @return sessionNonce_ The reported session-grant nonce.
+    /// @return sessionNonce_ The reported session nonce.
     function ownerAndSessionNonce() external view returns (address owner_, uint96 sessionNonce_) {
         return (owner, sessionNonce);
     }
@@ -40,7 +40,7 @@ contract MockStandaloneHCA {
     /// @notice Forwards an ERC-1271 validation to the validator as this account.
     /// @param validator The validator under test.
     /// @param operationHash The digest supplied by the intent executor.
-    /// @param signature The encoded signature envelope.
+    /// @param signature The owner signature.
     /// @return The ERC-1271 return value.
     function validate(
         OwnerBoundRegistrationSessionValidator validator,
@@ -51,7 +51,12 @@ contract MockStandaloneHCA {
         view
         returns (bytes4)
     {
-        return validator.isValidSignatureWithSender(address(this), operationHash, signature);
+        return
+            validator.isValidSignatureWithSender(
+                validator.INTENT_EXECUTOR(),
+                operationHash,
+                signature
+            );
     }
 }
 

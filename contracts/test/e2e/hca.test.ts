@@ -17,18 +17,11 @@ import { privateKeyToAccount } from "viem/accounts";
 import artifacts from "../../script/artifacts.js";
 import { ROLES, STATUS } from "../../script/deploy-constants.js";
 import { expect, expectVar } from "../utils/expectVar.js";
-import {
-  PERMIT2_ADDRESS,
-  type Permit2SessionAuthorization,
-  permit2SessionDigest,
-  SESSION_GRANT_TYPEHASH,
-} from "../utils/hcaSessions.js";
 import { COIN_TYPE_ETH, getReverseName, idFromLabel } from "../utils/utils.js";
 
 const REGISTRATION_DURATION = 28n * 86400n;
 const BURNER_SESSION_SIGNER_KEY =
   "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const PERMIT2_SOURCE_CHAIN_ID = 8453n;
 const HCA_USER_SALT = 0n;
 
 type HCAExecution = {
@@ -40,9 +33,8 @@ type HCAExecution = {
 describe("Standalone HCA", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
 
-  // The devnet deploy scripts deploy the full HCA stack and
-  // register the implementation with the default reverse adapter, so the e2e
-  // exercises the same pipeline that ships to real networks.
+  // The devnet deploy scripts deploy the local HCA stack and register its
+  // implementation with the default reverse adapter.
   const stack = {
     deployer: env.hca.StandaloneHCADeployer,
     executor: env.hca.HCARegistrationIntentExecutor,
@@ -83,156 +75,110 @@ describe("Standalone HCA", () => {
     );
   }
 
-  async function signRawHash(signer: Account, hash: Hex): Promise<Hex> {
-    const rawSigner = signer as Account & {
-      sign?: ({ hash }: { hash: Hex }) => Promise<Hex>;
-    };
-    if (!rawSigner.sign) {
-      throw new Error("HCA e2e signer account must support raw signing");
-    }
-    return rawSigner.sign({ hash });
-  }
-
-  async function operationData(executions: HCAExecution[]): Promise<Hex> {
+  async function operationData(
+    executions: HCAExecution[],
+    session = true,
+  ): Promise<Hex> {
     return env.client.readContract({
       address: stack.executor.address,
       abi: stack.executor.abi,
-      functionName: "encodeOperation",
+      functionName: session ? "encodeSessionOperation" : "encodeOperation",
       args: [executions],
     }) as Promise<Hex>;
   }
 
-  async function signLegacySessionGrant({
-    hca,
-    owner,
-    sessionKey,
-    validUntil,
-    resolver,
-    sessionNonce = 0n,
-  }: {
-    hca: Address;
-    owner: Account;
-    sessionKey: Account;
-    validUntil: number;
-    resolver: Address;
-    sessionNonce?: bigint;
-  }): Promise<Hex> {
-    const grantHash = keccak256(
-      encodeAbiParameters(
-        parseAbiParameters(
-          "bytes32,uint256,address,address,address,uint48,address,uint256",
-        ),
-        [
-          SESSION_GRANT_TYPEHASH,
-          BigInt(env.client.chain.id),
-          hca,
-          owner.address,
-          sessionKey.address,
-          validUntil,
-          resolver,
-          sessionNonce,
-        ],
-      ),
-    );
-    if (!owner.signMessage) {
-      throw new Error("HCA e2e owner account must support message signing");
+  async function signRhinestoneMessage(
+    signer: Account,
+    digest: Hex,
+  ): Promise<Hex> {
+    if (!signer.signMessage) {
+      throw new Error("HCA e2e signer must support message signing");
     }
-    return owner.signMessage({ message: { raw: grantHash } });
+    const signature = await signer.signMessage({ message: { raw: digest } });
+    const v = Number.parseInt(signature.slice(-2), 16) + 4;
+    return `${signature.slice(0, -2)}${v.toString(16).padStart(2, "0")}` as Hex;
   }
 
-  async function buildHcaSignature({
-    hca,
-    owner,
+  async function buildSessionSignature({
+    permissionId,
     sessionKey,
-    validUntil = 0,
-    resolver,
-    // Account session-grant nonce; 0 for a not-yet-deployed (counterfactual) HCA.
-    sessionNonce = 0n,
     executions,
-    permit2,
-    sessionGrantSignature,
   }: {
-    hca: Address;
-    owner: Account;
-    sessionKey?: Account;
-    validUntil?: number;
-    resolver: Address;
-    sessionNonce?: bigint;
+    permissionId: Hex;
+    sessionKey: Account;
     executions: HCAExecution[];
-    permit2?: Permit2SessionAuthorization;
-    sessionGrantSignature?: Hex;
   }): Promise<Hex> {
     const data = await operationData(executions);
     const digest = keccak256(data);
-    const sessionKeyAddress = sessionKey?.address ?? zeroAddress;
-    let ownerSignature: Hex;
-    let sessionSignature: Hex = "0x";
-
-    if (sessionKey) {
-      if (sessionGrantSignature) {
-        ownerSignature = sessionGrantSignature;
-      } else if (permit2) {
-        ownerSignature = await signRawHash(
-          owner,
-          permit2SessionDigest({
-            chainId: BigInt(env.client.chain.id),
-            hca,
-            owner: owner.address,
-            sessionKey: sessionKey.address,
-            validUntil,
-            resolver,
-            sessionNonce,
-            permit2,
-          }),
-        );
-      } else {
-        ownerSignature = await signLegacySessionGrant({
-          hca,
-          owner,
-          sessionKey,
-          validUntil,
-          resolver,
-          sessionNonce,
-        });
-      }
-      sessionSignature = await signRawHash(sessionKey, digest);
-    } else {
-      ownerSignature = await signRawHash(owner, digest);
-    }
-
-    const body = encodeAbiParameters(
-      parseAbiParameters(
-        "address,address,uint48,address,uint256,address,address,uint256,uint256,bytes,bytes,bytes",
-      ),
-      [
-        owner.address,
-        sessionKeyAddress,
-        validUntil,
-        resolver,
-        permit2?.sourceChainId ?? 0n,
-        permit2?.permit2Contract ?? zeroAddress,
-        permit2?.arbiter ?? zeroAddress,
-        permit2?.nonce ?? 0n,
-        permit2?.expires ?? 0n,
-        ownerSignature,
-        sessionSignature,
-        data,
-      ],
+    return encodePacked(
+      ["bytes1", "bytes32", "bytes"],
+      ["0x00", permissionId, await signRhinestoneMessage(sessionKey, digest)],
     );
-
-    return encodePacked(["address", "bytes"], [zeroAddress, body]);
   }
 
-  // The direct E2E bypasses Rhinestone's setup-op path. The production route can put
-  // deployment and commitment in one intent fill.
+  async function executeOwnerIntent({
+    hca,
+    owner,
+    executions,
+  }: {
+    hca: Address;
+    owner: Account;
+    executions: HCAExecution[];
+  }) {
+    const data = await operationData(executions, false);
+    const signature = encodePacked(
+      ["address", "bytes"],
+      [zeroAddress, await signRhinestoneMessage(owner, keccak256(data))],
+    );
+    await env.waitFor(
+      stack.executor.write.execute([hca, executions, signature]),
+    );
+  }
+
+  async function enableSession({
+    hca,
+    owner,
+    permissionId,
+    sessionKey,
+    validUntil,
+    resolver,
+  }: {
+    hca: Address;
+    owner: Account;
+    permissionId: Hex;
+    sessionKey: Account;
+    validUntil: number;
+    resolver: Address;
+  }) {
+    await executeOwnerIntent({
+      hca,
+      owner,
+      executions: [
+        {
+          target: stack.validator.address,
+          value: 0n,
+          callData: encodeFunctionData({
+            abi: stack.validator.abi,
+            functionName: "enableSession",
+            args: [permissionId, sessionKey.address, validUntil, resolver],
+          }),
+        },
+      ],
+    });
+  }
+
+  // Local E2E deploys separately. A sponsored production route can put deployment and
+  // commitment in one intent fill.
   async function deployHCAAndCommit({
     label,
     owner,
     resolver,
+    walletPaid = false,
   }: {
     label: string;
     owner: Account;
     resolver: Address;
+    walletPaid?: boolean;
   }) {
     const hca = computeHcaAddress(owner.address);
     const commitment = await env.v2.ETHRegistrar.read.makeCommitment([
@@ -249,14 +195,34 @@ describe("Standalone HCA", () => {
     const needsDeployment = !hcaCodeBefore || hcaCodeBefore === "0x";
     if (needsDeployment) {
       await env.waitFor(
-        stack.deployer.write.deploy([
-          owner.address,
-          stack.hcaImplementation.address,
-          HCA_USER_SALT,
-        ]),
+        stack.deployer.write.deploy(
+          [owner.address, stack.hcaImplementation.address, HCA_USER_SALT],
+          {
+            account: walletPaid ? owner : env.namedAccounts.deployer,
+          },
+        ),
       );
     }
-    await env.waitFor(env.v2.ETHRegistrar.write.commit([commitment]));
+
+    if (walletPaid) {
+      await executeHcaByOwner({
+        hca,
+        owner,
+        executions: [
+          {
+            target: env.v2.ETHRegistrar.address,
+            value: 0n,
+            callData: encodeFunctionData({
+              abi: env.v2.ETHRegistrar.abi,
+              functionName: "commit",
+              args: [commitment],
+            }),
+          },
+        ],
+      });
+    } else {
+      await env.waitFor(env.v2.ETHRegistrar.write.commit([commitment]));
+    }
 
     const hcaCodeAfter = await env.client.getCode({ address: hca });
     expectVar({ hcaCodeAfter }).not.toBeUndefined();
@@ -398,7 +364,11 @@ describe("Standalone HCA", () => {
     return executions;
   }
 
-  async function prepareRegistration(label: string, owner: Account) {
+  async function prepareRegistration(
+    label: string,
+    owner: Account,
+    { walletPaid = false }: { walletPaid?: boolean } = {},
+  ) {
     const hca = computeHcaAddress(owner.address);
     const resolverSalt = env.computeOwnedResolverSalt(hca);
     const resolver = env.computeVerifiableProxyAddress(hca, resolverSalt);
@@ -411,7 +381,7 @@ describe("Standalone HCA", () => {
       ]);
     const price = basePrice + premiumPrice;
 
-    await deployHCAAndCommit({ label, owner, resolver });
+    await deployHCAAndCommit({ label, owner, resolver, walletPaid });
     await env.erc20.MockUSDC.write.mint([hca, price], {
       account: env.namedAccounts.deployer,
     });
@@ -439,7 +409,32 @@ describe("Standalone HCA", () => {
     signature: Hex;
   }) {
     await env.waitFor(
-      stack.executor.write.execute([hca, executions, signature]),
+      stack.executor.write.executeWithSession([
+        hca,
+        stack.validator.address,
+        executions,
+        signature,
+      ]),
+    );
+  }
+
+  async function executeHcaByOwner({
+    hca,
+    owner,
+    executions,
+  }: {
+    hca: Address;
+    owner: Account;
+    executions: HCAExecution[];
+  }) {
+    await env.waitFor(
+      env.client.writeContract({
+        address: hca,
+        abi: stack.hcaImplementation.abi,
+        functionName: "executeByOwner",
+        args: [executions],
+        account: owner,
+      }),
     );
   }
 
@@ -547,21 +542,23 @@ describe("Standalone HCA", () => {
     );
   });
 
-  it("registers two .eth names with one owner-bound HCA and resolver", async () => {
+  it("registers two names through wallet-paid HCA batches without intent signatures", async () => {
     const owner = env.namedAccounts.user;
     const label = "hcadirectowner";
     const { executions, hca, price, resolver } = await prepareRegistration(
       label,
       owner,
+      { walletPaid: true },
     );
 
-    const signature = await buildHcaSignature({
-      hca,
-      owner,
-      resolver,
-      executions,
-    });
-    await executeHcaIntent({ hca, executions, signature });
+    await expect(
+      executeHcaByOwner({
+        hca,
+        owner: env.namedAccounts.user2,
+        executions,
+      }),
+    ).rejects.toThrow();
+    await executeHcaByOwner({ hca, owner, executions });
 
     await expectRegistered({ label, owner, hca, price, resolver });
 
@@ -586,7 +583,9 @@ describe("Standalone HCA", () => {
     expectVar({ ownerDirectText }).toStrictEqual("owner-direct");
 
     const secondLabel = "hcadirectownertwo";
-    const second = await prepareRegistration(secondLabel, owner);
+    const second = await prepareRegistration(secondLabel, owner, {
+      walletPaid: true,
+    });
     expectVar({ secondHca: second.hca }).toEqualAddress(hca);
     expectVar({ secondResolver: second.resolver }).toEqualAddress(resolver);
     expectVar({
@@ -597,16 +596,10 @@ describe("Standalone HCA", () => {
       ),
     }).toStrictEqual(false);
 
-    const secondSignature = await buildHcaSignature({
+    await executeHcaByOwner({
       hca: second.hca,
       owner,
-      resolver: second.resolver,
       executions: second.executions,
-    });
-    await executeHcaIntent({
-      hca: second.hca,
-      executions: second.executions,
-      signature: secondSignature,
     });
     await expectRegistered({
       label: secondLabel,
@@ -617,7 +610,7 @@ describe("Standalone HCA", () => {
     });
   });
 
-  it("reuses one owner-granted session for registration and a later primary change", async () => {
+  it("reuses one owner-enabled session for registration and a later primary change", async () => {
     const owner = env.namedAccounts.user;
     const sessionKey = privateKeyToAccount(BURNER_SESSION_SIGNER_KEY);
     const label = "hcasessionkey";
@@ -627,9 +620,13 @@ describe("Standalone HCA", () => {
     );
     const currentBlock = await env.client.getBlock();
     const validUntil = Number(currentBlock.timestamp + 3600n);
-    const sessionGrantSignature = await signLegacySessionGrant({
+    const permissionId = keccak256(
+      encodePacked(["address", "address"], [hca, sessionKey.address]),
+    );
+    await enableSession({
       hca,
       owner,
+      permissionId,
       sessionKey,
       validUntil,
       resolver,
@@ -646,26 +643,23 @@ describe("Standalone HCA", () => {
         }),
       },
     ];
-    const blockedSignature = await buildHcaSignature({
-      hca,
-      owner,
+    const blockedSignature = await buildSessionSignature({
+      permissionId,
       sessionKey,
-      validUntil,
-      resolver,
       executions: blockedExecutions,
     });
     await expect(
-      stack.executor.write.execute([hca, blockedExecutions, blockedSignature]),
+      executeHcaIntent({
+        hca,
+        executions: blockedExecutions,
+        signature: blockedSignature,
+      }),
     ).rejects.toThrow();
 
-    const signature = await buildHcaSignature({
-      hca,
-      owner,
+    const signature = await buildSessionSignature({
+      permissionId,
       sessionKey,
-      validUntil,
-      resolver,
       executions,
-      sessionGrantSignature,
     });
     await executeHcaIntent({ hca, executions, signature });
 
@@ -683,14 +677,10 @@ describe("Standalone HCA", () => {
         }),
       },
     ];
-    const laterSignature = await buildHcaSignature({
-      hca,
-      owner,
+    const laterSignature = await buildSessionSignature({
+      permissionId,
       sessionKey,
-      validUntil,
-      resolver,
       executions: laterExecutions,
-      sessionGrantSignature,
     });
     await executeHcaIntent({
       hca,
@@ -705,59 +695,42 @@ describe("Standalone HCA", () => {
     expectVar({ laterPrimary }).toStrictEqual(laterName);
   });
 
-  it("registers with a Permit2-originated session key and rejects a resolver outside the grant", async () => {
+  it("invalidates a fixed session with the HCA session nonce", async () => {
     const owner = env.namedAccounts.user;
     const sessionKey = privateKeyToAccount(BURNER_SESSION_SIGNER_KEY);
-    const label = "hcapermit2session";
-    const { executions, hca, price, resolver } = await prepareRegistration(
+    const label = "hcarevokedsession";
+    const { executions, hca, resolver } = await prepareRegistration(
       label,
       owner,
     );
     const currentBlock = await env.client.getBlock();
     const validUntil = Number(currentBlock.timestamp + 3600n);
-    const permit2 = {
-      sourceChainId: PERMIT2_SOURCE_CHAIN_ID,
-      permit2Contract: PERMIT2_ADDRESS as Address,
-      arbiter: hca,
-      nonce: 7n,
-      expires: currentBlock.timestamp + 3600n,
-    };
-
-    const blockedExecutions: HCAExecution[] = [
-      {
-        target: env.namedAccounts.user2.resolver.address,
-        value: 0n,
-        callData: encodeFunctionData({
-          abi: artifacts.PermissionedResolver.abi,
-          functionName: "setText",
-          args: [namehash(`${label}.eth`), "url", "https://example.com/nope"],
-        }),
-      },
-    ];
-    const blockedSignature = await buildHcaSignature({
+    const permissionId = keccak256(
+      encodePacked(["address", "address"], [hca, sessionKey.address]),
+    );
+    await enableSession({
       hca,
       owner,
+      permissionId,
       sessionKey,
       validUntil,
       resolver,
-      executions: blockedExecutions,
-      permit2,
     });
-    await expect(
-      stack.executor.write.execute([hca, blockedExecutions, blockedSignature]),
-    ).rejects.toThrow();
 
-    const signature = await buildHcaSignature({
-      hca,
-      owner,
+    await env.waitFor(
+      env.client.writeContract({
+        address: hca,
+        abi: stack.hcaImplementation.abi,
+        functionName: "revokeSessions",
+        account: owner,
+      }),
+    );
+
+    const signature = await buildSessionSignature({
+      permissionId,
       sessionKey,
-      validUntil,
-      resolver,
       executions,
-      permit2,
     });
-    await executeHcaIntent({ hca, executions, signature });
-
-    await expectRegistered({ label, owner, hca, price, resolver });
+    await expect(executeHcaIntent({ hca, executions, signature })).rejects.toThrow();
   });
 });

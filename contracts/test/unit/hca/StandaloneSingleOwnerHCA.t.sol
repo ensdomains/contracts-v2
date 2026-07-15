@@ -6,6 +6,7 @@ pragma solidity ^0.8.27;
 import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
+import {Execution} from "nexus/types/DataTypes.sol";
 
 import {Test} from "forge-std/Test.sol";
 
@@ -22,14 +23,6 @@ import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
 
 contract StandaloneSingleOwnerHCATest is Test {
-    struct Permit2Fields {
-        uint256 sourceChainId;
-        address permit2Contract;
-        address arbiter;
-        uint256 nonce;
-        uint256 expires;
-    }
-
     bytes4 constant ERC1271_MAGICVALUE = 0x1626ba7e;
 
     bytes4 constant COMMIT_SELECTOR = 0xf14fcbc8;
@@ -44,27 +37,6 @@ contract StandaloneSingleOwnerHCATest is Test {
     bytes4 constant MULTICALL_SELECTOR = 0xac9650d8;
     bytes4 constant MULTICALL_WITH_NODE_CHECK_SELECTOR = 0xe32954eb;
     bytes4 constant AUTHORIZE_NAME_ROLES_SELECTOR = 0xbbd9abb5;
-
-    bytes32 constant SESSION_GRANT_TYPEHASH =
-        keccak256(
-            "RegistrationSessionGrant(uint256 chainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver,uint256 sessionNonce)"
-        );
-    bytes32 constant PERMIT2_SESSION_GRANT_TYPEHASH =
-        keccak256(
-            "RegistrationPermit2SessionGrant(uint256 destinationChainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver,uint256 sessionNonce)"
-        );
-    bytes32 constant PERMIT2_DOMAIN_TYPEHASH =
-        0x8cad95687ba82c2ce50e74f7b754645e5117c3a5bec8151c0726d5857980a866;
-    bytes32 constant PERMIT2_NAME_HASH =
-        0x9ac997416e8ff9d2ff6bebeb7149f65cdae5e32e2b90440b566bb3044041d36a;
-    bytes32 constant PERMIT2_JIT_TYPEHASH =
-        0x1b355fbc76f14a5aefe5c85df793a0f876f90d66f457273501c13ac311b5f3f8;
-    bytes32 constant PERMIT2_MANDATE_TYPEHASH =
-        0xc988b4da10503879cf4b893fed09620229f5ade301ef5e4af6124b22823627dc;
-    bytes32 constant EMPTY_ARRAY_HASH =
-        0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
-    bytes32 constant NO_OPS_HASH =
-        0x0c7bea50822ae8a3846eccbda4961a80e1e08aa92f2bf046be0011514ad2ddf1;
 
     uint256 ownerKey = 0xA11CE;
     uint256 sessionKey = 0x5E5510;
@@ -82,6 +54,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     address otherResolver = makeAddr("other-resolver");
     address subregistry = makeAddr("subregistry");
     address entryPoint = makeAddr("entry-point");
+    address intentExecutor = makeAddr("intent-executor");
 
     address gateOwner = makeAddr("gate-owner");
 
@@ -98,7 +71,8 @@ contract StandaloneSingleOwnerHCATest is Test {
             ethRegistrar,
             verifiableFactory,
             usdc,
-            dai
+            dai,
+            intentExecutor
         );
         validatorHarness = new OwnerBoundRegistrationSessionValidatorHarness(
             defaultReverseRegistrarHCAAdapter,
@@ -106,7 +80,8 @@ contract StandaloneSingleOwnerHCATest is Test {
             ethRegistrar,
             verifiableFactory,
             usdc,
-            dai
+            dai,
+            intentExecutor
         );
         hca = new MockStandaloneHCA(owner);
     }
@@ -207,6 +182,51 @@ contract StandaloneSingleOwnerHCATest is Test {
         assertEq(nonce, 1);
     }
 
+    function test_standaloneSingleOwnerHCA_executesWalletPaidBatchAtomically() public {
+        VerifiableFactory factory = new VerifiableFactory();
+        StandaloneSingleOwnerHCA implementation = _newAccount();
+        StandaloneSingleOwnerHCA account =
+            StandaloneSingleOwnerHCA(
+                payable(
+                    factory.deployProxy(
+                        address(implementation),
+                        2,
+                        abi.encodeCall(
+                            StandaloneSingleOwnerHCA.initializeAccount,
+                            (abi.encode(owner))
+                        )
+                    )
+                )
+            );
+        WalletPaidTarget firstTarget = new WalletPaidTarget();
+        WalletPaidTarget secondTarget = new WalletPaidTarget();
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({target: address(firstTarget), value: 0, callData: abi.encodeCall(
+            WalletPaidTarget.setValue,
+            (7)
+        )});
+        executions[1] = Execution({target: address(secondTarget), value: 0, callData: abi.encodeCall(
+            WalletPaidTarget.setValue,
+            (9)
+        )});
+
+        vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotOwner.selector);
+        account.executeByOwner(executions);
+
+        vm.prank(owner);
+        account.executeByOwner(executions);
+        assertEq(firstTarget.value(), 7);
+        assertEq(secondTarget.value(), 9);
+
+        executions[0].callData = abi.encodeCall(WalletPaidTarget.setValue, (11));
+        executions[1].callData = abi.encodeCall(WalletPaidTarget.fail, ());
+
+        vm.prank(owner);
+        vm.expectRevert(WalletPaidTarget.Failed.selector);
+        account.executeByOwner(executions);
+        assertEq(firstTarget.value(), 7);
+    }
+
     function test_standaloneSingleOwnerHCA_rejectsNftReceivers() public {
         StandaloneSingleOwnerHCA account = _newAccount();
 
@@ -234,88 +254,47 @@ contract StandaloneSingleOwnerHCATest is Test {
         success;
     }
 
-    function test_validator_acceptsDirectOwnerRegistrationPolicy() public view {
-        bytes memory operationData = _registrationOperationData(owner, resolver);
-        bytes32 operationHash = keccak256(operationData);
-
-        bytes memory signature =
-            _signatureData(
-                owner,
-                address(0),
-                0,
-                resolver,
-                _sign(ownerKey, operationHash),
-                "",
-                operationData
-            );
-
-        assertEq(hca.validate(validator, operationHash, signature), ERC1271_MAGICVALUE);
+    function test_validator_acceptsExistingOwnerSignatureFormats() public view {
+        bytes32 digest = keccak256("owner intent");
+        assertEq(hca.validate(validator, digest, _sign(ownerKey, digest)), ERC1271_MAGICVALUE);
+        assertEq(
+            hca.validate(validator, digest, _signRhinestoneMessage(ownerKey, digest)),
+            ERC1271_MAGICVALUE
+        );
+        assertEq(hca.validate(validator, digest, _signV01(ownerKey, digest)), ERC1271_MAGICVALUE);
     }
 
-    function test_validator_acceptsLegacySessionGrant() public view {
-        bytes memory operationData = _registrationOperationData(owner, resolver);
-        bytes32 operationHash = keccak256(operationData);
-        uint48 validUntil = uint48(block.timestamp + 1 days);
-        bytes32 grantHash =
-            keccak256(
-                abi.encode(
-                    SESSION_GRANT_TYPEHASH,
-                    block.chainid,
-                    address(hca),
-                    owner,
-                    sessionSigner,
-                    validUntil,
-                    resolver,
-                    uint256(hca.sessionNonce())
-                )
-            );
+    function test_validator_rejectsInvalidOwnerAuthorization() public {
+        bytes32 digest = keccak256("owner intent");
 
-        bytes memory signature =
-            _signatureData(
-                owner,
-                sessionSigner,
-                validUntil,
-                resolver,
-                _sign(ownerKey, _toEthSignedMessageHash(grantHash)),
-                _sign(sessionKey, operationHash),
-                operationData
-            );
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.CallerNotIntentExecutor.selector);
+        validator.isValidSignatureWithSender(address(this), digest, _sign(ownerKey, digest));
 
-        assertEq(hca.validate(validator, operationHash, signature), ERC1271_MAGICVALUE);
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.OwnerUnavailable.selector);
+        validator.isValidSignatureWithSender(intentExecutor, digest, _sign(ownerKey, digest));
+
+        MockStandaloneHCA zeroOwnerHCA = new MockStandaloneHCA(address(0));
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.OwnerUnavailable.selector);
+        zeroOwnerHCA.validate(validator, digest, _sign(ownerKey, digest));
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, _sign(badKey, digest));
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, hex"1234");
     }
 
-    function test_validator_allowsStandaloneDefaultReverseWithReusableSession() public view {
+    function test_validator_usesPreEnabledRhinestoneSession() public {
+        bytes32 permissionId = keccak256("registration session");
         uint48 validUntil = uint48(block.timestamp + 1 days);
-        bytes32 grantHash =
-            keccak256(
-                abi.encode(
-                    SESSION_GRANT_TYPEHASH,
-                    block.chainid,
-                    address(hca),
-                    owner,
-                    sessionSigner,
-                    validUntil,
-                    resolver,
-                    uint256(hca.sessionNonce())
-                )
-            );
-        bytes memory ownerGrantSignature = _sign(ownerKey, _toEthSignedMessageHash(grantHash));
+        vm.prank(address(hca));
+        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
+        assertTrue(validator.isPermissionEnabled(address(hca), permissionId));
 
         bytes memory registrationData = _registrationOperationData(owner, resolver);
-        bytes32 registrationHash = keccak256(registrationData);
-        bytes memory registrationSignature =
-            _signatureData(
-                owner,
-                sessionSigner,
-                validUntil,
-                resolver,
-                ownerGrantSignature,
-                _sign(sessionKey, registrationHash),
-                registrationData
-            );
         assertEq(
-            hca.validate(validator, registrationHash, registrationSignature),
-            ERC1271_MAGICVALUE
+            _verifySession(permissionId, sessionKey, registrationData),
+            validator.verifyExecution.selector
         );
 
         bytes memory laterData =
@@ -324,95 +303,72 @@ contract StandaloneSingleOwnerHCATest is Test {
                 0,
                 abi.encodeWithSelector(SET_NAME_WITH_HCA_SELECTOR, owner, "later.eth")
             );
-        bytes32 laterHash = keccak256(laterData);
-        bytes memory laterSessionSignature =
-            _signatureData(
-                owner,
-                sessionSigner,
-                validUntil,
-                resolver,
-                ownerGrantSignature,
-                _sign(sessionKey, laterHash),
-                laterData
-            );
-        assertEq(hca.validate(validator, laterHash, laterSessionSignature), ERC1271_MAGICVALUE);
         assertEq(
-            hca.validate(validator, laterHash, _directSignature(laterData, resolver, ownerKey)),
-            ERC1271_MAGICVALUE
+            _verifySession(permissionId, sessionKey, laterData),
+            validator.verifyExecution.selector
         );
     }
 
-    function test_validator_acceptsPermit2SessionGrant() public {
-        bytes memory operationData = _registrationOperationData(owner, resolver);
-        bytes32 operationHash = keccak256(operationData);
+    function test_validator_sessionExpiryAndNonceRevocation() public {
+        bytes32 permissionId = keccak256("registration session");
         uint48 validUntil = uint48(block.timestamp + 1 days);
-        bytes memory signature = _permit2SignatureData(operationHash, operationData, validUntil);
+        vm.prank(address(hca));
+        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
 
-        assertEq(hca.validate(validator, operationHash, signature), ERC1271_MAGICVALUE);
-    }
-
-    function test_validator_rejectsGrantsAfterSessionNonceBump() public {
-        bytes memory operationData = _registrationOperationData(owner, resolver);
-        bytes32 operationHash = keccak256(operationData);
-        uint48 validUntil = uint48(block.timestamp + 1 days);
-
-        // Grants signed against the current nonce stop validating once the nonce moves.
-        bytes memory legacySignature =
-            _legacySessionSignature(operationHash, operationData, validUntil, ownerKey, sessionKey);
-        bytes memory permit2Signature =
-            _permit2SignatureData(operationHash, operationData, validUntil);
-        assertEq(hca.validate(validator, operationHash, legacySignature), ERC1271_MAGICVALUE);
-        assertEq(hca.validate(validator, operationHash, permit2Signature), ERC1271_MAGICVALUE);
-
+        bytes memory operationData = _commitOperationData();
         hca.setSessionNonce(1);
-
+        assertFalse(validator.isPermissionEnabled(address(hca), permissionId));
         vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, operationHash, legacySignature);
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, operationHash, permit2Signature);
+        _verifySession(permissionId, sessionKey, operationData);
 
-        // Grants signed against the bumped nonce validate, and direct owner signatures are
-        // unaffected by the nonce entirely.
-        bytes memory refreshedSignature =
-            _legacySessionSignature(operationHash, operationData, validUntil, ownerKey, sessionKey);
-        assertEq(hca.validate(validator, operationHash, refreshedSignature), ERC1271_MAGICVALUE);
-        assertEq(
-            hca.validate(
-                validator,
-                operationHash,
-                _directSignature(operationData, resolver, ownerKey)
-            ),
-            ERC1271_MAGICVALUE
-        );
+        vm.prank(address(hca));
+        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
+        assertTrue(validator.isPermissionEnabled(address(hca), permissionId));
+
+        vm.warp(validUntil + 1);
+        assertFalse(validator.isPermissionEnabled(address(hca), permissionId));
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.SessionExpired.selector);
+        _verifySession(permissionId, sessionKey, operationData);
+    }
+
+    function test_validator_rejectsInvalidSessionAuthorization() public {
+        bytes32 permissionId = keccak256("registration session");
+        uint48 validUntil = uint48(block.timestamp + 1 days);
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.OwnerUnavailable.selector);
+        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
+        vm.prank(address(hca));
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        validator.enableSession(permissionId, address(0), validUntil, resolver);
+        vm.prank(address(hca));
+        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
+
+        bytes memory operationData = _commitOperationData();
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        _verifySession(permissionId, badKey, operationData);
+
+        OwnerBoundRegistrationSessionValidator.Operation memory operation =
+            OwnerBoundRegistrationSessionValidator.Operation({data: operationData});
+        bytes memory validData = _sessionUse(permissionId, sessionKey, keccak256(operationData));
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.CallerNotIntentExecutor.selector);
+        validator.verifyExecution(address(hca), keccak256(operationData), validData, operation);
+
+        vm.prank(intentExecutor);
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSessionData.selector);
+        validator.verifyExecution(address(hca), keccak256(operationData), hex"01", operation);
     }
 
     function test_validator_allowsResolverRoleGrantsToOwnerOnly() public {
         bytes memory grantToOwner =
             abi.encodeWithSelector(AUTHORIZE_NAME_ROLES_SELECTOR, bytes(""), uint256(1), owner, true);
         bytes memory operationData = _singleOperationData(resolver, 0, grantToOwner);
-        bytes32 operationHash = keccak256(operationData);
-
-        assertEq(
-            hca.validate(
-                validator,
-                operationHash,
-                _directSignature(operationData, resolver, ownerKey)
-            ),
-            ERC1271_MAGICVALUE
-        );
+        validatorHarness.checkRegistrationPolicyHarness(owner, resolver, operationData);
 
         bytes[] memory calls = new bytes[](1);
         calls[0] = grantToOwner;
         bytes memory multicallData =
             _singleOperationData(resolver, 0, abi.encodeWithSelector(MULTICALL_SELECTOR, calls));
-        assertEq(
-            hca.validate(
-                validator,
-                keccak256(multicallData),
-                _directSignature(multicallData, resolver, ownerKey)
-            ),
-            ERC1271_MAGICVALUE
-        );
+        validatorHarness.checkRegistrationPolicyHarness(owner, resolver, multicallData);
 
         bytes memory grantToOther =
             abi.encodeWithSelector(
@@ -429,165 +385,13 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
     }
 
-    function test_validator_acceptsDirectOwnerSignatureWithV01() public view {
-        bytes memory operationData = _commitAndRenewOperationData();
-        bytes32 operationHash = keccak256(operationData);
-        bytes memory signature =
-            _signatureData(
-                owner,
-                address(0),
-                0,
-                address(0),
-                _signV01(ownerKey, operationHash),
-                "",
-                operationData
-            );
-
-        assertEq(hca.validate(validator, operationHash, signature), ERC1271_MAGICVALUE);
-    }
-
-    function test_validator_rejectsOwnerAvailabilityAndDirectSignerFailures() public {
-        bytes memory operationData = _commitOperationData();
-        bytes32 operationHash = keccak256(operationData);
-        bytes memory signature = _directSignature(operationData, address(0), ownerKey);
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.OwnerUnavailable.selector);
-        validator.isValidSignatureWithSender(address(this), operationHash, signature);
-
-        MockStandaloneHCA zeroOwnerHCA = new MockStandaloneHCA(address(0));
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.OwnerUnavailable.selector);
-        zeroOwnerHCA.validate(validator, operationHash, signature);
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, operationHash, _directSignature(operationData, address(0), badKey));
-
-        bytes memory shortSignature =
-            _signatureData(owner, address(0), 0, address(0), hex"1234", "", operationData);
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, operationHash, shortSignature);
-
-        bytes memory zeroSignature =
-            _signatureData(
-                owner,
-                address(0),
-                0,
-                address(0),
-                abi.encodePacked(bytes32(0), bytes32(0), uint8(27)),
-                "",
-                operationData
-            );
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, operationHash, zeroSignature);
-    }
-
-    function test_validator_rejectsSessionSignerFailures() public {
-        bytes memory operationData = _commitOperationData();
-        bytes32 operationHash = keccak256(operationData);
-        uint48 validUntil = uint48(block.timestamp + 1 days);
-
-        bytes memory badGrantSigner =
-            _legacySessionSignature(operationHash, operationData, validUntil, badKey, sessionKey);
-        bytes memory badSessionSigner =
-            _legacySessionSignature(operationHash, operationData, validUntil, ownerKey, badKey);
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, operationHash, badGrantSigner);
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, operationHash, badSessionSigner);
-    }
-
-    function test_validator_rejectsPermit2SessionFailures() public {
-        bytes memory operationData = _commitOperationData();
-        bytes32 operationHash = keccak256(operationData);
-        uint48 validUntil = uint48(block.timestamp + 1 days);
-
-        bytes memory expiredPermit2 =
-            _permit2SignatureData(
-                operationHash,
-                operationData,
-                validUntil,
-                block.timestamp - 1,
-                ownerKey,
-                sessionKey
-            );
-        bytes memory badGrantSigner =
-            _permit2SignatureData(
-                operationHash,
-                operationData,
-                validUntil,
-                block.timestamp + 2 days,
-                badKey,
-                sessionKey
-            );
-        bytes memory badSessionSigner =
-            _permit2SignatureData(
-                operationHash,
-                operationData,
-                validUntil,
-                block.timestamp + 2 days,
-                ownerKey,
-                badKey
-            );
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.SessionExpired.selector);
-        hca.validate(validator, operationHash, expiredPermit2);
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, operationHash, badGrantSigner);
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, operationHash, badSessionSigner);
-    }
-
-    function test_validator_rejectsWrongOwnerAndExpiredSession() public {
-        bytes memory operationData = _commitOperationData();
-        bytes32 operationHash = keccak256(operationData);
-        bytes memory directSignature =
-            _signatureData(
-                vm.addr(badKey),
-                address(0),
-                0,
-                address(0),
-                _sign(badKey, operationHash),
-                "",
-                operationData
-            );
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, operationHash, directSignature);
-
-        bytes memory expiredSession =
-            _signatureData(
-                owner,
-                sessionSigner,
-                uint48(block.timestamp - 1),
-                resolver,
-                _sign(ownerKey, operationHash),
-                _sign(sessionKey, operationHash),
-                operationData
-            );
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.SessionExpired.selector);
-        hca.validate(validator, operationHash, expiredSession);
-    }
-
     function test_validator_rejectsPolicyViolations() public {
         bytes memory operationData = _registrationOperationData(owner, otherResolver);
-        bytes32 operationHash = keccak256(operationData);
-        bytes memory signature =
-            _signatureData(
-                owner,
-                address(0),
-                0,
-                resolver,
-                _sign(ownerKey, operationHash),
-                "",
-                operationData
-            );
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector);
-        hca.validate(validator, operationHash, signature);
+        _expectValidationRevert(
+            operationData,
+            resolver,
+            OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector
+        );
 
         OwnerBoundRegistrationSessionValidator.Execution[] memory executions =
             new OwnerBoundRegistrationSessionValidator.Execution[](1);
@@ -596,19 +400,11 @@ contract StandaloneSingleOwnerHCATest is Test {
             bytes32("commitment")
         )});
         operationData = _operationData(executions);
-        operationHash = keccak256(operationData);
-        signature = _signatureData(
-            owner,
+        _expectValidationRevert(
+            operationData,
             address(0),
-            0,
-            address(0),
-            _sign(ownerKey, operationHash),
-            "",
-            operationData
+            OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector
         );
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector);
-        hca.validate(validator, operationHash, signature);
     }
 
     function test_validator_rejectsRegistrationPolicyArgumentFailures() public {
@@ -768,21 +564,16 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function test_validator_rejectsInvalidOperationEncoding() public {
-        bytes memory operationData = hex"0200";
-        bytes32 operationHash = keccak256(operationData);
-        bytes memory signature =
-            _signatureData(
-                owner,
-                address(0),
-                0,
-                address(0),
-                _sign(ownerKey, operationHash),
-                "",
-                operationData
-            );
-
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidOperationEncoding.selector);
-        hca.validate(validator, operationHash, signature);
+        _expectValidationRevert(
+            hex"0200",
+            address(0),
+            OwnerBoundRegistrationSessionValidator.InvalidOperationEncoding.selector
+        );
+        _expectValidationRevert(
+            abi.encodePacked(bytes32(uint256(0x0205) << 240), abi.encode(new Execution[](0))),
+            address(0),
+            OwnerBoundRegistrationSessionValidator.InvalidOperationEncoding.selector
+        );
     }
 
     function test_validator_moduleSurface() public view {
@@ -944,7 +735,7 @@ contract StandaloneSingleOwnerHCATest is Test {
 
     function _singleOperationData(address target, uint256 value, bytes memory callData)
         internal
-        pure
+        view
         returns (bytes memory)
     {
         OwnerBoundRegistrationSessionValidator.Execution[] memory executions =
@@ -955,10 +746,11 @@ contract StandaloneSingleOwnerHCATest is Test {
 
     function _operationData(OwnerBoundRegistrationSessionValidator.Execution[] memory executions)
         internal
-        pure
+        view
         returns (bytes memory)
     {
-        return abi.encodePacked(bytes1(uint8(2)), bytes1(uint8(1)), abi.encode(executions));
+        return
+            abi.encodePacked(validator.ERC7579_EMISSARY_EXECUTION_MODE(), abi.encode(executions));
     }
 
     function _expectValidationRevert(
@@ -968,230 +760,46 @@ contract StandaloneSingleOwnerHCATest is Test {
     )
         internal
     {
-        bytes32 operationHash = keccak256(operationData);
         if (selector == OwnerBoundRegistrationSessionValidator.ActionNotAllowed.selector) {
             vm.expectPartialRevert(selector);
         } else {
             vm.expectRevert(selector);
         }
-        hca.validate(
-            validator,
-            operationHash,
-            _directSignature(operationData, allowedResolver, ownerKey)
-        );
+        validatorHarness.checkRegistrationPolicyHarness(owner, allowedResolver, operationData);
     }
 
-    function _directSignature(bytes memory operationData, address allowedResolver, uint256 signerKey)
+    function _verifySession(bytes32 permissionId, uint256 signerKey, bytes memory operationData)
         internal
-        view
-        returns (bytes memory)
+        returns (bytes4)
     {
-        bytes32 operationHash = keccak256(operationData);
+        bytes32 digest = keccak256(operationData);
+        OwnerBoundRegistrationSessionValidator.Operation memory operation =
+            OwnerBoundRegistrationSessionValidator.Operation({data: operationData});
+        vm.prank(intentExecutor);
         return
-            _signatureData(
-                owner,
-                address(0),
-                0,
-                allowedResolver,
-                _sign(signerKey, operationHash),
-                "",
-                operationData
+            validator.verifyExecution(
+                address(hca),
+                digest,
+                _sessionUse(permissionId, signerKey, digest),
+                operation
             );
     }
 
-    function _legacySessionSignature(
-        bytes32 operationHash,
-        bytes memory operationData,
-        uint48 validUntil,
-        uint256 grantSignerKey,
-        uint256 operationSignerKey
-    )
-        internal
-        view
-        returns (bytes memory)
-    {
-        bytes32 grantHash =
-            keccak256(
-                abi.encode(
-                    SESSION_GRANT_TYPEHASH,
-                    block.chainid,
-                    address(hca),
-                    owner,
-                    sessionSigner,
-                    validUntil,
-                    resolver,
-                    uint256(hca.sessionNonce())
-                )
-            );
-
-        return
-            _signatureData(
-                owner,
-                sessionSigner,
-                validUntil,
-                resolver,
-                _sign(grantSignerKey, _toEthSignedMessageHash(grantHash)),
-                _sign(operationSignerKey, operationHash),
-                operationData
-            );
-    }
-
-    function _signatureData(
-        address signer,
-        address session,
-        uint48 validUntil,
-        address allowedResolver,
-        bytes memory ownerSignature,
-        bytes memory sessionSignature,
-        bytes memory operationData
-    )
+    function _sessionUse(bytes32 permissionId, uint256 signerKey, bytes32 digest)
         internal
         pure
         returns (bytes memory)
     {
-        return
-            abi.encode(
-                signer,
-                session,
-                validUntil,
-                allowedResolver,
-                uint256(0),
-                address(0),
-                address(0),
-                uint256(0),
-                uint256(0),
-                ownerSignature,
-                sessionSignature,
-                operationData
-            );
+        return abi.encodePacked(bytes1(0), permissionId, _signRhinestoneMessage(signerKey, digest));
     }
 
-    function _permit2SignatureData(
-        bytes32 operationHash,
-        bytes memory operationData,
-        uint48 validUntil
-    )
+    function _signRhinestoneMessage(uint256 privateKey, bytes32 digest)
         internal
+        pure
         returns (bytes memory)
     {
-        return
-            _permit2SignatureData(
-                operationHash,
-                operationData,
-                validUntil,
-                block.timestamp + 2 days,
-                ownerKey,
-                sessionKey
-            );
-    }
-
-    function _permit2SignatureData(
-        bytes32 operationHash,
-        bytes memory operationData,
-        uint48 validUntil,
-        uint256 expires,
-        uint256 grantSignerKey,
-        uint256 operationSignerKey
-    )
-        internal
-        returns (bytes memory)
-    {
-        Permit2Fields memory permit2 =
-            Permit2Fields({sourceChainId: 10, permit2Contract: makeAddr("permit2"), arbiter: makeAddr(
-                "arbiter"
-            ), nonce: 99, expires: expires});
-        bytes32 permit2Digest =
-            _permit2SessionDigest(address(hca), owner, sessionSigner, validUntil, resolver, permit2);
-
-        OwnerBoundRegistrationSessionValidator.SignatureData memory sigData;
-        sigData.owner = owner;
-        sigData.sessionKey = sessionSigner;
-        sigData.validUntil = validUntil;
-        sigData.resolver = resolver;
-        sigData.permit2SourceChainId = permit2.sourceChainId;
-        sigData.permit2Contract = permit2.permit2Contract;
-        sigData.permit2Arbiter = permit2.arbiter;
-        sigData.permit2Nonce = permit2.nonce;
-        sigData.permit2Expires = permit2.expires;
-        sigData.ownerSignature = _sign(grantSignerKey, permit2Digest);
-        sigData.sessionSignature = _sign(operationSignerKey, operationHash);
-        sigData.operationData = operationData;
-
-        return
-            abi.encode(
-                sigData.owner,
-                sigData.sessionKey,
-                sigData.validUntil,
-                sigData.resolver,
-                sigData.permit2SourceChainId,
-                sigData.permit2Contract,
-                sigData.permit2Arbiter,
-                sigData.permit2Nonce,
-                sigData.permit2Expires,
-                sigData.ownerSignature,
-                sigData.sessionSignature,
-                sigData.operationData
-            );
-    }
-
-    function _permit2SessionDigest(
-        address account,
-        address signer,
-        address session,
-        uint48 validUntil,
-        address allowedResolver,
-        Permit2Fields memory permit2
-    )
-        internal
-        view
-        returns (bytes32)
-    {
-        bytes32 grantHash =
-            keccak256(
-                abi.encode(
-                    PERMIT2_SESSION_GRANT_TYPEHASH,
-                    block.chainid,
-                    account,
-                    signer,
-                    session,
-                    validUntil,
-                    allowedResolver,
-                    uint256(hca.sessionNonce())
-                )
-            );
-        bytes32 mandate =
-            keccak256(
-                abi.encode(
-                    PERMIT2_MANDATE_TYPEHASH,
-                    bytes32(0),
-                    uint128(0),
-                    grantHash,
-                    NO_OPS_HASH,
-                    bytes32(0)
-                )
-            );
-        bytes32 permit2Hash =
-            keccak256(
-                abi.encode(
-                    PERMIT2_JIT_TYPEHASH,
-                    EMPTY_ARRAY_HASH,
-                    permit2.arbiter,
-                    permit2.nonce,
-                    permit2.expires,
-                    mandate
-                )
-            );
-        bytes32 domainSeparator =
-            keccak256(
-                abi.encode(
-                    PERMIT2_DOMAIN_TYPEHASH,
-                    PERMIT2_NAME_HASH,
-                    permit2.sourceChainId,
-                    permit2.permit2Contract
-                )
-            );
-
-        return keccak256(abi.encodePacked(bytes2(0x1901), domainSeparator, permit2Hash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, _toEthSignedMessageHash(digest));
+        return abi.encodePacked(r, s, v + 4);
     }
 
     function _toEthSignedMessageHash(bytes32 digest) internal pure returns (bytes32) {
@@ -1217,7 +825,8 @@ contract OwnerBoundRegistrationSessionValidatorHarness is OwnerBoundRegistration
         address ethRegistrar,
         address verifiableFactory,
         address paymentToken,
-        address secondaryPaymentToken
+        address secondaryPaymentToken,
+        address intentExecutor
     )
         OwnerBoundRegistrationSessionValidator(
             defaultReverseRegistrarHCAAdapter,
@@ -1225,12 +834,24 @@ contract OwnerBoundRegistrationSessionValidatorHarness is OwnerBoundRegistration
             ethRegistrar,
             verifiableFactory,
             paymentToken,
-            secondaryPaymentToken
+            secondaryPaymentToken,
+            intentExecutor
         )
     {}
 
     function callArgsHarness(bytes memory callData) external pure returns (bytes memory) {
         return _callArgs(callData);
+    }
+
+    function checkRegistrationPolicyHarness(
+        address owner,
+        address resolver,
+        bytes calldata operationData
+    )
+        external
+        view
+    {
+        _checkRegistrationPolicy(owner, resolver, operationData);
     }
 }
 
@@ -1290,4 +911,19 @@ interface IERC1155Receiver {
     )
         external
         returns (bytes4);
+}
+
+
+contract WalletPaidTarget {
+    error Failed();
+
+    uint256 public value;
+
+    function setValue(uint256 value_) external {
+        value = value_;
+    }
+
+    function fail() external pure {
+        revert Failed();
+    }
 }

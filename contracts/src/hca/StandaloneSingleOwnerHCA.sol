@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {IModule} from "nexus/interfaces/modules/IModule.sol";
 import {Nexus} from "nexus/Nexus.sol";
+import {Execution} from "nexus/types/DataTypes.sol";
 
 import {ApprovedUpgradeGate} from "../registry/ApprovedUpgradeGate.sol";
 
@@ -40,17 +41,16 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     /// @dev Set once during `initializeAccount`.
     address private _owner;
 
-    /// @notice The session-grant nonce bound into every session-grant digest.
-    /// @dev Packed into the `_owner` slot. Incremented by `revokeSessions` to invalidate all
-    ///      outstanding session grants at once.
+    /// @notice The nonce bound to every enabled fixed session.
+    /// @dev Packed into the `_owner` slot and incremented by `revokeSessions`.
     uint96 private _sessionNonce;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice All outstanding session grants were revoked.
-    /// @param sessionNonce The new session-grant nonce.
+    /// @notice All enabled sessions were revoked.
+    /// @param sessionNonce The new session nonce.
     event SessionsRevoked(uint96 indexed sessionNonce);
 
     ////////////////////////////////////////////////////////////////////////
@@ -149,8 +149,8 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
         revert NoModuleChangeAllowed();
     }
 
-    /// @notice Invalidates every outstanding session grant for this account.
-    /// @dev Increments the nonce bound into session-grant digests. Only callable by the owner
+    /// @notice Invalidates every enabled session for this account.
+    /// @dev Increments the nonce checked by the fixed validator. Only callable by the owner
     ///      directly; account execution paths cannot reach it because self-calls carry the
     ///      account as `msg.sender`.
     function revokeSessions() external {
@@ -169,11 +169,23 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
         return _owner;
     }
 
-    /// @notice Returns the account owner and the current session-grant nonce.
+    /// @notice Returns the account owner and current session nonce.
     /// @return owner_ The account owner.
-    /// @return sessionNonce_ The current session-grant nonce.
+    /// @return sessionNonce_ The current session nonce.
     function ownerAndSessionNonce() external view returns (address owner_, uint96 sessionNonce_) {
         return (_owner, _sessionNonce);
+    }
+
+    /// @notice Executes an atomic batch submitted directly by the account owner.
+    /// @dev The wallet transaction authenticates the owner, so this path does not require an
+    ///      intent signature or the default executor. The session policy does not apply, and
+    ///      each inner call is made by the HCA.
+    /// @param executions The calls to execute in order.
+    function executeByOwner(Execution[] calldata executions) external payable onlyProxy {
+        if (msg.sender != _owner) {
+            revert CallerNotOwner();
+        }
+        _executeBatchNoReturndata(executions);
     }
 
     /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.

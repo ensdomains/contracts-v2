@@ -15,8 +15,10 @@ import {
   keccak256,
   namehash,
   parseAbiParameters,
+  parseSignature,
   stringToBytes,
   stringToHex,
+  toHex,
   type Hex,
   zeroAddress,
   zeroHash,
@@ -36,10 +38,6 @@ import {
   UniversalResolverV2,
   VerifiableFactory,
 } from "../generated/artifacts/index.ts";
-import {
-  PERMIT2_ADDRESS,
-  permit2SessionDigest,
-} from "../test/utils/hcaSessions.ts";
 import { dnsEncodeName } from "../test/utils/utils.ts";
 
 const DEPLOYMENT_NETWORK = process.env.DEPLOYMENT_NETWORK ?? "sepolia";
@@ -49,7 +47,6 @@ const V1_DEPLOYMENT_NETWORK = process.env.V1_DEPLOYMENT_NETWORK ?? "sepolia";
 const RPC_URL = process.env.SEPOLIA_RPC_URL;
 const DEPLOYER_KEY = process.env.DEPLOYER_KEY;
 const HCA_OWNER_KEY = process.env.HCA_OWNER_KEY;
-const HCA_SESSION_KEY = process.env.HCA_SESSION_KEY;
 const HCA_GENERATE_OWNER = process.env.HCA_GENERATE_OWNER === "1";
 const HCA_MINT_PAYMENT_TOKEN = process.env.HCA_MINT_PAYMENT_TOKEN === "1";
 const HCA_EXPECT_DEFAULT_REVERSE_FALLBACK =
@@ -69,7 +66,6 @@ const STATUS_REGISTERED = 2;
 const ROLES_ALL =
   0x1111111111111111111111111111111111111111111111111111111111111111n;
 const ENTRYPOINT_ERC7579_SIGMODE_ERC1271 = `0x0201${"00".repeat(30)}` as Hex;
-const PERMIT2_SOURCE_CHAIN_ID = 8453n;
 
 const intentExecutorAbi = [
   {
@@ -154,7 +150,6 @@ function asPrivateKey(value: string): Hex {
 }
 
 const generatedOwnerKey = HCA_GENERATE_OWNER ? generatePrivateKey() : undefined;
-const generatedSessionKey = HCA_SESSION_KEY ? undefined : generatePrivateKey();
 const relayer = privateKeyToAccount(asPrivateKey(DEPLOYER_KEY));
 const owner = privateKeyToAccount(
   asPrivateKey(HCA_OWNER_KEY ?? generatedOwnerKey ?? DEPLOYER_KEY),
@@ -164,10 +159,6 @@ const ownerKeySource = generatedOwnerKey
   : HCA_OWNER_KEY
     ? "HCA_OWNER_KEY"
     : "DEPLOYER_KEY";
-const sessionKey = privateKeyToAccount(
-  asPrivateKey(HCA_SESSION_KEY ?? generatedSessionKey!),
-);
-const sessionKeySource = HCA_SESSION_KEY ? "HCA_SESSION_KEY" : "generated";
 
 const publicClient = createPublicClient({
   chain: sepolia,
@@ -324,7 +315,7 @@ function buildOperationData(executions: HCAExecution[]): Hex {
     ],
     [executions],
   );
-  return concat(["0x02", "0x01", encodedExecutions]);
+  return concat([ENTRYPOINT_ERC7579_SIGMODE_ERC1271, encodedExecutions]);
 }
 
 function getRhinestoneSingleChainOpsTypedData(
@@ -602,7 +593,7 @@ async function main() {
     hcaImplementation,
     deployments.standaloneHcaImplementation,
   );
-  const [hcaOwner, hcaSessionNonce] = (await publicClient.readContract({
+  const [hcaOwner] = (await publicClient.readContract({
     address: hca,
     abi: StandaloneSingleOwnerHCA.abi,
     functionName: "ownerAndSessionNonce",
@@ -839,49 +830,13 @@ async function main() {
     nonce,
   );
   const intentDigest = hashTypedData(typedData);
-  const latestForSession = await publicClient.getBlock();
-  const validUntil = latestForSession.timestamp + 3600n;
-  const permit2Nonce = BigInt(Date.now()) + 17n;
-  const permit2Expires = latestForSession.timestamp + 3600n;
-  const ownerSignature = await owner.sign({
-    hash: permit2SessionDigest({
-      chainId: BigInt(chainId),
-      hca,
-      owner: owner.address,
-      sessionKey: sessionKey.address,
-      validUntil,
-      resolver,
-      sessionNonce: hcaSessionNonce,
-      permit2: {
-        sourceChainId: PERMIT2_SOURCE_CHAIN_ID,
-        permit2Contract: PERMIT2_ADDRESS,
-        arbiter: hca,
-        nonce: permit2Nonce,
-        expires: permit2Expires,
-      },
-    }),
+  const signedMessage = await owner.signMessage({
+    message: { raw: intentDigest },
   });
-  const sessionSignature = await sessionKey.sign({ hash: intentDigest });
-  const signatureBody = encodeAbiParameters(
-    parseAbiParameters(
-      "address,address,uint48,address,uint256,address,address,uint256,uint256,bytes,bytes,bytes",
-    ),
-    [
-      owner.address,
-      sessionKey.address,
-      Number(validUntil),
-      resolver,
-      PERMIT2_SOURCE_CHAIN_ID,
-      PERMIT2_ADDRESS,
-      hca,
-      permit2Nonce,
-      permit2Expires,
-      ownerSignature,
-      sessionSignature,
-      operationData,
-    ],
-  );
-  const hcaSignature = concat([zeroAddress, signatureBody]);
+  const { r, s, v } = parseSignature(signedMessage);
+  if (v === undefined) throw new Error("owner signature has no recovery id");
+  const ownerSignature = concat([r, s, toHex(v + 4n, { size: 1 })]);
+  const hcaSignature = concat([zeroAddress, ownerSignature]);
   const signedOps = {
     account: hca,
     nonce,
@@ -1060,8 +1015,6 @@ async function main() {
     owner: owner.address,
     ownerKeySource,
     relayer: relayer.address,
-    sessionKey: sessionKey.address,
-    sessionKeySource,
     hca,
     resolver,
     intentExecutor: deployments.intentExecutor,
@@ -1093,7 +1046,6 @@ async function main() {
     },
     verified: {
       hcaOwner,
-      hcaSessionNonce,
       hcaImplementation,
       resolverImplementation,
       registryResolver,

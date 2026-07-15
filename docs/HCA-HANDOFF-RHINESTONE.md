@@ -1,60 +1,24 @@
 # ENS v2 HCA: Rhinestone handoff
 
-This document separates the current integration from the standalone-HCA work requested from Rhinestone.
+## Goal
 
-## Current integration
+Add the standalone account to Rhinestone's existing HCA adapter with the smallest practical SDK change. Changes outside the adapter are guarded standalone-HCA branches.
 
-- Apps use `@rhinestone/sdk` v1.7.0 with `account: { type: "hca" }`.
-- That selector creates the legacy `HCAFactory`/CREATE3 account, not this branch's standalone HCA.
-- The legacy account has no SmartSession, recovery, or extra modules. The wallet signs each intent.
-- The standalone Nexus account, validator, and signature envelope are ENS-owned branch contracts with devnet and runner coverage, but are not wired into the SDK or apps.
-- `StandaloneHCADeployer` derives accounts from user salt, owner, and implementation through the shared `VerifiableFactory`.
-- Local registration uses destination funds and a stronger mock executor. It does not prove production Permit2 or Across execution.
-- Single-chain and Permit2 helpers are exported through internal-looking package subpaths, not a documented, stable, versioned API with test vectors.
-- HCA `getDeployArgs` understands legacy `createAccount(bytes)` only.
+## Current gap
 
-## Proposed flow
+- `@rhinestone/sdk` v1.7.0 derives and deploys the legacy `HCAFactory` account.
+- The standalone HCA uses `StandaloneHCADeployer` and the shared `VerifiableFactory`.
+- The HCA adapter only understands the legacy factory and account.
+- The fixed validator consumes Rhinestone's existing owner signatures and Smart Session `USE` payload.
+- SDK v1.7 defines pure emissary-execution mode but routes execution-checked sessions through hybrid mode.
 
-This target still depends on ENS security fixes and protocol decisions.
+## SDK work
 
-1. The wallet authorizes funding and registration.
-2. The route deploys the HCA if needed, funds it, and submits the commitment.
-3. A relayer submits the registration batch after the registrar delay.
-4. The wallet owns the name and receives resolver `ROLES.ALL`; the HCA keeps wallet-revocable resolver roles.
+Add a standalone version to the HCA adapter. Keep the current `hca` behavior for legacy accounts.
 
-The branch uses one HCA per owner, destination chain, initial implementation, and user salt. The SDK integration is not implemented.
+The standalone variant accepts the owner, supported initial implementation, user salt, and deployed `StandaloneHCADeployer`. Its version configuration supplies the implementation's fixed validator. Reject a validator mismatch.
 
-## Requests
-
-### 1. Stabilize single-chain execution typed data
-
-Document and support a stable, versioned builder for:
-
-- `IntentExecutor` domain and types;
-- destination-operation encoding;
-- the ERC-1271 digest; and
-- expected executor or `sender`.
-
-Provide a test vector. Treat hashing changes as breaking changes.
-
-### 2. Stabilize Permit2/JIT witness typed data
-
-Document and support the Permit2/JIT witness builder with a test vector and the same versioning policy. ENS's current Solidity and test copies are circular evidence.
-
-### 3. Add a versioned standalone-HCA adapter
-
-Keep the current selector on the legacy account:
-
-```ts
-createAccount({
-  account: { type: "hca" },
-  owners: { type: "ens", /* ... */ },
-})
-```
-
-Add a new discriminator or explicit version for the standalone HCA. Both account types must coexist.
-
-The adapter must provide standalone address derivation, deployment data, and the ENS signature envelope. Use:
+It derives and deploys the account using:
 
 ```text
 deploymentSalt = keccak256(abi.encode(userSalt, owner, initialImplementation))
@@ -62,32 +26,36 @@ factory = StandaloneHCADeployer
 factoryData = deploy(owner, initialImplementation, userSalt)
 ```
 
-The proxy address uses `StandaloneHCADeployer` as the caller in the standard `VerifiableFactory` formula. Derive it with the initial implementation. Before reuse, verify existing code, owner, and current implementation under the supported version and provenance policy. Production use still waits on provenance and signed-operation binding fixes.
+The account address is the `VerifiableFactory` proxy address for `StandaloneHCADeployer` and `deploymentSalt`.
 
-### 4. Deploy and commit in one fill
+For an undeployed account, return the deployment call as `setupOps`. For an existing account, omit it after verifying the deployment, owner, and supported implementation.
 
-Deployment data is static and does not include registration data. For an undeployed HCA, put `StandaloneHCADeployer.deploy(...)` in the account `setupOps` and `ETHRegistrar.commit(commitment)` in `destinationExecutions` for the same intent. For an existing verified HCA, omit the setup operation.
+Use the account's fixed validator as the standalone variant's default owner and session validator. Existing owner signatures are unchanged.
 
-If the expected HCA is deployed after planning, the adapter verifies it and omits setup; the ENS planner reprepares the intent. This is a recoverable stale plan, not a reason to combine registration logic with deployment.
+The owner-signed setup and commitment keep the existing ERC-1271 route. That intent may deploy and fund the HCA, enable the fixed session, and commit.
 
-The SDK already separates account setup operations from destination executions. The standalone adapter must supply the deployment operation; the ENS planner supplies the commitment call. Return this fill and the later reveal as two destination transactions.
+For later pre-enabled calls that need no funding claim, reuse the existing `USE` payload and select `SIG_MODE_EMISSARY_EXECUTION` (mode 4). The expected operation word is `0x0204` followed by 30 zero bytes. Emit only the emissary signature.
 
-### 5. Support gasless first-time allowance
+For this variant only, session status and estimation use the fixed validator, and generic Smart Session enablement and typed-data packing are bypassed. Mode 4 still requires production orchestrator and `IntentExecutor` confirmation.
 
-Can the route submit a user-signed token permit before the Permit2 pull when the source token supports permits?
+## Boundary
 
-Target for supported tokens: two signatures and no wallet transaction when the user has stablecoins but no Permit2 allowance or gas token. Other tokens fall back to an onchain approval reported by the route.
+No new signature type, typed data, session payload, policy module, or ENS workflow API is required. Do not change generic Smart Session nonce, enable, policy, or hybrid-mode behavior.
 
-### 6. Support delayed registration execution
+ENS owns the account contracts, fixed permission checks, session parameters, registration calls, commitment-delay state, and result checks. Rhinestone owns its existing routing, funding, signing, sponsorship, and relay behavior.
 
-Provide a route that funds the standalone HCA, submits the commitment, resumes after the registrar delay, and sponsors the authorized reveal batch. The delegated path should not require another wallet prompt.
+Wallet-paid `executeByOwner` bypasses Rhinestone.
 
-## Not requested
+## Acceptance
 
-ENS is not asking Rhinestone to add SmartSession or module installation. ENS owns the account and validator.
+- SDK and contract address derivation match.
+- Legacy HCA behavior is unchanged.
+- Existing owner signatures work without an ENS-specific encoder.
+- Existing session-use signatures work with the fixed validator in mode 4.
+- Session status and gas estimation use that validator address.
+- The first sponsored intent can deploy the HCA and execute supplied calls in one fill.
+- Existing verified HCAs are reused without a deployment operation.
+- Commit and reveal remain separate intents.
+- A production operation confirms the mode-4 word and verifier call.
 
-## Inputs from ENS
-
-ENS must provide the deployer and implementation addresses, user-salt policy, address derivation, ABIs, signature envelope, and parity tests.
-
-For each request, Rhinestone should provide feasibility, an owner, and a target SDK version.
+ENS provides deployed addresses, the user-salt policy, address derivation, ABIs, and parity tests.

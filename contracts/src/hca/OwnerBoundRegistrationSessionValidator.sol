@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
@@ -17,11 +18,10 @@ import {
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
 
 /// @title Owner-Bound Registration Session Validator
-/// @notice Stateless validator for ENS registration and follow-up name management through standalone HCAs.
-/// @dev A valid signature is either a direct owner signature over the executor digest, or an
-///      owner-signed session grant plus a session-key signature over the executor digest. Session
-///      grants are bound to the resolver that may receive registration, resolver-record writes,
-///      and default reverse-name updates for the owner.
+/// @notice Fixed validator for standalone-HCA owner authorization and ENS registration sessions.
+/// @dev Owner signatures use Rhinestone's existing HCA format. Sessions are enabled by an
+///      owner-authorized HCA call and consumed through Rhinestone's existing Smart Session USE
+///      payload. The permission checks remain hardcoded here rather than in dynamic policy modules.
 contract OwnerBoundRegistrationSessionValidator is IValidator {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -34,20 +34,17 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         bytes callData;
     }
 
-    /// @notice Signature envelope consumed after the validator-address ERC-1271 prefix.
-    struct SignatureData {
-        address owner;
+    /// @notice Operation supplied by the IntentExecutor to an emissary verifier.
+    struct Operation {
+        bytes data;
+    }
+
+    /// @notice Compact configuration for one pre-enabled registration session.
+    struct SessionConfig {
         address sessionKey;
         uint48 validUntil;
         address resolver;
-        uint256 permit2SourceChainId;
-        address permit2Contract;
-        address permit2Arbiter;
-        uint256 permit2Nonce;
-        uint256 permit2Expires;
-        bytes ownerSignature;
-        bytes sessionSignature;
-        bytes operationData;
+        uint96 sessionNonce;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -65,6 +62,15 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @notice ERC-4337 validation failure value.
     /// @dev Returned from unsupported ERC-4337 validation.
     uint256 internal constant VALIDATION_FAILED = 1;
+
+    /// @notice Smart Session payload mode for an already-enabled permission.
+    bytes1 internal constant SMART_SESSION_MODE_USE = 0x00;
+
+    /// @notice Existing Smart Session USE payload size for one ECDSA session signer.
+    uint256 internal constant SMART_SESSION_USE_LENGTH = 98;
+
+    /// @notice Rhinestone operation mode for pure emissary ERC-7579 execution.
+    bytes32 public constant ERC7579_EMISSARY_EXECUTION_MODE = bytes32(uint256(0x0204) << 240);
 
     /// @notice Selector for ETHRegistrar.commit(bytes32).
     bytes4 public constant COMMIT_SELECTOR = IETHRegistrar.commit.selector;
@@ -125,52 +131,6 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     bytes4 public constant AUTHORIZE_NAME_ROLES_SELECTOR =
         PermissionedResolver.authorizeNameRoles.selector;
 
-    /// @notice Hash for the owner-signed stateless session grant.
-    /// @dev Type hash for `RegistrationSessionGrant`. The session nonce is read from the
-    ///      calling account, never from the signature envelope.
-    bytes32 internal constant SESSION_GRANT_TYPEHASH =
-        keccak256(
-            "RegistrationSessionGrant(uint256 chainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver,uint256 sessionNonce)"
-        );
-
-    /// @notice Hash for a Permit2-shaped registration session grant.
-    /// @dev This is the validator's session-grant payload carried by the JIT Permit2 witness.
-    ///      The session nonce is read from the calling account, never from the envelope.
-    bytes32 internal constant PERMIT2_SESSION_GRANT_TYPEHASH =
-        keccak256(
-            "RegistrationPermit2SessionGrant(uint256 destinationChainId,address hca,address owner,address sessionKey,uint48 validUntil,address resolver,uint256 sessionNonce)"
-        );
-
-    /// @notice Permit2 EIP-712 domain type hash used by the Rhinestone IntentExecutor.
-    /// @dev Hash of `EIP712Domain(string name,uint256 chainId,address verifyingContract)`.
-    bytes32 internal constant PERMIT2_DOMAIN_TYPEHASH =
-        0x8cad95687ba82c2ce50e74f7b754645e5117c3a5bec8151c0726d5857980a866;
-
-    /// @notice Permit2 EIP-712 domain name hash.
-    /// @dev Hash of `Permit2`.
-    bytes32 internal constant PERMIT2_NAME_HASH =
-        0x9ac997416e8ff9d2ff6bebeb7149f65cdae5e32e2b90440b566bb3044041d36a;
-
-    /// @notice Rhinestone JIT Permit2 intent type hash.
-    /// @dev Hash of the JIT Permit2 intent struct used by the IntentExecutor.
-    bytes32 internal constant PERMIT2_JIT_TYPEHASH =
-        0x1b355fbc76f14a5aefe5c85df793a0f876f90d66f457273501c13ac311b5f3f8;
-
-    /// @notice Rhinestone mandate type hash.
-    /// @dev Hash of the mandate struct embedded in the JIT Permit2 witness.
-    bytes32 internal constant PERMIT2_MANDATE_TYPEHASH =
-        0xc988b4da10503879cf4b893fed09620229f5ade301ef5e4af6124b22823627dc;
-
-    /// @notice Hash for an empty dynamic array.
-    /// @dev Used by the Rhinestone Permit2 witness for empty token inputs.
-    bytes32 internal constant EMPTY_ARRAY_HASH =
-        0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
-
-    /// @notice Hash for no destination operations in Rhinestone mandates.
-    /// @dev Constant used by the IntentExecutor for empty destination operations.
-    bytes32 internal constant NO_OPS_HASH =
-        0x0c7bea50822ae8a3846eccbda4961a80e1e08aa92f2bf046be0011514ad2ddf1;
-
     /// @notice The HCA-aware default reverse registrar adapter permitted for default primary-name setup.
     address public immutable DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER;
 
@@ -189,6 +149,28 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @notice The secondary ERC20 payment token accepted by the registration policy.
     address public immutable SECONDARY_PAYMENT_TOKEN;
 
+    /// @notice The only executor allowed to present session operations for verification.
+    address public immutable INTENT_EXECUTOR;
+
+    ////////////////////////////////////////////////////////////////////////
+    // Storage
+    ////////////////////////////////////////////////////////////////////////
+
+    mapping(address account => mapping(bytes32 permissionId => SessionConfig config)) internal _sessions;
+
+    ////////////////////////////////////////////////////////////////////////
+    // Events
+    ////////////////////////////////////////////////////////////////////////
+
+    event SessionEnabled(
+        address indexed account,
+        bytes32 indexed permissionId,
+        address indexed sessionKey,
+        address resolver,
+        uint48 validUntil,
+        uint96 sessionNonce
+    );
+
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
@@ -205,9 +187,15 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @dev Error selector: `0xbff8a462`
     error OwnerUnavailable();
 
-    /// @notice The owner grant has expired.
+    /// @notice The session has expired.
     /// @dev Error selector: `0x1fd05a4a`
     error SessionExpired();
+
+    /// @notice A session was presented by an address other than the fixed IntentExecutor.
+    error CallerNotIntentExecutor();
+
+    /// @notice A session payload is not the supported Smart Session USE form.
+    error InvalidSessionData();
 
     /// @notice A target/action pair is outside the hardcoded registration policy.
     /// @param target The forbidden execution target.
@@ -229,13 +217,15 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @param verifiableFactory The VerifiableFactory accepted by the registration policy.
     /// @param paymentToken The primary ERC20 payment token accepted by the registration policy.
     /// @param secondaryPaymentToken The secondary ERC20 payment token accepted by the registration policy.
+    /// @param intentExecutor The fixed IntentExecutor that supplies operations to `verifyExecution`.
     constructor(
         address defaultReverseRegistrarHcaAdapter,
         address permittedResolverImpl,
         address ethRegistrar,
         address verifiableFactory,
         address paymentToken,
-        address secondaryPaymentToken
+        address secondaryPaymentToken,
+        address intentExecutor
     )
     {
         DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER = defaultReverseRegistrarHcaAdapter;
@@ -244,87 +234,114 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         VERIFIABLE_FACTORY = verifiableFactory;
         PAYMENT_TOKEN = paymentToken;
         SECONDARY_PAYMENT_TOKEN = secondaryPaymentToken;
+        INTENT_EXECUTOR = intentExecutor;
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Validates a registration intent signature for the calling standalone HCA.
+    /// @notice Validates an existing Rhinestone HCA owner signature.
     /// @param sender The caller forwarded by the account.
     /// @param hash The digest supplied by the intent executor.
-    /// @param data The encoded signature envelope.
+    /// @param data A single 65-byte owner signature.
     /// @return magicValue ERC-1271 success value.
     function isValidSignatureWithSender(address sender, bytes32 hash, bytes calldata data)
         external
         view
         returns (bytes4 magicValue)
     {
-        sender;
-
-        // The envelope is the abi.encoded `SignatureData` tuple; pointing a calldata struct at
-        // `data.offset` reads it in place instead of copying it to memory with abi.decode.
-        SignatureData calldata sigData;
-        assembly ("memory-safe") {
-            sigData := data.offset
+        if (sender != INTENT_EXECUTOR) {
+            revert CallerNotIntentExecutor();
         }
+        (address expectedOwner, ) = _ownerAndSessionNonce(msg.sender);
+        if (_recover(hash, data) != expectedOwner) {
+            revert InvalidSigner();
+        }
+        return ERC1271_MAGICVALUE;
+    }
 
-        address hca = msg.sender;
+    /// @notice Enables one fixed-policy session through an owner-authorized HCA execution.
+    /// @dev `msg.sender` is the HCA, so the enable call can be batched with its first owner-signed
+    ///      intent. `permissionId` is the ID used by Rhinestone's existing session USE payload.
+    function enableSession(
+        bytes32 permissionId,
+        address sessionKey,
+        uint48 validUntil,
+        address resolver
+    )
+        external
+    {
+        if (sessionKey == address(0)) {
+            revert InvalidSigner();
+        }
+        if (validUntil < block.timestamp) {
+            revert SessionExpired();
+        }
+        (, uint96 sessionNonce) = _ownerAndSessionNonce(msg.sender);
+        _sessions[msg.sender][permissionId] = SessionConfig({sessionKey: sessionKey, validUntil: validUntil, resolver: resolver, sessionNonce: sessionNonce});
+        emit SessionEnabled(msg.sender, permissionId, sessionKey, resolver, validUntil, sessionNonce);
+    }
 
-        // Phase 1: the envelope's owner must be the calling HCA's owner. The account also
-        // supplies the authoritative session nonce bound into grant digests.
-        address expectedOwner;
-        uint96 sessionNonce;
-        try IStandaloneHCAOwner(hca).ownerAndSessionNonce() returns (
+    /// @notice Returns whether a fixed-policy session is currently usable.
+    function isPermissionEnabled(address account, bytes32 permissionId)
+        external
+        view
+        returns (bool)
+    {
+        SessionConfig memory config = _sessions[account][permissionId];
+        if (config.sessionKey == address(0) || block.timestamp > config.validUntil) {
+            return false;
+        }
+        try IStandaloneHCAOwner(account).ownerAndSessionNonce() returns (
             address owner_,
-            uint96 sessionNonce_
+            uint96 sessionNonce
         ) {
-            expectedOwner = owner_;
-            sessionNonce = sessionNonce_;
+            return owner_ != address(0) && sessionNonce == config.sessionNonce;
         } catch {
-            revert OwnerUnavailable();
+            return false;
         }
-        if (expectedOwner == address(0)) {
-            revert OwnerUnavailable();
+    }
+
+    /// @notice Verifies an existing Smart Session USE payload against the fixed ENS policy.
+    /// @dev The fixed IntentExecutor supplies the actual operation. Only the compact USE mode is
+    ///      supported; session enablement is an ordinary owner-authorized HCA call.
+    function verifyExecution(
+        address account,
+        bytes32 digest,
+        bytes calldata data,
+        Operation calldata operation
+    )
+        external
+        view
+        returns (bytes4)
+    {
+        if (msg.sender != INTENT_EXECUTOR) {
+            revert CallerNotIntentExecutor();
         }
-        if (sigData.owner != expectedOwner) {
+        if (data.length != SMART_SESSION_USE_LENGTH || data[0] != SMART_SESSION_MODE_USE) {
+            revert InvalidSessionData();
+        }
+
+        bytes32 permissionId = bytes32(data[1:33]);
+        SessionConfig memory config = _sessions[account][permissionId];
+        if (config.sessionKey == address(0)) {
+            revert InvalidSigner();
+        }
+        if (block.timestamp > config.validUntil) {
+            revert SessionExpired();
+        }
+
+        (address owner_, uint96 sessionNonce) = _ownerAndSessionNonce(account);
+        if (sessionNonce != config.sessionNonce) {
+            revert InvalidSigner();
+        }
+        if (_recover(digest, data[33:]) != config.sessionKey) {
             revert InvalidSigner();
         }
 
-        // Phase 2: the owner must have authorized the digest — directly, or through an
-        // owner-signed session grant (EIP-191 legacy or Permit2-shaped) plus a session-key
-        // signature over the digest. Grants signed before a `revokeSessions` nonce bump
-        // rebuild to a different digest and fail signer recovery.
-        if (sigData.sessionKey == address(0)) {
-            if (_recover(hash, sigData.ownerSignature) != sigData.owner) {
-                revert InvalidSigner();
-            }
-        } else {
-            if (block.timestamp > sigData.validUntil) {
-                revert SessionExpired();
-            }
-            bytes32 grantDigest;
-            if (sigData.permit2Contract == address(0)) {
-                grantDigest = MessageHashUtils.toEthSignedMessageHash(
-                    _sessionGrantHash(SESSION_GRANT_TYPEHASH, hca, sigData, sessionNonce)
-                );
-            } else {
-                if (block.timestamp > sigData.permit2Expires) {
-                    revert SessionExpired();
-                }
-                grantDigest = _permit2SessionDigest(hca, sigData, sessionNonce);
-            }
-            if (_recover(grantDigest, sigData.ownerSignature) != sigData.owner) {
-                revert InvalidSigner();
-            }
-            if (_recover(hash, sigData.sessionSignature) != sigData.sessionKey) {
-                revert InvalidSigner();
-            }
-        }
-
-        // Phase 3: every execution in the operation must satisfy the registration policy.
-        _checkRegistrationPolicy(sigData.owner, sigData.resolver, sigData.operationData);
-        return ERC1271_MAGICVALUE;
+        _checkRegistrationPolicy(owner_, config.resolver, operation.data);
+        return this.verifyExecution.selector;
     }
 
     /// @notice Rejects ERC-4337 validation for this validator.
@@ -349,9 +366,9 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         return moduleTypeId == MODULE_TYPE_VALIDATOR;
     }
 
-    /// @notice Returns whether this stateless module is initialized for an account.
+    /// @notice Returns whether this fixed module is available for an account.
     /// @param account Unused account address.
-    /// @return Always true because there is no per-account storage.
+    /// @return Always true because the module is fixed by the HCA implementation.
     function isInitialized(address account) external pure returns (bool) {
         account;
 
@@ -374,84 +391,23 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Computes the owner-signed session grant struct hash for this chain.
-    /// @dev Shared by the legacy grant (signed with the EIP-191 prefix) and the Permit2 witness.
-    ///      Uses the destination chain id so grants cannot be replayed across chains, and the
-    ///      account-supplied session nonce so `revokeSessions` invalidates outstanding grants.
-    /// @param typehash The grant type hash to bind the fields to.
-    /// @param hca The calling standalone HCA.
-    /// @param sigData The decoded signature envelope.
-    /// @param sessionNonce The account's current session-grant nonce.
-    function _sessionGrantHash(
-        bytes32 typehash,
-        address hca,
-        SignatureData calldata sigData,
-        uint96 sessionNonce
-    )
+    function _ownerAndSessionNonce(address account)
         internal
         view
-        returns (bytes32)
+        returns (address owner_, uint96 sessionNonce)
     {
-        return
-            keccak256(
-                abi.encode(
-                    typehash,
-                    block.chainid,
-                    hca,
-                    sigData.owner,
-                    sigData.sessionKey,
-                    sigData.validUntil,
-                    sigData.resolver,
-                    uint256(sessionNonce)
-                )
-            );
-    }
-
-    /// @notice Computes the Permit2-shaped owner authorization digest for a session grant.
-    /// @dev Mirrors the Rhinestone JIT Permit2 hashing shape; nonce consumption happens upstream.
-    /// @param hca The calling standalone HCA.
-    /// @param sigData The decoded signature envelope.
-    /// @param sessionNonce The account's current session-grant nonce.
-    function _permit2SessionDigest(address hca, SignatureData calldata sigData, uint96 sessionNonce)
-        internal
-        view
-        returns (bytes32)
-    {
-        bytes32 grantHash =
-            _sessionGrantHash(PERMIT2_SESSION_GRANT_TYPEHASH, hca, sigData, sessionNonce);
-        bytes32 mandate =
-            keccak256(
-                abi.encode(
-                    PERMIT2_MANDATE_TYPEHASH,
-                    bytes32(0),
-                    uint128(0),
-                    grantHash,
-                    NO_OPS_HASH,
-                    bytes32(0)
-                )
-            );
-        bytes32 permit2Hash =
-            keccak256(
-                abi.encode(
-                    PERMIT2_JIT_TYPEHASH,
-                    EMPTY_ARRAY_HASH,
-                    sigData.permit2Arbiter,
-                    sigData.permit2Nonce,
-                    sigData.permit2Expires,
-                    mandate
-                )
-            );
-        bytes32 domainSeparator =
-            keccak256(
-                abi.encode(
-                    PERMIT2_DOMAIN_TYPEHASH,
-                    PERMIT2_NAME_HASH,
-                    sigData.permit2SourceChainId,
-                    sigData.permit2Contract
-                )
-            );
-
-        return keccak256(abi.encodePacked(bytes2(0x1901), domainSeparator, permit2Hash));
+        try IStandaloneHCAOwner(account).ownerAndSessionNonce() returns (
+            address owner__,
+            uint96 sessionNonce_
+        ) {
+            owner_ = owner__;
+            sessionNonce = sessionNonce_;
+        } catch {
+            revert OwnerUnavailable();
+        }
+        if (owner_ == address(0)) {
+            revert OwnerUnavailable();
+        }
     }
 
     /// @notice Validates every execution against the hardcoded registration and name-management action set.
@@ -460,7 +416,7 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     ///      nonzero resolver and the named account is the HCA owner. When registration shares the
     ///      batch, the default reverse name must match the registered name.
     /// @param owner The owner recorded for the HCA.
-    /// @param allowedResolver The resolver authorized by the owner grant.
+    /// @param allowedResolver The resolver bound to the enabled session.
     /// @param operationData The encoded ERC-7579 operation payload.
     function _checkRegistrationPolicy(
         address owner,
@@ -471,14 +427,13 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         view
     {
         if (
-            operationData.length < 2 ||
-            operationData[0] != bytes1(uint8(2)) ||
-            operationData[1] != bytes1(uint8(1))
+            operationData.length < 32 ||
+            bytes32(operationData[:32]) != ERC7579_EMISSARY_EXECUTION_MODE
         ) {
             revert InvalidOperationEncoding();
         }
 
-        Execution[] memory executions = abi.decode(operationData[2:], (Execution[]));
+        Execution[] memory executions = abi.decode(operationData[32:], (Execution[]));
         bool seenRegister;
         address registeredResolver;
         bytes32 registeredNameHash;
@@ -591,9 +546,8 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
 
     /// @notice Validates resolver record writes on the owner-authorized resolver.
     /// @dev Allows known resolver setters directly or recursively through supported multicalls,
-    ///      plus `authorizeNameRoles` restricted to the owner as grantee (so a registration
-    ///      batch can make the owner co-admin of its resolver; grant and revoke of the owner's
-    ///      own roles are both harmless).
+    ///      plus `authorizeNameRoles` restricted to the owner as grantee. The role bitmap and
+    ///      grant flag are not constrained here.
     /// @param callData ABI-encoded resolver call data.
     /// @param owner The owner recorded for the HCA.
     function _checkResolverCall(bytes memory callData, address owner) internal pure {
@@ -779,8 +733,9 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         }
     }
 
-    /// @notice Recovers the signer of a 65-byte ECDSA signature.
-    /// @dev Accepts signatures with v encoded as 0/1 or 27/28.
+    /// @notice Recovers the signer of an existing Rhinestone 65-byte ECDSA signature.
+    /// @dev Values 31/32 select EIP-191 wrapping, matching Rhinestone's Ownable/ENS format.
+    ///      Values 0/1 and 27/28 recover the supplied digest directly.
     /// @param digest The signed digest.
     /// @param signature The ECDSA signature.
     /// @return signer The recovered signer.
@@ -801,11 +756,18 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
             s := calldataload(add(signature.offset, 0x20))
             v := byte(0, calldataload(add(signature.offset, 0x40)))
         }
-        if (v < 27) {
+        if (v == 31 || v == 32) {
+            digest = MessageHashUtils.toEthSignedMessageHash(digest);
+            v -= 4;
+        } else if (v < 27) {
             v += 27;
         }
-        signer = ecrecover(digest, v, r, s);
-        if (signer == address(0)) {
+        if (v != 27 && v != 28) {
+            revert InvalidSigner();
+        }
+        ECDSA.RecoverError error;
+        (signer, error, ) = ECDSA.tryRecover(digest, v, r, s);
+        if (error != ECDSA.RecoverError.NoError) {
             revert InvalidSigner();
         }
     }

@@ -10,7 +10,6 @@ type LiveRegistrationSummary = {
   name: string;
   owner: string;
   ownerKeySource: string;
-  sessionKeySource: string;
   transactions: {
     deployHca?: string;
     commit: string;
@@ -44,7 +43,6 @@ function liveEnv() {
   env.HCA_MINT_PAYMENT_TOKEN = "1";
   env.HCA_EXPECT_DEFAULT_REVERSE_FALLBACK = "1";
   delete env.HCA_OWNER_KEY;
-  delete env.HCA_SESSION_KEY;
 
   requireEnv(env, "SEPOLIA_RPC_URL");
   requireEnv(env, "DEPLOYER_KEY");
@@ -89,7 +87,6 @@ const summary = parseSummary(stdout);
 
 assert.ok(summary.name.endsWith(".eth"), "registered name must end in .eth");
 assert.equal(summary.ownerKeySource, "generated");
-assert.equal(summary.sessionKeySource, "generated");
 assert.equal(summary.verified.defaultPrimary, summary.name);
 assert.equal(summary.verified.exactV1ReverseResolver, zeroAddress);
 assert.equal(summary.verified.ownerHasResolverRoles, true);

@@ -8,6 +8,10 @@ import {ModeLib} from "nexus/lib/ModeLib.sol";
 import {EncodedModuleTypes} from "nexus/lib/ModuleTypeLib.sol";
 import {Execution} from "nexus/types/DataTypes.sol";
 
+import {
+    OwnerBoundRegistrationSessionValidator
+} from "~src/hca/OwnerBoundRegistrationSessionValidator.sol";
+
 /// @title Mock Registration Intent Executor
 /// @notice Test-only executor that validates the HCA's ERC-1271 signature before executing.
 contract MockRegistrationIntentExecutor is IExecutor {
@@ -23,6 +27,12 @@ contract MockRegistrationIntentExecutor is IExecutor {
     /// @dev Module type ID for executor modules.
     uint256 internal constant MODULE_TYPE_EXECUTOR = 2;
 
+    /// @notice Rhinestone operation mode for ERC-1271 execution.
+    bytes32 internal constant ERC7579_ERC1271_MODE = bytes32(uint256(0x0201) << 240);
+
+    /// @notice Rhinestone operation mode for pure emissary execution.
+    bytes32 internal constant ERC7579_EMISSARY_EXECUTION_MODE = bytes32(uint256(0x0204) << 240);
+
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
@@ -30,10 +40,6 @@ contract MockRegistrationIntentExecutor is IExecutor {
     /// @notice The account did not accept the provided signature.
     /// @dev Error selector: `0x8baa579f`
     error InvalidSignature();
-
-    /// @notice The signature envelope was not encoded for this operation.
-    /// @dev Error selector: `0xa196e928`
-    error OperationDataMismatch();
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
@@ -49,10 +55,33 @@ contract MockRegistrationIntentExecutor is IExecutor {
         returns (bytes[] memory returnData)
     {
         bytes memory operationData = encodeOperation(executions);
-        _checkSignedOperationData(signature, operationData);
-
         bytes32 digest = keccak256(operationData);
         if (account.isValidSignature(digest, signature) != ERC1271_MAGICVALUE) {
+            revert InvalidSignature();
+        }
+
+        return
+            account.executeFromExecutor(ModeLib.encodeSimpleBatch(), ExecLib.encodeBatch(executions));
+    }
+
+    /// @notice Executes a batch after fixed-session verification.
+    function executeWithSession(
+        INexus account,
+        OwnerBoundRegistrationSessionValidator validator,
+        Execution[] calldata executions,
+        bytes calldata signature
+    )
+        external
+        returns (bytes[] memory returnData)
+    {
+        bytes memory operationData = encodeSessionOperation(executions);
+        bytes32 digest = keccak256(operationData);
+        OwnerBoundRegistrationSessionValidator.Operation memory operation =
+            OwnerBoundRegistrationSessionValidator.Operation({data: operationData});
+        if (
+            validator.verifyExecution(address(account), digest, signature, operation) !=
+            validator.verifyExecution.selector
+        ) {
             revert InvalidSignature();
         }
 
@@ -64,7 +93,18 @@ contract MockRegistrationIntentExecutor is IExecutor {
     /// @param executions The executions to encode.
     /// @return The encoded operation payload consumed by the validator.
     function encodeOperation(Execution[] calldata executions) public pure returns (bytes memory) {
-        return abi.encodePacked(bytes1(uint8(2)), bytes1(uint8(1)), abi.encode(executions));
+        return abi.encodePacked(ERC7579_ERC1271_MODE, abi.encode(executions));
+    }
+
+    /// @notice Encodes an ERC-7579 pure-emissary execution operation.
+    /// @param executions The executions to encode.
+    /// @return The encoded operation payload consumed by the validator.
+    function encodeSessionOperation(Execution[] calldata executions)
+        public
+        pure
+        returns (bytes memory)
+    {
+        return abi.encodePacked(ERC7579_EMISSARY_EXECUTION_MODE, abi.encode(executions));
     }
 
     /// @notice No-op install hook for ERC-7579 compatibility.
@@ -96,56 +136,5 @@ contract MockRegistrationIntentExecutor is IExecutor {
         account;
 
         return true;
-    }
-
-    ////////////////////////////////////////////////////////////////////////
-    // Internal Functions
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Ensures the validator's embedded operation data matches the executor operation.
-    function _checkSignedOperationData(bytes calldata signature, bytes memory operationData)
-        internal
-        pure
-    {
-        if (signature.length < 20 + 12 * 32) {
-            revert OperationDataMismatch();
-        }
-
-        uint256 operationDataHead = 20 + 11 * 32;
-        uint256 operationDataOffset;
-        assembly ("memory-safe") {
-            operationDataOffset := calldataload(add(signature.offset, operationDataHead))
-        }
-
-        uint256 lengthOffset = 20 + operationDataOffset;
-        if (signature.length < lengthOffset + 32) {
-            revert OperationDataMismatch();
-        }
-
-        uint256 signedOperationDataLength;
-        assembly ("memory-safe") {
-            signedOperationDataLength := calldataload(add(signature.offset, lengthOffset))
-        }
-
-        uint256 signedOperationDataOffset = lengthOffset + 32;
-        if (signature.length < signedOperationDataOffset + signedOperationDataLength) {
-            revert OperationDataMismatch();
-        }
-
-        bytes32 signedOperationDataHash;
-        assembly ("memory-safe") {
-            let ptr := mload(0x40)
-            calldatacopy(
-                ptr,
-                add(signature.offset, signedOperationDataOffset),
-                signedOperationDataLength
-            )
-            signedOperationDataHash := keccak256(ptr, signedOperationDataLength)
-            mstore(0x40, add(ptr, and(add(signedOperationDataLength, 0x3f), not(0x1f))))
-        }
-
-        if (signedOperationDataHash != keccak256(operationData)) {
-            revert OperationDataMismatch();
-        }
     }
 }

@@ -1,5 +1,5 @@
 import { artifacts, execute } from "@rocketh";
-import type { Address } from "viem";
+import type { Abi, Address } from "viem";
 
 import {
   MAINNET_DAI,
@@ -63,6 +63,19 @@ export default execute(
       get<(typeof artifacts.ETHRegistrar)["abi"]>("ETHRegistrar");
     const verifiableFactory =
       get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
+    const localExecutor = getOrNull<
+      (typeof artifacts.MockRegistrationIntentExecutor)["abi"]
+    >("HCARegistrationIntentExecutor");
+    const existingExecutor = getOrNull<Abi>("IntentExecutor");
+    const intentExecutor =
+      optionalEnvAddress("HCA_INTENT_EXECUTOR") ??
+      existingExecutor?.address ??
+      localExecutor?.address;
+    if (!intentExecutor) {
+      throw new Error(
+        "HCA_INTENT_EXECUTOR must be set when no IntentExecutor deployment is available",
+      );
+    }
     const paymentToken = resolvePaymentToken({ getOrNull, tags });
     if (!paymentToken) {
       throw new Error(
@@ -85,6 +98,7 @@ export default execute(
         verifiableFactory.address,
         paymentToken,
         secondaryPaymentToken,
+        intentExecutor,
       ],
     });
   },
@@ -100,6 +114,7 @@ export default execute(
       "PermissionedResolverImpl",
       "ETHRegistrar",
       "VerifiableFactory",
+      "HCARegistrationIntentExecutor",
     ],
   },
 );

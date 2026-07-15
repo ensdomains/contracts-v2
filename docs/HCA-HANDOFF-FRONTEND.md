@@ -2,86 +2,102 @@
 
 ## Goal
 
-Let a user register with stablecoins without registration-chain gas. The wallet owns the name and receives `ROLES.ALL` on its resolver. The HCA executes the flow and keeps resolver roles for later sponsored actions.
+Let a user register with stablecoins without registration-chain gas. The wallet owns the name and receives `ROLES.ALL` on its resolver. The HCA executes the flow and keeps resolver roles for later actions.
 
-## Frontend boundary
+## Current frontend
 
-Frontend:
+Manager currently uses `@ens-apps/transaction-manager` and its `registrationMachine`. It does not yet support standalone-HCA routes, local deployments, or reload recovery. Manager's Rhinestone signer uses the legacy HCA.
 
-- collects the name, duration, records, primary-name choice, and payment;
-- requests a prepared plan from the shared transaction layer;
-- shows every signature, transaction, network switch, wait, and recovery step;
-- persists the execution across the commitment delay; and
-- verifies ownership, resolver, records, primary name, wallet authority, and retained HCA roles.
+## Responsibility boundaries
 
-Frontend does not derive HCAs, inspect allowances, build routes, encode calls, define permissions, or call mockestrator.
+| Area | Responsibility |
+|---|---|
+| Manager feature and UI | Inputs, route display, wallet prompts, progress, recovery, and result checks |
+| Shared app integration | Supported routes, ENS calls, interaction counts, execution, and resume data |
+| Rhinestone SDK and orchestrator | Standalone adapter, signing, sponsored routing, funding, and relay |
 
-## Route policy
+Feature UI consumes the shared app integration rather than building HCA calls or calling mockestrator.
+
+## Routes
+
+### Wallet-paid HCA
+
+Wallet-paid HCA routes through the user's wallet instead of Rhinestone. The wallet pays gas and sends `HCA.executeByOwner(calls)`. There is no separate HCA signature.
+
+Manager considers it after sponsored routes and chooses the lower-interaction wallet route. On a tie, use it only when the HCA must be the caller. Explorer shows every supported route and its interaction count.
+
+The wallet needs native gas. The HCA needs any payment tokens used by the batch. Count deployment and funding separately unless the wallet or funding route combines them.
+
+### Defaults
 
 | Flow | Manager | Explorer |
 |---|---|---|
-| Registration | Delegated HCA, then direct-owner HCA, then wallet | Delegated HCA, direct-owner HCA, or wallet |
-| Stablecoin renewal | Sponsored HCA, else wallet | Sponsored HCA or wallet |
-| Resolver records | Existing sponsored session, else wallet | Sponsored session or wallet |
+| Registration | Delegated HCA, sponsored owner-signed HCA, then the lower-interaction of wallet-paid HCA or direct wallet | Offer supported routes with counts |
+| Stablecoin renewal | Sponsored HCA, then the lower-interaction of wallet-paid HCA or direct wallet | Offer supported routes with counts |
+| Resolver records | Existing sponsored session, else direct wallet | Sponsored session, wallet-paid HCA, or direct wallet |
 | Primary name during registration | Registration batch | Registration batch |
-| Primary name later | Sponsored session, then sponsored direct-owner HCA, then wallet | Sponsored session, direct-owner HCA, or wallet |
-| Registry operator approval | Do not request at launch | Offer `setApprovalForAll(HCA, true/false)` |
-| Resolver or registry-role changes | Wallet | Wallet or approved HCA |
-| Subnames | Not supported at launch | Wallet or approved HCA |
-| Transfer | Wallet | Wallet; approved HCA only by explicit choice |
-
-An approved HCA still needs action-specific authorization and sponsorship.
+| Primary name later | Sponsored session, sponsored owner-signed HCA, then direct wallet | Sponsored session, sponsored owner-signed HCA, or direct wallet |
+| Registry operator approval | Do not request at launch | Direct wallet: `setApprovalForAll(HCA, true/false)` |
+| Resolver or registry-role changes | Direct wallet | Direct wallet or wallet-paid HCA with the required authority |
+| Subnames | Not supported at launch | Direct wallet or wallet-paid approved HCA |
+| Transfer | Direct wallet | Direct wallet; wallet-paid approved HCA only by explicit choice |
 
 ### Registry approval
 
 - `setApprovalForAll(HCA, true)` is persistent and registry-wide. It gives the HCA inherited non-root roles and registry-token operator authority.
 - Manager should use it only for expected repeated registry actions, not one-off changes.
 - Explorer should expose enable and revoke actions, explain the scope, and leave the choice to the user.
-- The current registration validator does not authorize registry calls.
+- No sponsored registry route is currently available. Wallet-paid HCA can use an existing approval.
 
 ### Later primary-name changes
 
-The validator allows standalone `setNameWithHCA` when the policy has a resolver and the named account is the HCA owner.
+1. If an unexpired session and a sponsor are available, sponsor `DefaultReverseRegistrarAdapter.setNameWithHCA(owner, name)` with no new wallet prompt.
+2. Otherwise, if a sponsoring relayer is available, request one owner signature and submit the same HCA call.
+3. Otherwise use one direct-wallet transaction to `DefaultReverseRegistrarAdapter.setName(owner, name)`.
 
-1. Reuse an unexpired session and sponsor with no new wallet prompt.
-2. Otherwise use a sponsored direct-owner HCA action with one wallet signature.
-3. Otherwise use one wallet transaction.
+## Registration
 
-`DefaultReverseRegistrarAdapter` has no generic signature-relay method. Every HCA route still needs a sponsor.
+### Flow
 
-## Registration map
+Diagram counts start after wallet connection and omit a conditional network switch.
 
-Counts start after wallet connection and exclude a conditional network switch.
+The map shows Manager's default order. Explorer may start from any route it displays.
 
 ```mermaid
 flowchart TD
-    input["Frontend collects name, records, primary-name choice, and payment"] --> plan["Planner returns route, wallet steps, calls, counts, and resumable ID"]
-    plan --> supported{"Sponsored HCA route supported?"}
+    input["Frontend collects name, records, primary-name choice, and payment"] --> route["Resolve supported routes, wallet steps, calls, and counts"]
+    route --> sponsored{"Sponsored HCA route supported?"}
 
-    supported -- No --> eoa["Direct EOA fallback: 3-5 wallet confirmations"]
+    sponsored -- No --> paid{"Wallet-paid HCA selected?"}
+    paid -- No --> eoa["Direct-wallet fallback: 3-5 wallet confirmations"]
     eoa --> eoaCommit["Wallet: deploy resolver -> commit"]
     eoaCommit --> eoaWait["Commitment delay; persist execution"]
     eoaWait --> eoaReveal["Wallet: optional token approval -> register -> optional primary name"]
 
-    supported -- Yes --> mode{"Use a scoped reveal session?"}
-    mode -- Yes --> delegated["Delegated HCA: 1-2 prompts, 0-1 wallet transactions, background reveal"]
-    mode -- No --> direct["Direct-owner HCA: 2-3 prompts, 0-1 wallet transactions, owner-signed batch"]
+    sponsored -- Yes --> mode{"Use a scoped reveal session?"}
+    mode -- Yes --> delegated["Delegated HCA: authorize session with commit; background reveal"]
+    mode -- No --> direct["Sponsored owner-signed HCA: authorize commit; return for reveal"]
 
-    delegated --> commit["Sponsored destination transaction: deploy if needed, fund, commit"]
-    direct --> commit
-    commit --> wait["Commitment delay; persist execution"]
-    wait --> ready{"Reveal authorization available?"}
-    ready -- "Session or pre-signed batch" --> reveal["Sponsor: execute HCA reveal batch"]
-    ready -- No --> return["Wallet returns and signs the exact batch"]
+    delegated --> sessionCommit["Sponsored: deploy if needed -> enable fixed session -> fund -> commit"]
+    direct --> commit["Sponsored: deploy if needed -> fund -> commit"]
+    sessionCommit --> delegatedWait["Commitment delay; persist session"]
+    delegatedWait --> reveal["Sponsor: execute HCA reveal batch"]
+    commit --> ownerWait["Commitment delay; persist execution"]
+    ownerWait --> return["Wallet returns and signs the exact batch"]
     return --> reveal
     reveal --> batch["Deploy resolver if needed (HCA ROLES.ALL) -> approve -> register wallet as owner -> write records and primary -> grant wallet ROLES.ALL; keep HCA roles"]
+
+    paid -- Yes --> paidSetup["Wallet: deploy HCA if needed"]
+    paidSetup --> paidFund["Wallet: fund HCA if needed"]
+    paidFund --> paidCommit["Wallet: HCA.executeByOwner(commit)"]
+    paidCommit --> paidWait["Commitment delay; persist execution"]
+    paidWait --> paidReveal["Wallet: HCA.executeByOwner(reveal batch)"]
+    paidReveal --> batch
 
     eoaReveal --> verify["Verify ownership, resolver, records, and authority"]
     batch --> verify
     verify --> done["Complete"]
 ```
-
-## Exact registration calls
 
 ### HCA deployment and commitment
 
@@ -92,7 +108,7 @@ deploymentSalt = keccak256(abi.encode(userSalt, owner, initialImplementation))
 HCA = VerifiableFactory proxy address for (StandaloneHCADeployer, deploymentSalt)
 ```
 
-If the HCA has no code, the prepared intent includes this account setup operation:
+If the HCA has no code, the sponsored route includes this setup operation:
 
 ```text
 StandaloneHCADeployer.deploy(
@@ -102,15 +118,32 @@ StandaloneHCADeployer.deploy(
 )
 ```
 
-The same intent includes `ETHRegistrar.commit(commitment)` as its destination call. Account setup and commitment execute in one sponsored destination transaction. Existing HCAs omit setup.
+The same sponsored transaction calls `ETHRegistrar.commit(commitment)`. Existing HCAs omit setup.
 
-Plans are state snapshots. If the first sponsored submission fails, request a fresh plan. When the expected HCA now exists, the planner verifies its factory deployment, owner, and current implementation under the supported account-version policy, then returns a retry without setup.
+For delegated registration, that transaction also has the HCA call:
 
-The current repo E2E bypasses the Rhinestone adapter, so it calls deployment and commitment separately and mints test tokens to the HCA. Frontend uses the plan's targets and calldata and does not encode deployment itself.
+```text
+OwnerBoundRegistrationSessionValidator.enableSession(
+  permissionId,
+  sessionKey,
+  validUntil,
+  resolver
+)
+```
 
-### HCA registration batch
+The shared integration creates or loads the session key, derives `permissionId` with Rhinestone's existing session format, and keeps the session available across the commitment delay. The later reveal uses it without another wallet prompt.
 
-After the delay, the sponsor submits one HCA batch:
+Before submission and on retry, refresh the HCA state. If it now exists, verify its deployment, owner, and supported implementation, then omit setup.
+
+For wallet-paid execution, the wallet calls `StandaloneHCADeployer.deploy(...)` if needed, then sends one transaction to:
+
+```text
+HCA.executeByOwner([{ target: ETHRegistrar, value: 0, callData: commit(commitment) }])
+```
+
+### Registration batch
+
+After the delay, Rhinestone submits the sponsored batch, or the wallet passes the same calls to `HCA.executeByOwner(...)`:
 
 1. If the HCA's resolver does not exist, `VerifiableFactory.deployProxy(...)` with `PermissionedResolver.initialize(HCA, ROLES.ALL, [])`.
 2. `paymentToken.approve(ETHRegistrar, registrationPrice)`.
@@ -121,24 +154,36 @@ After the delay, the sponsor submits one HCA batch:
 
 `owner` is the wallet. The wallet becomes resolver co-admin; the HCA keeps its resolver roles. Later registrations through the same HCA reuse its verified resolver and omit step 1. All included calls share one registration-chain transaction.
 
-## Wallet interactions
+The batch is atomic. Frontend must show every inner call before requesting the transaction.
 
-A wallet interaction is a connection, network switch, signature, or transaction confirmation. The tables exclude connection and a conditional network switch.
+### Expected wallet interactions
 
-| Funding state | Delegated HCA prompts | Direct-owner HCA prompts | Wallet transactions | Destination transactions |
+A wallet interaction is a connection, network switch, signature, or transaction confirmation. These are target shapes, not current integration evidence. The tables exclude wallet connection and a conditional switch; resolved route totals include a switch when required.
+
+#### Sponsored HCA
+
+| Funding state | Delegated HCA prompts | Sponsored owner prompts | Wallet transactions | Destination transactions |
 |---|---:|---:|---:|---:|
-| Allowance ready | 1: funding/session signature | 2: funding and reveal signatures | 0 | 2 target |
-| Supported gasless permit needed | 2: permit and funding/session signatures | 3: permit, funding, and reveal signatures | 0 | 2 target |
-| Onchain approval on source chain | 2: approval transaction and funding/session signature | 3: approval transaction, funding signature, reveal signature | 1 source | 2 target |
-| Onchain approval on registration chain | 2: approval transaction and funding/session signature | 3: approval transaction, funding signature, reveal signature | 1 destination | 3 target |
+| Allowance ready | 1: commit/session authorization | 2: commit and reveal authorizations | 0 | 2 target |
+| Supported gasless permit needed | 2: permit and commit/session authorization | 3: permit, commit, and reveal authorizations | 0 | 2 target |
+| Onchain approval on source chain | 2: approval transaction and commit/session authorization | 3: approval transaction, commit authorization, reveal authorization | 1 source | 2 target |
+| Onchain approval on registration chain | 2: approval transaction and commit/session authorization | 3: approval transaction, commit authorization, reveal authorization | 1 destination | 3 target |
 
-Direct-owner authorization adds one signature, not an HCA transaction. Source and settlement counts come from the plan. Do not offer an HCA route unless funding and sponsored submission are available.
+Show the counts returned by Rhinestone. Do not offer a sponsored route unless funding and sponsored submission are available.
 
-Account deployment does not add a destination transaction when Rhinestone includes it as the first intent's setup operation.
+Account deployment does not add a destination transaction when Rhinestone includes it in the first sponsored transaction.
 
-The contracts cover direct-owner authorization. Manager's shared packages do not yet expose the standalone-HCA path.
+#### Wallet-paid HCA
 
-### Direct-wallet fallback
+| State | Extra HCA prompts | Wallet transactions | Wallet interactions |
+|---|---:|---:|---:|
+| HCA deployed and funded | 0 | 2: commit and reveal | 2 |
+| HCA deployment needed | 0 | +1 | +1 |
+| Wallet token transfer needed | 0 | +1 | +1 |
+
+Cross-chain or Permit2 funding may add signatures. A batch-capable wallet or funding route may combine extra steps. Compare the complete interaction totals, not a fixed route preference.
+
+#### Direct wallet
 
 | Setup | Prompts | Wallet transactions |
 |---|---:|---:|
@@ -155,22 +200,22 @@ Wallet calls:
 4. `ETHRegistrar.register(label, owner, secret, subregistry, resolver, duration, paymentToken, referrer)`.
 5. Optional `DefaultReverseRegistrarAdapter.setName(owner, name)`.
 
-A smart-wallet batch or reused resolver may reduce the count. Use the plan's count.
+A smart-wallet batch or reused resolver may reduce the count. Calculate it from current state before the first prompt.
 
-## Frontend implementation
+## Frontend requirements
 
-Use one plan-driven state machine.
+1. Accept owner, name, duration, records, primary-name choice, source chain, and payment token.
+2. Load local deployments from configuration.
+3. Resolve supported routes from current allowance, HCA, resolver, gas, funding, and wallet capabilities.
+4. Before the first prompt, show payment, wallet actions, submitters, important inner calls, interaction counts, gas requirements, and whether the user must return.
+5. Resume after the commitment delay or reload using the current wallet connection.
+6. Refresh mutable state before submission and recover when the expected HCA already exists.
+7. Show: authorizing, funding, committed, revealing, verifying, complete, action required, or failed.
+8. Verify name ownership, resolver, records, primary name, wallet `ROLES.ALL`, and retained HCA roles.
 
-1. Send owner, name, duration, records, primary-name choice, source chain, and payment token.
-2. Require ordered wallet steps, chain and submitter per transaction, target and important inner calls, total interactions, per-chain counts, background-reveal support, and a resumable execution ID.
-3. Before the first prompt, show payment, source chain and token, signatures, wallet transactions, gas requirements, and whether the user must return.
-4. Persist the execution ID, execute only returned steps, and resume after reload.
-5. Show: authorizing, funding, committed, revealing, verifying, complete, action required, or failed.
-6. Verify the wallet owns the name, the registry points to the planned resolver, records and optional primary name are correct, the wallet has `ROLES.ALL`, and the HCA retains its intended roles.
+If route preparation fails, show a supported wallet fallback or a specific blocker. Never silently change route, payment, prompt count, or background behavior.
 
-If planning fails, show a supported wallet fallback or a specific blocker. Never silently change route, payment, prompt count, or background behavior.
-
-## Mockestrator devnet
+## Devnet
 
 ```sh
 docker compose --profile default up -d --build mockestrator
@@ -184,11 +229,9 @@ This starts `devnet` and `mockestrator`.
 | `http://127.0.0.1:8000/deployments` | Local addresses |
 | `http://127.0.0.1:3007` | Mock route and fill service |
 
-Mockestrator tests transport only. It does not prepare, authorize, or secure the standalone HCA.
+Mockestrator only mocks Rhinestone route and fill responses. Wallet-paid HCA uses the devnet RPC and ENS deployments directly. Feature code must not call port 3007.
 
-Manager still needs a standalone-HCA adapter, the plan/execution path above, and injectable chain and ENS addresses. Feature code must not call port 3007.
-
-When those interfaces exist:
+For sponsored devnet testing:
 
 1. Start the stack.
 2. Configure:
@@ -198,7 +241,8 @@ When those interfaces exist:
    VITE_RHINESTONE_CUSTOM_RPC_URLS={"31337":"http://127.0.0.1:8545"}
    ```
 
-3. Select chain 31337 and pass `GET http://127.0.0.1:8000/deployments` to the shared packages.
-4. Run the normal frontend state machine.
+3. Configure chain 31337 with addresses from `GET http://127.0.0.1:8000/deployments`. Local address configuration and the standalone Rhinestone adapter are not implemented yet.
 
-Frontend sign-off requires E2E coverage of each wallet-step shape, reload during the delay, the planned resolver, requested records and primary name, wallet ownership, wallet `ROLES.ALL`, and retained HCA roles.
+## Acceptance
+
+Frontend sign-off requires E2E coverage of each wallet-step shape, reload during the delay, the selected resolver, requested records and primary name, wallet ownership, wallet `ROLES.ALL`, and retained HCA roles.
