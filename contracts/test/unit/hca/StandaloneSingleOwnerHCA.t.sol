@@ -4,7 +4,6 @@ pragma solidity ^0.8.27;
 // solhint-disable private-vars-leading-underscore, func-name-mixedcase, gas-custom-errors
 
 import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
-import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 
@@ -12,14 +11,10 @@ import {Test} from "forge-std/Test.sol";
 
 import {
     MockExecutorModule,
-    MockRegistrationCommitter,
     MockStandaloneHCA,
-    MockValidatorModule,
-    MockVerifiableFactory
+    MockValidatorModule
 } from "../../mocks/MockStandaloneHCAStack.sol";
 
-import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
-import {RegistrationBootstrapper} from "~src/hca/RegistrationBootstrapper.sol";
 import {
     OwnerBoundRegistrationSessionValidator
 } from "~src/hca/OwnerBoundRegistrationSessionValidator.sol";
@@ -114,30 +109,6 @@ contract StandaloneSingleOwnerHCATest is Test {
             dai
         );
         hca = new MockStandaloneHCA(owner);
-    }
-
-    function test_registrationBootstrapper_deploysAndCommits() public {
-        RegistrationBootstrapper bootstrapper = new RegistrationBootstrapper();
-        MockVerifiableFactory factory = new MockVerifiableFactory();
-        MockRegistrationCommitter registrar = new MockRegistrationCommitter();
-        bytes memory initData = abi.encode(owner);
-        bytes32 commitment = keccak256("commitment");
-
-        address deployed =
-            bootstrapper.deployAndCommit(
-                IVerifiableFactory(address(factory)),
-                address(0x1234),
-                123,
-                initData,
-                IETHRegistrar(address(registrar)),
-                commitment
-            );
-
-        assertEq(deployed, factory.proxy());
-        assertEq(factory.implementation(), address(0x1234));
-        assertEq(factory.salt(), 123);
-        assertEq(keccak256(factory.initData()), keccak256(initData));
-        assertEq(registrar.commitment(), commitment);
     }
 
     function test_standaloneSingleOwnerHCA_initializesOwner() public {

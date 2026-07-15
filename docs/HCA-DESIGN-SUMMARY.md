@@ -2,7 +2,7 @@
 
 The HCA executes registration and remains a resolver delegate. The wallet owns the name, receives resolver `ROLES.ALL`, and can revoke the HCA's resolver roles.
 
-This branch has a standalone HCA and local tests. Manager still uses the legacy HCA. Production security, funding, routing, and app integration remain incomplete.
+This branch has a standalone HCA, an owner-bound deployer, and local tests. Manager still uses the legacy HCA. Production security, funding, routing, and app integration remain incomplete.
 
 | Need | Document |
 |---|---|

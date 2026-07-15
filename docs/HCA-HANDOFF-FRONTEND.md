@@ -67,14 +67,14 @@ flowchart TD
     mode -- Yes --> delegated["Delegated HCA: 1-2 prompts, 0-1 wallet transactions, background reveal"]
     mode -- No --> direct["Direct-owner HCA: 2-3 prompts, 0-1 wallet transactions, owner-signed batch"]
 
-    delegated --> commit["Sponsored transaction 1 target: fund HCA, deploy if needed, commit"]
+    delegated --> commit["Sponsored destination transaction: deploy if needed, fund, commit"]
     direct --> commit
     commit --> wait["Commitment delay; persist execution"]
     wait --> ready{"Reveal authorization available?"}
-    ready -- "Session or pre-signed batch" --> reveal["Sponsored transaction 2: execute HCA reveal batch"]
+    ready -- "Session or pre-signed batch" --> reveal["Sponsor: execute HCA reveal batch"]
     ready -- No --> return["Wallet returns and signs the exact batch"]
     return --> reveal
-    reveal --> batch["Deploy resolver (HCA ROLES.ALL) -> approve -> register wallet as owner -> write records and primary -> grant wallet ROLES.ALL; keep HCA roles"]
+    reveal --> batch["Deploy resolver if needed (HCA ROLES.ALL) -> approve -> register wallet as owner -> write records and primary -> grant wallet ROLES.ALL; keep HCA roles"]
 
     eoaReveal --> verify["Verify ownership, resolver, records, and authority"]
     batch --> verify
@@ -83,39 +83,43 @@ flowchart TD
 
 ## Exact registration calls
 
-### HCA transaction 1
+### HCA deployment and commitment
 
-Production target: fund the HCA, deploy it if needed, and commit.
-
-Current prototype:
+On a given chain, the HCA address is fixed by the factory, deployer, owner, initial implementation, and user salt:
 
 ```text
-RegistrationBootstrapper.deployAndCommit(
-  VerifiableFactory,
-  StandaloneSingleOwnerHCA implementation,
-  HCA salt,
-  StandaloneSingleOwnerHCA.initializeAccount(abi.encode(owner)),
-  ETHRegistrar,
-  commitment
+deploymentSalt = keccak256(abi.encode(userSalt, owner, initialImplementation))
+HCA = VerifiableFactory proxy address for (StandaloneHCADeployer, deploymentSalt)
+```
+
+If the HCA has no code, the prepared intent includes this account setup operation:
+
+```text
+StandaloneHCADeployer.deploy(
+  owner,
+  initialImplementation,
+  userSalt
 )
 ```
 
-This prototype always calls `VerifiableFactory.deployProxy(...)` and `ETHRegistrar.commit(commitment)`. A production planner may use direct `ETHRegistrar.commit(commitment)` for an existing verified canonical HCA; canonical reuse is not implemented here. The prototype does not fund the HCA, so the current E2E uses a separate test-token funding transaction.
+The same intent includes `ETHRegistrar.commit(commitment)` as its destination call. Account setup and commitment execute in one sponsored destination transaction. Existing HCAs omit setup.
 
-Frontend uses the plan's target and calldata. It does not hard-code `RegistrationBootstrapper`.
+Plans are state snapshots. If the first sponsored submission fails, request a fresh plan. When the expected HCA now exists, the planner verifies its factory deployment, owner, and current implementation under the supported account-version policy, then returns a retry without setup.
 
-### HCA transaction 2
+The current repo E2E bypasses the Rhinestone adapter, so it calls deployment and commitment separately and mints test tokens to the HCA. Frontend uses the plan's targets and calldata and does not encode deployment itself.
+
+### HCA registration batch
 
 After the delay, the sponsor submits one HCA batch:
 
-1. `VerifiableFactory.deployProxy(...)` with `PermissionedResolver.initialize(HCA, ROLES.ALL, [])`.
+1. If the HCA's resolver does not exist, `VerifiableFactory.deployProxy(...)` with `PermissionedResolver.initialize(HCA, ROLES.ALL, [])`.
 2. `paymentToken.approve(ETHRegistrar, registrationPrice)`.
 3. `ETHRegistrar.register(label, owner, secret, subregistry, resolver, duration, paymentToken, referrer)`.
 4. Requested resolver writes: `setAddr(...)`, `setText(...)`, or `multicall(...)`.
 5. Optional primary setup: `PermissionedResolver.setName(...)` and `DefaultReverseRegistrarAdapter.setNameWithHCA(owner, name)`.
 6. `PermissionedResolver.authorizeNameRoles(0x00, ROLES.ALL, owner, true)`.
 
-`owner` is the wallet. The wallet becomes resolver co-admin; the HCA keeps its resolver roles. All calls above share one registration-chain transaction.
+`owner` is the wallet. The wallet becomes resolver co-admin; the HCA keeps its resolver roles. Later registrations through the same HCA reuse its verified resolver and omit step 1. All included calls share one registration-chain transaction.
 
 ## Wallet interactions
 
@@ -129,6 +133,8 @@ A wallet interaction is a connection, network switch, signature, or transaction 
 | Onchain approval on registration chain | 2: approval transaction and funding/session signature | 3: approval transaction, funding signature, reveal signature | 1 destination | 3 target |
 
 Direct-owner authorization adds one signature, not an HCA transaction. Source and settlement counts come from the plan. Do not offer an HCA route unless funding and sponsored submission are available.
+
+Account deployment does not add a destination transaction when Rhinestone includes it as the first intent's setup operation.
 
 The contracts cover direct-owner authorization. Manager's shared packages do not yet expose the standalone-HCA path.
 

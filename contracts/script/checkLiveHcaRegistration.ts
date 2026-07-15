@@ -12,12 +12,14 @@ type LiveRegistrationSummary = {
   ownerKeySource: string;
   sessionKeySource: string;
   transactions: {
-    deployAndCommit: string;
+    deployHca?: string;
+    commit: string;
     executeSinglechainOps: string;
   };
   verified: {
     defaultPrimary: string;
     exactV1ReverseResolver: string;
+    ownerHasResolverRoles: boolean;
     urForward: {
       address: string;
     };
@@ -90,12 +92,14 @@ assert.equal(summary.ownerKeySource, "generated");
 assert.equal(summary.sessionKeySource, "generated");
 assert.equal(summary.verified.defaultPrimary, summary.name);
 assert.equal(summary.verified.exactV1ReverseResolver, zeroAddress);
+assert.equal(summary.verified.ownerHasResolverRoles, true);
 assert.equal(summary.verified.urReverse.primary, summary.name);
 assert.equal(
   summary.verified.urForward.address.toLowerCase(),
   summary.owner.toLowerCase(),
 );
-assert.match(summary.transactions.deployAndCommit, /^0x[0-9a-fA-F]{64}$/);
+assert.match(summary.transactions.deployHca ?? "", /^0x[0-9a-fA-F]{64}$/);
+assert.match(summary.transactions.commit, /^0x[0-9a-fA-F]{64}$/);
 assert.match(summary.transactions.executeSinglechainOps, /^0x[0-9a-fA-F]{64}$/);
 
 console.log(`live HCA check passed for ${summary.name}`);

@@ -8,7 +8,6 @@ import {
   keccak256,
   namehash,
   parseAbiParameters,
-  stringToHex,
   type Hex,
   zeroAddress,
   zeroHash,
@@ -24,16 +23,13 @@ import {
   permit2SessionDigest,
   SESSION_GRANT_TYPEHASH,
 } from "../utils/hcaSessions.js";
-import {
-  COIN_TYPE_ETH,
-  getReverseName,
-  idFromLabel,
-} from "../utils/utils.js";
+import { COIN_TYPE_ETH, getReverseName, idFromLabel } from "../utils/utils.js";
 
 const REGISTRATION_DURATION = 28n * 86400n;
 const BURNER_SESSION_SIGNER_KEY =
   "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const PERMIT2_SOURCE_CHAIN_ID = 8453n;
+const HCA_USER_SALT = 0n;
 
 type HCAExecution = {
   target: Address;
@@ -44,11 +40,11 @@ type HCAExecution = {
 describe("Standalone HCA", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
 
-  // The devnet deploy scripts (deploy/hca/00-04) deploy the full HCA stack and
+  // The devnet deploy scripts deploy the full HCA stack and
   // register the implementation with the default reverse adapter, so the e2e
   // exercises the same pipeline that ships to real networks.
   const stack = {
-    bootstrapper: env.hca.RegistrationBootstrapper,
+    deployer: env.hca.StandaloneHCADeployer,
     executor: env.hca.HCARegistrationIntentExecutor,
     hcaImplementation: env.hca.StandaloneHCAImplementation,
     validator: env.hca.OwnerBoundRegistrationSessionValidator,
@@ -56,16 +52,35 @@ describe("Standalone HCA", () => {
 
   setupEnv({ resetOnEach: true });
 
-  function computeStandaloneHcaSalt(label: string): bigint {
-    return BigInt(keccak256(stringToHex(`StandaloneHCA:${label}`)));
+  function computeOwnerBoundHcaSalt(
+    owner: Address,
+    implementation: Address,
+    userSalt: bigint,
+  ): bigint {
+    return BigInt(
+      keccak256(
+        encodeAbiParameters(parseAbiParameters("uint256,address,address"), [
+          userSalt,
+          owner,
+          implementation,
+        ]),
+      ),
+    );
   }
 
-  function encodeHCAInitializeCall(owner: Address): Hex {
-    return encodeFunctionData({
-      abi: stack.hcaImplementation.abi,
-      functionName: "initializeAccount",
-      args: [encodeAbiParameters(parseAbiParameters("address"), [owner])],
-    });
+  function computeHcaAddress(
+    owner: Address,
+    userSalt = HCA_USER_SALT,
+  ): Address {
+    const deploymentSalt = computeOwnerBoundHcaSalt(
+      owner,
+      stack.hcaImplementation.address,
+      userSalt,
+    );
+    return env.computeVerifiableProxyAddress(
+      stack.deployer.address,
+      deploymentSalt,
+    );
   }
 
   async function signRawHash(signer: Account, hash: Hex): Promise<Hex> {
@@ -208,6 +223,8 @@ describe("Standalone HCA", () => {
     return encodePacked(["address", "bytes"], [zeroAddress, body]);
   }
 
+  // The direct E2E bypasses Rhinestone's setup-op path. The production route can put
+  // deployment and commitment in one intent fill.
   async function deployHCAAndCommit({
     label,
     owner,
@@ -217,11 +234,7 @@ describe("Standalone HCA", () => {
     owner: Account;
     resolver: Address;
   }) {
-    const salt = computeStandaloneHcaSalt(label);
-    const hca = env.computeVerifiableProxyAddress(
-      stack.bootstrapper.address,
-      salt,
-    );
+    const hca = computeHcaAddress(owner.address);
     const commitment = await env.v2.ETHRegistrar.read.makeCommitment([
       label,
       owner.address,
@@ -233,18 +246,17 @@ describe("Standalone HCA", () => {
     ]);
 
     const hcaCodeBefore = await env.client.getCode({ address: hca });
-    expectVar({ hcaCodeBefore }).toBeUndefined();
-
-    await env.waitFor(
-      stack.bootstrapper.write.deployAndCommit([
-        env.v2.VerifiableFactory.address,
-        stack.hcaImplementation.address,
-        salt,
-        encodeHCAInitializeCall(owner.address),
-        env.v2.ETHRegistrar.address,
-        commitment,
-      ]),
-    );
+    const needsDeployment = !hcaCodeBefore || hcaCodeBefore === "0x";
+    if (needsDeployment) {
+      await env.waitFor(
+        stack.deployer.write.deploy([
+          owner.address,
+          stack.hcaImplementation.address,
+          HCA_USER_SALT,
+        ]),
+      );
+    }
+    await env.waitFor(env.v2.ETHRegistrar.write.commit([commitment]));
 
     const hcaCodeAfter = await env.client.getCode({ address: hca });
     expectVar({ hcaCodeAfter }).not.toBeUndefined();
@@ -262,7 +274,7 @@ describe("Standalone HCA", () => {
     ]);
     expectVar({ commitTime }).toBeGreaterThan(0n);
 
-    return { hca, salt };
+    return { hca, deployed: needsDeployment };
   }
 
   async function buildRegistrationExecutions({
@@ -282,9 +294,11 @@ describe("Standalone HCA", () => {
   }): Promise<HCAExecution[]> {
     const node = namehash(`${label}.eth`);
     const reverseNode = namehash(getReverseName(owner.address));
+    const executions: HCAExecution[] = [];
 
-    return [
-      {
+    const resolverCode = await env.client.getCode({ address: resolver });
+    if (!resolverCode || resolverCode === "0x") {
+      executions.push({
         target: env.v2.VerifiableFactory.address,
         value: 0n,
         callData: encodeFunctionData({
@@ -300,7 +314,10 @@ describe("Standalone HCA", () => {
             }),
           ],
         }),
-      },
+      });
+    }
+
+    executions.push(
       {
         target: env.erc20.MockUSDC.address,
         value: 0n,
@@ -376,15 +393,13 @@ describe("Standalone HCA", () => {
           args: ["0x00", ROLES.ALL, owner.address, true],
         }),
       },
-    ];
+    );
+
+    return executions;
   }
 
   async function prepareRegistration(label: string, owner: Account) {
-    const hcaSalt = computeStandaloneHcaSalt(label);
-    const hca = env.computeVerifiableProxyAddress(
-      stack.bootstrapper.address,
-      hcaSalt,
-    );
+    const hca = computeHcaAddress(owner.address);
     const resolverSalt = env.computeOwnedResolverSalt(hca);
     const resolver = env.computeVerifiableProxyAddress(hca, resolverSalt);
 
@@ -449,14 +464,11 @@ describe("Standalone HCA", () => {
     expectVar({ status: state.status }).toStrictEqual(STATUS.REGISTERED);
     expectVar({ latestOwner: state.latestOwner }).toEqualAddress(owner.address);
 
-    const registryResolver = await env.v2.ETHRegistry.read.getResolver([
-      label,
-    ]);
+    const registryResolver = await env.v2.ETHRegistry.read.getResolver([label]);
     expectVar({ registryResolver }).toEqualAddress(resolver);
 
-    const resolverImplementation = await env.v2.VerifiableFactory.read.verifyContract([
-      resolver,
-    ]);
+    const resolverImplementation =
+      await env.v2.VerifiableFactory.read.verifyContract([resolver]);
     expectVar({ resolverImplementation }).toEqualAddress(
       env.v2.PermissionedResolverImpl.address,
     );
@@ -494,9 +506,10 @@ describe("Standalone HCA", () => {
     });
     expectVar({ primary }).toStrictEqual(`${label}.eth`);
 
-    const defaultPrimary = await env.shared.DefaultReverseRegistrar.read.nameForAddr([
-      owner.address,
-    ]);
+    const defaultPrimary =
+      await env.shared.DefaultReverseRegistrar.read.nameForAddr([
+        owner.address,
+      ]);
     expectVar({ defaultPrimary }).toStrictEqual(`${label}.eth`);
 
     const ownerIsResolverAdmin = await env.client.readContract({
@@ -508,26 +521,33 @@ describe("Standalone HCA", () => {
     expectVar({ ownerIsResolverAdmin }).toStrictEqual(true);
   }
 
-  it("deploys a standalone HCA and commits through the registration bootstrapper", async () => {
+  it("deploys an owner-bound HCA once and reuses it", async () => {
     const owner = env.namedAccounts.user;
     const label = "hcastandalone";
-    const hcaSalt = computeStandaloneHcaSalt(label);
-    const hca = env.computeVerifiableProxyAddress(
-      stack.bootstrapper.address,
-      hcaSalt,
-    );
+    const hca = computeHcaAddress(owner.address);
     const resolverSalt = env.computeOwnedResolverSalt(hca);
     const resolver = env.computeVerifiableProxyAddress(hca, resolverSalt);
 
-    await deployHCAAndCommit({ label, owner, resolver });
+    const first = await deployHCAAndCommit({ label, owner, resolver });
+    const second = await deployHCAAndCommit({
+      label: "hcastandalonesecond",
+      owner,
+      resolver,
+    });
+
+    expectVar({ firstDeployed: first.deployed }).toStrictEqual(true);
+    expectVar({ secondHca: second.hca }).toEqualAddress(first.hca);
+    expectVar({ secondDeployed: second.deployed }).toStrictEqual(false);
 
     const implementation = await env.v2.VerifiableFactory.read.verifyContract([
       hca,
     ]);
-    expectVar({ implementation }).toEqualAddress(stack.hcaImplementation.address);
+    expectVar({ implementation }).toEqualAddress(
+      stack.hcaImplementation.address,
+    );
   });
 
-  it("registers and configures an .eth name with a direct owner signature", async () => {
+  it("registers two .eth names with one owner-bound HCA and resolver", async () => {
     const owner = env.namedAccounts.user;
     const label = "hcadirectowner";
     const { executions, hca, price, resolver } = await prepareRegistration(
@@ -564,6 +584,37 @@ describe("Standalone HCA", () => {
       args: [node, "com.example"],
     });
     expectVar({ ownerDirectText }).toStrictEqual("owner-direct");
+
+    const secondLabel = "hcadirectownertwo";
+    const second = await prepareRegistration(secondLabel, owner);
+    expectVar({ secondHca: second.hca }).toEqualAddress(hca);
+    expectVar({ secondResolver: second.resolver }).toEqualAddress(resolver);
+    expectVar({
+      redeploysResolver: second.executions.some(
+        ({ target }) =>
+          target.toLowerCase() ===
+          env.v2.VerifiableFactory.address.toLowerCase(),
+      ),
+    }).toStrictEqual(false);
+
+    const secondSignature = await buildHcaSignature({
+      hca: second.hca,
+      owner,
+      resolver: second.resolver,
+      executions: second.executions,
+    });
+    await executeHcaIntent({
+      hca: second.hca,
+      executions: second.executions,
+      signature: secondSignature,
+    });
+    await expectRegistered({
+      label: secondLabel,
+      owner,
+      hca: second.hca,
+      price: second.price,
+      resolver: second.resolver,
+    });
   });
 
   it("reuses one owner-granted session for registration and a later primary change", async () => {
@@ -604,11 +655,7 @@ describe("Standalone HCA", () => {
       executions: blockedExecutions,
     });
     await expect(
-      stack.executor.write.execute([
-        hca,
-        blockedExecutions,
-        blockedSignature,
-      ]),
+      stack.executor.write.execute([hca, blockedExecutions, blockedSignature]),
     ).rejects.toThrow();
 
     const signature = await buildHcaSignature({
@@ -651,9 +698,10 @@ describe("Standalone HCA", () => {
       signature: laterSignature,
     });
 
-    const laterPrimary = await env.shared.DefaultReverseRegistrar.read.nameForAddr([
-      owner.address,
-    ]);
+    const laterPrimary =
+      await env.shared.DefaultReverseRegistrar.read.nameForAddr([
+        owner.address,
+      ]);
     expectVar({ laterPrimary }).toStrictEqual(laterName);
   });
 
@@ -696,11 +744,7 @@ describe("Standalone HCA", () => {
       permit2,
     });
     await expect(
-      stack.executor.write.execute([
-        hca,
-        blockedExecutions,
-        blockedSignature,
-      ]),
+      stack.executor.write.execute([hca, blockedExecutions, blockedSignature]),
     ).rejects.toThrow();
 
     const signature = await buildHcaSignature({

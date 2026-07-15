@@ -544,9 +544,9 @@ export async function setupDevnet({
         address: rocketh.deployments["StandaloneHCAImplementation"].address,
         client,
       }),
-      RegistrationBootstrapper: getContract({
-        abi: artifacts.RegistrationBootstrapper.abi,
-        address: rocketh.deployments["RegistrationBootstrapper"].address,
+      StandaloneHCADeployer: getContract({
+        abi: artifacts.StandaloneHCADeployer.abi,
+        address: rocketh.deployments["StandaloneHCADeployer"].address,
         client,
       }),
       HCAUpgradeGate: getContract({

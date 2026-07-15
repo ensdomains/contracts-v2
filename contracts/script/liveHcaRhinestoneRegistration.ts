@@ -31,7 +31,7 @@ import {
   ETHRegistrar,
   PermissionedRegistry,
   PermissionedResolver,
-  RegistrationBootstrapper,
+  StandaloneHCADeployer,
   StandaloneSingleOwnerHCA,
   UniversalResolverV2,
   VerifiableFactory,
@@ -59,14 +59,16 @@ const HCA_FUND_OWNER_WEI = process.env.HCA_FUND_OWNER_WEI
   : 0n;
 const RHINESTONE_SDK_SINGLE_CHAIN_OPS =
   process.env.RHINESTONE_SDK_SINGLE_CHAIN_OPS;
+const HCA_USER_SALT = process.env.HCA_USER_SALT
+  ? BigInt(process.env.HCA_USER_SALT)
+  : 0n;
 
 const REGISTRATION_DURATION = 28n * 86400n;
 const COIN_TYPE_ETH = 60n;
 const STATUS_REGISTERED = 2;
 const ROLES_ALL =
   0x1111111111111111111111111111111111111111111111111111111111111111n;
-const ENTRYPOINT_ERC7579_SIGMODE_ERC1271 =
-  `0x0201${"00".repeat(30)}` as Hex;
+const ENTRYPOINT_ERC7579_SIGMODE_ERC1271 = `0x0201${"00".repeat(30)}` as Hex;
 const PERMIT2_SOURCE_CHAIN_ID = 8453n;
 
 const intentExecutorAbi = [
@@ -243,8 +245,23 @@ async function assertCode(name: string, address: Address) {
   }
 }
 
-function computeStandaloneHcaSalt(label: string): bigint {
-  return BigInt(keccak256(stringToHex(`StandaloneHCA:${label}`)));
+function computeStandaloneHcaSalt(
+  ownerAddress: Address,
+  implementation: Address,
+  userSalt: bigint,
+): bigint {
+  return BigInt(
+    keccak256(
+      encodeAbiParameters(
+        [
+          { name: "userSalt", type: "uint256" },
+          { name: "owner", type: "address" },
+          { name: "implementation", type: "address" },
+        ],
+        [userSalt, ownerAddress, implementation],
+      ),
+    ),
+  );
 }
 
 function computeOwnedResolverSalt(ownerAddress: Address, version = 0n): bigint {
@@ -290,14 +307,6 @@ function computeVerifiableProxyAddress({
     from: factoryAddress,
     opcode: "CREATE2",
     salt: outerSalt,
-  });
-}
-
-function encodeHCAInitializeCall(ownerAddress: Address): Hex {
-  return encodeFunctionData({
-    abi: StandaloneSingleOwnerHCA.abi,
-    functionName: "initializeAccount",
-    args: [encodeAbiParameters(parseAbiParameters("address"), [ownerAddress])],
   });
 }
 
@@ -355,7 +364,9 @@ async function main() {
     HCA_FUND_OWNER_WEI > 0n &&
     relayer.address.toLowerCase() !== owner.address.toLowerCase()
   ) {
-    const ownerBalance = await publicClient.getBalance({ address: owner.address });
+    const ownerBalance = await publicClient.getBalance({
+      address: owner.address,
+    });
     if (ownerBalance < HCA_FUND_OWNER_WEI) {
       const value = HCA_FUND_OWNER_WEI - ownerBalance;
       const fundingHash = await walletClient.sendTransaction({
@@ -401,14 +412,17 @@ async function main() {
       ["USDC", "MockUSDC"],
       HCA_DEPLOYMENT_NETWORK,
     ),
-    registrationBootstrapper: deploymentFromEnv(
-      "HCA_REGISTRATION_BOOTSTRAPPER",
-      ["RegistrationBootstrapper"],
+    standaloneHcaDeployer: deploymentFromEnv(
+      "HCA_STANDALONE_HCA_DEPLOYER",
+      ["StandaloneHCADeployer"],
       HCA_DEPLOYMENT_NETWORK,
     ),
     standaloneHcaImplementation: deploymentFromEnv(
       "HCA_STANDALONE_HCA_IMPLEMENTATION",
-      ["StandaloneHCAImplementation_DefaultReverse", "StandaloneHCAImplementation"],
+      [
+        "StandaloneHCAImplementation_DefaultReverse",
+        "StandaloneHCAImplementation",
+      ],
       HCA_DEPLOYMENT_NETWORK,
     ),
     v1Registry: v1Deployment("ENSRegistry"),
@@ -432,12 +446,18 @@ async function main() {
 
   await Promise.all([
     assertCode("VerifiableFactory", deployments.verifiableFactory),
-    assertCode("PermissionedResolverImpl", deployments.permissionedResolverImpl),
+    assertCode(
+      "PermissionedResolverImpl",
+      deployments.permissionedResolverImpl,
+    ),
     assertCode("ETHRegistrar", deployments.ethRegistrar),
     assertCode("ETHRegistry", deployments.ethRegistry),
     assertCode("PaymentToken", deployments.paymentToken),
-    assertCode("RegistrationBootstrapper", deployments.registrationBootstrapper),
-    assertCode("StandaloneHCAImplementation", deployments.standaloneHcaImplementation),
+    assertCode("StandaloneHCADeployer", deployments.standaloneHcaDeployer),
+    assertCode(
+      "StandaloneHCAImplementation",
+      deployments.standaloneHcaImplementation,
+    ),
     assertCode("ENSRegistry", deployments.v1Registry),
     assertCode("DefaultReverseRegistrar", deployments.defaultReverseRegistrar),
     assertCode(
@@ -494,11 +514,15 @@ async function main() {
     functionName: "proxyLogic",
   })) as Address;
 
-  const hcaSalt = computeStandaloneHcaSalt(label);
+  const hcaSalt = computeStandaloneHcaSalt(
+    owner.address,
+    deployments.standaloneHcaImplementation,
+    HCA_USER_SALT,
+  );
   const hca = computeVerifiableProxyAddress({
     factoryAddress: deployments.verifiableFactory,
     proxyLogic,
-    deployer: deployments.registrationBootstrapper,
+    deployer: deployments.standaloneHcaDeployer,
     salt: hcaSalt,
   });
   const resolverSalt = computeOwnedResolverSalt(hca);
@@ -520,7 +544,9 @@ async function main() {
     args: [labelId],
   })) as { status: number | bigint };
   if (Number(stateBefore.status) !== 0) {
-    throw new Error(`${label}.eth is not available; status=${stateBefore.status}`);
+    throw new Error(
+      `${label}.eth is not available; status=${stateBefore.status}`,
+    );
   }
 
   const commitment = (await publicClient.readContract({
@@ -538,38 +564,33 @@ async function main() {
     ],
   })) as Hex;
 
-  const deployAndCommitArgs = [
-    deployments.verifiableFactory,
-    deployments.standaloneHcaImplementation,
-    hcaSalt,
-    encodeHCAInitializeCall(owner.address),
-    deployments.ethRegistrar,
-    commitment,
-  ] as const;
-
-  const deployAndCommitSimulation = await publicClient.simulateContract({
-    account: relayer,
-    address: deployments.registrationBootstrapper,
-    abi: RegistrationBootstrapper.abi,
-    functionName: "deployAndCommit",
-    args: deployAndCommitArgs,
-  });
-  const deployAndCommitHash = await walletClient.writeContract(
-    deployAndCommitSimulation.request,
-  );
-  const deployAndCommitReceipt = await publicClient.waitForTransactionReceipt({
-    hash: deployAndCommitHash,
-  });
-  if (deployAndCommitReceipt.status !== "success") {
-    throw new Error(`deployAndCommit failed: ${deployAndCommitHash}`);
+  let deployHcaHash: Hex | undefined;
+  let deployHcaGasUsed = 0n;
+  const hcaCode = await publicClient.getCode({ address: hca });
+  if (!hcaCode || hcaCode === "0x") {
+    const deployHcaSimulation = await publicClient.simulateContract({
+      account: relayer,
+      address: deployments.standaloneHcaDeployer,
+      abi: StandaloneHCADeployer.abi,
+      functionName: "deploy",
+      args: [
+        owner.address,
+        deployments.standaloneHcaImplementation,
+        HCA_USER_SALT,
+      ],
+    });
+    deployHcaHash = await walletClient.writeContract(
+      deployHcaSimulation.request,
+    );
+    const deployHcaReceipt = await publicClient.waitForTransactionReceipt({
+      hash: deployHcaHash,
+    });
+    if (deployHcaReceipt.status !== "success") {
+      throw new Error(`HCA deployment failed: ${deployHcaHash}`);
+    }
+    deployHcaGasUsed = deployHcaReceipt.gasUsed;
   }
 
-  const hcaOwner = (await publicClient.readContract({
-    address: hca,
-    abi: StandaloneSingleOwnerHCA.abi,
-    functionName: "owner",
-  })) as Address;
-  assertAddressEqual("HCA owner", hcaOwner, owner.address);
   const hcaImplementation = (await publicClient.readContract({
     address: deployments.verifiableFactory,
     abi: VerifiableFactory.abi,
@@ -581,6 +602,27 @@ async function main() {
     hcaImplementation,
     deployments.standaloneHcaImplementation,
   );
+  const [hcaOwner, hcaSessionNonce] = (await publicClient.readContract({
+    address: hca,
+    abi: StandaloneSingleOwnerHCA.abi,
+    functionName: "ownerAndSessionNonce",
+  })) as [Address, bigint];
+  assertAddressEqual("HCA owner", hcaOwner, owner.address);
+
+  const commitSimulation = await publicClient.simulateContract({
+    account: relayer,
+    address: deployments.ethRegistrar,
+    abi: ETHRegistrar.abi,
+    functionName: "commit",
+    args: [commitment],
+  });
+  const commitHash = await walletClient.writeContract(commitSimulation.request);
+  const commitReceipt = await publicClient.waitForTransactionReceipt({
+    hash: commitHash,
+  });
+  if (commitReceipt.status !== "success") {
+    throw new Error(`commit failed: ${commitHash}`);
+  }
 
   const [basePrice, premiumPrice] = (await publicClient.readContract({
     address: deployments.ethRegistrar,
@@ -657,8 +699,10 @@ async function main() {
     await sleep(waitSeconds * 1000);
   }
 
-  const executions: HCAExecution[] = [
-    {
+  const executions: HCAExecution[] = [];
+  const resolverCodeBefore = await publicClient.getCode({ address: resolver });
+  if (!resolverCodeBefore || resolverCodeBefore === "0x") {
+    executions.push({
       target: deployments.verifiableFactory,
       value: 0n,
       callData: encodeFunctionData({
@@ -674,7 +718,22 @@ async function main() {
           }),
         ],
       }),
-    },
+    });
+  } else {
+    const existingResolverImplementation = (await publicClient.readContract({
+      address: deployments.verifiableFactory,
+      abi: VerifiableFactory.abi,
+      functionName: "verifyContract",
+      args: [resolver],
+    })) as Address;
+    assertAddressEqual(
+      "existing resolver implementation",
+      existingResolverImplementation,
+      deployments.permissionedResolverImpl,
+    );
+  }
+
+  executions.push(
     {
       target: deployments.paymentToken,
       value: 0n,
@@ -738,7 +797,16 @@ async function main() {
         args: [owner.address, `${label}.eth`],
       }),
     },
-  ];
+    {
+      target: resolver,
+      value: 0n,
+      callData: encodeFunctionData({
+        abi: PermissionedResolver.abi,
+        functionName: "authorizeNameRoles",
+        args: ["0x00", ROLES_ALL, owner.address, true],
+      }),
+    },
+  );
 
   const operationData = buildOperationData(executions);
   const typedDataElement = {
@@ -783,8 +851,7 @@ async function main() {
       sessionKey: sessionKey.address,
       validUntil,
       resolver,
-      // Fresh HCA per run (fresh label + salt), so the session-grant nonce is always 0.
-      sessionNonce: 0n,
+      sessionNonce: hcaSessionNonce,
       permit2: {
         sourceChainId: PERMIT2_SOURCE_CHAIN_ID,
         permit2Contract: PERMIT2_ADDRESS,
@@ -891,6 +958,15 @@ async function main() {
     resolverImplementation,
     deployments.permissionedResolverImpl,
   );
+  const ownerHasResolverRoles = (await publicClient.readContract({
+    address: resolver,
+    abi: PermissionedResolver.abi,
+    functionName: "hasRoles",
+    args: [0n, ROLES_ALL, owner.address],
+  })) as boolean;
+  if (!ownerHasResolverRoles) {
+    throw new Error("wallet does not have resolver ROLES.ALL");
+  }
 
   const resolvedAddress = (await publicClient.readContract({
     address: resolver,
@@ -996,24 +1072,28 @@ async function main() {
     price,
     transactions: {
       ownerFunding,
-      deployAndCommit: deployAndCommitHash,
+      deployHca: deployHcaHash,
+      commit: commitHash,
       paymentTokenFunding,
       executeSinglechainOps: executeHash,
     },
     gas: {
-      deployAndCommit: deployAndCommitReceipt.gasUsed,
+      deployHca: deployHcaGasUsed,
+      commit: commitReceipt.gasUsed,
       paymentTokenFunding: paymentTokenFundingGasUsed,
       executeSinglechainOps: executeReceipt.gasUsed,
       estimatedExecuteSinglechainOps: estimatedExecuteGas,
       registrationCoreTotal:
-        deployAndCommitReceipt.gasUsed + executeReceipt.gasUsed,
+        deployHcaGasUsed + commitReceipt.gasUsed + executeReceipt.gasUsed,
       registrationIncludingTokenFunding:
-        deployAndCommitReceipt.gasUsed +
+        deployHcaGasUsed +
+        commitReceipt.gasUsed +
         paymentTokenFundingGasUsed +
         executeReceipt.gasUsed,
     },
     verified: {
       hcaOwner,
+      hcaSessionNonce,
       hcaImplementation,
       resolverImplementation,
       registryResolver,
@@ -1022,6 +1102,7 @@ async function main() {
       reverseName,
       primary,
       defaultPrimary,
+      ownerHasResolverRoles,
       exactV1ReverseResolver,
       urReverse: {
         primary: urPrimary,

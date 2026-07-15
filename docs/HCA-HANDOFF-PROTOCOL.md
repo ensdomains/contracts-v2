@@ -4,13 +4,13 @@ The HCA is a per-user execution account. The wallet remains the name owner, reso
 
 Do not deploy this branch.
 
-R1-R3 are the formal release blockers. Other findings remain launch-gate inputs but are not silently relabeled as R1-R3. Evidence gaps are unproven product claims. The target architecture is proposed, not approved.
+R1 and R3 remain formal release blockers. R2 is closed in this branch. Other findings remain launch-gate inputs. Evidence gaps are unproven product claims. The target architecture is proposed, not approved.
 
 ## Current implementation
 
 - `StandaloneSingleOwnerHCA` runs as a Nexus implementation behind a `VerifiableFactory` proxy in tests.
 - It stores one owner, blocks module changes, revokes sessions by nonce, and gates owner-triggered upgrades.
-- `RegistrationBootstrapper` deploys and commits using caller-supplied deployment inputs.
+- `StandaloneHCADeployer` fixes the `VerifiableFactory`, constructs the owner initializer, and derives the salt from user salt, owner, and initial implementation.
 - `OwnerBoundRegistrationSessionValidator` supports direct-owner and delegated registration authorization.
 - Its policy covers commit, register, renew, payment approval, resolver deployment and writes, and default reverse-name updates.
 - The account uses a fixed `IntentExecutor`.
@@ -24,11 +24,11 @@ Problem: `canUpgradeFrom` accepts every predecessor. A malicious proxy can upgra
 
 Fix: the first trusted version rejects every predecessor. Later versions allow only explicit compatible predecessors.
 
-### R2 — Counterfactual account capture
+### R2 — Counterfactual account capture — closed
 
-Problem: the bootstrapper accepts factory, implementation, salt, initialization, and registrar inputs. An attacker can occupy the expected address with malicious initialization.
+`StandaloneHCADeployer` removes caller-supplied initialization. Its salt binds `userSalt`, owner, and initial implementation, so another implementation gets another address. Any caller may deploy first, but only with the expected owner and initial implementation at the expected address.
 
-Fix: use an owner-bound deployer that pins inputs, derives the salt, verifies existing code, and handles repeat deployment and commitment safely.
+Unit and E2E tests cover address derivation, arbitrary relayers, owner separation, and implementation substitution. The SDK must reproduce the formula and verify existing code, owner, and the current implementation under the version and provenance policy before reuse.
 
 ### R3 — Signed operations are not bound to checked operations
 
@@ -41,8 +41,7 @@ Fix: rebuild the production digest from checked operations, compare it with the 
 1. Resolver deployment does not bind the salt, address, initialization, initial roles, seeded records, or resolver used by `register`.
 2. One grant covers registration, renewal, records, default-primary changes, and uncapped token approval. Separate payment authority from ongoing name-management permissions or encode explicit permissions.
 3. The owner-role check does not bind root resource, `ROLES.ALL`, `grant == true`, or registration-batch placement.
-4. The live runner omits the wallet role grant.
-5. The shared executor can run arbitrary HCA batches. Its audit, upgrade, ownership, monitoring, and emergency model is undefined.
+4. The shared executor can run arbitrary HCA batches. Its audit, upgrade, ownership, monitoring, and emergency model is undefined.
 
 ## Evidence gaps
 
@@ -51,7 +50,7 @@ Current tests do not prove:
 - offline reveal authorization before the user leaves;
 - production Permit2 or Across funding;
 - first-time allowance or DAI funding;
-- production account derivation or a random registrar secret;
+- SDK parity for account derivation or a random registrar secret;
 - the gas target;
 - record sessions or renewal end to end; or
 - sponsored revocation, upgrades, refunds, or stranded-fund recovery.
@@ -68,7 +67,7 @@ Current tests do not prove:
 
 ## Open decisions
 
-- Canonical address discovery and version coexistence.
+- User-salt/version policy, address discovery, and version coexistence.
 - Upgrade-gate ownership, predecessor approval, review, and delay.
 - Whether owner immutability is enforced or only governed.
 - Default-executor trust and emergency controls.

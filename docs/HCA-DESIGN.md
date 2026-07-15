@@ -24,7 +24,7 @@ Frontend feature and UI code consumes the shared planning interface. Shared pack
 
 1. Shared packages prepare the HCA, funding route, calls, prompts, and counts.
 2. The wallet authorizes funding and registration.
-3. The route funds the HCA and submits the commitment.
+3. The route deploys the owner-bound HCA if needed, funds it, and submits the commitment.
 4. A sponsor submits the authorized batch after the registrar delay.
 5. The wallet owns the name and receives resolver `ROLES.ALL`; the HCA keeps resolver roles.
 
@@ -48,7 +48,7 @@ Present:
 - Direct-owner and delegated registration authorization.
 - A fixed policy for selected registration, renewal, payment, resolver, and standalone default-primary calls.
 - Owner-gated, allowlisted upgrades and session revocation by nonce.
-- A generic deploy-and-commit helper.
+- An owner- and initial-implementation-bound deployer using the shared `VerifiableFactory`; Rhinestone can carry deployment and the separate registrar commitment call in one fill.
 - Local contract tests and a Permit2-shaped authorization test.
 - Devnet addresses at `http://127.0.0.1:8000/deployments`.
 - A Compose mockestrator sidecar.
@@ -59,14 +59,14 @@ Missing:
 - Manager support for chain 31337 and local ENS addresses.
 - A standalone funding, commit, delay, and reveal state machine.
 - Production Permit2 or Across execution.
-- Fixes for the blockers in [the protocol handoff](./HCA-HANDOFF-PROTOCOL.md).
+- Fixes for the remaining blockers in [the protocol handoff](./HCA-HANDOFF-PROTOCOL.md).
 
 Mockestrator supplies transport only. It does not close these gaps.
 
 ## Open decisions
 
-- Canonical address, versioning, and discovery.
-- Safe deployment and initialization.
+- User-salt/version policy, address discovery, and version coexistence.
+- Existing-account verification and reuse in the SDK.
 - Production signatures and operation binding.
 - Gasless first-time token allowance.
 - Reveal authorization across the commitment delay.
