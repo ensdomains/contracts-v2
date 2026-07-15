@@ -1,73 +1,48 @@
-# ENS v2 HCA: requests for Rhinestone
+# ENS v2 HCA: Rhinestone handoff
 
-This handoff covers ENS's Hidden Contract Account (HCA) integration. It
-separates the integration that exists today from the proposed replacement and
-the questions ENS needs Rhinestone to answer.
+This document separates the current integration from the standalone-HCA work requested from Rhinestone.
 
-## Current state
+## Current integration
 
-- The apps use `@rhinestone/sdk` v1.7.0 with `account: { type: "hca" }`. That
-  account is the legacy `HCAFactory`/CREATE3 account, not the standalone account
-  in this branch.
-- The legacy SDK account does not support SmartSession, recovery, or extra
-  modules. The user's wallet signs each intent.
-- This branch contains a standalone Nexus implementation exercised through a
-  `VerifiableFactory` proxy in local tests, with a validator and signature
-  format maintained by ENS. It is not wired into the SDK or apps.
-- The standalone registration batch passes locally against a mock executor with
-  destination funds supplied directly. The current account has not completed
-  the production Permit2/Across route. The mock also enforces a stronger
-  operation check than the production executor.
-- SDK v1.7.0 contains internal typed-data builders for single-chain execution
-  and Permit2, but they are not exported from the package root.
-- The SDK's HCA `getDeployArgs` understands the legacy
-  `createAccount(bytes)` factory call. Custom HCA factory data that does not use
-  that format produces no deploy arguments.
+- Apps use `@rhinestone/sdk` v1.7.0 with `account: { type: "hca" }`.
+- That selector creates the legacy `HCAFactory`/CREATE3 account, not this branch's standalone HCA.
+- The legacy account has no SmartSession, recovery, or extra modules. The wallet signs each intent.
+- The standalone Nexus account, validator, and signature envelope are ENS-owned branch contracts with devnet and runner coverage, but are not wired into the SDK or apps.
+- Local registration uses destination funds and a stronger mock executor. It does not prove production Permit2 or Across execution.
+- Single-chain and Permit2 helpers are exported through internal-looking package subpaths, not a documented, stable, versioned API with test vectors.
+- HCA `getDeployArgs` understands legacy `createAccount(bytes)` only.
 
-## Proposed target
+## Proposed flow
 
-This is a proposal, not the current implementation. ENS contract fixes,
-additional security findings, and protocol decisions are still unresolved.
+This target still depends on ENS security fixes and protocol decisions.
 
-1. The user authorizes stablecoin funding and registration.
-2. The route funds a canonical HCA, using Across when funds start on another
-   chain, and submits the registrar commitment.
-3. After the registrar delay, a relayer submits the registration batch without
-   another wallet prompt.
-4. The user's wallet owns the name and all root and admin authority. The HCA is
-   normally empty and may keep only narrowly scoped, wallet-revocable
-   record-writing permission.
+1. The wallet authorizes funding and registration.
+2. The route funds the canonical HCA and submits the commitment.
+3. A relayer submits the registration batch after the registrar delay.
+4. The wallet owns the name and receives resolver `ROLES.ALL`; the HCA keeps wallet-revocable resolver roles.
 
-The proposed account identity is one HCA per owner, destination chain, and
-account version. That derivation is not implemented yet.
+Proposed identity: one HCA per owner, destination chain, and account version. This is not implemented.
 
 ## Requests
 
-### 1. Public single-chain execution typed data
+### 1. Stabilize single-chain execution typed data
 
-Please expose a stable version of the internal single-chain typed-data builder,
-including:
+Document and support a stable, versioned builder for:
 
-- the `IntentExecutor` domain and types;
+- `IntentExecutor` domain and types;
 - destination-operation encoding;
-- the digest passed to ERC-1271; and
-- the expected executor or `sender` value during validation.
+- the ERC-1271 digest; and
+- expected executor or `sender`.
 
-Please also provide a test vector and treat hashing changes as breaking changes.
-ENS needs this so the validator can prove that the operations it checks are the
-operations signed for production execution.
+Provide a test vector. Treat hashing changes as breaking changes.
 
-### 2. Public Permit2/JIT witness typed data
+### 2. Stabilize Permit2/JIT witness typed data
 
-Please expose the Permit2/JIT witness builder separately, with a test vector and
-the same versioning policy. ENS currently mirrors these types in Solidity and
-local test helpers, so the existing compatibility test is circular.
+Document and support the Permit2/JIT witness builder with a test vector and the same versioning policy. ENS's current Solidity and test copies are circular evidence.
 
-### 3. Add a versioned standalone-HCA account
+### 3. Add a versioned standalone-HCA adapter
 
-After ENS supplies the fixed deployer and final signature format, please expose
-the standalone account through a versioned SDK selection. The current call must
-continue to select the legacy account:
+Keep the current selector on the legacy account:
 
 ```ts
 createAccount({
@@ -76,46 +51,36 @@ createAccount({
 })
 ```
 
-Add either a new account discriminator or an explicit version field for the
-standalone account. The exact API is for Rhinestone and ENS to agree. It must
-let both accounts coexist; silently changing the existing `hca` discriminator
-would change address, deployment, and signature behavior for current users.
+Add a new discriminator or explicit version for the standalone HCA. Both account types must coexist.
 
-The new adapter needs the standalone address derivation, deployment call, and
-ENS signature envelope. Its deployment work depends on ENS replacing the
-unsafe generic bootstrapper. Production use also depends on fixing
-trusted-account provenance and signed-operation binding.
+The adapter must provide standalone address derivation, deployment data, and the ENS signature envelope. Production use waits on ENS fixes for deployment, provenance, and signed-operation binding.
 
-### 4. Confirm when `factoryData` is fixed
+### 4. Clarify `factoryData` timing
 
-Can `{ factory, factoryData }` be computed during `prepareTransaction`, or is it
-fixed when the account object is created?
+Can `{ factory, factoryData }` be computed in `prepareTransaction`, or is it fixed when the account object is created?
 
-Late-bound data would allow deploy and commit in one factory call. Static data
-would require a canonical deployer plus `commit` as a destination operation.
-ENS can support either shape but must know which one the SDK permits.
+Late binding could permit deploy-and-commit in one factory call. If data is static, confirm whether ENS should recreate the account config with commitment-bearing factory data or use a canonical deployer plus `commit` as an operation.
 
-### 5. Gasless first-time Permit2 allowance
+### 5. Support gasless first-time allowance
 
-Can the route submit a user-signed token permit before the Permit2 pull when the
-source token supports it? This is an open product dependency, not a demonstrated
-capability. The target is two signatures and no user transaction for a wallet
-with stablecoins but no Permit2 allowance or gas token.
+Can the route submit a user-signed token permit before the Permit2 pull when the source token supports permits?
 
-### 6. Custom deployment arguments
+Target for supported tokens: two signatures and no wallet transaction when the user has stablecoins but no Permit2 allowance or gas token. Other tokens fall back to an onchain approval reported by the route.
 
-For the proposed non-legacy factory call, should the HCA adapter extend
-`getDeployArgs`, or is there another supported custom-account path? Please
-document or implement the intended route.
+### 6. Support custom deployment arguments
+
+Should the standalone adapter extend `getDeployArgs`, or use another custom-account path? Please document or implement the supported option.
+
+### 7. Support delayed registration execution
+
+Provide a route that funds the standalone HCA, submits the commitment, resumes after the registrar delay, and sponsors the authorized reveal batch. The delegated path should not require another wallet prompt.
 
 ## Not requested
 
-ENS is not asking for SmartSession or module-installation support. The proposed
-account and session validator remain ENS-owned.
+ENS is not asking Rhinestone to add SmartSession or module installation. ENS owns the account and validator.
 
-## Inputs ENS must provide
+## Inputs from ENS
 
-Before Rhinestone can implement the account adapter, ENS must provide the fixed
-deployer, address derivation, ABIs, signature envelope, and parity tests. For
-each request above, ENS needs a feasibility answer, a responsible Rhinestone
-contact, and the target SDK version.
+ENS must provide the fixed deployer, address derivation, ABIs, signature envelope, and parity tests.
+
+For each request, Rhinestone should provide feasibility, an owner, and a target SDK version.

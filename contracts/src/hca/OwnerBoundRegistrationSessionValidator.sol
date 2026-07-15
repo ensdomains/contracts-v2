@@ -17,10 +17,11 @@ import {
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
 
 /// @title Owner-Bound Registration Session Validator
-/// @notice Stateless validator for deferred ENS registrations executed by standalone HCAs.
+/// @notice Stateless validator for ENS registration and follow-up name management through standalone HCAs.
 /// @dev A valid signature is either a direct owner signature over the executor digest, or an
 ///      owner-signed session grant plus a session-key signature over the executor digest. Session
-///      grants are bound to the resolver that may receive registration and resolver-record writes.
+///      grants are bound to the resolver that may receive registration, resolver-record writes,
+///      and default reverse-name updates for the owner.
 contract OwnerBoundRegistrationSessionValidator is IValidator {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -453,11 +454,11 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         return keccak256(abi.encodePacked(bytes2(0x1901), domainSeparator, permit2Hash));
     }
 
-    /// @notice Validates every execution against the hardcoded registration action set.
+    /// @notice Validates every execution against the hardcoded registration and name-management action set.
     /// @dev Checks target, selector, value, and selected ABI arguments for each execution.
-    ///      A default reverse name may only be set in the same operation batch as the register
-    ///      call for that exact name; standalone default-name sessions are intentionally outside
-    ///      this validator's registration-session policy.
+    ///      A default reverse name may be updated in a standalone operation when the policy has a
+    ///      nonzero resolver and the named account is the HCA owner. When registration shares the
+    ///      batch, the default reverse name must match the registered name.
     /// @param owner The owner recorded for the HCA.
     /// @param allowedResolver The resolver authorized by the owner grant.
     /// @param operationData The encoded ERC-7579 operation payload.
@@ -542,14 +543,14 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
                 if (selector != SET_NAME_WITH_HCA_SELECTOR) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
-                if (policyResolver == address(0) || !seenRegister) {
+                if (policyResolver == address(0)) {
                     revert PolicyRuleFailed();
                 }
                 (address account, bytes32 nameHash) = _defaultReverseFields(execution.callData);
                 if (account != owner) {
                     revert PolicyRuleFailed();
                 }
-                if (nameHash != registeredNameHash) {
+                if (seenRegister && nameHash != registeredNameHash) {
                     revert PolicyRuleFailed();
                 }
                 continue;

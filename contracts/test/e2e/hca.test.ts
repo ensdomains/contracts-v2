@@ -87,7 +87,45 @@ describe("Standalone HCA", () => {
     }) as Promise<Hex>;
   }
 
-  async function buildRegistrationSignature({
+  async function signLegacySessionGrant({
+    hca,
+    owner,
+    sessionKey,
+    validUntil,
+    resolver,
+    sessionNonce = 0n,
+  }: {
+    hca: Address;
+    owner: Account;
+    sessionKey: Account;
+    validUntil: number;
+    resolver: Address;
+    sessionNonce?: bigint;
+  }): Promise<Hex> {
+    const grantHash = keccak256(
+      encodeAbiParameters(
+        parseAbiParameters(
+          "bytes32,uint256,address,address,address,uint48,address,uint256",
+        ),
+        [
+          SESSION_GRANT_TYPEHASH,
+          BigInt(env.client.chain.id),
+          hca,
+          owner.address,
+          sessionKey.address,
+          validUntil,
+          resolver,
+          sessionNonce,
+        ],
+      ),
+    );
+    if (!owner.signMessage) {
+      throw new Error("HCA e2e owner account must support message signing");
+    }
+    return owner.signMessage({ message: { raw: grantHash } });
+  }
+
+  async function buildHcaSignature({
     hca,
     owner,
     sessionKey,
@@ -97,6 +135,7 @@ describe("Standalone HCA", () => {
     sessionNonce = 0n,
     executions,
     permit2,
+    sessionGrantSignature,
   }: {
     hca: Address;
     owner: Account;
@@ -106,6 +145,7 @@ describe("Standalone HCA", () => {
     sessionNonce?: bigint;
     executions: HCAExecution[];
     permit2?: Permit2SessionAuthorization;
+    sessionGrantSignature?: Hex;
   }): Promise<Hex> {
     const data = await operationData(executions);
     const digest = keccak256(data);
@@ -114,7 +154,9 @@ describe("Standalone HCA", () => {
     let sessionSignature: Hex = "0x";
 
     if (sessionKey) {
-      if (permit2) {
+      if (sessionGrantSignature) {
+        ownerSignature = sessionGrantSignature;
+      } else if (permit2) {
         ownerSignature = await signRawHash(
           owner,
           permit2SessionDigest({
@@ -129,28 +171,13 @@ describe("Standalone HCA", () => {
           }),
         );
       } else {
-        const grantHash = keccak256(
-          encodeAbiParameters(
-            parseAbiParameters(
-              "bytes32,uint256,address,address,address,uint48,address,uint256",
-            ),
-            [
-              SESSION_GRANT_TYPEHASH,
-              BigInt(env.client.chain.id),
-              hca,
-              owner.address,
-              sessionKey.address,
-              validUntil,
-              resolver,
-              sessionNonce,
-            ],
-          ),
-        );
-        if (!owner.signMessage) {
-          throw new Error("HCA e2e owner account must support message signing");
-        }
-        ownerSignature = await owner.signMessage({
-          message: { raw: grantHash },
+        ownerSignature = await signLegacySessionGrant({
+          hca,
+          owner,
+          sessionKey,
+          validUntil,
+          resolver,
+          sessionNonce,
         });
       }
       sessionSignature = await signRawHash(sessionKey, digest);
@@ -387,7 +414,7 @@ describe("Standalone HCA", () => {
     return { executions, hca, price, resolver };
   }
 
-  async function executeRegistrationIntent({
+  async function executeHcaIntent({
     hca,
     executions,
     signature,
@@ -508,13 +535,13 @@ describe("Standalone HCA", () => {
       owner,
     );
 
-    const signature = await buildRegistrationSignature({
+    const signature = await buildHcaSignature({
       hca,
       owner,
       resolver,
       executions,
     });
-    await executeRegistrationIntent({ hca, executions, signature });
+    await executeHcaIntent({ hca, executions, signature });
 
     await expectRegistered({ label, owner, hca, price, resolver });
 
@@ -539,7 +566,7 @@ describe("Standalone HCA", () => {
     expectVar({ ownerDirectText }).toStrictEqual("owner-direct");
   });
 
-  it("registers with an owner-granted session key and rejects a resolver outside the grant", async () => {
+  it("reuses one owner-granted session for registration and a later primary change", async () => {
     const owner = env.namedAccounts.user;
     const sessionKey = privateKeyToAccount(BURNER_SESSION_SIGNER_KEY);
     const label = "hcasessionkey";
@@ -549,6 +576,13 @@ describe("Standalone HCA", () => {
     );
     const currentBlock = await env.client.getBlock();
     const validUntil = Number(currentBlock.timestamp + 3600n);
+    const sessionGrantSignature = await signLegacySessionGrant({
+      hca,
+      owner,
+      sessionKey,
+      validUntil,
+      resolver,
+    });
 
     const blockedExecutions: HCAExecution[] = [
       {
@@ -561,7 +595,7 @@ describe("Standalone HCA", () => {
         }),
       },
     ];
-    const blockedSignature = await buildRegistrationSignature({
+    const blockedSignature = await buildHcaSignature({
       hca,
       owner,
       sessionKey,
@@ -577,17 +611,50 @@ describe("Standalone HCA", () => {
       ]),
     ).rejects.toThrow();
 
-    const signature = await buildRegistrationSignature({
+    const signature = await buildHcaSignature({
       hca,
       owner,
       sessionKey,
       validUntil,
       resolver,
       executions,
+      sessionGrantSignature,
     });
-    await executeRegistrationIntent({ hca, executions, signature });
+    await executeHcaIntent({ hca, executions, signature });
 
     await expectRegistered({ label, owner, hca, price, resolver });
+
+    const laterName = `later-${label}.eth`;
+    const laterExecutions: HCAExecution[] = [
+      {
+        target: env.shared.DefaultReverseRegistrarAdapter.address,
+        value: 0n,
+        callData: encodeFunctionData({
+          abi: env.shared.DefaultReverseRegistrarAdapter.abi,
+          functionName: "setNameWithHCA",
+          args: [owner.address, laterName],
+        }),
+      },
+    ];
+    const laterSignature = await buildHcaSignature({
+      hca,
+      owner,
+      sessionKey,
+      validUntil,
+      resolver,
+      executions: laterExecutions,
+      sessionGrantSignature,
+    });
+    await executeHcaIntent({
+      hca,
+      executions: laterExecutions,
+      signature: laterSignature,
+    });
+
+    const laterPrimary = await env.shared.DefaultReverseRegistrar.read.nameForAddr([
+      owner.address,
+    ]);
+    expectVar({ laterPrimary }).toStrictEqual(laterName);
   });
 
   it("registers with a Permit2-originated session key and rejects a resolver outside the grant", async () => {
@@ -619,7 +686,7 @@ describe("Standalone HCA", () => {
         }),
       },
     ];
-    const blockedSignature = await buildRegistrationSignature({
+    const blockedSignature = await buildHcaSignature({
       hca,
       owner,
       sessionKey,
@@ -636,7 +703,7 @@ describe("Standalone HCA", () => {
       ]),
     ).rejects.toThrow();
 
-    const signature = await buildRegistrationSignature({
+    const signature = await buildHcaSignature({
       hca,
       owner,
       sessionKey,
@@ -645,7 +712,7 @@ describe("Standalone HCA", () => {
       executions,
       permit2,
     });
-    await executeRegistrationIntent({ hca, executions, signature });
+    await executeHcaIntent({ hca, executions, signature });
 
     await expectRegistered({ label, owner, hca, price, resolver });
   });

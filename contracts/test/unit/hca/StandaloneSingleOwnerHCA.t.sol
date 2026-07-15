@@ -313,6 +313,64 @@ contract StandaloneSingleOwnerHCATest is Test {
         assertEq(hca.validate(validator, operationHash, signature), ERC1271_MAGICVALUE);
     }
 
+    function test_validator_allowsStandaloneDefaultReverseWithReusableSession() public view {
+        uint48 validUntil = uint48(block.timestamp + 1 days);
+        bytes32 grantHash =
+            keccak256(
+                abi.encode(
+                    SESSION_GRANT_TYPEHASH,
+                    block.chainid,
+                    address(hca),
+                    owner,
+                    sessionSigner,
+                    validUntil,
+                    resolver,
+                    uint256(hca.sessionNonce())
+                )
+            );
+        bytes memory ownerGrantSignature = _sign(ownerKey, _toEthSignedMessageHash(grantHash));
+
+        bytes memory registrationData = _registrationOperationData(owner, resolver);
+        bytes32 registrationHash = keccak256(registrationData);
+        bytes memory registrationSignature =
+            _signatureData(
+                owner,
+                sessionSigner,
+                validUntil,
+                resolver,
+                ownerGrantSignature,
+                _sign(sessionKey, registrationHash),
+                registrationData
+            );
+        assertEq(
+            hca.validate(validator, registrationHash, registrationSignature),
+            ERC1271_MAGICVALUE
+        );
+
+        bytes memory laterData =
+            _singleOperationData(
+                defaultReverseRegistrarHCAAdapter,
+                0,
+                abi.encodeWithSelector(SET_NAME_WITH_HCA_SELECTOR, owner, "later.eth")
+            );
+        bytes32 laterHash = keccak256(laterData);
+        bytes memory laterSessionSignature =
+            _signatureData(
+                owner,
+                sessionSigner,
+                validUntil,
+                resolver,
+                ownerGrantSignature,
+                _sign(sessionKey, laterHash),
+                laterData
+            );
+        assertEq(hca.validate(validator, laterHash, laterSessionSignature), ERC1271_MAGICVALUE);
+        assertEq(
+            hca.validate(validator, laterHash, _directSignature(laterData, resolver, ownerKey)),
+            ERC1271_MAGICVALUE
+        );
+    }
+
     function test_validator_acceptsPermit2SessionGrant() public {
         bytes memory operationData = _registrationOperationData(owner, resolver);
         bytes32 operationHash = keccak256(operationData);
@@ -660,15 +718,6 @@ contract StandaloneSingleOwnerHCATest is Test {
             _singleOperationData(
                 defaultReverseRegistrarHCAAdapter,
                 0,
-                abi.encodeWithSelector(SET_NAME_WITH_HCA_SELECTOR, owner, "alice.eth")
-            ),
-            resolver,
-            OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector
-        );
-        _expectValidationRevert(
-            _singleOperationData(
-                defaultReverseRegistrarHCAAdapter,
-                0,
                 abi.encodeWithSelector(SET_NAME_WITH_HCA_SELECTOR, vm.addr(badKey), "alice.eth")
             ),
             resolver,
@@ -731,6 +780,15 @@ contract StandaloneSingleOwnerHCATest is Test {
         _expectValidationRevert(
             _singleOperationData(usdc, 0, abi.encodePacked(APPROVE_SELECTOR)),
             address(0),
+            OwnerBoundRegistrationSessionValidator.InvalidOperationEncoding.selector
+        );
+        _expectValidationRevert(
+            _singleOperationData(
+                defaultReverseRegistrarHCAAdapter,
+                0,
+                abi.encodePacked(SET_NAME_WITH_HCA_SELECTOR, bytes32(uint256(uint160(owner))))
+            ),
+            resolver,
             OwnerBoundRegistrationSessionValidator.InvalidOperationEncoding.selector
         );
 

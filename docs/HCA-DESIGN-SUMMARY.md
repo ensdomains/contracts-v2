@@ -1,20 +1,14 @@
 # HCA design summary
 
-The HCA is registration execution infrastructure; the user's wallet remains
-the name owner and long-term authority. This branch contains a standalone HCA
-and local contract tests, but the manager still creates the legacy HCA and the
-production security and routing work is incomplete.
+The HCA executes registration and remains a resolver delegate. The wallet owns the name, receives resolver `ROLES.ALL`, and can revoke the HCA's resolver roles.
 
-Use the document for the work at hand:
+This branch has a standalone HCA and local tests. Manager still uses the legacy HCA. Production security, funding, routing, and app integration remain incomplete.
 
-- [`HCA-DESIGN.md`](./HCA-DESIGN.md) — current contract model, security
-  boundaries, and open production decisions.
-- [`HCA-HANDOFF-FRONTEND.md`](./HCA-HANDOFF-FRONTEND.md) — frontend integration
-  boundary and current blockers.
-- [`HCA-HANDOFF-PROTOCOL.md`](./HCA-HANDOFF-PROTOCOL.md) — protocol-owned work
-  and acceptance criteria.
-- [`HCA-HANDOFF-RHINESTONE.md`](./HCA-HANDOFF-RHINESTONE.md) — routing and SDK
-  requirements owned with Rhinestone.
+| Need | Document |
+|---|---|
+| Design and open decisions | [HCA design](./HCA-DESIGN.md) |
+| Frontend routes, calls, counts, and devnet | [Frontend handoff](./HCA-HANDOFF-FRONTEND.md) |
+| Contract security work | [Protocol handoff](./HCA-HANDOFF-PROTOCOL.md) |
+| SDK, typed data, and routing work | [Rhinestone handoff](./HCA-HANDOFF-RHINESTONE.md) |
 
-The checked-in mockestrator sidecar is transport infrastructure only, not a
-working standalone-HCA frontend integration.
+Mockestrator is local transport, not a working standalone-HCA frontend integration.
