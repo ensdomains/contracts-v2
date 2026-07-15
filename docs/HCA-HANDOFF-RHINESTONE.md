@@ -1,80 +1,121 @@
-# ENS v2 Registration on Rhinestone — Integration Notes & Asks
+# ENS v2 HCA: requests for Rhinestone
 
-*From the ENS contracts team, 2026-07-02. Contact: ENS v2 / HCA workstream.*
+This handoff covers ENS's Hidden Contract Account (HCA) integration. It
+separates the integration that exists today from the proposed replacement and
+the questions ENS needs Rhinestone to answer.
 
-## What we've built on your stack
+## Current state
 
-ENS v2 `.eth` registration executed through the Rhinestone orchestrator:
-a disposable per-user ERC-7579 account ("HCA", stock Nexus with a baked-in
-default validator) is deployed and funded via an Across fill, then executes
-the registration batch (ERC20 approve → resolver deploy → `register` →
-record seeding → reverse name) on the destination chain. The user's single
-Permit2 signature both funds the intent (`fundingMethod: PERMIT2`,
-`settlementLayer: ACROSS`, `using7579: false`) and carries our
-session-grant authorization inside the JIT witness. The name is registered
-directly to the user's EOA; the account is throwaway.
+- The apps use `@rhinestone/sdk` v1.7.0 with `account: { type: "hca" }`. That
+  account is the legacy `HCAFactory`/CREATE3 account, not the standalone account
+  in this branch.
+- The legacy SDK account does not support SmartSession, recovery, or extra
+  modules. The user's wallet signs each intent.
+- This branch contains a standalone Nexus implementation exercised through a
+  `VerifiableFactory` proxy in local tests, with a validator and signature
+  format maintained by ENS. It is not wired into the SDK or apps.
+- The standalone registration batch passes locally against a mock executor with
+  destination funds supplied directly. The current account has not completed
+  the production Permit2/Across route. The mock also enforces a stronger
+  operation check than the production executor.
+- SDK v1.7.0 contains internal typed-data builders for single-chain execution
+  and Permit2, but they are not exported from the package root.
+- The SDK's HCA `getDeployArgs` understands the legacy
+  `createAccount(bytes)` factory call. Custom HCA factory data that does not use
+  that format produces no deploy arguments.
 
-Validated live on Sepolia 2026-06-03 through the real orchestrator route
-(source chain Base, `IntentExecutor.executeSinglechainOps` destination op).
-We pin **SDK v1.7.0** and currently reproduce your typed-data hashing
-in-contract: our validator reconstructs the Permit2 JIT digest (domain,
-JIT intent struct, mandate) from signature-supplied fields to verify the
-owner's grant.
+## Proposed target
 
-We deliberately do **not** use SmartSession / `experimental_sessions` — the
-account shape rejects module installs, and authorization is a bespoke
-ERC-1271 envelope validated by our default validator. Nothing we need from
-you involves session-module support.
+This is a proposal, not the current implementation. ENS contract fixes,
+additional security findings, and protocol decisions are still unresolved.
 
-## Asks
+1. The user authorizes stablecoin funding and registration.
+2. The route funds a canonical HCA, using Across when funds start on another
+   chain, and submits the registrar commitment.
+3. After the registrar delay, a relayer submits the registration batch without
+   another wallet prompt.
+4. The user's wallet owns the name and all root and admin authority. The HCA is
+   normally empty and may keep only narrowly scoped, wallet-revocable
+   record-writing permission.
 
-**1. Retarget the SDK `hca` account type.** `createAccount({account:
-{type: 'hca'}, owners: {type: 'ens', …}})` currently binds to our old
-factory-based account. We'd like it to target the standalone stack: address
-derivation via ENS's `VerifiableFactory` (CREATE2, `outerSalt =
-keccak256(abi.encode(msg.sender, salt))` — note the deployer-dependence),
-deployment through our `RegistrationBootstrapper`, and the new validator's
-signature envelope. We can supply the derivation and envelope spec.
+The proposed account identity is one HCA per owner, destination chain, and
+account version. That derivation is not implemented yet.
 
-**2. Public export of the intent typed-data builders.** We currently
-mirror your hashing (Permit2 domain, JIT intent, mandate structs) from SDK
-internals. A public, versioned `getTypedData`-style export would let us
-verify our on-chain reconstruction against your source of truth in CI
-instead of pinning by hand.
+## Requests
 
-**3. `getDeployArgs` for non-standard accounts.** It currently throws for
-this account shape. Either support it or document the intended path for
-accounts deployed outside your factories.
+### 1. Public single-chain execution typed data
 
-**4. Late-bound `factoryData`.** Our ideal deploy routes through
-`RegistrationBootstrapper.deployAndCommit(...)` in the `{factory,
-factoryData}` slot — but the calldata embeds a per-registration commitment,
-so it must be computable at `prepareTransaction` time rather than fixed at
-account creation. Is late-bound factoryData possible? If not, we'll split
-into a plain deployer + commit-as-first-destination-op, which works but
-relegates the fused path.
+Please expose a stable version of the internal single-chain typed-data builder,
+including:
 
-**5. Source-chain EIP-2612 bundling for Permit2 cold starts.** A fresh
-wallet holding only USDC (no gas token) and no existing Permit2 allowance
-cannot send the one-time `approve(Permit2)`. USDC supports EIP-2612 — can
-the route accept a user-signed `permit(owner, Permit2, …)` and submit it on
-the source chain ahead of the Permit2 claim, keeping the flow fully
-gasless? (Two signatures, zero user transactions.)
+- the `IntentExecutor` domain and types;
+- destination-operation encoding;
+- the digest passed to ERC-1271; and
+- the expected executor or `sender` value during validation.
 
-**6. Intent-digest preimage documentation + change policy.** We plan to
-strengthen our validator so it *reconstructs* the destination intent digest
-and verifies that the destination ops committed in the digest match the ops
-our policy checked (binding `mandate.destinationOps` to the batch,
-in-contract). For that we need: (a) the exact, documented preimage layout of
-the digest `IntentExecutor` validates via ERC-1271 for this route, and
-(b) a versioning/notice commitment for changes to it. Related: because our
-validator compiles your witness typehashes into immutables, **any change to
-the JIT witness hashing is a breaking change for deployed ENS accounts** —
-advance notice lets us stage validator upgrades ahead of SDK releases.
+Please also provide a test vector and treat hashing changes as breaking changes.
+ENS needs this so the validator can prove that the operations it checks are the
+operations signed for production execution.
 
-## Priority from our side
+### 2. Public Permit2/JIT witness typed data
 
-(6) and (1) unblock security hardening and the frontend migration
-respectively; (4) decides a contract-shape question we'd rather not guess;
-(2) reduces our exposure to accidental breakage; (5) affects first-time-user
-UX; (3) is cleanup.
+Please expose the Permit2/JIT witness builder separately, with a test vector and
+the same versioning policy. ENS currently mirrors these types in Solidity and
+local test helpers, so the existing compatibility test is circular.
+
+### 3. Add a versioned standalone-HCA account
+
+After ENS supplies the fixed deployer and final signature format, please expose
+the standalone account through a versioned SDK selection. The current call must
+continue to select the legacy account:
+
+```ts
+createAccount({
+  account: { type: "hca" },
+  owners: { type: "ens", /* ... */ },
+})
+```
+
+Add either a new account discriminator or an explicit version field for the
+standalone account. The exact API is for Rhinestone and ENS to agree. It must
+let both accounts coexist; silently changing the existing `hca` discriminator
+would change address, deployment, and signature behavior for current users.
+
+The new adapter needs the standalone address derivation, deployment call, and
+ENS signature envelope. Its deployment work depends on ENS replacing the
+unsafe generic bootstrapper. Production use also depends on fixing
+trusted-account provenance and signed-operation binding.
+
+### 4. Confirm when `factoryData` is fixed
+
+Can `{ factory, factoryData }` be computed during `prepareTransaction`, or is it
+fixed when the account object is created?
+
+Late-bound data would allow deploy and commit in one factory call. Static data
+would require a canonical deployer plus `commit` as a destination operation.
+ENS can support either shape but must know which one the SDK permits.
+
+### 5. Gasless first-time Permit2 allowance
+
+Can the route submit a user-signed token permit before the Permit2 pull when the
+source token supports it? This is an open product dependency, not a demonstrated
+capability. The target is two signatures and no user transaction for a wallet
+with stablecoins but no Permit2 allowance or gas token.
+
+### 6. Custom deployment arguments
+
+For the proposed non-legacy factory call, should the HCA adapter extend
+`getDeployArgs`, or is there another supported custom-account path? Please
+document or implement the intended route.
+
+## Not requested
+
+ENS is not asking for SmartSession or module-installation support. The proposed
+account and session validator remain ENS-owned.
+
+## Inputs ENS must provide
+
+Before Rhinestone can implement the account adapter, ENS must provide the fixed
+deployer, address derivation, ABIs, signature envelope, and parity tests. For
+each request above, ENS needs a feasibility answer, a responsible Rhinestone
+contact, and the target SDK version.

@@ -1,149 +1,142 @@
-# HCA — Protocol Team Handoff
+# HCA protocol handoff
 
-*2026-07-02. Derived from [`HCA-DESIGN.md`](./HCA-DESIGN.md) (authoritative on
-conflict). Branch: `feat/hca-final-maybe` in `contracts-v2-hca-use-what-we-have/`.*
+In the intended design, the Hidden Contract Account (HCA) is a per-user
+execution account. The user's externally owned account (EOA) remains the name
+owner and root authority.
 
-## What this is
+This handoff classifies the current branch's risks and remaining work as:
 
-ENS v2 registration via a disposable per-user smart account (HCA): the user
-signs once (a Permit2 witness that is both stablecoin funding and a bounded
-session grant), relayers execute deploy+commit then the register batch, the
-name lands on the user's EOA. The HCA is payment/execution plumbing, never
-identity: **any design that parks durable authority on the HCA is a bug.**
+- **Formal release blocker** means R1, R2, or R3 below.
+- **High-priority finding** means a separate security issue identified by the
+  review; this document does not silently promote it to R1–R3.
+- **Demonstration gap** means a product target the current tests do not prove.
+- **Open decision** means the protocol or product direction is not settled.
+- **Recommended target** means a proposed architecture, not current
+  behavior or an approved decision.
 
-## Current state (all in working tree, not committed)
+## Current implementation
 
-- `StandaloneSingleOwnerHCA` — stock Nexus, baked-in default validator +
-  executor, immutable owner, modules/upgrades/NFT callbacks disabled.
-- `OwnerBoundRegistrationSessionValidator` — stateless ERC-1271 validator;
-  direct owner sigs, legacy EIP-191 grants, Permit2-shaped Rhinestone JIT
-  grants; hardcoded registration policy (registrar commit/register/renew,
-  policy-resolver record writes, `setNameWithHCA` same-batch, exact approve
-  to registrar, resolver deploy via VF). Constructor went 7→6 args
-  (ReverseRegistrarAdapter removed with `claimWithHCA`); `RENEW_SELECTOR`
-  fixed to the 4-arg `renew(string,uint64,address,bytes32)`.
-- `RegistrationBootstrapper.deployAndCommit` — fuses HCA deploy + registrar
-  commit (tx1).
-- `DefaultReverseRegistrarAdapter.setNameWithHCA` — the one HCA-aware
-  protocol adapter (HCAAuthorizer: VF `verifyContract` + trusted-impl
-  allowlist + `owner()` readback).
-- Deploy pipeline `deploy/hca/00–04`, exercised by e2e via devnet.
-  Verification: 937/937 forge, 4/4 e2e, live check `bun run check:hca-live`.
+- `StandaloneSingleOwnerHCA` is a Nexus implementation exercised through a
+  `VerifiableFactory` proxy in tests. It stores one owner, blocks module changes,
+  supports a session-revocation nonce, and allows owner-triggered upgrades to
+  gate-approved implementations.
+- `RegistrationBootstrapper` accepts caller-supplied factory, implementation,
+  salt, initialization data, registrar, and commitment, then deploys and
+  commits.
+- `OwnerBoundRegistrationSessionValidator` supports direct-owner signatures and
+  session grants. Its policy permits registrar commit/register/renew, approvals
+  from either configured payment token to the registrar, resolver deployment
+  and writes, and the registration-time reverse-name adapter.
+- The account has a baked-in default `IntentExecutor`.
+- Local Forge and end-to-end tests pass, but the end-to-end tests use a stronger
+  mock executor and supply funds directly on the destination chain.
 
-## The redeploy work-package (Sepolia redeploy required regardless)
+The branch should not be deployed in this state.
 
-The 7→6 constructor and renew-selector fix already force a redeploy.
-**Status 2026-07-03: items 1–3 are implemented on the branch** (941 forge +
-full e2e green; account id bumped to `ens-standalone-hca.1.1.0`); item 4
-stays blocked on decision C; item 5 remains optional.
+## Formal release blockers
 
-### 1. Gated upgrades (decision A — implemented 2026-07-03)
+### R1 — Trusted account provenance
 
-Frozen **owner model**, upgradeable **account**, reusing the existing
-`ApprovedUpgradeGate` pattern exactly as `WrapperRegistry` consumes it:
+`canUpgradeFrom` currently accepts every predecessor. A malicious
+`VerifiableFactory` proxy can upgrade into the trusted implementation and then
+appear to be a genuine ENS HCA.
 
-- `StandaloneSingleOwnerHCA` gains an immutable `UPGRADE_GATE`
-  (`ApprovedUpgradeGate`) constructor param.
-- `_authorizeUpgrade(newImpl)`: require `msg.sender == owner()` **and**
-  `UPGRADE_GATE.approvedImplementations(newImpl)` (replaces the
-  `HCAUpgradeDisabled` revert). Owner check is load-bearing: the proxy's
-  `upgradeToAndCall` is externally callable, and an upgrade doubles as mass
-  session revocation — gate-only auth would let third parties grief
-  in-flight reveals.
-- `canUpgradeFrom` returns blanket `true` (WrapperRegistry idiom — it is a
-  compatibility hook, not access control; anyone can deploy a true-returning
-  contract).
-- **Deploy a separate gate instance** in the `hca` deploy group. The gate
-  mapping is flat; sharing the v2 instance would cross-approve registry
-  implementations as HCA upgrade targets.
-- Invariant caveat to preserve in review: post-upgrade, the new impl owns
-  all proxy storage including `_owner` — "hard-frozen owner" becomes a
-  gate-curation invariant (no admitted version may mutate the owner or
-  break slot layout).
+Required fix: the first trusted HCA must reject every predecessor; later
+versions must accept only explicit compatible predecessors.
 
-### 2. Session revocation nonce (decision F — implemented 2026-07-03)
+### R2 — Counterfactual account capture
 
-- `uint96 _sessionNonce` packed into the **same slot** as `_owner`.
-- Replace the validator's per-validation `owner()` staticcall with a
-  combined `ownerAndSessionNonce()` — same slot, same single SLOAD, ~tens
-  of gas marginal.
-- Add `uint256 sessionNonce` to **both** grant typehashes
-  (`RegistrationSessionGrant`, `RegistrationPermit2SessionGrant`). The nonce
-  is **never carried in the envelope** — the validator reads the on-account
-  value and rebuilds the digest; a bump surfaces as `InvalidSigner`.
-- `revokeSessions()` on the account, `msg.sender == _owner` only (~26k EOA
-  tx, all-or-nothing). Session ops cannot self-bump (account self-calls have
-  `msg.sender == account`).
-- Direct-owner path stays nonce-free.
+The generic bootstrapper lets a caller choose the deployment inputs even though
+the proxy address depends only on the bootstrapper and salt. Someone can occupy
+the expected account address with malicious initialization before ENS uses or
+funds it.
 
-### 3. Resolver grant-to-owner policy rule (implemented 2026-07-03)
+Required fix: replace it with an owner-bound deployer that pins the factory,
+implementation, registrar, and initialization shape; derives the salt
+internally; verifies an existing account; and handles correct repeat deployment
+or commitment safely.
 
-The registration batch initializes the resolver `(hca, ROLES.ALL, [])`; the
-EOA gets nothing and the policy blocks role grants — durable user state
-admin'd by a disposable account, and EOA-direct record writes revert.
+### R3 — Signed digest does not bind checked operations
 
-- Extend `_checkResolverCall` to allow the resolver role-grant selector(s)
-  **constrained to grantee == owner** (one selector rule + one
-  `_requireArgAddress`).
-- The e2e registration batch includes the grant (`authorizeNameRoles` with
-  DNS-encoded root + `ROLES.ALL` to the owner), ending with the EOA co-admin
-  of its own resolver — verified by an owner-direct record write in e2e.
-  Every HCA becomes genuinely abandonable.
+The validator verifies the session signature over the executor's digest and
+separately checks `operationData` from the signature envelope. It does not prove
+they describe the same calls, and it ignores the forwarded `sender`.
 
-Independently confirmed: a clean-room design derivation (goals only, no
-code) initialized the resolver with `admin = EOA` + account as revocable
-setter — same invariant.
+Required fix: rebuild the production `IntentExecutor` digest from the checked
+operations, compare it with the ERC-1271 digest, require the expected executor,
+and test against Rhinestone's versioned typed-data builder.
 
-### 4. T9 digest binding (sequenced behind decision C — do not build yet)
+## Additional high-priority findings
 
-The validator checks policy against the envelope's `operationData` and
-trusts the executor to bind it to the digest and executed ops. The mock
-executor enforces this; **the live Rhinestone IntentExecutor does not know
-our envelope**, so on the live route a compromised session key could sign a
-digest over out-of-policy ops while presenting policy-clean operationData.
-Fix (same technique as `_permit2SessionDigest`): rebuild the expected intent
-digest with `mandate.destinationOps = hash(operationData)` and require it to
-equal `hash`. **Blocked on capturing the live intent-digest preimage during
-the decision-C orchestrator run.** Until it lands, leaked-key bounds on the
-live route are `validUntil` + account emptiness + the nonce, not the policy.
+These are separate from R1–R3. The protocol team must record how each affects
+the launch gate.
 
-### 5. Optional hardening
+1. **Resolver deployment is under-checked.** The policy does not bind the
+   deployment salt, resolver address, initialization call, initial administrator
+   and roles, seeded records, or exact resolver equality in `register`.
+2. **One grant covers unrelated actions and uncapped spending.** A grant can
+   authorize registration, renewal, records, and an unlimited token allowance.
+   The proposed remediation uses separate registration, renewal, and records
+   grants.
+3. **The owner-role grant is under-checked.** The policy checks only the grantee,
+   not the root resource, role bitmap, `grant == true`, or presence in a valid
+   registration batch.
+4. **The live runner omits the owner grant.** Its checks can pass while the HCA
+   remains the resolver's sole administrator.
+5. **The end-to-end test leaves excessive HCA authority in place.** It grants
+   the owner `ROLES.ALL` but never removes the HCA's own permanent `ROLES.ALL`.
+6. **The shared executor is a fleet-wide trust root.** It can execute arbitrary
+   HCA batches without an account-side validator check. Its audit, upgrade,
+   monitoring, ownership, and fleet emergency plan are not documented here.
 
-A `maxPrice`/fee-cap field in the grant for oracle drift across the
-commit-reveal window (today exact-amount approve fails closed — safe but
-retry-only). From the clean-room review; take or leave.
+## Demonstration gaps
 
-## What NOT to build
+The current evidence does not demonstrate:
 
-- **No registry targets in the policy.** `setResolver`, roles, transfers,
-  subnames are structurally EOA territory (token roles live on the EOA);
-  a policy change alone cannot help and a grant tx defeats the purpose.
-- **No standalone primary-name session path.** Later primary-name changes
-  use `setNameForAddrWithSignature` (1 EOA sig, any relayer) — strictly
-  better than any HCA shape. The same-batch rule stays.
-- **No new HCA-aware adapters** unless a flow appears that needs Verified
-  auth (HCAAuthorizer) — the taxonomy in HCA-DESIGN.md ("flow map") says
-  when: only where a contract must accept an HCA acting *for* an owner and
-  neither permissionless economics (Implied) nor deploy-capture applies.
+- an offline reveal authorized before the user leaves;
+- real Permit2/Across source funding for the current account;
+- a wallet with no Permit2 allowance, or the DAI path;
+- production account derivation and a random registrar secret;
+- the current branch staying below the gas target;
+- post-registration record sessions or renewal end to end; or
+- sponsored session revocation and account upgrades for a user without
+  destination-chain gas.
 
-## Open items owned here
+These are evidence gaps, not additional R1–R3 labels.
 
-- **Decision B**: renewal product story (the rail exists and is
-  policy-permitted; reuse-HCA vs spawn is undecided) and dust on frozen
-  accounts.
-- **Gate curation process**: who approves HCA implementations, review
-  criteria (owner immutability, slot layout), optional upgrade delay.
-- **Decision C run** (required): live orchestrator round-trip on the current
-  account; capture the intent-digest preimage; watch the Permit2 witness
-  schema — it is compiled into validator immutables.
-- **Decision E**: EIP-8037 trigger point (~2.4–2.65M paid gas if it lands;
-  breaks the gas invariant structurally).
+## Recommended target architecture
 
-## Gas position (for reviewers asking "why not cheaper")
+The protocol team has not yet formally ratified this proposed target:
 
-~780k nested route at last measurement vs a measured ~693k for the
-code-bound variant with equivalent features: **~87k/registration is
-knowingly spent** on stock Nexus + standard 7579 module shape + one audit
-surface. Invariant 6 ranks correctness/requirements above gas — twice a
-gas-optimal design was invalidated by a late requirement. Re-measure on this
-branch at redeploy.
+- one canonical HCA per owner, destination chain, and account version;
+- a persistent account that normally holds no funds;
+- the user's EOA as name owner and sole root/admin authority;
+- only minimal, EOA-revocable record-writing permission retained by the HCA;
+- separate grants for registration, renewal, and record writes; and
+- sponsored paths for revocation, upgrades, refunds, and stranded-fund
+  recovery.
+
+## Open decisions
+
+The protocol team still needs to decide:
+
+- canonical account discovery and version coexistence;
+- upgrade-gate ownership, predecessor approval, review criteria, and delay;
+- whether owner immutability is a governance promise or enforced outside
+  upgradeable implementation code;
+- the accepted trust and emergency model for the default executor;
+- how offline reveal authorization or short-lived key custody works;
+- registration and record-session lifetime limits;
+- renewal, leftover funds, refunds, and recovery;
+- supported owner wallet types, source chains, and tokens; and
+- when state-pricing changes such as EIP-8037 should trigger a redesign.
+
+## Recommended integration boundary
+
+For the next integration, keep these operations outside the HCA:
+
+- later primary-name changes should use the EOA signature-relay path, not the
+  HCA;
+- resolver changes, registry role changes, and transfers remain EOA-direct;
+- subname operations are outside the current HCA policy; and
+- the HCA is execution infrastructure, not the name owner or identity.

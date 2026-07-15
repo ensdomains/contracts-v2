@@ -406,7 +406,8 @@ Start a local devnet:
 bun run devnet        # runs w/last build
 ```
 
-This will start a local chain at http://localhost:8545 (Chain ID: 31337)
+This starts a local chain at http://localhost:8545 (Chain ID: 31337). The live
+deployment manifest is available at http://localhost:8000/deployments.
 
 To populate the devnet with test names (registrations, subnames, aliases, renewals, etc.):
 
@@ -421,24 +422,28 @@ This runs `testNames()` which creates 17 names in various states. For details on
 
 ### Using Docker Compose
 
-1. Make sure you have Docker and Docker Compose installed
-2. Run the devnet using either:
+Make sure Docker and Docker Compose are installed, then start the devnet and
+mockestrator transport from the repository root:
 
-   ```bash
-   # Using local build
-   docker compose up -d
+```sh
+docker compose --profile default up -d --build mockestrator
+```
 
-   # Or using pre-built image from GitHub Container Registry
-   docker pull ghcr.io/ensdomains/contracts-v2:latest
-   docker compose up -d
-   ```
+Targeting `mockestrator` starts the devnet dependency without starting the
+unrelated bundler and paymaster services in the default profile.
 
-3. The devnet will be available at http://localhost:8545 (Chain ID: 31337)
+The devnet is available at http://localhost:8545, deployment metadata at
+http://localhost:8000/deployments, and mockestrator at http://localhost:3007.
+
+Mockestrator is a frontend transport mock. It does not replace the SDK's HCA
+adapter or prove the account's authorization policy. For the current frontend
+boundary, see
+[HCA frontend handoff](../docs/HCA-HANDOFF-FRONTEND.md).
 
 To view logs:
 
 ```bash
-docker logs -f contracts-v2-devnet-1
+docker compose logs -f devnet mockestrator
 ```
 
 To stop the devnet:

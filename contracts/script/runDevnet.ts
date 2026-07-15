@@ -130,9 +130,19 @@ if (forkUrl) {
 console.log(new Date(), `Ready! <${Date.now() - t0}ms>`);
 
 const server = createServer((req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "content-type");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  const path = new URL(req.url ?? "/", "http://devnet.local").pathname;
   // Surface every rocketh-tracked deployment as JSON so consumers don't
   // have to know about the deployments/devnet-{chainId}/*.json layout.
-  if (req.url === "/deployments") {
+  if (path === "/deployments") {
     const body: Record<string, string> = {
       chainId: String(env.client.chain.id),
     };
@@ -143,12 +153,17 @@ const server = createServer((req, res) => {
     res.end(JSON.stringify(body));
     return;
   }
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("healthy\n");
+  if (path === "/health") {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("healthy\n");
+    return;
+  }
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("not found\n");
 });
 
-server.listen(8000, () => {
-  console.log(`Healthcheck endpoint listening on :8000/health`);
+server.listen(8000, "0.0.0.0", () => {
+  console.log(`Devnet metadata listening on :8000`);
 });
 
 // ensure server shuts down with the env

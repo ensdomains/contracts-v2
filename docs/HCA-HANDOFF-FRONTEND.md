@@ -1,138 +1,113 @@
-# HCA — Frontend Team Handoff (apps-monorepo migration)
+# HCA frontend handoff
 
-*2026-07-02. Derived from [`HCA-DESIGN.md`](./HCA-DESIGN.md) (authoritative on
-conflict). Targets the standalone HCA stack on branch `feat/hca-final-maybe`;
-the old `HCAFactory` stack your code currently uses is being retired.*
+## Product outcome
 
-## The one-paragraph mental model
+A user with stablecoins but no gas on the registration chain should be able to
+register a name. Their wallet owns the name. The Hidden Contract Account (HCA)
+only funds and executes the registration behind the scenes.
 
-The user's **EOA is the identity**: it owns the name, holds the registry
-roles, and (after migration) co-admins the resolver. The **HCA is disposable
-plumbing**: a throwaway smart account that holds bridged funds for one
-operation, executes the batch, and can be abandoned. Sessions are two
-signatures: the owner signs a *grant* once (delegating to an ephemeral
-session key your client generates, with an expiry), and the session key signs
-the actual operation digests silently — no wallet prompts after the grant.
-In the registration flow the grant rides inside the Permit2 funding
-signature, so **one wallet prompt covers money + authorization**.
+## Frontend boundary
 
-## Target interaction counts (vs what you ship today)
+Frontend owns:
 
-| Flow | Today | Target | What changes |
-|---|---|---|---|
-| Registration | 4 prompts | **1** (2 for fresh wallets) | funding model + batching (below) |
-| Record edits | 1 tx | **1 sig, 0 tx, 0 gas** | session grant + sponsored relay |
-| Primary name (later) | 2 prompts | **1 sig, 0 tx** | drop the HCA from this flow entirely |
-| Renewal | 1–2 EOA txs | **1 sig** (pending product decision) | same rail as registration |
-| setResolver / roles / subnames / transfers | 1 tx each | 1 tx each (unchanged) | keep EOA-direct; never route via intents |
+- collecting the name, duration, records, and payment choice;
+- asking the shared account and transaction packages to prepare the action;
+- presenting wallet-signature, funding, commitment-wait, reveal, completion,
+  and recovery states; and
+- verifying that the wallet owns the name and can administer its resolver.
 
-## Per-flow migration
+Frontend does not own account derivation, deployment calldata, typed-data
+schemas, session policy, or direct mockestrator requests. Those belong below the
+UI in the SDK, shared packages, and protocol contracts.
 
-### Registration (`registration.machine.ts`) — 4 → 1
+## What can run today
 
-Your four prompts exist because funds sit on the EOA: deploy-resolver intent,
-commit intent, a **separate mandatory EOA approve tx** (the registrar pulls
-payment from `msg.sender`, which is the HCA — an intent can't sign an EOA
-approve), and the register intent. The standalone flow inverts the funding:
+The apps monorepo already runs mockestrator in its own E2E stack. That setup
+tests the manager's existing Rhinestone integration, which uses the legacy SDK
+HCA on a Sepolia-shaped local chain.
 
-1. User signs **one Permit2 typed-data payload** = stablecoin funding
-   (bridged Base→L1 via Across) **+** the session grant (embedded in the
-   witness). Client generates the ephemeral session key and `validUntil`
-   (minutes — commit-reveal window scale, treat it as a security parameter).
-2. Relayer executes tx1: `RegistrationBootstrapper.deployAndCommit` (HCA
-   deploy + registrar commit, fused).
-3. Relayer executes tx2: the register batch through the HCA — exact-amount
-   USDC approve → resolver deploy via VerifiableFactory (**HCA must be the
-   deployer** — VF addresses are deployer-dependent) → `register` (owner =
-   EOA) → seed records → `setNameWithHCA` (reverse) → **resolver role grant
-   to the EOA** (new — see Records below).
+This contracts repository now has an equivalent thin transport setup for its
+chain-31337 devnet:
 
-The old comment "the HCA holds no funds — gas is paid by the Warp relayer"
-describes the retired stack. In the new one the HCA briefly holds the
-registration payment; gas is still relayer-sponsored.
+```sh
+docker compose --profile default up -d --build mockestrator
+```
 
-**Fresh wallets:** if the EOA has never approved Permit2 for the source-chain
-USDC, that's +1 interaction. Prefer the EIP-2612 path (sign
-`permit(owner, Permit2, …)`, relayer submits) over an approve tx — an
-approve tx needs ETH on Base and breaks the no-gas-token property. Whether
-the Rhinestone route can bundle the 2612 permit into the fill is an open ask
-to Rhinestone (their handoff doc, ask 5).
+Targeting `mockestrator` also starts its `devnet` dependency.
 
-**SDK:** you already use `createAccount({account: {type: 'hca'}, owners:
-{type: 'ens', …}})` — that account type currently binds to the old factory.
-Retargeting it (VF derivation + bootstrapper deploy + new validator envelope)
-is Rhinestone ask 1; until it lands, deploy routing needs the
-`{factory, factoryData}` slot pointed at the bootstrapper (or split
-deploy/commit — resolution pending Rhinestone ask 4).
+| URL | Provides |
+|---|---|
+| `http://127.0.0.1:8545` | Devnet JSON-RPC |
+| `http://127.0.0.1:8000/deployments` | Current local contract addresses |
+| `http://127.0.0.1:3007` | Upstream mockestrator |
 
-### Record edits (`ProfileEdit.transactions.ts`, `saveRecords.ts`)
+Mockestrator simulates route and fill transport. It may use Anvil shortcuts and
+does not prove that HCA authorization or production routing is correct.
 
-Two things:
+## Why the manager cannot use this HCA yet
 
-1. **The good news:** post-registration record edits become 1 signature,
-   0 transactions, 0 user gas — a session grant bound to the user's resolver
-   (plain EIP-191 shape, no Permit2/funding leg since nothing is paid),
-   session key signs the multicall, sponsored relayer executes.
-2. **The former blocker is fixed on the branch (2026-07-03):** the
-   registration batch now grants the EOA root roles on its resolver
-   (`authorizeNameRoles`, policy-permitted for grantee == owner only), so
-   EOA-signer editors work against names registered on the new stack.
-   Still check `hasRoles` on the resolver before offering the EOA path —
-   names registered before the fix carry no EOA roles until a one-off
-   HCA-mediated grant.
+There is no supported environment-variable-only setup for the standalone HCA:
 
-### Primary name (`primaryName.machine.ts`) — 2 → 1, and simpler
+1. `@rhinestone/sdk` v1.7.0 maps `account: { type: "hca" }` to the legacy
+   `HCAFactory` account, not this branch's standalone account.
+2. The manager supplies `customSepolia` to the account provider and imports a
+   Sepolia ENS contract map. The contracts devnet uses chain 31337 and different
+   addresses.
+3. The registration machine follows the legacy sequence: deploy a resolver,
+   ensure the old HCA exists, commit, wait, then approve and register. Its
+   request builder does not pass the funding `tokenRequests` already supported
+   by the Warp transport.
+4. Pointing the manager at port 3007 changes the orchestrator endpoint only. It
+   does not change account derivation, deployment, signatures, or ENS contract
+   addresses.
 
-Drop the HCA from this flow. Later primary-name changes should use the
-reverse registrar's **signature path** (`setNameForAddrWithSignature`-style):
-the EOA signs one typed-data claim, any relayer submits it. Your current
-intent path spends a second prompt using the HCA as a mere relay, and raw
-`reverseRegistrar.setName` through an HCA names *the HCA*, not the user.
-The HCA-based reverse write (`setNameWithHCA`) exists **only** inside the
-registration batch (the validator enforces same-batch), which stays as-is.
+UI code should not work around these blockers by encoding standalone-HCA calls
+itself.
 
-### Resolver change (`changeResolver.ts`), roles, subnames, transfers
+## How frontend will use mockestrator
 
-Keep all of these EOA-direct, permanently. Their authorization is registry
-token roles held by the EOA; the validator policy blocks registry targets
-**by design** and that will not change. Your `resolver.machine.ts`
-rhinestone-intent branch should be removed or EOA-gated — against the
-standalone stack it is double-blocked (policy + roles).
+Before this setup can exercise the standalone HCA, three shared-layer changes
+must land:
 
-### Renewal (`useRenewalTransactions.ts`)
+1. Rhinestone exposes a versioned standalone-HCA account adapter.
+2. The manager accepts an injected chain and ENS contract map.
+3. The transaction manager gets a standalone registration path that supplies
+   the funding request, prepares deploy-and-commit, creates the required owner
+   authorization, preserves it across the commitment delay, and submits the
+   reveal batch.
 
-The contract rail is ready (permissionless `renew`, pays from caller, policy
-allows it) and fits the same 1-signature Permit2 shape as registration. The
-product story (reuse the user's existing HCA — its address is deterministic
-— vs spawn) is an open protocol-team decision; don't wire it until that
-lands. Today's EOA path keeps working.
+Once those exist:
 
-## Client responsibilities for sessions (new)
+1. Start the contracts stack with the command above.
+2. Configure the manager's local environment:
 
-- Generate an ephemeral session keypair per grant; never persist it beyond
-  the flow; never send the private key anywhere.
-- Read the account's **session nonce** (new `ownerAndSessionNonce()` /
-  `sessionNonce()` view after the redeploy) when building a grant — the
-  nonce is part of the signed grant struct but is **not** sent onchain.
-- **Typehashes changed 2026-07-03** (a `sessionNonce` field was added to
-  both grant structs): the constants in `test/utils/hcaSessions.ts` are the
-  reference. The nonce is read from `ownerAndSessionNonce()` on a deployed
-  account and is 0 for a counterfactual (not-yet-deployed) HCA; it is never
-  sent in the signature envelope.
-- Keep `validUntil` at minutes, not days. It's the primary safety bound.
-- Expose "revoke sessions": one EOA tx to `revokeSessions()` on the user's
-  HCA (~26k gas) kills every outstanding grant. A revoked/stale grant fails
-  as `InvalidSigner` (not a distinct error) — map that to "grant expired or
-  revoked, re-sign" when the account nonce has moved.
-- Render grants legibly at signing time (name, resolver, expiry) — the
-  wallet shows an opaque Permit2 witness; your UI is the only place the user
-  can actually read what they're authorizing.
+   ```env
+   VITE_RHINESTONE_ENDPOINT_URL=/orchestrator
+   VITE_RHINESTONE_CUSTOM_RPC_URLS={"31337":"http://127.0.0.1:8545"}
+   ```
 
-## Dependency order
+3. Configure the manager to use chain 31337 and provide the addresses returned
+   by `GET http://127.0.0.1:8000/deployments` to the shared transaction layer.
+4. Initialize the account through `@ens-apps/smart-account` and submit the
+   registration through `@ens-apps/transaction-manager`.
 
-1. **Now:** primary-name flow switch (signature path — no contract
-   dependency); remove/gate the resolver intent branch.
-2. **After the contracts redeploy:** registration funding-model migration,
-   session-based record editing, typehash bump, revoke-sessions UI.
-3. **After Rhinestone asks land:** SDK `hca` account-type retarget (ask 1),
-   deploy-slot shape (ask 4), fresh-wallet 2612 bundling (ask 5).
+The manager's Vite config already proxies `/orchestrator` to port 3007. A local
+endpoint also makes the existing account setup use its local-development API
+key placeholder. Feature code should still call the SDK-facing interfaces, not
+port 3007 directly.
+
+## Work by team
+
+- **Rhinestone:** versioned standalone-HCA SDK adapter and production
+  typed-data parity.
+- **Frontend platform and shared transaction layer:** injectable chain and ENS
+  addresses plus the funding, deploy-and-commit, authorization, and delayed
+  reveal lifecycle described above.
+- **Protocol:** safe deployment, exact authorization binding, funding model,
+  and release blockers.
+- **Frontend feature team:** registration UX and state-machine wiring after
+  those interfaces are available.
+
+Frontend integration is complete only when an E2E test uses those shared
+interfaces and finishes with the user's wallet owning the name and holding the
+intended resolver authority.
