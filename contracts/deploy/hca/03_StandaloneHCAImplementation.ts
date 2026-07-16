@@ -1,5 +1,6 @@
 import { artifacts, execute } from "@rocketh";
 import type { Abi, Address } from "viem";
+import { zeroAddress } from "viem";
 
 import {
   DEFAULT_ENTRY_POINT,
@@ -29,9 +30,8 @@ export default execute(
       );
     }
 
-    // Separate gate instance for the HCA family: the gate mapping is flat, so sharing the
-    // v2 ApprovedUpgradeGate would cross-approve registry implementations as HCA upgrade
-    // targets.
+    // This target gate belongs to the initial HCA implementation. A later implementation also
+    // receives its own predecessor gate so DAO approvals remain directional.
     const upgradeGate = await deploy("HCAUpgradeGate", {
       account: deployer,
       artifact: artifacts.ApprovedUpgradeGate,
@@ -47,6 +47,7 @@ export default execute(
         intentExecutor,
         "0x",
         upgradeGate.address,
+        zeroAddress,
       ],
     });
   },

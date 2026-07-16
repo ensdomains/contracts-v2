@@ -4,12 +4,12 @@ The HCA is a per-user execution account. The wallet remains the name owner, reso
 
 Do not deploy this branch.
 
-R1 remains a release blocker. R2 is closed. R3 is fixed in the local implementation but still needs a production-shaped integration test. Other findings remain launch-gate inputs.
+Checked-operation binding is fixed locally but still needs a production-shaped integration test. Other findings remain launch-gate inputs.
 
 ## Current implementation
 
 - `StandaloneSingleOwnerHCA` runs as a Nexus implementation behind a `VerifiableFactory` proxy in tests.
-- It stores one owner, exposes owner-only atomic batch execution, blocks module changes, revokes sessions by nonce, and gates owner-triggered upgrades.
+- It stores one owner, exposes owner-only atomic batch execution, blocks module changes, revokes sessions by nonce, and requires separate DAO approvals for an upgrade target and its predecessor.
 - `StandaloneHCADeployer` fixes the `VerifiableFactory`, constructs the owner initializer, and derives the salt from user salt, owner, and initial implementation.
 - `OwnerBoundRegistrationSessionValidator` accepts Rhinestone's existing owner and session-use signatures.
 - Its policy covers commit, register, renew, payment approval, resolver deployment and writes, and default reverse-name updates.
@@ -18,19 +18,7 @@ R1 remains a release blocker. R2 is closed. R3 is fixed in the local implementat
 
 ## Release findings
 
-### R1 — Trusted account provenance — blocker
-
-Problem: `canUpgradeFrom` accepts every predecessor. A malicious proxy can upgrade into the trusted implementation and appear canonical.
-
-Fix: the first trusted version rejects every predecessor. Later versions allow only explicit compatible predecessors.
-
-### R2 — Counterfactual account capture — closed
-
-`StandaloneHCADeployer` removes caller-supplied initialization. Its salt binds `userSalt`, owner, and initial implementation, so another implementation gets another address. Any caller may deploy first, but only with the expected owner and initial implementation at the expected address.
-
-Unit and E2E tests cover address derivation, arbitrary relayers, owner separation, and implementation substitution. The SDK must reproduce the formula and verify existing code, owner, and the current implementation under the version and provenance policy before reuse.
-
-### R3 — Checked-operation binding — integration gate
+### Checked-operation binding — integration gate
 
 Session validation receives the operation from the fixed executor, checks that operation, and rejects other callers.
 
@@ -79,7 +67,7 @@ Current tests do not prove:
 ## Open decisions
 
 - User-salt/version policy, address discovery, and version coexistence.
-- Upgrade-gate ownership, predecessor approval, review, and delay.
+- Upgrade approval review and delay.
 - Whether owner immutability is enforced or only governed.
 - Default-executor trust and emergency controls.
 - Offline reveal authorization or temporary key custody.

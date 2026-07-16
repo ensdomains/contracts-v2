@@ -119,13 +119,13 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotOwner.selector);
         accountHarness.authorizeUpgradeHarness(target);
 
-        vm.prank(owner);
         vm.expectRevert(
             abi.encodeWithSelector(
                 StandaloneSingleOwnerHCA.UpgradeTargetNotApproved.selector,
                 target
             )
         );
+        vm.prank(owner);
         accountHarness.authorizeUpgradeHarness(target);
 
         vm.prank(gateOwner);
@@ -134,13 +134,14 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.prank(owner);
         accountHarness.authorizeUpgradeHarness(target);
 
-        assertTrue(accountHarness.canUpgradeFrom(address(0)));
+        assertFalse(accountHarness.canUpgradeFrom(target));
     }
 
     function test_standaloneSingleOwnerHCA_upgradesThroughVerifiableFactoryProxy() public {
         VerifiableFactory factory = new VerifiableFactory();
         StandaloneSingleOwnerHCA implementation = _newAccount();
-        StandaloneSingleOwnerHCA nextImplementation = _newAccount();
+        ApprovedUpgradeGate predecessorUpgradeGate = new ApprovedUpgradeGate(gateOwner);
+        StandaloneSingleOwnerHCA nextImplementation = _newAccount(predecessorUpgradeGate);
 
         address proxy =
             factory.deployProxy(
@@ -152,6 +153,19 @@ contract StandaloneSingleOwnerHCATest is Test {
 
         vm.prank(gateOwner);
         upgradeGate.setImplementationApproval(address(nextImplementation), true);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IUUPSProxy.InvalidUpgradeTarget.selector,
+                address(implementation),
+                address(nextImplementation)
+            )
+        );
+        vm.prank(owner);
+        IUUPSProxyUpgrade(proxy).upgradeToAndCall(address(nextImplementation), "");
+
+        vm.prank(gateOwner);
+        predecessorUpgradeGate.setImplementationApproval(address(implementation), true);
 
         vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotOwner.selector);
         IUUPSProxyUpgrade(proxy).upgradeToAndCall(address(nextImplementation), "");
@@ -591,6 +605,13 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function _newAccount() internal returns (StandaloneSingleOwnerHCA) {
+        return _newAccount(ApprovedUpgradeGate(address(0)));
+    }
+
+    function _newAccount(ApprovedUpgradeGate predecessorUpgradeGate)
+        internal
+        returns (StandaloneSingleOwnerHCA)
+    {
         MockValidatorModule defaultValidator = new MockValidatorModule();
         MockExecutorModule defaultExecutor = new MockExecutorModule();
         return
@@ -599,7 +620,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 address(defaultValidator),
                 address(defaultExecutor),
                 "",
-                upgradeGate
+                upgradeGate,
+                predecessorUpgradeGate
             );
     }
 
@@ -612,7 +634,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 address(defaultValidator),
                 address(defaultExecutor),
                 "",
-                upgradeGate
+                upgradeGate,
+                ApprovedUpgradeGate(address(0))
             );
     }
 
@@ -862,14 +885,16 @@ contract StandaloneSingleOwnerHCAHarness is StandaloneSingleOwnerHCA {
         address defaultValidator,
         address defaultExecutor,
         bytes memory validatorInitData,
-        ApprovedUpgradeGate upgradeGate
+        ApprovedUpgradeGate upgradeGate,
+        ApprovedUpgradeGate predecessorUpgradeGate
     )
         StandaloneSingleOwnerHCA(
             entryPoint,
             defaultValidator,
             defaultExecutor,
             validatorInitData,
-            upgradeGate
+            upgradeGate,
+            predecessorUpgradeGate
         )
     {}
 

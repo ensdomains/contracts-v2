@@ -11,8 +11,8 @@ import {ApprovedUpgradeGate} from "../registry/ApprovedUpgradeGate.sol";
 /// @title Standalone Single Owner HCA
 /// @notice Nexus account whose owner is set once during account initialization.
 /// @dev Module changes are disabled after initialization and the configured default validator
-///      remains the only validator path for the account. Upgrades are owner-triggered and
-///      restricted to implementations approved by the upgrade gate.
+///      remains the only validator path for the account. Upgrades are owner-triggered and require
+///      DAO approval for both the target and its predecessor.
 contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     ////////////////////////////////////////////////////////////////////////
     // Constants & Immutables
@@ -30,8 +30,12 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     /// @dev Returned by `onERC1155BatchReceived`.
     bytes4 internal constant ERC1155_BATCH_RECEIVED_SELECTOR = 0xbc197c81;
 
-    /// @notice The allowlist gating upgrade target implementations.
+    /// @notice The allowlist gating upgrade target implementations from this implementation.
     ApprovedUpgradeGate public immutable UPGRADE_GATE;
+
+    /// @notice The allowlist of implementations permitted to upgrade into this implementation.
+    /// @dev The initial trusted implementation uses the zero address and rejects all predecessors.
+    ApprovedUpgradeGate public immutable PREDECESSOR_UPGRADE_GATE;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
@@ -85,16 +89,19 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     /// @param intentExecutor_ Executor module used by the intent execution flow.
     /// @param validatorInitData_ Initialization data passed to the default validator.
     /// @param upgradeGate_ The allowlist gating upgrade target implementations.
+    /// @param predecessorUpgradeGate_ The predecessor allowlist; zero rejects every predecessor.
     constructor(
         address entryPoint_,
         address defaultValidator_,
         address intentExecutor_,
         bytes memory validatorInitData_,
-        ApprovedUpgradeGate upgradeGate_
+        ApprovedUpgradeGate upgradeGate_,
+        ApprovedUpgradeGate predecessorUpgradeGate_
     )
         Nexus(entryPoint_, defaultValidator_, intentExecutor_, validatorInitData_, "")
     {
         UPGRADE_GATE = upgradeGate_;
+        PREDECESSOR_UPGRADE_GATE = predecessorUpgradeGate_;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -164,18 +171,6 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
         emit SessionsRevoked(sessionNonce);
     }
 
-    /// @notice Returns the account owner.
-    function owner() external view returns (address) {
-        return _owner;
-    }
-
-    /// @notice Returns the account owner and current session nonce.
-    /// @return owner_ The account owner.
-    /// @return sessionNonce_ The current session nonce.
-    function ownerAndSessionNonce() external view returns (address owner_, uint96 sessionNonce_) {
-        return (_owner, _sessionNonce);
-    }
-
     /// @notice Executes an atomic batch submitted directly by the account owner.
     /// @dev The wallet transaction authenticates the owner, so this path does not require an
     ///      intent signature or the default executor. The session policy does not apply, and
@@ -188,20 +183,33 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
         _executeBatchNoReturndata(executions);
     }
 
-    /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
-    /// @dev Compatibility hook only — upgrade authorization is enforced by the current
-    ///      implementation's `_authorizeUpgrade` during the UUPS upgrade call.
-    /// @param {previousImplementation} Ignored.
-    /// @return allowed Always `true` for implementations in this account family.
-    function canUpgradeFrom(
-        address /* previousImplementation */
-    )
+    /// @notice Returns the account owner.
+    function owner() external view returns (address) {
+        return _owner;
+    }
+
+    /// @notice Returns the account owner and current session nonce.
+    /// @return owner_ The account owner.
+    /// @return sessionNonce_ The current session nonce.
+    function ownerAndSessionNonce() external view returns (address owner_, uint96 sessionNonce_) {
+        return (_owner, _sessionNonce);
+    }
+
+    /// @notice Returns whether a predecessor may upgrade into this implementation.
+    /// @dev The target's predecessor gate is independent from the current implementation's target
+    ///      gate, so approval remains directional.
+    /// @param previousImplementation The current proxy implementation.
+    /// @return allowed Whether the DAO approved the predecessor for this implementation.
+    function canUpgradeFrom(address previousImplementation)
         external
-        pure
+        view
         override
         returns (bool allowed)
     {
-        return true;
+        ApprovedUpgradeGate predecessorGate = PREDECESSOR_UPGRADE_GATE;
+        return
+            address(predecessorGate) != address(0) &&
+            predecessorGate.approvedImplementations(previousImplementation);
     }
 
     /// @notice Returns the account implementation identifier.

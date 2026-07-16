@@ -34,14 +34,16 @@ contract StandaloneHCADeployerTest is Test {
             address(new MockValidatorModule()),
             address(new MockExecutorModule()),
             "",
-            new ApprovedUpgradeGate(address(this))
+            new ApprovedUpgradeGate(address(this)),
+            ApprovedUpgradeGate(address(0))
         );
         otherImplementation = new StandaloneSingleOwnerHCA(
             makeAddr("other-entry-point"),
             address(new MockValidatorModule()),
             address(new MockExecutorModule()),
             "",
-            new ApprovedUpgradeGate(address(this))
+            new ApprovedUpgradeGate(address(this)),
+            ApprovedUpgradeGate(address(0))
         );
         deployer = new StandaloneHCADeployer(factory);
     }

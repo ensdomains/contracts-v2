@@ -16,7 +16,7 @@ Present:
 - Owner-only atomic batch execution for wallet-paid actions.
 - Owner-signed sponsored authorization and pre-enabled fixed sessions.
 - A fixed policy for selected registration, renewal, payment, resolver, and standalone default-primary calls.
-- Owner-gated, allowlisted upgrades and session revocation by nonce.
+- Owner-gated upgrades with separate DAO approvals for the target and predecessor, plus session revocation by nonce.
 - An owner- and initial-implementation-bound deployer using the shared `VerifiableFactory`.
 - Local tests for Rhinestone's existing owner and session-use signature formats.
 - Devnet addresses at `http://127.0.0.1:8000/deployments`.
@@ -43,6 +43,12 @@ Mockestrator supplies transport only. It does not close these gaps.
 5. The wallet owns the name and receives resolver `ROLES.ALL`; the HCA keeps resolver roles.
 
 See [the frontend handoff](./HCA-HANDOFF-FRONTEND.md) for route choices, exact calls, and wallet counts.
+
+## Upgrades
+
+An upgrade requires the HCA owner and two DAO approvals: the current implementation's target gate approves the new implementation, and the new implementation's predecessor gate approves the current one.
+
+V1 has a target gate and no predecessor gate, so it cannot be reached by upgrade. Each later implementation needs both gates; its deployment handoff supplies the two DAO approval calls.
 
 ## Responsibilities
 
@@ -77,7 +83,7 @@ Manager currently uses `@ens-apps/smart-account` and `@ens-apps/transaction-mana
 - Gasless first-time token allowance.
 - Reveal authorization across the commitment delay.
 - Refunds, leftovers, recovery, and sponsored revocation.
-- Upgrade-gate and executor ownership and emergency controls.
+- Upgrade review and delay, plus executor ownership and emergency controls.
 
 ## Required evidence
 
