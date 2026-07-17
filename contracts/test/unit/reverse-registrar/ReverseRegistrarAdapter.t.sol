@@ -135,9 +135,12 @@ contract ReverseRegistrarAdapterTest is HCAFixture {
     function test_claim_trustedHCA_forHCA() external {
         address hca = _deployHCA(verifiableFactory, owner, address(trustedHCAImpl));
 
-        vm.expectRevert(ReverseRegistrarAdapter.CannotNameHCA.selector);
         vm.prank(hca);
-        reverseAdapter.claim(hca, resolver);
+        bytes32 node = reverseAdapter.claim(hca, resolver);
+
+        assertEq(node, reverseRegistrar.node(hca), "node");
+        assertEq(registry.owner(node), owner, "owner");
+        assertEq(registry.resolver(node), resolver, "resolver");
     }
 
     function test_claim_trustedHCA_notNamer() external {

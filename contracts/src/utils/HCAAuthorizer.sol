@@ -35,12 +35,15 @@ abstract contract HCAAuthorizer {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Returns HCA owner or `account` if not a trusted HCA.
-    function _unwrapHCA(address account) internal view returns (bool isHCA, address unwrapped) {
-        try VERIFIABLE_FACTORY.verifyContract(account) returns (address impl) {
+    function _unwrapHCA(address sender) internal view returns (bool isHCA, address unwrapped) {
+        try VERIFIABLE_FACTORY.verifyContract(sender) returns (address impl) {
             if (TRUSTED_HCA_SET.includes(impl)) {
-                return (true, IHCA(account).owner());
+                unwrapped = IHCA(sender).owner();
+                if (unwrapped != address(0)) {
+                    return (true, unwrapped);
+                }
             }
         } catch {}
-        return (false, account);
+        return (false, sender);
     }
 }

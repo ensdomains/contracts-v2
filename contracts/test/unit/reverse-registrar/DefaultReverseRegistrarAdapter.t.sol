@@ -117,6 +117,16 @@ contract DefaultReverseRegistrarAdapterTest is HCAFixture {
         assertEq(defaultReverseRegistrar.nameForAddr(hca), "");
     }
 
+    function test_claim_trustedHCA_forHCA() external {
+        address hca = _deployHCA(verifiableFactory, owner, address(trustedHCAImpl));
+
+        vm.prank(hca);
+        defaultAdapter.setName(hca, name);
+
+        assertEq(defaultReverseRegistrar.nameForAddr(owner), "");
+        assertEq(defaultReverseRegistrar.nameForAddr(hca), name);
+    }
+
     function test_setName_untrustedHCA() external {
         address hca = _deployHCA(verifiableFactory, owner, address(untrustedHCAImpl));
 

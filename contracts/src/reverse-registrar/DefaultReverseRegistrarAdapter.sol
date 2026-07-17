@@ -49,6 +49,7 @@ contract DefaultReverseRegistrarAdapter is DelegatedContractNamer, HCAAuthorizer
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Set account's `default.reverse` primary name.
+    ///         If caller is trusted HCA, the namer is the underlying owner.
     /// @param account The contract address.
     /// @param name The primary name to store.
     function setName(address account, string calldata name) external {
