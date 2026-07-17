@@ -23,6 +23,13 @@ contract ReverseRegistrarAdapter is DelegatedContractNamer, HCAAuthorizer {
     IReverseRegistrar public immutable REVERSE_REGISTRAR;
 
     ////////////////////////////////////////////////////////////////////////
+    // Errors
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Error selector: `0x9421bf4c`
+    error CannotNameHCA();
+
+    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
@@ -51,7 +58,10 @@ contract ReverseRegistrarAdapter is DelegatedContractNamer, HCAAuthorizer {
     /// @param resolver The resolver to set.
     /// @return The ENS node hash for the contract's reverse record.
     function claim(address account, address resolver) external returns (bytes32) {
-        (, address namer) = _unwrapHCA(msg.sender);
+        (bool isHCA, address namer) = _unwrapHCA(msg.sender);
+        if (isHCA && account == msg.sender) {
+            revert CannotNameHCA();
+        }
         AccountNamerLib.requireNamer(account, namer);
         return REVERSE_REGISTRAR.claimForAddr(account, namer, resolver);
     }
