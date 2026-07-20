@@ -15,7 +15,7 @@ import {INameSetter} from "./setters/INameSetter.sol";
 import {IPubkeySetter} from "./setters/IPubkeySetter.sol";
 import {ITextSetter} from "./setters/ITextSetter.sol";
 
-/// @dev Interface selector: `0xd3fb9e08`
+/// @dev Interface selector: `0x8c2427cc`
 interface IPermissionedResolver is
     IEnhancedAccessControl,
     IExtendedResolver,
@@ -67,10 +67,15 @@ interface IPermissionedResolver is
     /// @return `true` if an authorization was changed.
     function grantSetterRoles(bytes calldata setter, address account) external returns (bool);
 
-    /// @notice Associate `name` with `targetNode`.
-    /// @param sourceName The DNS-encoded name to link.
+    /// @notice Associate `sourceName` with `targetNode`.
+    /// @param sourceName The DNS-encoded name to link from.
     /// @param targetNode The target namehash or null to unlink.
-    function link(bytes calldata sourceName, bytes32 targetNode) external;
+    function linkToNode(bytes calldata sourceName, bytes32 targetNode) external;
+
+    /// @notice Associate `name` with `recordId`.
+    /// @param sourceName The DNS-encoded name to link.
+    /// @param recordId The record ID or 0 to unlink.
+    function linkToRecord(bytes calldata sourceName, uint256 recordId) external;
 
     /// @notice Get the number of created records.
     function getRecordCount() external view returns (uint256);

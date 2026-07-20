@@ -246,10 +246,10 @@ contract PermissionedResolverTest is V2Fixture {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // link()
+    // linkToNode() and linkToRecord()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_unknownRecord() external {
+    function test_unknownRecord() external view {
         assertEq(resolver.getRecordId(NameCoder.namehash(testName, 0)), 0);
     }
 
@@ -263,14 +263,14 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(resolver.getRecordId(NameCoder.namehash(otherName, 0)), 2);
     }
 
-    function test_link() external {
+    function test_linkToNode() external {
         vm.prank(owner);
         resolver.setName(testName, "NAME");
 
         vm.expectEmit();
         emit IPermissionedResolver.Linked(NameCoder.namehash(otherName, 0), otherName, 1);
         vm.prank(owner);
-        resolver.link(otherName, NameCoder.namehash(testName, 0));
+        resolver.linkToNode(otherName, NameCoder.namehash(testName, 0));
 
         assertEq(
             resolver.getRecordId(NameCoder.namehash(testName, 0)),
@@ -282,13 +282,13 @@ contract PermissionedResolverTest is V2Fixture {
         );
     }
 
-    function test_link_unknownRecord() external {
+    function test_linkToNode_unknownRecord() external {
         vm.expectRevert(abi.encodeWithSelector(IPermissionedResolver.InvalidRecord.selector));
         vm.prank(owner);
-        resolver.link(testName, keccak256("dne"));
+        resolver.linkToNode(testName, keccak256("dne"));
     }
 
-    function test_link_notAuthorized() external {
+    function test_linkToNode_notAuthorized() external {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -298,13 +298,55 @@ contract PermissionedResolverTest is V2Fixture {
             )
         );
         vm.prank(actor);
-        resolver.link(testName, bytes32(0));
+        resolver.linkToNode(testName, bytes32(0));
     }
 
-    function test_link_alreadyUnlinked() external {
+    function test_linkToNode_alreadyUnlinked() external {
         vm.expectRevert(abi.encodeWithSelector(IPermissionedResolver.AlreadyUnlinked.selector));
         vm.prank(owner);
-        resolver.link(testName, bytes32(0));
+        resolver.linkToNode(testName, bytes32(0));
+    }
+
+    function test_linkToRecord() external {
+        uint256 recordId;
+        vm.startPrank(owner);
+        resolver.setName(testName, "NAME");
+        recordId = resolver.getRecordId(NameCoder.namehash(testName, 0));
+        resolver.clear(testName);
+        vm.stopPrank();
+
+        assertNotEq(resolver.getRecordId(NameCoder.namehash(testName, 0)), recordId);
+
+        vm.expectEmit();
+        emit IPermissionedResolver.Linked(NameCoder.namehash(testName, 0), testName, recordId);
+        vm.prank(owner);
+        resolver.linkToRecord(testName, recordId);
+
+        assertEq(resolver.getRecordId(NameCoder.namehash(testName, 0)), recordId);
+        assertEq(
+            resolver.resolve(testName, abi.encodeCall(INameResolver.name, bytes32(0))),
+            abi.encode("NAME")
+        );
+    }
+
+    function test_linkToRecord_unknownRecord() external {
+        uint256 recordCount = resolver.getRecordCount();
+        vm.expectRevert(abi.encodeWithSelector(IPermissionedResolver.InvalidRecord.selector));
+        vm.prank(owner);
+        resolver.linkToRecord(testName, recordCount + 1);
+    }
+
+    function test_linkToRecord_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                resolver.ROOT_RESOURCE(),
+                PermissionedResolverLib.ROLE_MANAGER,
+                actor
+            )
+        );
+        vm.prank(actor);
+        resolver.linkToRecord(testName, 0);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -373,11 +415,11 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(resolver.getRecordId(node1), 2, "clear");
 
         vm.prank(owner);
-        resolver.link(otherName, node1);
+        resolver.linkToNode(otherName, node1);
         assertEq(resolver.getRecordId(node2), 2, "link2");
 
         vm.prank(owner);
-        resolver.link(otherName, bytes32(0));
+        resolver.linkToNode(otherName, bytes32(0));
         assertEq(resolver.getRecordId(node2), 0, "unlink2");
     }
 
@@ -397,7 +439,7 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(resolver.getRecordCount(), 3, "new2");
 
         vm.prank(owner);
-        resolver.link(dneName, NameCoder.namehash(testName, 0));
+        resolver.linkToNode(dneName, NameCoder.namehash(testName, 0));
         assertEq(resolver.getRecordCount(), 3, "link");
     }
 
@@ -425,7 +467,7 @@ contract PermissionedResolverTest is V2Fixture {
     // decodeSetter()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_decodeSetter_setABI(uint8 contentTypeBit) external {
+    function test_decodeSetter_setABI(uint8 contentTypeBit) external view {
         uint256 contentType = 1 << contentTypeBit;
 
         (bytes memory arg, uint256 resource, uint256 roleBitmap) =
@@ -435,7 +477,7 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(roleBitmap, PermissionedResolverLib.ROLE_SET_ABI, "role");
     }
 
-    function test_decodeSetter_setAddress(uint256 coinType) external {
+    function test_decodeSetter_setAddress(uint256 coinType) external view {
         (bytes memory arg, uint256 resource, uint256 roleBitmap) =
             resolver.decodeSetter(
                 abi.encodeCall(PermissionedResolver.setAddress, ("", coinType, ""))
@@ -445,7 +487,7 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(roleBitmap, PermissionedResolverLib.ROLE_SET_ADDRESS, "role");
     }
 
-    function test_decodeSetter_setData(string calldata key) external {
+    function test_decodeSetter_setData(string calldata key) external view {
         (bytes memory arg, uint256 resource, uint256 roleBitmap) =
             resolver.decodeSetter(abi.encodeCall(PermissionedResolver.setData, ("", key, "")));
         assertEq(arg, bytes(key), "arg");
@@ -453,7 +495,7 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(roleBitmap, PermissionedResolverLib.ROLE_SET_DATA, "role");
     }
 
-    function test_decodeSetter_setInterface(bytes4 interfaceId) external {
+    function test_decodeSetter_setInterface(bytes4 interfaceId) external view {
         (bytes memory arg, uint256 resource, uint256 roleBitmap) =
             resolver.decodeSetter(
                 abi.encodeCall(PermissionedResolver.setInterface, ("", interfaceId, address(0)))
@@ -463,7 +505,7 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(roleBitmap, PermissionedResolverLib.ROLE_SET_INTERFACE, "role");
     }
 
-    function test_decodeSetter_setText(string calldata key) external {
+    function test_decodeSetter_setText(string calldata key) external view {
         (bytes memory arg, uint256 resource, uint256 roleBitmap) =
             resolver.decodeSetter(abi.encodeCall(PermissionedResolver.setText, ("", key, "")));
         assertEq(arg, bytes(key), "arg");

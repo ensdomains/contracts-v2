@@ -247,24 +247,29 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IPermissionedResolver
-    function link(bytes calldata sourceName, bytes32 targetNode)
+    function linkToNode(bytes calldata sourceName, bytes32 targetNode)
         external
         onlyRootRoles(PermissionedResolverLib.ROLE_MANAGER)
     {
-        bytes32 sourceNode = NameCoder.namehash(sourceName, 0);
         uint256 recordId;
-        if (targetNode == bytes32(0)) {
-            if (_recordIds[sourceNode] == 0) {
-                revert AlreadyUnlinked();
-            }
-        } else {
+        if (targetNode != bytes32(0)) {
             recordId = _recordIds[targetNode];
             if (recordId == 0) {
-                revert InvalidRecord();
+                revert InvalidRecord(); // prevent linking unknown targets
             }
         }
-        _recordIds[sourceNode] = recordId;
-        emit Linked(sourceNode, sourceName, recordId);
+        _link(sourceName, recordId);
+    }
+
+    /// @inheritdoc IPermissionedResolver
+    function linkToRecord(bytes calldata sourceName, uint256 recordId)
+        external
+        onlyRootRoles(PermissionedResolverLib.ROLE_MANAGER)
+    {
+        if (recordId > _recordCount) {
+            revert InvalidRecord(); // prevent linking future records
+        }
+        _link(sourceName, recordId);
     }
 
     /// @inheritdoc IPermissionedResolver
@@ -374,6 +379,16 @@ contract PermissionedResolver is
             _recordIds[node] = recordId;
             emit Linked(node, name, recordId);
         }
+    }
+
+    /// @dev Set `sourceName` to `recordId`.
+    function _link(bytes calldata sourceName, uint256 recordId) internal {
+        bytes32 sourceNode = NameCoder.namehash(sourceName, 0);
+        if (recordId == 0 && _recordIds[sourceNode] == 0) {
+            revert AlreadyUnlinked(); // prevent unnecessary unlinking
+        }
+        _recordIds[sourceNode] = recordId;
+        emit Linked(sourceNode, sourceName, recordId);
     }
 
     /// @dev Avoid permission checks during initialization.
