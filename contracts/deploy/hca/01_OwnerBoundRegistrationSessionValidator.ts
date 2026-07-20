@@ -4,12 +4,10 @@ import type { Abi, Address } from "viem";
 import {
   MAINNET_DAI,
   MAINNET_USDC,
+  RHINESTONE_GAS_REFUND_PAYMASTER,
   SEPOLIA_USDC,
 } from "../../script/deploy-constants.js";
-import {
-  optionalEnvAddress,
-  shouldDeployStandaloneHCA,
-} from "./_helpers.js";
+import { optionalEnvAddress, shouldDeployStandaloneHCA } from "./_helpers.js";
 
 type DeploymentLike = { address: Address };
 
@@ -52,13 +50,15 @@ export default execute(
     if (!shouldDeployStandaloneHCA(tags)) return;
 
     const defaultReverseRegistrarAdapter =
+      getOrNull<(typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]>(
+        "DefaultReverseRegistrarHCAAdapter",
+      ) ??
       get<(typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]>(
         "DefaultReverseRegistrarAdapter",
       );
-    const permittedResolverImpl =
-      get<(typeof artifacts.PermissionedResolver)["abi"]>(
-        "PermissionedResolverImpl",
-      );
+    const permittedResolverImpl = get<
+      (typeof artifacts.PermissionedResolver)["abi"]
+    >("PermissionedResolverImpl");
     const ethRegistrar =
       get<(typeof artifacts.ETHRegistrar)["abi"]>("ETHRegistrar");
     const verifiableFactory =
@@ -87,6 +87,11 @@ export default execute(
       tags,
       paymentToken,
     });
+    const gasRefundPaymaster =
+      optionalEnvAddress("HCA_GAS_REFUND_PAYMASTER") ??
+      (tags.sepolia || tags.hasDao
+        ? RHINESTONE_GAS_REFUND_PAYMASTER
+        : (localExecutor?.address ?? intentExecutor));
 
     await deploy("OwnerBoundRegistrationSessionValidator", {
       account: deployer,
@@ -99,6 +104,7 @@ export default execute(
         paymentToken,
         secondaryPaymentToken,
         intentExecutor,
+        gasRefundPaymaster,
       ],
     });
   },
@@ -110,6 +116,7 @@ export default execute(
       "v2",
     ],
     dependencies: [
+      "DefaultReverseRegistrarHCAAdapter",
       "DefaultReverseRegistrarAdapter",
       "PermissionedResolverImpl",
       "ETHRegistrar",

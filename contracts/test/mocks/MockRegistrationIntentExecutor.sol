@@ -7,14 +7,22 @@ import {ExecLib} from "nexus/lib/ExecLib.sol";
 import {ModeLib} from "nexus/lib/ModeLib.sol";
 import {EncodedModuleTypes} from "nexus/lib/ModuleTypeLib.sol";
 import {Execution} from "nexus/types/DataTypes.sol";
-
-import {
-    OwnerBoundRegistrationSessionValidator
-} from "~src/hca/OwnerBoundRegistrationSessionValidator.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 /// @title Mock Registration Intent Executor
 /// @notice Test-only executor that validates the HCA's ERC-1271 signature before executing.
 contract MockRegistrationIntentExecutor is IExecutor {
+    ////////////////////////////////////////////////////////////////////////
+    // Types
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Executor reimbursement included in a single-chain intent.
+    struct GasRefund {
+        address token;
+        uint256 exchangeRate;
+        uint256 overhead;
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
@@ -30,8 +38,22 @@ contract MockRegistrationIntentExecutor is IExecutor {
     /// @notice Rhinestone operation mode for ERC-1271 execution.
     bytes32 internal constant ERC7579_ERC1271_MODE = bytes32(uint256(0x0201) << 240);
 
-    /// @notice Rhinestone operation mode for pure emissary execution.
-    bytes32 internal constant ERC7579_EMISSARY_EXECUTION_MODE = bytes32(uint256(0x0204) << 240);
+    bytes32 internal constant EIP712_DOMAIN_TYPEHASH =
+        keccak256(
+            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+        );
+    bytes32 internal constant INTENT_EXECUTOR_NAME_HASH = keccak256("IntentExecutor");
+    bytes32 internal constant INTENT_EXECUTOR_VERSION_HASH = keccak256("v0.0.1");
+    bytes32 internal constant SINGLE_CHAIN_OPS_TYPEHASH =
+        0xbae11135c33effc421d699bbb53d9926a005ed0f2f5eb672c62cbfa943807291;
+    bytes32 internal constant OP_TYPEHASH =
+        0xdbc520cb50a8aaf3fa06ea43dc3d59d248e52ae638476e3268a1e6e36bffe196;
+    bytes32 internal constant EXECUTION_TYPEHASH =
+        0x09b0a32e9842b65559835c235891737e06927d59e48a6f0e0512e136a513a9e4;
+    bytes32 internal constant GAS_REFUND_TYPEHASH =
+        0x0bf04d9dcc5e703a75ba16d19c00f9d87fa30b9a815627102c15624d338eb094;
+    bytes32 internal constant NO_GAS_REFUND_HASH =
+        0x44db4de84d423abe696e354fc99de162153ee2f8985ab84305061247a78a3be4;
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -67,21 +89,35 @@ contract MockRegistrationIntentExecutor is IExecutor {
     /// @notice Executes a batch after fixed-session verification.
     function executeWithSession(
         INexus account,
-        OwnerBoundRegistrationSessionValidator validator,
         Execution[] calldata executions,
+        uint256 nonce,
         bytes calldata signature
     )
         external
         returns (bytes[] memory returnData)
     {
-        bytes memory operationData = encodeSessionOperation(executions);
-        bytes32 digest = keccak256(operationData);
-        OwnerBoundRegistrationSessionValidator.Operation memory operation =
-            OwnerBoundRegistrationSessionValidator.Operation({data: operationData});
-        if (
-            validator.verifyExecution(address(account), digest, signature, operation) !=
-            validator.verifyExecution.selector
-        ) {
+        bytes32 digest = singleChainDigest(address(account), nonce, executions);
+        if (account.isValidSignature(digest, signature) != ERC1271_MAGICVALUE) {
+            revert InvalidSignature();
+        }
+
+        return
+            account.executeFromExecutor(ModeLib.encodeSimpleBatch(), ExecLib.encodeBatch(executions));
+    }
+
+    /// @notice Executes a batch after refund-aware fixed-session verification.
+    function executeWithSessionAndRefund(
+        INexus account,
+        Execution[] calldata executions,
+        uint256 nonce,
+        GasRefund calldata gasRefund,
+        bytes calldata signature
+    )
+        external
+        returns (bytes[] memory returnData)
+    {
+        bytes32 digest = singleChainDigestWithRefund(address(account), nonce, executions, gasRefund);
+        if (account.isValidSignature(digest, signature) != ERC1271_MAGICVALUE) {
             revert InvalidSignature();
         }
 
@@ -104,7 +140,89 @@ contract MockRegistrationIntentExecutor is IExecutor {
         pure
         returns (bytes memory)
     {
-        return abi.encodePacked(ERC7579_EMISSARY_EXECUTION_MODE, abi.encode(executions));
+        return encodeOperation(executions);
+    }
+
+    /// @notice Reproduces the production IntentExecutor's no-refund SingleChainOps digest.
+    function singleChainDigest(address account, uint256 nonce, Execution[] calldata executions)
+        public
+        view
+        returns (bytes32)
+    {
+        return _singleChainDigest(account, nonce, executions, GasRefund(address(0), 0, 0));
+    }
+
+    /// @notice Reproduces the production IntentExecutor's refund-aware SingleChainOps digest.
+    function singleChainDigestWithRefund(
+        address account,
+        uint256 nonce,
+        Execution[] calldata executions,
+        GasRefund calldata gasRefund
+    )
+        public
+        view
+        returns (bytes32)
+    {
+        return _singleChainDigest(account, nonce, executions, gasRefund);
+    }
+
+    function _singleChainDigest(
+        address account,
+        uint256 nonce,
+        Execution[] calldata executions,
+        GasRefund memory gasRefund
+    )
+        internal
+        view
+        returns (bytes32)
+    {
+        bytes32[] memory executionHashes = new bytes32[](executions.length);
+        for (uint256 i; i < executions.length; ++i) {
+            Execution calldata execution = executions[i];
+            executionHashes[i] = keccak256(
+                abi.encode(
+                    EXECUTION_TYPEHASH,
+                    execution.target,
+                    execution.value,
+                    keccak256(execution.callData)
+                )
+            );
+        }
+        bytes32 operationHash =
+            keccak256(
+                abi.encode(
+                    OP_TYPEHASH,
+                    ERC7579_ERC1271_MODE,
+                    keccak256(abi.encodePacked(executionHashes))
+                )
+            );
+        bytes32 gasRefundHash = gasRefund.token == address(0) &&
+        gasRefund.exchangeRate == 0 &&
+        gasRefund.overhead == 0
+        ? NO_GAS_REFUND_HASH
+        : keccak256(
+            abi.encode(
+                GAS_REFUND_TYPEHASH,
+                gasRefund.token,
+                gasRefund.exchangeRate,
+                gasRefund.overhead
+            )
+        );
+        bytes32 structHash =
+            keccak256(
+                abi.encode(SINGLE_CHAIN_OPS_TYPEHASH, account, nonce, operationHash, gasRefundHash)
+            );
+        bytes32 domainSeparator =
+            keccak256(
+                abi.encode(
+                    EIP712_DOMAIN_TYPEHASH,
+                    INTENT_EXECUTOR_NAME_HASH,
+                    INTENT_EXECUTOR_VERSION_HASH,
+                    block.chainid,
+                    address(this)
+                )
+            );
+        return MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
     }
 
     /// @notice No-op install hook for ERC-7579 compatibility.

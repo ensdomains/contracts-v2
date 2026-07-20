@@ -2,31 +2,22 @@
 
 The HCA is a per-user execution account. The wallet remains the name owner, resolver co-admin, and revocation authority.
 
-Do not deploy this branch.
+A Sepolia integration deployment is not release approval.
 
-Checked-operation binding is fixed locally but still needs a production-shaped integration test. Other findings remain launch-gate inputs.
+The same-chain path on Sepolia and the user-paid Arbitrum Sepolia-to-Sepolia path are proven. The remaining findings are launch-gate inputs.
 
 ## Current implementation
 
-- `StandaloneSingleOwnerHCA` runs as a Nexus implementation behind a `VerifiableFactory` proxy in tests.
+- `StandaloneSingleOwnerHCA` runs as a Nexus implementation behind a `VerifiableFactory` proxy.
 - It stores one owner, exposes owner-only atomic batch execution, blocks module changes, revokes sessions by nonce, and requires separate DAO approvals for an upgrade target and its predecessor.
 - `StandaloneHCADeployer` fixes the `VerifiableFactory`, constructs the owner initializer, and derives the salt from user salt, owner, and initial implementation.
-- `OwnerBoundRegistrationSessionValidator` accepts Rhinestone's existing owner and session-use signatures.
+- `OwnerBoundRegistrationSessionValidator` accepts existing owner signatures, owner-signed ERC-4337 UserOperations, and a standalone fixed-session envelope around the existing session-key signature.
 - Its policy covers commit, register, renew, payment approval, resolver deployment and writes, and default reverse-name updates.
-- Sponsored execution uses a fixed `IntentExecutor`; wallet-paid execution calls the HCA directly.
-- HCA-focused Forge and E2E tests pass with destination funds supplied directly and a test executor that supplies the exact operation to the validator.
+- Rhinestone sponsorship uses the fixed executor. ERC-4337 uses EntryPoint and an optional paymaster. Wallet-paid HCA execution uses `executeByOwner`.
+- The local executor reproduces the production `SingleChainOps` digest and ERC-1271 route.
+- Forge covers fresh HCA deployment and execution in one paymaster-sponsored UserOperation. Live tests cover same-chain EIP-2612 funding and cross-chain EIP-2612 plus Permit2 funding, USDC-paid session commit and reveal, existing-HCA reuse, ownership, retained resolver roles, and default primary name.
 
-## Release findings
-
-### Checked-operation binding — integration gate
-
-Session validation receives the operation from the fixed executor, checks that operation, and rejects other callers.
-
-Release still requires an orchestrator-produced operation to prove the SDK, executor, and validator agree on the mode and encoding.
-
-This affects sponsored intent execution. `executeByOwner` authenticates `msg.sender` and does not accept an intent signature.
-
-## Other high-priority findings
+## High-priority findings
 
 1. Resolver deployment does not bind the salt, address, initialization, initial roles, seeded records, or resolver used by `register`.
 2. One fixed session covers registration, renewal, records, default-primary changes, and uncapped token approval. Separate payment authority from ongoing name-management permissions or narrow the fixed policy.
@@ -37,13 +28,11 @@ This affects sponsored intent execution. `executeByOwner` authenticates `msg.sen
 
 Current tests do not prove:
 
-- a production reveal without the user returning;
-- production Permit2 or Across funding;
-- first-time allowance or DAI funding;
-- SDK parity for account derivation or a random registrar secret;
+- a production bundler and paymaster;
+- DAI funding;
 - the gas target;
 - record sessions or renewal end to end; or
-- sponsored revocation, upgrades, refunds, or stranded-fund recovery.
+- sponsored revocation, upgrades, or stranded-fund recovery.
 
 ## Target behavior
 
@@ -57,6 +46,7 @@ Current tests do not prove:
 - Fixed sessions are time-limited and revocable. Registration sessions bind a resolver; sessions without one cannot edit resolver records or the default primary name.
 - The validator permits standalone `setNameWithHCA` only for the HCA owner when the policy includes a resolver.
 - Wallet-paid batches use `executeByOwner` and need one transaction confirmation, not an intent signature plus a transaction.
+- Paymaster-sponsored batches use one owner signature. Fresh HCA deployment can be part of that UserOperation.
 - Revocation, upgrades, refunds, and recovery have sponsored paths.
 
 ### Registry constraints
@@ -70,7 +60,7 @@ Current tests do not prove:
 - Upgrade approval review and delay.
 - Whether owner immutability is enforced or only governed.
 - Default-executor trust and emergency controls.
-- Offline reveal authorization or temporary key custody.
+- Session-key custody across the commitment delay.
 - Registration and record-session lifetimes.
 - Renewal, leftovers, refunds, and recovery.
 - Supported wallets, chains, and tokens.

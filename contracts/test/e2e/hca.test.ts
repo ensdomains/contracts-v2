@@ -1,5 +1,10 @@
 import { describe, it } from "bun:test";
 import {
+  createRhinestoneAccount,
+  type RhinestoneAccountConfig,
+} from "@rhinestone/sdk";
+import { getPermissionId } from "@rhinestone/sdk/smart-sessions";
+import {
   type Account,
   type Address,
   encodeAbiParameters,
@@ -8,10 +13,15 @@ import {
   keccak256,
   namehash,
   parseAbiParameters,
+  recoverMessageAddress,
+  recoverTypedDataAddress,
+  size,
+  slice,
   type Hex,
   zeroAddress,
   zeroHash,
 } from "viem";
+import { entryPoint07Address } from "viem/account-abstraction";
 import { privateKeyToAccount } from "viem/accounts";
 
 import artifacts from "../../script/artifacts.js";
@@ -23,12 +33,171 @@ const REGISTRATION_DURATION = 28n * 86400n;
 const BURNER_SESSION_SIGNER_KEY =
   "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const HCA_USER_SALT = 0n;
+const ERC7579_ERC1271_MODE = `0x0201${"00".repeat(30)}` as Hex;
+const MOCK_ORCHESTRATOR_URL = "https://hca-orchestrator.invalid";
+const MOCK_BUNDLER_URL = "https://hca-bundler.invalid";
 
 type HCAExecution = {
   target: Address;
   value: bigint;
   callData: Hex;
 };
+
+type MockIntentInput = {
+  account: {
+    address: Address;
+    accountType: string;
+    setupOps: { to: Address; data: Hex }[];
+  };
+  destinationChainId: number;
+  destinationExecutions: { to: Address; value: string; data: Hex }[];
+  recipient?: {
+    address: Address;
+    accountType: string;
+    setupOps: { to: Address; data: Hex }[];
+  };
+};
+
+type MockRouteOptions = {
+  arbiter: Address;
+  enabledSessionValidator?: Address;
+  fundingMethod: "NO_FUNDING" | "PERMIT2";
+  settlementLayer: "INTENT_EXECUTOR" | "ACROSS";
+  sourceToken?: Address;
+  sourceAmount?: bigint;
+  gasRefund?: {
+    token: Address;
+    exchangeRate: bigint;
+    overhead: bigint;
+  };
+  nonce?: bigint;
+  targetExecutionNonce?: bigint;
+};
+
+type JsonRpcRequest = {
+  id: number | string;
+  method: string;
+  params?: unknown[];
+};
+
+function mockIntentRoute(
+  input: MockIntentInput,
+  {
+    arbiter,
+    fundingMethod,
+    settlementLayer,
+    sourceToken = zeroAddress,
+    sourceAmount = 0n,
+    gasRefund,
+    nonce = 1n,
+    targetExecutionNonce = 2n,
+  }: MockRouteOptions,
+) {
+  const tokenId = BigInt(sourceToken).toString();
+  const amount = sourceAmount.toString();
+  const recipient = input.recipient ?? input.account;
+  return {
+    intentOp: {
+      sponsor: zeroAddress,
+      nonce: nonce.toString(),
+      targetExecutionNonce: targetExecutionNonce.toString(),
+      expires: (BigInt(Math.floor(Date.now() / 1000)) + 3600n).toString(),
+      elements: [
+        {
+          arbiter,
+          chainId: input.destinationChainId.toString(),
+          idsAndAmounts: [[tokenId, amount]],
+          spendTokens: [[tokenId, amount]],
+          beforeFill: false,
+          mandate: {
+            recipient: recipient.address,
+            tokenOut: [[tokenId, amount]],
+            destinationChainId: input.destinationChainId.toString(),
+            fillDeadline: (
+              BigInt(Math.floor(Date.now() / 1000)) + 1800n
+            ).toString(),
+            destinationOps: {
+              vt: ERC7579_ERC1271_MODE,
+              ops: input.destinationExecutions,
+            },
+            preClaimOps: { vt: ERC7579_ERC1271_MODE, ops: [] },
+            qualifier: {
+              settlementContext: {
+                settlementLayer,
+                fundingMethod,
+                using7579: true,
+                ...(gasRefund && {
+                  gasRefund: {
+                    token: gasRefund.token,
+                    exchangeRate: gasRefund.exchangeRate.toString(),
+                    overhead: gasRefund.overhead.toString(),
+                  },
+                }),
+              },
+              encodedVal: zeroHash,
+            },
+            minGas: "0",
+          },
+        },
+      ],
+      serverSignature: "0x",
+      signedMetadata: {
+        fees: {},
+        quotes: {},
+        tokenPrices: {},
+        opGasParams: { estimatedCalldataSize: 0 },
+        gasPrices: {},
+        account: { ...input.account, accountContext: {} },
+        ...(input.recipient && {
+          recipient: { ...input.recipient, accountContext: {} },
+        }),
+      },
+    },
+    intentCost: {},
+  };
+}
+
+async function withMockedIntentRoute<T>(
+  options: MockRouteOptions,
+  run: () => Promise<T>,
+): Promise<T> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    if (url === `${MOCK_ORCHESTRATOR_URL}/intents/route`) {
+      return Response.json(mockIntentRoute(body as MockIntentInput, options));
+    }
+    if (
+      options.enabledSessionValidator &&
+      (body as JsonRpcRequest | undefined)?.method === "eth_call"
+    ) {
+      const request = body as JsonRpcRequest;
+      const call = request.params?.[0] as { to?: Address } | undefined;
+      if (
+        call?.to?.toLowerCase() ===
+        options.enabledSessionValidator.toLowerCase()
+      ) {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: `0x${"00".repeat(31)}01`,
+        });
+      }
+    }
+    return originalFetch(input, init);
+  }) as typeof globalThis.fetch;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
 
 describe("Standalone HCA", () => {
   const { env, setupEnv } = process.env.TEST_GLOBALS!;
@@ -43,6 +212,42 @@ describe("Standalone HCA", () => {
   };
 
   setupEnv({ resetOnEach: true });
+
+  async function standaloneConfig(
+    owner: Account,
+  ): Promise<RhinestoneAccountConfig> {
+    return {
+      account: {
+        type: "hca",
+        version: "ens-standalone-1.1.0",
+        deployer: stack.deployer.address,
+        implementation: stack.hcaImplementation.address,
+        validator: stack.validator.address,
+        verifiableFactory: env.v2.VerifiableFactory.address,
+        proxyLogic: await env.v2.VerifiableFactory.read.proxyLogic(),
+        userSalt: HCA_USER_SALT,
+      },
+      owners: {
+        type: "ecdsa",
+        accounts: [owner],
+        module: stack.validator.address,
+      },
+      experimental_sessions: {
+        enabled: true,
+        module: stack.validator.address,
+      },
+    };
+  }
+
+  function sdkConfig() {
+    return {
+      auth: { mode: "apiKey" as const, apiKey: "test" },
+      provider: {
+        type: "custom" as const,
+        urls: { [env.client.chain.id]: `http://${env.hostPort}` },
+      },
+    };
+  }
 
   function computeOwnerBoundHcaSalt(
     owner: Address,
@@ -100,19 +305,35 @@ describe("Standalone HCA", () => {
   }
 
   async function buildSessionSignature({
+    hca,
+    nonce,
     permissionId,
     sessionKey,
     executions,
   }: {
+    hca: Address;
+    nonce: bigint;
     permissionId: Hex;
     sessionKey: Account;
     executions: HCAExecution[];
   }): Promise<Hex> {
     const data = await operationData(executions);
-    const digest = keccak256(data);
+    const digest = (await env.client.readContract({
+      address: stack.executor.address,
+      abi: stack.executor.abi,
+      functionName: "singleChainDigest",
+      args: [hca, nonce, executions],
+    })) as Hex;
     return encodePacked(
-      ["bytes1", "bytes32", "bytes"],
-      ["0x00", permissionId, await signRhinestoneMessage(sessionKey, digest)],
+      ["address", "bytes1", "bytes32", "uint256", "bytes", "bytes"],
+      [
+        zeroAddress,
+        "0x01",
+        permissionId,
+        nonce,
+        data,
+        await signRhinestoneMessage(sessionKey, digest),
+      ],
     );
   }
 
@@ -401,18 +622,20 @@ describe("Standalone HCA", () => {
 
   async function executeHcaIntent({
     hca,
+    nonce,
     executions,
     signature,
   }: {
     hca: Address;
+    nonce: bigint;
     executions: HCAExecution[];
     signature: Hex;
   }) {
     await env.waitFor(
       stack.executor.write.executeWithSession([
         hca,
-        stack.validator.address,
         executions,
+        nonce,
         signature,
       ]),
     );
@@ -542,6 +765,383 @@ describe("Standalone HCA", () => {
     );
   });
 
+  it("matches the standalone HCA adapter to the deployed account", async () => {
+    const owner = env.namedAccounts.user;
+    const config = await standaloneConfig(owner);
+    const account = await createRhinestoneAccount({
+      ...sdkConfig(),
+      ...config,
+    });
+    const hca = computeHcaAddress(owner.address);
+    const sessionKey = privateKeyToAccount(BURNER_SESSION_SIGNER_KEY);
+    const sdkSession = {
+      chain: env.client.chain,
+      owners: { type: "ecdsa" as const, accounts: [sessionKey] },
+    };
+    const permissionId = getPermissionId(sdkSession);
+
+    expectVar({ sdkAddress: account.getAddress() }).toEqualAddress(hca);
+    expectVar({ initData: account.getInitData() }).toStrictEqual({
+      factory: stack.deployer.address,
+      factoryData: encodeFunctionData({
+        abi: stack.deployer.abi,
+        functionName: "deploy",
+        args: [owner.address, stack.hcaImplementation.address, HCA_USER_SALT],
+      }),
+    });
+
+    await env.waitFor(
+      stack.deployer.write.deploy([
+        owner.address,
+        stack.hcaImplementation.address,
+        HCA_USER_SALT,
+      ]),
+    );
+    const currentBlock = await env.client.getBlock();
+    await enableSession({
+      hca,
+      owner,
+      permissionId,
+      sessionKey,
+      validUntil: Number(currentBlock.timestamp + 3600n),
+      resolver: zeroAddress,
+    });
+    expectVar({
+      sdkSessionEnabled:
+        await account.experimental_isSessionEnabled(sdkSession),
+    }).toStrictEqual(true);
+    const signature = await account.signTypedData(
+      {
+        domain: {
+          name: "SDK parity",
+          version: "1",
+          chainId: env.client.chain.id,
+          verifyingContract: hca,
+        },
+        types: { Message: [{ name: "value", type: "bytes32" }] },
+        primaryType: "Message",
+        message: { value: zeroHash },
+      },
+      env.client.chain,
+      undefined,
+    );
+    const defaultValidatorPrefix = signature.slice(0, 42) as Address;
+    expectVar({ defaultValidatorPrefix }).toEqualAddress(zeroAddress);
+    expectVar({ signatureSize: size(signature) }).toStrictEqual(85);
+
+    const existing = await createRhinestoneAccount({
+      ...sdkConfig(),
+      ...config,
+      initData: { address: hca },
+    });
+    expectVar({ existingAddress: existing.getAddress() }).toEqualAddress(hca);
+    expect(() => existing.getInitData()).toThrow();
+  });
+
+  it("packs refund-aware fixed sessions through the Rhinestone SDK", async () => {
+    const owner = env.namedAccounts.user;
+    const config = await standaloneConfig(owner);
+    const account = await createRhinestoneAccount({
+      ...sdkConfig(),
+      ...config,
+      endpointUrl: MOCK_ORCHESTRATOR_URL,
+    });
+    const sessionKey = privateKeyToAccount(BURNER_SESSION_SIGNER_KEY);
+    const session = {
+      chain: env.client.chain,
+      owners: { type: "ecdsa" as const, accounts: [sessionKey] },
+    };
+    const permissionId = getPermissionId(session);
+    const refundToken = env.erc20.MockUSDC.address;
+    const refundPaymaster = await stack.validator.read.GAS_REFUND_PAYMASTER();
+    const maxExchangeRate = 10_000_000_000n;
+    const maxGasOverhead = 100_000;
+    const maxRefundAmount = 25_000_000n;
+    const packedOverhead = (maxRefundAmount << 128n) | BigInt(maxGasOverhead);
+    const calls: HCAExecution[] = [
+      {
+        target: refundToken,
+        value: 0n,
+        callData: encodeFunctionData({
+          abi: env.erc20.MockUSDC.abi,
+          functionName: "approve",
+          args: [refundPaymaster, maxRefundAmount],
+        }),
+      },
+      {
+        target: env.v2.ETHRegistrar.address,
+        value: 0n,
+        callData: encodeFunctionData({
+          abi: env.v2.ETHRegistrar.abi,
+          functionName: "commit",
+          args: [keccak256("0x1234")],
+        }),
+      },
+    ];
+    const targetExecutionNonce = 91n;
+    const signed = await withMockedIntentRoute(
+      {
+        arbiter: stack.executor.address,
+        enabledSessionValidator: stack.validator.address,
+        fundingMethod: "NO_FUNDING",
+        settlementLayer: "INTENT_EXECUTOR",
+        gasRefund: {
+          token: refundToken,
+          exchangeRate: maxExchangeRate,
+          overhead: packedOverhead,
+        },
+        targetExecutionNonce,
+      },
+      async () => {
+        const prepared = await account.prepareTransaction({
+          chain: env.client.chain,
+          calls: calls.map(({ target: to, value, callData: data }) => ({
+            to,
+            value,
+            data,
+          })),
+          feeAsset: refundToken,
+          sponsored: false,
+          signers: {
+            type: "experimental_session",
+            session,
+            verifyExecutions: true,
+          },
+        });
+        return account.signTransaction(prepared);
+      },
+    );
+
+    const signature = signed.targetExecutionSignature;
+    expectVar({ signature }).not.toBeUndefined();
+    const operation = await operationData(calls);
+    const expectedPrefix = encodePacked(
+      [
+        "address",
+        "bytes1",
+        "bytes32",
+        "uint256",
+        "address",
+        "uint256",
+        "uint256",
+        "bytes",
+      ],
+      [
+        zeroAddress,
+        "0x02",
+        permissionId,
+        targetExecutionNonce,
+        refundToken,
+        maxExchangeRate,
+        packedOverhead,
+        operation,
+      ],
+    );
+    expectVar({ signature }).toSatisfy((value: Hex) =>
+      value.toLowerCase().startsWith(expectedPrefix.toLowerCase()),
+    );
+    expectVar({ signatureSize: size(signature!) }).toStrictEqual(
+      size(expectedPrefix) + 65,
+    );
+
+    const rawSignature = slice(signature!, size(signature!) - 65);
+    const v = Number.parseInt(rawSignature.slice(-2), 16);
+    expectVar({ v }).toSatisfy((value: number) => value === 31 || value === 32);
+  });
+
+  it("reuses one Nexus Permit2 signature for the destination HCA", async () => {
+    const owner = env.namedAccounts.user;
+    let signatureCount = 0;
+    const trackedOwner = {
+      ...owner,
+      signTypedData: (async (parameters: unknown) => {
+        signatureCount += 1;
+        return owner.signTypedData(parameters as never);
+      }) as typeof owner.signTypedData,
+    };
+    const recipient = await standaloneConfig(owner);
+    const source = await createRhinestoneAccount({
+      ...sdkConfig(),
+      account: { type: "nexus" },
+      owners: { type: "ecdsa", accounts: [trackedOwner] },
+      endpointUrl: MOCK_ORCHESTRATOR_URL,
+    });
+    const sourceAmount = 10_000_000n;
+    const paymentToken = env.erc20.MockUSDC.address;
+    const signed = await withMockedIntentRoute(
+      {
+        arbiter: stack.executor.address,
+        fundingMethod: "PERMIT2",
+        settlementLayer: "ACROSS",
+        sourceToken: paymentToken,
+        sourceAmount,
+      },
+      async () => {
+        const prepared = await source.prepareTransaction({
+          sourceChains: [env.client.chain],
+          targetChain: env.client.chain,
+          recipient,
+          calls: [
+            {
+              to: env.v2.ETHRegistrar.address,
+              value: 0n,
+              data: encodeFunctionData({
+                abi: env.v2.ETHRegistrar.abi,
+                functionName: "commit",
+                args: [keccak256("0x5678")],
+              }),
+            },
+          ],
+          tokenRequests: [{ address: paymentToken, amount: sourceAmount }],
+          sourceAssets: [
+            {
+              chain: env.client.chain,
+              address: paymentToken,
+              amount: sourceAmount,
+            },
+          ],
+          settlementLayers: ["ACROSS"],
+          sponsored: false,
+        });
+        return source.signTransaction(prepared);
+      },
+    );
+
+    expectVar({ signatureCount }).toStrictEqual(1);
+    expectVar({
+      originSignatureCount: signed.originSignatures.length,
+    }).toStrictEqual(1);
+    const originSignature = signed.originSignatures[0];
+    expectVar({ originSignature }).toSatisfy(
+      (value: unknown) => typeof value === "string",
+    );
+    expectVar({
+      destinationSignature: signed.destinationSignature,
+    }).toStrictEqual(originSignature);
+    expectVar({
+      destinationSignatureSize: size(signed.destinationSignature),
+    }).toStrictEqual(85);
+    expectVar({ destinationSignature: signed.destinationSignature }).toSatisfy(
+      (value: Hex) => value.toLowerCase().startsWith(zeroAddress),
+    );
+    expectVar({
+      targetExecutionSignature: signed.targetExecutionSignature,
+    }).toBeUndefined();
+    const recipientSetup =
+      signed.intentRoute.intentOp.signedMetadata.recipient?.setupOps;
+    expectVar({ recipientSetupCount: recipientSetup?.length }).toStrictEqual(1);
+    expectVar({ recipientFactory: recipientSetup?.[0]?.to }).toEqualAddress(
+      stack.deployer.address,
+    );
+
+    const message = source.getTransactionMessages(signed).origin[0]!;
+    const recovered = await recoverTypedDataAddress({
+      ...message,
+      signature: slice(originSignature as Hex, 20),
+    });
+    expectVar({ recovered }).toEqualAddress(owner.address);
+  });
+
+  it("prepares and signs a fresh standalone HCA UserOperation", async () => {
+    const owner = env.namedAccounts.user;
+    const config = await standaloneConfig(owner);
+    const expectedFactoryData = encodeFunctionData({
+      abi: stack.deployer.abi,
+      functionName: "deploy",
+      args: [owner.address, stack.hcaImplementation.address, HCA_USER_SALT],
+    });
+    const localRpcUrl = `http://${env.hostPort}`;
+    const captured: { estimatedUserOperation?: Record<string, unknown> } = {};
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      const request = init?.body
+        ? (JSON.parse(String(init.body)) as JsonRpcRequest)
+        : undefined;
+      if (
+        new URL(url).origin === new URL(MOCK_BUNDLER_URL).origin &&
+        request?.method === "eth_estimateUserOperationGas"
+      ) {
+        captured.estimatedUserOperation = request.params?.[0] as Record<
+          string,
+          unknown
+        >;
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            callGasLimit: "0x186a0",
+            preVerificationGas: "0xc350",
+            verificationGasLimit: "0x7a120",
+          },
+        });
+      }
+      if (
+        new URL(url).origin === new URL(localRpcUrl).origin &&
+        request?.method === "eth_call"
+      ) {
+        const call = request.params?.[0] as { to?: Address } | undefined;
+        if (call?.to?.toLowerCase() === entryPoint07Address.toLowerCase()) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: request.id,
+            result: `0x${"00".repeat(32)}`,
+          });
+        }
+      }
+      return originalFetch(input, init);
+    }) as typeof globalThis.fetch;
+
+    try {
+      const account = await createRhinestoneAccount({
+        ...sdkConfig(),
+        ...config,
+        bundler: { type: "custom", url: MOCK_BUNDLER_URL },
+      });
+      const prepared = await account.prepareUserOperation({
+        chain: env.client.chain,
+        calls: [
+          {
+            to: env.erc20.MockUSDC.address,
+            value: 0n,
+            data: "0x",
+          },
+        ],
+      });
+
+      expectVar({ sender: prepared.userOperation.sender }).toEqualAddress(
+        account.getAddress(),
+      );
+      expectVar({ factory: prepared.userOperation.factory }).toEqualAddress(
+        stack.deployer.address,
+      );
+      expectVar({
+        factoryData: prepared.userOperation.factoryData,
+      }).toStrictEqual(expectedFactoryData);
+      expectVar({
+        estimatedFactory: captured.estimatedUserOperation?.factory,
+      }).toStrictEqual(stack.deployer.address);
+      expectVar({
+        estimatedFactoryData: captured.estimatedUserOperation?.factoryData,
+      }).toStrictEqual(expectedFactoryData);
+
+      const signed = await account.signUserOperation(prepared);
+      expectVar({ signatureSize: size(signed.signature) }).toStrictEqual(65);
+      const recovered = await recoverMessageAddress({
+        message: { raw: prepared.hash },
+        signature: signed.signature,
+      });
+      expectVar({ recovered }).toEqualAddress(owner.address);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("registers two names through wallet-paid HCA batches without intent signatures", async () => {
     const owner = env.namedAccounts.user;
     const label = "hcadirectowner";
@@ -644,6 +1244,8 @@ describe("Standalone HCA", () => {
       },
     ];
     const blockedSignature = await buildSessionSignature({
+      hca,
+      nonce: 1n,
       permissionId,
       sessionKey,
       executions: blockedExecutions,
@@ -651,17 +1253,20 @@ describe("Standalone HCA", () => {
     await expect(
       executeHcaIntent({
         hca,
+        nonce: 1n,
         executions: blockedExecutions,
         signature: blockedSignature,
       }),
     ).rejects.toThrow();
 
     const signature = await buildSessionSignature({
+      hca,
+      nonce: 2n,
       permissionId,
       sessionKey,
       executions,
     });
-    await executeHcaIntent({ hca, executions, signature });
+    await executeHcaIntent({ hca, nonce: 2n, executions, signature });
 
     await expectRegistered({ label, owner, hca, price, resolver });
 
@@ -678,12 +1283,15 @@ describe("Standalone HCA", () => {
       },
     ];
     const laterSignature = await buildSessionSignature({
+      hca,
+      nonce: 3n,
       permissionId,
       sessionKey,
       executions: laterExecutions,
     });
     await executeHcaIntent({
       hca,
+      nonce: 3n,
       executions: laterExecutions,
       signature: laterSignature,
     });
@@ -727,10 +1335,14 @@ describe("Standalone HCA", () => {
     );
 
     const signature = await buildSessionSignature({
+      hca,
+      nonce: 1n,
       permissionId,
       sessionKey,
       executions,
     });
-    await expect(executeHcaIntent({ hca, executions, signature })).rejects.toThrow();
+    await expect(
+      executeHcaIntent({ hca, nonce: 1n, executions, signature }),
+    ).rejects.toThrow();
   });
 });

@@ -4,9 +4,17 @@ pragma solidity ^0.8.27;
 // solhint-disable private-vars-leading-underscore, func-name-mixedcase, gas-custom-errors
 
 import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
+import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
+import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
+import {TestPaymasterAcceptAll} from "account-abstraction/test/TestPaymasterAcceptAll.sol";
+import {Nexus} from "nexus/Nexus.sol";
+import {ExecLib} from "nexus/lib/ExecLib.sol";
+import {ModeLib} from "nexus/lib/ModeLib.sol";
 import {Execution} from "nexus/types/DataTypes.sol";
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
 import {Test} from "forge-std/Test.sol";
 
@@ -19,6 +27,7 @@ import {
 import {
     OwnerBoundRegistrationSessionValidator
 } from "~src/hca/OwnerBoundRegistrationSessionValidator.sol";
+import {StandaloneHCADeployer} from "~src/hca/StandaloneHCADeployer.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
 
@@ -55,6 +64,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     address subregistry = makeAddr("subregistry");
     address entryPoint = makeAddr("entry-point");
     address intentExecutor = makeAddr("intent-executor");
+    address gasRefundPaymaster = makeAddr("gas-refund-paymaster");
 
     address gateOwner = makeAddr("gate-owner");
 
@@ -72,7 +82,8 @@ contract StandaloneSingleOwnerHCATest is Test {
             verifiableFactory,
             usdc,
             dai,
-            intentExecutor
+            intentExecutor,
+            gasRefundPaymaster
         );
         validatorHarness = new OwnerBoundRegistrationSessionValidatorHarness(
             defaultReverseRegistrarHCAAdapter,
@@ -81,7 +92,8 @@ contract StandaloneSingleOwnerHCATest is Test {
             verifiableFactory,
             usdc,
             dai,
-            intentExecutor
+            intentExecutor,
+            gasRefundPaymaster
         );
         hca = new MockStandaloneHCA(owner);
     }
@@ -294,7 +306,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
         hca.validate(validator, digest, _sign(badKey, digest));
 
-        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSessionData.selector);
         hca.validate(validator, digest, hex"1234");
     }
 
@@ -320,6 +332,319 @@ contract StandaloneSingleOwnerHCATest is Test {
         assertEq(
             _verifySession(permissionId, sessionKey, laterData),
             validator.verifyExecution.selector
+        );
+    }
+
+    function test_validator_usesPreEnabledSessionThroughERC1271() public {
+        bytes32 permissionId = keccak256("registration session");
+        uint48 validUntil = uint48(block.timestamp + 1 days);
+        vm.prank(address(hca));
+        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
+
+        OwnerBoundRegistrationSessionValidator.Execution[] memory executions =
+            new OwnerBoundRegistrationSessionValidator.Execution[](1);
+        executions[0] = OwnerBoundRegistrationSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+            COMMIT_SELECTOR,
+            bytes32("commitment")
+        )});
+        bytes memory operationData = _erc1271OperationData(executions);
+        uint256 nonce = 123;
+        bytes32 digest =
+            validatorHarness.singleChainDigestHarness(address(hca), nonce, operationData);
+
+        assertEq(
+            hca.validate(
+                validator,
+                digest,
+                _fixedSessionEnvelope(permissionId, nonce, operationData, sessionKey, digest)
+            ),
+            ERC1271_MAGICVALUE
+        );
+
+        executions[0].callData = abi.encodeWithSelector(
+            COMMIT_SELECTOR,
+            bytes32("different commitment")
+        );
+        bytes memory differentOperation = _erc1271OperationData(executions);
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSessionData.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionEnvelope(permissionId, nonce, differentOperation, sessionKey, digest)
+        );
+    }
+
+    function test_validator_usesRefundAwareSessionThroughERC1271() public {
+        bytes32 permissionId = keccak256("refund registration session");
+        uint96 maxExchangeRate = 10_000_000_000;
+        uint48 maxGasOverhead = 100_000;
+        uint96 maxRefundAmount = 25_000_000;
+        vm.prank(address(hca));
+        validator.enableSessionWithRefund(
+            permissionId,
+            sessionSigner,
+            uint48(block.timestamp + 1 days),
+            resolver,
+            usdc,
+            maxExchangeRate,
+            maxGasOverhead,
+            maxRefundAmount
+        );
+
+        OwnerBoundRegistrationSessionValidator.Execution[] memory executions =
+            new OwnerBoundRegistrationSessionValidator.Execution[](2);
+        executions[0] = OwnerBoundRegistrationSessionValidator.Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
+            APPROVE_SELECTOR,
+            gasRefundPaymaster,
+            maxRefundAmount
+        )});
+        executions[1] = OwnerBoundRegistrationSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+            COMMIT_SELECTOR,
+            bytes32("commitment")
+        )});
+        bytes memory operationData = _erc1271OperationData(executions);
+        uint256 packedOverhead = (uint256(maxRefundAmount) << 128) | maxGasOverhead;
+        OwnerBoundRegistrationSessionValidator.GasRefund memory gasRefund =
+            OwnerBoundRegistrationSessionValidator.GasRefund({token: usdc, exchangeRate: maxExchangeRate, overhead: packedOverhead});
+        uint256 nonce = 321;
+        bytes32 digest =
+            validatorHarness.singleChainDigestWithRefundHarness(
+                address(hca),
+                nonce,
+                operationData,
+                gasRefund
+            );
+
+        assertEq(
+            hca.validate(
+                validator,
+                digest,
+                _fixedSessionRefundEnvelope(
+                    permissionId,
+                    nonce,
+                    gasRefund,
+                    operationData,
+                    sessionKey,
+                    digest
+                )
+            ),
+            ERC1271_MAGICVALUE
+        );
+
+        executions[0].callData = abi.encodeWithSelector(
+            APPROVE_SELECTOR,
+            gasRefundPaymaster,
+            maxRefundAmount - 1
+        );
+        operationData = _erc1271OperationData(executions);
+        digest = validatorHarness.singleChainDigestWithRefundHarness(
+            address(hca),
+            nonce,
+            operationData,
+            gasRefund
+        );
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.PolicyRuleFailed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionRefundEnvelope(
+                permissionId,
+                nonce,
+                gasRefund,
+                operationData,
+                sessionKey,
+                digest
+            )
+        );
+
+        executions[0].callData = abi.encodeWithSelector(
+            APPROVE_SELECTOR,
+            gasRefundPaymaster,
+            maxRefundAmount
+        );
+        operationData = _erc1271OperationData(executions);
+
+        gasRefund.exchangeRate = maxExchangeRate + 1;
+        digest = validatorHarness.singleChainDigestWithRefundHarness(
+            address(hca),
+            nonce,
+            operationData,
+            gasRefund
+        );
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.GasRefundNotAllowed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionRefundEnvelope(
+                permissionId,
+                nonce,
+                gasRefund,
+                operationData,
+                sessionKey,
+                digest
+            )
+        );
+
+        gasRefund.exchangeRate = maxExchangeRate;
+        gasRefund.overhead = (uint256(maxRefundAmount + 1) << 128) | maxGasOverhead;
+        digest = validatorHarness.singleChainDigestWithRefundHarness(
+            address(hca),
+            nonce,
+            operationData,
+            gasRefund
+        );
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.GasRefundNotAllowed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionRefundEnvelope(
+                permissionId,
+                nonce,
+                gasRefund,
+                operationData,
+                sessionKey,
+                digest
+            )
+        );
+
+        gasRefund.overhead = (uint256(maxRefundAmount) << 128) | uint256(maxGasOverhead + 1);
+        digest = validatorHarness.singleChainDigestWithRefundHarness(
+            address(hca),
+            nonce,
+            operationData,
+            gasRefund
+        );
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.GasRefundNotAllowed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionRefundEnvelope(
+                permissionId,
+                nonce,
+                gasRefund,
+                operationData,
+                sessionKey,
+                digest
+            )
+        );
+
+        gasRefund = OwnerBoundRegistrationSessionValidator.GasRefund({token: dai, exchangeRate: maxExchangeRate, overhead: packedOverhead});
+        digest = validatorHarness.singleChainDigestWithRefundHarness(
+            address(hca),
+            nonce,
+            operationData,
+            gasRefund
+        );
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.GasRefundNotAllowed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionRefundEnvelope(
+                permissionId,
+                nonce,
+                gasRefund,
+                operationData,
+                sessionKey,
+                digest
+            )
+        );
+    }
+
+    function test_validator_noRefundSessionRejectsExecutorRefund() public {
+        bytes32 permissionId = keccak256("no-refund registration session");
+        vm.prank(address(hca));
+        validator.enableSession(
+            permissionId,
+            sessionSigner,
+            uint48(block.timestamp + 1 days),
+            resolver
+        );
+
+        OwnerBoundRegistrationSessionValidator.Execution[] memory executions =
+            new OwnerBoundRegistrationSessionValidator.Execution[](1);
+        executions[0] = OwnerBoundRegistrationSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+            COMMIT_SELECTOR,
+            bytes32("commitment")
+        )});
+        bytes memory operationData = _erc1271OperationData(executions);
+        OwnerBoundRegistrationSessionValidator.GasRefund memory gasRefund =
+            OwnerBoundRegistrationSessionValidator.GasRefund({token: usdc, exchangeRate: 1, overhead: 0});
+        uint256 nonce = 654;
+        bytes32 digest =
+            validatorHarness.singleChainDigestWithRefundHarness(
+                address(hca),
+                nonce,
+                operationData,
+                gasRefund
+            );
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.GasRefundNotAllowed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionRefundEnvelope(
+                permissionId,
+                nonce,
+                gasRefund,
+                operationData,
+                sessionKey,
+                digest
+            )
+        );
+    }
+
+    function test_validator_matchesRhinestoneSingleChainDigest() public {
+        OwnerBoundRegistrationSessionValidatorHarness vectorValidator =
+            new OwnerBoundRegistrationSessionValidatorHarness(
+                defaultReverseRegistrarHCAAdapter,
+                permittedResolverImpl,
+                ethRegistrar,
+                verifiableFactory,
+                usdc,
+                dai,
+                address(0x5678),
+                gasRefundPaymaster
+            );
+        OwnerBoundRegistrationSessionValidator.Execution[] memory executions =
+            new OwnerBoundRegistrationSessionValidator.Execution[](1);
+        executions[0] = OwnerBoundRegistrationSessionValidator.Execution({target: address(0x9aBc), value: 0, callData: abi.encodeWithSelector(
+            COMMIT_SELECTOR,
+            bytes32(uint256(0x1111111111111111111111111111111111111111111111111111111111111111))
+        )});
+        bytes memory operationData =
+            abi.encodePacked(vectorValidator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+
+        assertEq(
+            vectorValidator.singleChainDigestHarness(address(0x1234), 123, operationData),
+            0xf6f3d7bdea733a1628607600e6a4e40c52ba9edce5de6f9303852f4ed613e012
+        );
+    }
+
+    function test_validator_appliesFixedPolicyThroughERC1271() public {
+        bytes32 permissionId = keccak256("registration session");
+        vm.prank(address(hca));
+        validator.enableSession(
+            permissionId,
+            sessionSigner,
+            uint48(block.timestamp + 1 days),
+            resolver
+        );
+
+        OwnerBoundRegistrationSessionValidator.Execution[] memory executions =
+            new OwnerBoundRegistrationSessionValidator.Execution[](1);
+        executions[0] = OwnerBoundRegistrationSessionValidator.Execution({target: makeAddr(
+            "forbidden"
+        ), value: 0, callData: hex"12345678"});
+        bytes memory operationData = _erc1271OperationData(executions);
+        uint256 nonce = 456;
+        bytes32 digest =
+            validatorHarness.singleChainDigestHarness(address(hca), nonce, operationData);
+
+        vm.expectPartialRevert(OwnerBoundRegistrationSessionValidator.ActionNotAllowed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionEnvelope(permissionId, nonce, operationData, sessionKey, digest)
         );
     }
 
@@ -591,12 +916,104 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function test_validator_moduleSurface() public view {
-        PackedUserOperation memory userOp;
-
         assertTrue(validator.isModuleType(1));
         assertFalse(validator.isModuleType(2));
         assertTrue(validator.isInitialized(address(hca)));
-        assertEq(validator.validateUserOp(userOp, bytes32(0)), 1);
+    }
+
+    function test_validator_validatesOwnerUserOperations() public {
+        bytes32 userOpHash = keccak256("owner user operation");
+        PackedUserOperation memory userOp;
+        userOp.sender = address(hca);
+        userOp.signature = _sign(ownerKey, userOpHash);
+
+        vm.prank(address(hca));
+        assertEq(validator.validateUserOp(userOp, userOpHash), 0);
+
+        userOp.signature = _signPersonal(ownerKey, userOpHash);
+        vm.prank(address(hca));
+        assertEq(validator.validateUserOp(userOp, userOpHash), 0);
+
+        userOp.signature = _sign(badKey, userOpHash);
+        vm.prank(address(hca));
+        assertEq(validator.validateUserOp(userOp, userOpHash), 1);
+
+        userOp.sender = makeAddr("other-account");
+        vm.prank(address(hca));
+        assertEq(validator.validateUserOp(userOp, userOpHash), 1);
+    }
+
+    function test_standaloneSingleOwnerHCA_deploysAndExecutesPaymasterSponsoredOwnerUserOp() public {
+        EntryPoint userOpEntryPoint = new EntryPoint();
+        MockExecutorModule defaultExecutor = new MockExecutorModule();
+        StandaloneSingleOwnerHCA implementation =
+            new StandaloneSingleOwnerHCA(
+                address(userOpEntryPoint),
+                address(validator),
+                address(defaultExecutor),
+                "",
+                upgradeGate,
+                ApprovedUpgradeGate(address(0))
+            );
+        VerifiableFactory factory = new VerifiableFactory();
+        StandaloneHCADeployer deployer = new StandaloneHCADeployer(factory);
+        uint256 userSalt = 4337;
+        uint256 deploymentSalt = deployer.deploymentSalt(owner, address(implementation), userSalt);
+        bytes32 outerSalt = keccak256(abi.encode(address(deployer), deploymentSalt));
+        address account =
+            Create2.computeAddress(
+                outerSalt,
+                keccak256(CloneProxyBytecode.creationCode(factory.proxyLogic(), outerSalt)),
+                address(factory)
+            );
+        assertEq(account.code.length, 0);
+
+        TestPaymasterAcceptAll paymaster =
+            new TestPaymasterAcceptAll(IEntryPoint(address(userOpEntryPoint)));
+        vm.deal(address(this), 1 ether);
+        paymaster.deposit{value: 1 ether}();
+
+        WalletPaidTarget target = new WalletPaidTarget();
+        PackedUserOperation memory userOp;
+        userOp.sender = account;
+        userOp.nonce = userOpEntryPoint.getNonce(account, uint192(0x123456) << 168);
+        userOp.initCode = abi.encodePacked(
+            address(deployer),
+            abi.encodeCall(StandaloneHCADeployer.deploy, (owner, address(implementation), userSalt))
+        );
+        userOp.callData = abi.encodeCall(
+            Nexus.execute,
+            (
+                ModeLib.encodeSimpleSingle(),
+                ExecLib.encodeSingle(
+                    address(target),
+                    0,
+                    abi.encodeCall(WalletPaidTarget.setValue, (4337))
+                )
+            )
+        );
+        userOp.accountGasLimits = bytes32((uint256(500_000) << 128) | uint256(1_000_000));
+        userOp.preVerificationGas = 100_000;
+        userOp.gasFees = bytes32((uint256(1 gwei) << 128) | uint256(1 gwei));
+        userOp.paymasterAndData = abi.encodePacked(
+            address(paymaster),
+            uint128(500_000),
+            uint128(100_000)
+        );
+        userOp.signature = _signPersonal(ownerKey, userOpEntryPoint.getUserOpHash(userOp));
+
+        PackedUserOperation[] memory userOps = new PackedUserOperation[](1);
+        userOps[0] = userOp;
+        uint256 paymasterDepositBefore = userOpEntryPoint.balanceOf(address(paymaster));
+
+        vm.txGasPrice(1 gwei);
+        userOpEntryPoint.handleOps(userOps, payable(makeAddr("bundler")));
+
+        assertEq(target.value(), 4337);
+        assertEq(StandaloneSingleOwnerHCA(payable(account)).owner(), owner);
+        assertEq(factory.verifyContract(account), address(implementation));
+        assertEq(account.balance, 0);
+        assertLt(userOpEntryPoint.balanceOf(address(paymaster)), paymasterDepositBefore);
     }
 
     function test_validator_installHooksAreNoops() public view {
@@ -776,6 +1193,16 @@ contract StandaloneSingleOwnerHCATest is Test {
             abi.encodePacked(validator.ERC7579_EMISSARY_EXECUTION_MODE(), abi.encode(executions));
     }
 
+    function _erc1271OperationData(
+        OwnerBoundRegistrationSessionValidator.Execution[] memory executions
+    )
+        internal
+        view
+        returns (bytes memory)
+    {
+        return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+    }
+
     function _expectValidationRevert(
         bytes memory operationData,
         address allowedResolver,
@@ -816,6 +1243,52 @@ contract StandaloneSingleOwnerHCATest is Test {
         return abi.encodePacked(bytes1(0), permissionId, _signRhinestoneMessage(signerKey, digest));
     }
 
+    function _fixedSessionEnvelope(
+        bytes32 permissionId,
+        uint256 nonce,
+        bytes memory operationData,
+        uint256 signerKey,
+        bytes32 digest
+    )
+        internal
+        pure
+        returns (bytes memory)
+    {
+        return
+            abi.encodePacked(
+                bytes1(uint8(1)),
+                permissionId,
+                nonce,
+                operationData,
+                _sign(signerKey, digest)
+            );
+    }
+
+    function _fixedSessionRefundEnvelope(
+        bytes32 permissionId,
+        uint256 nonce,
+        OwnerBoundRegistrationSessionValidator.GasRefund memory gasRefund,
+        bytes memory operationData,
+        uint256 signerKey,
+        bytes32 digest
+    )
+        internal
+        pure
+        returns (bytes memory)
+    {
+        return
+            abi.encodePacked(
+                bytes1(uint8(2)),
+                permissionId,
+                nonce,
+                gasRefund.token,
+                gasRefund.exchangeRate,
+                gasRefund.overhead,
+                operationData,
+                _sign(signerKey, digest)
+            );
+    }
+
     function _signRhinestoneMessage(uint256 privateKey, bytes32 digest)
         internal
         pure
@@ -834,6 +1307,11 @@ contract StandaloneSingleOwnerHCATest is Test {
         return abi.encodePacked(r, s, v);
     }
 
+    function _signPersonal(uint256 privateKey, bytes32 digest) internal pure returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, _toEthSignedMessageHash(digest));
+        return abi.encodePacked(r, s, v);
+    }
+
     function _signV01(uint256 privateKey, bytes32 digest) internal pure returns (bytes memory) {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
         return abi.encodePacked(r, s, v - 27);
@@ -849,7 +1327,8 @@ contract OwnerBoundRegistrationSessionValidatorHarness is OwnerBoundRegistration
         address verifiableFactory,
         address paymentToken,
         address secondaryPaymentToken,
-        address intentExecutor
+        address intentExecutor,
+        address gasRefundPaymaster
     )
         OwnerBoundRegistrationSessionValidator(
             defaultReverseRegistrarHCAAdapter,
@@ -858,7 +1337,8 @@ contract OwnerBoundRegistrationSessionValidatorHarness is OwnerBoundRegistration
             verifiableFactory,
             paymentToken,
             secondaryPaymentToken,
-            intentExecutor
+            intentExecutor,
+            gasRefundPaymaster
         )
     {}
 
@@ -875,6 +1355,27 @@ contract OwnerBoundRegistrationSessionValidatorHarness is OwnerBoundRegistration
         view
     {
         _checkRegistrationPolicy(owner, resolver, operationData);
+    }
+
+    function singleChainDigestHarness(address account, uint256 nonce, bytes calldata operationData)
+        external
+        view
+        returns (bytes32)
+    {
+        return _singleChainDigest(account, nonce, operationData);
+    }
+
+    function singleChainDigestWithRefundHarness(
+        address account,
+        uint256 nonce,
+        bytes calldata operationData,
+        GasRefund calldata gasRefund
+    )
+        external
+        view
+        returns (bytes32)
+    {
+        return _singleChainDigest(account, nonce, operationData, gasRefund);
     }
 }
 

@@ -1,62 +1,154 @@
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { zeroAddress } from "viem";
+import { generatePrivateKey } from "viem/accounts";
 
-const LIVE_RUN_TIMEOUT_MS = 180_000;
-
+const CROSS_CHAIN = process.env.HCA_CROSS_CHAIN === "1";
+const LIVE_RUN_TIMEOUT_MS = CROSS_CHAIN ? 900_000 : 420_000;
 const contractsRoot = fileURLToPath(new URL("..", import.meta.url));
+const SEPOLIA_USDC = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+const suppliedOwnerKey = process.env.HCA_OWNER_KEY?.trim();
+const generatedOwnerKey = !suppliedOwnerKey;
+const liveOwnerKey = suppliedOwnerKey ?? generatePrivateKey();
+
+type SameChainRoute = {
+  transactionHash: string;
+  setupOps: number;
+  mode: string;
+  gasUsed: string;
+};
+
+type CrossChainRoute = {
+  claimTransactionHash: string;
+  fillTransactionHash: string;
+  sourceSetupOps: number;
+  recipientSetupOps: number;
+  sourceWalletSignatures: number;
+  destinationReusesPermit2Signature: boolean;
+  using7579: boolean;
+  mode: string;
+  settlementLayer: string;
+  fundingMethod: string;
+  claimGasUsed: string;
+  fillGasUsed: string;
+  gasUsed: string;
+};
+
+type CrossChainPreparation = {
+  deploymentTransactionHash: string;
+  commitTransactionHash: string;
+  deploymentGasUsed: string;
+  commitGasUsed: string;
+  gasUsed: string;
+};
 
 type LiveRegistrationSummary = {
-  name: string;
+  initialState: "new" | "existing";
+  names: [string, string];
   owner: string;
+  hca: string;
+  resolver: string;
   ownerKeySource: string;
-  transactions: {
-    deployHca?: string;
-    commit: string;
-    executeSinglechainOps: string;
+  sameChainFunding: {
+    source: "wallet EIP-2612 permit";
+    amountPulled: string;
+    walletBalanceBeforePull: string;
+    walletBalanceAfter: string;
+    hcaBalanceBefore: string;
+    hcaBalanceAfter: string;
+    allowanceAfter: string;
+  };
+  walletInteractions:
+    | {
+        paymentPermitSignatures: number;
+        ownerIntentSignatures: number;
+        postCommitWalletInteractions: number;
+        total: number;
+      }
+    | {
+        sourceFundingTransactions: number;
+        permit2Signatures: number;
+        additionalHcaOwnerSignatures: number;
+        total: number;
+      };
+  crossChain?: {
+    sourceChain: number;
+    targetChain: number;
+    sourceToken: string;
+    targetToken: string;
+    source: {
+      wallet: string;
+      sourceAccount: string;
+      circleFaucetRequested: boolean;
+      provisioningSource: "existing" | "circle" | "operator";
+      provisioningTransactionHashes: string[];
+      provisioningGasUsed: string;
+      walletNativeBalance: string;
+      walletBalanceBefore: string;
+      walletBalanceAfter: string;
+      sourceAccountBalanceBefore: string;
+      sourceAccountBalanceAfter: string;
+      permit2AllowanceBefore: string;
+      fundingTransactionHash: string;
+      fundingGasUsed: string;
+      walletTransactions: number;
+    };
+  };
+  funding?: {
+    source: "Base Sepolia Permit2 + Across";
+    amount: string;
+    crossChainBalance: string;
+    testProvisionedAmount: string;
+    provisioningTransactionHash?: string;
+    gasUsed: string;
+  };
+  flows: {
+    newUser:
+      | [SameChainRoute, SameChainRoute]
+      | [CrossChainPreparation, CrossChainRoute];
+    existingUser: [SameChainRoute, SameChainRoute];
   };
   verified: {
-    defaultPrimary: string;
-    exactV1ReverseResolver: string;
+    name: string;
     ownerHasResolverRoles: boolean;
-    urForward: {
-      address: string;
-    };
-    urReverse: {
-      primary: string;
-    };
+    hcaHasResolverRoles: boolean;
+    defaultPrimary: string;
+    universalAddress: string;
   };
 };
 
 function requireEnv(env: NodeJS.ProcessEnv, name: string) {
-  if (!env[name]) {
-    throw new Error(`${name} is required for the live HCA check`);
-  }
+  if (!env[name]) throw new Error(`${name} is required for the live HCA check`);
 }
 
 function liveEnv() {
   const env = { ...process.env };
-
+  env.DEPLOYMENT_NETWORK ??= "sepolia";
   env.HCA_DEPLOYMENT_NETWORK ??= env.DEPLOYMENT_NETWORK;
   env.V1_DEPLOYMENT_NETWORK ??= "sepolia";
-  env.HCA_GENERATE_OWNER = "1";
-  env.HCA_MINT_PAYMENT_TOKEN = "1";
+  env.HCA_OWNER_KEY = liveOwnerKey;
+  env.HCA_OWNER_KEY_SOURCE = generatedOwnerKey ? "generated" : "supplied";
+  env.HCA_EXPECT_INITIAL_STATE = generatedOwnerKey ? "new" : "either";
   env.HCA_EXPECT_DEFAULT_REVERSE_FALLBACK = "1";
-  delete env.HCA_OWNER_KEY;
+  env.HCA_SPONSORED = "1";
+  env.RHINESTONE_API_KEY ??= env.RHINESTONE_SDK_API_KEY;
+  if (CROSS_CHAIN) {
+    env.HCA_TEST_PAYMENT_TOKEN ??= SEPOLIA_USDC;
+    requireEnv(env, "BASE_SEPOLIA_RPC_URL");
+    requireEnv(env, "CIRCLE_API_KEY");
+  }
+  delete env.HCA_GENERATE_OWNER;
+  delete env.HCA_DRY_RUN_ONLY;
 
   requireEnv(env, "SEPOLIA_RPC_URL");
   requireEnv(env, "DEPLOYER_KEY");
-  requireEnv(env, "DEPLOYMENT_NETWORK");
-  requireEnv(env, "RHINESTONE_SDK_SINGLE_CHAIN_OPS");
-
+  requireEnv(env, "RHINESTONE_API_KEY");
   return env;
 }
 
 function parseSummary(stdout: string): LiveRegistrationSummary {
   const trimmed = stdout.trim();
   const start = trimmed.lastIndexOf("\n{");
-  const json = start === -1 ? trimmed : trimmed.slice(start + 1);
-  return JSON.parse(json) as LiveRegistrationSummary;
+  return JSON.parse(start === -1 ? trimmed : trimmed.slice(start + 1));
 }
 
 const proc = Bun.spawn(["bun", "script/liveHcaRhinestoneRegistration.ts"], {
@@ -65,11 +157,7 @@ const proc = Bun.spawn(["bun", "script/liveHcaRhinestoneRegistration.ts"], {
   stdout: "pipe",
   stderr: "pipe",
 });
-
-const timeout = setTimeout(() => {
-  proc.kill();
-}, LIVE_RUN_TIMEOUT_MS);
-
+const timeout = setTimeout(() => proc.kill(), LIVE_RUN_TIMEOUT_MS);
 const [stdout, stderr, exitCode] = await Promise.all([
   new Response(proc.stdout).text(),
   new Response(proc.stderr).text(),
@@ -84,19 +172,173 @@ if (exitCode !== 0) {
 }
 
 const summary = parseSummary(stdout);
-
-assert.ok(summary.name.endsWith(".eth"), "registered name must end in .eth");
-assert.equal(summary.ownerKeySource, "generated");
-assert.equal(summary.verified.defaultPrimary, summary.name);
-assert.equal(summary.verified.exactV1ReverseResolver, zeroAddress);
-assert.equal(summary.verified.ownerHasResolverRoles, true);
-assert.equal(summary.verified.urReverse.primary, summary.name);
+if (generatedOwnerKey) assert.equal(summary.initialState, "new");
 assert.equal(
-  summary.verified.urForward.address.toLowerCase(),
+  summary.ownerKeySource,
+  generatedOwnerKey ? "generated" : "supplied",
+);
+if (CROSS_CHAIN) {
+  assert.deepEqual(summary.walletInteractions, {
+    sourceFundingTransactions: 1,
+    permit2Signatures: 1,
+    additionalHcaOwnerSignatures: 0,
+    total: 2,
+  });
+  assert(summary.crossChain);
+  assert.equal(BigInt(summary.crossChain.source.walletBalanceAfter), 0n);
+  assert.equal(
+    BigInt(summary.crossChain.source.sourceAccountBalanceBefore),
+    0n,
+  );
+  assert.equal(BigInt(summary.crossChain.source.permit2AllowanceBefore), 0n);
+  assert.equal(summary.crossChain.source.walletTransactions, 1);
+  assert.equal(
+    BigInt(summary.crossChain.source.sourceAccountBalanceAfter),
+    BigInt(summary.crossChain.source.walletBalanceBefore),
+  );
+  assert.equal(
+    summary.crossChain.source.wallet.toLowerCase(),
+    summary.owner.toLowerCase(),
+  );
+  assert.match(
+    summary.crossChain.source.fundingTransactionHash,
+    /^0x[0-9a-fA-F]{64}$/,
+  );
+  assert(BigInt(summary.crossChain.source.fundingGasUsed) > 0n);
+
+  const preparation = summary.flows.newUser[0] as CrossChainPreparation;
+  assert.match(preparation.deploymentTransactionHash, /^0x[0-9a-fA-F]{64}$/);
+  assert.match(preparation.commitTransactionHash, /^0x[0-9a-fA-F]{64}$/);
+  assert(BigInt(preparation.deploymentGasUsed) > 0n);
+  assert(BigInt(preparation.commitGasUsed) > 0n);
+
+  const registration = summary.flows.newUser[1] as CrossChainRoute;
+  assert.equal(registration.sourceSetupOps, 1);
+  assert.equal(registration.recipientSetupOps, 0);
+  assert.equal(registration.sourceWalletSignatures, 1);
+  assert.equal(registration.destinationReusesPermit2Signature, true);
+  assert.equal(registration.using7579, true);
+  assert.equal(registration.settlementLayer, "ACROSS");
+  assert.equal(registration.fundingMethod, "PERMIT2");
+  assert.equal(registration.mode.slice(4, 6), "01");
+  assert.match(registration.claimTransactionHash, /^0x[0-9a-fA-F]{64}$/);
+  assert.match(registration.fillTransactionHash, /^0x[0-9a-fA-F]{64}$/);
+  assert(summary.funding);
+  assert.equal(
+    BigInt(summary.funding.crossChainBalance) +
+      BigInt(summary.funding.testProvisionedAmount),
+    BigInt(summary.funding.amount),
+  );
+  if (BigInt(summary.funding.testProvisionedAmount) > 0n) {
+    assert.match(
+      summary.funding.provisioningTransactionHash!,
+      /^0x[0-9a-fA-F]{64}$/,
+    );
+    assert(BigInt(summary.funding.gasUsed) > 0n);
+  }
+
+  for (const route of summary.flows.existingUser) {
+    assert.equal(route.setupOps, 0);
+    assert.match(route.transactionHash, /^0x[0-9a-fA-F]{64}$/);
+  }
+} else {
+  assert.deepEqual(summary.walletInteractions, {
+    paymentPermitSignatures: 1,
+    ownerIntentSignatures: 1,
+    postCommitWalletInteractions: 0,
+    total: 2,
+  });
+  const amountPulled = BigInt(summary.sameChainFunding.amountPulled);
+  assert(amountPulled > 0n);
+  assert.equal(
+    BigInt(summary.sameChainFunding.walletBalanceBeforePull) -
+      BigInt(summary.sameChainFunding.walletBalanceAfter),
+    amountPulled,
+  );
+  assert.equal(
+    BigInt(summary.sameChainFunding.hcaBalanceAfter) -
+      BigInt(summary.sameChainFunding.hcaBalanceBefore),
+    amountPulled,
+  );
+  assert.equal(BigInt(summary.sameChainFunding.allowanceAfter), 0n);
+  const routes = [
+    ...summary.flows.newUser,
+    ...summary.flows.existingUser,
+  ] as SameChainRoute[];
+  assert.deepEqual(
+    routes.map(({ setupOps }) => setupOps),
+    [1, 0, 0, 0],
+  );
+  for (const route of routes) {
+    assert.match(route.transactionHash, /^0x[0-9a-fA-F]{64}$/);
+  }
+}
+assert.equal(summary.verified.name, summary.names[1]);
+assert.equal(summary.verified.defaultPrimary, summary.names[1]);
+assert.equal(summary.verified.ownerHasResolverRoles, true);
+assert.equal(summary.verified.hcaHasResolverRoles, true);
+assert.equal(
+  summary.verified.universalAddress.toLowerCase(),
   summary.owner.toLowerCase(),
 );
-assert.match(summary.transactions.deployHca ?? "", /^0x[0-9a-fA-F]{64}$/);
-assert.match(summary.transactions.commit, /^0x[0-9a-fA-F]{64}$/);
-assert.match(summary.transactions.executeSinglechainOps, /^0x[0-9a-fA-F]{64}$/);
 
-console.log(`live HCA check passed for ${summary.name}`);
+if (CROSS_CHAIN) {
+  const preparation = summary.flows.newUser[0] as CrossChainPreparation;
+  const registration = summary.flows.newUser[1] as CrossChainRoute;
+  console.log(
+    JSON.stringify(
+      {
+        owner: summary.owner,
+        hca: summary.hca,
+        resolver: summary.resolver,
+        names: summary.names,
+        walletInteractions: summary.walletInteractions,
+        sourceFundingTransactionHash:
+          summary.crossChain!.source.fundingTransactionHash,
+        permissionlessPreparation: {
+          deploymentTransactionHash: preparation.deploymentTransactionHash,
+          commitTransactionHash: preparation.commitTransactionHash,
+        },
+        crossChainRegistration: {
+          claimTransactionHash: registration.claimTransactionHash,
+          fillTransactionHash: registration.fillTransactionHash,
+          claimGasUsed: registration.claimGasUsed,
+          fillGasUsed: registration.fillGasUsed,
+        },
+        existingUserFunding: summary.funding,
+        sessionTransactions: {
+          secondCommit: summary.flows.existingUser[0].transactionHash,
+          secondReveal: summary.flows.existingUser[1].transactionHash,
+        },
+        verified: summary.verified,
+      },
+      null,
+      2,
+    ),
+  );
+} else {
+  const [firstCommit, firstReveal] = summary.flows.newUser as SameChainRoute[];
+  const [secondCommit, secondReveal] = summary.flows
+    .existingUser as SameChainRoute[];
+  console.log(
+    JSON.stringify(
+      {
+        owner: summary.owner,
+        hca: summary.hca,
+        resolver: summary.resolver,
+        names: summary.names,
+        walletInteractions: summary.walletInteractions,
+        transactions: {
+          firstCommit: firstCommit!.transactionHash,
+          firstReveal: firstReveal!.transactionHash,
+          secondCommit: secondCommit!.transactionHash,
+          secondReveal: secondReveal!.transactionHash,
+        },
+        verified: summary.verified,
+      },
+      null,
+      2,
+    ),
+  );
+}
+console.log(`live HCA check passed for ${summary.names.join(" and ")}`);

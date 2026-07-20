@@ -20,8 +20,8 @@ import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
 /// @title Owner-Bound Registration Session Validator
 /// @notice Fixed validator for standalone-HCA owner authorization and ENS registration sessions.
 /// @dev Owner signatures use Rhinestone's existing HCA format. Sessions are enabled by an
-///      owner-authorized HCA call and consumed through Rhinestone's existing Smart Session USE
-///      payload. The permission checks remain hardcoded here rather than in dynamic policy modules.
+///      owner-authorized HCA call and consumed through the IntentExecutor's ERC-1271 path. The
+///      permission checks remain hardcoded here rather than in dynamic policy modules.
 contract OwnerBoundRegistrationSessionValidator is IValidator {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -39,12 +39,23 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         bytes data;
     }
 
+    /// @notice Executor reimbursement included in a single-chain intent.
+    struct GasRefund {
+        address token;
+        uint256 exchangeRate;
+        uint256 overhead;
+    }
+
     /// @notice Compact configuration for one pre-enabled registration session.
     struct SessionConfig {
         address sessionKey;
         uint48 validUntil;
+        uint48 maxRefundGasOverhead;
         address resolver;
         uint96 sessionNonce;
+        address refundToken;
+        uint96 maxRefundExchangeRate;
+        uint96 maxRefundAmount;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -59,18 +70,70 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @dev Module type ID for validator modules.
     uint256 internal constant MODULE_TYPE_VALIDATOR = 1;
 
-    /// @notice ERC-4337 validation failure value.
-    /// @dev Returned from unsupported ERC-4337 validation.
+    /// @dev ERC-4337 validation success value.
+    uint256 internal constant VALIDATION_SUCCESS = 0;
+
+    /// @dev ERC-4337 validation failure value.
     uint256 internal constant VALIDATION_FAILED = 1;
 
-    /// @notice Smart Session payload mode for an already-enabled permission.
+    /// @dev Length of one ECDSA signature.
+    uint256 internal constant ECDSA_SIGNATURE_LENGTH = 65;
+
+    /// @dev Fixed-session discriminator inside the validator signature.
+    bytes1 internal constant FIXED_SESSION_MODE = 0x01;
+
+    /// @dev Refund-aware fixed-session discriminator inside the validator signature.
+    bytes1 internal constant FIXED_SESSION_REFUND_MODE = 0x02;
+
+    /// @dev Size of the fixed-session mode, permission ID, and standalone-intent nonce.
+    uint256 internal constant FIXED_SESSION_PREFIX_LENGTH = 65;
+
+    /// @dev Size of the fixed-session prefix when it also carries a gas-refund tuple.
+    uint256 internal constant FIXED_SESSION_REFUND_PREFIX_LENGTH = 149;
+
+    /// @dev Smart Session payload mode for an already-enabled permission.
     bytes1 internal constant SMART_SESSION_MODE_USE = 0x00;
 
-    /// @notice Existing Smart Session USE payload size for one ECDSA session signer.
+    /// @dev Existing Smart Session USE payload size for one ECDSA session signer.
     uint256 internal constant SMART_SESSION_USE_LENGTH = 98;
 
     /// @notice Rhinestone operation mode for pure emissary ERC-7579 execution.
     bytes32 public constant ERC7579_EMISSARY_EXECUTION_MODE = bytes32(uint256(0x0204) << 240);
+
+    /// @notice Rhinestone operation mode for ERC-1271 ERC-7579 execution.
+    bytes32 public constant ERC7579_ERC1271_MODE = bytes32(uint256(0x0201) << 240);
+
+    /// @dev EIP-712 domain type used by the production IntentExecutor.
+    bytes32 internal constant EIP712_DOMAIN_TYPEHASH =
+        keccak256(
+            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+        );
+
+    /// @dev EIP-712 domain name used by the production IntentExecutor.
+    bytes32 internal constant INTENT_EXECUTOR_NAME_HASH = keccak256("IntentExecutor");
+
+    /// @dev EIP-712 domain version used by the production IntentExecutor.
+    bytes32 internal constant INTENT_EXECUTOR_VERSION_HASH = keccak256("v0.0.1");
+
+    /// @dev EIP-712 type hash for one standalone single-chain intent.
+    bytes32 internal constant SINGLE_CHAIN_OPS_TYPEHASH =
+        0xbae11135c33effc421d699bbb53d9926a005ed0f2f5eb672c62cbfa943807291;
+
+    /// @dev EIP-712 type hash for the operation wrapper.
+    bytes32 internal constant OP_TYPEHASH =
+        0xdbc520cb50a8aaf3fa06ea43dc3d59d248e52ae638476e3268a1e6e36bffe196;
+
+    /// @dev EIP-712 type hash for one ERC-7579 execution.
+    bytes32 internal constant EXECUTION_TYPEHASH =
+        0x09b0a32e9842b65559835c235891737e06927d59e48a6f0e0512e136a513a9e4;
+
+    /// @dev EIP-712 type hash for executor reimbursement.
+    bytes32 internal constant GAS_REFUND_TYPEHASH =
+        0x0bf04d9dcc5e703a75ba16d19c00f9d87fa30b9a815627102c15624d338eb094;
+
+    /// @dev IntentExecutor hash for an intent without a gas refund.
+    bytes32 internal constant NO_GAS_REFUND_HASH =
+        0x44db4de84d423abe696e354fc99de162153ee2f8985ab84305061247a78a3be4;
 
     /// @notice Selector for ETHRegistrar.commit(bytes32).
     bytes4 public constant COMMIT_SELECTOR = IETHRegistrar.commit.selector;
@@ -152,16 +215,27 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @notice The only executor allowed to present session operations for verification.
     address public immutable INTENT_EXECUTOR;
 
+    /// @notice The Rhinestone paymaster permitted to pull a signed executor refund.
+    address public immutable GAS_REFUND_PAYMASTER;
+
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Fixed session configuration by account and permission ID.
     mapping(address account => mapping(bytes32 permissionId => SessionConfig config)) internal _sessions;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Emitted when an account enables a fixed session.
+    /// @param account The HCA that enabled the session.
+    /// @param permissionId The session permission identifier.
+    /// @param sessionKey The authorized session signer.
+    /// @param resolver The resolver allowed by the session policy.
+    /// @param validUntil The last timestamp at which the session is valid.
+    /// @param sessionNonce The account nonce that invalidates older sessions.
     event SessionEnabled(
         address indexed account,
         bytes32 indexed permissionId,
@@ -169,6 +243,22 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         address resolver,
         uint48 validUntil,
         uint96 sessionNonce
+    );
+
+    /// @notice Emitted when a fixed session permits executor reimbursement.
+    /// @param account The HCA that enabled the session.
+    /// @param permissionId The session permission identifier.
+    /// @param token The permitted reimbursement token.
+    /// @param maxExchangeRate The maximum signed token exchange rate.
+    /// @param maxGasOverhead The maximum signed gas overhead.
+    /// @param maxRefundAmount The maximum token reimbursement.
+    event SessionRefundConfigured(
+        address indexed account,
+        bytes32 indexed permissionId,
+        address indexed token,
+        uint96 maxExchangeRate,
+        uint48 maxGasOverhead,
+        uint96 maxRefundAmount
     );
 
     ////////////////////////////////////////////////////////////////////////
@@ -192,9 +282,11 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     error SessionExpired();
 
     /// @notice A session was presented by an address other than the fixed IntentExecutor.
+    /// @dev Error selector: `0x037b5679`
     error CallerNotIntentExecutor();
 
     /// @notice A session payload is not the supported Smart Session USE form.
+    /// @dev Error selector: `0x9bdfc59f`
     error InvalidSessionData();
 
     /// @notice A target/action pair is outside the hardcoded registration policy.
@@ -207,6 +299,10 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @dev Error selector: `0xe50c42ea`
     error PolicyRuleFailed();
 
+    /// @notice A fixed session did not authorize the supplied executor reimbursement.
+    /// @dev Error selector: `0x0672e151`
+    error GasRefundNotAllowed();
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -217,7 +313,8 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @param verifiableFactory The VerifiableFactory accepted by the registration policy.
     /// @param paymentToken The primary ERC20 payment token accepted by the registration policy.
     /// @param secondaryPaymentToken The secondary ERC20 payment token accepted by the registration policy.
-    /// @param intentExecutor The fixed IntentExecutor that supplies operations to `verifyExecution`.
+    /// @param intentExecutor The fixed IntentExecutor allowed to present sponsored operations.
+    /// @param gasRefundPaymaster The paymaster allowed to settle signed executor refunds.
     constructor(
         address defaultReverseRegistrarHcaAdapter,
         address permittedResolverImpl,
@@ -225,7 +322,8 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         address verifiableFactory,
         address paymentToken,
         address secondaryPaymentToken,
-        address intentExecutor
+        address intentExecutor,
+        address gasRefundPaymaster
     )
     {
         DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER = defaultReverseRegistrarHcaAdapter;
@@ -235,16 +333,83 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         PAYMENT_TOKEN = paymentToken;
         SECONDARY_PAYMENT_TOKEN = secondaryPaymentToken;
         INTENT_EXECUTOR = intentExecutor;
+        GAS_REFUND_PAYMASTER = gasRefundPaymaster;
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Validates an existing Rhinestone HCA owner signature.
+    /// @notice Enables one fixed-policy session through an owner-authorized HCA execution.
+    /// @dev `msg.sender` is the HCA, so the enable call can be batched with its first owner-signed
+    ///      intent. `permissionId` is the ID used by Rhinestone's existing session USE payload.
+    /// @param permissionId The session permission identifier.
+    /// @param sessionKey The ECDSA key authorized for the fixed ENS policy.
+    /// @param validUntil The last timestamp at which the session is valid.
+    /// @param resolver The resolver accepted by the fixed ENS policy.
+    function enableSession(
+        bytes32 permissionId,
+        address sessionKey,
+        uint48 validUntil,
+        address resolver
+    )
+        external
+    {
+        _enableSession(permissionId, sessionKey, validUntil, resolver, address(0), 0, 0, 0);
+    }
+
+    /// @notice Enables one fixed-policy session that may reimburse the executor in a payment token.
+    /// @param permissionId The ID used by Rhinestone's existing session USE payload.
+    /// @param sessionKey The ECDSA key authorized for the fixed ENS policy.
+    /// @param validUntil The last timestamp at which the session is valid.
+    /// @param resolver The resolver accepted by the fixed ENS policy.
+    /// @param refundToken The payment token accepted for executor reimbursement.
+    /// @param maxRefundExchangeRate The largest token exchange rate the session may sign.
+    /// @param maxRefundGasOverhead The largest gas-unit overhead the session may sign.
+    /// @param maxRefundAmount The largest token-denominated refund cap the session may sign.
+    function enableSessionWithRefund(
+        bytes32 permissionId,
+        address sessionKey,
+        uint48 validUntil,
+        address resolver,
+        address refundToken,
+        uint96 maxRefundExchangeRate,
+        uint48 maxRefundGasOverhead,
+        uint96 maxRefundAmount
+    )
+        external
+    {
+        if (
+            (refundToken != PAYMENT_TOKEN && refundToken != SECONDARY_PAYMENT_TOKEN) ||
+            maxRefundExchangeRate == 0 ||
+            maxRefundAmount == 0
+        ) {
+            revert GasRefundNotAllowed();
+        }
+        _enableSession(
+            permissionId,
+            sessionKey,
+            validUntil,
+            resolver,
+            refundToken,
+            maxRefundExchangeRate,
+            maxRefundGasOverhead,
+            maxRefundAmount
+        );
+        emit SessionRefundConfigured(
+            msg.sender,
+            permissionId,
+            refundToken,
+            maxRefundExchangeRate,
+            maxRefundGasOverhead,
+            maxRefundAmount
+        );
+    }
+
+    /// @notice Validates an HCA owner signature or a pre-enabled fixed session.
     /// @param sender The caller forwarded by the account.
     /// @param hash The digest supplied by the intent executor.
-    /// @param data A single 65-byte owner signature.
+    /// @param data A 65-byte owner signature or fixed-session envelope.
     /// @return magicValue ERC-1271 success value.
     function isValidSignatureWithSender(address sender, bytes32 hash, bytes calldata data)
         external
@@ -254,36 +419,21 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         if (sender != INTENT_EXECUTOR) {
             revert CallerNotIntentExecutor();
         }
-        (address expectedOwner, ) = _ownerAndSessionNonce(msg.sender);
-        if (_recover(hash, data) != expectedOwner) {
-            revert InvalidSigner();
+        if (data.length == ECDSA_SIGNATURE_LENGTH) {
+            (address expectedOwner, ) = _ownerAndSessionNonce(msg.sender);
+            if (_recover(hash, data) != expectedOwner) {
+                revert InvalidSigner();
+            }
+        } else {
+            _validateFixedSession(hash, data);
         }
         return ERC1271_MAGICVALUE;
     }
 
-    /// @notice Enables one fixed-policy session through an owner-authorized HCA execution.
-    /// @dev `msg.sender` is the HCA, so the enable call can be batched with its first owner-signed
-    ///      intent. `permissionId` is the ID used by Rhinestone's existing session USE payload.
-    function enableSession(
-        bytes32 permissionId,
-        address sessionKey,
-        uint48 validUntil,
-        address resolver
-    )
-        external
-    {
-        if (sessionKey == address(0)) {
-            revert InvalidSigner();
-        }
-        if (validUntil < block.timestamp) {
-            revert SessionExpired();
-        }
-        (, uint96 sessionNonce) = _ownerAndSessionNonce(msg.sender);
-        _sessions[msg.sender][permissionId] = SessionConfig({sessionKey: sessionKey, validUntil: validUntil, resolver: resolver, sessionNonce: sessionNonce});
-        emit SessionEnabled(msg.sender, permissionId, sessionKey, resolver, validUntil, sessionNonce);
-    }
-
     /// @notice Returns whether a fixed-policy session is currently usable.
+    /// @param account The HCA that owns the session.
+    /// @param permissionId The session permission identifier.
+    /// @return Whether the session exists, has not expired, and matches the account nonce.
     function isPermissionEnabled(address account, bytes32 permissionId)
         external
         view
@@ -306,6 +456,11 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     /// @notice Verifies an existing Smart Session USE payload against the fixed ENS policy.
     /// @dev The fixed IntentExecutor supplies the actual operation. Only the compact USE mode is
     ///      supported; session enablement is an ordinary owner-authorized HCA call.
+    /// @param account The HCA that owns the session.
+    /// @param digest The operation digest signed by the session key.
+    /// @param data The Smart Session USE payload.
+    /// @param operation The operation supplied by the fixed executor.
+    /// @return The verification function selector on success.
     function verifyExecution(
         address account,
         bytes32 digest,
@@ -344,19 +499,25 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         return this.verifyExecution.selector;
     }
 
-    /// @notice Rejects ERC-4337 validation for this validator.
-    /// @param userOp Unused user operation.
-    /// @param userOpHash Unused user operation hash.
-    /// @return The ERC-4337 validation failure value.
+    /// @notice Validates an owner-signed ERC-4337 UserOperation.
+    /// @dev Accepts both raw-digest and `personal_sign` ECDSA signatures, matching Nexus's K1 validator.
+    ///      Fixed sessions remain limited to the intent path.
+    /// @param userOp The UserOperation forwarded by the HCA.
+    /// @param userOpHash The EntryPoint digest signed by the owner.
+    /// @return The ERC-4337 validation result.
     function validateUserOp(PackedUserOperation calldata userOp, bytes32 userOpHash)
         external
-        pure
+        view
         returns (uint256)
     {
-        userOp;
-        userOpHash;
-
-        return VALIDATION_FAILED;
+        if (userOp.sender != msg.sender) {
+            return VALIDATION_FAILED;
+        }
+        (address expectedOwner, ) = _ownerAndSessionNonce(msg.sender);
+        return
+            _isValidUserOpSignature(expectedOwner, userOpHash, userOp.signature)
+                ? VALIDATION_SUCCESS
+                : VALIDATION_FAILED;
     }
 
     /// @notice Returns whether this module is a validator.
@@ -391,6 +552,31 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Stores a fixed session and binds it to the account's current session nonce.
+    function _enableSession(
+        bytes32 permissionId,
+        address sessionKey,
+        uint48 validUntil,
+        address resolver,
+        address refundToken,
+        uint96 maxRefundExchangeRate,
+        uint48 maxRefundGasOverhead,
+        uint96 maxRefundAmount
+    )
+        internal
+    {
+        if (sessionKey == address(0)) {
+            revert InvalidSigner();
+        }
+        if (validUntil < block.timestamp) {
+            revert SessionExpired();
+        }
+        (, uint96 sessionNonce) = _ownerAndSessionNonce(msg.sender);
+        _sessions[msg.sender][permissionId] = SessionConfig({sessionKey: sessionKey, validUntil: validUntil, maxRefundGasOverhead: maxRefundGasOverhead, resolver: resolver, sessionNonce: sessionNonce, refundToken: refundToken, maxRefundExchangeRate: maxRefundExchangeRate, maxRefundAmount: maxRefundAmount});
+        emit SessionEnabled(msg.sender, permissionId, sessionKey, resolver, validUntil, sessionNonce);
+    }
+
+    /// @dev Reads the account owner and session nonce, reverting if either is unavailable.
     function _ownerAndSessionNonce(address account)
         internal
         view
@@ -410,6 +596,146 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         }
     }
 
+    /// @dev Validates an ERC-1271 session envelope and binds its operation copy to `hash`.
+    function _validateFixedSession(bytes32 hash, bytes calldata data) internal view {
+        if (data.length < FIXED_SESSION_PREFIX_LENGTH + ECDSA_SIGNATURE_LENGTH) {
+            revert InvalidSessionData();
+        }
+
+        bytes1 mode = data[0];
+        if (mode == FIXED_SESSION_MODE) {
+            _validateFixedSessionPayload(
+                hash,
+                data,
+                FIXED_SESSION_PREFIX_LENGTH,
+                GasRefund(address(0), 0, 0)
+            );
+            return;
+        }
+        if (mode == FIXED_SESSION_REFUND_MODE) {
+            if (data.length < FIXED_SESSION_REFUND_PREFIX_LENGTH + ECDSA_SIGNATURE_LENGTH) {
+                revert InvalidSessionData();
+            }
+            _validateFixedSessionPayload(
+                hash,
+                data,
+                FIXED_SESSION_REFUND_PREFIX_LENGTH,
+                GasRefund({token: address(bytes20(data[65:85])), exchangeRate: uint256(
+                    bytes32(data[85:117])
+                ), overhead: uint256(bytes32(data[117:149]))})
+            );
+            return;
+        }
+        revert InvalidSessionData();
+    }
+
+    /// @dev Validates the common fixed-session fields after decoding its refund mode.
+    function _validateFixedSessionPayload(
+        bytes32 hash,
+        bytes calldata data,
+        uint256 operationOffset,
+        GasRefund memory gasRefund
+    )
+        internal
+        view
+    {
+        bytes32 permissionId = bytes32(data[1:33]);
+        SessionConfig memory config = _sessions[msg.sender][permissionId];
+        if (config.sessionKey == address(0)) {
+            revert InvalidSigner();
+        }
+        if (block.timestamp > config.validUntil) {
+            revert SessionExpired();
+        }
+
+        (address owner_, uint96 sessionNonce) = _ownerAndSessionNonce(msg.sender);
+        if (sessionNonce != config.sessionNonce) {
+            revert InvalidSigner();
+        }
+        _checkGasRefund(config, gasRefund);
+        bytes calldata operationData =
+            _validateFixedSessionSignature(hash, data, operationOffset, gasRefund, config.sessionKey);
+        _checkRegistrationPolicy(owner_, config.resolver, operationData, gasRefund);
+    }
+
+    /// @dev Binds the operation and refund preimages to the session signature.
+    function _validateFixedSessionSignature(
+        bytes32 hash,
+        bytes calldata data,
+        uint256 operationOffset,
+        GasRefund memory gasRefund,
+        address sessionKey
+    )
+        internal
+        view
+        returns (bytes calldata operationData)
+    {
+        uint256 signatureOffset = data.length - ECDSA_SIGNATURE_LENGTH;
+        operationData = data[operationOffset:signatureOffset];
+        uint256 nonce = uint256(bytes32(data[33:65]));
+        if (_singleChainDigest(msg.sender, nonce, operationData, gasRefund) != hash) {
+            revert InvalidSessionData();
+        }
+        if (_recover(hash, data[signatureOffset:]) != sessionKey) {
+            revert InvalidSigner();
+        }
+    }
+
+    /// @dev Reconstructs the production IntentExecutor digest for a no-refund single-chain intent.
+    function _singleChainDigest(address account, uint256 nonce, bytes calldata operationData)
+        internal
+        view
+        returns (bytes32)
+    {
+        return _singleChainDigest(account, nonce, operationData, GasRefund(address(0), 0, 0));
+    }
+
+    /// @dev Reconstructs the production IntentExecutor digest for a single-chain intent.
+    function _singleChainDigest(
+        address account,
+        uint256 nonce,
+        bytes calldata operationData,
+        GasRefund memory gasRefund
+    )
+        internal
+        view
+        returns (bytes32)
+    {
+        bytes32 gasRefundHash = gasRefund.token == address(0) &&
+        gasRefund.exchangeRate == 0 &&
+        gasRefund.overhead == 0
+        ? NO_GAS_REFUND_HASH
+        : keccak256(
+            abi.encode(
+                GAS_REFUND_TYPEHASH,
+                gasRefund.token,
+                gasRefund.exchangeRate,
+                gasRefund.overhead
+            )
+        );
+        bytes32 structHash =
+            keccak256(
+                abi.encode(
+                    SINGLE_CHAIN_OPS_TYPEHASH,
+                    account,
+                    nonce,
+                    _operationHash(operationData),
+                    gasRefundHash
+                )
+            );
+        bytes32 domainSeparator =
+            keccak256(
+                abi.encode(
+                    EIP712_DOMAIN_TYPEHASH,
+                    INTENT_EXECUTOR_NAME_HASH,
+                    INTENT_EXECUTOR_VERSION_HASH,
+                    block.chainid,
+                    INTENT_EXECUTOR
+                )
+            );
+        return MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
+    }
+
     /// @notice Validates every execution against the hardcoded registration and name-management action set.
     /// @dev Checks target, selector, value, and selected ABI arguments for each execution.
     ///      A default reverse name may be updated in a standalone operation when the policy has a
@@ -426,9 +752,26 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         internal
         view
     {
+        _checkRegistrationPolicy(owner, allowedResolver, operationData, GasRefund(address(0), 0, 0));
+    }
+
+    /// @dev Applies the registration policy and any executor reimbursement constraints.
+    function _checkRegistrationPolicy(
+        address owner,
+        address allowedResolver,
+        bytes calldata operationData,
+        GasRefund memory gasRefund
+    )
+        internal
+        view
+    {
+        if (operationData.length < 32) {
+            revert InvalidOperationEncoding();
+        }
+        bytes32 operationMode = bytes32(operationData[:32]);
         if (
-            operationData.length < 32 ||
-            bytes32(operationData[:32]) != ERC7579_EMISSARY_EXECUTION_MODE
+            operationMode != ERC7579_EMISSARY_EXECUTION_MODE &&
+            operationMode != ERC7579_ERC1271_MODE
         ) {
             revert InvalidOperationEncoding();
         }
@@ -515,7 +858,7 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
                 if (selector != APPROVE_SELECTOR) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
-                _requireArgAddress(execution.callData, 4, ETH_REGISTRAR);
+                _checkPaymentTokenApproval(execution.target, execution.callData, gasRefund);
                 continue;
             }
 
@@ -529,6 +872,79 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
 
             revert ActionNotAllowed(execution.target, selector);
         }
+    }
+
+    /// @dev Allows registrar payment approvals and exact, signed executor-refund approvals.
+    function _checkPaymentTokenApproval(
+        address token,
+        bytes memory callData,
+        GasRefund memory gasRefund
+    )
+        internal
+        view
+    {
+        address spender = _readAddress(callData, 4);
+        if (spender == ETH_REGISTRAR) {
+            return;
+        }
+        if (
+            spender != GAS_REFUND_PAYMASTER ||
+            gasRefund.token != token ||
+            _readUint(callData, 4 + 32) != gasRefund.overhead >> 128
+        ) {
+            revert PolicyRuleFailed();
+        }
+    }
+
+    /// @dev Checks an executor reimbursement against the limits approved for a session.
+    function _checkGasRefund(SessionConfig memory config, GasRefund memory gasRefund) internal pure {
+        if (gasRefund.token == address(0)) {
+            if (gasRefund.exchangeRate != 0 || gasRefund.overhead != 0) {
+                revert GasRefundNotAllowed();
+            }
+            return;
+        }
+        uint256 refundAmount = gasRefund.overhead >> 128;
+        uint256 gasOverhead = uint128(gasRefund.overhead);
+        if (
+            gasRefund.token != config.refundToken ||
+            gasRefund.exchangeRate == 0 ||
+            gasRefund.exchangeRate > config.maxRefundExchangeRate ||
+            refundAmount == 0 ||
+            refundAmount > config.maxRefundAmount ||
+            gasOverhead > config.maxRefundGasOverhead
+        ) {
+            revert GasRefundNotAllowed();
+        }
+    }
+
+    /// @dev Hashes the encoded ERC-7579 operation exactly as IntentExecutor does.
+    function _operationHash(bytes calldata operationData) internal pure returns (bytes32) {
+        if (operationData.length < 32 || bytes32(operationData[:32]) != ERC7579_ERC1271_MODE) {
+            revert InvalidOperationEncoding();
+        }
+
+        Execution[] memory executions = abi.decode(operationData[32:], (Execution[]));
+        bytes32[] memory executionHashes = new bytes32[](executions.length);
+        for (uint256 i; i < executions.length; ++i) {
+            Execution memory execution = executions[i];
+            executionHashes[i] = keccak256(
+                abi.encode(
+                    EXECUTION_TYPEHASH,
+                    execution.target,
+                    execution.value,
+                    keccak256(execution.callData)
+                )
+            );
+        }
+        return
+            keccak256(
+                abi.encode(
+                    OP_TYPEHASH,
+                    ERC7579_ERC1271_MODE,
+                    keccak256(abi.encodePacked(executionHashes))
+                )
+            );
     }
 
     /// @notice Reads a function selector from calldata.
@@ -770,5 +1186,52 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         if (error != ECDSA.RecoverError.NoError) {
             revert InvalidSigner();
         }
+    }
+
+    /// @dev Checks raw and EIP-191 UserOperation signatures without reverting on invalid input.
+    function _isValidUserOpSignature(address expectedOwner, bytes32 digest, bytes calldata signature)
+        internal
+        pure
+        returns (bool)
+    {
+        if (signature.length != ECDSA_SIGNATURE_LENGTH) {
+            return false;
+        }
+
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+        assembly ("memory-safe") {
+            r := calldataload(signature.offset)
+            s := calldataload(add(signature.offset, 0x20))
+            v := byte(0, calldataload(add(signature.offset, 0x40)))
+        }
+
+        bool explicitEthSigned = v == 31 || v == 32;
+        if (explicitEthSigned) {
+            v -= 4;
+        } else if (v < 27) {
+            v += 27;
+        }
+        if (v != 27 && v != 28) {
+            return false;
+        }
+
+        address signer;
+        ECDSA.RecoverError error;
+        if (!explicitEthSigned) {
+            (signer, error, ) = ECDSA.tryRecover(digest, v, r, s);
+            if (error == ECDSA.RecoverError.NoError && signer == expectedOwner) {
+                return true;
+            }
+        }
+
+        (signer, error, ) = ECDSA.tryRecover(
+            MessageHashUtils.toEthSignedMessageHash(digest),
+            v,
+            r,
+            s
+        );
+        return error == ECDSA.RecoverError.NoError && signer == expectedOwner;
     }
 }

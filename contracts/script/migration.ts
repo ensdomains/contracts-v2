@@ -2908,6 +2908,7 @@ function buildDeployV2RockethConfig(
   ];
   const tags = uniqueTags([
     opts.network === "sepolia" ? "sepolia" : undefined,
+    opts.tags?.includes("hca") ? "hca" : undefined,
     "deferV2Registrar",
     opts.tenderly ? "tenderly" : undefined,
     opts.includeTestnetPremigrationRegistrar

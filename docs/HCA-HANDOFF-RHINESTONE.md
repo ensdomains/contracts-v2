@@ -2,60 +2,89 @@
 
 ## Goal
 
-Add the standalone account to Rhinestone's existing HCA adapter with the smallest practical SDK change. Changes outside the adapter are guarded standalone-HCA branches.
+Support the standalone HCA with the existing intent, session, and Permit2 machinery. Keep legacy HCA behavior unchanged.
 
-## Current gap
+## Standalone HCA adapter
 
-- `@rhinestone/sdk` v1.7.0 derives and deploys the legacy `HCAFactory` account.
-- The standalone HCA uses `StandaloneHCADeployer` and the shared `VerifiableFactory`.
-- The HCA adapter only understands the legacy factory and account.
-- The fixed validator consumes Rhinestone's existing owner signatures and Smart Session `USE` payload.
-- SDK v1.7 defines pure emissary-execution mode but routes execution-checked sessions through hybrid mode.
-
-## SDK work
-
-Add a standalone version to the HCA adapter. Keep the current `hca` behavior for legacy accounts.
-
-The standalone variant accepts the owner, supported initial implementation, user salt, and deployed `StandaloneHCADeployer`. Its version configuration supplies the implementation's fixed validator. Reject a validator mismatch.
-
-It derives and deploys the account using:
+Treat the standalone account as another HCA version. Its configuration supplies the deployer, implementation, fixed validator, `VerifiableFactory`, proxy logic, and user salt.
 
 ```text
-deploymentSalt = keccak256(abi.encode(userSalt, owner, initialImplementation))
+deploymentSalt = keccak256(abi.encode(userSalt, owner, implementation))
 factory = StandaloneHCADeployer
-factoryData = deploy(owner, initialImplementation, userSalt)
+factoryData = deploy(owner, implementation, userSalt)
 ```
 
-The account address is the `VerifiableFactory` proxy address for `StandaloneHCADeployer` and `deploymentSalt`.
+Derive the proxy address from `VerifiableFactory`, the deployer, and `deploymentSalt`. For a fresh HCA, include `factoryData` in the first intent. For an existing HCA, verify its owner and supported implementation and omit deployment.
 
-For an undeployed account, return the deployment call as `setupOps`. For an existing account, omit it after verifying the deployment, owner, and supported implementation.
+Use the fixed validator as the account's default validator for owner signatures, session status, estimation, and mock signatures. The standalone HCA cannot install arbitrary modules.
 
-Use the account's fixed validator as the standalone variant's default owner and session validator. Existing owner signatures are unchanged.
+For ERC-4337, keep the existing owner UserOperation signature format. Encode the fixed validator as Nexus's default validator in the nonce, and return the deployer call as the account's factory data. A fresh account can then deploy and execute in one UserOperation; an existing account omits factory data. Existing bundler and paymaster configuration applies.
 
-The owner-signed setup and commitment keep the existing ERC-1271 route. That intent may deploy and fund the HCA, enable the fixed session, and commit.
+ENS supplies the deployed addresses, implementation-to-validator mapping, ABI, user-salt policy, and address fixtures.
 
-For later pre-enabled calls that need no funding claim, reuse the existing `USE` payload and select `SIG_MODE_EMISSARY_EXECUTION` (mode 4). The expected operation word is `0x0204` followed by 30 zero bytes. Emit only the emissary signature.
+The handoff is the standalone-HCA adapter. Cross-chain execution uses the existing Nexus, Permit2, and Across paths.
 
-For this variant only, session status and estimation use the fixed validator, and generic Smart Session enablement and typed-data packing are bypassed. Mode 4 still requires production orchestrator and `IntentExecutor` confirmation.
+## Same-chain fixed sessions
 
-## Boundary
+No orchestrator change is required. Use the existing `SingleChainOps` route in ERC-1271 mode.
 
-No new signature type, typed data, session payload, policy module, or ENS workflow API is required. Do not change generic Smart Session nonce, enable, policy, or hybrid-mode behavior.
+The session key signs the existing `SingleChainOps` digest. The standalone adapter then packs the account signature as:
 
-ENS owns the account contracts, fixed permission checks, session parameters, registration calls, commitment-delay state, and result checks. Rhinestone owns its existing routing, funding, signing, sponsorship, and relay behavior.
+```text
+address(0)
+|| 0x01
+|| permissionId
+|| nonce
+|| operationData
+|| sessionSignature
 
-Wallet-paid `executeByOwner` bypasses Rhinestone.
+operationData = op.vt || abi.encode(op.ops)
+```
+
+`sessionSignature` is the existing 65-byte ECDSA signature from the Smart Session `USE` payload. The permission ID and typed-data schema do not change. For a user-paid route, the adapter also packs the existing `GasRefund` tuple. The validator binds it to the session's token and limits.
+
+## Cross-chain Permit2
+
+No orchestrator change is required. Use a counterfactual Nexus as the source account and the standalone HCA as the recipient. The target mode is ERC-1271.
+
+For a fresh USDC wallet, include `USDC.permit(...)` and `USDC.transferFrom(wallet, Nexus, amount)` in the source calls. The route deploys the Nexus, pulls the source budget, approves Permit2, claims the required funds, and executes through the HCA.
+
+Keep the existing Permit2 typed data and signing behavior. Both accounts use the `address(0)` signature prefix to select their configured default validator. With the same single ECDSA owner, the Nexus Permit2 signature is already a valid HCA signature:
+
+```text
+destinationSignature = originSignatures[0]
+```
+
+Do not request another destination signature. Do not use an EOA source: that route does not select ERC-7579 execution and calls the destination operations from the Across handler.
+
+The live user-paid flow is:
+
+1. The wallet signs the EIP-2612 permit.
+2. The wallet signs one Permit2 intent.
+3. Rhinestone deploys the source Nexus, pulls the budget, and submits the claim.
+4. The fill deploys and funds the HCA, enables a refund-bounded session, and commits.
+5. After the delay, the session reveals without another wallet prompt.
+
+This is two signatures and zero wallet transactions for a fresh wallet. Connection and a conditional network switch are not counted.
+
+## Outside Rhinestone
+
+Wallet-paid `executeByOwner` routes through the user's wallet and does not use Rhinestone.
 
 ## Acceptance
 
-- SDK and contract address derivation match.
+- Address derivation matches the deployed contract for fresh and existing HCAs.
+- Fresh same-chain setup can deploy the HCA and submit the commitment in one intent.
+- A fresh owner UserOperation can deploy the HCA and execute through a paymaster.
+- Owner-signed and fixed-session same-chain intents work with the production executor.
+- Existing HCAs are reused without a deployment operation.
 - Legacy HCA behavior is unchanged.
-- Existing owner signatures work without an ENS-specific encoder.
-- Existing session-use signatures work with the fixed validator in mode 4.
-- Session status and gas estimation use that validator address.
-- The first sponsored intent can deploy the HCA and execute supplied calls in one fill.
-- Existing verified HCAs are reused without a deployment operation.
-- Commit and reveal remain separate intents.
-- A production operation confirms the mode-4 word and verifier call.
+- Cross-chain Permit2 reuses one wallet signature for source and destination authorization.
+- Cross-chain permissionless deployment and commitment complete before signing.
+- One Permit2 signature authorizes the source claim and HCA registration batch.
+- Cross-chain destination calls execute through the HCA.
+- User-paid sessions bind Rhinestone's existing refund fields and fixed refund paymaster.
 
-ENS provides deployed addresses, the user-salt policy, address derivation, ABIs, and parity tests.
+Fresh and existing same-chain registration passed on Sepolia with the patched SDK. A fresh zero-ETH wallet also passed live from Arbitrum Sepolia to Sepolia with two signatures, zero wallet transactions, an unsponsored USDC claim and fill, and USDC-paid session commit and reveal. CI covers SDK refund packing, Permit2 signature reuse, and fresh UserOperation factory data; the contract test executes paymaster-sponsored deployment through EntryPoint. Publishing the standalone adapter and testing a production paymaster remain.
+
+Run `bun run check:hca-live:permit-pull` from `contracts/`. It generates a fresh owner, submits the Arbitrum Sepolia-to-Sepolia two-signature route, completes two registrations, checks USDC charges, and verifies ownership and resolver roles.

@@ -6,6 +6,7 @@ export default execute(
   async ({
     execute: write,
     get,
+    getOrNull,
     namedAccounts: { owner, deployer },
     read,
     tags,
@@ -17,9 +18,13 @@ export default execute(
       get<(typeof artifacts.StandaloneSingleOwnerHCA)["abi"]>(
         "StandaloneHCAImplementation",
       );
-    const defaultReverseRegistrarAdapter = get<
-      (typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]
-    >("DefaultReverseRegistrarAdapter");
+    const defaultReverseRegistrarAdapter =
+      getOrNull<(typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]>(
+        "DefaultReverseRegistrarHCAAdapter",
+      ) ??
+      get<(typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]>(
+        "DefaultReverseRegistrarAdapter",
+      );
 
     const trusted = await read(defaultReverseRegistrarAdapter, {
       functionName: "trustedHCAImplementations",
@@ -37,7 +42,7 @@ export default execute(
     tags: ["setup:StandaloneHCA", "StandaloneHCA", "hca", "v2"],
     dependencies: [
       "StandaloneHCAImplementation",
-      "DefaultReverseRegistrarAdapter",
+      "DefaultReverseRegistrarHCAAdapter",
     ],
   },
 );
