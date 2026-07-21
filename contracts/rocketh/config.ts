@@ -54,6 +54,9 @@ export const config = {
     sepolia: {
       chain: 11155111,
       scripts: ["deploy"],
+      overrides: {
+        tags: ["sepolia", "hca"],
+      },
     },
     "sepolia-dev": {
       chain: 11155111,

@@ -6,6 +6,10 @@ const contractsRoot = fileURLToPath(new URL("..", import.meta.url));
 const suppliedOwnerKey = process.env.HCA_OWNER_KEY?.trim();
 const generatedOwnerKey = !suppliedOwnerKey;
 const ownerKey = suppliedOwnerKey ?? generatePrivateKey();
+const sourceChain = process.env.HCA_SOURCE_CHAIN ?? "base-sepolia";
+if (!new Set(["base-sepolia", "arbitrum-sepolia"]).has(sourceChain)) {
+  throw new Error("HCA_SOURCE_CHAIN must be base-sepolia or arbitrum-sepolia");
+}
 
 type Refund = { token: string; exchangeRate: string; overhead: string };
 type FeePayment = {
@@ -99,9 +103,11 @@ const env = { ...process.env };
 env.DEPLOYMENT_NETWORK ??= "sepolia";
 env.HCA_DEPLOYMENT_NETWORK ??= env.DEPLOYMENT_NETWORK;
 env.V1_DEPLOYMENT_NETWORK ??= "sepolia";
-env.HCA_SOURCE_CHAIN = "arbitrum-sepolia";
-env.ARBITRUM_SEPOLIA_RPC_URL ??= env.HCA_SOURCE_RPC_URL;
-env.HCA_SOURCE_RPC_URL ??= env.ARBITRUM_SEPOLIA_RPC_URL;
+env.HCA_SOURCE_CHAIN = sourceChain;
+env.HCA_SOURCE_RPC_URL ??=
+  sourceChain === "base-sepolia"
+    ? env.BASE_SEPOLIA_RPC_URL
+    : env.ARBITRUM_SEPOLIA_RPC_URL;
 env.HCA_OWNER_KEY = ownerKey;
 env.HCA_OWNER_KEY_SOURCE = generatedOwnerKey ? "generated" : "supplied";
 env.HCA_EXPECT_INITIAL_STATE = "new";
@@ -112,7 +118,8 @@ env.HCA_USER_PAID_USDC = "1";
 env.HCA_CROSS_CHAIN = "1";
 env.HCA_CROSS_CHAIN_SOURCE = "nexus";
 env.HCA_CROSS_CHAIN_NEXUS_FUNDING = "permit-pull";
-env.HCA_CROSS_CHAIN_SOURCE_AMOUNT ??= "28000000";
+env.HCA_CROSS_CHAIN_SOURCE_AMOUNT ??=
+  sourceChain === "base-sepolia" ? "20000000" : "28000000";
 env.HCA_CROSS_CHAIN_TARGET_AMOUNT ??= "14000000";
 env.HCA_TEST_PAYMENT_TOKEN ??= "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
 env.RHINESTONE_API_KEY ??=
@@ -122,9 +129,8 @@ delete env.HCA_DRY_RUN_ONLY;
 
 for (const name of [
   "SEPOLIA_RPC_URL",
-  "ARBITRUM_SEPOLIA_RPC_URL",
+  "HCA_SOURCE_RPC_URL",
   "DEPLOYER_KEY",
-  "CIRCLE_API_KEY",
   "RHINESTONE_API_KEY",
 ]) {
   if (!env[name]) throw new Error(`${name} is required for the live check`);

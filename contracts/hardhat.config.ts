@@ -96,6 +96,12 @@ const config = {
     },
   },
   networks: {
+    sepolia: {
+      type: 'http',
+      url: configVariable('SEPOLIA_RPC_URL'),
+      accounts: [configVariable('DEPLOYER_KEY')],
+      chainId: 11155111,
+    },
     'sepolia-dev': {
       type: 'http',
       url: configVariable('SEPOLIA_RPC_URL'),

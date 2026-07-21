@@ -65,17 +65,26 @@ const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
 const ARBITRUM_SEPOLIA_RPC_URL = process.env.ARBITRUM_SEPOLIA_RPC_URL;
 const HCA_SOURCE_CHAIN = process.env.HCA_SOURCE_CHAIN ?? "base-sepolia";
 const sourceChain = (() => {
+  if (HCA_SOURCE_CHAIN === "sepolia") return sepolia;
   if (HCA_SOURCE_CHAIN === "base-sepolia") return baseSepolia;
   if (HCA_SOURCE_CHAIN === "arbitrum-sepolia") return arbitrumSepolia;
-  throw new Error("HCA_SOURCE_CHAIN must be base-sepolia or arbitrum-sepolia");
+  throw new Error(
+    "HCA_SOURCE_CHAIN must be sepolia, base-sepolia, or arbitrum-sepolia",
+  );
 })();
 const SOURCE_RPC_URL =
   process.env.HCA_SOURCE_RPC_URL ??
-  (sourceChain.id === baseSepolia.id
+  (sourceChain.id === sepolia.id
+    ? RPC_URL
+    : sourceChain.id === baseSepolia.id
     ? BASE_SEPOLIA_RPC_URL
     : ARBITRUM_SEPOLIA_RPC_URL);
 const CIRCLE_SOURCE_BLOCKCHAIN =
-  sourceChain.id === baseSepolia.id ? "BASE-SEPOLIA" : "ARB-SEPOLIA";
+  sourceChain.id === sepolia.id
+    ? "ETH-SEPOLIA"
+    : sourceChain.id === baseSepolia.id
+      ? "BASE-SEPOLIA"
+      : "ARB-SEPOLIA";
 const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY;
 const HCA_CROSS_CHAIN = process.env.HCA_CROSS_CHAIN === "1";
 const HCA_CROSS_CHAIN_SOURCE = process.env.HCA_CROSS_CHAIN_SOURCE ?? "nexus";
@@ -115,7 +124,9 @@ const RHINESTONE_GAS_REFUND_PAYMASTER =
 const NEXUS_FACTORY = "0x0000000000679A258c64d2F20F310e12B64b7375" as const;
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3" as const;
 const SOURCE_PAYMENT_TOKEN = (process.env.HCA_SOURCE_PAYMENT_TOKEN ??
-  (sourceChain.id === baseSepolia.id
+  (sourceChain.id === sepolia.id
+    ? "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+    : sourceChain.id === baseSepolia.id
     ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
     : "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d")) as Address;
 const SEPOLIA_USDC = (process.env.HCA_TARGET_PAYMENT_TOKEN ??
@@ -129,6 +140,9 @@ const CROSS_CHAIN_SOURCE_AMOUNT = process.env.HCA_CROSS_CHAIN_SOURCE_AMOUNT
 const CROSS_CHAIN_DESTINATION_GAS = process.env.HCA_CROSS_CHAIN_DESTINATION_GAS
   ? BigInt(process.env.HCA_CROSS_CHAIN_DESTINATION_GAS)
   : 1_200_000n;
+const SESSION_GAS_LIMIT = process.env.HCA_SESSION_GAS_LIMIT
+  ? BigInt(process.env.HCA_SESSION_GAS_LIMIT)
+  : undefined;
 const MODE_ERC1271 = `0x0201${"00".repeat(30)}` as Hex;
 const MODE_EMISSARY_EXECUTION = `0x0204${"00".repeat(30)}` as Hex;
 const OPERATOR_MAX_FEE_PER_GAS = 500_000_000_000n;
@@ -2140,7 +2154,7 @@ async function executeCrossChainRegistration({
     ...(sourceCalls.length > 0 && {
       sourceCalls: { [sourceChain.id]: sourceCalls },
     }),
-    settlementLayers: ["ACROSS"],
+    ...(sourceChain.id !== sepolia.id && { settlementLayers: ["ACROSS"] }),
     ...(!HCA_SPONSORED && { feeAsset: HCA_FEE_ASSET ?? "USDC" }),
     sponsored: HCA_SPONSORED
       ? { gas: true, bridging: true, swaps: true }
@@ -2179,16 +2193,22 @@ async function executeCrossChainRegistration({
     );
   }
   let targetMode: Hex | undefined;
+  let routeSettlementLayer: string | undefined;
   for (const element of prepared.intentRoute.intentOp.elements) {
     const context = element.mandate.qualifier.settlementContext;
     if (
-      context.settlementLayer !== "ACROSS" ||
+      (sourceChain.id !== sepolia.id &&
+        context.settlementLayer !== "ACROSS") ||
       context.fundingMethod !== "PERMIT2" ||
       context.using7579 !== true
     ) {
       throw new Error(
-        `${phase}: expected ACROSS + PERMIT2 through ERC-7579, got ${context.settlementLayer} + ${context.fundingMethod} (using7579=${context.using7579})`,
+        `${phase}: unexpected route ${context.settlementLayer} + ${context.fundingMethod} (using7579=${context.using7579})`,
       );
+    }
+    routeSettlementLayer ??= context.settlementLayer;
+    if (routeSettlementLayer !== context.settlementLayer) {
+      throw new Error(`${phase}: route uses more than one settlement layer`);
     }
     if (
       element.mandate.recipient.toLowerCase() !== recipientAddress.toLowerCase()
@@ -2379,7 +2399,7 @@ async function executeCrossChainRegistration({
     sourcePermit2Amount,
     using7579: true,
     mode: targetMode!,
-    settlementLayer: "ACROSS" as const,
+    settlementLayer: routeSettlementLayer!,
     fundingMethod: "PERMIT2" as const,
     sponsored: HCA_SPONSORED,
     feeAsset: HCA_FEE_ASSET ?? "USDC",
@@ -2471,6 +2491,7 @@ async function executeIntent({
     chain: sepolia,
     calls,
     signers,
+    ...(SESSION_GAS_LIMIT !== undefined && { gasLimit: SESSION_GAS_LIMIT }),
     ...(!HCA_SPONSORED && { feeAsset: HCA_FEE_ASSET ?? "USDC" }),
     sponsored: HCA_SPONSORED
       ? { gas: true, bridging: true, swaps: true }
