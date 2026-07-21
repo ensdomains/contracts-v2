@@ -5,11 +5,18 @@ import { zeroAddress } from "viem";
 import {
   DEFAULT_ENTRY_POINT,
   optionalEnvAddress,
+  resolveHCAIntentExecutor,
   shouldDeployStandaloneHCA,
 } from "./_helpers.js";
 
 export default execute(
-  async ({ deploy, get, getOrNull, namedAccounts: { deployer, owner }, tags }) => {
+  async ({
+    deploy,
+    get,
+    getOrNull,
+    namedAccounts: { deployer, owner },
+    tags,
+  }) => {
     if (!shouldDeployStandaloneHCA(tags)) return;
 
     const validator = get<
@@ -19,10 +26,11 @@ export default execute(
       (typeof artifacts.MockRegistrationIntentExecutor)["abi"]
     >("HCARegistrationIntentExecutor");
     const existingExecutor = getOrNull<Abi>("IntentExecutor");
-    const intentExecutor =
-      optionalEnvAddress("HCA_INTENT_EXECUTOR") ??
-      existingExecutor?.address ??
-      localExecutor?.address;
+    const intentExecutor = resolveHCAIntentExecutor({
+      tags,
+      localExecutor: localExecutor?.address,
+      existingExecutor: existingExecutor?.address,
+    });
 
     if (!intentExecutor) {
       throw new Error(
@@ -42,7 +50,8 @@ export default execute(
       account: deployer,
       artifact: artifacts.StandaloneSingleOwnerHCA,
       args: [
-        optionalEnvAddress("HCA_ENTRY_POINT") ?? (DEFAULT_ENTRY_POINT as Address),
+        optionalEnvAddress("HCA_ENTRY_POINT") ??
+          (DEFAULT_ENTRY_POINT as Address),
         validator.address,
         intentExecutor,
         "0x",
@@ -52,7 +61,13 @@ export default execute(
     });
   },
   {
-    tags: ["StandaloneHCAImplementation", "StandaloneHCA", "hca", "v2"],
+    tags: [
+      "StandaloneHCAImplementation",
+      "StandaloneHCA",
+      "hca",
+      "migration:phase1:deploy-v2",
+      "v2",
+    ],
     dependencies: [
       "HCAOwnerAndSessionValidator",
       "HCARegistrationIntentExecutor",

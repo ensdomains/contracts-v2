@@ -1,49 +1,14 @@
 import { artifacts, execute } from "@rocketh";
-import type { Abi, Address } from "viem";
+import type { Abi } from "viem";
 
+import { RHINESTONE_GAS_REFUND_PAYMASTER } from "../../script/deploy-constants.js";
 import {
-  MAINNET_DAI,
-  MAINNET_USDC,
-  RHINESTONE_GAS_REFUND_PAYMASTER,
-  SEPOLIA_USDC,
-} from "../../script/deploy-constants.js";
-import { optionalEnvAddress, shouldDeployStandaloneHCA } from "./_helpers.js";
-
-type DeploymentLike = { address: Address };
-
-function resolvePaymentToken({
-  getOrNull,
-  tags,
-}: {
-  getOrNull: (name: string) => DeploymentLike | null | undefined;
-  tags: Record<string, unknown>;
-}) {
-  return (
-    optionalEnvAddress("HCA_PAYMENT_TOKEN") ??
-    optionalEnvAddress("HCA_USDC") ??
-    getOrNull("MockUSDC")?.address ??
-    (tags.hasDao ? MAINNET_USDC : undefined) ??
-    (tags.sepolia || tags.dev ? SEPOLIA_USDC : undefined)
-  );
-}
-
-function resolveSecondaryPaymentToken({
-  getOrNull,
-  tags,
-  paymentToken,
-}: {
-  getOrNull: (name: string) => DeploymentLike | null | undefined;
-  tags: Record<string, unknown>;
-  paymentToken: Address;
-}) {
-  return (
-    optionalEnvAddress("HCA_SECONDARY_PAYMENT_TOKEN") ??
-    optionalEnvAddress("HCA_DAI") ??
-    getOrNull("MockDAI")?.address ??
-    (tags.hasDao ? MAINNET_DAI : undefined) ??
-    paymentToken
-  );
-}
+  optionalEnvAddress,
+  resolveHCAIntentExecutor,
+  resolveHCAPaymentToken,
+  resolveHCASecondaryPaymentToken,
+  shouldDeployStandaloneHCA,
+} from "./_helpers.js";
 
 export default execute(
   async ({ deploy, get, getOrNull, namedAccounts: { deployer }, tags }) => {
@@ -67,31 +32,33 @@ export default execute(
       (typeof artifacts.MockRegistrationIntentExecutor)["abi"]
     >("HCARegistrationIntentExecutor");
     const existingExecutor = getOrNull<Abi>("IntentExecutor");
-    const intentExecutor =
-      optionalEnvAddress("HCA_INTENT_EXECUTOR") ??
-      existingExecutor?.address ??
-      localExecutor?.address;
+    const intentExecutor = resolveHCAIntentExecutor({
+      tags,
+      localExecutor: localExecutor?.address,
+      existingExecutor: existingExecutor?.address,
+    });
     if (!intentExecutor) {
       throw new Error(
         "HCA_INTENT_EXECUTOR must be set when no IntentExecutor deployment is available",
       );
     }
-    const paymentToken = resolvePaymentToken({ getOrNull, tags });
+    const paymentToken = resolveHCAPaymentToken({ getOrNull, tags });
     if (!paymentToken) {
       throw new Error(
         "HCA_PAYMENT_TOKEN or HCA_USDC must be set when no payment token deployment is available",
       );
     }
-    const secondaryPaymentToken = resolveSecondaryPaymentToken({
+    const secondaryPaymentToken = resolveHCASecondaryPaymentToken({
       getOrNull,
       tags,
       paymentToken,
     });
     const gasRefundPaymaster =
       optionalEnvAddress("HCA_GAS_REFUND_PAYMASTER") ??
+      localExecutor?.address ??
       (tags.sepolia || tags.hasDao
         ? RHINESTONE_GAS_REFUND_PAYMASTER
-        : (localExecutor?.address ?? intentExecutor));
+        : intentExecutor);
 
     await deploy("HCAOwnerAndSessionValidator", {
       account: deployer,
@@ -113,6 +80,7 @@ export default execute(
       "HCAOwnerAndSessionValidator",
       "StandaloneHCA",
       "hca",
+      "migration:phase1:deploy-v2",
       "v2",
     ],
     dependencies: [

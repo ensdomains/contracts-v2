@@ -56,6 +56,12 @@ HCA = VerifiableFactory proxy address for (StandaloneHCAFactory, deploymentSalt)
 
 A person can call `StandaloneHCAFactory.deploy(owner, implementation, userSalt)`. The caller cannot change the expected owner, implementation, or address. If there is an HCA at this address, the application must validate its owner and implementation. The application can then use the HCA. If these values are incorrect, the application must show an error. It must not select a different account without user approval.
 
+### Shared deployment
+
+On HCA-enabled networks, the shared HCA infrastructure is part of phase 1 of the v1-to-v2 migration. The `migration:phase1:deploy-v2` tag deploys the HCA reverse adapter, validator, factory, upgrade gate, and implementation. It also authorizes the reverse adapter as a v1 `DefaultReverseRegistrar` controller and marks the implementation as trusted by the adapter. See the [phase-1 migration runbook](../contracts/docs/migration.md#phase-1-deploy-v2-contracts).
+
+Phase 1 does not deploy an HCA for each wallet. Owner-bound HCA proxies remain counterfactual until `StandaloneHCAFactory` deploys them during a user's first operation. Live and forked Sepolia deployments default to the fixed Rhinestone intent executor and production USDC configured in `script/deploy-constants.ts`; the `HCA_*` address variables remain available as explicit overrides. Clean-testnet migration rehearsals deploy a local mock executor and use local mock payment tokens.
+
 ## Registration routes
 
 Each registration has a commitment and a registration. The registration occurs after the commitment delay.

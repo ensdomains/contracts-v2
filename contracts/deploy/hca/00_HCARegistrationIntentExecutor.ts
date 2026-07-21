@@ -18,6 +18,12 @@ export default execute(
     });
   },
   {
-    tags: ["HCARegistrationIntentExecutor", "StandaloneHCA", "hca", "v2"],
+    tags: [
+      "HCARegistrationIntentExecutor",
+      "StandaloneHCA",
+      "hca",
+      "migration:phase1:deploy-v2",
+      "v2",
+    ],
   },
 );

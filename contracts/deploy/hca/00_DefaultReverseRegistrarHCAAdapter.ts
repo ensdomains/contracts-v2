@@ -78,7 +78,12 @@ export default execute(
     }
   },
   {
-    tags: ["DefaultReverseRegistrarHCAAdapter", "StandaloneHCA", "hca"],
+    tags: [
+      "DefaultReverseRegistrarHCAAdapter",
+      "StandaloneHCA",
+      "hca",
+      "migration:phase1:deploy-v2",
+    ],
     dependencies: ["ContractNamer", "VerifiableFactory"],
   },
 );

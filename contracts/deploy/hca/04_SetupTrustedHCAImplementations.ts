@@ -39,7 +39,13 @@ export default execute(
     });
   },
   {
-    tags: ["setup:StandaloneHCA", "StandaloneHCA", "hca", "v2"],
+    tags: [
+      "setup:StandaloneHCA",
+      "StandaloneHCA",
+      "hca",
+      "migration:phase1:deploy-v2",
+      "v2",
+    ],
     dependencies: [
       "StandaloneHCAImplementation",
       "DefaultReverseRegistrarHCAAdapter",

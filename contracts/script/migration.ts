@@ -3203,6 +3203,12 @@ export async function deployV2(opts: DeployV2Options) {
     "UpgradableUniversalResolverProxy",
     "ReverseRegistrarAdapter",
     "DefaultReverseRegistrarAdapter",
+    "DefaultReverseRegistrarHCAAdapter",
+    "HCARegistrationIntentExecutor",
+    "HCAOwnerAndSessionValidator",
+    "StandaloneHCAFactory",
+    "HCAUpgradeGate",
+    "StandaloneHCAImplementation",
   ]);
 
   // Refresh the generated address table for a persisted deploy so the docs

@@ -14,7 +14,13 @@ export default execute(
     });
   },
   {
-    tags: ["StandaloneHCAFactory", "StandaloneHCA", "hca", "v2"],
+    tags: [
+      "StandaloneHCAFactory",
+      "StandaloneHCA",
+      "hca",
+      "migration:phase1:deploy-v2",
+      "v2",
+    ],
     dependencies: ["VerifiableFactory"],
   },
 );
