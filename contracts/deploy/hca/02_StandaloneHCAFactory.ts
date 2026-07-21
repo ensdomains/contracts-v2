@@ -7,14 +7,14 @@ export default execute(
     if (!shouldDeployStandaloneHCA(tags)) return;
 
     const verifiableFactory = get("VerifiableFactory");
-    await deploy("StandaloneHCADeployer", {
+    await deploy("StandaloneHCAFactory", {
       account: deployer,
-      artifact: artifacts.StandaloneHCADeployer,
+      artifact: artifacts.StandaloneHCAFactory,
       args: [verifiableFactory.address],
     });
   },
   {
-    tags: ["StandaloneHCADeployer", "StandaloneHCA", "hca", "v2"],
+    tags: ["StandaloneHCAFactory", "StandaloneHCA", "hca", "v2"],
     dependencies: ["VerifiableFactory"],
   },
 );

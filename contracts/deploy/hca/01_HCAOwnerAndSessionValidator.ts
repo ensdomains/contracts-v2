@@ -93,9 +93,9 @@ export default execute(
         ? RHINESTONE_GAS_REFUND_PAYMASTER
         : (localExecutor?.address ?? intentExecutor));
 
-    await deploy("OwnerBoundRegistrationSessionValidator", {
+    await deploy("HCAOwnerAndSessionValidator", {
       account: deployer,
-      artifact: artifacts.OwnerBoundRegistrationSessionValidator,
+      artifact: artifacts.HCAOwnerAndSessionValidator,
       args: [
         defaultReverseRegistrarAdapter.address,
         permittedResolverImpl.address,
@@ -110,7 +110,7 @@ export default execute(
   },
   {
     tags: [
-      "OwnerBoundRegistrationSessionValidator",
+      "HCAOwnerAndSessionValidator",
       "StandaloneHCA",
       "hca",
       "v2",

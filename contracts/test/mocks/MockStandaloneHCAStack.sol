@@ -6,9 +6,7 @@ import {IExecutor} from "nexus/interfaces/modules/IExecutor.sol";
 import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 import {EncodedModuleTypes} from "nexus/lib/ModuleTypeLib.sol";
 
-import {
-    OwnerBoundRegistrationSessionValidator
-} from "~src/hca/OwnerBoundRegistrationSessionValidator.sol";
+import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
 
 /// @title Mock Standalone HCA
 /// @notice Test-only HCA stand-in that exposes an owner and forwards validation.
@@ -43,7 +41,7 @@ contract MockStandaloneHCA {
     /// @param signature The owner signature.
     /// @return The ERC-1271 return value.
     function validate(
-        OwnerBoundRegistrationSessionValidator validator,
+        HCAOwnerAndSessionValidator validator,
         bytes32 operationHash,
         bytes calldata signature
     )

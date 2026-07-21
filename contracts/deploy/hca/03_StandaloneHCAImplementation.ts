@@ -13,8 +13,8 @@ export default execute(
     if (!shouldDeployStandaloneHCA(tags)) return;
 
     const validator = get<
-      (typeof artifacts.OwnerBoundRegistrationSessionValidator)["abi"]
-    >("OwnerBoundRegistrationSessionValidator");
+      (typeof artifacts.HCAOwnerAndSessionValidator)["abi"]
+    >("HCAOwnerAndSessionValidator");
     const localExecutor = getOrNull<
       (typeof artifacts.MockRegistrationIntentExecutor)["abi"]
     >("HCARegistrationIntentExecutor");
@@ -54,7 +54,7 @@ export default execute(
   {
     tags: ["StandaloneHCAImplementation", "StandaloneHCA", "hca", "v2"],
     dependencies: [
-      "OwnerBoundRegistrationSessionValidator",
+      "HCAOwnerAndSessionValidator",
       "HCARegistrationIntentExecutor",
     ],
   },

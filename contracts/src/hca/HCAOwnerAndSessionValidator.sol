@@ -9,7 +9,6 @@ import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOper
 import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 
 import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
-import {IETHRenewer} from "../registrar/interfaces/IETHRenewer.sol";
 import {PermissionedResolver} from "../resolver/PermissionedResolver.sol";
 import {
     DefaultReverseRegistrarAdapter
@@ -17,12 +16,12 @@ import {
 
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
 
-/// @title Owner-Bound Registration Session Validator
-/// @notice Fixed validator for standalone-HCA owner authorization and ENS registration sessions.
+/// @title HCA Owner and Session Validator
+/// @notice Fixed validator for standalone HCA owner authorization and scoped ENS sessions.
 /// @dev Owner signatures use Rhinestone's existing HCA format. Sessions are enabled by an
 ///      owner-authorized HCA call and consumed through the IntentExecutor's ERC-1271 path. The
 ///      permission checks remain hardcoded here rather than in dynamic policy modules.
-contract OwnerBoundRegistrationSessionValidator is IValidator {
+contract HCAOwnerAndSessionValidator is IValidator {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -140,9 +139,6 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
 
     /// @notice Selector for ETHRegistrar.register(string,address,bytes32,address,address,uint64,address,bytes32).
     bytes4 public constant REGISTER_SELECTOR = IETHRegistrar.register.selector;
-
-    /// @notice Selector for ETHRegistrar.renew(string,uint64,address,bytes32).
-    bytes4 public constant RENEW_SELECTOR = IETHRenewer.renew.selector;
 
     /// @notice Selector for ERC20.approve(address,uint256).
     bytes4 public constant APPROVE_SELECTOR = IERC20.approve.selector;
@@ -738,9 +734,8 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
 
     /// @notice Validates every execution against the hardcoded registration and name-management action set.
     /// @dev Checks target, selector, value, and selected ABI arguments for each execution.
-    ///      A default reverse name may be updated in a standalone operation when the policy has a
-    ///      nonzero resolver and the named account is the HCA owner. When registration shares the
-    ///      batch, the default reverse name must match the registered name.
+    ///      A default reverse name may be updated when the policy has a nonzero resolver and the
+    ///      named account is the HCA owner.
     /// @param owner The owner recorded for the HCA.
     /// @param allowedResolver The resolver bound to the enabled session.
     /// @param operationData The encoded ERC-7579 operation payload.
@@ -779,7 +774,6 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
         Execution[] memory executions = abi.decode(operationData[32:], (Execution[]));
         bool seenRegister;
         address registeredResolver;
-        bytes32 registeredNameHash;
 
         for (uint256 i; i < executions.length; ++i) {
             Execution memory execution = executions[i];
@@ -787,31 +781,23 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
                 execution.target == ETH_REGISTRAR &&
                 _selector(execution.callData) == REGISTER_SELECTOR
             ) {
-                (bytes32 nameHash, address registrant, address resolver) =
-                    _registerFields(execution.callData);
+                (address registrant, address resolver) = _registerFields(execution.callData);
                 if (registrant != owner) {
                     revert PolicyRuleFailed();
                 }
                 if (!seenRegister) {
                     seenRegister = true;
                     registeredResolver = resolver;
-                    registeredNameHash = nameHash;
-                } else if (registeredResolver != resolver || registeredNameHash != nameHash) {
+                } else if (registeredResolver != resolver) {
                     revert PolicyRuleFailed();
                 }
             }
         }
 
-        if (
-            allowedResolver != address(0) &&
-            registeredResolver != address(0) &&
-            allowedResolver != registeredResolver
-        ) {
+        if (seenRegister && allowedResolver != registeredResolver) {
             revert PolicyRuleFailed();
         }
-        address policyResolver = registeredResolver == address(0)
-            ? allowedResolver
-            : registeredResolver;
+        address policyResolver = seenRegister ? registeredResolver : allowedResolver;
 
         for (uint256 i; i < executions.length; ++i) {
             Execution memory execution = executions[i];
@@ -822,11 +808,7 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
             bytes4 selector = _selector(execution.callData);
 
             if (execution.target == ETH_REGISTRAR) {
-                if (
-                    selector != COMMIT_SELECTOR &&
-                    selector != REGISTER_SELECTOR &&
-                    selector != RENEW_SELECTOR
-                ) {
+                if (selector != COMMIT_SELECTOR && selector != REGISTER_SELECTOR) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
                 continue;
@@ -844,11 +826,8 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
                 if (policyResolver == address(0)) {
                     revert PolicyRuleFailed();
                 }
-                (address account, bytes32 nameHash) = _defaultReverseFields(execution.callData);
+                address account = _readAddress(execution.callData, 4);
                 if (account != owner) {
-                    revert PolicyRuleFailed();
-                }
-                if (seenRegister && nameHash != registeredNameHash) {
                     revert PolicyRuleFailed();
                 }
                 continue;
@@ -1001,70 +980,17 @@ contract OwnerBoundRegistrationSessionValidator is IValidator {
     }
 
     /// @notice Reads the fields relevant to the registration policy from a register call.
-    /// @dev Reads only the needed ABI head words and hashes `<label>.eth` in place instead of
-    ///      decoding the full register tuple.
+    /// @dev Reads only the needed ABI head words instead of decoding the full register tuple.
     /// @param callData ABI-encoded register call data.
-    /// @return nameHash The keccak256 hash of the registered `<label>.eth` name.
     /// @return registrant The owner argument of the register call.
     /// @return resolver The resolver argument of the register call.
     function _registerFields(bytes memory callData)
         internal
         pure
-        returns (bytes32 nameHash, address registrant, address resolver)
+        returns (address registrant, address resolver)
     {
         registrant = _readAddress(callData, 4 + 32);
         resolver = _readAddress(callData, 4 + 128);
-        nameHash = _hashStringArg(callData, _readUint(callData, 4), true);
-    }
-
-    /// @notice Reads the fields relevant to the default reverse policy from a setNameWithHCA call.
-    /// @dev Reads the account head word and hashes the name argument in place.
-    /// @param callData ABI-encoded setNameWithHCA call data.
-    /// @return account The account argument of the call.
-    /// @return nameHash The keccak256 hash of the name argument.
-    function _defaultReverseFields(bytes memory callData)
-        internal
-        pure
-        returns (address account, bytes32 nameHash)
-    {
-        account = _readAddress(callData, 4);
-        nameHash = _hashStringArg(callData, _readUint(callData, 4 + 32), false);
-    }
-
-    /// @notice Hashes a string argument read directly out of ABI call data.
-    /// @dev Copies only the string bytes (plus the optional `.eth` suffix) before hashing,
-    ///      avoiding a full-tuple decode. Reverts with `InvalidOperationEncoding` when the
-    ///      encoded string does not fit the call data.
-    /// @param callData ABI-encoded call data with a function selector prefix.
-    /// @param argsOffset Offset of the string head relative to the start of the arguments.
-    /// @param appendEthSuffix Whether to append `.eth` before hashing.
-    /// @return result The keccak256 hash of the (suffixed) string bytes.
-    function _hashStringArg(bytes memory callData, uint256 argsOffset, bool appendEthSuffix)
-        internal
-        pure
-        returns (bytes32 result)
-    {
-        if (argsOffset > callData.length) {
-            revert InvalidOperationEncoding();
-        }
-        uint256 lengthPos = 4 + argsOffset;
-        uint256 stringLength = _readUint(callData, lengthPos);
-        if (stringLength > callData.length || callData.length < lengthPos + 32 + stringLength) {
-            revert InvalidOperationEncoding();
-        }
-        uint256 suffixLength = appendEthSuffix ? 4 : 0;
-        assembly ("memory-safe") {
-            let ptr := mload(0x40)
-            mstore(0x40, add(ptr, and(add(add(stringLength, suffixLength), 0x3f), not(0x1f))))
-            let src := add(add(callData, 0x20), add(lengthPos, 32))
-            for { let i := 0 } lt(i, stringLength) { i := add(i, 0x20) } {
-                mstore(add(ptr, i), mload(add(src, i)))
-            }
-            if suffixLength {
-                mstore(add(ptr, stringLength), shl(224, 0x2e657468))
-            }
-            result := keccak256(ptr, add(stringLength, suffixLength))
-        }
     }
 
     /// @notice Returns whether a selector is a resolver record setter.

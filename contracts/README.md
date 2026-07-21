@@ -438,7 +438,7 @@ http://localhost:8000/deployments, and mockestrator at http://localhost:3007.
 Mockestrator is a frontend transport mock. It does not replace the SDK's HCA
 adapter or prove the account's authorization policy. For the current frontend
 boundary, see
-[HCA frontend handoff](../docs/HCA-HANDOFF-FRONTEND.md).
+[HCA](../docs/HCA.md).
 
 To view logs:
 

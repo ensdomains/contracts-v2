@@ -5,17 +5,17 @@ import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFact
 
 import {StandaloneSingleOwnerHCA} from "./StandaloneSingleOwnerHCA.sol";
 
-/// @title Standalone HCA Deployer
-/// @notice Deploys owner-bound standalone HCAs through a fixed VerifiableFactory.
-/// @dev The resulting proxy address is determined by this deployer, `userSalt`, `owner`, and
+/// @title Standalone HCA Factory
+/// @notice Creates owner-bound standalone HCAs through a fixed VerifiableFactory.
+/// @dev The resulting proxy address is determined by this factory, `userSalt`, `owner`, and
 ///      `hcaImplementation`. Any caller may deploy an account, but cannot substitute an
 ///      implementation at the address expected for another implementation.
-contract StandaloneHCADeployer {
+contract StandaloneHCAFactory {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The factory used for every HCA deployment.
+    /// @notice The underlying factory used for every HCA deployment.
     IVerifiableFactory public immutable VERIFIABLE_FACTORY;
 
     ////////////////////////////////////////////////////////////////////////
@@ -35,7 +35,7 @@ contract StandaloneHCADeployer {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param verifiableFactory The factory used for every HCA deployment.
+    /// @param verifiableFactory The underlying factory used for every HCA deployment.
     constructor(IVerifiableFactory verifiableFactory) {
         if (address(verifiableFactory) == address(0)) {
             revert VerifiableFactoryCannotBeZero();

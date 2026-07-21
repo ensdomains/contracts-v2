@@ -103,7 +103,7 @@ index 00bdb68da2ee6dcbde9591810887ace4c3ab711f..21434ff395136f0c7fb0c5f213a9eccf
 +        args: [(0, viem_1.encodeAbiParameters)([{ type: 'address' }], [owner])],
 +    });
 +    return {
-+        factory: account.deployer,
++        factory: account.factory,
 +        factoryData,
 +        salt: deploymentSalt,
 +        implementation: account.implementation,
@@ -128,7 +128,7 @@ index 00bdb68da2ee6dcbde9591810887ace4c3ab711f..21434ff395136f0c7fb0c5f213a9eccf
 +    if (isStandaloneHca(config)) {
 +        const account = getStandaloneConfig(config);
 +        const deployArgs = getStandaloneDeployArgs(config);
-+        const outerSalt = (0, viem_1.keccak256)((0, viem_1.encodeAbiParameters)([{ type: 'address' }, { type: 'uint256' }], [account.deployer, BigInt(deployArgs.salt)]));
++        const outerSalt = (0, viem_1.keccak256)((0, viem_1.encodeAbiParameters)([{ type: 'address' }, { type: 'uint256' }], [account.factory, BigInt(deployArgs.salt)]));
 +        const bytecode = (0, viem_1.concat)([
 +            VERIFIABLE_PROXY_PREFIX,
 +            account.proxyLogic,
@@ -598,7 +598,7 @@ index fa74e411c6fcb1ca54adddd456a8c0357a44454d..bfcbe0980b32e337862269fc00fb30aa
 +interface StandaloneHcaAccount {
 +    type: 'hca';
 +    version: 'ens-standalone-1.1.0';
-+    deployer: Address;
++    factory: Address;
 +    implementation: Address;
 +    validator: Address;
 +    verifiableFactory: Address;

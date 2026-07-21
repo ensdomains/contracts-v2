@@ -205,10 +205,10 @@ describe("Standalone HCA", () => {
   // The devnet deploy scripts deploy the local HCA stack and register its
   // implementation with the default reverse adapter.
   const stack = {
-    deployer: env.hca.StandaloneHCADeployer,
+    factory: env.hca.StandaloneHCAFactory,
     executor: env.hca.HCARegistrationIntentExecutor,
     hcaImplementation: env.hca.StandaloneHCAImplementation,
-    validator: env.hca.OwnerBoundRegistrationSessionValidator,
+    validator: env.hca.HCAOwnerAndSessionValidator,
   };
 
   setupEnv({ resetOnEach: true });
@@ -220,7 +220,7 @@ describe("Standalone HCA", () => {
       account: {
         type: "hca",
         version: "ens-standalone-1.1.0",
-        deployer: stack.deployer.address,
+        factory: stack.factory.address,
         implementation: stack.hcaImplementation.address,
         validator: stack.validator.address,
         verifiableFactory: env.v2.VerifiableFactory.address,
@@ -275,7 +275,7 @@ describe("Standalone HCA", () => {
       userSalt,
     );
     return env.computeVerifiableProxyAddress(
-      stack.deployer.address,
+      stack.factory.address,
       deploymentSalt,
     );
   }
@@ -416,7 +416,7 @@ describe("Standalone HCA", () => {
     const needsDeployment = !hcaCodeBefore || hcaCodeBefore === "0x";
     if (needsDeployment) {
       await env.waitFor(
-        stack.deployer.write.deploy(
+        stack.factory.write.deploy(
           [owner.address, stack.hcaImplementation.address, HCA_USER_SALT],
           {
             account: walletPaid ? owner : env.namedAccounts.deployer,
@@ -782,16 +782,16 @@ describe("Standalone HCA", () => {
 
     expectVar({ sdkAddress: account.getAddress() }).toEqualAddress(hca);
     expectVar({ initData: account.getInitData() }).toStrictEqual({
-      factory: stack.deployer.address,
+      factory: stack.factory.address,
       factoryData: encodeFunctionData({
-        abi: stack.deployer.abi,
+        abi: stack.factory.abi,
         functionName: "deploy",
         args: [owner.address, stack.hcaImplementation.address, HCA_USER_SALT],
       }),
     });
 
     await env.waitFor(
-      stack.deployer.write.deploy([
+      stack.factory.write.deploy([
         owner.address,
         stack.hcaImplementation.address,
         HCA_USER_SALT,
@@ -1031,7 +1031,7 @@ describe("Standalone HCA", () => {
       signed.intentRoute.intentOp.signedMetadata.recipient?.setupOps;
     expectVar({ recipientSetupCount: recipientSetup?.length }).toStrictEqual(1);
     expectVar({ recipientFactory: recipientSetup?.[0]?.to }).toEqualAddress(
-      stack.deployer.address,
+      stack.factory.address,
     );
 
     const message = source.getTransactionMessages(signed).origin[0]!;
@@ -1046,7 +1046,7 @@ describe("Standalone HCA", () => {
     const owner = env.namedAccounts.user;
     const config = await standaloneConfig(owner);
     const expectedFactoryData = encodeFunctionData({
-      abi: stack.deployer.abi,
+      abi: stack.factory.abi,
       functionName: "deploy",
       args: [owner.address, stack.hcaImplementation.address, HCA_USER_SALT],
     });
@@ -1118,14 +1118,14 @@ describe("Standalone HCA", () => {
         account.getAddress(),
       );
       expectVar({ factory: prepared.userOperation.factory }).toEqualAddress(
-        stack.deployer.address,
+        stack.factory.address,
       );
       expectVar({
         factoryData: prepared.userOperation.factoryData,
       }).toStrictEqual(expectedFactoryData);
       expectVar({
         estimatedFactory: captured.estimatedUserOperation?.factory,
-      }).toStrictEqual(stack.deployer.address);
+      }).toStrictEqual(stack.factory.address);
       expectVar({
         estimatedFactoryData: captured.estimatedUserOperation?.factoryData,
       }).toStrictEqual(expectedFactoryData);

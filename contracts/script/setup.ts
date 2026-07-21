@@ -533,10 +533,9 @@ export async function setupDevnet({
         address: rocketh.deployments["HCARegistrationIntentExecutor"].address,
         client,
       }),
-      OwnerBoundRegistrationSessionValidator: getContract({
-        abi: artifacts.OwnerBoundRegistrationSessionValidator.abi,
-        address:
-          rocketh.deployments["OwnerBoundRegistrationSessionValidator"].address,
+      HCAOwnerAndSessionValidator: getContract({
+        abi: artifacts.HCAOwnerAndSessionValidator.abi,
+        address: rocketh.deployments["HCAOwnerAndSessionValidator"].address,
         client,
       }),
       StandaloneHCAImplementation: getContract({
@@ -544,9 +543,9 @@ export async function setupDevnet({
         address: rocketh.deployments["StandaloneHCAImplementation"].address,
         client,
       }),
-      StandaloneHCADeployer: getContract({
-        abi: artifacts.StandaloneHCADeployer.abi,
-        address: rocketh.deployments["StandaloneHCADeployer"].address,
+      StandaloneHCAFactory: getContract({
+        abi: artifacts.StandaloneHCAFactory.abi,
+        address: rocketh.deployments["StandaloneHCAFactory"].address,
         client,
       }),
       HCAUpgradeGate: getContract({

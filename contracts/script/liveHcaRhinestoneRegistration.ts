@@ -40,10 +40,10 @@ import {
   DefaultReverseRegistrarAdapter,
   ENSRegistry,
   ETHRegistrar,
-  OwnerBoundRegistrationSessionValidator,
+  HCAOwnerAndSessionValidator,
   PermissionedRegistry,
   PermissionedResolver,
-  StandaloneHCADeployer,
+  StandaloneHCAFactory,
   StandaloneSingleOwnerHCA,
   test_mocks_MockERC20_sol_MockERC20 as MockERC20,
   UniversalResolverV2,
@@ -292,18 +292,21 @@ function deployment(name: string, network = DEPLOYMENT_NETWORK): Address {
 }
 
 function deploymentFromEnv(
-  envName: string,
+  envName: string | string[],
   names: string[],
   network = DEPLOYMENT_NETWORK,
 ): Address {
-  if (process.env[envName]) return process.env[envName] as Address;
+  const envNames = Array.isArray(envName) ? envName : [envName];
+  for (const name of envNames) {
+    if (process.env[name]) return process.env[name] as Address;
+  }
   for (const name of names) {
     try {
       return deployment(name, network);
     } catch {}
   }
   throw new Error(
-    `${envName} is not set and ${names.join(" or ")} is absent from deployments/${network}`,
+    `${envNames.join(" or ")} is not set and ${names.join(" or ")} is absent from deployments/${network}`,
   );
 }
 
@@ -474,9 +477,9 @@ async function main() {
     ethRegistrar: deployment("ETHRegistrar"),
     ethRegistry: deployment("ETHRegistry"),
     paymentToken: deploymentFromEnv("HCA_TEST_PAYMENT_TOKEN", ["MockUSDC"]),
-    standaloneHcaDeployer: deploymentFromEnv(
-      "HCA_STANDALONE_HCA_DEPLOYER",
-      ["StandaloneHCADeployer"],
+    standaloneHcaFactory: deploymentFromEnv(
+      ["HCA_STANDALONE_HCA_FACTORY", "HCA_STANDALONE_HCA_DEPLOYER"],
+      ["StandaloneHCAFactory", "StandaloneHCADeployer"],
       HCA_DEPLOYMENT_NETWORK,
     ),
     standaloneHcaImplementation: deploymentFromEnv(
@@ -485,8 +488,8 @@ async function main() {
       HCA_DEPLOYMENT_NETWORK,
     ),
     validator: deploymentFromEnv(
-      "HCA_SESSION_VALIDATOR",
-      ["OwnerBoundRegistrationSessionValidator"],
+      ["HCA_OWNER_AND_SESSION_VALIDATOR", "HCA_SESSION_VALIDATOR"],
+      ["HCAOwnerAndSessionValidator", "OwnerBoundRegistrationSessionValidator"],
       HCA_DEPLOYMENT_NETWORK,
     ),
     defaultReverseRegistrarAdapter: deploymentFromEnv(
@@ -524,12 +527,12 @@ async function main() {
     functionName: "proxyLogic",
   })) as Address;
   const configuredFactory = (await publicClient.readContract({
-    address: deployments.standaloneHcaDeployer,
-    abi: StandaloneHCADeployer.abi,
+    address: deployments.standaloneHcaFactory,
+    abi: StandaloneHCAFactory.abi,
     functionName: "VERIFIABLE_FACTORY",
   })) as Address;
   assertAddress(
-    "StandaloneHCADeployer.VERIFIABLE_FACTORY",
+    "StandaloneHCAFactory.VERIFIABLE_FACTORY",
     configuredFactory,
     deployments.verifiableFactory,
   );
@@ -548,7 +551,7 @@ async function main() {
       (functionName) =>
         publicClient.readContract({
           address: deployments.validator,
-          abi: OwnerBoundRegistrationSessionValidator.abi,
+          abi: HCAOwnerAndSessionValidator.abi,
           functionName: functionName as never,
         }) as Promise<Address>,
     ),
@@ -659,7 +662,7 @@ async function main() {
   const standalone: StandaloneHcaAccount = {
     type: "hca",
     version: "ens-standalone-1.1.0",
-    deployer: deployments.standaloneHcaDeployer,
+    factory: deployments.standaloneHcaFactory,
     implementation: deployments.standaloneHcaImplementation,
     validator: deployments.validator,
     verifiableFactory: deployments.verifiableFactory,
@@ -853,7 +856,7 @@ async function main() {
         to: deployments.validator,
         value: 0n,
         data: encodeFunctionData({
-          abi: OwnerBoundRegistrationSessionValidator.abi,
+          abi: HCAOwnerAndSessionValidator.abi,
           functionName: HCA_USER_PAID_USDC
             ? "enableSessionWithRefund"
             : "enableSession",
@@ -1254,7 +1257,7 @@ async function main() {
       to: deployments.validator,
       value: 0n,
       data: encodeFunctionData({
-        abi: OwnerBoundRegistrationSessionValidator.abi,
+        abi: HCAOwnerAndSessionValidator.abi,
         functionName: "enableSession",
         args: [permissionId, session.address, Number(validUntil), resolver],
       }),
@@ -2169,10 +2172,10 @@ async function executeCrossChainRegistration({
   if (
     expectedRecipientSetupOps === 1 &&
     metadata.recipient.setupOps[0]?.to.toLowerCase() !==
-      (recipient.account as StandaloneHcaAccount).deployer.toLowerCase()
+      (recipient.account as StandaloneHcaAccount).factory.toLowerCase()
   ) {
     throw new Error(
-      `${phase}: recipient setup does not call StandaloneHCADeployer`,
+      `${phase}: recipient setup does not call StandaloneHCAFactory`,
     );
   }
   let targetMode: Hex | undefined;
@@ -2548,9 +2551,9 @@ async function executeIntent({
   if (
     expectedSetupOps === 1 &&
     setupOps[0].to.toLowerCase() !==
-      (account.config.account as StandaloneHcaAccount).deployer.toLowerCase()
+      (account.config.account as StandaloneHcaAccount).factory.toLowerCase()
   ) {
-    throw new Error(`${phase}: setup op does not call StandaloneHCADeployer`);
+    throw new Error(`${phase}: setup op does not call StandaloneHCAFactory`);
   }
   for (const element of prepared.intentRoute.intentOp.elements) {
     if (element.mandate.destinationOps.vt.toLowerCase() !== expectedMode) {
@@ -2780,7 +2783,7 @@ async function preparePermissionlessCrossChainRegistration({
   initiallyDeployed: boolean;
   commitment: Hex;
   deployments: {
-    standaloneHcaDeployer: Address;
+    standaloneHcaFactory: Address;
     standaloneHcaImplementation: Address;
     ethRegistrar: Address;
   };
@@ -2790,8 +2793,8 @@ async function preparePermissionlessCrossChainRegistration({
   if (!initiallyDeployed) {
     await publicClient.simulateContract({
       account: relayer,
-      address: deployments.standaloneHcaDeployer,
-      abi: StandaloneHCADeployer.abi,
+      address: deployments.standaloneHcaFactory,
+      abi: StandaloneHCAFactory.abi,
       functionName: "deploy",
       args: [
         owner.address,
@@ -2802,8 +2805,8 @@ async function preparePermissionlessCrossChainRegistration({
     deploymentTransactionHash = await walletClient.writeContract({
       account: relayer,
       chain: sepolia,
-      address: deployments.standaloneHcaDeployer,
-      abi: StandaloneHCADeployer.abi,
+      address: deployments.standaloneHcaFactory,
+      abi: StandaloneHCAFactory.abi,
       functionName: "deploy",
       args: [
         owner.address,
