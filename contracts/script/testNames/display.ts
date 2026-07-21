@@ -1,14 +1,14 @@
-import { decodeFunctionResult, encodeFunctionData, namehash } from "viem";
+import { decodeFunctionResult, encodeFunctionData } from "viem";
 
 import type { DevnetEnvironment } from "../setup.js";
 import { MAX_EXPIRY, STATUS } from "../deploy-constants.js";
-import { dnsEncodeName } from "../../test/utils/utils.js";
+import { dnsEncodeName, namehash } from "../../test/utils/utils.js";
 import { getNameData } from "./registry.js";
 import {
   ADDR_ABI,
   MULTICALL_ABI,
   PROFILE_ABI,
-} from "../../test/utils/resolvers.js";
+} from "../../test/utils/resolver-abis.js";
 
 /**
  * Display name information in a formatted table

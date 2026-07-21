@@ -133,9 +133,9 @@ contract PermissionedResolver is
     {
         return
             type(IPermissionedResolver).interfaceId == interfaceId ||
-            type(IContractNamer).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
             type(IProxyAuthorization).interfaceId == interfaceId ||
+            type(IContractNamer).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 

@@ -249,7 +249,7 @@ contract PermissionedResolverTest is V2Fixture {
     // link()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_unknownRecord() external {
+    function test_unknownRecord() external view {
         assertEq(resolver.getRecordId(NameCoder.namehash(testName, 0)), 0);
     }
 
@@ -425,7 +425,7 @@ contract PermissionedResolverTest is V2Fixture {
     // decodeSetter()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_decodeSetter_setABI(uint8 contentTypeBit) external {
+    function test_decodeSetter_setABI(uint8 contentTypeBit) external view {
         uint256 contentType = 1 << contentTypeBit;
 
         (bytes memory arg, uint256 resource, uint256 roleBitmap) =
@@ -435,7 +435,7 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(roleBitmap, PermissionedResolverLib.ROLE_SET_ABI, "role");
     }
 
-    function test_decodeSetter_setAddress(uint256 coinType) external {
+    function test_decodeSetter_setAddress(uint256 coinType) external view {
         (bytes memory arg, uint256 resource, uint256 roleBitmap) =
             resolver.decodeSetter(
                 abi.encodeCall(PermissionedResolver.setAddress, ("", coinType, ""))
@@ -445,7 +445,7 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(roleBitmap, PermissionedResolverLib.ROLE_SET_ADDRESS, "role");
     }
 
-    function test_decodeSetter_setData(string calldata key) external {
+    function test_decodeSetter_setData(string calldata key) external view {
         (bytes memory arg, uint256 resource, uint256 roleBitmap) =
             resolver.decodeSetter(abi.encodeCall(PermissionedResolver.setData, ("", key, "")));
         assertEq(arg, bytes(key), "arg");
@@ -453,7 +453,7 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(roleBitmap, PermissionedResolverLib.ROLE_SET_DATA, "role");
     }
 
-    function test_decodeSetter_setInterface(bytes4 interfaceId) external {
+    function test_decodeSetter_setInterface(bytes4 interfaceId) external view {
         (bytes memory arg, uint256 resource, uint256 roleBitmap) =
             resolver.decodeSetter(
                 abi.encodeCall(PermissionedResolver.setInterface, ("", interfaceId, address(0)))
@@ -463,7 +463,7 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(roleBitmap, PermissionedResolverLib.ROLE_SET_INTERFACE, "role");
     }
 
-    function test_decodeSetter_setText(string calldata key) external {
+    function test_decodeSetter_setText(string calldata key) external view {
         (bytes memory arg, uint256 resource, uint256 roleBitmap) =
             resolver.decodeSetter(abi.encodeCall(PermissionedResolver.setText, ("", key, "")));
         assertEq(arg, bytes(key), "arg");

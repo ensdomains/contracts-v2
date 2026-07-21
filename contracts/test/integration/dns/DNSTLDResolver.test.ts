@@ -137,6 +137,7 @@ async function fixture() {
       name,
       resolverAddress: myResolver.address,
     });
+
     await myResolver.write.setAddress([
       dnsEncodeName(name),
       COIN_TYPE_ETH,

@@ -14,7 +14,7 @@ import {
   PROFILE_ABI,
   V1_SETTER_ABI,
   V2_SETTER_ABI,
-} from "./resolvers.ts";
+} from "./resolver-abis.js";
 
 type StringRecord = { value: string };
 type BytesRecord = { value: Hex };

@@ -43,6 +43,7 @@ import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedR
 import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
 import { config as rockethConfig } from "../rocketh/config.js";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
+import { generateAddressMarkdown } from "./addressDocs.js";
 import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
   ROLES,
@@ -51,6 +52,8 @@ import {
 } from "./deploy-constants.js";
 import { main as exportRegistrationsMain } from "./exportTheGraphRegistrations.js";
 import {
+  CHECKPOINT_FILE,
+  type Checkpoint,
   createFreshCheckpoint,
   isValidLabel,
   loadCheckpoint,
@@ -395,9 +398,7 @@ function csvLabelColumnIndex(header: string[]): number {
 // Quote a CSV field when it contains a delimiter, quote, or newline so labels
 // with such characters survive a round-trip through the premigration reader.
 function escapeCsvField(value: string): string {
-  return /[",\n\r]/.test(value)
-    ? `"${value.replace(/"/g, '""')}"`
-    : value;
+  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
 function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
@@ -406,9 +407,7 @@ function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
   const header = parseCSVLine(lines[0]);
   const labelIndex = csvLabelColumnIndex(header);
   if (labelIndex < 0) {
-    throw new Error(
-      `CSV must contain a labelName or label column: ${csvFile}`,
-    );
+    throw new Error(`CSV must contain a labelName or label column: ${csvFile}`);
   }
   const labels: string[] = [];
   for (const line of lines.slice(1)) {
@@ -1110,6 +1109,8 @@ export async function runPreMigrationCommand(
     v1BaseRegistrar?: Address;
     workDir?: string;
     dryRun?: boolean;
+    metadataLabel?: string;
+    persistMetadata?: boolean;
   },
   resume: boolean,
 ) {
@@ -1189,6 +1190,24 @@ export async function runPreMigrationCommand(
       args.push("--bonus-period-days", opts.bonusPeriodDays);
     if (resume) args.push("--continue");
     await preMigrationMain(args);
+
+    // Persist a durable counts sidecar into the deployment namespace. Skipped on
+    // dry runs and when the caller opts out (e.g. a fork rehearsal that does not
+    // save deployments), so a committed namespace is never touched by a throwaway
+    // run. The checkpoint lands in the workDir (or cwd when none was set).
+    if (!opts.dryRun && (opts.persistMetadata ?? true)) {
+      const cpDir = opts.workDir ? resolve(opts.workDir) : previousCwd;
+      const checkpoint = loadCheckpoint(join(cpDir, CHECKPOINT_FILE));
+      if (checkpoint) {
+        recordPreMigrationMetadata({
+          deploymentsDir,
+          deploymentNetwork,
+          network,
+          label: opts.metadataLabel ?? "run",
+          checkpoint,
+        });
+      }
+    }
   } finally {
     process.chdir(previousCwd);
   }
@@ -1397,9 +1416,7 @@ async function verifyPreMigration(opts: {
   console.log(`eligible v1 names: ${eligible}`);
   console.log(`skipped ineligible names: ${skipped}`);
   console.log(`verified active names: ${verifiedActive}`);
-  console.log(
-    `verified expired-bonus names: ${verifiedExpiredBonus}`,
-  );
+  console.log(`verified expired-bonus names: ${verifiedExpiredBonus}`);
   console.log(`verified names: ${verifiedActive + verifiedExpiredBonus}`);
   if (errors.length > 0) {
     console.error(errors.slice(0, 20).join("\n"));
@@ -1526,7 +1543,8 @@ async function sendAdminWrite(opts: {
     );
     return;
   }
-  if (opts.impersonateAccount) await impersonate(opts.client, opts.impersonateAccount);
+  if (opts.impersonateAccount)
+    await impersonate(opts.client, opts.impersonateAccount);
   const wallet = walletClient({
     rpcUrl: opts.rpcUrl,
     chain: opts.chain,
@@ -2153,7 +2171,11 @@ function resolveRegistry(opts: {
 }): ContractRef {
   const registry = opts.registry
     ? null
-    : loadV2Deployment(opts.deploymentsDir, opts.deploymentNetwork, "ETHRegistry");
+    : loadV2Deployment(
+        opts.deploymentsDir,
+        opts.deploymentNetwork,
+        "ETHRegistry",
+      );
   return {
     address: opts.registry ?? registry!.address,
     abi: registry?.abi ?? Artifact_PermissionedRegistry.abi,
@@ -2200,7 +2222,11 @@ async function enableV2Registrar(opts: {
     deploymentNetwork,
     "ETHRegistrar",
   );
-  const beforeEnabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
+  const beforeEnabled = await readHasRegistrarRoles(
+    client,
+    registry,
+    ethRegistrar,
+  );
   console.log(`v2 registrar already enabled: ${beforeEnabled}`);
   if (beforeEnabled) return;
 
@@ -2215,7 +2241,11 @@ async function enableV2Registrar(opts: {
     privateKey: opts.privateKey,
     impersonateAccount: opts.impersonateAccount,
   });
-  const afterEnabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
+  const afterEnabled = await readHasRegistrarRoles(
+    client,
+    registry,
+    ethRegistrar,
+  );
   console.log(`v2 registrar enabled after phase: ${afterEnabled}`);
 }
 
@@ -2788,7 +2818,8 @@ function signerKeyForAccount(
   const keys = candidates.filter((key): key is `0x${string}` => Boolean(key));
   if (!target) return keys[0];
   return keys.find(
-    (key) => getAddress(privateKeyToAccount(key).address) === getAddress(target),
+    (key) =>
+      getAddress(privateKeyToAccount(key).address) === getAddress(target),
   );
 }
 
@@ -3133,7 +3164,9 @@ async function deployV1(opts: DeployV1Options) {
 export async function deployV2(opts: DeployV2Options) {
   const network = NETWORKS[opts.network];
   const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
-  const deploymentsDir = resolve(opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR);
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
   // A fresh deployment archives any existing namespace and therefore must
   // persist the new one, so it implies saving regardless of the flag.
   const persist = Boolean(opts.saveDeployments) || Boolean(opts.fresh);
@@ -3201,6 +3234,18 @@ export async function deployV2(opts: DeployV2Options) {
     "ReverseRegistrarAdapter",
     "DefaultReverseRegistrarAdapter",
   ]);
+
+  // Refresh the generated address table for a persisted deploy so the docs
+  // track the namespace just written. Fork/non-persisted rehearsals are skipped.
+  if (persist) {
+    const docPath = await generateAddressMarkdown({
+      deploymentsDir,
+      namespace: deploymentNetwork,
+      docName: opts.network,
+    });
+    console.log(`address docs: ${docPath}`);
+  }
+
   return env;
 }
 
@@ -3729,7 +3774,11 @@ function loadV2MigrationDeployments(
       deploymentNetwork,
       "ETHRenewerV1",
     ),
-    mockUsdc: maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, "MockUSDC"),
+    mockUsdc: maybeLoadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      "MockUSDC",
+    ),
     unlockedMigrationController: loadV2Deployment(
       deploymentsDir,
       deploymentNetwork,
@@ -4084,10 +4133,11 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // Signer for the v1-owner-gated controller changes (disable registrars,
     // authorize the renewer, hand off ownership). On a fork we impersonate the
     // owner; for a live run we require the key that controls it.
-    const v1OwnerSigner: { impersonateOwner: true } | { privateKey: `0x${string}` } =
-      useRpcStateControls
-        ? { impersonateOwner: true }
-        : { privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner") };
+    const v1OwnerSigner:
+      | { impersonateOwner: true }
+      | { privateKey: `0x${string}` } = useRpcStateControls
+      ? { impersonateOwner: true }
+      : { privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner") };
 
     // The migration wraps whatever the canonical top proxy currently serves.
     // When reusing a long-lived intermediate URP, the top proxy already fronts
@@ -4211,6 +4261,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
         batchSize: opts.batchSize,
         limit: opts.initialLimit,
         workDir,
+        metadataLabel: "initial",
+        persistMetadata: Boolean(opts.saveDeployments),
       },
       resumeFromPhase === 2,
     );
@@ -4290,9 +4342,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
           "ETHRenewerV1 was not authorized as a v1 BaseRegistrar controller in phase 4",
         );
       }
-      console.log(
-        "smoke ETHRenewerV1 authorized as a v1 renewal controller",
-      );
+      console.log("smoke ETHRenewerV1 authorized as a v1 renewal controller");
     }
 
     console.log("phase 5: sync remaining names and finish pre-migration");
@@ -4313,8 +4363,10 @@ export async function runForkFull(opts: RunForkFullOptions) {
         batchSize: opts.batchSize,
         limit: opts.finishLimit,
         workDir: finalSyncWorkDir,
+        metadataLabel: "final-sync",
+        persistMetadata: Boolean(opts.saveDeployments),
       },
-      existsSync(join(finalSyncWorkDir, "preMigration-checkpoint.json")),
+      existsSync(join(finalSyncWorkDir, CHECKPOINT_FILE)),
     );
     if (!postMigration) {
       await assertV2State({
@@ -4353,7 +4405,9 @@ export async function runForkFull(opts: RunForkFullOptions) {
         status: STATUS.REGISTERED,
         owner: smokeMigrationOwner,
       });
-      console.log(`smoke migration registered ${smokeLabels.migrate}.eth on v2`);
+      console.log(
+        `smoke migration registered ${smokeLabels.migrate}.eth on v2`,
+      );
     }
 
     console.log(
@@ -4768,11 +4822,7 @@ function addV1OwnerWriteOptions(command: Command): Command {
   return command
     .option("--private-key <key>", "V1 owner private key")
     .option("--impersonate-owner", "Impersonate owner on a fork", false)
-    .option(
-      "--calldata-only",
-      "Print transaction target and calldata",
-      false,
-    );
+    .option("--calldata-only", "Print transaction target and calldata", false);
 }
 
 function assertCleanDeploymentNamespace(
@@ -4824,6 +4874,125 @@ function recordDeploymentMetadata(
   );
 }
 
+const PREMIGRATION_METADATA_FILE = ".premigration.json";
+
+// One summary entry per logical pre-migration run (initial, final-sync, or a
+// standalone run). Counts only — never label strings.
+interface PreMigrationRunSummary {
+  label: string;
+  finishedAt: string;
+  totalExpected: number;
+  totalProcessed: number;
+  reserved: number;
+  renewed: number;
+  skippedNeverRegistered: number;
+  skippedExpiredPastGrace: number;
+  invalidLabels: number;
+  alreadyOnV2: number;
+  failed: number;
+}
+
+interface PreMigrationMetadata {
+  network: string;
+  deploymentNetwork: string;
+  chainId?: number;
+  updatedAt: string;
+  resolved: {
+    finishedAt: string;
+    totalNames: number;
+    namesPreMigrated: number;
+    newReservations: number;
+    expiryResyncs: number;
+    skippedNeverRegistered: number;
+    skippedExpiredPastGrace: number;
+    invalidLabels: number;
+    alreadyOnV2: number;
+    failed: number;
+  };
+  runs: PreMigrationRunSummary[];
+}
+
+function checkpointToRunSummary(
+  label: string,
+  checkpoint: Checkpoint,
+): PreMigrationRunSummary {
+  return {
+    label,
+    finishedAt: checkpoint.timestamp,
+    totalExpected: checkpoint.totalExpected,
+    totalProcessed: checkpoint.totalProcessed,
+    reserved: checkpoint.successCount,
+    renewed: checkpoint.renewedCount,
+    skippedNeverRegistered: checkpoint.skippedNeverRegisteredCount,
+    skippedExpiredPastGrace: checkpoint.skippedPastGraceCount,
+    invalidLabels: checkpoint.invalidLabelCount,
+    alreadyOnV2: checkpoint.alreadyRegisteredCount,
+    failed: checkpoint.failureCount,
+  };
+}
+
+// The resolved roll-up reflects the run that finished most recently, which in
+// the phased flow is the final-sync pass that re-scans the whole corpus and so
+// represents the end state. `namesPreMigrated` = names currently reserved on v2
+// (newly reserved this run + already-reserved names whose expiry was re-synced).
+function resolveFromRuns(
+  runs: PreMigrationRunSummary[],
+): PreMigrationMetadata["resolved"] {
+  const latest = runs.reduce((a, b) => (b.finishedAt >= a.finishedAt ? b : a));
+  return {
+    finishedAt: latest.finishedAt,
+    totalNames: latest.totalExpected,
+    namesPreMigrated: latest.reserved + latest.renewed,
+    newReservations: latest.reserved,
+    expiryResyncs: latest.renewed,
+    skippedNeverRegistered: latest.skippedNeverRegistered,
+    skippedExpiredPastGrace: latest.skippedExpiredPastGrace,
+    invalidLabels: latest.invalidLabels,
+    alreadyOnV2: latest.alreadyOnV2,
+    failed: latest.failed,
+  };
+}
+
+// Persists a compact pre-migration counts sidecar into the deployment
+// namespace, alongside `.deployment.json`. A dotfile so rocketh's loader ignores
+// it (it only reads `.migrations.json` + non-dot `*.json` artifacts). Each run
+// is upserted by `label` so a resume that re-writes its accumulated checkpoint
+// updates its own entry in place instead of appending a duplicate.
+function recordPreMigrationMetadata(opts: {
+  deploymentsDir: string;
+  deploymentNetwork: string;
+  network: MigrationNetwork;
+  label: string;
+  checkpoint: Checkpoint;
+}) {
+  const dir = join(opts.deploymentsDir, opts.deploymentNetwork);
+  if (!existsSync(dir)) return;
+  const metadataPath = join(dir, PREMIGRATION_METADATA_FILE);
+
+  let existing: PreMigrationMetadata | undefined;
+  if (existsSync(metadataPath)) {
+    try {
+      existing = JSON.parse(readFileSync(metadataPath, "utf-8"));
+    } catch {
+      existing = undefined;
+    }
+  }
+
+  const runs = (existing?.runs ?? []).filter((run) => run.label !== opts.label);
+  runs.push(checkpointToRunSummary(opts.label, opts.checkpoint));
+
+  const metadata: PreMigrationMetadata = {
+    network: opts.network,
+    deploymentNetwork: opts.deploymentNetwork,
+    chainId: NETWORKS[opts.network].chain.id,
+    updatedAt: new Date().toISOString(),
+    resolved: resolveFromRuns(runs),
+    runs,
+  };
+
+  writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
+}
+
 // Resolves a namespace's deploy time, preferring the recorded metadata and
 // falling back to the latest `.migrations.json` entry (unix-epoch seconds).
 function readDeploymentDeployedAt(path: string): string | undefined {
@@ -4837,8 +5006,9 @@ function readDeploymentDeployedAt(path: string): string | undefined {
   const migrationsPath = join(path, ".migrations.json");
   if (existsSync(migrationsPath)) {
     try {
-      const migrations = JSON.parse(readFileSync(migrationsPath, "utf-8")) as
-        Record<string, number>;
+      const migrations = JSON.parse(
+        readFileSync(migrationsPath, "utf-8"),
+      ) as Record<string, number>;
       const timestamps = Object.values(migrations).filter(
         (value) => typeof value === "number" && Number.isFinite(value),
       );
@@ -4860,8 +5030,7 @@ function archiveExistingDeploymentNamespace(root: string, environment: string) {
     (file) => file.endsWith(".json") || file === ".chain",
   );
   if (!hasArtifacts) return;
-  const deployedAt =
-    readDeploymentDeployedAt(path) ?? new Date().toISOString();
+  const deployedAt = readDeploymentDeployedAt(path) ?? new Date().toISOString();
   const stamp = deployedAt.slice(0, 10).replace(/-/g, "");
   let revision = 1;
   let archive = `${environment}-${stamp}-r${revision}`;
@@ -5067,6 +5236,7 @@ export async function main(argv = process.argv): Promise<void> {
       await runPreMigrationCommand(
         {
           ...networkOpts,
+          metadataLabel: "run",
         },
         false,
       );
@@ -5080,6 +5250,7 @@ export async function main(argv = process.argv): Promise<void> {
       await runPreMigrationCommand(
         {
           ...networkOpts,
+          metadataLabel: "run",
         },
         true,
       );
@@ -5271,8 +5442,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await setV1ReverseDefaultResolver({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5385,8 +5555,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await authorizeTestnetV1PremigrationRegistrar({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5414,8 +5583,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await activateV1Graveyard({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5450,8 +5618,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await activateV1HandoffControllers({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5479,8 +5646,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await authorizeV1Renewer({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5508,8 +5674,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await activateV1RenewerAndTransferOwnership({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5544,8 +5709,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await reclaimV1RegistrarOwnership({
           ...networkOpts,
-          v1Owner:
-            opts.v1Owner ?? NETWORKS[networkOpts.network].defaultV1Owner,
+          v1Owner: opts.v1Owner ?? NETWORKS[networkOpts.network].defaultV1Owner,
           privateKey:
             opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
         });
