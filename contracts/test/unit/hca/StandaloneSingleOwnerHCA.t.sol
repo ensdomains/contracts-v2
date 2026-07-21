@@ -306,6 +306,15 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
         hca.validate(validator, digest, _sign(badKey, digest));
 
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, abi.encodePacked(bytes32(0), bytes32(0), uint8(29)));
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, abi.encodePacked(bytes32(0), bytes32(0), uint8(27)));
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        validatorHarness.recoverHarness(digest, hex"1234");
+
         vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSessionData.selector);
         hca.validate(validator, digest, hex"1234");
     }
@@ -591,6 +600,27 @@ contract StandaloneSingleOwnerHCATest is Test {
                 digest
             )
         );
+
+        gasRefund = OwnerBoundRegistrationSessionValidator.GasRefund({token: address(0), exchangeRate: 1, overhead: 0});
+        digest = validatorHarness.singleChainDigestWithRefundHarness(
+            address(hca),
+            nonce,
+            operationData,
+            gasRefund
+        );
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.GasRefundNotAllowed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionRefundEnvelope(
+                permissionId,
+                nonce,
+                gasRefund,
+                operationData,
+                sessionKey,
+                digest
+            )
+        );
     }
 
     function test_validator_matchesRhinestoneSingleChainDigest() public {
@@ -670,6 +700,71 @@ contract StandaloneSingleOwnerHCATest is Test {
         _verifySession(permissionId, sessionKey, operationData);
     }
 
+    function test_validator_rejectsInvalidFixedSessionAuthorization() public {
+        bytes32 permissionId = keccak256("registration session");
+        uint48 validUntil = uint48(block.timestamp + 1 days);
+        vm.prank(address(hca));
+        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
+
+        bytes memory operationData = _erc1271CommitOperationData();
+        uint256 nonce = 123;
+        bytes32 digest =
+            validatorHarness.singleChainDigestHarness(address(hca), nonce, operationData);
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionEnvelope(permissionId, nonce, operationData, badKey, digest)
+        );
+
+        hca.setSessionNonce(1);
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionEnvelope(permissionId, nonce, operationData, sessionKey, digest)
+        );
+
+        hca.setSessionNonce(0);
+        vm.warp(validUntil + 1);
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.SessionExpired.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionEnvelope(permissionId, nonce, operationData, sessionKey, digest)
+        );
+    }
+
+    function test_validator_rejectsMalformedFixedSessionEnvelope() public {
+        bytes memory shortRefundEnvelope = new bytes(130);
+        shortRefundEnvelope[0] = 0x02;
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), shortRefundEnvelope);
+
+        bytes memory unknownModeEnvelope = new bytes(130);
+        unknownModeEnvelope[0] = 0x03;
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), unknownModeEnvelope);
+
+        bytes memory operationData = _erc1271CommitOperationData();
+        uint256 nonce = 123;
+        bytes32 digest =
+            validatorHarness.singleChainDigestHarness(address(hca), nonce, operationData);
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        hca.validate(
+            validator,
+            digest,
+            _fixedSessionEnvelope(
+                keccak256("missing session"),
+                nonce,
+                operationData,
+                sessionKey,
+                digest
+            )
+        );
+    }
+
     function test_validator_rejectsInvalidSessionAuthorization() public {
         bytes32 permissionId = keccak256("registration session");
         uint48 validUntil = uint48(block.timestamp + 1 days);
@@ -679,6 +774,25 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.prank(address(hca));
         vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
         validator.enableSession(permissionId, address(0), validUntil, resolver);
+
+        vm.warp(block.timestamp + 1);
+        vm.prank(address(hca));
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.SessionExpired.selector);
+        validator.enableSession(permissionId, sessionSigner, uint48(block.timestamp - 1), resolver);
+
+        vm.prank(address(hca));
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.GasRefundNotAllowed.selector);
+        validator.enableSessionWithRefund(
+            permissionId,
+            sessionSigner,
+            validUntil,
+            resolver,
+            makeAddr("unsupported-refund-token"),
+            1,
+            0,
+            1
+        );
+
         vm.prank(address(hca));
         validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
 
@@ -695,6 +809,23 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.prank(intentExecutor);
         vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSessionData.selector);
         validator.verifyExecution(address(hca), keccak256(operationData), hex"01", operation);
+
+        vm.prank(intentExecutor);
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidSigner.selector);
+        validator.verifyExecution(
+            address(hca),
+            keccak256(operationData),
+            _sessionUse(keccak256("missing session"), sessionKey, keccak256(operationData)),
+            operation
+        );
+
+        vm.mockCallRevert(
+            address(hca),
+            abi.encodeWithSignature("ownerAndSessionNonce()"),
+            abi.encode("owner unavailable")
+        );
+        assertFalse(validator.isPermissionEnabled(address(hca), permissionId));
+        vm.clearMockedCalls();
     }
 
     function test_validator_allowsResolverRoleGrantsToOwnerOnly() public {
@@ -913,6 +1044,15 @@ contract StandaloneSingleOwnerHCATest is Test {
             address(0),
             OwnerBoundRegistrationSessionValidator.InvalidOperationEncoding.selector
         );
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidOperationEncoding.selector);
+        validatorHarness.singleChainDigestHarness(address(hca), 0, hex"");
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidOperationEncoding.selector);
+        validatorHarness.hashStringArgHarness(hex"1234", 5, false);
+
+        vm.expectRevert(OwnerBoundRegistrationSessionValidator.InvalidOperationEncoding.selector);
+        validatorHarness.hashStringArgHarness(abi.encodePacked(bytes4(0), uint256(100)), 0, false);
     }
 
     function test_validator_moduleSurface() public view {
@@ -933,6 +1073,22 @@ contract StandaloneSingleOwnerHCATest is Test {
         userOp.signature = _signPersonal(ownerKey, userOpHash);
         vm.prank(address(hca));
         assertEq(validator.validateUserOp(userOp, userOpHash), 0);
+
+        userOp.signature = _signRhinestoneMessage(ownerKey, userOpHash);
+        vm.prank(address(hca));
+        assertEq(validator.validateUserOp(userOp, userOpHash), 0);
+
+        userOp.signature = _signV01(ownerKey, userOpHash);
+        vm.prank(address(hca));
+        assertEq(validator.validateUserOp(userOp, userOpHash), 0);
+
+        userOp.signature = hex"1234";
+        vm.prank(address(hca));
+        assertEq(validator.validateUserOp(userOp, userOpHash), 1);
+
+        userOp.signature = abi.encodePacked(bytes32(0), bytes32(0), uint8(29));
+        vm.prank(address(hca));
+        assertEq(validator.validateUserOp(userOp, userOpHash), 1);
 
         userOp.signature = _sign(badKey, userOpHash);
         vm.prank(address(hca));
@@ -1203,6 +1359,16 @@ contract StandaloneSingleOwnerHCATest is Test {
         return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
     }
 
+    function _erc1271CommitOperationData() internal view returns (bytes memory) {
+        OwnerBoundRegistrationSessionValidator.Execution[] memory executions =
+            new OwnerBoundRegistrationSessionValidator.Execution[](1);
+        executions[0] = OwnerBoundRegistrationSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+            COMMIT_SELECTOR,
+            bytes32("commitment")
+        )});
+        return _erc1271OperationData(executions);
+    }
+
     function _expectValidationRevert(
         bytes memory operationData,
         address allowedResolver,
@@ -1344,6 +1510,22 @@ contract OwnerBoundRegistrationSessionValidatorHarness is OwnerBoundRegistration
 
     function callArgsHarness(bytes memory callData) external pure returns (bytes memory) {
         return _callArgs(callData);
+    }
+
+    function hashStringArgHarness(bytes memory callData, uint256 argsOffset, bool appendEthSuffix)
+        external
+        pure
+        returns (bytes32)
+    {
+        return _hashStringArg(callData, argsOffset, appendEthSuffix);
+    }
+
+    function recoverHarness(bytes32 digest, bytes calldata signature)
+        external
+        pure
+        returns (address)
+    {
+        return _recover(digest, signature);
     }
 
     function checkRegistrationPolicyHarness(
