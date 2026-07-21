@@ -86,6 +86,14 @@ On HCA-enabled networks, the shared HCA infrastructure is part of phase 1 of the
 
 Phase 1 does not deploy an HCA for each wallet. Owner-bound HCA proxies remain counterfactual until `StandaloneHCAFactory` deploys them during a user's first operation. Live and forked Sepolia deployments default to the fixed Rhinestone intent executor and production USDC configured in [`contracts/script/deploy-constants.ts`](../contracts/script/deploy-constants.ts). The `HCA_*` address variables remain available as explicit overrides. Clean-testnet migration rehearsals deploy a local mock executor and use local mock payment tokens.
 
+To update only the shared HCA contracts in the existing Sepolia deployment, run this command from `contracts`:
+
+```sh
+bun run migration -- phase deploy-v2 --network sepolia --resume --tags hca
+```
+
+The command loads only `deploy/hca`. It reads the existing core deployment records. It does not redeploy the core contracts. `--resume` is required for an HCA-only deploy.
+
 ### Supported test networks
 
 The current HCA integration uses Sepolia as the registration network. A cross-chain route can use Base Sepolia or Arbitrum Sepolia as the source network.
@@ -269,7 +277,7 @@ userSalt
 
 The SDK uses this configuration to derive the HCA address. It returns `StandaloneHCAFactory.deploy(...)` as setup or factory data. The SDK selects the fixed validator for owner and session signatures. It adapts the current Smart Session signature to the validator call. A new account includes setup data. A verified deployed account does not include setup data.
 
-This repository uses `@rhinestone/sdk` version `1.7.0` with the local patch at `patches/@rhinestone%2Fsdk@1.7.0.patch`. The standard `1.7.0` package does not contain the standalone HCA adapter. Use a published SDK version that contains this adapter when it becomes available. Until then, use the repository patch. Review the patch as application code. Do not send the standalone HCA configuration to an unpatched `1.7.0` package.
+This repository uses `@rhinestone/sdk` version `1.8.0` with the local patch at `patches/@rhinestone%2Fsdk@1.8.0.patch`. The standard `1.8.0` package does not contain the standalone HCA adapter. Use a published SDK version that contains this adapter when it becomes available. Until then, use the repository patch. Review the patch as application code. Do not send the standalone HCA configuration to an unpatched `1.8.0` package.
 
 Cross-chain registration must use the user's Nexus as the source account. A source EOA cannot execute the destination calls through the HCA. For the user-paid route, set `sponsored: false` and set USDC as `feeAsset`. The session key signs the refund fields from Rhinestone. The validator limits the payment to the configured refund paymaster and the session limits.
 

@@ -10,6 +10,22 @@ import {
 export const DEFAULT_ENTRY_POINT =
   "0x0000000071727De22E5E9d8BAf0edAc6f37da032" as const;
 
+export function isHCAOnlyDeployment(tags?: readonly string[]) {
+  return tags?.length === 1 && tags[0] === "hca";
+}
+
+export function resolveDeployV2Scripts({
+  tags,
+  scripts,
+}: {
+  tags?: readonly string[];
+  scripts?: string | readonly string[];
+}) {
+  const configuredScripts =
+    typeof scripts === "string" ? [scripts] : [...(scripts ?? ["deploy"])];
+  return isHCAOnlyDeployment(tags) ? ["deploy/hca"] : configuredScripts;
+}
+
 type DeploymentLike = { address: Address };
 type DeploymentLookup = (name: string) => DeploymentLike | null | undefined;
 

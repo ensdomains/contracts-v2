@@ -6,6 +6,8 @@ import {
   SEPOLIA_USDC,
 } from "../../script/deploy-constants.js";
 import {
+  isHCAOnlyDeployment,
+  resolveDeployV2Scripts,
   resolveHCAIntentExecutor,
   resolveHCAPaymentToken,
   resolveHCASecondaryPaymentToken,
@@ -120,5 +122,24 @@ describe("HCA deployment address resolution", () => {
         env,
       }),
     ).toBe(OVERRIDE_DAI);
+  });
+});
+
+describe("HCA deployment script scope", () => {
+  it("loads only HCA scripts for an HCA-only deploy", () => {
+    expect(isHCAOnlyDeployment(["hca"])).toBe(true);
+    expect(
+      resolveDeployV2Scripts({ tags: ["hca"], scripts: ["deploy"] }),
+    ).toEqual(["deploy/hca"]);
+  });
+
+  it("keeps the configured scripts for other deploys", () => {
+    expect(isHCAOnlyDeployment(["hca", "v2"])).toBe(false);
+    expect(
+      resolveDeployV2Scripts({
+        tags: ["v2"],
+        scripts: "deploy",
+      }),
+    ).toEqual(["deploy"]);
   });
 });

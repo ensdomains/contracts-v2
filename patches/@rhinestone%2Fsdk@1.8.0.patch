@@ -1,5 +1,5 @@
 diff --git a/dist/src/accounts/hca.d.ts b/dist/src/accounts/hca.d.ts
-index d04976c5c50633fcd09d80af1896196111f0c9c4..dc4d6417d112d9626240ebb02302ed997f4f7ab5 100644
+index d04976c..1786c9c 100644
 --- a/dist/src/accounts/hca.d.ts
 +++ b/dist/src/accounts/hca.d.ts
 @@ -6,10 +6,12 @@ import type { ValidatorConfig } from './utils';
@@ -31,8 +31,9 @@ index d04976c5c50633fcd09d80af1896196111f0c9c4..dc4d6417d112d9626240ebb02302ed99
 -export { ENS_HCA_MODULE, getEip712Domain, getInstallData, getAddress, packSignature, getDeployArgs, getSmartAccount, getGuardianSmartAccount, };
 +export { ENS_HCA_MODULE, getEip712Domain, getInstallData, getAddress, isStandaloneHca, packSignature, getDeployArgs, getSmartAccount, getGuardianSmartAccount, };
  //# sourceMappingURL=hca.d.ts.map
+\ No newline at end of file
 diff --git a/dist/src/accounts/hca.js b/dist/src/accounts/hca.js
-index 00bdb68da2ee6dcbde9591810887ace4c3ab711f..21434ff395136f0c7fb0c5f213a9eccfc5f3161f 100644
+index 00bdb68..0e936ec 100644
 --- a/dist/src/accounts/hca.js
 +++ b/dist/src/accounts/hca.js
 @@ -4,6 +4,7 @@ exports.ENS_HCA_MODULE = void 0;
@@ -183,7 +184,7 @@ index 00bdb68da2ee6dcbde9591810887ace4c3ab711f..21434ff395136f0c7fb0c5f213a9eccf
  async function getGuardianSmartAccount(client, address, guardians, validatorAddress, sign) {
      return (0, nexus_1.getGuardianSmartAccount)(client, address, guardians, validatorAddress, sign, core_1.ENS_HCA_MODULE);
 diff --git a/dist/src/accounts/index.js b/dist/src/accounts/index.js
-index 509fb55cfa6e88cc28768bdb90ac2fe56bbbe1a8..ca4030a2be91e4dbd659c1920edf174181c17482 100644
+index 509fb55..ca4030a 100644
 --- a/dist/src/accounts/index.js
 +++ b/dist/src/accounts/index.js
 @@ -354,7 +354,10 @@ async function getEip1271Signature(config, signers, chain, validator, hash, tran
@@ -226,7 +227,7 @@ index 509fb55cfa6e88cc28768bdb90ac2fe56bbbe1a8..ca4030a2be91e4dbd659c1920edf1741
      }
  }
 diff --git a/dist/src/accounts/nexus.d.ts b/dist/src/accounts/nexus.d.ts
-index feb346dfd049f7287eb15094ff816d3d9cf95502..4ac0083d48f9d9410e0264417b19954afcf7335a 100644
+index feb346d..eaeaa77 100644
 --- a/dist/src/accounts/nexus.d.ts
 +++ b/dist/src/accounts/nexus.d.ts
 @@ -22,7 +22,10 @@ declare function getEip712Domain(config: RhinestoneAccountConfig, chain: Chain):
@@ -242,7 +243,7 @@ index feb346dfd049f7287eb15094ff816d3d9cf95502..4ac0083d48f9d9410e0264417b19954a
  declare function signEip7702InitData(config: RhinestoneAccountConfig, eoa: Account): Promise<`0x${string}`>;
  declare function getEip7702InitCall(config: RhinestoneAccountConfig, signature: Hex): {
 diff --git a/dist/src/accounts/nexus.js b/dist/src/accounts/nexus.js
-index 8c484ef91f4457b88d830d3309f97c53a1e57370..3f2192bc2e0c9e3044bc9eec1ead9d80a02b92d1 100644
+index 8c484ef..3f2192b 100644
 --- a/dist/src/accounts/nexus.js
 +++ b/dist/src/accounts/nexus.js
 @@ -222,10 +222,10 @@ async function packSignature(signature, validator, transformSignature = (signatu
@@ -277,7 +278,7 @@ index 8c484ef91f4457b88d830d3309f97c53a1e57370..3f2192bc2e0c9e3044bc9eec1ead9d80
          async getNonce(args) {
              const validatorAddress = nonceValidatorAddress === defaultValidatorAddress
 diff --git a/dist/src/execution/index.js b/dist/src/execution/index.js
-index c556730c09a8b9771d7ff24820a592d96c0e3419..4ae9b7e90d03cfff2d54eb25061163903e1e39cd 100644
+index c556730..4ae9b7e 100644
 --- a/dist/src/execution/index.js
 +++ b/dist/src/execution/index.js
 @@ -99,7 +99,7 @@ async function sendTransactionAsIntent(config, sourceChains, targetChain, callIn
@@ -290,7 +291,7 @@ index c556730c09a8b9771d7ff24820a592d96c0e3419..4ae9b7e90d03cfff2d54eb2506116390
      const authorizations = config.eoa
          ? await (0, utils_2.signAuthorizationsInternal)(config, intentRoute)
 diff --git a/dist/src/execution/utils.d.ts b/dist/src/execution/utils.d.ts
-index f77a7c96e7e1a75c92653dc412283cf6883d45c7..b8740d78089f603b9a697c869c3459b822b8e5ed 100644
+index f77a7c9..77edd38 100644
 --- a/dist/src/execution/utils.d.ts
 +++ b/dist/src/execution/utils.d.ts
 @@ -86,7 +86,7 @@ declare function prepareTransactionAsIntent(config: RhinestoneConfig, sourceChai
@@ -303,7 +304,7 @@ index f77a7c96e7e1a75c92653dc412283cf6883d45c7..b8740d78089f603b9a697c869c3459b8
      destinationSignature: `0x${string}`;
  }>;
 diff --git a/dist/src/execution/utils.js b/dist/src/execution/utils.js
-index 8cd03d0ebeef89e2c15db1dcc86f56b29211d5ed..c67600e0aae6dacc940ef7cbca19a3403746cc83 100644
+index 8e43c7a..5972d4a 100644
 --- a/dist/src/execution/utils.js
 +++ b/dist/src/execution/utils.js
 @@ -27,6 +27,7 @@ const viem_1 = require("viem");
@@ -512,7 +513,7 @@ index 8cd03d0ebeef89e2c15db1dcc86f56b29211d5ed..c67600e0aae6dacc940ef7cbca19a340
      const validator = getValidator(config, signers);
      if (!validator) {
 diff --git a/dist/src/index.d.ts b/dist/src/index.d.ts
-index 65670fb2f50b45a1f810414a1c4aad816958ef7e..fd598e6c86eb07cb35797fc0f78559c61955253d 100644
+index 65670fb..fd598e6 100644
 --- a/dist/src/index.d.ts
 +++ b/dist/src/index.d.ts
 @@ -8,7 +8,7 @@ import { type IntentRoute, type PreparedTransactionData, type PreparedUserOperat
@@ -533,7 +534,7 @@ index 65670fb2f50b45a1f810414a1c4aad816958ef7e..fd598e6c86eb07cb35797fc0f78559c6
  //# sourceMappingURL=index.d.ts.map
 \ No newline at end of file
 diff --git a/dist/src/index.js b/dist/src/index.js
-index 8a656a1741ce6ddfcab2489e24624df42e0a0ddb..8af430c8350f6d092a55c8f94a7eadbfde242d42 100644
+index 8a656a1..8af430c 100644
 --- a/dist/src/index.js
 +++ b/dist/src/index.js
 @@ -246,7 +246,11 @@ async function createRhinestoneAccount(config) {
@@ -550,7 +551,7 @@ index 8a656a1741ce6ddfcab2489e24624df42e0a0ddb..8af430c8350f6d092a55c8f94a7eadbf
      function experimental_signEnableSession(details) {
          return (0, modules_1.signEnableSession)(config, details);
 diff --git a/dist/src/modules/validators/smart-sessions.d.ts b/dist/src/modules/validators/smart-sessions.d.ts
-index 66f6604a74663ece0d782ce184022cfc302ac954..64bd95487d3774ac579baa8074bc82709b54ab46 100644
+index 66f6604..64bd954 100644
 --- a/dist/src/modules/validators/smart-sessions.d.ts
 +++ b/dist/src/modules/validators/smart-sessions.d.ts
 @@ -182,7 +182,7 @@ interface ResolvedSessionSignerSet {
@@ -563,7 +564,7 @@ index 66f6604a74663ece0d782ce184022cfc302ac954..64bd95487d3774ac579baa8074bc8270
  declare function getEnableSessionCall(account: Address, session: Session, enableSessionSignature: Hex, hashesAndChainIds: {
      chainId: bigint;
 diff --git a/dist/src/modules/validators/smart-sessions.js b/dist/src/modules/validators/smart-sessions.js
-index 17a419494de4548b759a9a33df5fcff378c349ba..13728c5c8ae18f317967f1036b205cdc6a96e129 100644
+index 17a4194..13728c5 100644
 --- a/dist/src/modules/validators/smart-sessions.js
 +++ b/dist/src/modules/validators/smart-sessions.js
 @@ -290,13 +290,13 @@ async function getSessionDetails(account, sessions, provider, useDevContracts) {
@@ -583,7 +584,7 @@ index 17a419494de4548b759a9a33df5fcff378c349ba..13728c5c8ae18f317967f1036b205cdc
              {
                  type: 'function',
 diff --git a/dist/src/types.d.ts b/dist/src/types.d.ts
-index fa74e411c6fcb1ca54adddd456a8c0357a44454d..bfcbe0980b32e337862269fc00fb30aa3f35441c 100644
+index 6d4ec52..5065afe 100644
 --- a/dist/src/types.d.ts
 +++ b/dist/src/types.d.ts
 @@ -26,9 +26,21 @@ interface StartaleAccount {
@@ -609,7 +610,7 @@ index fa74e411c6fcb1ca54adddd456a8c0357a44454d..bfcbe0980b32e337862269fc00fb30aa
  interface EoaAccount {
      type: 'eoa';
  }
-@@ -389,5 +401,5 @@ interface UserOperationTransaction {
+@@ -388,5 +400,5 @@ interface UserOperationTransaction {
      chain: Chain;
  }
  type Transaction = SameChainTransaction | CrossChainTransaction;

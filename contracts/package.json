@@ -23,7 +23,7 @@
   "devDependencies": {
     "@nomicfoundation/edr": "0.12.0-next.4",
     "@nomicfoundation/hardhat-foundry": "^1.2.0",
-    "@rhinestone/sdk": "1.7.0",
+    "@rhinestone/sdk": "1.8.0",
     "@rocketh/verifier": "0.19.3",
     "@types/bun": "^1.3.2",
     "abitype": "^1.2.3",

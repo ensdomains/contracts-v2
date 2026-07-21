@@ -1240,7 +1240,7 @@ async function main() {
           hca,
           resolver,
           permissionId,
-          sdk: "@rhinestone/sdk@1.7.0 (Bun patch)",
+          sdk: "@rhinestone/sdk@1.8.0 (Bun patch)",
           crossChain: {
             sourceChain: sourceChain.id,
             targetChain: sepolia.id,
@@ -1531,7 +1531,7 @@ async function main() {
         hca,
         resolver,
         permissionId,
-        sdk: "@rhinestone/sdk@1.7.0 (Bun patch)",
+        sdk: "@rhinestone/sdk@1.8.0 (Bun patch)",
         wallet: {
           address: owner.address,
           nativeBalanceBefore: sameChainWalletStateBefore!.nativeBalance,
@@ -3073,6 +3073,11 @@ async function prepareSameChainWalletFunding({
   let provisioningTransactionHash: Hex | undefined;
   let provisioningGasUsed = 0n;
   if (provisionedAmount > 0n) {
+    if (paymentToken.toLowerCase() === SEPOLIA_USDC.toLowerCase()) {
+      throw new Error(
+        `wallet has ${walletBalanceBeforeProvisioning} Sepolia USDC units; ${amountPulled} required. Fund HCA_OWNER_KEY before the live proof`,
+      );
+    }
     const simulation = await publicClient.simulateContract({
       account: relayer,
       address: paymentToken,

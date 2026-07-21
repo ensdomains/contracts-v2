@@ -35,7 +35,7 @@
       "devDependencies": {
         "@nomicfoundation/edr": "0.12.0-next.4",
         "@nomicfoundation/hardhat-foundry": "^1.2.0",
-        "@rhinestone/sdk": "1.7.0",
+        "@rhinestone/sdk": "1.8.0",
         "@rocketh/verifier": "0.19.3",
         "@types/bun": "^1.3.2",
         "abitype": "^1.2.3",
@@ -53,8 +53,8 @@
   },
   "patchedDependencies": {
     "rocketh@0.19.3": "patches/rocketh@0.19.3.patch",
+    "@rhinestone/sdk@1.8.0": "patches/@rhinestone%2Fsdk@1.8.0.patch",
     "@rocketh/node@0.19.3": "patches/@rocketh-node@0.19.3.patch",
-    "@rhinestone/sdk@1.7.0": "patches/@rhinestone%2Fsdk@1.7.0.patch",
   },
   "overrides": {
     "esbuild": "0.25.11",
@@ -202,9 +202,9 @@
 
     "@nomicfoundation/solidity-analyzer-win32-x64-msvc": ["@nomicfoundation/solidity-analyzer-win32-x64-msvc@0.1.2", "", {}, "sha512-Fdjli4DCcFHb4Zgsz0uEJXZ2K7VEO+w5KVv7HmT7WO10iODdU9csC2az4jrhEsRtiR9Gfd74FlG0NYlw1BMdyA=="],
 
-    "@rhinestone/sdk": ["@rhinestone/sdk@1.7.0", "", { "dependencies": { "@rhinestone/shared-configs": "1.6.8", "solady": "^0.1.26" }, "peerDependencies": { "express": ">=4", "jose": ">=5.0.0", "viem": "^2.38.0" }, "optionalPeers": ["express", "jose"] }, "sha512-mLNLst294CynS1yf9p8nEUDdV2Zvg5OmJHJlA7QLd+5D8vbfg5agPEo8pJZZ9M18aPqwFyIwwG943dlhvlYIsw=="],
+    "@rhinestone/sdk": ["@rhinestone/sdk@1.8.0", "", { "dependencies": { "@rhinestone/shared-configs": "1.6.10", "solady": "^0.1.26" }, "peerDependencies": { "express": ">=4", "jose": ">=5.0.0", "viem": "^2.38.0" }, "optionalPeers": ["express", "jose"] }, "sha512-Y1YMbHBogNLjfCEI3jhjl4Q1fdEqfiyC13FZSUP/loTHPW2xCmcBBpMT9upefBkCIhRf4Mo04mozqtsqDN4dGQ=="],
 
-    "@rhinestone/shared-configs": ["@rhinestone/shared-configs@1.6.8", "", { "peerDependencies": { "typescript": "^5", "viem": "^2.40.1" } }, "sha512-6HaQWmBiQcBgeyU0vuw1ERU/hdVlERFXEUBVIoAzbfnKvqrPwXsAhMDz6RzhRnw2Ha05LyYkM9EEV8IJnkbMVw=="],
+    "@rhinestone/shared-configs": ["@rhinestone/shared-configs@1.6.10", "", { "peerDependencies": { "typescript": "^5", "viem": "^2.40.1" } }, "sha512-rUSmn78bzXohGhwohuS39qCiDZlMgVrBpvoDb7ZRNi/fJ0Nb62EwtbdktCyB5ACl2vRaR2Or04TO7y+3tHBO0A=="],
 
     "@rocketh/core": ["@rocketh/core@0.19.0", "", { "dependencies": { "abitype": "^1.2.3", "eip-1193": "^0.6.5", "named-logs": "^0.4.1", "viem": "^2.45.1" } }, "sha512-pCauA7HP/5k0uyTgjOYApJGcNuVx61+o6AuvFUIR3DIaWyKgmSHB3oTmTe1CHZBWWBUurDf9SIYyAFS2qhTWJQ=="],
 
