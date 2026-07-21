@@ -56,11 +56,57 @@ HCA = VerifiableFactory proxy address for (StandaloneHCAFactory, deploymentSalt)
 
 A person can call `StandaloneHCAFactory.deploy(owner, implementation, userSalt)`. The caller cannot change the expected owner, implementation, or address. If there is an HCA at this address, the application must validate its owner and implementation. The application can then use the HCA. If these values are incorrect, the application must show an error. It must not select a different account without user approval.
 
+Use these values for the current account version:
+
+| Field | Required value |
+|---|---|
+| SDK account version | `ens-standalone-1.1.0` |
+| On-chain `accountId()` | `ens-standalone-hca.1.1.0` |
+| `userSalt` | `0` |
+| Initial implementation | `StandaloneHCAImplementation` from the selected network deployment |
+
+The SDK version and the on-chain account ID are different identifiers. Do not compare these identifiers. The implementation address is part of the HCA address. A new implementation produces a different counterfactual HCA address. Do not change the implementation or `userSalt` for an existing user without user approval.
+
+### Verify an existing HCA
+
+Complete these checks before you use an HCA that has deployed code:
+
+1. Calculate the expected HCA address from the owner, implementation, and `userSalt`.
+2. Read the code at the expected address. Treat an address with no code as counterfactual.
+3. Call `owner()` on a deployed HCA. The result must equal the connected wallet address.
+4. Call `accountId()`. The result must equal `ens-standalone-hca.1.1.0`.
+5. Call `VerifiableFactory.verifyContract(hca)`. The result must equal the expected `StandaloneHCAImplementation` address.
+6. Before a primary-name operation, call `DefaultReverseRegistrarHCAAdapter.trustedHCAImplementations(implementation)`. The result must be `true`.
+
+Stop the operation if a call fails or a value does not match. Do not search for a different HCA address without user approval.
+
 ### Shared deployment
 
 On HCA-enabled networks, the shared HCA infrastructure is part of phase 1 of the v1-to-v2 migration. The `migration:phase1:deploy-v2` tag deploys the HCA reverse adapter, validator, factory, upgrade gate, and implementation. It also authorizes the reverse adapter as a v1 `DefaultReverseRegistrar` controller and marks the implementation as trusted by the adapter. See the [phase-1 migration runbook](../contracts/docs/migration.md#phase-1-deploy-v2-contracts).
 
-Phase 1 does not deploy an HCA for each wallet. Owner-bound HCA proxies remain counterfactual until `StandaloneHCAFactory` deploys them during a user's first operation. Live and forked Sepolia deployments default to the fixed Rhinestone intent executor and production USDC configured in `script/deploy-constants.ts`; the `HCA_*` address variables remain available as explicit overrides. Clean-testnet migration rehearsals deploy a local mock executor and use local mock payment tokens.
+Phase 1 does not deploy an HCA for each wallet. Owner-bound HCA proxies remain counterfactual until `StandaloneHCAFactory` deploys them during a user's first operation. Live and forked Sepolia deployments default to the fixed Rhinestone intent executor and production USDC configured in [`contracts/script/deploy-constants.ts`](../contracts/script/deploy-constants.ts). The `HCA_*` address variables remain available as explicit overrides. Clean-testnet migration rehearsals deploy a local mock executor and use local mock payment tokens.
+
+### Supported test networks
+
+The current HCA integration uses Sepolia as the registration network. A cross-chain route can use Base Sepolia or Arbitrum Sepolia as the source network.
+
+| Use | Network | Chain ID | Payment token |
+|---|---|---:|---|
+| Registration | Sepolia | `11155111` | USDC at `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` |
+| Cross-chain source | Base Sepolia | `84532` | USDC at `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Cross-chain source | Arbitrum Sepolia | `421614` | USDC at `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
+
+Use the [Sepolia deployment address table](../contracts/docs/addresses/sepolia.md) for the shared contract addresses. The frontend needs these entries:
+
+- `DefaultReverseRegistrarHCAAdapter`
+- `HCAOwnerAndSessionValidator`
+- `StandaloneHCAFactory`
+- `StandaloneHCAImplementation`
+- `VerifiableFactory`
+- `PermissionedResolverImpl`
+- `ETHRegistrar`
+
+Do not use this table as evidence of mainnet support.
 
 ## Registration routes
 
@@ -105,9 +151,14 @@ The HCA pays the registrar and the session execution fees. Unused source funds r
 
 ### Same-chain registration
 
-A new same-chain route can use two signatures when Rhinestone sponsors execution. The wallet first signs an EIP-2612 funding permit. The wallet then signs one owner authorization. This authorization deploys and funds the HCA, enables the session, and submits the commitment. After the delay, the session key submits the registration batch. The wallet's USDC pays the registration price. Sponsorship pays the execution fees.
+A fresh same-chain route can be fully user-paid in USDC. It needs two wallet signatures and no wallet transaction. It does not need a source Nexus.
 
-The current route cannot charge the first execution fee to a new HCA. Rhinestone quotes the fee before the HCA receives USDC from the funding permit. Later session operations can pay execution fees in USDC when the HCA has funds and the session has refund limits.
+1. The wallet signs an EIP-2612 permit for the shown USDC budget.
+2. The wallet signs one owner authorization.
+3. The first route uses the permit and pulls the budget into the HCA. The same route deploys the HCA when necessary, enables the session, and submits the commitment.
+4. After the delay, the session key submits the registration batch.
+
+The permit does not move funds. The first route pulls the approved budget when it submits the commitment. The HCA uses this USDC for the first execution fee, the registration price, and later session execution. Unused USDC stays in the HCA. Sponsorship remains optional.
 
 ### Registration batch
 
@@ -153,13 +204,13 @@ The validator permits these operations:
 - Supported-token approvals
 - The wallet role grant during registration
 
-Before release, the validator must complete these checks:
+The validator enforces these rules:
 
-- Validate the resolver salt, address, initializer, initial roles, initial records, and registrar resolver.
-- The wallet role grant must use the root resource and `ROLES.ALL`.
-- The role recipient must be the wallet, and `grant` must be `true`.
-- Validate the position of the wallet role grant in the registration batch.
-- Limit registrar and execution-fee approvals to the correct spender and amount.
+- A registration must use the wallet as the owner and the session resolver as the resolver.
+- If the resolver has no code, the batch must deploy it through `VerifiableFactory`. The implementation must be the configured resolver implementation. The proxy address must equal the session resolver. The initializer must give the HCA `ROLES.ALL`. The initial setter list must be empty.
+- If the resolver has code, `VerifiableFactory` must report the configured resolver implementation.
+- Each registration batch must grant root `ROLES.ALL` to the wallet. The `grant` value must be `true`. For a new resolver, deployment must occur before registration, record changes, and the wallet grant.
+- A registrar approval can use only `ETHRegistrar` as the spender. `ETHRegistrar` pulls the calculated registration price. An execution-fee approval must match the signed refund and the session limits.
 
 The session key can select registration labels, primary names, and record values. Registration always assigns the name to the wallet.
 
@@ -218,6 +269,8 @@ userSalt
 
 The SDK uses this configuration to derive the HCA address. It returns `StandaloneHCAFactory.deploy(...)` as setup or factory data. The SDK selects the fixed validator for owner and session signatures. It adapts the current Smart Session signature to the validator call. A new account includes setup data. A verified deployed account does not include setup data.
 
+This repository uses `@rhinestone/sdk` version `1.7.0` with the local patch at `patches/@rhinestone%2Fsdk@1.7.0.patch`. The standard `1.7.0` package does not contain the standalone HCA adapter. Use a published SDK version that contains this adapter when it becomes available. Until then, use the repository patch. Review the patch as application code. Do not send the standalone HCA configuration to an unpatched `1.7.0` package.
+
 Cross-chain registration must use the user's Nexus as the source account. A source EOA cannot execute the destination calls through the HCA. For the user-paid route, set `sponsored: false` and set USDC as `feeAsset`. The session key signs the refund fields from Rhinestone. The validator limits the payment to the configured refund paymaster and the session limits.
 
 The HCA also supports ERC-4337 owner execution. One UserOperation can deploy a new HCA and execute its first calls. A local test executes this flow with a test paymaster. The SDK test uses a mock bundler. There is no production bundler or paymaster test.
@@ -264,37 +317,25 @@ The mockestrator supplies local route and fill responses. It is not an HCA adapt
 
 As a result, this stack does not give an end-to-end Manager flow.
 
-## Test and release status
+## Live proof
 
-### Test results
-
-The patched SDK completed same-chain registration on Sepolia for a new HCA and a deployed HCA. The new-HCA route used two signatures. The wallet had no ETH. USDC paid both registration prices. Rhinestone sponsored execution.
-
-The local tests cover HCA deployment, owner execution, session reuse and revocation, registration, later primary-name changes, SDK signature packing, ERC-4337 factory data, and execution through a test paymaster.
-
-### Live proof
-
-Run the live Nexus proof from the `contracts` directory:
+Run the live same-chain proof from the `contracts` directory:
 
 ```sh
+HCA_OWNER_KEY=<fresh-wallet-key> \
+HCA_SAME_CHAIN_USER_PAID_USDC=1 \
+bun run check:hca-live
+```
+
+The fresh wallet must hold enough Sepolia USDC for `HCA_SAME_CHAIN_USDC_BUDGET`. The default test budget is 20 USDC. The command requires `SEPOLIA_RPC_URL`, `DEPLOYER_KEY`, and `RHINESTONE_API_KEY`.
+
+Run the live cross-chain proof from the `contracts` directory:
+
+```sh
+HCA_OWNER_KEY=<fresh-source-wallet-key> \
+HCA_CROSS_CHAIN_SOURCE_AMOUNT=<source-budget> \
+HCA_CROSS_CHAIN_TARGET_AMOUNT=<destination-budget> \
 bun run check:hca-live:permit-pull
 ```
 
-This test changes testnet state. It uses Base Sepolia as the source chain by default. Set `HCA_SOURCE_CHAIN=arbitrum-sepolia` to use Arbitrum Sepolia. Set the source and destination RPC URLs, `DEPLOYER_KEY`, `CIRCLE_API_KEY`, and `RHINESTONE_API_KEY`. The script creates a new owner and requests Circle faucet USDC. It does not use operator funds by default. Set `HCA_ALLOW_SOURCE_TEST_TOP_UP=1` to permit an operator top-up.
-
-### Work before release
-
-Do not release the implementation before you complete this work:
-
-- The validator argument checks in the authorization section
-- Executor audit and operational controls
-- Owner recovery and revocation test results
-- Upgrade test results
-- Publication of the SDK adapter
-- Manager integration and restart recovery
-- An account-version and user-salt policy
-- A supported chain and token matrix
-- Frontend end-to-end tests
-- Production gas measurements
-
-If the application offers the ERC-4337 route, it must use a production bundler and paymaster.
+Both commands change testnet state. The cross-chain command uses Base Sepolia by default. Set `HCA_SOURCE_CHAIN=arbitrum-sepolia` to use Arbitrum Sepolia. Set the source and destination RPC URLs, `DEPLOYER_KEY`, and `RHINESTONE_API_KEY`. The source wallet must hold the shown source budget. If the script generates the source wallet, it needs `CIRCLE_API_KEY` to request faucet USDC. Set `HCA_ALLOW_SOURCE_TEST_TOP_UP=1` only when operator funding is acceptable.

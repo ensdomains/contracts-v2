@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { generatePrivateKey } from "viem/accounts";
 
 const CROSS_CHAIN = process.env.HCA_CROSS_CHAIN === "1";
+const SAME_CHAIN_USER_PAID_USDC =
+  process.env.HCA_SAME_CHAIN_USER_PAID_USDC === "1";
 const LIVE_RUN_TIMEOUT_MS = CROSS_CHAIN ? 900_000 : 420_000;
 const contractsRoot = fileURLToPath(new URL("..", import.meta.url));
 const SEPOLIA_USDC = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
@@ -15,6 +17,20 @@ type SameChainRoute = {
   setupOps: number;
   mode: string;
   gasUsed: string;
+  gasRefunds: Array<{
+    token: string;
+    exchangeRate: string;
+    overhead: string;
+  }>;
+  feePayment?: {
+    token: string;
+    balanceBefore: string;
+    fundedBeforeExecution: string;
+    balanceAfter: string;
+    totalCharge: string;
+    protocolSpend: string;
+    executionFee: string;
+  };
 };
 
 type CrossChainRoute = {
@@ -48,6 +64,13 @@ type LiveRegistrationSummary = {
   hca: string;
   resolver: string;
   ownerKeySource: string;
+  wallet?: {
+    address: string;
+    nativeBalanceBefore: string;
+    nativeBalanceAfter: string;
+    transactionCountBefore: number;
+    transactionCountAfter: number;
+  };
   sameChainFunding: {
     source: "wallet EIP-2612 permit";
     amountPulled: string;
@@ -55,6 +78,7 @@ type LiveRegistrationSummary = {
     walletBalanceAfter: string;
     hcaBalanceBefore: string;
     hcaBalanceAfter: string;
+    executionCharge: string;
     allowanceAfter: string;
   };
   walletInteractions:
@@ -122,15 +146,33 @@ function requireEnv(env: NodeJS.ProcessEnv, name: string) {
 
 function liveEnv() {
   const env = { ...process.env };
+  if (CROSS_CHAIN && SAME_CHAIN_USER_PAID_USDC) {
+    throw new Error(
+      "HCA_SAME_CHAIN_USER_PAID_USDC cannot be used with HCA_CROSS_CHAIN",
+    );
+  }
+  if (SAME_CHAIN_USER_PAID_USDC && generatedOwnerKey) {
+    throw new Error(
+      "HCA_OWNER_KEY must be a fresh Sepolia wallet funded with USDC for the user-paid same-chain check",
+    );
+  }
   env.DEPLOYMENT_NETWORK ??= "sepolia";
   env.HCA_DEPLOYMENT_NETWORK ??= env.DEPLOYMENT_NETWORK;
   env.V1_DEPLOYMENT_NETWORK ??= "sepolia";
   env.HCA_OWNER_KEY = liveOwnerKey;
   env.HCA_OWNER_KEY_SOURCE = generatedOwnerKey ? "generated" : "supplied";
-  env.HCA_EXPECT_INITIAL_STATE = generatedOwnerKey ? "new" : "either";
+  env.HCA_EXPECT_INITIAL_STATE =
+    generatedOwnerKey || SAME_CHAIN_USER_PAID_USDC ? "new" : "either";
   env.HCA_EXPECT_DEFAULT_REVERSE_FALLBACK = "1";
-  env.HCA_SPONSORED = "1";
+  env.HCA_SPONSORED = SAME_CHAIN_USER_PAID_USDC ? "0" : "1";
   env.RHINESTONE_API_KEY ??= env.RHINESTONE_SDK_API_KEY;
+  if (SAME_CHAIN_USER_PAID_USDC) {
+    env.HCA_FEE_ASSET = "USDC";
+    env.HCA_TEST_PAYMENT_TOKEN ??= SEPOLIA_USDC;
+    env.HCA_SAME_CHAIN_USDC_BUDGET ??= "20000000";
+    env.HCA_MAX_REFUND_AMOUNT ??= "50000000";
+    env.HCA_SESSION_GAS_LIMIT ??= "1200000";
+  }
   if (CROSS_CHAIN) {
     env.HCA_TEST_PAYMENT_TOKEN ??= SEPOLIA_USDC;
     requireEnv(env, "BASE_SEPOLIA_RPC_URL");
@@ -257,7 +299,8 @@ if (CROSS_CHAIN) {
   );
   assert.equal(
     BigInt(summary.sameChainFunding.hcaBalanceAfter) -
-      BigInt(summary.sameChainFunding.hcaBalanceBefore),
+      BigInt(summary.sameChainFunding.hcaBalanceBefore) +
+      BigInt(summary.sameChainFunding.executionCharge),
     amountPulled,
   );
   assert.equal(BigInt(summary.sameChainFunding.allowanceAfter), 0n);
@@ -271,6 +314,31 @@ if (CROSS_CHAIN) {
   );
   for (const route of routes) {
     assert.match(route.transactionHash, /^0x[0-9a-fA-F]{64}$/);
+  }
+  if (SAME_CHAIN_USER_PAID_USDC) {
+    assert(summary.wallet);
+    assert.equal(
+      summary.wallet.address.toLowerCase(),
+      summary.owner.toLowerCase(),
+    );
+    assert.equal(BigInt(summary.wallet.nativeBalanceBefore), 0n);
+    assert.equal(BigInt(summary.wallet.nativeBalanceAfter), 0n);
+    assert.equal(summary.wallet.transactionCountBefore, 0);
+    assert.equal(summary.wallet.transactionCountAfter, 0);
+    assert.equal(
+      BigInt(routes[0]!.feePayment!.totalCharge),
+      BigInt(summary.sameChainFunding.executionCharge),
+    );
+    for (const route of routes) {
+      assert(route.gasRefunds.length > 0);
+      assert(BigInt(route.feePayment!.executionFee) > 0n);
+      assert.equal(
+        BigInt(route.feePayment!.balanceBefore) +
+          BigInt(route.feePayment!.fundedBeforeExecution) -
+          BigInt(route.feePayment!.balanceAfter),
+        BigInt(route.feePayment!.totalCharge),
+      );
+    }
   }
 }
 assert.equal(summary.verified.name, summary.names[1]);

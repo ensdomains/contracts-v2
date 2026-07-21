@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 
+import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
 import {PermissionedResolver} from "../resolver/PermissionedResolver.sol";
 import {
@@ -55,6 +59,13 @@ contract HCAOwnerAndSessionValidator is IValidator {
         address refundToken;
         uint96 maxRefundExchangeRate;
         uint96 maxRefundAmount;
+    }
+
+    /// @dev State collected while the validator checks one operation batch.
+    struct RegistrationPolicyState {
+        bool usesResolver;
+        bool deploysResolver;
+        bool grantsOwnerResolverRoles;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -202,6 +213,9 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @notice The VerifiableFactory permitted for resolver deployment.
     address public immutable VERIFIABLE_FACTORY;
 
+    /// @notice The proxy logic used by the permitted VerifiableFactory.
+    address public immutable VERIFIABLE_PROXY_LOGIC;
+
     /// @notice The primary ERC20 payment token accepted by the registration policy.
     address public immutable PAYMENT_TOKEN;
 
@@ -326,6 +340,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         PERMITTED_RESOLVER_IMPL = permittedResolverImpl;
         ETH_REGISTRAR = ethRegistrar;
         VERIFIABLE_FACTORY = verifiableFactory;
+        VERIFIABLE_PROXY_LOGIC = VerifiableFactory(verifiableFactory).proxyLogic();
         PAYMENT_TOKEN = paymentToken;
         SECONDARY_PAYMENT_TOKEN = secondaryPaymentToken;
         INTENT_EXECUTOR = intentExecutor;
@@ -491,7 +506,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
             revert InvalidSigner();
         }
 
-        _checkRegistrationPolicy(owner_, config.resolver, operation.data);
+        _checkRegistrationPolicy(account, owner_, config.resolver, operation.data);
         return this.verifyExecution.selector;
     }
 
@@ -651,7 +666,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         _checkGasRefund(config, gasRefund);
         bytes calldata operationData =
             _validateFixedSessionSignature(hash, data, operationOffset, gasRefund, config.sessionKey);
-        _checkRegistrationPolicy(owner_, config.resolver, operationData, gasRefund);
+        _checkRegistrationPolicy(msg.sender, owner_, config.resolver, operationData, gasRefund);
     }
 
     /// @dev Binds the operation and refund preimages to the session signature.
@@ -736,10 +751,12 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @dev Checks target, selector, value, and selected ABI arguments for each execution.
     ///      A default reverse name may be updated when the policy has a nonzero resolver and the
     ///      named account is the HCA owner.
+    /// @param account The HCA that executes the operation.
     /// @param owner The owner recorded for the HCA.
     /// @param allowedResolver The resolver bound to the enabled session.
     /// @param operationData The encoded ERC-7579 operation payload.
     function _checkRegistrationPolicy(
+        address account,
         address owner,
         address allowedResolver,
         bytes calldata operationData
@@ -747,11 +764,18 @@ contract HCAOwnerAndSessionValidator is IValidator {
         internal
         view
     {
-        _checkRegistrationPolicy(owner, allowedResolver, operationData, GasRefund(address(0), 0, 0));
+        _checkRegistrationPolicy(
+            account,
+            owner,
+            allowedResolver,
+            operationData,
+            GasRefund(address(0), 0, 0)
+        );
     }
 
     /// @dev Applies the registration policy and any executor reimbursement constraints.
     function _checkRegistrationPolicy(
+        address account,
         address owner,
         address allowedResolver,
         bytes calldata operationData,
@@ -772,32 +796,9 @@ contract HCAOwnerAndSessionValidator is IValidator {
         }
 
         Execution[] memory executions = abi.decode(operationData[32:], (Execution[]));
-        bool seenRegister;
-        address registeredResolver;
-
-        for (uint256 i; i < executions.length; ++i) {
-            Execution memory execution = executions[i];
-            if (
-                execution.target == ETH_REGISTRAR &&
-                _selector(execution.callData) == REGISTER_SELECTOR
-            ) {
-                (address registrant, address resolver) = _registerFields(execution.callData);
-                if (registrant != owner) {
-                    revert PolicyRuleFailed();
-                }
-                if (!seenRegister) {
-                    seenRegister = true;
-                    registeredResolver = resolver;
-                } else if (registeredResolver != resolver) {
-                    revert PolicyRuleFailed();
-                }
-            }
-        }
-
-        if (seenRegister && allowedResolver != registeredResolver) {
-            revert PolicyRuleFailed();
-        }
-        address policyResolver = seenRegister ? registeredResolver : allowedResolver;
+        (address policyResolver, bool seenRegister) =
+            _registrationResolver(executions, owner, allowedResolver);
+        RegistrationPolicyState memory state;
 
         for (uint256 i; i < executions.length; ++i) {
             Execution memory execution = executions[i];
@@ -811,11 +812,23 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 if (selector != COMMIT_SELECTOR && selector != REGISTER_SELECTOR) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
+                if (selector == REGISTER_SELECTOR) {
+                    state.usesResolver = true;
+                    if (policyResolver.code.length == 0 && !state.deploysResolver) {
+                        revert PolicyRuleFailed();
+                    }
+                }
                 continue;
             }
 
             if (policyResolver != address(0) && execution.target == policyResolver) {
-                _checkResolverCall(execution.callData, owner);
+                state.usesResolver = true;
+                if (policyResolver.code.length == 0 && !state.deploysResolver) {
+                    revert PolicyRuleFailed();
+                }
+                if (_checkResolverCall(execution.callData, owner)) {
+                    state.grantsOwnerResolverRoles = true;
+                }
                 continue;
             }
 
@@ -826,8 +839,8 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 if (policyResolver == address(0)) {
                     revert PolicyRuleFailed();
                 }
-                address account = _readAddress(execution.callData, 4);
-                if (account != owner) {
+                address namedAccount = _readAddress(execution.callData, 4);
+                if (namedAccount != owner) {
                     revert PolicyRuleFailed();
                 }
                 continue;
@@ -845,12 +858,148 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 if (selector != DEPLOY_PROXY_SELECTOR) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
-                _requireArgAddress(execution.callData, 4, PERMITTED_RESOLVER_IMPL);
+                if (state.deploysResolver) {
+                    revert PolicyRuleFailed();
+                }
+                _checkResolverDeployment(account, policyResolver, execution.callData);
+                state.usesResolver = true;
+                state.deploysResolver = true;
                 continue;
             }
 
             revert ActionNotAllowed(execution.target, selector);
         }
+
+        if (seenRegister && !state.grantsOwnerResolverRoles) {
+            revert PolicyRuleFailed();
+        }
+        _checkResolverBinding(policyResolver, state);
+    }
+
+    /// @dev Finds the resolver used by every registration in a batch.
+    /// @param executions The decoded operation batch.
+    /// @param owner The owner that must receive each registration.
+    /// @param allowedResolver The resolver bound to the enabled session.
+    /// @return policyResolver The resolver that the policy permits for the batch.
+    /// @return seenRegister Whether the batch contains a registration.
+    function _registrationResolver(
+        Execution[] memory executions,
+        address owner,
+        address allowedResolver
+    )
+        internal
+        view
+        returns (address policyResolver, bool seenRegister)
+    {
+        for (uint256 i; i < executions.length; ++i) {
+            Execution memory execution = executions[i];
+            if (
+                execution.target != ETH_REGISTRAR ||
+                _selector(execution.callData) != REGISTER_SELECTOR
+            ) {
+                continue;
+            }
+
+            (address registrant, address resolver) = _registerFields(execution.callData);
+            if (registrant != owner) {
+                revert PolicyRuleFailed();
+            }
+            if (!seenRegister) {
+                seenRegister = true;
+                policyResolver = resolver;
+            } else if (policyResolver != resolver) {
+                revert PolicyRuleFailed();
+            }
+        }
+
+        if (seenRegister) {
+            if (allowedResolver != policyResolver) {
+                revert PolicyRuleFailed();
+            }
+        } else {
+            policyResolver = allowedResolver;
+        }
+    }
+
+    /// @dev Validates an exact deployment of the resolver bound to the session.
+    /// @param account The HCA that will call the factory.
+    /// @param resolver The resolver address bound to the session.
+    /// @param callData ABI-encoded `VerifiableFactory.deployProxy` call data.
+    function _checkResolverDeployment(address account, address resolver, bytes memory callData)
+        internal
+        view
+    {
+        uint256 salt = _readUint(callData, 4 + 32);
+        bytes[] memory setters = new bytes[](0);
+        bytes memory expectedInitData =
+            abi.encodeCall(
+                PermissionedResolver.initialize,
+                (account, EACBaseRolesLib.ALL_ROLES, setters)
+            );
+        bytes memory expectedCallData =
+            abi.encodeCall(
+                IVerifiableFactory.deployProxy,
+                (PERMITTED_RESOLVER_IMPL, salt, expectedInitData)
+            );
+
+        if (
+            keccak256(callData) != keccak256(expectedCallData) ||
+            _resolverAddress(account, salt) != resolver
+        ) {
+            revert PolicyRuleFailed();
+        }
+    }
+
+    /// @dev Requires a used resolver to be an exact pending deployment or a verified proxy.
+    /// @param resolver The resolver bound to the session.
+    /// @param state The resolver-related state collected from the operation batch.
+    function _checkResolverBinding(address resolver, RegistrationPolicyState memory state)
+        internal
+        view
+    {
+        if (!state.usesResolver) {
+            return;
+        }
+        if (resolver == address(0)) {
+            revert PolicyRuleFailed();
+        }
+        if (resolver.code.length == 0) {
+            if (!state.deploysResolver) {
+                revert PolicyRuleFailed();
+            }
+            return;
+        }
+        if (state.deploysResolver) {
+            revert PolicyRuleFailed();
+        }
+
+        try IVerifiableFactory(VERIFIABLE_FACTORY).verifyContract(resolver) returns (
+            address implementation
+        ) {
+            if (implementation != PERMITTED_RESOLVER_IMPL) {
+                revert PolicyRuleFailed();
+            }
+        } catch {
+            revert PolicyRuleFailed();
+        }
+    }
+
+    /// @dev Computes the resolver proxy address for an HCA and user salt.
+    /// @param account The HCA that deploys the resolver proxy.
+    /// @param salt The user salt supplied to the VerifiableFactory.
+    /// @return resolver The counterfactual resolver address.
+    function _resolverAddress(address account, uint256 salt)
+        internal
+        view
+        returns (address resolver)
+    {
+        bytes32 outerSalt = keccak256(abi.encode(account, salt));
+        return
+            Create2.computeAddress(
+                outerSalt,
+                keccak256(CloneProxyBytecode.creationCode(VERIFIABLE_PROXY_LOGIC, outerSalt)),
+                VERIFIABLE_FACTORY
+            );
     }
 
     /// @dev Allows registrar payment approvals and exact, signed executor-refund approvals.
@@ -940,31 +1089,38 @@ contract HCAOwnerAndSessionValidator is IValidator {
     }
 
     /// @notice Validates resolver record writes on the owner-authorized resolver.
-    /// @dev Allows known resolver setters directly or recursively through supported multicalls,
-    ///      plus `authorizeNameRoles` restricted to the owner as grantee. The role bitmap and
-    ///      grant flag are not constrained here.
+    /// @dev Allows known resolver setters directly or recursively through supported multicalls.
+    ///      A role call must grant every root role to the HCA owner.
     /// @param callData ABI-encoded resolver call data.
     /// @param owner The owner recorded for the HCA.
-    function _checkResolverCall(bytes memory callData, address owner) internal pure {
+    /// @return grantsOwnerResolverRoles Whether the call grants root resolver control to the owner.
+    function _checkResolverCall(bytes memory callData, address owner)
+        internal
+        pure
+        returns (bool grantsOwnerResolverRoles)
+    {
         bytes4 selector = _selector(callData);
         if (selector == MULTICALL_SELECTOR) {
             bytes[] memory calls = abi.decode(_callArgs(callData), (bytes[]));
-            _checkResolverCalls(calls, owner);
-            return;
+            return _checkResolverCalls(calls, owner);
         }
         if (selector == MULTICALL_WITH_NODE_CHECK_SELECTOR) {
             (, bytes[] memory calls) = abi.decode(_callArgs(callData), (bytes32, bytes[]));
-            _checkResolverCalls(calls, owner);
-            return;
+            return _checkResolverCalls(calls, owner);
         }
         if (selector == AUTHORIZE_NAME_ROLES_SELECTOR) {
-            // authorizeNameRoles(bytes toName, uint256 roleBitmap, address account, bool grant):
-            // the account head word sits after the toName offset and roleBitmap words.
-            _requireArgAddress(callData, 4 + 64, owner);
-            return;
+            bytes memory expectedCallData =
+                abi.encodeCall(
+                    PermissionedResolver.authorizeNameRoles,
+                    (hex"00", EACBaseRolesLib.ALL_ROLES, owner, true)
+                );
+            if (keccak256(callData) != keccak256(expectedCallData)) {
+                revert PolicyRuleFailed();
+            }
+            return true;
         }
         if (_isResolverRecordSelector(selector)) {
-            return;
+            return false;
         }
         revert ActionNotAllowed(address(0), selector);
     }
@@ -973,9 +1129,16 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @dev Recursively validates each encoded resolver call.
     /// @param calls ABI-encoded resolver calls.
     /// @param owner The owner recorded for the HCA.
-    function _checkResolverCalls(bytes[] memory calls, address owner) internal pure {
+    /// @return grantsOwnerResolverRoles Whether a nested call grants root resolver control.
+    function _checkResolverCalls(bytes[] memory calls, address owner)
+        internal
+        pure
+        returns (bool grantsOwnerResolverRoles)
+    {
         for (uint256 i; i < calls.length; ++i) {
-            _checkResolverCall(calls[i], owner);
+            if (_checkResolverCall(calls[i], owner)) {
+                grantsOwnerResolverRoles = true;
+            }
         }
     }
 

@@ -65,26 +65,17 @@ const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
 const ARBITRUM_SEPOLIA_RPC_URL = process.env.ARBITRUM_SEPOLIA_RPC_URL;
 const HCA_SOURCE_CHAIN = process.env.HCA_SOURCE_CHAIN ?? "base-sepolia";
 const sourceChain = (() => {
-  if (HCA_SOURCE_CHAIN === "sepolia") return sepolia;
   if (HCA_SOURCE_CHAIN === "base-sepolia") return baseSepolia;
   if (HCA_SOURCE_CHAIN === "arbitrum-sepolia") return arbitrumSepolia;
-  throw new Error(
-    "HCA_SOURCE_CHAIN must be sepolia, base-sepolia, or arbitrum-sepolia",
-  );
+  throw new Error("HCA_SOURCE_CHAIN must be base-sepolia or arbitrum-sepolia");
 })();
 const SOURCE_RPC_URL =
   process.env.HCA_SOURCE_RPC_URL ??
-  (sourceChain.id === sepolia.id
-    ? RPC_URL
-    : sourceChain.id === baseSepolia.id
+  (sourceChain.id === baseSepolia.id
     ? BASE_SEPOLIA_RPC_URL
     : ARBITRUM_SEPOLIA_RPC_URL);
 const CIRCLE_SOURCE_BLOCKCHAIN =
-  sourceChain.id === sepolia.id
-    ? "ETH-SEPOLIA"
-    : sourceChain.id === baseSepolia.id
-      ? "BASE-SEPOLIA"
-      : "ARB-SEPOLIA";
+  sourceChain.id === baseSepolia.id ? "BASE-SEPOLIA" : "ARB-SEPOLIA";
 const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY;
 const HCA_CROSS_CHAIN = process.env.HCA_CROSS_CHAIN === "1";
 const HCA_CROSS_CHAIN_SOURCE = process.env.HCA_CROSS_CHAIN_SOURCE ?? "nexus";
@@ -96,6 +87,10 @@ const HCA_GENERATE_OWNER = process.env.HCA_GENERATE_OWNER === "1";
 const HCA_DRY_RUN_ONLY = process.env.HCA_DRY_RUN_ONLY === "1";
 const HCA_SPONSORED = process.env.HCA_SPONSORED !== "0";
 const HCA_USER_PAID_USDC = process.env.HCA_USER_PAID_USDC === "1";
+const HCA_SAME_CHAIN_USER_PAID_USDC =
+  process.env.HCA_SAME_CHAIN_USER_PAID_USDC === "1";
+const HCA_USER_PAID_EXECUTION =
+  HCA_USER_PAID_USDC || HCA_SAME_CHAIN_USER_PAID_USDC;
 const HCA_FEE_ASSET = process.env.HCA_FEE_ASSET as
   | Transaction["feeAsset"]
   | undefined;
@@ -124,9 +119,7 @@ const RHINESTONE_GAS_REFUND_PAYMASTER =
 const NEXUS_FACTORY = "0x0000000000679A258c64d2F20F310e12B64b7375" as const;
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3" as const;
 const SOURCE_PAYMENT_TOKEN = (process.env.HCA_SOURCE_PAYMENT_TOKEN ??
-  (sourceChain.id === sepolia.id
-    ? "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
-    : sourceChain.id === baseSepolia.id
+  (sourceChain.id === baseSepolia.id
     ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
     : "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d")) as Address;
 const SEPOLIA_USDC = (process.env.HCA_TARGET_PAYMENT_TOKEN ??
@@ -140,6 +133,9 @@ const CROSS_CHAIN_SOURCE_AMOUNT = process.env.HCA_CROSS_CHAIN_SOURCE_AMOUNT
 const CROSS_CHAIN_DESTINATION_GAS = process.env.HCA_CROSS_CHAIN_DESTINATION_GAS
   ? BigInt(process.env.HCA_CROSS_CHAIN_DESTINATION_GAS)
   : 1_200_000n;
+const SAME_CHAIN_USDC_BUDGET = process.env.HCA_SAME_CHAIN_USDC_BUDGET
+  ? BigInt(process.env.HCA_SAME_CHAIN_USDC_BUDGET)
+  : 20_000_000n;
 const SESSION_GAS_LIMIT = process.env.HCA_SESSION_GAS_LIMIT
   ? BigInt(process.env.HCA_SESSION_GAS_LIMIT)
   : undefined;
@@ -218,6 +214,14 @@ if (
 ) {
   throw new Error(
     "HCA_USER_PAID_USDC=1 requires cross-chain Nexus permit-pull routing with HCA_SPONSORED=0",
+  );
+}
+if (
+  HCA_SAME_CHAIN_USER_PAID_USDC &&
+  (HCA_CROSS_CHAIN || HCA_SPONSORED || HCA_USER_PAID_USDC)
+) {
+  throw new Error(
+    "HCA_SAME_CHAIN_USER_PAID_USDC=1 requires same-chain routing with HCA_SPONSORED=0",
   );
 }
 if (
@@ -794,11 +798,25 @@ async function main() {
   const prices = await Promise.all(
     labels.map((label) => registrationPrice(label, deployments)),
   );
+  const sameChainWalletStateBefore = HCA_CROSS_CHAIN
+    ? undefined
+    : await readWalletState(owner.address);
+  if (
+    HCA_SAME_CHAIN_USER_PAID_USDC &&
+    (sameChainWalletStateBefore!.nativeBalance !== 0n ||
+      sameChainWalletStateBefore!.transactionCount !== 0)
+  ) {
+    throw new Error(
+      "user-paid same-chain proof requires a fresh wallet with no ETH or transactions",
+    );
+  }
   const sameChainFunding = HCA_CROSS_CHAIN
     ? undefined
     : await prepareSameChainWalletFunding({
         hca,
-        required: prices[0] + prices[1],
+        required: HCA_SAME_CHAIN_USER_PAID_USDC
+          ? SAME_CHAIN_USDC_BUDGET
+          : prices[0] + prices[1],
         paymentToken: deployments.paymentToken,
       });
 
@@ -1265,15 +1283,30 @@ async function main() {
     return;
   }
 
-  const firstCommitCalls: Call[] = [...(sameChainFunding?.calls ?? [])];
+  const firstCommitCalls: Call[] = HCA_SAME_CHAIN_USER_PAID_USDC
+    ? []
+    : [...(sameChainFunding?.calls ?? [])];
   if (!sessionEnabled) {
     firstCommitCalls.push({
       to: deployments.validator,
       value: 0n,
       data: encodeFunctionData({
         abi: HCAOwnerAndSessionValidator.abi,
-        functionName: "enableSession",
-        args: [permissionId, session.address, Number(validUntil), resolver],
+        functionName: HCA_SAME_CHAIN_USER_PAID_USDC
+          ? "enableSessionWithRefund"
+          : "enableSession",
+        args: HCA_SAME_CHAIN_USER_PAID_USDC
+          ? [
+              permissionId,
+              session.address,
+              Number(validUntil),
+              resolver,
+              deployments.paymentToken,
+              MAX_REFUND_EXCHANGE_RATE,
+              Number(MAX_REFUND_GAS_OVERHEAD),
+              MAX_REFUND_AMOUNT,
+            ]
+          : [permissionId, session.address, Number(validUntil), resolver],
       }),
     });
   }
@@ -1292,6 +1325,14 @@ async function main() {
     calls: firstCommitCalls,
     expectedMode: MODE_ERC1271,
     expectedSetupOps: initiallyDeployed ? 0 : 1,
+    ...(HCA_SAME_CHAIN_USER_PAID_USDC && {
+      feeToken: deployments.paymentToken,
+      preClaimFunding: {
+        token: deployments.paymentToken,
+        amount: sameChainFunding!.amountPulled,
+        calls: sameChainFunding!.calls,
+      },
+    }),
     phase: "new-user commit",
   });
   if (hcaOwnerSignatureCount !== 1) {
@@ -1300,6 +1341,26 @@ async function main() {
     );
   }
   if (HCA_DRY_RUN_ONLY) {
+    if (HCA_SAME_CHAIN_USER_PAID_USDC) {
+      console.log(
+        JSON.stringify(
+          {
+            dryRun: true,
+            initialState: initiallyDeployed ? "existing" : "new",
+            owner: owner.address,
+            hca,
+            resolver,
+            permissionId,
+            routes: { firstCommit },
+            sameChainFunding,
+            hcaOwnerSignatureCount,
+          },
+          jsonReplacer,
+          2,
+        ),
+      );
+      return;
+    }
     const sessionReveal = await executeIntent({
       account: firstAccount,
       calls: await registrationCalls({
@@ -1350,7 +1411,10 @@ async function main() {
     throw new Error("fixed HCA session was not enabled by the first intent");
   }
 
-  const funding = await verifySameChainWalletFunding(sameChainFunding!);
+  const funding = await verifySameChainWalletFunding(
+    sameChainFunding!,
+    HCA_SAME_CHAIN_USER_PAID_USDC ? firstCommit.feePayment!.totalCharge : 0n,
+  );
 
   await waitForCommitment(commitments[0], deployments.ethRegistrar);
   const firstReveal = await executeIntent({
@@ -1372,6 +1436,10 @@ async function main() {
     permissionId,
     expectedMode: MODE_ERC1271,
     expectedSetupOps: 0,
+    ...(HCA_SAME_CHAIN_USER_PAID_USDC && {
+      feeToken: deployments.paymentToken,
+      protocolTokenSpend: prices[0],
+    }),
     phase: "new-user reveal",
   });
   await verifyRegistration(
@@ -1403,6 +1471,9 @@ async function main() {
     permissionId,
     expectedMode: MODE_ERC1271,
     expectedSetupOps: 0,
+    ...(HCA_SAME_CHAIN_USER_PAID_USDC && {
+      feeToken: deployments.paymentToken,
+    }),
     phase: "existing-user commit",
   });
 
@@ -1426,6 +1497,10 @@ async function main() {
     permissionId,
     expectedMode: MODE_ERC1271,
     expectedSetupOps: 0,
+    ...(HCA_SAME_CHAIN_USER_PAID_USDC && {
+      feeToken: deployments.paymentToken,
+      protocolTokenSpend: prices[1],
+    }),
     phase: "existing-user reveal",
   });
   const verified = await verifyRegistration(
@@ -1435,6 +1510,16 @@ async function main() {
     deployments,
     owner.address,
   );
+  const sameChainWalletStateAfter = await readWalletState(owner.address);
+  if (
+    HCA_SAME_CHAIN_USER_PAID_USDC &&
+    (sameChainWalletStateAfter.nativeBalance !== 0n ||
+      sameChainWalletStateAfter.transactionCount !== 0)
+  ) {
+    throw new Error(
+      "user-paid same-chain proof used wallet ETH or sent a wallet transaction",
+    );
+  }
 
   console.log(
     JSON.stringify(
@@ -1447,6 +1532,13 @@ async function main() {
         resolver,
         permissionId,
         sdk: "@rhinestone/sdk@1.7.0 (Bun patch)",
+        wallet: {
+          address: owner.address,
+          nativeBalanceBefore: sameChainWalletStateBefore!.nativeBalance,
+          nativeBalanceAfter: sameChainWalletStateAfter.nativeBalance,
+          transactionCountBefore: sameChainWalletStateBefore!.transactionCount,
+          transactionCountAfter: sameChainWalletStateAfter.transactionCount,
+        },
         sameChainFunding: funding,
         walletInteractions: {
           paymentPermitSignatures: sameChainFunding!.permitSignatureCount,
@@ -1470,6 +1562,14 @@ async function main() {
       2,
     ),
   );
+}
+
+async function readWalletState(address: Address) {
+  const [nativeBalance, transactionCount] = await Promise.all([
+    publicClient.getBalance({ address }),
+    publicClient.getTransactionCount({ address }),
+  ]);
+  return { nativeBalance, transactionCount };
 }
 
 async function fundCrossChainSourceAccount({
@@ -2154,7 +2254,7 @@ async function executeCrossChainRegistration({
     ...(sourceCalls.length > 0 && {
       sourceCalls: { [sourceChain.id]: sourceCalls },
     }),
-    ...(sourceChain.id !== sepolia.id && { settlementLayers: ["ACROSS"] }),
+    settlementLayers: ["ACROSS"],
     ...(!HCA_SPONSORED && { feeAsset: HCA_FEE_ASSET ?? "USDC" }),
     sponsored: HCA_SPONSORED
       ? { gas: true, bridging: true, swaps: true }
@@ -2193,22 +2293,16 @@ async function executeCrossChainRegistration({
     );
   }
   let targetMode: Hex | undefined;
-  let routeSettlementLayer: string | undefined;
   for (const element of prepared.intentRoute.intentOp.elements) {
     const context = element.mandate.qualifier.settlementContext;
     if (
-      (sourceChain.id !== sepolia.id &&
-        context.settlementLayer !== "ACROSS") ||
+      context.settlementLayer !== "ACROSS" ||
       context.fundingMethod !== "PERMIT2" ||
       context.using7579 !== true
     ) {
       throw new Error(
-        `${phase}: unexpected route ${context.settlementLayer} + ${context.fundingMethod} (using7579=${context.using7579})`,
+        `${phase}: expected ACROSS + PERMIT2 through ERC-7579, got ${context.settlementLayer} + ${context.fundingMethod} (using7579=${context.using7579})`,
       );
-    }
-    routeSettlementLayer ??= context.settlementLayer;
-    if (routeSettlementLayer !== context.settlementLayer) {
-      throw new Error(`${phase}: route uses more than one settlement layer`);
     }
     if (
       element.mandate.recipient.toLowerCase() !== recipientAddress.toLowerCase()
@@ -2399,7 +2493,7 @@ async function executeCrossChainRegistration({
     sourcePermit2Amount,
     using7579: true,
     mode: targetMode!,
-    settlementLayer: routeSettlementLayer!,
+    settlementLayer: "ACROSS" as const,
     fundingMethod: "PERMIT2" as const,
     sponsored: HCA_SPONSORED,
     feeAsset: HCA_FEE_ASSET ?? "USDC",
@@ -2475,6 +2569,7 @@ async function executeIntent({
   expectedSetupOps,
   feeToken,
   protocolTokenSpend = 0n,
+  preClaimFunding,
   phase,
 }: {
   account: RhinestoneAccount;
@@ -2485,6 +2580,11 @@ async function executeIntent({
   expectedSetupOps: number;
   feeToken?: Address;
   protocolTokenSpend?: bigint;
+  preClaimFunding?: {
+    token: Address;
+    amount: bigint;
+    calls: Call[];
+  };
   phase: string;
 }) {
   const transaction: Transaction = {
@@ -2492,6 +2592,21 @@ async function executeIntent({
     calls,
     signers,
     ...(SESSION_GAS_LIMIT !== undefined && { gasLimit: SESSION_GAS_LIMIT }),
+    ...(preClaimFunding && {
+      sourceAssets: [
+        {
+          chain: sepolia,
+          address: preClaimFunding.token,
+          amount: preClaimFunding.amount,
+        },
+      ],
+      auxiliaryFunds: {
+        [sepolia.id]: {
+          [preClaimFunding.token]: preClaimFunding.amount,
+        },
+      },
+      sourceCalls: { [sepolia.id]: preClaimFunding.calls },
+    }),
     ...(!HCA_SPONSORED && { feeAsset: HCA_FEE_ASSET ?? "USDC" }),
     sponsored: HCA_SPONSORED
       ? { gas: true, bridging: true, swaps: true }
@@ -2514,7 +2629,7 @@ async function executeIntent({
       BigInt(exchangeRate) !== 0n ||
       BigInt(overhead) !== 0n,
   );
-  if (HCA_USER_PAID_USDC) {
+  if (HCA_USER_PAID_EXECUTION) {
     if (!feeToken || !hasGasRefund) {
       throw new Error(`${phase}: unsponsored session route has no USDC refund`);
     }
@@ -2727,25 +2842,28 @@ async function executeIntent({
           functionName: "balanceOf",
           args: [account.getAddress()],
         })) as bigint;
+        const balanceAvailable =
+          (feeTokenBalanceBefore ?? 0n) + (preClaimFunding?.amount ?? 0n);
         if (
           feeTokenBalanceBefore === undefined ||
-          feeTokenBalanceBefore < balanceAfter
+          balanceAvailable < balanceAfter
         ) {
           throw new Error(`${phase}: invalid USDC balance change`);
         }
-        const totalCharge = feeTokenBalanceBefore - balanceAfter;
+        const totalCharge = balanceAvailable - balanceAfter;
         if (totalCharge < protocolTokenSpend) {
           throw new Error(
             `${phase}: USDC charge is smaller than protocol spend`,
           );
         }
         const executionFee = totalCharge - protocolTokenSpend;
-        if (HCA_USER_PAID_USDC && executionFee === 0n) {
+        if (HCA_USER_PAID_EXECUTION && executionFee === 0n) {
           throw new Error(`${phase}: executor took no USDC fee`);
         }
         return {
           token: feeToken,
           balanceBefore: feeTokenBalanceBefore,
+          fundedBeforeExecution: preClaimFunding?.amount ?? 0n,
           balanceAfter,
           totalCharge,
           protocolSpend: protocolTokenSpend,
@@ -3089,7 +3207,10 @@ async function prepareSameChainWalletFunding({
   };
 }
 
-async function verifySameChainWalletFunding(plan: SameChainWalletFunding) {
+async function verifySameChainWalletFunding(
+  plan: SameChainWalletFunding,
+  executionCharge = 0n,
+) {
   const [walletBalanceAfter, hcaBalanceAfter, allowanceAfter] =
     await Promise.all([
       publicClient.readContract({
@@ -3116,10 +3237,13 @@ async function verifySameChainWalletFunding(plan: SameChainWalletFunding) {
       "first HCA intent did not pull payment tokens from the wallet",
     );
   }
-  if (hcaBalanceAfter !== plan.hcaBalanceBefore + plan.amountPulled) {
+  if (
+    hcaBalanceAfter !==
+    plan.hcaBalanceBefore + plan.amountPulled - executionCharge
+  ) {
     throw new Error("first HCA intent did not fund the HCA from the wallet");
   }
-  if (hcaBalanceAfter < plan.required) {
+  if (hcaBalanceAfter + executionCharge < plan.required) {
     throw new Error(
       `HCA has ${hcaBalanceAfter} payment-token units; ${plan.required} required`,
     );
@@ -3136,6 +3260,7 @@ async function verifySameChainWalletFunding(plan: SameChainWalletFunding) {
     walletBalanceAfter,
     hcaBalanceBefore: plan.hcaBalanceBefore,
     hcaBalanceAfter,
+    executionCharge,
     allowanceAfter,
     provisionedAmount: plan.provisionedAmount,
     provisioningTransactionHash: plan.provisioningTransactionHash,

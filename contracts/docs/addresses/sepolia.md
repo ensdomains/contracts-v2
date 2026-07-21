@@ -20,6 +20,7 @@
 | ETHRegistry | [0x67b728a792e789a8978b30cf1b3b641f19354b43](https://sepolia.etherscan.io/address/0x67b728a792e789a8978b30cf1b3b641f19354b43) |
 | ETHRenewerV1 | [0x1be516ae1b72765ae55bd5e9ca628c9058a1c622](https://sepolia.etherscan.io/address/0x1be516ae1b72765ae55bd5e9ca628c9058a1c622) |
 | Graveyard | [0x6f4bf58ac55e0018589b2d9734ed8bb82740124d](https://sepolia.etherscan.io/address/0x6f4bf58ac55e0018589b2d9734ed8bb82740124d) |
+| HCAOwnerAndSessionValidator | [0x026f9e02a572e0ec8ba267f87c7b6caa72af4e76](https://sepolia.etherscan.io/address/0x026f9e02a572e0ec8ba267f87c7b6caa72af4e76) |
 | HCAUpgradeGate | [0xe721f4171cae41108cbdaaacb6ee7d7f7c04766d](https://sepolia.etherscan.io/address/0xe721f4171cae41108cbdaaacb6ee7d7f7c04766d) |
 | LabelStore | [0xb03524289c16424f71802a1794c29c7bd1b9f577](https://sepolia.etherscan.io/address/0xb03524289c16424f71802a1794c29c7bd1b9f577) |
 | LockedMigrationController | [0x681802eff57b83edce99d688c023ab1284495176](https://sepolia.etherscan.io/address/0x681802eff57b83edce99d688c023ab1284495176) |
@@ -34,7 +35,8 @@
 | ReverseRegistrarAdapter | [0x94e64e29e25533f93ba0a430646ae42cb47bf8f3](https://sepolia.etherscan.io/address/0x94e64e29e25533f93ba0a430646ae42cb47bf8f3) |
 | RootRegistry | [0x11b5bfbe9078d826b1edbdd1cfc12f5828d9f50c](https://sepolia.etherscan.io/address/0x11b5bfbe9078d826b1edbdd1cfc12f5828d9f50c) |
 | StandaloneHCADeployer | [0x534eacb22aa4237c1b924321d824ab91f013aee9](https://sepolia.etherscan.io/address/0x534eacb22aa4237c1b924321d824ab91f013aee9) |
-| StandaloneHCAImplementation | [0x2ce5fb6f5abe0a870692ae28db8698281ac84acd](https://sepolia.etherscan.io/address/0x2ce5fb6f5abe0a870692ae28db8698281ac84acd) |
+| StandaloneHCAFactory | [0x1915b0c8ae2c133b2b43845b5c545d1eea081c9a](https://sepolia.etherscan.io/address/0x1915b0c8ae2c133b2b43845b5c545d1eea081c9a) |
+| StandaloneHCAImplementation | [0x0921afbdcbceac6b5133feee5b4c0894a99105f2](https://sepolia.etherscan.io/address/0x0921afbdcbceac6b5133feee5b4c0894a99105f2) |
 | StandardRentPriceOracle | [0x09340d50a6489e7bfb2959acc4e32bcbc401e203](https://sepolia.etherscan.io/address/0x09340d50a6489e7bfb2959acc4e32bcbc401e203) |
 | UniversalResolverV2 | [0x85edf8b6b7d4211e2b07aa687506b746357b92cf](https://sepolia.etherscan.io/address/0x85edf8b6b7d4211e2b07aa687506b746357b92cf) |
 | UnlockedMigrationController | [0xd021a69db7f9e276a59cbbccf06e7f1e5434215c](https://sepolia.etherscan.io/address/0xd021a69db7f9e276a59cbbccf06e7f1e5434215c) |
