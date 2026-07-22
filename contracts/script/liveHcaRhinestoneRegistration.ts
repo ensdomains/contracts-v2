@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import {
   RhinestoneSDK,
+  type CallInput,
   type RhinestoneAccount,
   type RhinestoneAccountConfig,
   type Session,
@@ -15,6 +16,7 @@ import {
   concat,
   createPublicClient,
   createWalletClient,
+  decodeAbiParameters,
   decodeFunctionData,
   decodeFunctionResult,
   encodeAbiParameters,
@@ -24,6 +26,7 @@ import {
   http,
   keccak256,
   namehash,
+  parseAbi,
   parseSignature,
   type PublicClient,
   recoverTypedDataAddress,
@@ -40,6 +43,7 @@ import {
   DefaultReverseRegistrarAdapter,
   ENSRegistry,
   ETHRegistrar,
+  HCAFundingSessionValidator,
   HCAOwnerAndSessionValidator,
   PermissionedRegistry,
   PermissionedResolver,
@@ -81,6 +85,12 @@ const HCA_CROSS_CHAIN = process.env.HCA_CROSS_CHAIN === "1";
 const HCA_CROSS_CHAIN_SOURCE = process.env.HCA_CROSS_CHAIN_SOURCE ?? "nexus";
 const HCA_CROSS_CHAIN_NEXUS_FUNDING =
   process.env.HCA_CROSS_CHAIN_NEXUS_FUNDING ?? "prefund";
+const HCA_DEFER_CROSS_CHAIN_FUNDING =
+  process.env.HCA_DEFER_CROSS_CHAIN_FUNDING === "1";
+const HCA_RESUME_DEFERRED = process.env.HCA_RESUME_DEFERRED === "1";
+const HCA_MULTI_CHAIN_SESSION_SIGNATURE = process.env
+  .HCA_MULTI_CHAIN_SESSION_SIGNATURE as Hex | undefined;
+const HCA_WAIT_FOR_SOURCE_USDC = process.env.HCA_WAIT_FOR_SOURCE_USDC === "1";
 const HCA_SOURCE_APPROVAL_TRANSACTION_HASH = process.env
   .HCA_SOURCE_APPROVAL_TRANSACTION_HASH as Hex | undefined;
 const HCA_GENERATE_OWNER = process.env.HCA_GENERATE_OWNER === "1";
@@ -117,7 +127,24 @@ const RHINESTONE_INTENT_EXECUTOR =
 const RHINESTONE_GAS_REFUND_PAYMASTER =
   "0x1d7df6Ddc7328Ac827EB4D7f171C60AFB7f9A599" as const;
 const NEXUS_FACTORY = "0x0000000000679A258c64d2F20F310e12B64b7375" as const;
+const NEXUS_FACTORY_ABI = parseAbi([
+  "function createAccount(bytes initData, bytes32 salt)",
+]);
+const NEXUS_BOOTSTRAP_ABI = parseAbi([
+  "struct BootstrapConfig { address module; bytes initData; }",
+  "struct BootstrapPreValidationHookConfig { uint256 hookType; address module; bytes data; }",
+  "function initNexusWithDefaultValidatorAndOtherModulesNoRegistry(bytes defaultValidatorInitData, BootstrapConfig[] validators, BootstrapConfig[] executors, BootstrapConfig hook, BootstrapConfig[] fallbacks, BootstrapPreValidationHookConfig[] preValidationHooks)",
+]);
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3" as const;
+const BASE_SEPOLIA_HCA_FUNDING_SESSION_VALIDATOR =
+  "0x30057465186786f4477e98FBeE9Ae6b8e30B6325" as const;
+const HCA_FUNDING_SESSION_VALIDATOR = (process.env
+  .HCA_FUNDING_SESSION_VALIDATOR ??
+  (sourceChain.id === baseSepolia.id
+    ? BASE_SEPOLIA_HCA_FUNDING_SESSION_VALIDATOR
+    : undefined)) as Address | undefined;
+const RHINESTONE_ACROSS_ARBITER = (process.env.HCA_ACROSS_ARBITER ??
+  "0x28a4d41776968c1201a807ec51ffb405362b8882") as Address;
 const SOURCE_PAYMENT_TOKEN = (process.env.HCA_SOURCE_PAYMENT_TOKEN ??
   (sourceChain.id === baseSepolia.id
     ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
@@ -130,6 +157,14 @@ const CROSS_CHAIN_TARGET_AMOUNT = process.env.HCA_CROSS_CHAIN_TARGET_AMOUNT
 const CROSS_CHAIN_SOURCE_AMOUNT = process.env.HCA_CROSS_CHAIN_SOURCE_AMOUNT
   ? BigInt(process.env.HCA_CROSS_CHAIN_SOURCE_AMOUNT)
   : 20_000_000n;
+const CROSS_CHAIN_COMMIT_TARGET_AMOUNT = process.env
+  .HCA_CROSS_CHAIN_COMMIT_TARGET_AMOUNT
+  ? BigInt(process.env.HCA_CROSS_CHAIN_COMMIT_TARGET_AMOUNT)
+  : 2_000_000n;
+const CROSS_CHAIN_COMMIT_SOURCE_AMOUNT = process.env
+  .HCA_CROSS_CHAIN_COMMIT_SOURCE_AMOUNT
+  ? BigInt(process.env.HCA_CROSS_CHAIN_COMMIT_SOURCE_AMOUNT)
+  : 7_000_000n;
 const CROSS_CHAIN_DESTINATION_GAS = process.env.HCA_CROSS_CHAIN_DESTINATION_GAS
   ? BigInt(process.env.HCA_CROSS_CHAIN_DESTINATION_GAS)
   : 1_200_000n;
@@ -217,6 +252,22 @@ if (
   );
 }
 if (
+  HCA_DEFER_CROSS_CHAIN_FUNDING &&
+  (!HCA_USER_PAID_USDC ||
+    HCA_CROSS_CHAIN_SOURCE !== "nexus" ||
+    HCA_CROSS_CHAIN_NEXUS_FUNDING !== "permit-pull" ||
+    CROSS_CHAIN_COMMIT_SOURCE_AMOUNT >= CROSS_CHAIN_SOURCE_AMOUNT)
+) {
+  throw new Error(
+    "deferred cross-chain funding requires the user-paid Nexus permit-pull route and a commit budget below the total source budget",
+  );
+}
+if (HCA_RESUME_DEFERRED && !HCA_DEFER_CROSS_CHAIN_FUNDING) {
+  throw new Error(
+    "HCA_RESUME_DEFERRED=1 requires deferred cross-chain funding",
+  );
+}
+if (
   HCA_SAME_CHAIN_USER_PAID_USDC &&
   (HCA_CROSS_CHAIN || HCA_SPONSORED || HCA_USER_PAID_USDC)
 ) {
@@ -227,13 +278,32 @@ if (
 if (
   MAX_REFUND_EXCHANGE_RATE > (1n << 96n) - 1n ||
   MAX_REFUND_GAS_OVERHEAD > (1n << 48n) - 1n ||
-  MAX_REFUND_AMOUNT > (1n << 96n) - 1n
+  MAX_REFUND_AMOUNT > (1n << 96n) - 1n ||
+  CROSS_CHAIN_SOURCE_AMOUNT > (1n << 96n) - 1n ||
+  CROSS_CHAIN_TARGET_AMOUNT > (1n << 96n) - 1n
 ) {
-  throw new Error("HCA refund limits exceed the validator field widths");
+  throw new Error("HCA session limits exceed the validator field widths");
 }
 
 type Deployment = { address: Address };
+type ForgeArtifact = { bytecode: { object: Hex } };
 type Call = { to: Address; value: bigint; data: Hex };
+type HcaDeployments = {
+  verifiableFactory: Address;
+  permissionedResolverImpl: Address;
+  ethRegistrar: Address;
+  ethRegistry: Address;
+  paymentToken: Address;
+  standaloneHcaFactory: Address;
+  standaloneHcaImplementation: Address;
+  validator: Address;
+  defaultReverseRegistrarAdapter: Address;
+  universalResolver: Address;
+  v1Registry: Address;
+  defaultReverseRegistrar: Address;
+  intentExecutor: Address;
+  gasRefundPaymaster: Address;
+};
 type SameChainWalletFunding = {
   calls: Call[];
   paymentToken: Address;
@@ -247,6 +317,13 @@ type SameChainWalletFunding = {
   provisioningTransactionHash?: Hex;
   provisioningGasUsed: bigint;
   permitSignatureCount: number;
+};
+
+type LiveSessionEnableData = {
+  userSignature: Hex;
+  hashesAndChainIds: { chainId: bigint; sessionDigest: Hex }[];
+  sessionToEnableIndex: number;
+  hcaSessionNonce?: bigint;
 };
 
 function asPrivateKey(value: string): Hex {
@@ -307,6 +384,14 @@ function deployment(name: string, network = DEPLOYMENT_NETWORK): Address {
     "utf8",
   );
   return (JSON.parse(raw) as Deployment).address;
+}
+
+function forgeBytecode(name: string): Hex {
+  const raw = readFileSync(
+    new URL(`../out/${name}.sol/${name}.json`, import.meta.url),
+    "utf8",
+  );
+  return (JSON.parse(raw) as ForgeArtifact).bytecode.object;
 }
 
 function deploymentFromEnv(
@@ -420,10 +505,99 @@ function assertAddress(name: string, actual: Address, expected: Address) {
   }
 }
 
-async function assertCode(name: string, address: Address) {
-  const code = await publicClient.getCode({ address });
-  if (!code || code === "0x")
-    throw new Error(`${name} has no code at ${address}`);
+function assertFundingValidatorSetup(
+  account: RhinestoneAccount,
+  validator: Address,
+  expectedInitData: Hex,
+) {
+  const init = account.getInitData();
+  assertAddress("source Nexus factory", init.factory, NEXUS_FACTORY);
+
+  const factoryCall = decodeFunctionData({
+    abi: NEXUS_FACTORY_ABI,
+    data: init.factoryData,
+  });
+  const [, bootstrapData] = decodeAbiParameters(
+    [{ type: "address" }, { type: "bytes" }],
+    factoryCall.args[0],
+  );
+  const bootstrapCall = decodeFunctionData({
+    abi: NEXUS_BOOTSTRAP_ABI,
+    data: bootstrapData,
+  });
+  const matches = bootstrapCall.args[1].filter(
+    ({ module }) => module.toLowerCase() === validator.toLowerCase(),
+  );
+  if (
+    matches.length !== 1 ||
+    matches[0].initData.toLowerCase() !== expectedInitData.toLowerCase()
+  ) {
+    throw new Error("source Nexus funding-validator setup data mismatch");
+  }
+}
+
+async function assertCode(
+  name: string,
+  address: Address,
+  client: PublicClient = publicClient,
+) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const code = await client.getCode({ address });
+    if (code && code !== "0x") return;
+    if (attempt < 9) await Bun.sleep(1_000);
+  }
+  throw new Error(`${name} has no code at ${address}`);
+}
+
+async function ensureFundingSessionValidator() {
+  if (!HCA_CROSS_CHAIN || !HCA_DEFER_CROSS_CHAIN_FUNDING) {
+    return undefined;
+  }
+
+  let address = HCA_FUNDING_SESSION_VALIDATOR;
+  let deploymentTransactionHash: Hex | undefined;
+  if (!address) {
+    deploymentTransactionHash =
+      await sourceProvisionerWalletClient!.deployContract({
+        abi: HCAFundingSessionValidator.abi,
+        bytecode: forgeBytecode("HCAFundingSessionValidator"),
+        args: [RHINESTONE_INTENT_EXECUTOR, PERMIT2],
+      });
+    const receipt = await sourcePublicClient!.waitForTransactionReceipt({
+      hash: deploymentTransactionHash,
+    });
+    if (receipt.status !== "success" || !receipt.contractAddress) {
+      throw new Error(
+        `funding-session validator deployment reverted: ${deploymentTransactionHash}`,
+      );
+    }
+    address = receipt.contractAddress;
+  }
+
+  await assertCode(
+    "HCA funding-session validator",
+    address,
+    sourcePublicClient! as unknown as PublicClient,
+  );
+  const [intentExecutor, permit2] = await Promise.all([
+    sourcePublicClient!.readContract({
+      address,
+      abi: HCAFundingSessionValidator.abi,
+      functionName: "INTENT_EXECUTOR",
+    }),
+    sourcePublicClient!.readContract({
+      address,
+      abi: HCAFundingSessionValidator.abi,
+      functionName: "PERMIT2",
+    }),
+  ]);
+  assertAddress(
+    "funding-session validator IntentExecutor",
+    intentExecutor,
+    RHINESTONE_INTENT_EXECUTOR,
+  );
+  assertAddress("funding-session validator Permit2", permit2, PERMIT2);
+  return { address, deploymentTransactionHash };
 }
 
 function ethReverseName(address: Address) {
@@ -496,8 +670,8 @@ async function main() {
     ethRegistry: deployment("ETHRegistry"),
     paymentToken: deploymentFromEnv("HCA_TEST_PAYMENT_TOKEN", ["MockUSDC"]),
     standaloneHcaFactory: deploymentFromEnv(
-      ["HCA_STANDALONE_HCA_FACTORY", "HCA_STANDALONE_HCA_DEPLOYER"],
-      ["StandaloneHCAFactory", "StandaloneHCADeployer"],
+      "HCA_STANDALONE_HCA_FACTORY",
+      ["StandaloneHCAFactory"],
       HCA_DEPLOYMENT_NETWORK,
     ),
     standaloneHcaImplementation: deploymentFromEnv(
@@ -506,8 +680,8 @@ async function main() {
       HCA_DEPLOYMENT_NETWORK,
     ),
     validator: deploymentFromEnv(
-      ["HCA_OWNER_AND_SESSION_VALIDATOR", "HCA_SESSION_VALIDATOR"],
-      ["HCAOwnerAndSessionValidator", "OwnerBoundRegistrationSessionValidator"],
+      "HCA_OWNER_AND_SESSION_VALIDATOR",
+      ["HCAOwnerAndSessionValidator"],
       HCA_DEPLOYMENT_NETWORK,
     ),
     defaultReverseRegistrarAdapter: deploymentFromEnv(
@@ -687,7 +861,7 @@ async function main() {
     proxyLogic,
     userSalt: HCA_USER_SALT,
   };
-  let hcaOwnerSignatureCount = 0;
+  let hcaOwnerSignatureCount = HCA_RESUME_DEFERRED ? 1 : 0;
   const trackedHcaOwner = {
     ...owner,
     signTypedData: (async (parameters: unknown) => {
@@ -707,7 +881,7 @@ async function main() {
       module: deployments.validator,
     },
   };
-  let sourceWalletSignatureCount = 0;
+  let sourceWalletSignatureCount = HCA_RESUME_DEFERRED ? 1 : 0;
   const countSourceWalletSignature = () => {
     sourceWalletSignatureCount += 1;
   };
@@ -724,25 +898,22 @@ async function main() {
     signTypedData: trackedSignTypedData,
     signMessage: trackedSignMessage,
   };
-  const sourceAccount = HCA_CROSS_CHAIN
-    ? await sdk.createAccount({
-        ...(HCA_CROSS_CHAIN_SOURCE === "eoa"
-          ? { account: { type: "eoa" as const }, eoa: trackedSourceOwner }
-          : {
-              account: { type: "nexus" as const },
-              owners: {
-                type: "ecdsa" as const,
-                accounts: [trackedSourceOwner],
-              },
-            }),
-      })
-    : undefined;
   const candidateAccount = await sdk.createAccount(baseAccountConfig);
   const hca = candidateAccount.getAddress();
   const codeBefore = await publicClient.getCode({ address: hca });
   const initiallyDeployed = Boolean(codeBefore && codeBefore !== "0x");
-  if (HCA_USER_PAID_USDC && initiallyDeployed) {
+  if (HCA_USER_PAID_USDC && initiallyDeployed && !HCA_RESUME_DEFERRED) {
     throw new Error("USDC-only proof requires a fresh destination HCA");
+  }
+  if (
+    HCA_RESUME_DEFERRED &&
+    (!HCA_MULTI_CHAIN_SESSION_SIGNATURE ||
+      size(HCA_MULTI_CHAIN_SESSION_SIGNATURE) !== 85 ||
+      !HCA_MULTI_CHAIN_SESSION_SIGNATURE.toLowerCase().startsWith(zeroAddress))
+  ) {
+    throw new Error(
+      "HCA_MULTI_CHAIN_SESSION_SIGNATURE must contain the authorization used by the committed route",
+    );
   }
   if (
     (HCA_EXPECT_INITIAL_STATE === "new" && initiallyDeployed) ||
@@ -754,12 +925,6 @@ async function main() {
   }
   if (initiallyDeployed) await verifyHca(hca, deployments, owner.address);
 
-  const firstAccount = initiallyDeployed
-    ? await sdk.createAccount({
-        ...baseAccountConfig,
-        initData: { address: hca },
-      })
-    : candidateAccount;
   const resolverSalt = ownedResolverSalt(hca);
   const resolver = verifiableProxyAddress({
     factory: deployments.verifiableFactory,
@@ -767,19 +932,248 @@ async function main() {
     deployer: hca,
     salt: resolverSalt,
   });
+  const latestBlock = await publicClient.getBlock();
+  const validUntil = process.env.HCA_SESSION_VALID_UNTIL
+    ? BigInt(process.env.HCA_SESSION_VALID_UNTIL)
+    : latestBlock.timestamp + SESSION_DURATION;
+  const hcaSessionNonce = initiallyDeployed
+    ? (
+        await publicClient.readContract({
+          address: hca,
+          abi: StandaloneSingleOwnerHCA.abi,
+          functionName: "ownerAndSessionNonce",
+        })
+      )[1]
+    : 0n;
+  const sessionSalt = keccak256(
+    encodeAbiParameters(
+      [
+        { type: "uint96" },
+        { type: "uint48" },
+        { type: "address" },
+        { type: "address" },
+        { type: "uint96" },
+        { type: "uint48" },
+        { type: "uint96" },
+      ],
+      [
+        hcaSessionNonce,
+        Number(validUntil),
+        resolver,
+        deployments.paymentToken,
+        MAX_REFUND_EXCHANGE_RATE,
+        Number(MAX_REFUND_GAS_OVERHEAD),
+        MAX_REFUND_AMOUNT,
+      ],
+    ),
+  );
+  const sessionConfig: Session = {
+    chain: sepolia,
+    account: hca,
+    salt: sessionSalt,
+    owners: { type: "ecdsa", accounts: [session] },
+  };
+  const permissionId = getPermissionId(sessionConfig);
+  const fundingValidatorDeployment = await ensureFundingSessionValidator();
+
+  let sourceSession: Session | undefined;
+  let sourcePermissionId: Hex | undefined;
+  let sourceEnableData:
+    | {
+        userSignature: Hex;
+        hashesAndChainIds: { chainId: bigint; sessionDigest: Hex }[];
+        sessionToEnableIndex: number;
+      }
+    | undefined;
+  let destinationEnableData:
+    | {
+        userSignature: Hex;
+        hashesAndChainIds: { chainId: bigint; sessionDigest: Hex }[];
+        sessionToEnableIndex: number;
+        hcaSessionNonce: bigint;
+      }
+    | undefined;
+  let sourceAccount: RhinestoneAccount | undefined;
+  if (HCA_CROSS_CHAIN) {
+    if (HCA_CROSS_CHAIN_SOURCE === "eoa") {
+      sourceAccount = await sdk.createAccount({
+        account: { type: "eoa" },
+        eoa: trackedSourceOwner,
+      });
+    } else if (HCA_DEFER_CROSS_CHAIN_FUNDING) {
+      if (!fundingValidatorDeployment) {
+        throw new Error("deferred funding requires its fixed source validator");
+      }
+      const sourceSessionSalt = keccak256(
+        encodeAbiParameters(
+          [
+            { type: "address" },
+            { type: "uint48" },
+            { type: "address" },
+            { type: "address" },
+            { type: "address" },
+            { type: "address" },
+            { type: "uint64" },
+            { type: "uint96" },
+            { type: "uint96" },
+          ],
+          [
+            owner.address,
+            Number(validUntil),
+            SOURCE_PAYMENT_TOKEN,
+            hca,
+            deployments.paymentToken,
+            RHINESTONE_ACROSS_ARBITER,
+            BigInt(sepolia.id),
+            CROSS_CHAIN_SOURCE_AMOUNT,
+            CROSS_CHAIN_TARGET_AMOUNT,
+          ],
+        ),
+      );
+      const sourceSessionWithoutAccount: Session = {
+        chain: sourceChain,
+        salt: sourceSessionSalt,
+        owners: { type: "ecdsa", accounts: [session] },
+      };
+      sourcePermissionId = getPermissionId(sourceSessionWithoutAccount);
+      if (sourcePermissionId === permissionId) {
+        throw new Error(
+          "source and destination sessions must use distinct policy salts",
+        );
+      }
+      const fundingValidatorInitData = encodeAbiParameters(
+        [
+          {
+            type: "tuple",
+            components: [
+              { name: "permissionId", type: "bytes32" },
+              { name: "owner", type: "address" },
+              { name: "validUntil", type: "uint48" },
+              { name: "sessionKey", type: "address" },
+              { name: "sourceToken", type: "address" },
+              { name: "destinationRecipient", type: "address" },
+              { name: "destinationToken", type: "address" },
+              { name: "arbiter", type: "address" },
+              { name: "destinationChainId", type: "uint64" },
+              { name: "maxSourceAmount", type: "uint96" },
+              { name: "maxDestinationAmount", type: "uint96" },
+            ],
+          },
+        ],
+        [
+          {
+            permissionId: sourcePermissionId,
+            owner: owner.address,
+            validUntil: Number(validUntil),
+            sessionKey: session.address,
+            sourceToken: SOURCE_PAYMENT_TOKEN,
+            destinationRecipient: hca,
+            destinationToken: deployments.paymentToken,
+            arbiter: RHINESTONE_ACROSS_ARBITER,
+            destinationChainId: BigInt(sepolia.id),
+            maxSourceAmount: CROSS_CHAIN_SOURCE_AMOUNT,
+            maxDestinationAmount: CROSS_CHAIN_TARGET_AMOUNT,
+          },
+        ],
+      );
+      sourceAccount = await sdk.createAccount({
+        account: { type: "nexus" },
+        owners: {
+          type: "ecdsa",
+          accounts: [trackedSourceOwner],
+        },
+        experimental_sessions: {
+          enabled: true,
+          module: fundingValidatorDeployment.address,
+          initData: fundingValidatorInitData,
+        },
+      });
+      assertFundingValidatorSetup(
+        sourceAccount,
+        fundingValidatorDeployment.address,
+        fundingValidatorInitData,
+      );
+      const sourceAddress = sourceAccount.getAddress();
+      sourceSession = {
+        ...sourceSessionWithoutAccount,
+        account: sourceAddress,
+      };
+
+      const sessionDetails =
+        await candidateAccount.experimental_getSessionDetails([
+          sessionConfig,
+          sourceSession!,
+        ]);
+      const authorizedAccounts =
+        sessionDetails.data.message.sessionsAndChainIds.map(
+          ({ session: signedSession }) => signedSession.account.toLowerCase(),
+        );
+      if (
+        sessionDetails.nonces.some((nonce) => nonce !== 0n) ||
+        authorizedAccounts[0] !== hca.toLowerCase() ||
+        authorizedAccounts[1] !== sourceAccount.getAddress().toLowerCase()
+      ) {
+        throw new Error(
+          "multi-chain session authorization does not bind the HCA and source Nexus",
+        );
+      }
+      const multiChainSignature = HCA_RESUME_DEFERRED
+        ? HCA_MULTI_CHAIN_SESSION_SIGNATURE!
+        : await candidateAccount.experimental_signEnableSession(sessionDetails);
+      if (
+        hcaOwnerSignatureCount !== 1 ||
+        sourceWalletSignatureCount !== (HCA_RESUME_DEFERRED ? 1 : 0)
+      ) {
+        throw new Error(
+          "multi-chain session authorization used the wrong wallet signer",
+        );
+      }
+      destinationEnableData = {
+        userSignature: multiChainSignature,
+        hashesAndChainIds: sessionDetails.hashesAndChainIds,
+        sessionToEnableIndex: 0,
+        hcaSessionNonce,
+      };
+      sourceEnableData = {
+        userSignature: multiChainSignature,
+        hashesAndChainIds: sessionDetails.hashesAndChainIds,
+        sessionToEnableIndex: 1,
+      };
+    } else {
+      sourceAccount = await sdk.createAccount({
+        account: { type: "nexus" },
+        owners: {
+          type: "ecdsa",
+          accounts: [trackedSourceOwner],
+        },
+      });
+    }
+  }
+
+  const firstAccount = initiallyDeployed
+    ? await sdk.createAccount({
+        ...baseAccountConfig,
+        initData: { address: hca },
+      })
+    : candidateAccount;
 
   const runId = Date.now().toString(36).toLowerCase();
   const labels = process.env.HCA_LABELS?.split(",") ?? [
     `hca${runId}a`,
     `hca${runId}b`,
   ];
-  const secrets: [Hex, Hex] = [generatePrivateKey(), generatePrivateKey()];
+  const configuredSecrets = process.env.HCA_SECRETS?.split(",");
+  const secrets: [Hex, Hex] = configuredSecrets
+    ? (configuredSecrets as [Hex, Hex])
+    : [generatePrivateKey(), generatePrivateKey()];
   if (
     labels.length !== 2 ||
-    labels.some((label) => !/^[a-z0-9-]+$/.test(label))
+    labels.some((label) => !/^[a-z0-9-]+$/.test(label)) ||
+    secrets.length !== 2 ||
+    secrets.some((secret) => !/^0x[0-9a-fA-F]{64}$/.test(secret))
   ) {
     throw new Error(
-      "HCA_LABELS must contain two comma-separated DNS-safe labels",
+      "HCA_LABELS and HCA_SECRETS must contain two valid comma-separated values",
     );
   }
   await Promise.all(
@@ -820,13 +1214,6 @@ async function main() {
         paymentToken: deployments.paymentToken,
       });
 
-  const latestBlock = await publicClient.getBlock();
-  const sessionConfig: Session = {
-    chain: sepolia,
-    owners: { type: "ecdsa", accounts: [session] },
-  };
-  const permissionId = getPermissionId(sessionConfig);
-  const validUntil = latestBlock.timestamp + SESSION_DURATION;
   const sessionEnabled =
     await firstAccount.experimental_isSessionEnabled(sessionConfig);
 
@@ -843,6 +1230,33 @@ async function main() {
   );
 
   if (HCA_CROSS_CHAIN) {
+    if (HCA_DEFER_CROSS_CHAIN_FUNDING) {
+      await runDeferredCrossChainRegistration({
+        sdk,
+        sourceAccount: sourceAccount!,
+        destinationAccount: firstAccount,
+        deployments,
+        hca,
+        resolver,
+        resolverSalt,
+        label: labels[0]!,
+        secret: secrets[0],
+        price: prices[0],
+        commitment: commitments[0],
+        destinationSession: sessionConfig,
+        destinationPermissionId: permissionId,
+        validUntil,
+        initiallyDeployed,
+        sourceWalletSignatureCount: () => sourceWalletSignatureCount,
+        hcaOwnerSignatureCount: () => hcaOwnerSignatureCount,
+        recordSourceWalletSignature: countSourceWalletSignature,
+        sourceSession: sourceSession!,
+        sourcePermissionId: sourcePermissionId!,
+        sourceEnableData: sourceEnableData!,
+        destinationEnableData: destinationEnableData!,
+      });
+      return;
+    }
     const preparation = HCA_USER_PAID_USDC
       ? undefined
       : HCA_DRY_RUN_ONLY
@@ -2114,6 +2528,637 @@ async function fundCrossChainSourceAccount({
   };
 }
 
+async function runDeferredCrossChainRegistration({
+  sdk,
+  sourceAccount,
+  destinationAccount,
+  deployments,
+  hca,
+  resolver,
+  resolverSalt,
+  label,
+  secret,
+  price,
+  commitment,
+  destinationSession,
+  destinationPermissionId,
+  validUntil,
+  initiallyDeployed,
+  sourceWalletSignatureCount,
+  hcaOwnerSignatureCount,
+  recordSourceWalletSignature,
+  sourceSession,
+  sourcePermissionId,
+  sourceEnableData,
+  destinationEnableData,
+}: {
+  sdk: RhinestoneSDK;
+  sourceAccount: RhinestoneAccount;
+  destinationAccount: RhinestoneAccount;
+  deployments: HcaDeployments;
+  hca: Address;
+  resolver: Address;
+  resolverSalt: bigint;
+  label: string;
+  secret: Hex;
+  price: bigint;
+  commitment: Hex;
+  destinationSession: Session;
+  destinationPermissionId: Hex;
+  validUntil: bigint;
+  initiallyDeployed: boolean;
+  sourceWalletSignatureCount: () => number;
+  hcaOwnerSignatureCount: () => number;
+  recordSourceWalletSignature: () => void;
+  sourceSession: Session;
+  sourcePermissionId: Hex;
+  sourceEnableData: LiveSessionEnableData;
+  destinationEnableData: LiveSessionEnableData;
+}) {
+  if (initiallyDeployed !== HCA_RESUME_DEFERRED) {
+    throw new Error("deferred-funding proof requires a fresh destination HCA");
+  }
+  if (CROSS_CHAIN_COMMIT_TARGET_AMOUNT >= price) {
+    throw new Error(
+      "the commit delivery must not cover the registration price",
+    );
+  }
+
+  const sourceAddress = sourceAccount.getAddress();
+  const funding = HCA_RESUME_DEFERRED
+    ? await resumeDeferredSourceFunding({
+        sourceAddress,
+        totalAmount: CROSS_CHAIN_SOURCE_AMOUNT,
+      })
+    : await prepareDeferredSourceFunding({
+        sourceAddress,
+        totalAmount: CROSS_CHAIN_SOURCE_AMOUNT,
+        commitAmount: CROSS_CHAIN_COMMIT_SOURCE_AMOUNT,
+        validUntil,
+        recordWalletSignature: recordSourceWalletSignature,
+      });
+
+  let firstRoute:
+    | Awaited<ReturnType<typeof executeSessionCrossChainRegistration>>
+    | {
+        phase: string;
+        resumed: true;
+        sourcePullAmount: bigint;
+        sourceSignedBySession: true;
+        destinationSignedBySession: true;
+        walletSignatures: 0;
+      };
+  if (HCA_RESUME_DEFERRED) {
+    firstRoute = {
+      phase: "deferred-funding deploy and commit",
+      resumed: true,
+      sourcePullAmount: funding.pulledAtCommit,
+      sourceSignedBySession: true,
+      destinationSignedBySession: true,
+      walletSignatures: 0,
+    };
+  } else {
+    const firstCalls: Call[] = [
+      {
+        to: deployments.validator,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: HCAOwnerAndSessionValidator.abi,
+          functionName: "enableSessionWithRefund",
+          args: [
+            destinationPermissionId,
+            session.address,
+            Number(validUntil),
+            resolver,
+            deployments.paymentToken,
+            MAX_REFUND_EXCHANGE_RATE,
+            Number(MAX_REFUND_GAS_OVERHEAD),
+            MAX_REFUND_AMOUNT,
+          ],
+        }),
+      },
+      {
+        to: deployments.ethRegistrar,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: ETHRegistrar.abi,
+          functionName: "commit",
+          args: [commitment],
+        }),
+      },
+    ];
+    firstRoute = await executeSessionCrossChainRegistration({
+      account: sourceAccount,
+      recipient: destinationAccount.config,
+      calls: firstCalls,
+      sourceAmount: CROSS_CHAIN_COMMIT_SOURCE_AMOUNT,
+      sourceCalls: funding.commitCalls,
+      expectedSourcePull: CROSS_CHAIN_COMMIT_SOURCE_AMOUNT,
+      targetAmount: CROSS_CHAIN_COMMIT_TARGET_AMOUNT,
+      signers: {
+        type: "experimental_session",
+        sessions: {
+          [sourceChain.id]: {
+            session: sourceSession,
+            enableData: sourceEnableData,
+            verifyExecutions: false,
+          },
+          [sepolia.id]: {
+            session: destinationSession,
+            enableData: destinationEnableData,
+            verifyExecutions: true,
+          },
+        },
+        verifyExecutions: true,
+      },
+      sourcePermissionId,
+      destinationPermissionId,
+      expectedDestinationSessionMode: "04",
+      expectedSourceSetupOps: 1,
+      expectedRecipientSetupOps: 1,
+      sourceWalletSignatureCount,
+      hcaOwnerSignatureCount,
+      phase: "deferred-funding deploy and commit",
+    });
+  }
+  if (HCA_DRY_RUN_ONLY && !HCA_RESUME_DEFERRED) {
+    console.log(
+      JSON.stringify(
+        {
+          flow: "cross-chain deferred registration funding commit dry run",
+          owner: owner.address,
+          sourceNexus: sourceAddress,
+          hca,
+          walletInteractions: {
+            eip2612PermitSignatures: 1,
+            multiChainSessionSignatures: 1,
+            permit2OwnerSignatures: 0,
+            walletTransactions: 0,
+            total: 2,
+          },
+          registrationFundsAvailableAtCommit: false,
+          route: firstRoute,
+        },
+        jsonReplacer,
+        2,
+      ),
+    );
+    return;
+  }
+
+  await verifyHca(hca, deployments, owner.address);
+  const sourceSessionAccount = await sdk.createAccount({
+    ...sourceAccount.config,
+    initData: { address: sourceAddress },
+  });
+  const destinationSessionAccount = await sdk.createAccount({
+    ...destinationAccount.config,
+    initData: { address: hca },
+  });
+  const sourceValidator = sourceAccount.config.experimental_sessions?.module;
+  if (!sourceValidator) {
+    throw new Error("source account has no fixed funding validator");
+  }
+  const sourcePolicyEnabled = await sourcePublicClient!.readContract({
+    address: sourceValidator,
+    abi: HCAFundingSessionValidator.abi,
+    functionName: "isInitialized",
+    args: [sourceAddress],
+  });
+  const destinationSessionEnabled =
+    await destinationSessionAccount.experimental_isSessionEnabled(
+      destinationSession,
+    );
+  if (!sourcePolicyEnabled || !destinationSessionEnabled) {
+    throw new Error(
+      "the commit route did not install the source policy and enable the HCA session",
+    );
+  }
+
+  const afterCommit = await readDeferredFundingState({
+    sourceAddress,
+    hca,
+    deployments,
+  });
+  const pulledAtCommit = firstRoute.sourcePullAmount;
+  const revealSourceBudget = CROSS_CHAIN_SOURCE_AMOUNT - pulledAtCommit;
+  if (
+    afterCommit.walletTokenBalance !==
+      funding.walletTokenBalanceBefore - pulledAtCommit ||
+    afterCommit.walletToNexusAllowance !== revealSourceBudget ||
+    afterCommit.sourceTokenBalance !== 0n ||
+    afterCommit.hcaTokenBalance !== CROSS_CHAIN_COMMIT_TARGET_AMOUNT ||
+    afterCommit.hcaTokenBalance >= price ||
+    afterCommit.walletNativeBalance !== 0n ||
+    afterCommit.walletTransactionCount !== 0
+  ) {
+    throw new Error(
+      "commit route did not charge only its own cost and leave the registration funds in the wallet",
+    );
+  }
+  if (
+    !HCA_RESUME_DEFERRED &&
+    afterCommit.permitNonce !== funding.permitNonceBefore + 1n
+  ) {
+    throw new Error("commit route did not consume the EIP-2612 permit nonce");
+  }
+
+  await waitForCommitment(commitment, deployments.ethRegistrar);
+  const refreshedPrice = await registrationPrice(label, deployments);
+  if (CROSS_CHAIN_TARGET_AMOUNT <= refreshedPrice) {
+    throw new Error(
+      `reveal target ${CROSS_CHAIN_TARGET_AMOUNT} does not cover registration price ${refreshedPrice}`,
+    );
+  }
+  const revealCalls = await registrationCalls({
+    label,
+    price: refreshedPrice,
+    hca,
+    resolver,
+    resolverSalt,
+    secret,
+    deployments,
+  });
+  const revealRoute = await executeSessionCrossChainRegistration({
+    account: sourceSessionAccount,
+    recipient: destinationSessionAccount.config,
+    calls: revealCalls,
+    sourceCalls: funding.revealCalls,
+    sourceAmount: revealSourceBudget,
+    expectedSourcePull: revealSourceBudget,
+    targetAmount: CROSS_CHAIN_TARGET_AMOUNT,
+    signers: {
+      type: "experimental_session",
+      sessions: {
+        [sourceChain.id]: {
+          session: sourceSession,
+          enableData: sourceEnableData,
+          verifyExecutions: false,
+        },
+        [sepolia.id]: {
+          session: destinationSession,
+          verifyExecutions: true,
+        },
+      },
+      verifyExecutions: true,
+    },
+    sourcePermissionId,
+    destinationPermissionId,
+    expectedDestinationSessionMode: "03",
+    expectedSourceSetupOps: 0,
+    expectedRecipientSetupOps: 0,
+    sourceWalletSignatureCount,
+    hcaOwnerSignatureCount,
+    phase: "deferred-funding reveal",
+  });
+  if (HCA_DRY_RUN_ONLY) {
+    console.log(
+      JSON.stringify(
+        {
+          flow: "cross-chain deferred registration funding reveal dry run",
+          owner: owner.address,
+          sourceNexus: sourceAddress,
+          hca,
+          walletInteractions: {
+            eip2612PermitSignatures: 1,
+            multiChainSessionSignatures: 1,
+            permit2OwnerSignatures: 0,
+            walletTransactions: 0,
+            postCommitWalletInteractions: 0,
+            total: 2,
+          },
+          registrationFundsPulledAtCommit: false,
+          funds: {
+            pulledAtCommit,
+            leftInWalletAfterCommit: afterCommit.walletTokenBalance,
+            permitAllowanceAfterCommit: afterCommit.walletToNexusAllowance,
+          },
+          route: revealRoute,
+        },
+        jsonReplacer,
+        2,
+      ),
+    );
+    return;
+  }
+
+  const afterReveal = await readDeferredFundingState({
+    sourceAddress,
+    hca,
+    deployments,
+  });
+  const pulledAtReveal = revealRoute.sourcePullAmount;
+  const totalPulled = pulledAtCommit + pulledAtReveal;
+  if (
+    afterReveal.walletTokenBalance !==
+      funding.walletTokenBalanceBefore - totalPulled ||
+    afterReveal.walletToNexusAllowance !==
+      CROSS_CHAIN_SOURCE_AMOUNT - totalPulled ||
+    afterReveal.sourceTokenBalance !== 0n ||
+    afterReveal.walletNativeBalance !== 0n ||
+    afterReveal.walletTransactionCount !== 0
+  ) {
+    throw new Error("reveal route did not pull only its quoted cost");
+  }
+  if (sourceWalletSignatureCount() !== 1 || hcaOwnerSignatureCount() !== 1) {
+    throw new Error("session reveal requested another wallet signature");
+  }
+  const verified = await verifyRegistration(
+    label,
+    hca,
+    resolver,
+    deployments,
+    owner.address,
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        flow: "cross-chain deferred registration funding",
+        name: `${label}.eth`,
+        owner: owner.address,
+        sourceNexus: sourceAddress,
+        hca,
+        walletInteractions: {
+          eip2612PermitSignatures: 1,
+          multiChainSessionSignatures: 1,
+          permit2OwnerSignatures: 0,
+          walletTransactions: 0,
+          postCommitWalletInteractions: 0,
+          total: 2,
+        },
+        funds: {
+          totalPermit: CROSS_CHAIN_SOURCE_AMOUNT,
+          pulledAtCommit,
+          leftInWalletAfterCommit: afterCommit.walletTokenBalance,
+          permitAllowanceAfterCommit: afterCommit.walletToNexusAllowance,
+          pulledAtReveal,
+          leftInWalletAfterReveal: afterReveal.walletTokenBalance,
+          permitAllowanceAfterReveal: afterReveal.walletToNexusAllowance,
+          deliveredAtCommit: CROSS_CHAIN_COMMIT_TARGET_AMOUNT,
+          deliveredAtReveal: CROSS_CHAIN_TARGET_AMOUNT,
+        },
+        sessions: {
+          sourcePermissionId,
+          destinationPermissionId,
+          sourcePolicyInstalledAtCommit: sourcePolicyEnabled,
+          destinationEnabledAtCommit: destinationSessionEnabled,
+        },
+        routes: { commit: firstRoute, reveal: revealRoute },
+        registrationPriceBeforeCommit: price,
+        registrationPriceAtReveal: refreshedPrice,
+        verified,
+      },
+      jsonReplacer,
+      2,
+    ),
+  );
+}
+
+async function prepareDeferredSourceFunding({
+  sourceAddress,
+  totalAmount,
+  commitAmount,
+  validUntil,
+  recordWalletSignature,
+}: {
+  sourceAddress: Address;
+  totalAmount: bigint;
+  commitAmount: bigint;
+  validUntil: bigint;
+  recordWalletSignature: () => void;
+}) {
+  let state = await readDeferredFundingState({ sourceAddress });
+  if (state.walletTokenBalance < totalAmount && HCA_WAIT_FOR_SOURCE_USDC) {
+    console.error(
+      JSON.stringify(
+        {
+          checkpoint: "source USDC required",
+          chain: sourceChain.name,
+          chainId: sourceChain.id,
+          token: SOURCE_PAYMENT_TOKEN,
+          address: owner.address,
+          required: totalAmount,
+        },
+        jsonReplacer,
+      ),
+    );
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      await Bun.sleep(5_000);
+      state = await readDeferredFundingState({ sourceAddress });
+      if (state.walletTokenBalance >= totalAmount) break;
+    }
+  }
+  if (state.walletTokenBalance < totalAmount) {
+    throw new Error(
+      `fresh source wallet has ${state.walletTokenBalance} USDC units; ${totalAmount} required`,
+    );
+  }
+  if (
+    state.walletNativeBalance !== 0n ||
+    state.walletTransactionCount !== 0 ||
+    state.sourceTokenBalance !== 0n ||
+    state.walletToNexusAllowance !== 0n
+  ) {
+    throw new Error(
+      "deferred-funding proof requires fresh wallet and Nexus state",
+    );
+  }
+
+  const permitDeadline = validUntil;
+  const domain = await eip2612Domain(
+    sourcePublicClient! as unknown as PublicClient,
+    SOURCE_PAYMENT_TOKEN,
+    sourceChain.id,
+  );
+  recordWalletSignature();
+  const permitSignature = await owner.signTypedData({
+    domain,
+    types: {
+      Permit: [
+        { name: "owner", type: "address" },
+        { name: "spender", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    },
+    primaryType: "Permit",
+    message: {
+      owner: owner.address,
+      spender: sourceAddress,
+      value: totalAmount,
+      nonce: state.permitNonce,
+      deadline: permitDeadline,
+    },
+  });
+  const { r, s, v, yParity } = parseSignature(permitSignature);
+  const permitV = Number(v ?? BigInt(27 + (yParity ?? 0)));
+  const permitArgs = [
+    owner.address,
+    sourceAddress,
+    totalAmount,
+    permitDeadline,
+    permitV,
+    r,
+    s,
+  ] as const;
+
+  return {
+    walletTokenBalanceBefore: state.walletTokenBalance,
+    permitNonceBefore: state.permitNonce,
+    pulledAtCommit: 0n,
+    commitCalls: [
+      {
+        to: SOURCE_PAYMENT_TOKEN,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: MockERC20.abi,
+          functionName: "permit",
+          args: permitArgs,
+        }),
+      },
+      {
+        to: SOURCE_PAYMENT_TOKEN,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: MockERC20.abi,
+          functionName: "transferFrom",
+          args: [owner.address, sourceAddress, commitAmount],
+        }),
+      },
+    ] satisfies CallInput[],
+    revealCalls: [
+      {
+        to: SOURCE_PAYMENT_TOKEN,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: MockERC20.abi,
+          functionName: "transferFrom",
+          args: [owner.address, sourceAddress, totalAmount - commitAmount],
+        }),
+      },
+    ] satisfies CallInput[],
+  };
+}
+
+async function resumeDeferredSourceFunding({
+  sourceAddress,
+  totalAmount,
+}: {
+  sourceAddress: Address;
+  totalAmount: bigint;
+}) {
+  const state = await readDeferredFundingState({ sourceAddress });
+  const pulledAtCommit = totalAmount - state.walletToNexusAllowance;
+  if (
+    pulledAtCommit <= 0n ||
+    state.walletToNexusAllowance <= 0n ||
+    state.walletTokenBalance !== state.walletToNexusAllowance ||
+    state.sourceTokenBalance !== 0n ||
+    state.walletNativeBalance !== 0n ||
+    state.walletTransactionCount !== 0 ||
+    state.permitNonce === 0n
+  ) {
+    throw new Error(
+      `deferred-funding resume state is invalid: ${JSON.stringify(
+        { sourceAddress, ...state },
+        jsonReplacer,
+      )}`,
+    );
+  }
+  return {
+    walletTokenBalanceBefore: state.walletTokenBalance + pulledAtCommit,
+    permitNonceBefore: state.permitNonce - 1n,
+    pulledAtCommit,
+    commitCalls: [] satisfies CallInput[],
+    revealCalls: [
+      {
+        to: SOURCE_PAYMENT_TOKEN,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: MockERC20.abi,
+          functionName: "approve",
+          args: [PERMIT2, (1n << 256n) - 1n],
+        }),
+      },
+      {
+        to: SOURCE_PAYMENT_TOKEN,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: MockERC20.abi,
+          functionName: "transferFrom",
+          args: [owner.address, sourceAddress, state.walletToNexusAllowance],
+        }),
+      },
+    ] satisfies CallInput[],
+  };
+}
+
+async function readDeferredFundingState({
+  sourceAddress,
+  hca,
+  deployments,
+}: {
+  sourceAddress: Address;
+  hca?: Address;
+  deployments?: HcaDeployments;
+}) {
+  const [
+    walletNativeBalance,
+    walletTransactionCount,
+    walletTokenBalance,
+    sourceTokenBalance,
+    walletToNexusAllowance,
+    permitNonce,
+    hcaTokenBalance,
+  ] = await Promise.all([
+    sourcePublicClient!.getBalance({ address: owner.address }),
+    sourcePublicClient!.getTransactionCount({ address: owner.address }),
+    sourcePublicClient!.readContract({
+      address: SOURCE_PAYMENT_TOKEN,
+      abi: MockERC20.abi,
+      functionName: "balanceOf",
+      args: [owner.address],
+    }) as Promise<bigint>,
+    sourcePublicClient!.readContract({
+      address: SOURCE_PAYMENT_TOKEN,
+      abi: MockERC20.abi,
+      functionName: "balanceOf",
+      args: [sourceAddress],
+    }) as Promise<bigint>,
+    sourcePublicClient!.readContract({
+      address: SOURCE_PAYMENT_TOKEN,
+      abi: MockERC20.abi,
+      functionName: "allowance",
+      args: [owner.address, sourceAddress],
+    }) as Promise<bigint>,
+    sourcePublicClient!.readContract({
+      address: SOURCE_PAYMENT_TOKEN,
+      abi: MockERC20.abi,
+      functionName: "nonces",
+      args: [owner.address],
+    }) as Promise<bigint>,
+    hca && deployments
+      ? (publicClient.readContract({
+          address: deployments.paymentToken,
+          abi: MockERC20.abi,
+          functionName: "balanceOf",
+          args: [hca],
+        }) as Promise<bigint>)
+      : Promise.resolve(0n),
+  ]);
+  return {
+    walletNativeBalance,
+    walletTransactionCount,
+    walletTokenBalance,
+    sourceTokenBalance,
+    walletToNexusAllowance,
+    permitNonce,
+    hcaTokenBalance,
+  };
+}
+
 async function debugFillFailure(context: unknown) {
   type StateOverride = {
     address: Address;
@@ -2121,7 +3166,9 @@ async function debugFillFailure(context: unknown) {
     stateDiff?: { slot: Hex; value: Hex }[];
   };
   type FillSimulation = {
+    success?: boolean;
     action: string;
+    chainId?: number;
     call?: { to: Address; data: Hex; value: string };
     details?: {
       blockNumber: string;
@@ -2141,10 +3188,12 @@ async function debugFillFailure(context: unknown) {
 
   const simulations = (context as { simulations?: FillSimulation[] })
     .simulations;
-  const fill = simulations?.find(({ action }) => action === "fill");
-  if (!fill?.call || !fill.details) return undefined;
+  const simulation =
+    simulations?.find(({ success }) => success === false) ??
+    simulations?.find(({ action }) => action === "fill");
+  if (!simulation?.call || !simulation.details) return undefined;
   const stateOverrides = Object.fromEntries(
-    fill.details.stateOverride.map(({ address, balance, stateDiff }) => [
+    simulation.details.stateOverride.map(({ address, balance, stateDiff }) => [
       address,
       {
         ...(balance && { balance: `0x${BigInt(balance).toString(16)}` }),
@@ -2156,7 +3205,9 @@ async function debugFillFailure(context: unknown) {
       },
     ]),
   );
-  const response = await fetch(rpcUrl, {
+  const traceRpcUrl =
+    simulation.chainId === sourceChain.id ? SOURCE_RPC_URL! : rpcUrl;
+  const response = await fetch(traceRpcUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2165,12 +3216,12 @@ async function debugFillFailure(context: unknown) {
       method: "debug_traceCall",
       params: [
         {
-          from: fill.details.relayer,
-          to: fill.call.to,
-          data: fill.call.data,
-          value: `0x${BigInt(fill.call.value).toString(16)}`,
+          from: simulation.details.relayer,
+          to: simulation.call.to,
+          data: simulation.call.data,
+          value: `0x${BigInt(simulation.call.value).toString(16)}`,
         },
-        `0x${BigInt(fill.details.blockNumber).toString(16)}`,
+        `0x${BigInt(simulation.details.blockNumber).toString(16)}`,
         { tracer: "callTracer", stateOverrides },
       ],
     }),
@@ -2194,7 +3245,32 @@ async function debugFillFailure(context: unknown) {
     });
     node = node.calls?.find((call) => call.error || call.revertReason);
   }
-  return failurePath;
+  const validationCalls: Array<{
+    to?: Address;
+    selector?: string;
+    input?: string;
+    error?: string;
+    output?: string;
+  }> = [];
+  const inspect = (current: TraceNode) => {
+    const selector = current.input?.slice(0, 10);
+    if (
+      selector === "0x1626ba7e" ||
+      selector === "0xf551e2ee" ||
+      current.to?.toLowerCase() === HCA_FUNDING_SESSION_VALIDATOR?.toLowerCase()
+    ) {
+      validationCalls.push({
+        to: current.to,
+        selector,
+        input: current.input?.slice(0, 74),
+        error: current.error ?? current.revertReason,
+        output: current.output?.slice(0, 74),
+      });
+    }
+    current.calls?.forEach(inspect);
+  };
+  inspect(body.result);
+  return { failurePath, validationCalls };
 }
 
 async function executeCrossChainRegistration({
@@ -2212,13 +3288,15 @@ async function executeCrossChainRegistration({
   sourceType,
   signatureCount,
   phase,
+  targetAmount = CROSS_CHAIN_TARGET_AMOUNT,
+  expectedSourcePermitValue,
 }: {
   account: RhinestoneAccount;
   recipient: RhinestoneAccountConfig;
   recipientAddress: Address;
   calls: Call[];
   sourceAmount: bigint;
-  sourceCalls: Call[];
+  sourceCalls: CallInput[];
   expectedSourcePull?: {
     owner: Address;
     recipient: Address;
@@ -2231,6 +3309,8 @@ async function executeCrossChainRegistration({
   sourceType: "eoa" | "nexus";
   signatureCount: () => number;
   phase: string;
+  targetAmount?: bigint;
+  expectedSourcePermitValue?: bigint;
 }) {
   const transaction: Transaction = {
     sourceChains: [sourceChain],
@@ -2238,9 +3318,7 @@ async function executeCrossChainRegistration({
     recipient,
     calls,
     gasLimit: CROSS_CHAIN_DESTINATION_GAS,
-    tokenRequests: [
-      { address: SEPOLIA_USDC, amount: CROSS_CHAIN_TARGET_AMOUNT },
-    ],
+    tokenRequests: [{ address: SEPOLIA_USDC, amount: targetAmount }],
     sourceAssets: [
       {
         chain: sourceChain,
@@ -2373,7 +3451,8 @@ async function executeCrossChainRegistration({
             expectedSourcePull.owner.toLowerCase() &&
           decoded.args[1].toLowerCase() ===
             expectedSourcePull.recipient.toLowerCase() &&
-          decoded.args[2] === expectedSourcePull.amount
+          decoded.args[2] ===
+            (expectedSourcePermitValue ?? expectedSourcePull.amount)
         );
       } catch {
         return false;
@@ -2489,6 +3568,7 @@ async function executeCrossChainRegistration({
     destinationReusesPermit2Signature: true,
     sourcePullViaNexus: expectedSourcePull !== undefined,
     sourcePermitViaEip2612: expectedSourcePermit,
+    targetAmount,
     sourcePullAmount: expectedSourcePull?.amount ?? 0n,
     sourcePermit2Amount,
     using7579: true,
@@ -2525,8 +3605,10 @@ async function executeCrossChainRegistration({
     const trace = await debugFillFailure(context).catch((traceError) => ({
       traceError: String(traceError),
     }));
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(JSON.stringify({ simulationContext: context }, jsonReplacer));
     throw new Error(
-      `${phase}: submit simulation failed${traceId ? ` (${traceId})` : ""}${trace ? `: ${JSON.stringify(trace)}` : ""}`,
+      `${phase}: submit simulation failed${traceId ? ` (${traceId})` : ""}: ${message}${trace ? `: ${JSON.stringify(trace)}` : ""}`,
     );
   }
   const status = await account.waitForExecution(result, false);
@@ -2554,6 +3636,417 @@ async function executeCrossChainRegistration({
     intentId: result.id,
     claimTransactionHash: status.claims[0].hash,
     fillTransactionHash: status.fill.hash,
+    claimGasUsed: claimReceipt.gasUsed,
+    fillGasUsed: fillReceipt.gasUsed,
+    gasUsed: claimReceipt.gasUsed + fillReceipt.gasUsed,
+  };
+}
+
+async function executeSessionCrossChainRegistration({
+  account,
+  recipient,
+  calls,
+  sourceCalls,
+  sourceAmount,
+  expectedSourcePull,
+  targetAmount,
+  signers,
+  sourcePermissionId,
+  destinationPermissionId,
+  expectedDestinationSessionMode,
+  expectedSourceSetupOps,
+  expectedRecipientSetupOps,
+  sourceWalletSignatureCount,
+  hcaOwnerSignatureCount,
+  phase,
+}: {
+  account: RhinestoneAccount;
+  recipient: RhinestoneAccountConfig;
+  calls: Call[];
+  sourceCalls: CallInput[];
+  sourceAmount: bigint;
+  expectedSourcePull: bigint;
+  targetAmount: bigint;
+  signers: SignerSet;
+  sourcePermissionId: Hex;
+  destinationPermissionId: Hex;
+  expectedDestinationSessionMode: "03" | "04";
+  expectedSourceSetupOps: number;
+  expectedRecipientSetupOps: number;
+  sourceWalletSignatureCount: () => number;
+  hcaOwnerSignatureCount: () => number;
+  phase: string;
+}) {
+  if (sourceAmount !== expectedSourcePull) {
+    throw new Error(`${phase}: source budget and pull cap differ`);
+  }
+  const sourceAddress = account.getAddress();
+  const callsForPull = (pullAmount: bigint) => {
+    let pullCount = 0;
+    const adjusted = sourceCalls.map((call) => {
+      if (
+        !("to" in call) ||
+        !("data" in call) ||
+        !call.data ||
+        call.to.toLowerCase() !== SOURCE_PAYMENT_TOKEN.toLowerCase()
+      ) {
+        return call;
+      }
+      try {
+        const decoded = decodeFunctionData({
+          abi: MockERC20.abi,
+          data: call.data,
+        });
+        if (
+          decoded.functionName !== "transferFrom" ||
+          decoded.args[0].toLowerCase() !== owner.address.toLowerCase() ||
+          decoded.args[1].toLowerCase() !== sourceAddress.toLowerCase()
+        ) {
+          return call;
+        }
+        pullCount += 1;
+        return {
+          ...call,
+          data: encodeFunctionData({
+            abi: MockERC20.abi,
+            functionName: "transferFrom",
+            args: [owner.address, sourceAddress, pullAmount],
+          }),
+        };
+      } catch {
+        return call;
+      }
+    });
+    if (pullCount !== 1) {
+      throw new Error(`${phase}: expected one wallet-to-Nexus pull`);
+    }
+    return adjusted;
+  };
+  const transactionForPull = (pullAmount: bigint): Transaction => ({
+    sourceChains: [sourceChain],
+    targetChain: sepolia,
+    recipient,
+    calls,
+    gasLimit: CROSS_CHAIN_DESTINATION_GAS,
+    tokenRequests: [{ address: SEPOLIA_USDC, amount: targetAmount }],
+    sourceAssets: [
+      {
+        chain: sourceChain,
+        address: SOURCE_PAYMENT_TOKEN,
+        amount: sourceAmount,
+      },
+    ],
+    auxiliaryFunds: {
+      [sourceChain.id]: { [SOURCE_PAYMENT_TOKEN]: sourceAmount },
+    },
+    sourceCalls: { [sourceChain.id]: callsForPull(pullAmount) },
+    signers,
+    settlementLayers: ["ACROSS"],
+    feeAsset: HCA_FEE_ASSET ?? "USDC",
+    sponsored: { gas: false, bridging: false, swaps: false },
+  });
+  const quotedSourceAmount = (
+    preparedRoute: Awaited<ReturnType<typeof account.prepareTransaction>>,
+  ) => {
+    const elements = preparedRoute.intentRoute.intentOp.elements;
+    if (elements.length !== 1) {
+      throw new Error(`${phase}: expected one Across route element`);
+    }
+    const tokenMask = (1n << 160n) - 1n;
+    return elements[0]!.idsAndAmounts.reduce((total, [id, amount]) => {
+      const token = `0x${(BigInt(id) & tokenMask)
+        .toString(16)
+        .padStart(40, "0")}`;
+      return token.toLowerCase() === SOURCE_PAYMENT_TOKEN.toLowerCase()
+        ? total + BigInt(amount)
+        : total;
+    }, 0n);
+  };
+
+  let routedSourcePull = expectedSourcePull;
+  const quotedSourcePulls: bigint[] = [];
+  let prepared = await account.prepareTransaction(
+    transactionForPull(routedSourcePull),
+  );
+  const maxQuoteAttempts = 12;
+  for (let attempt = 0; attempt < maxQuoteAttempts; attempt += 1) {
+    const quoted = quotedSourceAmount(prepared);
+    quotedSourcePulls.push(quoted);
+    if (quoted === routedSourcePull) break;
+    if (quoted === 0n || quoted > expectedSourcePull) {
+      throw new Error(
+        `${phase}: quoted source cost ${quoted} is outside the ${expectedSourcePull} budget`,
+      );
+    }
+    if (attempt === maxQuoteAttempts - 1) {
+      throw new Error(
+        `${phase}: source cost did not settle after re-quoting: ${quotedSourcePulls.join(", ")}`,
+      );
+    }
+    routedSourcePull = quoted;
+    prepared = await account.prepareTransaction(
+      transactionForPull(routedSourcePull),
+    );
+  }
+  const signatureMode = (
+    prepared.intentInput as { options?: { signatureMode?: number } }
+  ).options?.signatureMode;
+  const expectedSignatureMode = 5;
+  if (signatureMode !== expectedSignatureMode) {
+    throw new Error(
+      `${phase}: expected signature mode ${expectedSignatureMode}, got ${signatureMode}`,
+    );
+  }
+  const metadata = prepared.intentRoute.intentOp.signedMetadata;
+  const gasRefunds = prepared.intentRoute.intentOp.elements.map(
+    (element) =>
+      element.mandate.qualifier.settlementContext.gasRefund ?? {
+        token: zeroAddress,
+        exchangeRate: 0n,
+        overhead: 0n,
+      },
+  );
+  if (metadata.account.setupOps.length !== expectedSourceSetupOps) {
+    throw new Error(`${phase}: source Nexus setup count changed`);
+  }
+  if (
+    !metadata.recipient ||
+    metadata.recipient.setupOps.length !== expectedRecipientSetupOps
+  ) {
+    throw new Error(`${phase}: destination HCA setup count changed`);
+  }
+
+  let sourcePullFound = false;
+  let sourcePermitFound = false;
+  let signedSourceAmount = 0n;
+  for (const element of prepared.intentRoute.intentOp.elements) {
+    const context = element.mandate.qualifier.settlementContext;
+    if (
+      context.settlementLayer !== "ACROSS" ||
+      context.fundingMethod !== "PERMIT2" ||
+      context.using7579 !== true
+    ) {
+      throw new Error(`${phase}: route is not ERC-7579 Permit2 + Across`);
+    }
+    const sourcePull = element.mandate.preClaimOps.ops.some((op) => {
+      if (op.to.toLowerCase() !== SOURCE_PAYMENT_TOKEN.toLowerCase()) {
+        return false;
+      }
+      try {
+        const decoded = decodeFunctionData({
+          abi: MockERC20.abi,
+          data: op.data,
+        });
+        return (
+          decoded.functionName === "transferFrom" &&
+          decoded.args[0].toLowerCase() === owner.address.toLowerCase() &&
+          decoded.args[1].toLowerCase() ===
+            account.getAddress().toLowerCase() &&
+          decoded.args[2] === routedSourcePull
+        );
+      } catch {
+        return false;
+      }
+    });
+    sourcePullFound ||= sourcePull;
+    sourcePermitFound ||= element.mandate.preClaimOps.ops.some((op) => {
+      if (op.to.toLowerCase() !== SOURCE_PAYMENT_TOKEN.toLowerCase()) {
+        return false;
+      }
+      try {
+        const decoded = decodeFunctionData({
+          abi: MockERC20.abi,
+          data: op.data,
+        });
+        return (
+          decoded.functionName === "permit" &&
+          decoded.args[0].toLowerCase() === owner.address.toLowerCase() &&
+          decoded.args[1].toLowerCase() ===
+            account.getAddress().toLowerCase() &&
+          decoded.args[2] === CROSS_CHAIN_SOURCE_AMOUNT
+        );
+      } catch {
+        return false;
+      }
+    });
+    const tokenMask = (1n << 160n) - 1n;
+    signedSourceAmount += element.idsAndAmounts.reduce(
+      (total, [id, amount]) => {
+        const token = `0x${(BigInt(id) & tokenMask)
+          .toString(16)
+          .padStart(40, "0")}`;
+        return token.toLowerCase() === SOURCE_PAYMENT_TOKEN.toLowerCase()
+          ? total + BigInt(amount)
+          : total;
+      },
+      0n,
+    );
+    const routedCalls = element.mandate.destinationOps.ops;
+    if (routedCalls.length !== calls.length) {
+      throw new Error(`${phase}: destination call count changed`);
+    }
+    for (const [index, call] of calls.entries()) {
+      const routed = routedCalls[index]!;
+      if (
+        routed.to.toLowerCase() !== call.to.toLowerCase() ||
+        BigInt(routed.value) !== call.value ||
+        routed.data.toLowerCase() !== call.data.toLowerCase()
+      ) {
+        throw new Error(`${phase}: destination call ${index} changed`);
+      }
+    }
+  }
+  if (!sourcePullFound) {
+    throw new Error(`${phase}: wallet-to-Nexus pull is missing`);
+  }
+  if (signedSourceAmount !== routedSourcePull) {
+    throw new Error(
+      `${phase}: Permit2 claim ${signedSourceAmount} does not equal the wallet pull ${routedSourcePull}`,
+    );
+  }
+  if (sourcePermitFound !== (expectedDestinationSessionMode === "04")) {
+    throw new Error(`${phase}: EIP-2612 permit presence is wrong for this leg`);
+  }
+
+  const sourceWalletSignaturesBefore = sourceWalletSignatureCount();
+  const hcaOwnerSignaturesBefore = hcaOwnerSignatureCount();
+  const signed = await account.signTransaction(prepared);
+  if (
+    sourceWalletSignatureCount() !== sourceWalletSignaturesBefore ||
+    hcaOwnerSignatureCount() !== hcaOwnerSignaturesBefore
+  ) {
+    throw new Error(`${phase}: session route requested a wallet signature`);
+  }
+  if (signed.originSignatures.length !== 1) {
+    throw new Error(`${phase}: expected one source-chain signature`);
+  }
+  const originSignature = signed.originSignatures[0];
+  const sourceValidator = account.config.experimental_sessions?.module;
+  if (
+    !sourceValidator ||
+    typeof originSignature !== "string" ||
+    size(originSignature) <= 560 ||
+    !originSignature
+      .toLowerCase()
+      .startsWith(
+        `${sourceValidator}04${sourcePermissionId.slice(2)}`.toLowerCase(),
+      )
+  ) {
+    throw new Error(`${phase}: fixed source-session signature is malformed`);
+  }
+  const destinationSignature = signed.destinationSignature;
+  const destinationSessionMode = destinationSignature?.slice(42, 44);
+  if (
+    !destinationSignature ||
+    size(destinationSignature) <= 560 ||
+    destinationSessionMode !== expectedDestinationSessionMode ||
+    !destinationSignature
+      .toLowerCase()
+      .startsWith(
+        `${zeroAddress}${expectedDestinationSessionMode}${destinationPermissionId.slice(2)}`.toLowerCase(),
+      )
+  ) {
+    throw new Error(
+      `${phase}: destination HCA session signature is malformed: ${JSON.stringify(
+        {
+          size: destinationSignature ? size(destinationSignature) : 0,
+          prefix: destinationSignature?.slice(0, 112),
+          destinationSessionMode,
+          destinationPermissionId,
+        },
+      )}`,
+    );
+  }
+  if (signed.targetExecutionSignature) {
+    throw new Error(`${phase}: SDK requested a second destination signature`);
+  }
+
+  if (HCA_DRY_RUN_ONLY) {
+    return {
+      phase,
+      intentId: prepared.intentRoute.intentOp.nonce,
+      sourcePermissionId,
+      destinationPermissionId,
+      sourcePullAmount: routedSourcePull,
+      sourceAmount: routedSourcePull,
+      targetAmount,
+      gasRefunds,
+      sourceSignedBySession: true,
+      destinationSignedBySession: true,
+      walletSignatures: 0,
+      dryRun: true as const,
+      gasUsed: 0n,
+    };
+  }
+
+  let result;
+  try {
+    result = await account.submitTransaction(signed, []);
+  } catch (error) {
+    if (process.env.HCA_DEBUG === "1") {
+      console.error(
+        JSON.stringify(
+          {
+            sourceTypedData: account.getTransactionMessages(prepared).origin[0],
+            sourceSignature: {
+              size:
+                typeof originSignature === "string"
+                  ? size(originSignature)
+                  : undefined,
+              prefix:
+                typeof originSignature === "string"
+                  ? originSignature.slice(0, 118)
+                  : undefined,
+            },
+          },
+          jsonReplacer,
+        ),
+      );
+    }
+    const context = (error as { _context?: unknown })._context;
+    const traceId = (error as { _traceId?: string })._traceId;
+    const trace = await debugFillFailure(context).catch((traceError) => ({
+      traceError: String(traceError),
+    }));
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${phase}: submit simulation failed${traceId ? ` (${traceId})` : ""}: ${message}${trace ? `: ${JSON.stringify(trace)}` : ""}`,
+    );
+  }
+  const status = await account.waitForExecution(result, false);
+  if (!status.fill.hash || status.fill.chainId !== sepolia.id) {
+    throw new Error(`${phase}: target fill is missing or on the wrong chain`);
+  }
+  if (
+    status.claims.length !== 1 ||
+    !status.claims[0]?.hash ||
+    status.claims[0].chainId !== sourceChain.id
+  ) {
+    throw new Error(`${phase}: source claim is missing or on the wrong chain`);
+  }
+  const [claimReceipt, fillReceipt] = await Promise.all([
+    sourcePublicClient!.waitForTransactionReceipt({
+      hash: status.claims[0].hash,
+    }),
+    publicClient.waitForTransactionReceipt({ hash: status.fill.hash }),
+  ]);
+  if (claimReceipt.status !== "success" || fillReceipt.status !== "success") {
+    throw new Error(`${phase}: claim or fill reverted`);
+  }
+  return {
+    phase,
+    intentId: result.id,
+    claimTransactionHash: status.claims[0].hash,
+    fillTransactionHash: status.fill.hash,
+    sourcePermissionId,
+    destinationPermissionId,
+    sourcePullAmount: routedSourcePull,
+    sourceAmount: routedSourcePull,
+    targetAmount,
+    gasRefunds,
+    sourceSignedBySession: true,
+    destinationSignedBySession: true,
+    walletSignatures: 0,
     claimGasUsed: claimReceipt.gasUsed,
     fillGasUsed: fillReceipt.gasUsed,
     gasUsed: claimReceipt.gasUsed + fillReceipt.gasUsed,

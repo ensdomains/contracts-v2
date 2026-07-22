@@ -49,6 +49,20 @@ contract HCAOwnerAndSessionValidator is IValidator {
         uint256 overhead;
     }
 
+    /// @dev Permit2 fields carried by the cross-chain fixed-session envelope.
+    struct Permit2Fields {
+        address spender;
+        uint256 nonce;
+        uint256 deadline;
+        address sourceToken;
+        uint256 sourceAmount;
+        address recipient;
+        uint256 targetChainId;
+        uint256 fillExpiry;
+        address tokenOut;
+        uint256 amountOut;
+    }
+
     /// @notice Compact configuration for one pre-enabled registration session.
     struct SessionConfig {
         address sessionKey;
@@ -59,6 +73,29 @@ contract HCAOwnerAndSessionValidator is IValidator {
         address refundToken;
         uint96 maxRefundExchangeRate;
         uint96 maxRefundAmount;
+    }
+
+    /// @dev One chain and session digest from a Rhinestone multi-chain session authorization.
+    struct HashAndChainId {
+        uint64 chainId;
+        bytes32 sessionDigest;
+    }
+
+    /// @dev Owner authorization used when the first cross-chain route enables an HCA session.
+    struct Permit2EnableProof {
+        address sessionKey;
+        uint48 validUntil;
+        uint96 sessionNonce;
+        address resolver;
+        address refundToken;
+        uint96 maxRefundExchangeRate;
+        uint48 maxRefundGasOverhead;
+        uint96 maxRefundAmount;
+        uint8 sessionToEnableIndex;
+        HashAndChainId[] hashesAndChainIds;
+        bytes32 ownerR;
+        bytes32 ownerS;
+        uint8 ownerV;
     }
 
     /// @dev State collected while the validator checks one operation batch.
@@ -95,11 +132,27 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @dev Refund-aware fixed-session discriminator inside the validator signature.
     bytes1 internal constant FIXED_SESSION_REFUND_MODE = 0x02;
 
+    /// @dev Fixed-session discriminator for a Permit2-backed cross-chain intent.
+    bytes1 internal constant FIXED_SESSION_PERMIT2_MODE = 0x03;
+
+    /// @dev First-use Permit2 mode carrying one reusable multi-chain session authorization.
+    bytes1 internal constant FIXED_SESSION_PERMIT2_ENABLE_MODE = 0x04;
+
     /// @dev Size of the fixed-session mode, permission ID, and standalone-intent nonce.
     uint256 internal constant FIXED_SESSION_PREFIX_LENGTH = 65;
 
     /// @dev Size of the fixed-session prefix when it also carries a gas-refund tuple.
     uint256 internal constant FIXED_SESSION_REFUND_PREFIX_LENGTH = 149;
+
+    /// @dev Fixed Permit2 claim fields produced by the Rhinestone SDK.
+    uint256 internal constant PERMIT2_CLAIM_DATA_LENGTH = 410;
+
+    /// @dev Mode, permission ID, origin chain ID, and fixed Permit2 claim fields.
+    uint256 internal constant FIXED_SESSION_PERMIT2_OPERATION_OFFSET =
+        65 + PERMIT2_CLAIM_DATA_LENGTH;
+
+    /// @dev Mode, permission ID, and four-byte enable-proof length.
+    uint256 internal constant FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH = 37;
 
     /// @dev Smart Session payload mode for an already-enabled permission.
     bytes1 internal constant SMART_SESSION_MODE_USE = 0x00;
@@ -144,6 +197,75 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @dev IntentExecutor hash for an intent without a gas refund.
     bytes32 internal constant NO_GAS_REFUND_HASH =
         0x44db4de84d423abe696e354fc99de162153ee2f8985ab84305061247a78a3be4;
+
+    /// @dev Canonical Permit2 deployment used by Rhinestone intents.
+    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    /// @dev Canonical Smart Session emissary.
+    address internal constant SMART_SESSION_EMISSARY = 0xad568B3F825A8d5FFc06DD3253526B64D810Ae89;
+
+    /// @dev Canonical one-of-one session validator.
+    address internal constant OWNABLE_SESSION_VALIDATOR = 0x000000000013fdB5234E4E3162a810F54d9f7E98;
+
+    /// @dev Smart Session EIP-712 domain type hash.
+    bytes32 internal constant SMART_SESSION_DOMAIN_TYPEHASH =
+        0xb03948446334eb9b2196d5eb166f69b9d49403eb4a12f36de8d3f9f3cb8e15c3;
+
+    /// @dev Smart Session EIP-712 name hash.
+    bytes32 internal constant SMART_SESSION_NAME_HASH =
+        0x909aaff4c04d02fd420ef163a6d750c002b0a00dc41a031ba039e3fdb4732133;
+
+    /// @dev Smart Session EIP-712 version hash.
+    bytes32 internal constant SMART_SESSION_VERSION_HASH =
+        0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6;
+
+    /// @dev Signed-session type hash.
+    bytes32 internal constant SIGNED_SESSION_TYPEHASH =
+        0x984917e689987af96289e12c5f5e934fcdf1df4186108f69ff7e8c3df950ce33;
+
+    /// @dev Chain-session type hash.
+    bytes32 internal constant CHAIN_SESSION_TYPEHASH =
+        0xabc350ff4773ba356e85e2d2ee58d7d7511767acdb108b59058f5b4a5afc074b;
+
+    /// @dev Multi-chain session type hash.
+    bytes32 internal constant MULTI_CHAIN_SESSION_TYPEHASH =
+        0xb4323194e4ca3723804b96dc7a0960bde1afff2b080b8b288fdc264c82e21357;
+
+    /// @dev Hash of the default empty Smart Session permissions.
+    bytes32 internal constant DEFAULT_SIGNED_PERMISSIONS_HASH =
+        0x242b79d1322c5e6b12b617584cc2d5766cf18be6feb6acfa469ccf289e11e504;
+
+    /// @dev Permit2 EIP-712 domain type hash.
+    bytes32 internal constant PERMIT2_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
+
+    /// @dev Permit2 EIP-712 name hash.
+    bytes32 internal constant PERMIT2_NAME_HASH = keccak256("Permit2");
+
+    /// @dev Permit2 token-permissions type hash.
+    bytes32 internal constant TOKEN_PERMISSIONS_TYPEHASH =
+        keccak256("TokenPermissions(address token,uint256 amount)");
+
+    /// @dev Permit2 destination-token type hash.
+    bytes32 internal constant TOKEN_TYPEHASH = keccak256("Token(address token,uint256 amount)");
+
+    /// @dev Permit2 destination target type hash.
+    bytes32 internal constant TARGET_TYPEHASH =
+        keccak256(
+            "Target(address recipient,Token[] tokenOut,uint256 targetChain,uint256 fillExpiry)Token(address token,uint256 amount)"
+        );
+
+    /// @dev Permit2 route mandate type hash.
+    bytes32 internal constant MANDATE_TYPEHASH =
+        keccak256(
+            "Mandate(Target target,uint128 minGas,Op originOps,Op destOps,bytes32 q)Op(bytes32 vt,Ops[] ops)Ops(address to,uint256 value,bytes data)Target(address recipient,Token[] tokenOut,uint256 targetChain,uint256 fillExpiry)Token(address token,uint256 amount)"
+        );
+
+    /// @dev Permit2 batch witness type hash.
+    bytes32 internal constant PERMIT_TYPEHASH =
+        keccak256(
+            "PermitBatchWitnessTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline,Mandate mandate)Mandate(Target target,uint128 minGas,Op originOps,Op destOps,bytes32 q)Op(bytes32 vt,Ops[] ops)Ops(address to,uint256 value,bytes data)Target(address recipient,Token[] tokenOut,uint256 targetChain,uint256 fillExpiry)Token(address token,uint256 amount)TokenPermissions(address token,uint256 amount)"
+        );
 
     /// @notice Selector for ETHRegistrar.commit(bytes32).
     bytes4 public constant COMMIT_SELECTOR = IETHRegistrar.commit.selector;
@@ -576,15 +698,42 @@ contract HCAOwnerAndSessionValidator is IValidator {
     )
         internal
     {
+        _enableSessionFor(
+            msg.sender,
+            permissionId,
+            sessionKey,
+            validUntil,
+            resolver,
+            refundToken,
+            maxRefundExchangeRate,
+            maxRefundGasOverhead,
+            maxRefundAmount
+        );
+    }
+
+    /// @dev Stores a fixed session for an HCA after checking its current session nonce.
+    function _enableSessionFor(
+        address account,
+        bytes32 permissionId,
+        address sessionKey,
+        uint48 validUntil,
+        address resolver,
+        address refundToken,
+        uint96 maxRefundExchangeRate,
+        uint48 maxRefundGasOverhead,
+        uint96 maxRefundAmount
+    )
+        internal
+    {
         if (sessionKey == address(0)) {
             revert InvalidSigner();
         }
         if (validUntil < block.timestamp) {
             revert SessionExpired();
         }
-        (, uint96 sessionNonce) = _ownerAndSessionNonce(msg.sender);
-        _sessions[msg.sender][permissionId] = SessionConfig({sessionKey: sessionKey, validUntil: validUntil, maxRefundGasOverhead: maxRefundGasOverhead, resolver: resolver, sessionNonce: sessionNonce, refundToken: refundToken, maxRefundExchangeRate: maxRefundExchangeRate, maxRefundAmount: maxRefundAmount});
-        emit SessionEnabled(msg.sender, permissionId, sessionKey, resolver, validUntil, sessionNonce);
+        (, uint96 sessionNonce) = _ownerAndSessionNonce(account);
+        _sessions[account][permissionId] = SessionConfig({sessionKey: sessionKey, validUntil: validUntil, maxRefundGasOverhead: maxRefundGasOverhead, resolver: resolver, sessionNonce: sessionNonce, refundToken: refundToken, maxRefundExchangeRate: maxRefundExchangeRate, maxRefundAmount: maxRefundAmount});
+        emit SessionEnabled(account, permissionId, sessionKey, resolver, validUntil, sessionNonce);
     }
 
     /// @dev Reads the account owner and session nonce, reverting if either is unavailable.
@@ -614,6 +763,14 @@ contract HCAOwnerAndSessionValidator is IValidator {
         }
 
         bytes1 mode = data[0];
+        if (mode == FIXED_SESSION_PERMIT2_ENABLE_MODE) {
+            _validateFixedPermit2SessionEnable(hash, data);
+            return;
+        }
+        if (mode == FIXED_SESSION_PERMIT2_MODE) {
+            _validateFixedPermit2Session(hash, data);
+            return;
+        }
         if (mode == FIXED_SESSION_MODE) {
             _validateFixedSessionPayload(
                 hash,
@@ -638,6 +795,231 @@ contract HCAOwnerAndSessionValidator is IValidator {
             return;
         }
         revert InvalidSessionData();
+    }
+
+    /// @dev Validates the first Permit2 route and its reusable multi-chain session authorization.
+    function _validateFixedPermit2SessionEnable(bytes32 hash, bytes calldata data) internal view {
+        if (
+            data.length <=
+            FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH + 32 + PERMIT2_CLAIM_DATA_LENGTH + 65
+        ) {
+            revert InvalidSessionData();
+        }
+
+        bytes32 permissionId = bytes32(data[1:33]);
+        uint256 proofLength = uint32(bytes4(data[33:37]));
+        uint256 proofEnd = FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH + proofLength;
+        uint256 operationOffset = proofEnd + 32 + PERMIT2_CLAIM_DATA_LENGTH;
+        uint256 signatureOffset = data.length - ECDSA_SIGNATURE_LENGTH;
+        if (proofLength == 0 || operationOffset >= signatureOffset) {
+            revert InvalidSessionData();
+        }
+
+        Permit2EnableProof memory proof =
+            abi.decode(
+                data[FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH:proofEnd],
+                (Permit2EnableProof)
+            );
+        address accountOwner = _validatePermit2EnableProof(permissionId, proof);
+        _validatePermit2EnableIntent(hash, data, proofEnd, permissionId, accountOwner, proof);
+    }
+
+    /// @dev Validates the fixed HCA fields authorized by the owner.
+    function _validatePermit2EnableProof(bytes32 permissionId, Permit2EnableProof memory proof)
+        internal
+        view
+        returns (address owner_)
+    {
+        uint96 sessionNonce;
+        (owner_, sessionNonce) = _ownerAndSessionNonce(msg.sender);
+        if (
+            proof.sessionKey == address(0) ||
+            proof.validUntil < block.timestamp ||
+            proof.sessionNonce != sessionNonce ||
+            (proof.refundToken != PAYMENT_TOKEN && proof.refundToken != SECONDARY_PAYMENT_TOKEN) ||
+            proof.maxRefundExchangeRate == 0 ||
+            proof.maxRefundAmount == 0
+        ) {
+            revert InvalidSessionData();
+        }
+
+        bytes32 salt = _sessionAuthorizationSalt(proof);
+        bytes memory validatorInitData = _sessionValidatorInitData(proof.sessionKey);
+        if (
+            permissionId !=
+            keccak256(abi.encode(OWNABLE_SESSION_VALIDATOR, validatorInitData, salt))
+        ) {
+            revert InvalidSessionData();
+        }
+        _validateMultiChainSessionAuthorization(owner_, salt, validatorInitData, proof);
+        return owner_;
+    }
+
+    /// @dev Validates the session-signed Permit2 intent and its exact first HCA operation.
+    function _validatePermit2EnableIntent(
+        bytes32 hash,
+        bytes calldata data,
+        uint256 proofEnd,
+        bytes32 permissionId,
+        address accountOwner,
+        Permit2EnableProof memory proof
+    )
+        internal
+        view
+    {
+        uint256 operationOffset = proofEnd + 32 + PERMIT2_CLAIM_DATA_LENGTH;
+        uint256 signatureOffset = data.length - ECDSA_SIGNATURE_LENGTH;
+        bytes calldata operationData = data[operationOffset:signatureOffset];
+        if (_recover(hash, data[signatureOffset:]) != proof.sessionKey) {
+            revert InvalidSigner();
+        }
+        _validatePermit2Destination(
+            hash,
+            uint256(bytes32(data[proofEnd:proofEnd + 32])),
+            data[proofEnd + 32:operationOffset],
+            operationData
+        );
+        _checkInitialRegistrationPolicy(msg.sender, accountOwner, permissionId, proof, operationData);
+    }
+
+    /// @dev Validates the standard Rhinestone multi-chain session signature once for this HCA.
+    function _validateMultiChainSessionAuthorization(
+        address owner_,
+        bytes32 salt,
+        bytes memory validatorInitData,
+        Permit2EnableProof memory proof
+    )
+        internal
+        view
+    {
+        uint256 count = proof.hashesAndChainIds.length;
+        uint256 selectedIndex = proof.sessionToEnableIndex;
+        if (count == 0 || selectedIndex >= count) {
+            revert InvalidSessionData();
+        }
+
+        bytes32 signedSessionHash =
+            keccak256(
+                abi.encode(
+                    SIGNED_SESSION_TYPEHASH,
+                    msg.sender,
+                    type(uint256).max,
+                    uint256(0),
+                    DEFAULT_SIGNED_PERMISSIONS_HASH,
+                    salt,
+                    OWNABLE_SESSION_VALIDATOR,
+                    keccak256(validatorInitData),
+                    SMART_SESSION_EMISSARY
+                )
+            );
+        HashAndChainId memory selected = proof.hashesAndChainIds[selectedIndex];
+        if (selected.chainId != block.chainid || selected.sessionDigest != signedSessionHash) {
+            revert InvalidSessionData();
+        }
+
+        bytes32[] memory chainSessionHashes = new bytes32[](count);
+        for (uint256 i; i < count; ++i) {
+            HashAndChainId memory item = proof.hashesAndChainIds[i];
+            chainSessionHashes[i] = keccak256(
+                abi.encode(CHAIN_SESSION_TYPEHASH, item.chainId, item.sessionDigest)
+            );
+        }
+        bytes32 structHash =
+            keccak256(
+                abi.encode(
+                    MULTI_CHAIN_SESSION_TYPEHASH,
+                    keccak256(abi.encodePacked(chainSessionHashes))
+                )
+            );
+        bytes32 domainSeparator =
+            keccak256(
+                abi.encode(
+                    SMART_SESSION_DOMAIN_TYPEHASH,
+                    SMART_SESSION_NAME_HASH,
+                    SMART_SESSION_VERSION_HASH
+                )
+            );
+        bytes32 digest = MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
+        if (_recoverParts(digest, proof.ownerR, proof.ownerS, proof.ownerV) != owner_) {
+            revert InvalidSigner();
+        }
+    }
+
+    /// @dev Validates a cross-chain Permit2 intent and its destination operation preimage.
+    function _validateFixedPermit2Session(bytes32 hash, bytes calldata data) internal view {
+        if (data.length <= FIXED_SESSION_PERMIT2_OPERATION_OFFSET + ECDSA_SIGNATURE_LENGTH) {
+            revert InvalidSessionData();
+        }
+
+        bytes32 permissionId = bytes32(data[1:33]);
+        SessionConfig memory config = _sessions[msg.sender][permissionId];
+        if (config.sessionKey == address(0)) {
+            revert InvalidSigner();
+        }
+        if (block.timestamp > config.validUntil) {
+            revert SessionExpired();
+        }
+        (, uint96 sessionNonce) = _ownerAndSessionNonce(msg.sender);
+        if (sessionNonce != config.sessionNonce) {
+            revert InvalidSigner();
+        }
+
+        uint256 sourceChainId = uint256(bytes32(data[33:65]));
+        bytes calldata claimData = data[65:FIXED_SESSION_PERMIT2_OPERATION_OFFSET];
+        uint256 signatureOffset = data.length - ECDSA_SIGNATURE_LENGTH;
+        bytes calldata operationData = data[FIXED_SESSION_PERMIT2_OPERATION_OFFSET:signatureOffset];
+        if (_recover(hash, data[signatureOffset:]) != config.sessionKey) {
+            revert InvalidSigner();
+        }
+        _validatePermit2Destination(hash, sourceChainId, claimData, operationData);
+
+        (address owner_, ) = _ownerAndSessionNonce(msg.sender);
+        _checkRegistrationPolicy(
+            msg.sender,
+            owner_,
+            config.resolver,
+            operationData,
+            GasRefund(address(0), 0, 0)
+        );
+    }
+
+    /// @dev Binds the destination operation to the signed Permit2 mandate.
+    function _validatePermit2Destination(
+        bytes32 expectedDigest,
+        uint256 sourceChainId,
+        bytes calldata claimData,
+        bytes calldata operationData
+    )
+        internal
+        view
+    {
+        if (
+            sourceChainId == 0 ||
+            claimData.length != PERMIT2_CLAIM_DATA_LENGTH ||
+            address(bytes20(claimData[0:20])) == address(0) ||
+            uint8(claimData[84]) != 1 ||
+            uint8(claimData[233]) != 1
+        ) {
+            revert PolicyRuleFailed();
+        }
+
+        Permit2Fields memory claim = _decodePermit2Fields(claimData);
+        if (
+            claim.deadline < block.timestamp ||
+            claim.recipient != msg.sender ||
+            claim.targetChainId != block.chainid ||
+            claim.fillExpiry < block.timestamp ||
+            (claim.tokenOut != PAYMENT_TOKEN && claim.tokenOut != SECONDARY_PAYMENT_TOKEN) ||
+            claim.amountOut == 0
+        ) {
+            revert PolicyRuleFailed();
+        }
+        if (
+            _operationHash(operationData) != bytes32(claimData[346:378]) ||
+            _permit2Digest(claimData, sourceChainId) != expectedDigest
+        ) {
+            revert InvalidSessionData();
+        }
     }
 
     /// @dev Validates the common fixed-session fields after decoding its refund mode.
@@ -715,15 +1097,15 @@ contract HCAOwnerAndSessionValidator is IValidator {
         bytes32 gasRefundHash = gasRefund.token == address(0) &&
         gasRefund.exchangeRate == 0 &&
         gasRefund.overhead == 0
-        ? NO_GAS_REFUND_HASH
-        : keccak256(
-            abi.encode(
-                GAS_REFUND_TYPEHASH,
-                gasRefund.token,
-                gasRefund.exchangeRate,
-                gasRefund.overhead
-            )
-        );
+            ? NO_GAS_REFUND_HASH
+            : keccak256(
+                abi.encode(
+                    GAS_REFUND_TYPEHASH,
+                    gasRefund.token,
+                    gasRefund.exchangeRate,
+                    gasRefund.overhead
+                )
+            );
         bytes32 structHash =
             keccak256(
                 abi.encode(
@@ -796,6 +1178,73 @@ contract HCAOwnerAndSessionValidator is IValidator {
         }
 
         Execution[] memory executions = abi.decode(operationData[32:], (Execution[]));
+        _checkRegistrationExecutions(account, owner, allowedResolver, executions, gasRefund);
+    }
+
+    /// @dev Allows one exact session-enable call before the first policy-checked commitment.
+    function _checkInitialRegistrationPolicy(
+        address account,
+        address owner,
+        bytes32 permissionId,
+        Permit2EnableProof memory proof,
+        bytes calldata operationData
+    )
+        internal
+        view
+    {
+        if (operationData.length < 32 || bytes32(operationData[:32]) != ERC7579_ERC1271_MODE) {
+            revert InvalidOperationEncoding();
+        }
+        Execution[] memory executions = abi.decode(operationData[32:], (Execution[]));
+        if (executions.length < 2) {
+            revert PolicyRuleFailed();
+        }
+
+        Execution memory enable = executions[0];
+        bytes memory expectedCall =
+            abi.encodeWithSelector(
+                this.enableSessionWithRefund.selector,
+                permissionId,
+                proof.sessionKey,
+                proof.validUntil,
+                proof.resolver,
+                proof.refundToken,
+                proof.maxRefundExchangeRate,
+                proof.maxRefundGasOverhead,
+                proof.maxRefundAmount
+            );
+        if (
+            enable.target != address(this) ||
+            enable.value != 0 ||
+            keccak256(enable.callData) != keccak256(expectedCall)
+        ) {
+            revert PolicyRuleFailed();
+        }
+
+        Execution[] memory remaining = new Execution[](executions.length - 1);
+        for (uint256 i = 1; i < executions.length; ++i) {
+            remaining[i - 1] = executions[i];
+        }
+        _checkRegistrationExecutions(
+            account,
+            owner,
+            proof.resolver,
+            remaining,
+            GasRefund(address(0), 0, 0)
+        );
+    }
+
+    /// @dev Applies the fixed ENS policy to a decoded execution array.
+    function _checkRegistrationExecutions(
+        address account,
+        address owner,
+        address allowedResolver,
+        Execution[] memory executions,
+        GasRefund memory gasRefund
+    )
+        internal
+        view
+    {
         (address policyResolver, bool seenRegister) =
             _registrationResolver(executions, owner, allowedResolver);
         RegistrationPolicyState memory state;
@@ -1022,6 +1471,110 @@ contract HCAOwnerAndSessionValidator is IValidator {
         ) {
             revert PolicyRuleFailed();
         }
+    }
+
+    /// @dev Reconstructs the Permit2 witness digest from the compact claim fields.
+    function _permit2Digest(bytes calldata data, uint256 sourceChainId)
+        internal
+        pure
+        returns (bytes32)
+    {
+        Permit2Fields memory claim = _decodePermit2Fields(data);
+
+        bytes32 tokenPermissionsHash =
+            keccak256(
+                abi.encodePacked(
+                    keccak256(
+                        abi.encode(TOKEN_PERMISSIONS_TYPEHASH, claim.sourceToken, claim.sourceAmount)
+                    )
+                )
+            );
+        bytes32 tokenOutHash =
+            keccak256(
+                abi.encodePacked(
+                    keccak256(abi.encode(TOKEN_TYPEHASH, claim.tokenOut, claim.amountOut))
+                )
+            );
+        bytes32 targetHash =
+            keccak256(
+                abi.encode(
+                    TARGET_TYPEHASH,
+                    claim.recipient,
+                    tokenOutHash,
+                    claim.targetChainId,
+                    claim.fillExpiry
+                )
+            );
+        bytes32 mandateHash =
+            keccak256(
+                abi.encode(
+                    MANDATE_TYPEHASH,
+                    targetHash,
+                    uint128(bytes16(data[298:314])),
+                    bytes32(data[314:346]),
+                    bytes32(data[346:378]),
+                    bytes32(data[378:410])
+                )
+            );
+        bytes32 permitHash =
+            keccak256(
+                abi.encode(
+                    PERMIT_TYPEHASH,
+                    tokenPermissionsHash,
+                    claim.spender,
+                    claim.nonce,
+                    claim.deadline,
+                    mandateHash
+                )
+            );
+        bytes32 domainSeparator =
+            keccak256(abi.encode(PERMIT2_DOMAIN_TYPEHASH, PERMIT2_NAME_HASH, sourceChainId, PERMIT2));
+        return MessageHashUtils.toTypedDataHash(domainSeparator, permitHash);
+    }
+
+    /// @dev Decodes the compact fields used by the Permit2 destination policy.
+    function _decodePermit2Fields(bytes calldata data)
+        internal
+        pure
+        returns (Permit2Fields memory claim)
+    {
+        claim.spender = address(bytes20(data[0:20]));
+        claim.nonce = uint256(bytes32(data[20:52]));
+        claim.deadline = uint256(bytes32(data[52:84]));
+        claim.sourceToken = address(uint160(uint256(bytes32(data[85:117]))));
+        claim.sourceAmount = uint256(bytes32(data[117:149]));
+        claim.recipient = address(bytes20(data[149:169]));
+        claim.targetChainId = uint256(bytes32(data[169:201]));
+        claim.fillExpiry = uint256(bytes32(data[201:233]));
+        claim.tokenOut = address(uint160(uint256(bytes32(data[234:266]))));
+        claim.amountOut = uint256(bytes32(data[266:298]));
+    }
+
+    /// @dev Hashes the fixed HCA fields stored in the standard Smart Session salt.
+    function _sessionAuthorizationSalt(Permit2EnableProof memory proof)
+        internal
+        pure
+        returns (bytes32)
+    {
+        return
+            keccak256(
+                abi.encode(
+                    proof.sessionNonce,
+                    proof.validUntil,
+                    proof.resolver,
+                    proof.refundToken,
+                    proof.maxRefundExchangeRate,
+                    proof.maxRefundGasOverhead,
+                    proof.maxRefundAmount
+                )
+            );
+    }
+
+    /// @dev Returns the standard one-of-one Ownable session-validator initialization data.
+    function _sessionValidatorInitData(address sessionKey) internal pure returns (bytes memory) {
+        address[] memory owners = new address[](1);
+        owners[0] = sessionKey;
+        return abi.encode(uint256(1), owners);
     }
 
     /// @dev Checks an executor reimbursement against the limits approved for a session.
@@ -1261,6 +1814,15 @@ contract HCAOwnerAndSessionValidator is IValidator {
             s := calldataload(add(signature.offset, 0x20))
             v := byte(0, calldataload(add(signature.offset, 0x40)))
         }
+        return _recoverParts(digest, r, s, v);
+    }
+
+    /// @dev Recovers a Rhinestone ECDSA signature supplied as separate fields.
+    function _recoverParts(bytes32 digest, bytes32 r, bytes32 s, uint8 v)
+        internal
+        pure
+        returns (address signer)
+    {
         if (v == 31 || v == 32) {
             digest = MessageHashUtils.toEthSignedMessageHash(digest);
             v -= 4;
