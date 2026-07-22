@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+} from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -28,6 +36,9 @@ let capturedArgs: string[] | null = null;
 let checkpointToWrite: Checkpoint | null = null;
 
 const realPreMigration = await import("../../script/preMigration.js");
+// Capture the real export before mocking: mock.module rebinds the live
+// namespace, so realPreMigration.main would otherwise resolve to the stub.
+const realMain = realPreMigration.main;
 
 mock.module("../../script/preMigration.js", () => ({
   ...realPreMigration,
@@ -41,6 +52,16 @@ mock.module("../../script/preMigration.js", () => ({
     }
   },
 }));
+
+// bun's mock.module is global and persists past this file, so a later suite
+// that imports preMigration.main would run the stub. Restore the real module
+// once these tests finish.
+afterAll(() => {
+  mock.module("../../script/preMigration.js", () => ({
+    ...realPreMigration,
+    main: realMain,
+  }));
+});
 
 const { runPreMigrationCommand } = await import("../../script/migration.js");
 
