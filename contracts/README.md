@@ -145,7 +145,7 @@ Roles granted during core deployment.
 
 Legend: A = admin only, R = regular only, AR = admin and regular
 
-_`ETHRegistrar`, `ETHRenewerV1`, and `ApprovedUpgradeGate` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
+_`ETHRegistrar`, `ETHRenewerV1`, and `PermissionedAddressSet` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
 
 _Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 6](docs/migration.md#phase-6-enable-the-v2-controller)._
 
