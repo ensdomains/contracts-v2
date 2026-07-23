@@ -139,8 +139,18 @@ export async function reregisterName(
     `Initial expiry: ${new Date(Number(initialExpiry) * 1000).toISOString()}`,
   );
 
-  // Time warp past expiry (must exceed the registration duration, default 28 days)
-  const warpSeconds = 28 * ONE_DAY_SECONDS + 1;
+  // Time warp past expiry, the grace period, AND the expiry premium window.
+  // A name becomes available once block.timestamp >= expiry + GRACE_PERIOD,
+  // but for the first PREMIUM_PERIOD seconds after that it carries a decaying
+  // Dutch-auction premium (starting at ~$100M) that would blow past the test
+  // account's token allowance. Warp just past expiry + grace + premium so the
+  // name re-registers at base price.
+  const gracePeriod = await env.v2.ETHRegistrar.read.GRACE_PERIOD();
+  const premiumPeriod = await env.v2.StandardRentPriceOracle.read.PREMIUM_PERIOD();
+  const { timestamp: nowSec } = await env.client.getBlock();
+  const availableAt = initialExpiry + gracePeriod + premiumPeriod;
+  const warpSeconds =
+    Number(availableAt > nowSec ? availableAt - nowSec : 0n) + 1;
   console.log(`\nTime warping ${warpSeconds} seconds...`);
   await env.sync({ warpSec: warpSeconds });
 
