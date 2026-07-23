@@ -29,7 +29,6 @@
     "chai": "^5.1.1",
     "ethers": "^6.15.0",
     "solgrid": "0.0.16",
-    "ts-node": "^10.9.2",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "3.1.3"
   },
