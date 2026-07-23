@@ -54,6 +54,12 @@ import {
   VerifiableFactory,
 } from "../generated/artifacts/index.ts";
 import { dnsEncodeName } from "../test/utils/utils.ts";
+import {
+  RHINESTONE_GAS_REFUND_PAYMASTER,
+  RHINESTONE_INTENT_EXECUTOR,
+  ROLES,
+  SEPOLIA_USDC,
+} from "./deploy-constants.ts";
 
 const DEPLOYMENT_NETWORK = process.env.DEPLOYMENT_NETWORK ?? "sepolia";
 const HCA_DEPLOYMENT_NETWORK =
@@ -124,12 +130,6 @@ const REGISTRATION_DURATION = 28n * 86400n;
 const SESSION_DURATION = 24n * 60n * 60n;
 const COIN_TYPE_ETH = 60n;
 const STATUS_REGISTERED = 2;
-const ROLES_ALL =
-  0x1111111111111111111111111111111111111111111111111111111111111111n;
-const RHINESTONE_INTENT_EXECUTOR =
-  "0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF" as const;
-const RHINESTONE_GAS_REFUND_PAYMASTER =
-  "0x1d7df6Ddc7328Ac827EB4D7f171C60AFB7f9A599" as const;
 const NEXUS_FACTORY = "0x0000000000679A258c64d2F20F310e12B64b7375" as const;
 const NEXUS_FACTORY_ABI = parseAbi([
   "function createAccount(bytes initData, bytes32 salt)",
@@ -153,8 +153,8 @@ const SOURCE_PAYMENT_TOKEN = (process.env.HCA_SOURCE_PAYMENT_TOKEN ??
   (sourceChain.id === baseSepolia.id
     ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
     : "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d")) as Address;
-const SEPOLIA_USDC = (process.env.HCA_TARGET_PAYMENT_TOKEN ??
-  "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238") as Address;
+const TARGET_PAYMENT_TOKEN = (process.env.HCA_TARGET_PAYMENT_TOKEN ??
+  SEPOLIA_USDC) as Address;
 const CROSS_CHAIN_TARGET_AMOUNT = process.env.HCA_CROSS_CHAIN_TARGET_AMOUNT
   ? BigInt(process.env.HCA_CROSS_CHAIN_TARGET_AMOUNT)
   : 14_000_000n;
@@ -179,7 +179,6 @@ const SESSION_GAS_LIMIT = process.env.HCA_SESSION_GAS_LIMIT
   ? BigInt(process.env.HCA_SESSION_GAS_LIMIT)
   : undefined;
 const MODE_ERC1271 = `0x0201${"00".repeat(30)}` as Hex;
-const MODE_EMISSARY_EXECUTION = `0x0204${"00".repeat(30)}` as Hex;
 const OPERATOR_MAX_FEE_PER_GAS = 500_000_000_000n;
 const OPERATOR_MAX_PRIORITY_FEE_PER_GAS = 2_000_000_000n;
 const MAX_REFUND_EXCHANGE_RATE = process.env.HCA_MAX_REFUND_EXCHANGE_RATE
@@ -710,10 +709,10 @@ async function main() {
   );
   if (
     HCA_CROSS_CHAIN &&
-    deployments.paymentToken.toLowerCase() !== SEPOLIA_USDC.toLowerCase()
+    deployments.paymentToken.toLowerCase() !== TARGET_PAYMENT_TOKEN.toLowerCase()
   ) {
     throw new Error(
-      `cross-chain test payment token must be Circle Sepolia USDC ${SEPOLIA_USDC}`,
+      `cross-chain test payment token must be Circle Sepolia USDC ${TARGET_PAYMENT_TOKEN}`,
     );
   }
 
@@ -3388,7 +3387,7 @@ async function executeCrossChainRegistration({
     recipient,
     calls,
     gasLimit: CROSS_CHAIN_DESTINATION_GAS,
-    tokenRequests: [{ address: SEPOLIA_USDC, amount: targetAmount }],
+    tokenRequests: [{ address: TARGET_PAYMENT_TOKEN, amount: targetAmount }],
     sourceAssets: [
       {
         chain: sourceChain,
@@ -3798,7 +3797,7 @@ async function executeSessionCrossChainRegistration({
     recipient,
     calls,
     gasLimit: CROSS_CHAIN_DESTINATION_GAS,
-    tokenRequests: [{ address: SEPOLIA_USDC, amount: targetAmount }],
+    tokenRequests: [{ address: TARGET_PAYMENT_TOKEN, amount: targetAmount }],
     sourceAssets: [
       {
         chain: sourceChain,
@@ -4639,7 +4638,7 @@ async function prepareSameChainWalletFunding({
   let provisioningTransactionHash: Hex | undefined;
   let provisioningGasUsed = 0n;
   if (provisionedAmount > 0n) {
-    if (paymentToken.toLowerCase() === SEPOLIA_USDC.toLowerCase()) {
+    if (paymentToken.toLowerCase() === TARGET_PAYMENT_TOKEN.toLowerCase()) {
       throw new Error(
         `wallet has ${walletBalanceBeforeProvisioning} Sepolia USDC units; ${amountPulled} required. Fund HCA_OWNER_KEY before the live proof`,
       );
@@ -4957,7 +4956,7 @@ async function registrationCalls({
           encodeFunctionData({
             abi: PermissionedResolver.abi,
             functionName: "initialize",
-            args: [hca, ROLES_ALL, []],
+            args: [hca, ROLES.ALL, []],
           }),
         ],
       }),
@@ -5033,7 +5032,7 @@ async function registrationCalls({
       data: encodeFunctionData({
         abi: PermissionedResolver.abi,
         functionName: "authorizeNameRoles",
-        args: ["0x00", ROLES_ALL, owner.address, true],
+        args: ["0x00", ROLES.ALL, owner.address, true],
       }),
     },
   );
@@ -5092,7 +5091,7 @@ async function verifyRegistration(
         address: resolver,
         abi: PermissionedResolver.abi,
         functionName: "hasRoles",
-        args: [0n, ROLES_ALL, account],
+        args: [0n, ROLES.ALL, account],
       }),
     ),
   );

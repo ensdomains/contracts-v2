@@ -160,6 +160,11 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @dev Mode, permission ID, and four-byte enable-proof length.
     uint256 internal constant FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH = 37;
 
+    /// @dev Minimum envelope size before the first same-chain operation.
+    uint256 internal constant FIXED_SESSION_REFUND_ENABLE_MIN_LENGTH =
+        FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH +
+        FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH + ECDSA_SIGNATURE_LENGTH;
+
     /// @dev Smart Session payload mode for an already-enabled permission.
     bytes1 internal constant SMART_SESSION_MODE_USE = 0x00;
 
@@ -911,11 +916,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @dev Validates the first same-chain operation and its reusable session authorization.
     function _validateFixedRefundSessionEnable(bytes32 hash, bytes calldata data) internal view {
-        if (
-            data.length <=
-            FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH +
-            FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH + ECDSA_SIGNATURE_LENGTH
-        ) {
+        if (data.length <= FIXED_SESSION_REFUND_ENABLE_MIN_LENGTH) {
             revert InvalidSessionData();
         }
 
@@ -1170,15 +1171,6 @@ contract HCAOwnerAndSessionValidator is IValidator {
         }
     }
 
-    /// @dev Reconstructs the production IntentExecutor digest for a no-refund single-chain intent.
-    function _singleChainDigest(address account, uint256 nonce, bytes calldata operationData)
-        internal
-        view
-        returns (bytes32)
-    {
-        return _singleChainDigest(account, nonce, operationData, GasRefund(address(0), 0, 0));
-    }
-
     /// @dev Reconstructs the production IntentExecutor digest for a single-chain intent.
     function _singleChainDigest(
         address account,
@@ -1193,15 +1185,15 @@ contract HCAOwnerAndSessionValidator is IValidator {
         bytes32 gasRefundHash = gasRefund.token == address(0) &&
         gasRefund.exchangeRate == 0 &&
         gasRefund.overhead == 0
-            ? NO_GAS_REFUND_HASH
-            : keccak256(
-                abi.encode(
-                    GAS_REFUND_TYPEHASH,
-                    gasRefund.token,
-                    gasRefund.exchangeRate,
-                    gasRefund.overhead
-                )
-            );
+        ? NO_GAS_REFUND_HASH
+        : keccak256(
+            abi.encode(
+                GAS_REFUND_TYPEHASH,
+                gasRefund.token,
+                gasRefund.exchangeRate,
+                gasRefund.overhead
+            )
+        );
         bytes32 structHash =
             keccak256(
                 abi.encode(
@@ -1329,7 +1321,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         }
 
         (uint256 permitIndex, uint256 transferIndex) =
-            _initialFundingCallIndexes(executions, account, owner, proof.refundToken);
+            _fundingCallIndexes(executions, account, owner, proof.refundToken);
         uint256 fundingCallCount = permitIndex == type(uint256).max ? 0 : 2;
         Execution[] memory remaining = new Execution[](executions.length - 1 - fundingCallCount);
         uint256 next;
@@ -1344,7 +1336,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @dev Finds and checks an optional EIP-2612 funding pull into the HCA.
     ///      The permit and transfer must be adjacent, use the same amount, and consume the full
     ///      allowance that the owner gave to this HCA.
-    function _initialFundingCallIndexes(
+    function _fundingCallIndexes(
         Execution[] memory executions,
         address account,
         address owner,

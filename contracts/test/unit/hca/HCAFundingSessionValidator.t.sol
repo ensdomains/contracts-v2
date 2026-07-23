@@ -101,6 +101,267 @@ contract HCAFundingSessionValidatorTest is Test {
         validator.onInstall(abi.encode(config));
     }
 
+    function test_rejectsInvalidConstructorDependencies() public {
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        new HCAFundingSessionValidator(address(0), PERMIT2);
+
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        new HCAFundingSessionValidator(intentExecutor, address(0));
+    }
+
+    function test_reportsInstallationAndModuleState() public {
+        assertTrue(validator.isInitialized(nexus));
+        HCAFundingSessionValidator.SessionConfig memory installed = validator.sessionConfig(nexus);
+        assertEq(installed.permissionId, config.permissionId);
+        assertEq(installed.owner, config.owner);
+        assertEq(installed.sessionKey, config.sessionKey);
+        assertTrue(validator.isModuleType(1));
+        assertFalse(validator.isModuleType(2));
+
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        vm.prank(nexus);
+        validator.onInstall(abi.encode(config));
+
+        vm.prank(nexus);
+        validator.onUninstall("");
+        assertFalse(validator.isInitialized(nexus));
+    }
+
+    function test_rejectsInvalidOrExpiredInstallation() public {
+        HCAFundingSessionValidator.SessionConfig memory invalidConfig = config;
+        invalidConfig.destinationRecipient = address(0);
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        vm.prank(makeAddr("invalid-nexus"));
+        validator.onInstall(abi.encode(invalidConfig));
+
+        HCAFundingSessionValidator.SessionConfig memory expiredConfig = config;
+        expiredConfig.validUntil = uint48(block.timestamp);
+        vm.expectRevert(HCAFundingSessionValidator.SessionExpired.selector);
+        vm.prank(makeAddr("expired-nexus"));
+        validator.onInstall(abi.encode(expiredConfig));
+    }
+
+    function test_rejectsMalformedFundingEnvelopes() public {
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        _validate(bytes32(0), "");
+
+        bytes memory zeroLengthProofEnvelope =
+            abi.encodePacked(
+                bytes1(uint8(4)),
+                config.permissionId,
+                bytes4(0),
+                new bytes(65 + 410 + 1)
+            );
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        _validate(bytes32(0), zeroLengthProofEnvelope);
+
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        proof.hashesAndChainIds = new HCAFundingSessionValidator.HashAndChainId[](0);
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        _validate(digest, _envelope(proof, digest, claim, operation));
+    }
+
+    function test_rejectsUninstalledAccount() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        vm.prank(makeAddr("uninstalled-nexus"));
+        validator.isValidSignatureWithSender(
+            PERMIT2,
+            digest,
+            _envelope(proof, digest, claim, operation)
+        );
+    }
+
+    function test_rejectsPermissionIdNotBoundToSession() public {
+        vm.prank(nexus);
+        validator.onUninstall("");
+        config.permissionId = keccak256("unbound-permission");
+        vm.prank(nexus);
+        validator.onInstall(abi.encode(config));
+
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        _validate(digest, _envelope(proof, digest, claim, operation));
+    }
+
+    function test_rejectsInvalidSessionSignature() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+        bytes memory envelope = _envelope(proof, digest, claim, operation);
+        envelope[37 + abi.encode(proof).length] ^= 0x01;
+
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        _validate(digest, envelope);
+    }
+
+    function test_rejectsOperationThatDoesNotMatchClaim() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory claimedOperation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) =
+            _claim(claimedOperation, COMMIT_SOURCE_COST, 100_000, 1);
+        bytes memory suppliedOperation = _fundingOperation(COMMIT_SOURCE_COST + 1, true);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFundingSessionValidator.ClaimFieldMismatch.selector, uint8(10))
+        );
+        _validate(digest, _envelope(proof, digest, claim, suppliedOperation));
+    }
+
+    function test_rejectsClaimWithDifferentDigest() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, ) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+        bytes32 differentDigest = keccak256("different-permit2-digest");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFundingSessionValidator.ClaimFieldMismatch.selector, uint8(9))
+        );
+        _validate(differentDigest, _envelope(proof, differentDigest, claim, operation));
+    }
+
+    function test_rejectsInvalidClaimFields() public {
+        _expectClaimByteMismatch(1, 0, 0x00);
+        _expectClaimByteMismatch(3, 84, 0x02);
+        _expectClaimWordMismatch(4, 117);
+        _expectClaimByteMismatch(6, 200, 0x00);
+        _expectClaimByteMismatch(7, 233, 0x02);
+        _expectClaimWordMismatch(8, 266);
+    }
+
+    function test_rejectsExpiredClaimDeadline() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+        vm.warp(block.timestamp + 2 hours);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFundingSessionValidator.ClaimFieldMismatch.selector, uint8(2))
+        );
+        _validate(digest, _envelope(proof, digest, claim, operation));
+    }
+
+    function test_rejectsInvalidFundingCalls() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+
+        HCAFundingSessionValidator.Execution[] memory executions =
+            new HCAFundingSessionValidator.Execution[](1);
+        executions[0] = HCAFundingSessionValidator.Execution({target: sourceToken, value: 0, callData: abi.encodeCall(
+            IERC20.transferFrom,
+            (owner, makeAddr("wrong-nexus"), COMMIT_SOURCE_COST)
+        )});
+        bytes memory wrongRecipientOperation =
+            abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+        (bytes memory claim, bytes32 digest) =
+            _claim(wrongRecipientOperation, COMMIT_SOURCE_COST, 100_000, 1);
+        vm.expectRevert(HCAFundingSessionValidator.FundingPolicyFailed.selector);
+        _validate(digest, _envelope(proof, digest, claim, wrongRecipientOperation));
+
+        executions[0].callData = hex"deadbeef";
+        bytes memory unknownCallOperation =
+            abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+        (claim, digest) = _claim(unknownCallOperation, COMMIT_SOURCE_COST, 100_000, 2);
+        vm.expectRevert(HCAFundingSessionValidator.FundingPolicyFailed.selector);
+        _validate(digest, _envelope(proof, digest, claim, unknownCallOperation));
+
+        bytes memory zeroPullOperation = _fundingOperation(0, false);
+        (claim, digest) = _claim(zeroPullOperation, COMMIT_SOURCE_COST, 100_000, 3);
+        vm.expectRevert(HCAFundingSessionValidator.FundingPolicyFailed.selector);
+        _validate(digest, _envelope(proof, digest, claim, zeroPullOperation));
+    }
+
+    function test_rejectsMalformedFundingCalls() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory validOperation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) =
+            _claim(validOperation, COMMIT_SOURCE_COST, 100_000, 1);
+
+        vm.expectRevert(HCAFundingSessionValidator.InvalidOperation.selector);
+        _validate(digest, _envelope(proof, digest, claim, hex"00"));
+
+        HCAFundingSessionValidator.Execution[] memory executions =
+            new HCAFundingSessionValidator.Execution[](1);
+        executions[0] = HCAFundingSessionValidator.Execution({target: sourceToken, value: 0, callData: hex"dead"});
+        bytes memory shortSelectorOperation =
+            abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+        (claim, digest) = _claim(shortSelectorOperation, COMMIT_SOURCE_COST, 100_000, 2);
+        vm.expectRevert(HCAFundingSessionValidator.InvalidOperation.selector);
+        _validate(digest, _envelope(proof, digest, claim, shortSelectorOperation));
+
+        executions[0].callData = abi.encodePacked(IERC20.transferFrom.selector);
+        bytes memory shortArgumentsOperation =
+            abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+        (claim, digest) = _claim(shortArgumentsOperation, COMMIT_SOURCE_COST, 100_000, 3);
+        vm.expectRevert(HCAFundingSessionValidator.InvalidOperation.selector);
+        _validate(digest, _envelope(proof, digest, claim, shortArgumentsOperation));
+
+        executions[0].callData = abi.encodeWithSelector(
+            PERMIT_SELECTOR,
+            makeAddr("wrong-owner"),
+            nexus,
+            TOTAL_SOURCE_BUDGET,
+            config.validUntil,
+            uint8(27),
+            bytes32(uint256(1)),
+            bytes32(uint256(2))
+        );
+        bytes memory invalidPermitOperation =
+            abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+        (claim, digest) = _claim(invalidPermitOperation, COMMIT_SOURCE_COST, 100_000, 4);
+        vm.expectRevert(HCAFundingSessionValidator.FundingPolicyFailed.selector);
+        _validate(digest, _envelope(proof, digest, claim, invalidPermitOperation));
+    }
+
+    function test_acceptsCompactOwnerRecoveryId() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        proof.ownerV -= 27;
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+
+        assertEq(_validate(digest, _envelope(proof, digest, claim, operation)), ERC1271_MAGICVALUE);
+    }
+
+    function test_rejectsInvalidOwnerRecoveryData() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+
+        proof.ownerV = 33;
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        _validate(digest, _envelope(proof, digest, claim, operation));
+
+        proof = _ownerProof(config);
+        proof.ownerR = bytes32(0);
+        proof.ownerS = bytes32(0);
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        _validate(digest, _envelope(proof, digest, claim, operation));
+    }
+
+    function test_internalGuardsRejectTruncatedData() public {
+        HCAFundingSessionValidatorHarness harness =
+            new HCAFundingSessionValidatorHarness(intentExecutor, PERMIT2);
+
+        vm.expectRevert(HCAFundingSessionValidator.InvalidOperation.selector);
+        harness.validateFundingOperationHarness(nexus, nexus, hex"00");
+
+        vm.expectRevert(HCAFundingSessionValidator.ClaimPolicyFailed.selector);
+        harness.validatePermit2ClaimHarness(bytes32(0), hex"00", nexus);
+
+        vm.expectRevert(HCAFundingSessionValidator.ClaimPolicyFailed.selector);
+        harness.readWordHarness(hex"00", 0);
+
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        harness.recoverHarness(bytes32(0), hex"00");
+    }
+
     function test_reusesOneOwnerAuthorizationForCommitAndRevealClaims() public {
         HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
 
@@ -322,6 +583,34 @@ contract HCAFundingSessionValidatorTest is Test {
     function _validate(bytes32 digest, bytes memory envelope) internal returns (bytes4 result) {
         vm.prank(nexus);
         return validator.isValidSignatureWithSender(PERMIT2, digest, envelope);
+    }
+
+    function _expectClaimByteMismatch(uint8 field, uint256 offset, bytes1 value) internal {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) =
+            _claim(operation, COMMIT_SOURCE_COST, 100_000, field);
+        claim[offset] = value;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFundingSessionValidator.ClaimFieldMismatch.selector, field)
+        );
+        _validate(digest, _envelope(proof, digest, claim, operation));
+    }
+
+    function _expectClaimWordMismatch(uint8 field, uint256 offset) internal {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) =
+            _claim(operation, COMMIT_SOURCE_COST, 100_000, field);
+        for (uint256 i; i < 32; ++i) {
+            claim[offset + i] = 0;
+        }
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFundingSessionValidator.ClaimFieldMismatch.selector, field)
+        );
+        _validate(digest, _envelope(proof, digest, claim, operation));
     }
 
     function _fundingOperation(uint256 pullAmount, bool includePermit)
@@ -661,5 +950,44 @@ contract HCAFundingSessionValidatorTest is Test {
         for (uint256 i; i < result.length; ++i) {
             result[i] = data[start + i];
         }
+    }
+}
+
+
+contract HCAFundingSessionValidatorHarness is HCAFundingSessionValidator {
+    constructor(address intentExecutor, address permit2)
+        HCAFundingSessionValidator(intentExecutor, permit2)
+    {}
+
+    function validateFundingOperationHarness(
+        address account,
+        address configAccount,
+        bytes calldata operationData
+    )
+        external
+        view
+        returns (uint256)
+    {
+        return _validateFundingOperation(account, _sessions[configAccount], operationData);
+    }
+
+    function validatePermit2ClaimHarness(bytes32 digest, bytes calldata data, address configAccount)
+        external
+        view
+        returns (uint256)
+    {
+        return _validatePermit2Claim(digest, data, _sessions[configAccount]);
+    }
+
+    function readWordHarness(bytes calldata data, uint256 offset) external pure returns (bytes32) {
+        return _readWord(data, offset);
+    }
+
+    function recoverHarness(bytes32 digest, bytes calldata signature)
+        external
+        pure
+        returns (address)
+    {
+        return _recover(digest, signature);
     }
 }

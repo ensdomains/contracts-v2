@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
+import { SEPOLIA_USDC } from "./deploy-constants.ts";
+
 const FLOWS = [
   "same-chain",
   "same-chain-usdc",
@@ -28,7 +30,6 @@ const FLOW_HELP: Record<Flow, string> = {
 };
 
 const contractsRoot = fileURLToPath(new URL("..", import.meta.url));
-const SEPOLIA_USDC = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
 const TRANSACTION_HASH = /^0x[0-9a-fA-F]{64}$/;
 
 type Refund = { token: string; exchangeRate: string; overhead: string };

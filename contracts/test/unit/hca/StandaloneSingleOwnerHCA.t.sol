@@ -907,6 +907,114 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
     }
 
+    function test_validator_rejectsDuplicateCounterfactualResolverDeployment() public {
+        bytes memory deploymentCall =
+            _resolverDeploymentCall(
+                permittedResolverImpl,
+                counterfactualResolverSalt,
+                _resolverInitData(address(hca), EACBaseRolesLib.ALL_ROLES, new bytes[](0))
+            );
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            new HCAOwnerAndSessionValidator.Execution[](4);
+        executions[0] = HCAOwnerAndSessionValidator.Execution({target: verifiableFactory, value: 0, callData: deploymentCall});
+        executions[1] = executions[0];
+        executions[2] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+            owner,
+            counterfactualResolver
+        )});
+        executions[3] = HCAOwnerAndSessionValidator.Execution({target: counterfactualResolver, value: 0, callData: _resolverRoleCall(
+            hex"00",
+            EACBaseRolesLib.ALL_ROLES,
+            owner,
+            true
+        )});
+        bytes memory operationData = _operationData(executions);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            counterfactualResolver,
+            operationData
+        );
+    }
+
+    function test_validator_internalPolicyGuards() public {
+        HCAOwnerAndSessionValidator.Permit2EnableProof memory proof;
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund;
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector);
+        validatorHarness.checkInitialRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            bytes32(0),
+            proof,
+            "",
+            gasRefund
+        );
+
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            new HCAOwnerAndSessionValidator.Execution[](0);
+        bytes memory operationData = _erc1271OperationData(executions);
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkInitialRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            bytes32(0),
+            proof,
+            operationData,
+            gasRefund
+        );
+
+        executions = new HCAOwnerAndSessionValidator.Execution[](2);
+        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+            COMMIT_SELECTOR,
+            bytes32("first")
+        )});
+        executions[1] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+            COMMIT_SELECTOR,
+            bytes32("second")
+        )});
+        operationData = _erc1271OperationData(executions);
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkInitialRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            bytes32(0),
+            proof,
+            operationData,
+            gasRefund
+        );
+
+        executions = new HCAOwnerAndSessionValidator.Execution[](1);
+        executions[0] = HCAOwnerAndSessionValidator.Execution({target: usdc, value: 0, callData: abi.encodePacked(
+            validatorHarness.TRANSFER_FROM_SELECTOR()
+        )});
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.fundingCallIndexesHarness(executions, address(hca), owner, usdc);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkResolverBindingHarness(address(0), true, false);
+
+        address undeployedResolver = makeAddr("undeployed-resolver");
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkResolverBindingHarness(undeployedResolver, true, false);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkResolverBindingHarness(address(hca), true, true);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkResolverBindingHarness(address(hca), true, false);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector);
+        validatorHarness.operationHashHarness(
+            abi.encodePacked(bytes32(uint256(0xDEAD)), abi.encode(executions))
+        );
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector);
+        validatorHarness.readUintHarness("", 0);
+    }
+
     function test_validator_rejectsInvalidCounterfactualResolverDeployment() public {
         bytes[] memory setters = new bytes[](0);
         _expectValidationRevert(
@@ -1842,12 +1950,64 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
         _checkRegistrationPolicy(account, owner, resolver, operationData);
     }
 
+    function checkInitialRegistrationPolicyHarness(
+        address account,
+        address owner,
+        bytes32 permissionId,
+        Permit2EnableProof calldata proof,
+        bytes calldata operationData,
+        GasRefund calldata gasRefund
+    )
+        external
+        view
+    {
+        _checkInitialRegistrationPolicy(
+            account,
+            owner,
+            permissionId,
+            proof,
+            operationData,
+            gasRefund
+        );
+    }
+
+    function fundingCallIndexesHarness(
+        Execution[] memory executions,
+        address account,
+        address owner,
+        address token
+    )
+        external
+        pure
+        returns (uint256 permitIndex, uint256 transferIndex)
+    {
+        return _fundingCallIndexes(executions, account, owner, token);
+    }
+
+    function checkResolverBindingHarness(address resolver, bool usesResolver, bool deploysResolver)
+        external
+        view
+    {
+        _checkResolverBinding(
+            resolver,
+            RegistrationPolicyState({usesResolver: usesResolver, deploysResolver: deploysResolver, grantsOwnerResolverRoles: false})
+        );
+    }
+
+    function operationHashHarness(bytes calldata operationData) external pure returns (bytes32) {
+        return _operationHash(operationData);
+    }
+
+    function readUintHarness(bytes memory callData, uint256 offset) external pure returns (uint256) {
+        return _readUint(callData, offset);
+    }
+
     function singleChainDigestHarness(address account, uint256 nonce, bytes calldata operationData)
         external
         view
         returns (bytes32)
     {
-        return _singleChainDigest(account, nonce, operationData);
+        return _singleChainDigest(account, nonce, operationData, GasRefund(address(0), 0, 0));
     }
 
     function singleChainDigestWithRefundHarness(

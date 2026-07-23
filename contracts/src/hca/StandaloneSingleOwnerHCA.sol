@@ -81,6 +81,18 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     error NoNFTAllowed();
 
     ////////////////////////////////////////////////////////////////////////
+    // Modifiers
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Restricts a function to the initialized account owner.
+    modifier onlyOwner() {
+        if (msg.sender != _owner) {
+            revert CallerNotOwner();
+        }
+        _;
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
@@ -160,10 +172,7 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     /// @dev Increments the nonce checked by the fixed validator. Only callable by the owner
     ///      directly; account execution paths cannot reach it because self-calls carry the
     ///      account as `msg.sender`.
-    function revokeSessions() external {
-        if (msg.sender != _owner) {
-            revert CallerNotOwner();
-        }
+    function revokeSessions() external onlyOwner {
         uint96 sessionNonce;
         unchecked {
             sessionNonce = ++_sessionNonce;
@@ -176,10 +185,7 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     ///      intent signature or the default executor. The session policy does not apply, and
     ///      each inner call is made by the HCA.
     /// @param executions The calls to execute in order.
-    function executeByOwner(Execution[] calldata executions) external payable onlyProxy {
-        if (msg.sender != _owner) {
-            revert CallerNotOwner();
-        }
+    function executeByOwner(Execution[] calldata executions) external payable onlyProxy onlyOwner {
         _executeBatchNoReturndata(executions);
     }
 
@@ -241,10 +247,7 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
 
     /// @dev Requires the owner as caller and gate approval for the target implementation.
     /// @param newImplementation The implementation to upgrade to.
-    function _authorizeUpgrade(address newImplementation) internal view override {
-        if (msg.sender != _owner) {
-            revert CallerNotOwner();
-        }
+    function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
         if (!UPGRADE_GATE.approvedImplementations(newImplementation)) {
             revert UpgradeTargetNotApproved(newImplementation);
         }

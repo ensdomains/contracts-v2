@@ -137,7 +137,10 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
         hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
     }
 
-    function test_validator_acceptsFirstPermit2RouteWithMultiChainSessionAuthorization() public {
+    function test_validator_acceptsFirstPermit2RouteWithMultiChainSessionAuthorization()
+        public
+        view
+    {
         (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         bytes memory operationData = _withHybridMode(_initialCommitOperation(permissionId, proof));
@@ -157,6 +160,64 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
             );
 
         assertEq(hca.validate(validator, digest, envelope), ERC1271_MAGICVALUE);
+    }
+
+    function test_validator_rejectsMalformedFirstUseEnvelopes() public {
+        bytes memory envelope = new bytes(130);
+        envelope[0] = 0xFF;
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), envelope);
+
+        envelope[0] = 0x04;
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), envelope);
+
+        envelope = new bytes(545);
+        envelope[0] = 0x04;
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), envelope);
+
+        envelope = new bytes(130);
+        envelope[0] = 0x05;
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), envelope);
+
+        envelope = new bytes(219);
+        envelope[0] = 0x05;
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), envelope);
+    }
+
+    function test_validator_rejectsInvalidFirstUseProofAndSessionSignature() public {
+        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        bytes memory operationData = _initialCommitOperation(permissionId, proof);
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialEnvelope(keccak256("wrong-permission"), proof, claimData, operationData, digest)
+        );
+
+        proof.hashesAndChainIds = new HCAOwnerAndSessionValidator.HashAndChainId[](0);
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialEnvelope(permissionId, proof, claimData, operationData, digest)
+        );
+
+        (proof, permissionId) = _multiChainEnableProof();
+        operationData = _initialCommitOperation(permissionId, proof);
+        (claimData, digest) = _claim(operationData, address(hca), block.chainid);
+        bytes memory envelope =
+            _initialEnvelope(permissionId, proof, claimData, operationData, digest);
+        _replaceSignature(envelope, _signRhinestoneMessage(0xBAD, digest));
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, envelope);
     }
 
     function test_validator_rejectsFirstPermit2RouteWithInvalidOwnerAuthorization() public {
@@ -253,6 +314,67 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
             ),
             ERC1271_MAGICVALUE
         );
+    }
+
+    function test_validator_rejectsInvalidFirstSameChainDigestAndSignature() public {
+        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
+            HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
+                    proof.maxRefundAmount
+                ) <<
+                128) |
+            proof.maxRefundGasOverhead});
+        bytes memory operationData = _initialRefundCommitOperation(permissionId, proof);
+        uint256 nonce = 81;
+        bytes32 digest =
+            validator.singleChainDigestWithRefundHarness(
+                address(hca),
+                nonce,
+                operationData,
+                gasRefund
+            );
+        bytes memory envelope =
+            _initialRefundEnvelope(permissionId, proof, nonce, gasRefund, operationData, digest);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, keccak256("wrong-digest"), envelope);
+
+        _replaceSignature(envelope, _signRhinestoneMessage(0xBAD, digest));
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, envelope);
+    }
+
+    function test_validator_rejectsInvalidEnabledPermit2Session() public {
+        bytes memory operationData = _commitOperation(bytes32("commitment"));
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(
+            validator,
+            digest,
+            _envelope(keccak256("missing-session"), claimData, operationData, digest)
+        );
+
+        bytes32 permissionId = _enableSession();
+        hca.setSessionNonce(1);
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
+
+        hca.setSessionNonce(0);
+        bytes memory envelope = _envelope(permissionId, claimData, operationData, digest);
+        _replaceSignature(envelope, _signRhinestoneMessage(0xBAD, digest));
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, envelope);
+
+        claimData[84] = 0x02;
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
+
+        vm.warp(block.timestamp + 2 days);
+        vm.expectRevert(HCAOwnerAndSessionValidator.SessionExpired.selector);
+        hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
     }
 
     function test_validator_rejectsFirstSameChainRouteAboveAuthorizedRefund() public {
@@ -914,6 +1036,13 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
             keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", digest));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, personalDigest);
         return abi.encodePacked(r, s, v + 4);
+    }
+
+    function _replaceSignature(bytes memory envelope, bytes memory signature) internal pure {
+        uint256 signatureOffset = envelope.length - signature.length;
+        for (uint256 i; i < signature.length; ++i) {
+            envelope[signatureOffset + i] = signature[i];
+        }
     }
 }
 

@@ -28,13 +28,11 @@
 | MigrationHelper | [0xd54a53c1567b26f9653c8565dccc39bceb6ab327](https://sepolia.etherscan.io/address/0xd54a53c1567b26f9653c8565dccc39bceb6ab327) |
 | MockDAI | [0xe33a01a41ee4a68616b5278183aa88808326ed8e](https://sepolia.etherscan.io/address/0xe33a01a41ee4a68616b5278183aa88808326ed8e) |
 | MockUSDC | [0xd3322b29a7bdee707d1684676f149bf41aa3422f](https://sepolia.etherscan.io/address/0xd3322b29a7bdee707d1684676f149bf41aa3422f) |
-| OwnerBoundRegistrationSessionValidator | [0xab1f4951728964f4a677b207c03585907c18cfd4](https://sepolia.etherscan.io/address/0xab1f4951728964f4a677b207c03585907c18cfd4) |
 | PermissionedResolverImpl | [0x7e4b2d59938930168024201752ee5503df402303](https://sepolia.etherscan.io/address/0x7e4b2d59938930168024201752ee5503df402303) |
 | PublicResolverSet | [0x24be557df149980a52241dd78a376d78f73689a5](https://sepolia.etherscan.io/address/0x24be557df149980a52241dd78a376d78f73689a5) |
 | PublicResolverV2 | [0xd25f66dd4ff61486c2c5c1e6201a23576698d3df](https://sepolia.etherscan.io/address/0xd25f66dd4ff61486c2c5c1e6201a23576698d3df) |
 | ReverseRegistrarAdapter | [0x94e64e29e25533f93ba0a430646ae42cb47bf8f3](https://sepolia.etherscan.io/address/0x94e64e29e25533f93ba0a430646ae42cb47bf8f3) |
 | RootRegistry | [0x11b5bfbe9078d826b1edbdd1cfc12f5828d9f50c](https://sepolia.etherscan.io/address/0x11b5bfbe9078d826b1edbdd1cfc12f5828d9f50c) |
-| StandaloneHCADeployer | [0x534eacb22aa4237c1b924321d824ab91f013aee9](https://sepolia.etherscan.io/address/0x534eacb22aa4237c1b924321d824ab91f013aee9) |
 | StandaloneHCAFactory | [0x1915b0c8ae2c133b2b43845b5c545d1eea081c9a](https://sepolia.etherscan.io/address/0x1915b0c8ae2c133b2b43845b5c545d1eea081c9a) |
 | StandaloneHCAImplementation | [0xaff1833a2746373b749bca6f416b9d4eb5f4d7c4](https://sepolia.etherscan.io/address/0xaff1833a2746373b749bca6f416b9d4eb5f4d7c4) |
 | StandardRentPriceOracle | [0x09340d50a6489e7bfb2959acc4e32bcbc401e203](https://sepolia.etherscan.io/address/0x09340d50a6489e7bfb2959acc4e32bcbc401e203) |
