@@ -8,6 +8,7 @@
     "moduleResolution": "NodeNext",
     "outDir": "build",
     "skipLibCheck": true,
+    "types": ["bun"],
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "paths": {
