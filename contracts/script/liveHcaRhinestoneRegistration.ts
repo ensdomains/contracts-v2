@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 import {
   RhinestoneSDK,
@@ -90,6 +90,8 @@ const HCA_DEFER_CROSS_CHAIN_FUNDING =
 const HCA_RESUME_DEFERRED = process.env.HCA_RESUME_DEFERRED === "1";
 const HCA_MULTI_CHAIN_SESSION_SIGNATURE = process.env
   .HCA_MULTI_CHAIN_SESSION_SIGNATURE as Hex | undefined;
+const HCA_MULTI_CHAIN_SESSION_SIGNATURE_FILE =
+  process.env.HCA_MULTI_CHAIN_SESSION_SIGNATURE_FILE;
 const HCA_WAIT_FOR_SOURCE_USDC = process.env.HCA_WAIT_FOR_SOURCE_USDC === "1";
 const HCA_SOURCE_APPROVAL_TRANSACTION_HASH = process.env
   .HCA_SOURCE_APPROVAL_TRANSACTION_HASH as Hex | undefined;
@@ -99,6 +101,8 @@ const HCA_SPONSORED = process.env.HCA_SPONSORED !== "0";
 const HCA_USER_PAID_USDC = process.env.HCA_USER_PAID_USDC === "1";
 const HCA_SAME_CHAIN_USER_PAID_USDC =
   process.env.HCA_SAME_CHAIN_USER_PAID_USDC === "1";
+const HCA_USES_MULTI_CHAIN_SESSION =
+  HCA_DEFER_CROSS_CHAIN_FUNDING || HCA_SAME_CHAIN_USER_PAID_USDC;
 const HCA_USER_PAID_EXECUTION =
   HCA_USER_PAID_USDC || HCA_SAME_CHAIN_USER_PAID_USDC;
 const HCA_FEE_ASSET = process.env.HCA_FEE_ASSET as
@@ -137,7 +141,7 @@ const NEXUS_BOOTSTRAP_ABI = parseAbi([
 ]);
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3" as const;
 const BASE_SEPOLIA_HCA_FUNDING_SESSION_VALIDATOR =
-  "0x30057465186786f4477e98FBeE9Ae6b8e30B6325" as const;
+  deployment("HCAFundingSessionValidator", "base-sepolia");
 const HCA_FUNDING_SESSION_VALIDATOR = (process.env
   .HCA_FUNDING_SESSION_VALIDATOR ??
   (sourceChain.id === baseSepolia.id
@@ -214,9 +218,9 @@ const LEGACY_EIP2612_DOMAIN_ABI = [
 if (!RPC_URL) throw new Error("SEPOLIA_RPC_URL is required");
 if (!DEPLOYER_KEY) throw new Error("DEPLOYER_KEY is required");
 if (!RHINESTONE_API_KEY) throw new Error("RHINESTONE_API_KEY is required");
-if (HCA_CROSS_CHAIN && !SOURCE_RPC_URL) {
+if (HCA_USES_MULTI_CHAIN_SESSION && !SOURCE_RPC_URL) {
   throw new Error(
-    `HCA_SOURCE_RPC_URL or the ${HCA_SOURCE_CHAIN} RPC variable is required for HCA_CROSS_CHAIN=1`,
+    `HCA_SOURCE_RPC_URL or the ${HCA_SOURCE_CHAIN} RPC variable is required for the multi-chain session`,
   );
 }
 if (!new Set(["new", "existing", "either"]).has(HCA_EXPECT_INITIAL_STATE)) {
@@ -357,7 +361,7 @@ const walletClient = createWalletClient({
   chain: sepolia,
   transport: http(RPC_URL),
 });
-const sourcePublicClient = HCA_CROSS_CHAIN
+const sourcePublicClient = HCA_USES_MULTI_CHAIN_SESSION
   ? createPublicClient({
       chain: sourceChain,
       transport: http(SOURCE_RPC_URL!),
@@ -370,7 +374,7 @@ const sourceWalletClient = HCA_CROSS_CHAIN
       transport: http(SOURCE_RPC_URL!),
     })
   : undefined;
-const sourceProvisionerWalletClient = HCA_CROSS_CHAIN
+const sourceProvisionerWalletClient = HCA_USES_MULTI_CHAIN_SESSION
   ? createWalletClient({
       account: relayer,
       chain: sourceChain,
@@ -550,7 +554,7 @@ async function assertCode(
 }
 
 async function ensureFundingSessionValidator() {
-  if (!HCA_CROSS_CHAIN || !HCA_DEFER_CROSS_CHAIN_FUNDING) {
+  if (!HCA_USES_MULTI_CHAIN_SESSION) {
     return undefined;
   }
 
@@ -838,7 +842,7 @@ async function main() {
   }
 
   const providerUrls: Record<number, string> = { [sepolia.id]: rpcUrl };
-  if (HCA_CROSS_CHAIN) {
+  if (HCA_USES_MULTI_CHAIN_SESSION) {
     providerUrls[sourceChain.id] = SOURCE_RPC_URL!;
   }
   const sdk = new RhinestoneSDK({
@@ -902,17 +906,26 @@ async function main() {
   const hca = candidateAccount.getAddress();
   const codeBefore = await publicClient.getCode({ address: hca });
   const initiallyDeployed = Boolean(codeBefore && codeBefore !== "0x");
-  if (HCA_USER_PAID_USDC && initiallyDeployed && !HCA_RESUME_DEFERRED) {
+  if (
+    HCA_USER_PAID_USDC &&
+    initiallyDeployed &&
+    !HCA_RESUME_DEFERRED &&
+    !HCA_MULTI_CHAIN_SESSION_SIGNATURE
+  ) {
     throw new Error("USDC-only proof requires a fresh destination HCA");
   }
   if (
-    HCA_RESUME_DEFERRED &&
-    (!HCA_MULTI_CHAIN_SESSION_SIGNATURE ||
-      size(HCA_MULTI_CHAIN_SESSION_SIGNATURE) !== 85 ||
+    HCA_MULTI_CHAIN_SESSION_SIGNATURE &&
+    (size(HCA_MULTI_CHAIN_SESSION_SIGNATURE) !== 85 ||
       !HCA_MULTI_CHAIN_SESSION_SIGNATURE.toLowerCase().startsWith(zeroAddress))
   ) {
     throw new Error(
-      "HCA_MULTI_CHAIN_SESSION_SIGNATURE must contain the authorization used by the committed route",
+      "HCA_MULTI_CHAIN_SESSION_SIGNATURE must contain a valid multi-chain session authorization",
+    );
+  }
+  if (HCA_RESUME_DEFERRED && !HCA_MULTI_CHAIN_SESSION_SIGNATURE) {
+    throw new Error(
+      "HCA_MULTI_CHAIN_SESSION_SIGNATURE is required to resume deferred funding",
     );
   }
   if (
@@ -994,15 +1007,17 @@ async function main() {
       }
     | undefined;
   let sourceAccount: RhinestoneAccount | undefined;
-  if (HCA_CROSS_CHAIN) {
+  if (HCA_CROSS_CHAIN || HCA_SAME_CHAIN_USER_PAID_USDC) {
     if (HCA_CROSS_CHAIN_SOURCE === "eoa") {
       sourceAccount = await sdk.createAccount({
         account: { type: "eoa" },
         eoa: trackedSourceOwner,
       });
-    } else if (HCA_DEFER_CROSS_CHAIN_FUNDING) {
+    } else if (HCA_USES_MULTI_CHAIN_SESSION) {
       if (!fundingValidatorDeployment) {
-        throw new Error("deferred funding requires its fixed source validator");
+        throw new Error(
+          "the multi-chain session requires its source validator",
+        );
       }
       const sourceSessionSalt = keccak256(
         encodeAbiParameters(
@@ -1117,11 +1132,26 @@ async function main() {
           "multi-chain session authorization does not bind the HCA and source Nexus",
         );
       }
-      const multiChainSignature = HCA_RESUME_DEFERRED
-        ? HCA_MULTI_CHAIN_SESSION_SIGNATURE!
-        : await candidateAccount.experimental_signEnableSession(sessionDetails);
+      const multiChainSignature =
+        HCA_MULTI_CHAIN_SESSION_SIGNATURE ??
+        (await candidateAccount.experimental_signEnableSession(sessionDetails));
       if (
-        hcaOwnerSignatureCount !== 1 ||
+        HCA_MULTI_CHAIN_SESSION_SIGNATURE_FILE &&
+        !HCA_MULTI_CHAIN_SESSION_SIGNATURE
+      ) {
+        writeFileSync(
+          HCA_MULTI_CHAIN_SESSION_SIGNATURE_FILE,
+          `${multiChainSignature}\n`,
+          { mode: 0o600 },
+        );
+      }
+      const expectedHcaOwnerSignatures = HCA_RESUME_DEFERRED
+        ? 1
+        : HCA_MULTI_CHAIN_SESSION_SIGNATURE
+          ? 0
+          : 1;
+      if (
+        hcaOwnerSignatureCount !== expectedHcaOwnerSignatures ||
         sourceWalletSignatureCount !== (HCA_RESUME_DEFERRED ? 1 : 0)
       ) {
         throw new Error(
@@ -1247,6 +1277,7 @@ async function main() {
         destinationPermissionId: permissionId,
         validUntil,
         initiallyDeployed,
+        destinationSessionEnabled: sessionEnabled,
         sourceWalletSignatureCount: () => sourceWalletSignatureCount,
         hcaOwnerSignatureCount: () => hcaOwnerSignatureCount,
         recordSourceWalletSignature: countSourceWalletSignature,
@@ -1737,6 +1768,16 @@ async function main() {
   const firstCommit = await executeIntent({
     account: firstAccount,
     calls: firstCommitCalls,
+    ...(HCA_SAME_CHAIN_USER_PAID_USDC && {
+      signers: {
+        type: "experimental_session" as const,
+        session: sessionConfig,
+        enableData: destinationEnableData,
+        verifyExecutions: true,
+      },
+      permissionId,
+      ...(destinationEnableData && { expectedSessionMode: "05" as const }),
+    }),
     expectedMode: MODE_ERC1271,
     expectedSetupOps: initiallyDeployed ? 0 : 1,
     ...(HCA_SAME_CHAIN_USER_PAID_USDC && {
@@ -1749,9 +1790,14 @@ async function main() {
     }),
     phase: "new-user commit",
   });
-  if (hcaOwnerSignatureCount !== 1) {
+  const expectedSessionAuthorizationSignatures =
+    HCA_SAME_CHAIN_USER_PAID_USDC &&
+    (sessionEnabled || HCA_MULTI_CHAIN_SESSION_SIGNATURE)
+      ? 0
+      : 1;
+  if (hcaOwnerSignatureCount !== expectedSessionAuthorizationSignatures) {
     throw new Error(
-      `new-user commit: expected one HCA owner signature, got ${hcaOwnerSignatureCount}`,
+      `new-user commit: expected ${expectedSessionAuthorizationSignatures} session authorization signatures, got ${hcaOwnerSignatureCount}`,
     );
   }
   if (HCA_DRY_RUN_ONLY) {
@@ -1956,7 +2002,9 @@ async function main() {
         sameChainFunding: funding,
         walletInteractions: {
           paymentPermitSignatures: sameChainFunding!.permitSignatureCount,
-          ownerIntentSignatures: hcaOwnerSignatureCount,
+          ...(HCA_SAME_CHAIN_USER_PAID_USDC
+            ? { multiChainSessionSignatures: hcaOwnerSignatureCount }
+            : { ownerIntentSignatures: hcaOwnerSignatureCount }),
           postCommitWalletInteractions: 0,
           total:
             sameChainFunding!.permitSignatureCount + hcaOwnerSignatureCount,
@@ -2544,6 +2592,7 @@ async function runDeferredCrossChainRegistration({
   destinationPermissionId,
   validUntil,
   initiallyDeployed,
+  destinationSessionEnabled,
   sourceWalletSignatureCount,
   hcaOwnerSignatureCount,
   recordSourceWalletSignature,
@@ -2567,6 +2616,7 @@ async function runDeferredCrossChainRegistration({
   destinationPermissionId: Hex;
   validUntil: bigint;
   initiallyDeployed: boolean;
+  destinationSessionEnabled: boolean;
   sourceWalletSignatureCount: () => number;
   hcaOwnerSignatureCount: () => number;
   recordSourceWalletSignature: () => void;
@@ -2575,8 +2625,8 @@ async function runDeferredCrossChainRegistration({
   sourceEnableData: LiveSessionEnableData;
   destinationEnableData: LiveSessionEnableData;
 }) {
-  if (initiallyDeployed !== HCA_RESUME_DEFERRED) {
-    throw new Error("deferred-funding proof requires a fresh destination HCA");
+  if (HCA_RESUME_DEFERRED && !initiallyDeployed) {
+    throw new Error("deferred-funding resume requires an existing HCA");
   }
   if (CROSS_CHAIN_COMMIT_TARGET_AMOUNT >= price) {
     throw new Error(
@@ -2585,6 +2635,12 @@ async function runDeferredCrossChainRegistration({
   }
 
   const sourceAddress = sourceAccount.getAddress();
+  const hcaBalanceBefore = await publicClient.readContract({
+    address: deployments.paymentToken,
+    abi: MockERC20.abi,
+    functionName: "balanceOf",
+    args: [hca],
+  });
   const funding = HCA_RESUME_DEFERRED
     ? await resumeDeferredSourceFunding({
         sourceAddress,
@@ -2618,8 +2674,9 @@ async function runDeferredCrossChainRegistration({
       walletSignatures: 0,
     };
   } else {
-    const firstCalls: Call[] = [
-      {
+    const firstCalls: Call[] = [];
+    if (!destinationSessionEnabled) {
+      firstCalls.push({
         to: deployments.validator,
         value: 0n,
         data: encodeFunctionData({
@@ -2636,17 +2693,17 @@ async function runDeferredCrossChainRegistration({
             MAX_REFUND_AMOUNT,
           ],
         }),
-      },
-      {
-        to: deployments.ethRegistrar,
-        value: 0n,
-        data: encodeFunctionData({
-          abi: ETHRegistrar.abi,
-          functionName: "commit",
-          args: [commitment],
-        }),
-      },
-    ];
+      });
+    }
+    firstCalls.push({
+      to: deployments.ethRegistrar,
+      value: 0n,
+      data: encodeFunctionData({
+        abi: ETHRegistrar.abi,
+        functionName: "commit",
+        args: [commitment],
+      }),
+    });
     firstRoute = await executeSessionCrossChainRegistration({
       account: sourceAccount,
       recipient: destinationAccount.config,
@@ -2665,7 +2722,9 @@ async function runDeferredCrossChainRegistration({
           },
           [sepolia.id]: {
             session: destinationSession,
-            enableData: destinationEnableData,
+            ...(!destinationSessionEnabled && {
+              enableData: destinationEnableData,
+            }),
             verifyExecutions: true,
           },
         },
@@ -2673,9 +2732,9 @@ async function runDeferredCrossChainRegistration({
       },
       sourcePermissionId,
       destinationPermissionId,
-      expectedDestinationSessionMode: "04",
+      expectedDestinationSessionMode: destinationSessionEnabled ? "03" : "04",
       expectedSourceSetupOps: 1,
-      expectedRecipientSetupOps: 1,
+      expectedRecipientSetupOps: initiallyDeployed ? 0 : 1,
       sourceWalletSignatureCount,
       hcaOwnerSignatureCount,
       phase: "deferred-funding deploy and commit",
@@ -2725,11 +2784,11 @@ async function runDeferredCrossChainRegistration({
     functionName: "isInitialized",
     args: [sourceAddress],
   });
-  const destinationSessionEnabled =
+  const destinationSessionIsEnabled =
     await destinationSessionAccount.experimental_isSessionEnabled(
       destinationSession,
     );
-  if (!sourcePolicyEnabled || !destinationSessionEnabled) {
+  if (!sourcePolicyEnabled || !destinationSessionIsEnabled) {
     throw new Error(
       "the commit route did not install the source policy and enable the HCA session",
     );
@@ -2747,8 +2806,8 @@ async function runDeferredCrossChainRegistration({
       funding.walletTokenBalanceBefore - pulledAtCommit ||
     afterCommit.walletToNexusAllowance !== revealSourceBudget ||
     afterCommit.sourceTokenBalance !== 0n ||
-    afterCommit.hcaTokenBalance !== CROSS_CHAIN_COMMIT_TARGET_AMOUNT ||
-    afterCommit.hcaTokenBalance >= price ||
+    afterCommit.hcaTokenBalance !==
+      hcaBalanceBefore + CROSS_CHAIN_COMMIT_TARGET_AMOUNT ||
     afterCommit.walletNativeBalance !== 0n ||
     afterCommit.walletTransactionCount !== 0
   ) {
@@ -2860,7 +2919,15 @@ async function runDeferredCrossChainRegistration({
   ) {
     throw new Error("reveal route did not pull only its quoted cost");
   }
-  if (sourceWalletSignatureCount() !== 1 || hcaOwnerSignatureCount() !== 1) {
+  const expectedHcaOwnerSignatures = HCA_RESUME_DEFERRED
+    ? 1
+    : HCA_MULTI_CHAIN_SESSION_SIGNATURE
+      ? 0
+      : 1;
+  if (
+    sourceWalletSignatureCount() !== 1 ||
+    hcaOwnerSignatureCount() !== expectedHcaOwnerSignatures
+  ) {
     throw new Error("session reveal requested another wallet signature");
   }
   const verified = await verifyRegistration(
@@ -2901,8 +2968,11 @@ async function runDeferredCrossChainRegistration({
         sessions: {
           sourcePermissionId,
           destinationPermissionId,
+          ownerAuthorizationReused: Boolean(
+            HCA_MULTI_CHAIN_SESSION_SIGNATURE && !HCA_RESUME_DEFERRED,
+          ),
           sourcePolicyInstalledAtCommit: sourcePolicyEnabled,
-          destinationEnabledAtCommit: destinationSessionEnabled,
+          destinationEnabledAtCommit: destinationSessionIsEnabled,
         },
         routes: { commit: firstRoute, reveal: revealRoute },
         registrationPriceBeforeCommit: price,
@@ -3791,7 +3861,7 @@ async function executeSessionCrossChainRegistration({
   const signatureMode = (
     prepared.intentInput as { options?: { signatureMode?: number } }
   ).options?.signatureMode;
-  const expectedSignatureMode = 5;
+  const expectedSignatureMode = 6;
   if (signatureMode !== expectedSignatureMode) {
     throw new Error(
       `${phase}: expected signature mode ${expectedSignatureMode}, got ${signatureMode}`,
@@ -3904,7 +3974,7 @@ async function executeSessionCrossChainRegistration({
       `${phase}: Permit2 claim ${signedSourceAmount} does not equal the wallet pull ${routedSourcePull}`,
     );
   }
-  if (sourcePermitFound !== (expectedDestinationSessionMode === "04")) {
+  if (sourcePermitFound !== (expectedSourceSetupOps === 1)) {
     throw new Error(`${phase}: EIP-2612 permit presence is wrong for this leg`);
   }
 
@@ -4059,6 +4129,7 @@ async function executeIntent({
   signers,
   permissionId,
   expectedMode,
+  expectedSessionMode,
   expectedSetupOps,
   feeToken,
   protocolTokenSpend = 0n,
@@ -4070,6 +4141,7 @@ async function executeIntent({
   signers?: SignerSet;
   permissionId?: Hex;
   expectedMode: Hex;
+  expectedSessionMode?: "01" | "02" | "05";
   expectedSetupOps: number;
   feeToken?: Address;
   protocolTokenSpend?: bigint;
@@ -4254,8 +4326,9 @@ async function executeIntent({
         `${phase}: fixed session has no target execution signature`,
       );
     }
+    const sessionMode = expectedSessionMode ?? (hasGasRefund ? "02" : "01");
     const expectedPrefix =
-      `${zeroAddress}${hasGasRefund ? "02" : "01"}${permissionId.slice(2)}`.toLowerCase();
+      `${zeroAddress}${sessionMode}${permissionId.slice(2)}`.toLowerCase();
     if (!signature.toLowerCase().startsWith(expectedPrefix)) {
       throw new Error(
         `${phase}: fixed session does not select the HCA validator; signature=${signature.slice(0, 108)}, refunds=${JSON.stringify(gasRefunds, jsonReplacer)}`,

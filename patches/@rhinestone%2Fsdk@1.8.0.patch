@@ -1,5 +1,5 @@
 diff --git a/dist/src/accounts/hca.d.ts b/dist/src/accounts/hca.d.ts
-index d04976c..1786c9c 100644
+index d04976c5..1786c9ca 100644
 --- a/dist/src/accounts/hca.d.ts
 +++ b/dist/src/accounts/hca.d.ts
 @@ -6,10 +6,12 @@ import type { ValidatorConfig } from './utils';
@@ -33,7 +33,7 @@ index d04976c..1786c9c 100644
  //# sourceMappingURL=hca.d.ts.map
 \ No newline at end of file
 diff --git a/dist/src/accounts/hca.js b/dist/src/accounts/hca.js
-index 00bdb68..0e936ec 100644
+index 00bdb68d..0e936ec9 100644
 --- a/dist/src/accounts/hca.js
 +++ b/dist/src/accounts/hca.js
 @@ -4,6 +4,7 @@ exports.ENS_HCA_MODULE = void 0;
@@ -184,7 +184,7 @@ index 00bdb68..0e936ec 100644
  async function getGuardianSmartAccount(client, address, guardians, validatorAddress, sign) {
      return (0, nexus_1.getGuardianSmartAccount)(client, address, guardians, validatorAddress, sign, core_1.ENS_HCA_MODULE);
 diff --git a/dist/src/accounts/index.js b/dist/src/accounts/index.js
-index 509fb55..ca4030a 100644
+index 509fb55c..ca4030a2 100644
 --- a/dist/src/accounts/index.js
 +++ b/dist/src/accounts/index.js
 @@ -354,7 +354,10 @@ async function getEip1271Signature(config, signers, chain, validator, hash, tran
@@ -227,7 +227,7 @@ index 509fb55..ca4030a 100644
      }
  }
 diff --git a/dist/src/accounts/nexus.d.ts b/dist/src/accounts/nexus.d.ts
-index feb346d..eaeaa77 100644
+index feb346df..eaeaa77b 100644
 --- a/dist/src/accounts/nexus.d.ts
 +++ b/dist/src/accounts/nexus.d.ts
 @@ -22,7 +22,10 @@ declare function getEip712Domain(config: RhinestoneAccountConfig, chain: Chain):
@@ -243,7 +243,7 @@ index feb346d..eaeaa77 100644
  declare function signEip7702InitData(config: RhinestoneAccountConfig, eoa: Account): Promise<`0x${string}`>;
  declare function getEip7702InitCall(config: RhinestoneAccountConfig, signature: Hex): {
 diff --git a/dist/src/accounts/nexus.js b/dist/src/accounts/nexus.js
-index 8c484ef..3f2192b 100644
+index 8c484ef9..3f2192bc 100644
 --- a/dist/src/accounts/nexus.js
 +++ b/dist/src/accounts/nexus.js
 @@ -222,10 +222,10 @@ async function packSignature(signature, validator, transformSignature = (signatu
@@ -278,7 +278,7 @@ index 8c484ef..3f2192b 100644
          async getNonce(args) {
              const validatorAddress = nonceValidatorAddress === defaultValidatorAddress
 diff --git a/dist/src/execution/index.js b/dist/src/execution/index.js
-index c556730..4ae9b7e 100644
+index c556730c..4ae9b7e9 100644
 --- a/dist/src/execution/index.js
 +++ b/dist/src/execution/index.js
 @@ -99,7 +99,7 @@ async function sendTransactionAsIntent(config, sourceChains, targetChain, callIn
@@ -291,9 +291,18 @@ index c556730..4ae9b7e 100644
      const authorizations = config.eoa
          ? await (0, utils_2.signAuthorizationsInternal)(config, intentRoute)
 diff --git a/dist/src/execution/utils.d.ts b/dist/src/execution/utils.d.ts
-index f77a7c9..77edd38 100644
+index f77a7c96..bb5b33cd 100644
 --- a/dist/src/execution/utils.d.ts
 +++ b/dist/src/execution/utils.d.ts
+@@ -5,7 +5,7 @@ import { type IntentOp, type IntentRoute } from '../orchestrator';
+ import { type AuxiliaryFunds, type OriginSignature, type SettlementLayer, type SignatureMode } from '../orchestrator/types';
+ import type { Call, CalldataInput, CallInput, RhinestoneAccountConfig, RhinestoneConfig, Session, SessionEnableData, SessionSignerSet, SignerSet, SourceAssetInput, Sponsorship, TokenRequest, TokenSymbol, Transaction, UserOperationTransaction } from '../types';
+ type InternalSignerSet = Exclude<SignerSet, SessionSignerSet> | ResolvedSessionSignerSet;
+-declare function resolveSignatureMode(config: RhinestoneConfig, signers: SignerSet | undefined, sourceChains: Chain[] | undefined, targetChain: Chain): Promise<SignatureMode>;
++declare function resolveSignatureMode(config: RhinestoneConfig, signers: SignerSet | undefined, sourceChains: Chain[] | undefined, targetChain: Chain, recipient?: RhinestoneConfig | Address): Promise<SignatureMode>;
+ declare function resolveSessionForChain(signers: SessionSignerSet, chainId: number): {
+     session: Session;
+     enableData?: SessionEnableData;
 @@ -86,7 +86,7 @@ declare function prepareTransactionAsIntent(config: RhinestoneConfig, sourceChai
      intentRoute: IntentRoute;
      intentInput: any;
@@ -303,8 +312,15 @@ index f77a7c9..77edd38 100644
      originSignatures: OriginSignature[];
      destinationSignature: `0x${string}`;
  }>;
+@@ -108,4 +108,4 @@ declare function hashErc7739TypedDataForSolady({ domain, types, primaryType, mes
+ }): Hex;
+ export { prepareTransaction, getTransactionMessages, signTransaction, signAuthorizations, signAuthorizationsInternal, signMessage, signTypedData, submitTransaction, prepareUserOperation, signUserOperation, submitUserOperation, signIntent, prepareTransactionAsIntent, submitIntentInternal, getValidatorAccount, parseCalls, getTokenRequests, resolveCallInputs, getIntentAccount, getTargetExecutionSignature, hashErc7739TypedDataForSolady, resolveSessionForChain, resolveSignatureMode, };
+ export type { InternalSignerSet, IntentRoute, TransactionResult, PreparedTransactionData, PreparedUserOperationData, SignedTransactionData, SignedUserOperationData, UserOperationResult, };
+-//# sourceMappingURL=utils.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=utils.d.ts.map
 diff --git a/dist/src/execution/utils.js b/dist/src/execution/utils.js
-index 8e43c7a..fa701b1 100644
+index 8e43c7a3..67ded69a 100644
 --- a/dist/src/execution/utils.js
 +++ b/dist/src/execution/utils.js
 @@ -27,6 +27,7 @@ const viem_1 = require("viem");
@@ -359,15 +375,43 @@ index 8e43c7a..fa701b1 100644
      const enableData = enabled ? undefined : resolved.enableData;
      const hasExplicitActions = !!resolved.session.actions?.length;
      const verifyExecutions = resolved.verifyExecutions ?? signers.verifyExecutions ?? hasExplicitActions;
-@@ -89,8 +120,14 @@ async function resolveSignatureMode(config, signers, sourceChains, targetChain)
+@@ -65,7 +96,7 @@ async function resolveSignersForChain(config, signers, chainId) {
+ // Picks the single signature mode that matches the bytes shape the SDK will
+ // actually sign, so the on-chain dispatcher hits the right validator on the
+ // first try instead of falling through a hybrid.
+-async function resolveSignatureMode(config, signers, sourceChains, targetChain) {
++async function resolveSignatureMode(config, signers, sourceChains, targetChain, recipient) {
+     if (config.account?.type === 'eoa') {
+         return types_1.SIG_MODE_ERC1271;
+     }
+@@ -77,6 +108,7 @@ async function resolveSignatureMode(config, signers, sourceChains, targetChain)
+     ];
+     const resolvedSet = await Promise.all(chainIds.map((chainId) => resolveSignersForChain(config, signers, chainId)));
+     let anyVerifyExecutions = false;
++    let hasHcaFundingSession = false;
+     for (const resolved of resolvedSet) {
+         if (!isResolvedSessionSignerSet(resolved)) {
+             return types_1.SIG_MODE_ERC1271;
+@@ -85,12 +117,25 @@ async function resolveSignatureMode(config, signers, sourceChains, targetChain)
+         // all origin signatures — a single mode field can't describe divergence.
+         if (resolved.verifyExecutions)
+             anyVerifyExecutions = true;
++        if (resolveHcaFundingSessionConfig(config, resolved))
++            hasHcaFundingSession = true;
+     }
      // Mode 4 (pure emissary-execution) is unused: signIntentTypedData always
      // emits a dual sig for the intent's origin/destination signatures when
      // verifyExecutions=true, so mode 5 is the right hybrid.
 +    const standaloneSameChain = (0, hca_1.isStandaloneHca)(config) &&
 +        chainIds.every((chainId) => chainId === targetChain.id);
++    const standaloneHcaRecipient = !!recipient &&
++        typeof recipient !== 'string' &&
++        (0, hca_1.isStandaloneHca)(recipient);
      return anyVerifyExecutions
 -        ? types_1.SIG_MODE_EMISSARY_EXECUTION_ERC1271
-+        ? standaloneSameChain
++        ? hasHcaFundingSession && standaloneHcaRecipient
++            ? types_1.SIG_MODE_ERC1271_EMISSARY_EXECUTION
++            : standaloneSameChain
 +            ? types_1.SIG_MODE_ERC1271
 +            : (0, hca_1.isStandaloneHca)(config)
 +                ? types_1.SIG_MODE_EMISSARY_EXECUTION
@@ -375,7 +419,7 @@ index 8e43c7a..fa701b1 100644
          : types_1.SIG_MODE_ERC1271;
  }
  function resolveSessionForChain(signers, chainId) {
-@@ -158,7 +195,7 @@ async function signTransaction(config, preparedTransaction) {
+@@ -158,7 +203,7 @@ async function signTransaction(config, preparedTransaction) {
      const targetChain = 'targetChain' in preparedTransaction.transaction
          ? preparedTransaction.transaction.targetChain
          : preparedTransaction.transaction.chain;
@@ -384,16 +428,33 @@ index 8e43c7a..fa701b1 100644
      const targetExecutionSignature = await getTargetExecutionSignature(config, intentRoute.intentOp, targetChain, signers);
      return {
          intentRoute,
-@@ -449,7 +486,7 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
+@@ -430,6 +475,13 @@ function getIntentAccount(config, eip7702InitSignature, account) {
+ async function prepareTransactionAsIntent(config, sourceChains, targetChain, callInputs, gasLimit, tokenRequests, recipientInput, sponsored, eip7702InitSignature, settlementLayers, sourceAssets, feeAsset, lockFunds, auxiliaryFunds, account, signers, sourceCalls) {
+     const calls = parseCalls(callInputs, targetChain.id);
+     const accountAccessList = createAccountAccessList(sourceChains, sourceAssets);
++    const targetSessionSigners = signers?.type === 'experimental_session'
++        ? await resolveSignersForChain(config, signers, targetChain.id)
++        : undefined;
++    const standaloneHcaFirstUse = (0, hca_1.isStandaloneHca)(config) &&
++        isResolvedSessionSignerSet(targetSessionSigners) &&
++        !!targetSessionSigners.enableData &&
++        (sourceChains ?? []).every((chain) => chain.id === targetChain.id);
+     function getRecipient(recipient) {
+         if (typeof recipient === 'string') {
+             // Passed as an address, assume it's an EOA
+@@ -447,9 +499,9 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
+     }
+     const intentAccount = {
          ...getIntentAccount(config, eip7702InitSignature, account),
-         ...(signers?.type === 'experimental_session' && {
+-        ...(signers?.type === 'experimental_session' && {
++        ...(signers?.type === 'experimental_session' && !standaloneHcaFirstUse && {
              // Global fallback: target-chain sig for backward-compat with older orchestrators
 -            mockSignature: (0, validators_1.buildMockSignature)(resolveSessionForChain(signers, targetChain.id).session, config.useDevContracts, sourceChains?.length ?? 1),
 +            mockSignature: buildSessionMockSignature(config, resolveSessionForChain(signers, targetChain.id).session, sourceChains?.length ?? 1),
              // Per-chain map: enables accurate per-chain session validation gas simulation
              mockSignatures: Object.fromEntries([
                  ...new Set([
-@@ -458,7 +495,7 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
+@@ -458,12 +510,12 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
                  ]),
              ].map((chainId) => [
                  String(chainId),
@@ -402,7 +463,22 @@ index 8e43c7a..fa701b1 100644
              ])),
          }),
      };
-@@ -554,7 +591,7 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
+     const recipient = getRecipient(recipientInput);
+-    const signatureMode = await resolveSignatureMode(config, signers, sourceChains, targetChain);
++    const signatureMode = await resolveSignatureMode(config, signers, sourceChains, targetChain, recipientInput);
+     // For session signers that need enabling, pass a dummy preclaimop per source chain
+     // so the orchestrator bakes it into the bundle before computing its HMAC. The filler
+     // executes the op via verifyExecution in ENABLE mode, enabling the session on-chain
+@@ -481,6 +533,8 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
+             const { enableData, verifyExecutions } = resolved;
+             if (!verifyExecutions || !enableData)
+                 continue;
++            if (standaloneHcaFirstUse && chainId === targetChain.id)
++                continue;
+             preClaimExecutions[chainId] = [
+                 {
+                     to: validators_1.DUMMY_PRECLAIMOP_TARGET,
+@@ -554,7 +608,7 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
      const intentRoute = await orchestrator.getIntentRoute(metaIntent);
      return { intentRoute, intentInput: serializedIntent };
  }
@@ -411,7 +487,7 @@ index 8e43c7a..fa701b1 100644
      const { origin, destination } = getIntentMessages(config, intentOp);
      if (config.account?.type === 'eoa') {
          const eoa = config.eoa;
-@@ -571,7 +608,14 @@ async function signIntent(config, intentOp, targetChain, signers, targetExecutio
+@@ -571,7 +625,14 @@ async function signIntent(config, intentOp, targetChain, signers, targetExecutio
                  throw new accounts_1.EoaSigningMethodNotConfiguredError('signTypedData');
              }
          }
@@ -427,7 +503,7 @@ index 8e43c7a..fa701b1 100644
          return {
              originSignatures,
              destinationSignature,
-@@ -590,8 +634,15 @@ async function signIntent(config, intentOp, targetChain, signers, targetExecutio
+@@ -590,8 +651,15 @@ async function signIntent(config, intentOp, targetChain, signers, targetExecutio
          const signature = await signIntentTypedData(config, originSigners, validator, isRoot, typedData, chain, targetExecution ?? false);
          originSignatures.push(signature);
      }
@@ -445,7 +521,7 @@ index 8e43c7a..fa701b1 100644
      return {
          originSignatures,
          destinationSignature,
-@@ -662,6 +713,30 @@ function getTargetExecutionMessage(config, intentOp) {
+@@ -662,6 +730,30 @@ function getTargetExecutionMessage(config, intentOp) {
      };
      return typedData;
  }
@@ -476,7 +552,7 @@ index 8e43c7a..fa701b1 100644
  /** Computes claim policy calldata when parameters are Permit2 typed data with claim policies. */
  function resolveClaimPolicyData(signers, parameters) {
      if (parameters.primaryType !== 'PermitBatchWitnessTransferFrom' ||
-@@ -679,6 +754,42 @@ function resolveClaimPolicyData(signers, parameters) {
+@@ -679,6 +771,45 @@ function resolveClaimPolicyData(signers, parameters) {
      return (0, permit2_1.buildPermit2ClaimPolicyCalldata)(signers.session.claimPolicies[0], parameters.message);
  }
  async function signIntentTypedData(config, signers, validator, isRoot, parameters, chain, targetExecution) {
@@ -496,7 +572,10 @@ index 8e43c7a..fa701b1 100644
 +        signers.verifyExecutions &&
 +        parameters.primaryType === 'SingleChainOps') {
 +        const digest = (0, viem_1.hashTypedData)(parameters);
-+        const packedSessionSignature = await (0, accounts_1.getEmissarySignature)(config, signers, chain, digest);
++        const hcaSigners = signers.enableData
++            ? { ...signers, enableData: undefined }
++            : signers;
++        const packedSessionSignature = await (0, accounts_1.getEmissarySignature)(config, hcaSigners, chain, digest);
 +        return packStandaloneHcaFixedSessionSignature(config, signers, parameters, packedSessionSignature);
 +    }
 +    const hcaFundingConfig = isResolvedSessionSignerSet(signers)
@@ -519,7 +598,7 @@ index 8e43c7a..fa701b1 100644
      if ((0, core_1.supportsEip712)(validator)) {
          const isK1Validator = validator.address.toLowerCase() ===
              startale_1.K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase();
-@@ -738,6 +849,328 @@ async function signIntentTypedData(config, signers, validator, isRoot, parameter
+@@ -738,6 +869,336 @@ async function signIntentTypedData(config, signers, validator, isRoot, parameter
          isRoot,
      }, hash);
  }
@@ -660,46 +739,11 @@ index 8e43c7a..fa701b1 100644
 +        operationData,
 +    ]);
 +}
-+function packStandaloneHcaPermit2SessionSignature(config, signers, parameters, packedSessionSignature) {
-+    const message = parameters.message;
-+    if (!message.mandate) {
-+        throw new Error('Standalone HCA Permit2 session requires a complete mandate');
-+    }
-+    const permissionId = (0, validators_1.getPermissionId)(signers.session);
-+    const expectedPrefix = (0, viem_1.concat)(['0x00', permissionId]);
-+    if ((0, viem_1.size)(packedSessionSignature) !== 98 ||
-+        (0, viem_1.slice)(packedSessionSignature, 0, 33).toLowerCase() !==
-+            expectedPrefix.toLowerCase()) {
-+        throw new Error('Standalone HCA Permit2 session signature has an unexpected shape');
-+    }
-+    const claimPolicyData = (0, permit2_1.buildPermit2ClaimPolicyCalldata)({
-+        tokensIn: [{}],
-+        recipients: [{}],
-+        fillExpiryBounds: [{}],
-+        tokensOut: [{}],
-+    }, message);
-+    if ((0, viem_1.size)(claimPolicyData) !== 410) {
-+        throw new Error('Standalone HCA Permit2 session has an unexpected claim shape');
-+    }
-+    const sourceChainId = BigInt(parameters.domain.chainId);
-+    const operationData = packIntentOperation(message.mandate.destOps);
-+    const sessionSignature = (0, viem_1.slice)(packedSessionSignature, 33);
-+    if (!signers.enableData) {
-+        return (0, viem_1.concat)([
-+            viem_1.zeroAddress,
-+            (0, viem_1.encodePacked)(['bytes1', 'bytes32', 'uint256', 'bytes', 'bytes', 'bytes'], [
-+                '0x03',
-+                permissionId,
-+                sourceChainId,
-+                claimPolicyData,
-+                operationData,
-+                sessionSignature,
-+            ]),
-+        ]);
-+    }
-+    const enableOperation = message.mandate.destOps.ops[0];
-+    if (!enableOperation?.data || (0, viem_1.size)(enableOperation.data) < 4) {
-+        throw new Error('Standalone HCA Permit2 enable operation is missing');
++function buildStandaloneHcaEnableProof(signers, permissionId, enableOperation) {
++    if (!signers.enableData ||
++        !enableOperation?.data ||
++        (0, viem_1.size)(enableOperation.data) < 4) {
++        throw new Error('Standalone HCA session enable operation is missing');
 +    }
 +    const [enabledPermissionId, sessionKey, validUntil, resolver, refundToken, maxRefundExchangeRate, maxRefundGasOverhead, maxRefundAmount,] = (0, viem_1.decodeAbiParameters)([
 +        { type: 'bytes32' },
@@ -713,7 +757,7 @@ index 8e43c7a..fa701b1 100644
 +    ], (0, viem_1.slice)(enableOperation.data, 4));
 +    if (enabledPermissionId.toLowerCase() !== permissionId.toLowerCase() ||
 +        signers.enableData.hcaSessionNonce === undefined) {
-+        throw new Error('Standalone HCA Permit2 enable operation does not match its session');
++        throw new Error('Standalone HCA enable operation does not match its session');
 +    }
 +    const userSignature = signers.enableData.userSignature;
 +    if ((0, viem_1.size)(userSignature) !== 85 ||
@@ -721,7 +765,7 @@ index 8e43c7a..fa701b1 100644
 +        throw new Error('Standalone HCA owner authorization has an unexpected shape');
 +    }
 +    const { r: ownerR, s: ownerS, v: ownerV, yParity: ownerYParity, } = (0, viem_1.parseSignature)((0, viem_1.slice)(userSignature, 20));
-+    const proofData = (0, viem_1.encodeAbiParameters)([
++    return (0, viem_1.encodeAbiParameters)([
 +        {
 +            type: 'tuple',
 +            components: [
@@ -764,6 +808,45 @@ index 8e43c7a..fa701b1 100644
 +            ownerV: Number(ownerV ?? BigInt(27 + (ownerYParity ?? 0))),
 +        },
 +    ]);
++}
++function packStandaloneHcaPermit2SessionSignature(config, signers, parameters, packedSessionSignature) {
++    const message = parameters.message;
++    if (!message.mandate) {
++        throw new Error('Standalone HCA Permit2 session requires a complete mandate');
++    }
++    const permissionId = (0, validators_1.getPermissionId)(signers.session);
++    const expectedPrefix = (0, viem_1.concat)(['0x00', permissionId]);
++    if ((0, viem_1.size)(packedSessionSignature) !== 98 ||
++        (0, viem_1.slice)(packedSessionSignature, 0, 33).toLowerCase() !==
++            expectedPrefix.toLowerCase()) {
++        throw new Error('Standalone HCA Permit2 session signature has an unexpected shape');
++    }
++    const claimPolicyData = (0, permit2_1.buildPermit2ClaimPolicyCalldata)({
++        tokensIn: [{}],
++        recipients: [{}],
++        fillExpiryBounds: [{}],
++        tokensOut: [{}],
++    }, message);
++    if ((0, viem_1.size)(claimPolicyData) !== 410) {
++        throw new Error('Standalone HCA Permit2 session has an unexpected claim shape');
++    }
++    const sourceChainId = BigInt(parameters.domain.chainId);
++    const operationData = packIntentOperation(message.mandate.destOps);
++    const sessionSignature = (0, viem_1.slice)(packedSessionSignature, 33);
++    if (!signers.enableData) {
++        return (0, viem_1.concat)([
++            viem_1.zeroAddress,
++            (0, viem_1.encodePacked)(['bytes1', 'bytes32', 'uint256', 'bytes', 'bytes', 'bytes'], [
++                '0x03',
++                permissionId,
++                sourceChainId,
++                claimPolicyData,
++                operationData,
++                sessionSignature,
++            ]),
++        ]);
++    }
++    const proofData = buildStandaloneHcaEnableProof(signers, permissionId, message.mandate.destOps.ops.find((execution) => execution.to.toLowerCase() === config.account.validator.toLowerCase()));
 +    const proofLength = (0, viem_1.size)(proofData);
 +    if (proofLength > 0xffffffff) {
 +        throw new Error('Standalone HCA owner proof is too large');
@@ -803,28 +886,32 @@ index 8e43c7a..fa701b1 100644
 +            expectedPrefix.toLowerCase()) {
 +        throw new Error('Standalone HCA session signature has an unexpected shape');
 +    }
-+    const operationData = (0, viem_1.concat)([
-+        op.vt,
-+        (0, viem_1.encodeAbiParameters)([
-+            {
-+                type: 'tuple[]',
-+                components: [
-+                    { name: 'target', type: 'address' },
-+                    { name: 'value', type: 'uint256' },
-+                    { name: 'callData', type: 'bytes' },
-+                ],
-+            },
-+        ], [
-+            op.ops.map((execution) => ({
-+                target: execution.to,
-+                value: BigInt(execution.value),
-+                callData: execution.data,
-+            })),
-+        ]),
-+    ]);
++    const operationData = packIntentOperation(op);
 +    const hasGasRefund = gasRefund.token.toLowerCase() !== viem_1.zeroAddress ||
 +        BigInt(gasRefund.exchangeRate) !== 0n ||
 +        BigInt(gasRefund.overhead) !== 0n;
++    if (signers.enableData) {
++        const proofData = buildStandaloneHcaEnableProof(signers, permissionId, op.ops.find((execution) => execution.to.toLowerCase() === config.account.validator.toLowerCase()));
++        const proofLength = (0, viem_1.size)(proofData);
++        if (proofLength > 0xffffffff) {
++            throw new Error('Standalone HCA owner proof is too large');
++        }
++        return (0, viem_1.concat)([
++            viem_1.zeroAddress,
++            (0, viem_1.encodePacked)(['bytes1', 'bytes32', 'bytes4', 'bytes', 'uint256', 'address', 'uint256', 'uint256', 'bytes', 'bytes'], [
++                '0x05',
++                permissionId,
++                (0, viem_1.toHex)(proofLength, { size: 4 }),
++                proofData,
++                BigInt(message.nonce),
++                gasRefund.token,
++                BigInt(gasRefund.exchangeRate),
++                BigInt(gasRefund.overhead),
++                operationData,
++                (0, viem_1.slice)(packedSessionSignature, 33),
++            ]),
++        ]);
++    }
 +    const sessionEnvelope = hasGasRefund
 +        ? (0, viem_1.encodePacked)(['bytes1', 'bytes32', 'uint256', 'address', 'uint256', 'uint256', 'bytes', 'bytes'], [
 +            '0x02',
@@ -849,7 +936,7 @@ index 8e43c7a..fa701b1 100644
      const validator = getValidator(config, signers);
      if (!validator) {
 diff --git a/dist/src/index.d.ts b/dist/src/index.d.ts
-index 65670fb..fd598e6 100644
+index 65670fb2..fd598e6c 100644
 --- a/dist/src/index.d.ts
 +++ b/dist/src/index.d.ts
 @@ -8,7 +8,7 @@ import { type IntentRoute, type PreparedTransactionData, type PreparedUserOperat
@@ -870,7 +957,7 @@ index 65670fb..fd598e6 100644
  //# sourceMappingURL=index.d.ts.map
 \ No newline at end of file
 diff --git a/dist/src/index.js b/dist/src/index.js
-index 8a656a1..8af430c 100644
+index 8a656a17..8af430c8 100644
 --- a/dist/src/index.js
 +++ b/dist/src/index.js
 @@ -246,7 +246,11 @@ async function createRhinestoneAccount(config) {
@@ -887,7 +974,7 @@ index 8a656a1..8af430c 100644
      function experimental_signEnableSession(details) {
          return (0, modules_1.signEnableSession)(config, details);
 diff --git a/dist/src/modules/validators/smart-sessions.d.ts b/dist/src/modules/validators/smart-sessions.d.ts
-index 66f6604..64bd954 100644
+index 66f6604a..64bd9548 100644
 --- a/dist/src/modules/validators/smart-sessions.d.ts
 +++ b/dist/src/modules/validators/smart-sessions.d.ts
 @@ -182,7 +182,7 @@ interface ResolvedSessionSignerSet {
@@ -900,7 +987,7 @@ index 66f6604..64bd954 100644
  declare function getEnableSessionCall(account: Address, session: Session, enableSessionSignature: Hex, hashesAndChainIds: {
      chainId: bigint;
 diff --git a/dist/src/modules/validators/smart-sessions.js b/dist/src/modules/validators/smart-sessions.js
-index 17a4194..1694e42 100644
+index 17a41949..1694e42a 100644
 --- a/dist/src/modules/validators/smart-sessions.js
 +++ b/dist/src/modules/validators/smart-sessions.js
 @@ -258,9 +258,9 @@ function packSignature(signers, validatorSignature) {
@@ -957,7 +1044,7 @@ index 17a4194..1694e42 100644
          additionalContext: '0x',
          type: common_1.MODULE_TYPE_ID_VALIDATOR,
 diff --git a/dist/src/types.d.ts b/dist/src/types.d.ts
-index 6d4ec52..022b94b 100644
+index 6d4ec528..022b94be 100644
 --- a/dist/src/types.d.ts
 +++ b/dist/src/types.d.ts
 @@ -26,9 +26,21 @@ interface StartaleAccount {

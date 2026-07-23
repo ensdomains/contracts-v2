@@ -60,9 +60,11 @@ Use these values for this account version:
 | `userSalt` | `0` |
 | Initial implementation | `StandaloneHCAImplementation` from the selected network deployment |
 
-The SDK version and the account ID are different identifiers. Do not compare them. The implementation address is part of the HCA address. A new implementation gives the wallet a new predicted HCA address.
+The SDK version and the account ID are different identifiers. Do not compare them. The initial implementation is part of the HCA address. A different initial implementation gives the wallet a different predicted HCA.
 
-Do not change the implementation or `userSalt` for an existing user without user approval.
+An in-place upgrade does not change the HCA address. Keep the initial implementation in the stored account configuration after an upgrade. `VerifiableFactory.verifyContract(hca)` returns the current implementation.
+
+Do not change the initial implementation or `userSalt` for an existing account.
 
 ### Verify an existing HCA
 
@@ -71,8 +73,8 @@ Complete these checks before you use an HCA that already has code:
 1. Calculate the expected HCA address.
 2. Call `owner()`. The result must equal the connected wallet.
 3. Call `accountId()`. The result must equal `ens-standalone-hca.1.1.0`.
-4. Call `VerifiableFactory.verifyContract(hca)`. The result must equal the selected implementation.
-5. Before a primary-name action, check `trustedHCAImplementations(implementation)` on the HCA reverse adapter. The result must be `true`.
+4. Call `VerifiableFactory.verifyContract(hca)`. At launch, the result must equal the initial implementation. After an upgrade, it must equal an implementation that the DAO approved.
+5. Before a primary-name action, check `trustedHCAImplementations(currentImplementation)` on the HCA reverse adapter. The result must be `true`.
 
 Stop if a check fails. Do not select a different account without user approval.
 
@@ -99,7 +101,7 @@ Sepolia is the current registration network. Base Sepolia is the enabled test so
 | Use | Network | Chain ID | Payment token | Funding validator | Frontend status |
 |---|---|---:|---|---|---|
 | Registration | Sepolia | `11155111` | USDC at `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | Not applicable | Enabled |
-| Source | Base Sepolia | `84532` | USDC at `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `0x30057465186786f4477e98FBeE9Ae6b8e30B6325` | Configured; route disabled |
+| Source | Base Sepolia | `84532` | USDC at `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `0xCd3498554f08AB38ACCa8eFcB0839421598364a1` | Enabled for integration |
 | Source | Arbitrum Sepolia | `421614` | USDC at `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` | Not deployed | Do not enable |
 
 Use the [Sepolia deployment address table](../contracts/docs/addresses/sepolia.md) for shared contract addresses. The frontend needs these entries:
@@ -138,7 +140,9 @@ Manager means the ENS Manager application. Explorer means the ENS Explorer appli
 
 Manager must select the supported route with the fewest wallet interactions. Explorer can show all supported routes and their interaction counts.
 
-The same-chain stablecoin route has a current live proof. Keep the cross-chain route disabled until the current deployment completes the live proof in [Verification](#verification).
+The same-chain and cross-chain stablecoin routes have current live proofs.
+
+One multi-chain session authorization can support either stablecoin route. The wallet signs it before route selection. A same-chain route uses the HCA session. A cross-chain route also uses the session for the selected source Nexus.
 
 ## Registration
 
@@ -148,7 +152,7 @@ Each registration has a commitment and a reveal. The reveal can occur after `MIN
 
 This route uses the user's Nexus on the payment chain. It uses the HCA on the registration chain. Both accounts have known addresses before deployment.
 
-This route is an integration target. Do not enable it in production yet.
+Enable this route only on a source network with an approved funding validator and a tested payment token.
 
 ```mermaid
 flowchart LR
@@ -194,20 +198,20 @@ This route uses the wallet, HCA, and registrar on the same chain.
 
 For a fresh HCA with insufficient USDC, the wallet performs two actions:
 
-1. Sign an EIP-2612 permit with the HCA as spender.
-2. Sign one HCA owner action that funds the HCA, enables the session, and submits the commitment.
+1. Sign one multi-chain session authorization before route selection.
+2. Sign an EIP-2612 permit with the HCA as spender after the user selects the same-chain route.
 
 The first Rhinestone request contains these source calls:
 
 1. `USDC.permit(wallet, HCA, amount, deadline, v, r, s)`
 2. `USDC.transferFrom(wallet, HCA, amount)`
 
-The HCA action then calls:
+The first session action then calls:
 
 1. `HCAOwnerAndSessionValidator.enableSessionWithRefund(...)`
 2. `ETHRegistrar.commit(commitment)`
 
-After the delay, the session key submits the reveal batch. The wallet does not sign again. The route has two wallet signatures, no wallet transaction, and no native-gas requirement.
+The session key submits the full commit request. The first request also carries the wallet's session authorization. After the delay, the session key submits the reveal batch. The wallet does not sign again. The route has two wallet signatures, no wallet transaction, and no native-gas requirement.
 
 The same-chain route moves its selected budget into the HCA during the commit request. Unused USDC stays in the user-owned HCA. The user can use it for later operations or recover it with `executeByOwner`.
 
@@ -314,6 +318,10 @@ The wallet can call `HCA.revokeSessions()` on the registration chain. This call 
 
 The wallet must call this function directly. Do not put it inside `executeByOwner`.
 
+This call does not revoke a source Nexus session. The Nexus owner can uninstall `HCAFundingSessionValidator` to revoke that session. The validator deletes the session when the Nexus uninstalls it.
+
+The source stablecoin allowance is separate. Uninstalling the validator does not clear the allowance. The wallet can clear it as an additional safeguard.
+
 ### Owner execution and recovery
 
 The wallet can call `HCA.executeByOwner(executions)` for an atomic owner action. Use it for fund recovery and other explicit owner actions. The fixed session policy does not limit this route.
@@ -362,6 +370,7 @@ The validator applies these rules:
 - Every registration must give root `ROLES.ALL` to the wallet.
 - A registrar approval can name only `ETHRegistrar` as spender.
 - An execution-fee approval must match the signed fee and the session limits.
+- A first same-chain action can use one wallet permit followed by the same-value transfer into the HCA.
 
 The session key can select labels, records, and primary-name strings. The owner does not pre-sign one fixed registration. The session can register more than one name before expiry or revocation.
 
@@ -393,6 +402,8 @@ For each claim, `HCAFundingSessionValidator` checks the owner authorization, ses
 The wallet-to-Nexus transfer must equal the claim amount. The validator rejects arbitrary calls and UserOperations.
 
 The first claim can set the stablecoin permit and Permit2 approval. Later claims can use the remaining permit and approval. They do not need a new wallet signature.
+
+The native stablecoin permit must cover the commit claim and the later reveal claim. The reveal uses a new quote. If the remaining allowance does not cover that quote, the wallet must sign a new permit.
 
 ## Frontend integration
 
@@ -465,16 +476,16 @@ Bind the session to this exact resolver. One session can use the resolver for mo
 
 Use one ECDSA session key. Store it with the same protection as other application session keys.
 
-For a same-chain route, create one session for the HCA. Derive its permission ID with Rhinestone's session API. Put `enableSession(...)` or `enableSessionWithRefund(...)` in the first owner-authorized HCA action.
-
-For a cross-chain route, create these sessions before the wallet signs:
+Create these sessions before the wallet selects a same-chain or cross-chain route:
 
 - One destination session for the HCA
 - One or more source sessions for the payment options in the authorization
 
-Each session must name its account, chain, salt, and session key. Call `experimental_getSessionDetails(sessions)` on the HCA account. Then call `experimental_signEnableSession(details)` once.
+Each session must name its account, chain, salt, and session key. Call `experimental_getSessionDetails(sessions)` on the HCA account. Then call `experimental_signEnableSession(details)` once. The result does not select a payment route and does not move funds.
 
-One source session is sufficient when the user selects the source first. Include each offered source when the user selects it after authorization. Use the result for the HCA and each included source Nexus. Do not ask the wallet to sign a Permit2 message.
+Use the HCA entry for a same-chain route. For a cross-chain route, also use the entry for the selected source Nexus. One source session is sufficient when the user selects the source first. Include each offered source when the user selects it after authorization. Do not ask the wallet to sign a Permit2 message.
+
+Put `enableSession(...)` or `enableSessionWithRefund(...)` in the first HCA action. The same-chain and cross-chain routes can each enable the HCA session from the same authorization.
 
 Use `experimental_isSessionEnabled(session)` only when the application resumes stored state. A successful atomic transaction is sufficient for state that the application just created.
 
@@ -506,9 +517,9 @@ Use these request parts for each route:
 
 | Request | Source work | HCA calls | Signer |
 |---|---|---|---|
-| Same-chain commit | Stablecoin permit and transfer to HCA, when needed | Enable session and `commit` | Wallet owner |
+| Same-chain commit | Stablecoin permit and transfer to HCA, when needed | Enable session and `commit` | Destination session; wallet authorization on first use |
 | Same-chain reveal | None | Reveal batch | Session key |
-| Cross-chain commit | Permit and exact commit-cost transfer to source Nexus | Enable session and `commit` | Source and destination sessions |
+| Cross-chain commit | Permit and exact commit-cost transfer to source Nexus | Enable session and `commit` | Source and destination sessions; wallet authorization on first use |
 | Cross-chain reveal | Exact reveal-cost transfer to source Nexus | Reveal batch | Source and destination sessions |
 | Later name update | None | Supported resolver or primary-name calls | Destination session |
 
@@ -590,6 +601,7 @@ Use `bun run check:hca-live -- --help` to list all proof routes. Each command ch
 |---|---|
 | `bun run check:hca-live -- same-chain` | Sponsored same-chain registration |
 | `bun run check:hca-live -- same-chain-usdc` | Same-chain registration paid with wallet USDC |
+| `bun run check:hca-live -- same-session` | Same authorization used for same-chain and cross-chain registration |
 | `bun run check:hca-live -- cross-chain` | Deferred cross-chain registration with two wallet signatures |
 | `bun run check:hca-live -- cross-chain-upfront-permit` | Comparison route that pulls the source budget at commit |
 | `bun run check:hca-live -- cross-chain-wallet-funded` | Comparison route with a wallet funding transaction |
@@ -598,49 +610,39 @@ For the cross-chain proof, fund the printed wallet with Base Sepolia USDC. Do no
 
 The same-chain commands need `HCA_OWNER_KEY` for a fresh Sepolia wallet with enough USDC. The `same-chain-usdc` route also charges execution fees in USDC.
 
-The current same-chain run on 22 July 2026 proved this result:
+The `same-session` command needs `HCA_OWNER_KEY_FILE`. Its wallet needs enough USDC on Sepolia and Base Sepolia because the command proves both choices in sequence.
+
+A combined live run on 23 July 2026 proved that one session authorization can support either route.
+
+The proof ran the same-chain route and then the cross-chain route. It used one session signature, one Sepolia USDC permit, and one Base Sepolia USDC permit. A user selects one route, so either route needs two wallet signatures.
 
 | Check | Result |
 |---|---|
-| Wallet | `0x6d23ABb65eb1b22d67A1Edf3BA5d700a2Da5b63D` |
-| HCA | `0x9fd891058EDC4cDde09F5Df0c40a0b24Cb63EE51` |
-| Wallet interactions | Two signatures, zero transactions |
+| Wallet | `0x5CAcFd1A524C84F0B4BD8fdaDD2c70eD9ec98a09` |
+| HCA | `0xB6b1c980304CcA3b8Af32196a270F3005285aC06` |
+| Destination permission ID | `0xa916dd14444a205561e5454054e5198622f9edef76f255792d1b1712c74eb2d5` for both routes |
+| Session authorization | Signed before route selection and reused without changes |
+| Same-chain result | Two names registered; two signatures and zero wallet transactions |
+| Cross-chain result | One name registered; two signatures and zero wallet transactions |
 | Wallet native balance and nonce | Zero before and after |
-| New-account gas | `1,313,688` for commit and reveal |
-| Existing-account gas | `777,911` for commit and reveal |
-| ENS result | Two names, resolver records, primary name, and resolver roles verified |
-
-The Rhinestone transactions were:
-
-- New-account commit: `0xc3265e74e9b86edee6f68fb411743bb689c618a64dad8129d1c3dacc96294661`
-- New-account reveal: `0xa8dd22953ef1793718966a958e58f746c41da999c817c6e8a4529a2c8ebf18f7`
-- Existing-account commit: `0x2d279b00349884a1870ef3d470956fe9e6fed9d4a1f04bb007641370da74ee92`
-- Existing-account reveal: `0xad35042a5568b166e044915520f65a96f1440e5309940971f80ecf8bf396e71b`
-
-A prior cross-chain run on 22 July 2026 proved the two-signature route and deferred registration funding:
-
-| Check | Result |
-|---|---|
-| Wallet | `0x4d7c9C57771fA542Cd82B79812186D2D6923F89f` |
-| Source Nexus | `0x9eFB626D2c85E7BE0ACBDAE7390D879669D7037B` |
-| HCA | `0x1f732004a481957e86683E5b9012759436e67782` |
-| Wallet interactions | Two signatures, zero transactions |
-| Commit charge | `12.767302` USDC |
-| Registration funds at commit | Remained in the wallet |
-| Reveal charge | `12.439930` USDC |
-| Source Nexus balance after each claim | Zero |
-| Wallet native balance and nonce | Zero |
 | ENS result | Owner, resolver, records, primary name, and resolver roles verified |
 
-Its Rhinestone transactions were:
+The same-chain route moved `20` USDC into the HCA during the commit request. It paid execution and registration costs from the HCA. The new-account commit and reveal used `1,390,207` gas. The next commit and reveal used `803,260` gas.
 
-- Commit claim: `0x52305c9bb90fabd1a2c6e5f2bb3c3128c83d99f68a89b6ceea47380cb182962b`
-- Commit fill: `0x6a1aab5aad14e27dded3a4acb2ee6e8f4b17aa328f512e4d047f066c05365bbf`
-- Reveal claim: `0x1536922b68c000ec291f30e0eaa86f394f4e164825e32492934f1ab95e64a20d`
-- Reveal fill: `0xb79d8e489821694e99f49bcaac51a80f699e8320f6b30b604ea2e743c38905be`
+The same-chain Rhinestone transactions were:
 
-That run used an earlier HCA deployment. The current HCA deployment does not yet have the same live proof.
+- New-account commit: `0x17b4f7cc9e4827fbb111fad9bacea6608019d14a04acbddf86f3893ab20d0ffa`
+- New-account reveal: `0x103c8ece4c60631f70202a0722b08511c5999f5fce956f64a9a8d08d87396a8f`
+- Existing-account commit: `0x53411ddbb64a3a278c8e395127be92b0374abaeb6ffbe17a67e46746a6f78c86`
+- Existing-account reveal: `0x8c864722d3db8e713f4c31c0383ccbcaecaab639a87bced56a17c8c651e8c079`
 
-The current rerun stopped before submission. Rhinestone required a destination transfer whose value exceeded the commit gas cost. That transfer would leave registration-usable USDC in the HCA at commit. Increasing it would change the required deferred-funding flow. Do not treat the current cross-chain route as proved.
+The cross-chain route used source Nexus `0xaCD357a1C49C86E644FD3b1d47347d22AD107b4A`. The commit claim pulled `16.096972` Base Sepolia USDC and delivered one unit of Sepolia USDC. The reveal claim pulled `17.408604` USDC and delivered `0.9` USDC. Registration funds stayed in the wallet until the reveal claim.
 
-The prior proof used one session authorization for Base Sepolia and Sepolia. Unit tests also cover one authorization with more than one source chain.
+The cross-chain Rhinestone transactions were:
+
+- Commit claim: `0xe7c2d73e0f09ca2b1d2fcc8ba95e5c6f270eff9dcd2dfebab1cdd4e6e014ba48`
+- Commit fill: `0x7e1ab79719a43c28afe48822f57b839731fd17de6b33315a2f702919ef41fd08`
+- Reveal claim: `0x232e8f796a42105cf07aad2c39420ac526d04b43d6ead7756b0758fd53c82010`
+- Reveal fill: `0x3b1509df9733cfb35730b84d3f3ac2b69d5e535868f771c9af2d07f1281956db`
+
+The live HCA uses implementation `0xaff1833a2746373b749bca6f416b9d4eb5f4d7c4` and destination validator `0x67a4f4f3ba93b7c1299cc79b901c4b2e4375ef42`. The Base Sepolia source validator is `0xCd3498554f08AB38ACCa8eFcB0839421598364a1`. Their creation inputs match the compiled artifacts in this branch. The [Base Sepolia deployment record](../contracts/deployments/base-sepolia/HCAFundingSessionValidator.json) contains its transaction and bytecode hashes.

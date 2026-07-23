@@ -7,15 +7,19 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 const FLOWS = [
   "same-chain",
   "same-chain-usdc",
+  "same-session",
   "cross-chain",
   "cross-chain-upfront-permit",
   "cross-chain-wallet-funded",
 ] as const;
 type Flow = (typeof FLOWS)[number];
+type StringEnv = Record<string, string | undefined>;
 
 const FLOW_HELP: Record<Flow, string> = {
   "same-chain": "sponsored same-chain registration",
   "same-chain-usdc": "same-chain registration paid from wallet USDC",
+  "same-session":
+    "one session authorization used for same-chain and cross-chain registration",
   "cross-chain": "deferred cross-chain registration with two wallet signatures",
   "cross-chain-upfront-permit":
     "cross-chain registration that pulls its source budget at commit",
@@ -86,6 +90,7 @@ type RegistrationSummary = {
   owner: string;
   hca: string;
   resolver: string;
+  permissionId: string;
   ownerKeySource: string;
   wallet?: {
     address: string;
@@ -108,6 +113,12 @@ type RegistrationSummary = {
     | {
         paymentPermitSignatures: number;
         ownerIntentSignatures: number;
+        postCommitWalletInteractions: number;
+        total: number;
+      }
+    | {
+        paymentPermitSignatures: number;
+        multiChainSessionSignatures: number;
         postCommitWalletInteractions: number;
         total: number;
       }
@@ -242,6 +253,9 @@ type DeferredSummary = {
     deliveredAtReveal: string;
   };
   sessions: {
+    sourcePermissionId: string;
+    destinationPermissionId: string;
+    ownerAuthorizationReused?: boolean;
     sourcePolicyInstalledAtCommit: boolean;
     destinationEnabledAtCommit: boolean;
   };
@@ -249,8 +263,8 @@ type DeferredSummary = {
 };
 
 type LiveState = {
-  labels: [string, string];
-  secrets: [string, string];
+  labels: string[];
+  secrets: string[];
   sessionKey?: string;
   validUntil?: number;
 };
@@ -297,8 +311,11 @@ function sourceChainEnv(env: NodeJS.ProcessEnv) {
   return sourceChain;
 }
 
-function ordinaryOwner(flow: Flow) {
-  const supplied = process.env.HCA_OWNER_KEY?.trim();
+function ordinaryOwner(
+  flow: Flow,
+  source: StringEnv = process.env as unknown as StringEnv,
+) {
+  const supplied = source.HCA_OWNER_KEY?.trim();
   if ((flow === "same-chain" || flow === "same-chain-usdc") && !supplied) {
     throw new Error(
       "HCA_OWNER_KEY must be a fresh Sepolia wallet funded with USDC for same-chain proofs",
@@ -311,9 +328,11 @@ function ordinaryOwner(flow: Flow) {
   } as const;
 }
 
-function deferredOwner() {
-  const ownerKeyFile = process.env.HCA_OWNER_KEY_FILE?.trim();
-  let key = process.env.HCA_OWNER_KEY?.trim();
+function deferredOwner(
+  source: StringEnv = process.env as unknown as StringEnv,
+) {
+  const ownerKeyFile = source.HCA_OWNER_KEY_FILE?.trim();
+  let key = source.HCA_OWNER_KEY?.trim();
   if (!key && ownerKeyFile && existsSync(ownerKeyFile)) {
     key = readFileSync(ownerKeyFile, "utf8").trim();
   }
@@ -325,7 +344,7 @@ function deferredOwner() {
   }
 
   const stateFile =
-    process.env.HCA_LIVE_STATE_FILE?.trim() ||
+    source.HCA_LIVE_STATE_FILE?.trim() ||
     (ownerKeyFile ? `${ownerKeyFile}.state.json` : undefined);
   let state: LiveState | undefined;
   if (stateFile && existsSync(stateFile)) {
@@ -334,8 +353,9 @@ function deferredOwner() {
   if (!state) {
     const owner = privateKeyToAccount(key as `0x${string}`);
     const tag = owner.address.slice(2, 10).toLowerCase();
+    const run = Date.now().toString(36).slice(-6);
     state = {
-      labels: [`hca${tag}a`, `hca${tag}b`],
+      labels: [`hca${tag}${run}a`, `hca${tag}${run}b`],
       secrets: [generatePrivateKey(), generatePrivateKey()],
       sessionKey: generatePrivateKey(),
       validUntil: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
@@ -350,11 +370,54 @@ function deferredOwner() {
       writeFileSync(stateFile, `${JSON.stringify(state)}\n`, { mode: 0o600 });
     }
   }
-  return { key, state };
+  return { key, state, stateFile };
 }
 
-function liveEnv(flow: Flow) {
-  const env = { ...process.env };
+function sameSessionOwner() {
+  if (!process.env.HCA_OWNER_KEY_FILE?.trim()) {
+    throw new Error(
+      "HCA_OWNER_KEY_FILE is required for the same-session live proof",
+    );
+  }
+  const result = deferredOwner();
+  if (
+    !result.stateFile ||
+    !result.state.sessionKey ||
+    !result.state.validUntil
+  ) {
+    throw new Error("the same-session live state is incomplete");
+  }
+
+  const prefix = result.state.labels[0]?.slice(0, -1);
+  if (!prefix) throw new Error("the same-session live state has no label");
+  const suffixes = ["a", "b", "c", "d"];
+  for (let index = result.state.labels.length; index < 4; index += 1) {
+    result.state.labels.push(`${prefix}${suffixes[index]}`);
+    result.state.secrets.push(generatePrivateKey());
+  }
+  if (
+    result.state.labels.length < 4 ||
+    result.state.secrets.length < 4 ||
+    new Set(result.state.labels.slice(0, 4)).size !== 4
+  ) {
+    throw new Error("the same-session live state needs four unique labels");
+  }
+  writeFileSync(result.stateFile, `${JSON.stringify(result.state)}\n`, {
+    mode: 0o600,
+  });
+  return {
+    ...result,
+    signatureFile:
+      process.env.HCA_MULTI_CHAIN_SESSION_SIGNATURE_FILE?.trim() ||
+      `${result.stateFile}.session-signature`,
+  };
+}
+
+function liveEnv(
+  flow: Flow,
+  source: StringEnv = process.env as unknown as StringEnv,
+) {
+  const env = { ...source };
   env.DEPLOYMENT_NETWORK ??= "sepolia";
   env.HCA_DEPLOYMENT_NETWORK ??= env.DEPLOYMENT_NETWORK;
   env.V1_DEPLOYMENT_NETWORK ??= "sepolia";
@@ -377,7 +440,7 @@ function liveEnv(flow: Flow) {
   delete env.HCA_DRY_RUN_ONLY;
 
   if (flow === "cross-chain") {
-    const { key, state } = deferredOwner();
+    const { key, state } = deferredOwner(source);
     sourceChainEnv(env);
     env.HCA_OWNER_KEY = key;
     env.HCA_LABELS = state.labels.join(",");
@@ -387,7 +450,7 @@ function liveEnv(flow: Flow) {
       env.HCA_SESSION_VALID_UNTIL ??= String(state.validUntil);
     }
     env.HCA_OWNER_KEY_SOURCE = "fresh live-test wallet";
-    env.HCA_EXPECT_INITIAL_STATE =
+    env.HCA_EXPECT_INITIAL_STATE ??=
       env.HCA_RESUME_DEFERRED === "1" ? "existing" : "new";
     env.HCA_SPONSORED = "0";
     env.HCA_FEE_ASSET = "USDC";
@@ -401,12 +464,13 @@ function liveEnv(flow: Flow) {
     env.HCA_CROSS_CHAIN_COMMIT_SOURCE_AMOUNT ??= "20000000";
     env.HCA_CROSS_CHAIN_COMMIT_TARGET_AMOUNT ??= "1";
     env.HCA_CROSS_CHAIN_TARGET_AMOUNT ??= "900000";
+    env.HCA_MAX_REFUND_AMOUNT ??= "50000000";
   } else {
     delete env.HCA_RESUME_DEFERRED;
-    const owner = ordinaryOwner(flow);
+    const owner = ordinaryOwner(flow, source);
     env.HCA_OWNER_KEY = owner.key;
     env.HCA_OWNER_KEY_SOURCE = owner.source;
-    env.HCA_EXPECT_INITIAL_STATE =
+    env.HCA_EXPECT_INITIAL_STATE ??=
       owner.generated ||
       flow === "same-chain-usdc" ||
       flow === "cross-chain-upfront-permit"
@@ -416,12 +480,17 @@ function liveEnv(flow: Flow) {
     if (flow === "same-chain") {
       env.HCA_SPONSORED = "1";
     } else if (flow === "same-chain-usdc") {
+      sourceChainEnv(env);
       env.HCA_SPONSORED = "0";
       env.HCA_FEE_ASSET = "USDC";
       env.HCA_SAME_CHAIN_USER_PAID_USDC = "1";
       env.HCA_SAME_CHAIN_USDC_BUDGET ??= "20000000";
       env.HCA_MAX_REFUND_AMOUNT ??= "50000000";
       env.HCA_SESSION_GAS_LIMIT ??= "1200000";
+      env.HCA_CROSS_CHAIN_SOURCE_AMOUNT ??= "40000000";
+      env.HCA_CROSS_CHAIN_COMMIT_SOURCE_AMOUNT ??= "20000000";
+      env.HCA_CROSS_CHAIN_COMMIT_TARGET_AMOUNT ??= "1";
+      env.HCA_CROSS_CHAIN_TARGET_AMOUNT ??= "900000";
     } else {
       const sourceChain = sourceChainEnv(env);
       env.HCA_CROSS_CHAIN = "1";
@@ -486,10 +555,10 @@ async function compile() {
   }
 }
 
-async function runLive(flow: Flow) {
+async function runLive(flow: Flow, env = liveEnv(flow)) {
   const proc = Bun.spawn(["bun", "script/liveHcaRhinestoneRegistration.ts"], {
     cwd: contractsRoot,
-    env: liveEnv(flow),
+    env,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -529,13 +598,27 @@ function assertVerified(summary: {
   );
 }
 
-function assertSameChain(flow: Flow, summary: RegistrationSummary) {
-  assert.deepEqual(summary.walletInteractions, {
-    paymentPermitSignatures: 1,
-    ownerIntentSignatures: 1,
-    postCommitWalletInteractions: 0,
-    total: 2,
-  });
+function assertSameChain(
+  flow: Flow,
+  summary: RegistrationSummary,
+  printResult = true,
+) {
+  assert.deepEqual(
+    summary.walletInteractions,
+    flow === "same-chain-usdc"
+      ? {
+          paymentPermitSignatures: 1,
+          multiChainSessionSignatures: 1,
+          postCommitWalletInteractions: 0,
+          total: 2,
+        }
+      : {
+          paymentPermitSignatures: 1,
+          ownerIntentSignatures: 1,
+          postCommitWalletInteractions: 0,
+          total: 2,
+        },
+  );
   const funding = summary.sameChainFunding;
   const amountPulled = BigInt(funding.amountPulled);
   assert(amountPulled > 0n);
@@ -592,28 +675,30 @@ function assertSameChain(flow: Flow, summary: RegistrationSummary) {
 
   const [firstCommit, firstReveal] = summary.flows.newUser as SessionRoute[];
   const [secondCommit, secondReveal] = summary.flows.existingUser;
-  console.log(
-    JSON.stringify(
-      {
-        liveProof: "passed",
-        flow,
-        owner: summary.owner,
-        hca: summary.hca,
-        resolver: summary.resolver,
-        names: summary.names,
-        walletInteractions: summary.walletInteractions,
-        transactions: {
-          firstCommit: firstCommit!.transactionHash,
-          firstReveal: firstReveal!.transactionHash,
-          secondCommit: secondCommit.transactionHash,
-          secondReveal: secondReveal.transactionHash,
+  if (printResult) {
+    console.log(
+      JSON.stringify(
+        {
+          liveProof: "passed",
+          flow,
+          owner: summary.owner,
+          hca: summary.hca,
+          resolver: summary.resolver,
+          names: summary.names,
+          walletInteractions: summary.walletInteractions,
+          transactions: {
+            firstCommit: firstCommit!.transactionHash,
+            firstReveal: firstReveal!.transactionHash,
+            secondCommit: secondCommit.transactionHash,
+            secondReveal: secondReveal.transactionHash,
+          },
+          verified: summary.verified,
         },
-        verified: summary.verified,
-      },
-      null,
-      2,
-    ),
-  );
+        null,
+        2,
+      ),
+    );
+  }
 }
 
 function assertWalletFundedCrossChain(summary: RegistrationSummary) {
@@ -819,7 +904,7 @@ function assertUpfrontPermit(summary: UpfrontPermitSummary) {
   );
 }
 
-function assertDeferred(summary: DeferredSummary) {
+function assertDeferred(summary: DeferredSummary, printResult = true) {
   assert.equal(summary.flow, "cross-chain deferred registration funding");
   assert.deepEqual(summary.walletInteractions, {
     eip2612PermitSignatures: 1,
@@ -865,17 +950,111 @@ function assertDeferred(summary: DeferredSummary) {
     assert.match(route.fillTransactionHash, TRANSACTION_HASH);
   }
 
+  if (printResult) {
+    console.log(
+      JSON.stringify(
+        {
+          liveProof: "passed",
+          flow: "cross-chain",
+          owner: summary.owner,
+          sourceNexus: summary.sourceNexus,
+          hca: summary.hca,
+          walletInteractions: summary.walletInteractions,
+          funds: summary.funds,
+          routes: summary.routes,
+        },
+        null,
+        2,
+      ),
+    );
+  }
+}
+
+async function runSameSessionProof() {
+  const { key, state, signatureFile } = sameSessionOwner();
+  const common = {
+    ...process.env,
+    HCA_OWNER_KEY: key,
+    HCA_SESSION_KEY: state.sessionKey!,
+    HCA_SESSION_VALID_UNTIL: String(state.validUntil),
+    HCA_MAX_REFUND_AMOUNT: "50000000",
+    HCA_CROSS_CHAIN_SOURCE_AMOUNT: "40000000",
+    HCA_CROSS_CHAIN_COMMIT_SOURCE_AMOUNT: "20000000",
+    HCA_CROSS_CHAIN_COMMIT_TARGET_AMOUNT: "1",
+    HCA_CROSS_CHAIN_TARGET_AMOUNT: "900000",
+  } as unknown as StringEnv;
+
+  const sameChainEnv = liveEnv("same-chain-usdc", common);
+  sameChainEnv.HCA_LABELS = state.labels.slice(0, 2).join(",");
+  sameChainEnv.HCA_SECRETS = state.secrets.slice(0, 2).join(",");
+  sameChainEnv.HCA_EXPECT_INITIAL_STATE = "new";
+  sameChainEnv.HCA_MULTI_CHAIN_SESSION_SIGNATURE_FILE = signatureFile;
+  delete sameChainEnv.HCA_MULTI_CHAIN_SESSION_SIGNATURE;
+
+  const sameChain = parseSummary<RegistrationSummary>(
+    await runLive("same-chain-usdc", sameChainEnv),
+  );
+  assertSameChain("same-chain-usdc", sameChain, false);
+
+  const sessionSignature = readFileSync(signatureFile, "utf8").trim();
+  if (!/^0x[0-9a-fA-F]{170}$/.test(sessionSignature)) {
+    throw new Error(
+      "the same-chain route did not save its session authorization",
+    );
+  }
+
+  const crossChainEnv = liveEnv("cross-chain", {
+    ...common,
+    HCA_EXPECT_INITIAL_STATE: "existing",
+    HCA_MULTI_CHAIN_SESSION_SIGNATURE: sessionSignature,
+  });
+  crossChainEnv.HCA_LABELS = state.labels.slice(2, 4).join(",");
+  crossChainEnv.HCA_SECRETS = state.secrets.slice(2, 4).join(",");
+  crossChainEnv.HCA_EXPECT_INITIAL_STATE = "existing";
+  crossChainEnv.HCA_MULTI_CHAIN_SESSION_SIGNATURE = sessionSignature;
+
+  const crossChain = parseSummary<DeferredSummary>(
+    await runLive("cross-chain", crossChainEnv),
+  );
+  assertDeferred(crossChain, false);
+
+  assert.equal(crossChain.owner.toLowerCase(), sameChain.owner.toLowerCase());
+  assert.equal(crossChain.hca.toLowerCase(), sameChain.hca.toLowerCase());
+  assert.equal(
+    crossChain.sessions.destinationPermissionId.toLowerCase(),
+    sameChain.permissionId.toLowerCase(),
+  );
+  assert.equal(crossChain.sessions.ownerAuthorizationReused, true);
+  assert.equal(readFileSync(signatureFile, "utf8").trim(), sessionSignature);
+
+  const [firstCommit, firstReveal] = sameChain.flows.newUser as SessionRoute[];
   console.log(
     JSON.stringify(
       {
         liveProof: "passed",
-        flow: "cross-chain",
-        owner: summary.owner,
-        sourceNexus: summary.sourceNexus,
-        hca: summary.hca,
-        walletInteractions: summary.walletInteractions,
-        funds: summary.funds,
-        routes: summary.routes,
+        flow: "same session authorization, either registration route",
+        owner: sameChain.owner,
+        hca: sameChain.hca,
+        permissionId: sameChain.permissionId,
+        sessionSignedBeforeRouteChoice: true,
+        sessionAuthorizationReused: true,
+        sameChain: {
+          walletInteractions: sameChain.walletInteractions,
+          commitTransactionHash: firstCommit!.transactionHash,
+          revealTransactionHash: firstReveal!.transactionHash,
+        },
+        crossChain: {
+          walletInteractions: crossChain.walletInteractions,
+          walletSignaturesDuringThisRun: 1,
+          commitClaimTransactionHash:
+            crossChain.routes.commit.claimTransactionHash,
+          commitFillTransactionHash:
+            crossChain.routes.commit.fillTransactionHash,
+          revealClaimTransactionHash:
+            crossChain.routes.reveal.claimTransactionHash,
+          revealFillTransactionHash:
+            crossChain.routes.reveal.fillTransactionHash,
+        },
       },
       null,
       2,
@@ -885,12 +1064,16 @@ function assertDeferred(summary: DeferredSummary) {
 
 const flow = selectedFlow();
 await compile();
-const stdout = await runLive(flow);
-if (flow === "cross-chain") {
+if (flow === "same-session") {
+  await runSameSessionProof();
+} else if (flow === "cross-chain") {
+  const stdout = await runLive(flow);
   assertDeferred(parseSummary<DeferredSummary>(stdout));
 } else if (flow === "cross-chain-upfront-permit") {
+  const stdout = await runLive(flow);
   assertUpfrontPermit(parseSummary<UpfrontPermitSummary>(stdout));
 } else {
+  const stdout = await runLive(flow);
   const summary = parseSummary<RegistrationSummary>(stdout);
   const expectedOwnerSource = process.env.HCA_OWNER_KEY
     ? "supplied"

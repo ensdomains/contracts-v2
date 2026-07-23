@@ -203,6 +203,37 @@ contract HCAFundingSessionValidatorTest is Test {
         );
     }
 
+    function test_acceptsERC1271WithEmissaryExecutionFallbackMode() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory operation =
+            _fundingOperation(
+                COMMIT_SOURCE_COST,
+                true,
+                sourceToken,
+                PERMIT2,
+                validator.ERC7579_ERC1271_EMISSARY_EXECUTION_MODE()
+            );
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+
+        assertEq(_validate(digest, _envelope(proof, digest, claim, operation)), ERC1271_MAGICVALUE);
+    }
+
+    function test_rejectsUnsupportedExecutionMode() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes memory operation =
+            _fundingOperation(
+                COMMIT_SOURCE_COST,
+                true,
+                sourceToken,
+                PERMIT2,
+                bytes32(uint256(0xDEAD))
+            );
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+
+        vm.expectRevert(HCAFundingSessionValidator.InvalidOperation.selector);
+        _validate(digest, _envelope(proof, digest, claim, operation));
+    }
+
     function test_rejectsUnauthorizedSignatureCaller() public {
         HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
         bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
@@ -311,6 +342,27 @@ contract HCAFundingSessionValidatorTest is Test {
         view
         returns (bytes memory)
     {
+        return
+            _fundingOperation(
+                pullAmount,
+                includePermit,
+                target,
+                approvalSpender,
+                validator.ERC7579_ERC1271_MODE()
+            );
+    }
+
+    function _fundingOperation(
+        uint256 pullAmount,
+        bool includePermit,
+        address target,
+        address approvalSpender,
+        bytes32 mode
+    )
+        internal
+        view
+        returns (bytes memory)
+    {
         HCAFundingSessionValidator.Execution[] memory executions =
             new HCAFundingSessionValidator.Execution[](includePermit ? 3 : 1);
         uint256 offset;
@@ -334,7 +386,7 @@ contract HCAFundingSessionValidatorTest is Test {
             IERC20.transferFrom,
             (owner, nexus, pullAmount)
         )});
-        return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+        return abi.encodePacked(mode, abi.encode(executions));
     }
 
     function _claim(

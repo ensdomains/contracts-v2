@@ -104,6 +104,10 @@ contract HCAFundingSessionValidator is IValidator {
     /// @notice Rhinestone operation mode for emissary ERC-7579 execution.
     bytes32 public constant ERC7579_EMISSARY_EXECUTION_MODE = bytes32(uint256(0x0204) << 240);
 
+    /// @notice Rhinestone operation mode for ERC-1271 with emissary-execution fallback.
+    bytes32 public constant ERC7579_ERC1271_EMISSARY_EXECUTION_MODE =
+        bytes32(uint256(0x0206) << 240);
+
     /// @dev Permit2 EIP-712 domain type hash.
     bytes32 internal constant EIP712_DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
@@ -574,7 +578,11 @@ contract HCAFundingSessionValidator is IValidator {
             revert InvalidOperation();
         }
         bytes32 mode = bytes32(operationData[:32]);
-        if (mode != ERC7579_ERC1271_MODE && mode != ERC7579_EMISSARY_EXECUTION_MODE) {
+        if (
+            mode != ERC7579_ERC1271_MODE &&
+            mode != ERC7579_EMISSARY_EXECUTION_MODE &&
+            mode != ERC7579_ERC1271_EMISSARY_EXECUTION_MODE
+        ) {
             revert InvalidOperation();
         }
 

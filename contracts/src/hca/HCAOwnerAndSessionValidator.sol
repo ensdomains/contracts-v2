@@ -138,11 +138,17 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @dev First-use Permit2 mode carrying one reusable multi-chain session authorization.
     bytes1 internal constant FIXED_SESSION_PERMIT2_ENABLE_MODE = 0x04;
 
+    /// @dev First-use single-chain mode carrying one reusable multi-chain session authorization.
+    bytes1 internal constant FIXED_SESSION_REFUND_ENABLE_MODE = 0x05;
+
     /// @dev Size of the fixed-session mode, permission ID, and standalone-intent nonce.
     uint256 internal constant FIXED_SESSION_PREFIX_LENGTH = 65;
 
     /// @dev Size of the fixed-session prefix when it also carries a gas-refund tuple.
     uint256 internal constant FIXED_SESSION_REFUND_PREFIX_LENGTH = 149;
+
+    /// @dev Fields after a first-use proof and before its single-chain operation.
+    uint256 internal constant FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH = 116;
 
     /// @dev Fixed Permit2 claim fields produced by the Rhinestone SDK.
     uint256 internal constant PERMIT2_CLAIM_DATA_LENGTH = 410;
@@ -165,6 +171,10 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @notice Rhinestone operation mode for ERC-1271 ERC-7579 execution.
     bytes32 public constant ERC7579_ERC1271_MODE = bytes32(uint256(0x0201) << 240);
+
+    /// @notice Rhinestone operation mode for ERC-1271 with emissary-execution fallback.
+    bytes32 public constant ERC7579_ERC1271_EMISSARY_EXECUTION_MODE =
+        bytes32(uint256(0x0206) << 240);
 
     /// @dev EIP-712 domain type used by the production IntentExecutor.
     bytes32 internal constant EIP712_DOMAIN_TYPEHASH =
@@ -275,6 +285,12 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @notice Selector for ERC20.approve(address,uint256).
     bytes4 public constant APPROVE_SELECTOR = IERC20.approve.selector;
+
+    /// @notice Selector for EIP-2612 permit(address,address,uint256,uint256,uint8,bytes32,bytes32).
+    bytes4 public constant PERMIT_SELECTOR = 0xd505accf;
+
+    /// @notice Selector for ERC20.transferFrom(address,address,uint256).
+    bytes4 public constant TRANSFER_FROM_SELECTOR = IERC20.transferFrom.selector;
 
     /// @notice Selector for VerifiableFactory.deployProxy(address,uint256,bytes).
     bytes4 public constant DEPLOY_PROXY_SELECTOR = IVerifiableFactory.deployProxy.selector;
@@ -767,6 +783,10 @@ contract HCAOwnerAndSessionValidator is IValidator {
             _validateFixedPermit2SessionEnable(hash, data);
             return;
         }
+        if (mode == FIXED_SESSION_REFUND_ENABLE_MODE) {
+            _validateFixedRefundSessionEnable(hash, data);
+            return;
+        }
         if (mode == FIXED_SESSION_PERMIT2_MODE) {
             _validateFixedPermit2Session(hash, data);
             return;
@@ -879,7 +899,83 @@ contract HCAOwnerAndSessionValidator is IValidator {
             data[proofEnd + 32:operationOffset],
             operationData
         );
-        _checkInitialRegistrationPolicy(msg.sender, accountOwner, permissionId, proof, operationData);
+        _checkInitialRegistrationPolicy(
+            msg.sender,
+            accountOwner,
+            permissionId,
+            proof,
+            operationData,
+            GasRefund(address(0), 0, 0)
+        );
+    }
+
+    /// @dev Validates the first same-chain operation and its reusable session authorization.
+    function _validateFixedRefundSessionEnable(bytes32 hash, bytes calldata data) internal view {
+        if (
+            data.length <=
+            FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH +
+            FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH + ECDSA_SIGNATURE_LENGTH
+        ) {
+            revert InvalidSessionData();
+        }
+
+        bytes32 permissionId = bytes32(data[1:33]);
+        uint256 proofLength = uint32(bytes4(data[33:37]));
+        uint256 proofEnd = FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH + proofLength;
+        if (
+            proofLength == 0 ||
+            proofEnd + FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH >=
+            data.length - ECDSA_SIGNATURE_LENGTH
+        ) {
+            revert InvalidSessionData();
+        }
+
+        Permit2EnableProof memory proof =
+            abi.decode(
+                data[FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH:proofEnd],
+                (Permit2EnableProof)
+            );
+        address accountOwner = _validatePermit2EnableProof(permissionId, proof);
+        (bytes calldata operationData, GasRefund memory gasRefund) =
+            _validateFixedRefundSessionEnablePayload(hash, data, proofEnd, proof);
+        _checkInitialRegistrationPolicy(
+            msg.sender,
+            accountOwner,
+            permissionId,
+            proof,
+            operationData,
+            gasRefund
+        );
+    }
+
+    /// @dev Validates the session signature, refund, and operation in a first same-chain use.
+    function _validateFixedRefundSessionEnablePayload(
+        bytes32 hash,
+        bytes calldata data,
+        uint256 proofEnd,
+        Permit2EnableProof memory proof
+    )
+        internal
+        view
+        returns (bytes calldata operationData, GasRefund memory gasRefund)
+    {
+        uint256 operationOffset = proofEnd + FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH;
+        uint256 signatureOffset = data.length - ECDSA_SIGNATURE_LENGTH;
+        gasRefund = GasRefund({token: address(bytes20(data[proofEnd + 32:proofEnd + 52])), exchangeRate: uint256(
+            bytes32(data[proofEnd + 52:proofEnd + 84])
+        ), overhead: uint256(bytes32(data[proofEnd + 84:operationOffset]))});
+        SessionConfig memory config =
+            SessionConfig({sessionKey: proof.sessionKey, validUntil: proof.validUntil, maxRefundGasOverhead: proof.maxRefundGasOverhead, resolver: proof.resolver, sessionNonce: proof.sessionNonce, refundToken: proof.refundToken, maxRefundExchangeRate: proof.maxRefundExchangeRate, maxRefundAmount: proof.maxRefundAmount});
+        _checkGasRefund(config, gasRefund);
+
+        operationData = data[operationOffset:signatureOffset];
+        uint256 nonce = uint256(bytes32(data[proofEnd:proofEnd + 32]));
+        if (_singleChainDigest(msg.sender, nonce, operationData, gasRefund) != hash) {
+            revert InvalidSessionData();
+        }
+        if (_recover(hash, data[signatureOffset:]) != proof.sessionKey) {
+            revert InvalidSigner();
+        }
     }
 
     /// @dev Validates the standard Rhinestone multi-chain session signature once for this HCA.
@@ -1172,7 +1268,8 @@ contract HCAOwnerAndSessionValidator is IValidator {
         bytes32 operationMode = bytes32(operationData[:32]);
         if (
             operationMode != ERC7579_EMISSARY_EXECUTION_MODE &&
-            operationMode != ERC7579_ERC1271_MODE
+            operationMode != ERC7579_ERC1271_MODE &&
+            operationMode != ERC7579_ERC1271_EMISSARY_EXECUTION_MODE
         ) {
             revert InvalidOperationEncoding();
         }
@@ -1181,18 +1278,19 @@ contract HCAOwnerAndSessionValidator is IValidator {
         _checkRegistrationExecutions(account, owner, allowedResolver, executions, gasRefund);
     }
 
-    /// @dev Allows one exact session-enable call before the first policy-checked commitment.
+    /// @dev Allows one exact session-enable call in the first policy-checked batch.
     function _checkInitialRegistrationPolicy(
         address account,
         address owner,
         bytes32 permissionId,
         Permit2EnableProof memory proof,
-        bytes calldata operationData
+        bytes calldata operationData,
+        GasRefund memory gasRefund
     )
         internal
         view
     {
-        if (operationData.length < 32 || bytes32(operationData[:32]) != ERC7579_ERC1271_MODE) {
+        if (operationData.length < 32 || !_isERC1271OperationMode(bytes32(operationData[:32]))) {
             revert InvalidOperationEncoding();
         }
         Execution[] memory executions = abi.decode(operationData[32:], (Execution[]));
@@ -1200,7 +1298,6 @@ contract HCAOwnerAndSessionValidator is IValidator {
             revert PolicyRuleFailed();
         }
 
-        Execution memory enable = executions[0];
         bytes memory expectedCall =
             abi.encodeWithSelector(
                 this.enableSessionWithRefund.selector,
@@ -1213,25 +1310,99 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 proof.maxRefundGasOverhead,
                 proof.maxRefundAmount
             );
-        if (
-            enable.target != address(this) ||
-            enable.value != 0 ||
-            keccak256(enable.callData) != keccak256(expectedCall)
-        ) {
+        uint256 enableIndex = type(uint256).max;
+        for (uint256 i; i < executions.length; ++i) {
+            if (executions[i].target != address(this)) {
+                continue;
+            }
+            if (
+                enableIndex != type(uint256).max ||
+                executions[i].value != 0 ||
+                keccak256(executions[i].callData) != keccak256(expectedCall)
+            ) {
+                revert PolicyRuleFailed();
+            }
+            enableIndex = i;
+        }
+        if (enableIndex == type(uint256).max) {
             revert PolicyRuleFailed();
         }
 
-        Execution[] memory remaining = new Execution[](executions.length - 1);
-        for (uint256 i = 1; i < executions.length; ++i) {
-            remaining[i - 1] = executions[i];
+        (uint256 permitIndex, uint256 transferIndex) =
+            _initialFundingCallIndexes(executions, account, owner, proof.refundToken);
+        uint256 fundingCallCount = permitIndex == type(uint256).max ? 0 : 2;
+        Execution[] memory remaining = new Execution[](executions.length - 1 - fundingCallCount);
+        uint256 next;
+        for (uint256 i; i < executions.length; ++i) {
+            if (i != enableIndex && i != permitIndex && i != transferIndex) {
+                remaining[next++] = executions[i];
+            }
         }
-        _checkRegistrationExecutions(
-            account,
-            owner,
-            proof.resolver,
-            remaining,
-            GasRefund(address(0), 0, 0)
-        );
+        _checkRegistrationExecutions(account, owner, proof.resolver, remaining, gasRefund);
+    }
+
+    /// @dev Finds and checks an optional EIP-2612 funding pull into the HCA.
+    ///      The permit and transfer must be adjacent, use the same amount, and consume the full
+    ///      allowance that the owner gave to this HCA.
+    function _initialFundingCallIndexes(
+        Execution[] memory executions,
+        address account,
+        address owner,
+        address token
+    )
+        internal
+        pure
+        returns (uint256 permitIndex, uint256 transferIndex)
+    {
+        permitIndex = type(uint256).max;
+        transferIndex = type(uint256).max;
+        uint256 permittedAmount;
+        uint256 transferredAmount;
+
+        for (uint256 i; i < executions.length; ++i) {
+            Execution memory execution = executions[i];
+            if (execution.target != token) {
+                continue;
+            }
+            bytes4 selector = _selector(execution.callData);
+            if (selector == PERMIT_SELECTOR) {
+                if (
+                    permitIndex != type(uint256).max ||
+                    execution.value != 0 ||
+                    execution.callData.length != 4 + 7 * 32
+                ) {
+                    revert PolicyRuleFailed();
+                }
+                _requireArgAddress(execution.callData, 4, owner);
+                _requireArgAddress(execution.callData, 4 + 32, account);
+                permittedAmount = _readUint(execution.callData, 4 + 2 * 32);
+                permitIndex = i;
+            } else if (selector == TRANSFER_FROM_SELECTOR) {
+                if (
+                    transferIndex != type(uint256).max ||
+                    execution.value != 0 ||
+                    execution.callData.length != 4 + 3 * 32
+                ) {
+                    revert PolicyRuleFailed();
+                }
+                _requireArgAddress(execution.callData, 4, owner);
+                _requireArgAddress(execution.callData, 4 + 32, account);
+                transferredAmount = _readUint(execution.callData, 4 + 2 * 32);
+                transferIndex = i;
+            }
+        }
+
+        if (permitIndex == type(uint256).max && transferIndex == type(uint256).max) {
+            return (permitIndex, transferIndex);
+        }
+        if (
+            permitIndex == type(uint256).max ||
+            transferIndex != permitIndex + 1 ||
+            permittedAmount == 0 ||
+            transferredAmount != permittedAmount
+        ) {
+            revert PolicyRuleFailed();
+        }
     }
 
     /// @dev Applies the fixed ENS policy to a decoded execution array.
@@ -1601,7 +1772,12 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @dev Hashes the encoded ERC-7579 operation exactly as IntentExecutor does.
     function _operationHash(bytes calldata operationData) internal pure returns (bytes32) {
-        if (operationData.length < 32 || bytes32(operationData[:32]) != ERC7579_ERC1271_MODE) {
+        if (operationData.length < 32) {
+            revert InvalidOperationEncoding();
+        }
+
+        bytes32 operationMode = bytes32(operationData[:32]);
+        if (!_isERC1271OperationMode(operationMode)) {
             revert InvalidOperationEncoding();
         }
 
@@ -1620,12 +1796,15 @@ contract HCAOwnerAndSessionValidator is IValidator {
         }
         return
             keccak256(
-                abi.encode(
-                    OP_TYPEHASH,
-                    ERC7579_ERC1271_MODE,
-                    keccak256(abi.encodePacked(executionHashes))
-                )
+                abi.encode(OP_TYPEHASH, operationMode, keccak256(abi.encodePacked(executionHashes)))
             );
+    }
+
+    /// @dev Returns true for an ERC-1271 operation mode that this validator supports.
+    function _isERC1271OperationMode(bytes32 operationMode) internal pure returns (bool) {
+        return
+            operationMode == ERC7579_ERC1271_MODE ||
+            operationMode == ERC7579_ERC1271_EMISSARY_EXECUTION_MODE;
     }
 
     /// @notice Reads a function selector from calldata.

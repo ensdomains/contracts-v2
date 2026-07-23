@@ -1,5 +1,5 @@
 {
-  "address": "0xe721f4171cae41108cbdaaacb6ee7d7f7c04766d",
+  "address": "0x1b784cc7bc46b5e5052f7e0d4144754a21cb8b59",
   "abi": [
     {
       "inputs": [
@@ -225,7 +225,7 @@
         "type": "t_address"
       },
       {
-        "astId": 79696,
+        "astId": 84903,
         "contract": "project/src/registry/ApprovedUpgradeGate.sol:ApprovedUpgradeGate",
         "label": "approvedImplementations",
         "offset": 0,
@@ -273,13 +273,13 @@
   },
   "argsData": "0x000000000000000000000000ffffffffff52d316b7bd028358089bc8066b8f80",
   "transaction": {
-    "hash": "0x34cac4748a5123d7945f3293c3499d5aa4f73dd996392e61a96972594a964ee6",
-    "nonce": "0x70",
-    "origin": "0x84d3a426d4e12e955d1df95db0b24fe26afe39d3"
+    "hash": "0xd53f8d9952d0eb4aeabe7c4b945930129f3d773b37971883312205efc7a92f40",
+    "nonce": "0x21bc",
+    "origin": "0xffffffffff52d316b7bd028358089bc8066b8f80"
   },
   "receipt": {
-    "blockHash": "0x6469685339818ac7aae8722393d814d76cb5c5b5f928c91749f1e1ab95fb6a54",
-    "blockNumber": "0xac2c62",
-    "transactionIndex": "0x93"
+    "blockHash": "0x3350c1e5ca9f889042c16c565980d9fa1bfbf5ddc7268ef0de799bda636e4814",
+    "blockNumber": "0xace474",
+    "transactionIndex": "0x7e"
   }
 }
