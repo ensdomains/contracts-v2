@@ -1333,70 +1333,6 @@ contract HCAOwnerAndSessionValidator is IValidator {
         _checkRegistrationExecutions(account, owner, proof.resolver, remaining, gasRefund);
     }
 
-    /// @dev Finds and checks an optional EIP-2612 funding pull into the HCA.
-    ///      The permit and transfer must be adjacent, use the same amount, and consume the full
-    ///      allowance that the owner gave to this HCA.
-    function _fundingCallIndexes(
-        Execution[] memory executions,
-        address account,
-        address owner,
-        address token
-    )
-        internal
-        pure
-        returns (uint256 permitIndex, uint256 transferIndex)
-    {
-        permitIndex = type(uint256).max;
-        transferIndex = type(uint256).max;
-        uint256 permittedAmount;
-        uint256 transferredAmount;
-
-        for (uint256 i; i < executions.length; ++i) {
-            Execution memory execution = executions[i];
-            if (execution.target != token) {
-                continue;
-            }
-            bytes4 selector = _selector(execution.callData);
-            if (selector == PERMIT_SELECTOR) {
-                if (
-                    permitIndex != type(uint256).max ||
-                    execution.value != 0 ||
-                    execution.callData.length != 4 + 7 * 32
-                ) {
-                    revert PolicyRuleFailed();
-                }
-                _requireArgAddress(execution.callData, 4, owner);
-                _requireArgAddress(execution.callData, 4 + 32, account);
-                permittedAmount = _readUint(execution.callData, 4 + 2 * 32);
-                permitIndex = i;
-            } else if (selector == TRANSFER_FROM_SELECTOR) {
-                if (
-                    transferIndex != type(uint256).max ||
-                    execution.value != 0 ||
-                    execution.callData.length != 4 + 3 * 32
-                ) {
-                    revert PolicyRuleFailed();
-                }
-                _requireArgAddress(execution.callData, 4, owner);
-                _requireArgAddress(execution.callData, 4 + 32, account);
-                transferredAmount = _readUint(execution.callData, 4 + 2 * 32);
-                transferIndex = i;
-            }
-        }
-
-        if (permitIndex == type(uint256).max && transferIndex == type(uint256).max) {
-            return (permitIndex, transferIndex);
-        }
-        if (
-            permitIndex == type(uint256).max ||
-            transferIndex != permitIndex + 1 ||
-            permittedAmount == 0 ||
-            transferredAmount != permittedAmount
-        ) {
-            revert PolicyRuleFailed();
-        }
-    }
-
     /// @dev Applies the fixed ENS policy to a decoded execution array.
     function _checkRegistrationExecutions(
         address account,
@@ -1631,6 +1567,70 @@ contract HCAOwnerAndSessionValidator is IValidator {
             spender != GAS_REFUND_PAYMASTER ||
             gasRefund.token != token ||
             _readUint(callData, 4 + 32) != gasRefund.overhead >> 128
+        ) {
+            revert PolicyRuleFailed();
+        }
+    }
+
+    /// @dev Finds and checks an optional EIP-2612 funding pull into the HCA.
+    ///      The permit and transfer must be adjacent, use the same amount, and consume the full
+    ///      allowance that the owner gave to this HCA.
+    function _fundingCallIndexes(
+        Execution[] memory executions,
+        address account,
+        address owner,
+        address token
+    )
+        internal
+        pure
+        returns (uint256 permitIndex, uint256 transferIndex)
+    {
+        permitIndex = type(uint256).max;
+        transferIndex = type(uint256).max;
+        uint256 permittedAmount;
+        uint256 transferredAmount;
+
+        for (uint256 i; i < executions.length; ++i) {
+            Execution memory execution = executions[i];
+            if (execution.target != token) {
+                continue;
+            }
+            bytes4 selector = _selector(execution.callData);
+            if (selector == PERMIT_SELECTOR) {
+                if (
+                    permitIndex != type(uint256).max ||
+                    execution.value != 0 ||
+                    execution.callData.length != 4 + 7 * 32
+                ) {
+                    revert PolicyRuleFailed();
+                }
+                _requireArgAddress(execution.callData, 4, owner);
+                _requireArgAddress(execution.callData, 4 + 32, account);
+                permittedAmount = _readUint(execution.callData, 4 + 2 * 32);
+                permitIndex = i;
+            } else if (selector == TRANSFER_FROM_SELECTOR) {
+                if (
+                    transferIndex != type(uint256).max ||
+                    execution.value != 0 ||
+                    execution.callData.length != 4 + 3 * 32
+                ) {
+                    revert PolicyRuleFailed();
+                }
+                _requireArgAddress(execution.callData, 4, owner);
+                _requireArgAddress(execution.callData, 4 + 32, account);
+                transferredAmount = _readUint(execution.callData, 4 + 2 * 32);
+                transferIndex = i;
+            }
+        }
+
+        if (permitIndex == type(uint256).max && transferIndex == type(uint256).max) {
+            return (permitIndex, transferIndex);
+        }
+        if (
+            permitIndex == type(uint256).max ||
+            transferIndex != permitIndex + 1 ||
+            permittedAmount == 0 ||
+            transferredAmount != permittedAmount
         ) {
             revert PolicyRuleFailed();
         }
