@@ -598,13 +598,13 @@ index 8e43c7a3..67ded69a 100644
      if ((0, core_1.supportsEip712)(validator)) {
          const isK1Validator = validator.address.toLowerCase() ===
              startale_1.K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase();
-@@ -738,6 +869,336 @@ async function signIntentTypedData(config, signers, validator, isRoot, parameter
+@@ -738,6 +869,332 @@ async function signIntentTypedData(config, signers, validator, isRoot, parameter
          isRoot,
      }, hash);
  }
 +function resolveHcaFundingSessionConfig(config, signers) {
 +    const initData = config.experimental_sessions?.initData;
-+    if (!initData || (0, viem_1.size)(initData) !== 352)
++    if (!initData || (0, viem_1.size)(initData) !== 320)
 +        return undefined;
 +    try {
 +        const [fundingConfig] = (0, viem_1.decodeAbiParameters)([
@@ -618,7 +618,6 @@ index 8e43c7a3..67ded69a 100644
 +                    { name: 'sourceToken', type: 'address' },
 +                    { name: 'destinationRecipient', type: 'address' },
 +                    { name: 'destinationToken', type: 'address' },
-+                    { name: 'arbiter', type: 'address' },
 +                    { name: 'destinationChainId', type: 'uint64' },
 +                    { name: 'maxSourceAmount', type: 'uint96' },
 +                    { name: 'maxDestinationAmount', type: 'uint96' },
@@ -639,7 +638,6 @@ index 8e43c7a3..67ded69a 100644
 +            { type: 'address' },
 +            { type: 'address' },
 +            { type: 'address' },
-+            { type: 'address' },
 +            { type: 'uint64' },
 +            { type: 'uint96' },
 +            { type: 'uint96' },
@@ -649,7 +647,6 @@ index 8e43c7a3..67ded69a 100644
 +            fundingConfig.sourceToken,
 +            fundingConfig.destinationRecipient,
 +            fundingConfig.destinationToken,
-+            fundingConfig.arbiter,
 +            fundingConfig.destinationChainId,
 +            fundingConfig.maxSourceAmount,
 +            fundingConfig.maxDestinationAmount,
@@ -691,7 +688,6 @@ index 8e43c7a3..67ded69a 100644
 +        throw new Error('HCA funding session owner signature has an unexpected shape');
 +    }
 +    if (message.permitted?.[0]?.token?.toLowerCase() !== fundingConfig.sourceToken.toLowerCase() ||
-+        message.spender.toLowerCase() !== fundingConfig.arbiter.toLowerCase() ||
 +        message.mandate.target.recipient.toLowerCase() !==
 +            fundingConfig.destinationRecipient.toLowerCase()) {
 +        throw new Error('HCA funding session Permit2 route does not match its fixed policy');

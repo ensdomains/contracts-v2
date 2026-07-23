@@ -7,6 +7,22 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 
+/// @title Rhinestone Claim Router
+/// @notice Resolves the active claim adapter for a route.
+/// @dev Interface selector: `0x9e4ba7aa`
+interface IRhinestoneClaimRouter {
+    /// @notice Returns the claim adapter for a protocol version and function selector.
+    /// @param version The route protocol version.
+    /// @param selector The claim function selector.
+    /// @return adapter The active claim adapter.
+    /// @return adapterTag The adapter metadata tag.
+    function getClaimAdapter(bytes2 version, bytes4 selector)
+        external
+        view
+        returns (address adapter, bytes12 adapterTag);
+}
+
+
 /// @title HCA Funding Session Validator
 /// @notice Fixed validator for a Nexus that funds an HCA registration from another chain.
 /// @dev The Nexus installs one session during account creation. The session can pull the
@@ -26,7 +42,6 @@ contract HCAFundingSessionValidator is IValidator {
         address sourceToken;
         address destinationRecipient;
         address destinationToken;
-        address arbiter;
         uint64 destinationChainId;
         uint96 maxSourceAmount;
         uint96 maxDestinationAmount;
@@ -115,6 +130,12 @@ contract HCAFundingSessionValidator is IValidator {
     /// @dev Permit2 EIP-712 name hash.
     bytes32 internal constant PERMIT2_NAME_HASH = keccak256("Permit2");
 
+    /// @notice Rhinestone protocol version used by the supported Across claim.
+    bytes2 public constant RHINESTONE_PROTOCOL_VERSION = 0x0001;
+
+    /// @notice Function selector for the supported Permit2 Across claim.
+    bytes4 public constant ACROSS_PERMIT2_CLAIM_SELECTOR = 0xc9df5e29;
+
     /// @dev Permit2 token-permissions type hash.
     bytes32 internal constant TOKEN_PERMISSIONS_TYPEHASH =
         keccak256("TokenPermissions(address token,uint256 amount)");
@@ -191,6 +212,9 @@ contract HCAFundingSessionValidator is IValidator {
     /// @notice The Permit2 contract that requests ERC-1271 claim validation.
     address public immutable PERMIT2;
 
+    /// @notice The Rhinestone Router that resolves the active Across claim adapter.
+    IRhinestoneClaimRouter public immutable ROUTER;
+
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
@@ -252,12 +276,14 @@ contract HCAFundingSessionValidator is IValidator {
 
     /// @param intentExecutor The Rhinestone IntentExecutor used by the Nexus.
     /// @param permit2 The Permit2 contract used by Rhinestone claims.
-    constructor(address intentExecutor, address permit2) {
-        if (intentExecutor == address(0) || permit2 == address(0)) {
+    /// @param router The Rhinestone Router that resolves the active claim adapter.
+    constructor(address intentExecutor, address permit2, address router) {
+        if (intentExecutor == address(0) || permit2 == address(0) || router == address(0)) {
             revert InvalidSession();
         }
         INTENT_EXECUTOR = intentExecutor;
         PERMIT2 = permit2;
+        ROUTER = IRhinestoneClaimRouter(router);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -278,7 +304,6 @@ contract HCAFundingSessionValidator is IValidator {
             config.sourceToken == address(0) ||
             config.destinationRecipient == address(0) ||
             config.destinationToken == address(0) ||
-            config.arbiter == address(0) ||
             config.destinationChainId == 0 ||
             config.maxSourceAmount == 0 ||
             config.maxDestinationAmount == 0
@@ -556,7 +581,6 @@ contract HCAFundingSessionValidator is IValidator {
                     config.sourceToken,
                     config.destinationRecipient,
                     config.destinationToken,
-                    config.arbiter,
                     config.destinationChainId,
                     config.maxSourceAmount,
                     config.maxDestinationAmount
@@ -671,34 +695,44 @@ contract HCAFundingSessionValidator is IValidator {
         claim.destinationToken = address(uint160(uint256(_readWord(data, 234))));
         claim.destinationAmount = uint256(_readWord(data, 266));
 
-        if (claim.spender != config.arbiter)
+        (address activeArbiter, ) =
+            ROUTER.getClaimAdapter(RHINESTONE_PROTOCOL_VERSION, ACROSS_PERMIT2_CLAIM_SELECTOR);
+        if (activeArbiter == address(0) || claim.spender != activeArbiter) {
             revert ClaimFieldMismatch(1);
-        if (claim.deadline < block.timestamp || claim.deadline > config.validUntil)
+        }
+        if (claim.deadline < block.timestamp || claim.deadline > config.validUntil) {
             revert ClaimFieldMismatch(2);
-        if (uint8(data[84]) != 1)
+        }
+        if (uint8(data[84]) != 1) {
             revert ClaimFieldMismatch(3);
+        }
         if (
             claim.sourceToken != config.sourceToken ||
             claim.sourceAmount == 0 ||
             claim.sourceAmount > config.maxSourceAmount
-        )
+        ) {
             revert ClaimFieldMismatch(4);
-        if (claim.recipient != config.destinationRecipient)
+        }
+        if (claim.recipient != config.destinationRecipient) {
             revert ClaimFieldMismatch(5);
+        }
         if (
             claim.destinationChainId != config.destinationChainId ||
             claim.fillExpiry < block.timestamp ||
             claim.fillExpiry > config.validUntil
-        )
+        ) {
             revert ClaimFieldMismatch(6);
-        if (uint8(data[233]) != 1)
+        }
+        if (uint8(data[233]) != 1) {
             revert ClaimFieldMismatch(7);
+        }
         if (
             claim.destinationToken != config.destinationToken ||
             claim.destinationAmount == 0 ||
             claim.destinationAmount > config.maxDestinationAmount
-        )
+        ) {
             revert ClaimFieldMismatch(8);
+        }
     }
 
     /// @dev Reconstructs the signed Permit2 witness digest.

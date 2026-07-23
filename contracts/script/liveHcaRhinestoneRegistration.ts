@@ -140,6 +140,8 @@ const NEXUS_BOOTSTRAP_ABI = parseAbi([
   "function initNexusWithDefaultValidatorAndOtherModulesNoRegistry(bytes defaultValidatorInitData, BootstrapConfig[] validators, BootstrapConfig[] executors, BootstrapConfig hook, BootstrapConfig[] fallbacks, BootstrapPreValidationHookConfig[] preValidationHooks)",
 ]);
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3" as const;
+const RHINESTONE_ROUTER =
+  "0x000000000004598D17aaD017bF0734a364c5588b" as const;
 const BASE_SEPOLIA_HCA_FUNDING_SESSION_VALIDATOR =
   deployment("HCAFundingSessionValidator", "base-sepolia");
 const HCA_FUNDING_SESSION_VALIDATOR = (process.env
@@ -147,8 +149,6 @@ const HCA_FUNDING_SESSION_VALIDATOR = (process.env
   (sourceChain.id === baseSepolia.id
     ? BASE_SEPOLIA_HCA_FUNDING_SESSION_VALIDATOR
     : undefined)) as Address | undefined;
-const RHINESTONE_ACROSS_ARBITER = (process.env.HCA_ACROSS_ARBITER ??
-  "0x28a4d41776968c1201a807ec51ffb405362b8882") as Address;
 const SOURCE_PAYMENT_TOKEN = (process.env.HCA_SOURCE_PAYMENT_TOKEN ??
   (sourceChain.id === baseSepolia.id
     ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
@@ -564,7 +564,7 @@ async function ensureFundingSessionValidator() {
       await sourceProvisionerWalletClient!.deployContract({
         abi: HCAFundingSessionValidator.abi,
         bytecode: forgeBytecode("HCAFundingSessionValidator"),
-        args: [RHINESTONE_INTENT_EXECUTOR, PERMIT2],
+        args: [RHINESTONE_INTENT_EXECUTOR, PERMIT2, RHINESTONE_ROUTER],
       });
     const receipt = await sourcePublicClient!.waitForTransactionReceipt({
       hash: deploymentTransactionHash,
@@ -582,7 +582,7 @@ async function ensureFundingSessionValidator() {
     address,
     sourcePublicClient! as unknown as PublicClient,
   );
-  const [intentExecutor, permit2] = await Promise.all([
+  const [intentExecutor, permit2, router] = await Promise.all([
     sourcePublicClient!.readContract({
       address,
       abi: HCAFundingSessionValidator.abi,
@@ -593,6 +593,11 @@ async function ensureFundingSessionValidator() {
       abi: HCAFundingSessionValidator.abi,
       functionName: "PERMIT2",
     }),
+    sourcePublicClient!.readContract({
+      address,
+      abi: HCAFundingSessionValidator.abi,
+      functionName: "ROUTER",
+    }),
   ]);
   assertAddress(
     "funding-session validator IntentExecutor",
@@ -600,6 +605,11 @@ async function ensureFundingSessionValidator() {
     RHINESTONE_INTENT_EXECUTOR,
   );
   assertAddress("funding-session validator Permit2", permit2, PERMIT2);
+  assertAddress(
+    "funding-session validator Router",
+    router,
+    RHINESTONE_ROUTER,
+  );
   return { address, deploymentTransactionHash };
 }
 
@@ -1026,7 +1036,6 @@ async function main() {
             { type: "address" },
             { type: "address" },
             { type: "address" },
-            { type: "address" },
             { type: "uint64" },
             { type: "uint96" },
             { type: "uint96" },
@@ -1037,7 +1046,6 @@ async function main() {
             SOURCE_PAYMENT_TOKEN,
             hca,
             deployments.paymentToken,
-            RHINESTONE_ACROSS_ARBITER,
             BigInt(sepolia.id),
             CROSS_CHAIN_SOURCE_AMOUNT,
             CROSS_CHAIN_TARGET_AMOUNT,
@@ -1067,7 +1075,6 @@ async function main() {
               { name: "sourceToken", type: "address" },
               { name: "destinationRecipient", type: "address" },
               { name: "destinationToken", type: "address" },
-              { name: "arbiter", type: "address" },
               { name: "destinationChainId", type: "uint64" },
               { name: "maxSourceAmount", type: "uint96" },
               { name: "maxDestinationAmount", type: "uint96" },
@@ -1083,7 +1090,6 @@ async function main() {
             sourceToken: SOURCE_PAYMENT_TOKEN,
             destinationRecipient: hca,
             destinationToken: deployments.paymentToken,
-            arbiter: RHINESTONE_ACROSS_ARBITER,
             destinationChainId: BigInt(sepolia.id),
             maxSourceAmount: CROSS_CHAIN_SOURCE_AMOUNT,
             maxDestinationAmount: CROSS_CHAIN_TARGET_AMOUNT,

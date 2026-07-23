@@ -9,7 +9,10 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 
-import {HCAFundingSessionValidator} from "~src/hca/HCAFundingSessionValidator.sol";
+import {
+    HCAFundingSessionValidator,
+    IRhinestoneClaimRouter
+} from "~src/hca/HCAFundingSessionValidator.sol";
 
 contract HCAFundingSessionValidatorTest is Test {
     struct ClaimFixture {
@@ -85,6 +88,7 @@ contract HCAFundingSessionValidatorTest is Test {
     address destinationHca = makeAddr("destination-hca");
     address destinationToken = makeAddr("destination-token");
     address intentExecutor = makeAddr("intent-executor");
+    address router = makeAddr("rhinestone-router");
     address arbiter = makeAddr("across-arbiter");
 
     HCAFundingSessionValidator validator;
@@ -92,10 +96,11 @@ contract HCAFundingSessionValidatorTest is Test {
 
     function setUp() public {
         vm.chainId(BASE_SEPOLIA_CHAIN_ID);
-        validator = new HCAFundingSessionValidator(intentExecutor, PERMIT2);
+        validator = new HCAFundingSessionValidator(intentExecutor, PERMIT2, router);
+        _setActiveArbiter(arbiter);
         config = HCAFundingSessionValidator.SessionConfig({permissionId: bytes32(0), owner: owner, validUntil: uint48(
             block.timestamp + 1 days
-        ), sessionKey: sessionKey, sourceToken: sourceToken, destinationRecipient: destinationHca, destinationToken: destinationToken, arbiter: arbiter, destinationChainId: 11_155_111, maxSourceAmount: TOTAL_SOURCE_BUDGET, maxDestinationAmount: 2_000_000});
+        ), sessionKey: sessionKey, sourceToken: sourceToken, destinationRecipient: destinationHca, destinationToken: destinationToken, destinationChainId: 11_155_111, maxSourceAmount: TOTAL_SOURCE_BUDGET, maxDestinationAmount: 2_000_000});
         config.permissionId = _permissionId(config);
         vm.prank(nexus);
         validator.onInstall(abi.encode(config));
@@ -103,10 +108,13 @@ contract HCAFundingSessionValidatorTest is Test {
 
     function test_rejectsInvalidConstructorDependencies() public {
         vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
-        new HCAFundingSessionValidator(address(0), PERMIT2);
+        new HCAFundingSessionValidator(address(0), PERMIT2, router);
 
         vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
-        new HCAFundingSessionValidator(intentExecutor, address(0));
+        new HCAFundingSessionValidator(intentExecutor, address(0), router);
+
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        new HCAFundingSessionValidator(intentExecutor, PERMIT2, address(0));
     }
 
     function test_reportsInstallationAndModuleState() public {
@@ -347,7 +355,7 @@ contract HCAFundingSessionValidatorTest is Test {
 
     function test_internalGuardsRejectTruncatedData() public {
         HCAFundingSessionValidatorHarness harness =
-            new HCAFundingSessionValidatorHarness(intentExecutor, PERMIT2);
+            new HCAFundingSessionValidatorHarness(intentExecutor, PERMIT2, router);
 
         vm.expectRevert(HCAFundingSessionValidator.InvalidOperation.selector);
         harness.validateFundingOperationHarness(nexus, nexus, hex"00");
@@ -380,6 +388,30 @@ contract HCAFundingSessionValidatorTest is Test {
             _validate(revealDigest, _envelope(proof, revealDigest, revealClaim, revealOperation)),
             ERC1271_MAGICVALUE
         );
+    }
+
+    function test_reusesOwnerAuthorizationAfterRouterUpdatesArbiter() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        arbiter = makeAddr("replacement-across-arbiter");
+        _setActiveArbiter(arbiter);
+
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+
+        assertEq(_validate(digest, _envelope(proof, digest, claim, operation)), ERC1271_MAGICVALUE);
+    }
+
+    function test_rejectsClaimWhenRouterHasNoActiveArbiter() public {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        _setActiveArbiter(address(0));
+
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAFundingSessionValidator.ClaimFieldMismatch.selector, uint8(1))
+        );
+        _validate(digest, _envelope(proof, digest, claim, operation));
     }
 
     function test_reusesOneOwnerAuthorizationAcrossSourceChains() public {
@@ -583,6 +615,17 @@ contract HCAFundingSessionValidatorTest is Test {
     function _validate(bytes32 digest, bytes memory envelope) internal returns (bytes4 result) {
         vm.prank(nexus);
         return validator.isValidSignatureWithSender(PERMIT2, digest, envelope);
+    }
+
+    function _setActiveArbiter(address activeArbiter) internal {
+        vm.mockCall(
+            router,
+            abi.encodeCall(
+                IRhinestoneClaimRouter.getClaimAdapter,
+                (validator.RHINESTONE_PROTOCOL_VERSION(), validator.ACROSS_PERMIT2_CLAIM_SELECTOR())
+            ),
+            abi.encode(activeArbiter, bytes12(0))
+        );
     }
 
     function _expectClaimByteMismatch(uint8 field, uint256 offset, bytes1 value) internal {
@@ -909,7 +952,6 @@ contract HCAFundingSessionValidatorTest is Test {
                     sessionConfig.sourceToken,
                     sessionConfig.destinationRecipient,
                     sessionConfig.destinationToken,
-                    sessionConfig.arbiter,
                     sessionConfig.destinationChainId,
                     sessionConfig.maxSourceAmount,
                     sessionConfig.maxDestinationAmount
@@ -955,8 +997,8 @@ contract HCAFundingSessionValidatorTest is Test {
 
 
 contract HCAFundingSessionValidatorHarness is HCAFundingSessionValidator {
-    constructor(address intentExecutor, address permit2)
-        HCAFundingSessionValidator(intentExecutor, permit2)
+    constructor(address intentExecutor, address permit2, address router)
+        HCAFundingSessionValidator(intentExecutor, permit2, router)
     {}
 
     function validateFundingOperationHarness(

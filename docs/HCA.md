@@ -101,7 +101,7 @@ Sepolia is the current registration network. Base Sepolia is the enabled test so
 | Use | Network | Chain ID | Payment token | Funding validator | Frontend status |
 |---|---|---:|---|---|---|
 | Registration | Sepolia | `11155111` | USDC at `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | Not applicable | Enabled |
-| Source | Base Sepolia | `84532` | USDC at `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `0xCd3498554f08AB38ACCa8eFcB0839421598364a1` | Enabled for integration |
+| Source | Base Sepolia | `84532` | USDC at `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `0x6FC0FdE0960003AcB24810FFd5dB6224B3d88974` | Enabled for integration |
 | Source | Arbitrum Sepolia | `421614` | USDC at `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` | Not deployed | Do not enable |
 
 Use the [Sepolia deployment address table](../contracts/docs/addresses/sepolia.md) for shared contract addresses. The frontend needs these entries:
@@ -395,9 +395,10 @@ Each source session fixes these values:
 - Wallet, session key, and expiry
 - Source token and maximum source amount
 - Destination HCA, chain, token, and maximum destination amount
-- Across arbiter
 
 For each claim, `HCAFundingSessionValidator` checks the owner authorization, session signature, Permit2 claim, and source calls. It permits only the required stablecoin permit, wallet-to-Nexus transfer, and Permit2 approval.
+
+The validator gets the active Permit2 Across claim adapter from the Rhinestone Router. The source session trusts that adapter to deliver the signed output. A compatible adapter update does not need a new wallet authorization. A new claim format needs a new validator.
 
 The wallet-to-Nexus transfer must equal the claim amount. The validator rejects arbitrary calls and UserOperations.
 
@@ -503,7 +504,6 @@ sessionKey
 sourceToken
 destinationRecipient
 destinationToken
-arbiter
 destinationChainId
 maxSourceAmount
 maxDestinationAmount
@@ -612,37 +612,4 @@ The same-chain commands need `HCA_OWNER_KEY` for a fresh Sepolia wallet with eno
 
 The `same-session` command needs `HCA_OWNER_KEY_FILE`. Its wallet needs enough USDC on Sepolia and Base Sepolia because the command proves both choices in sequence.
 
-A combined live run on 23 July 2026 proved that one session authorization can support either route.
-
-The proof ran the same-chain route and then the cross-chain route. It used one session signature, one Sepolia USDC permit, and one Base Sepolia USDC permit. A user selects one route, so either route needs two wallet signatures.
-
-| Check | Result |
-|---|---|
-| Wallet | `0x5CAcFd1A524C84F0B4BD8fdaDD2c70eD9ec98a09` |
-| HCA | `0xB6b1c980304CcA3b8Af32196a270F3005285aC06` |
-| Destination permission ID | `0xa916dd14444a205561e5454054e5198622f9edef76f255792d1b1712c74eb2d5` for both routes |
-| Session authorization | Signed before route selection and reused without changes |
-| Same-chain result | Two names registered; two signatures and zero wallet transactions |
-| Cross-chain result | One name registered; two signatures and zero wallet transactions |
-| Wallet native balance and nonce | Zero before and after |
-| ENS result | Owner, resolver, records, primary name, and resolver roles verified |
-
-The same-chain route moved `20` USDC into the HCA during the commit request. It paid execution and registration costs from the HCA. The new-account commit and reveal used `1,390,207` gas. The next commit and reveal used `803,260` gas.
-
-The same-chain Rhinestone transactions were:
-
-- New-account commit: `0x17b4f7cc9e4827fbb111fad9bacea6608019d14a04acbddf86f3893ab20d0ffa`
-- New-account reveal: `0x103c8ece4c60631f70202a0722b08511c5999f5fce956f64a9a8d08d87396a8f`
-- Existing-account commit: `0x53411ddbb64a3a278c8e395127be92b0374abaeb6ffbe17a67e46746a6f78c86`
-- Existing-account reveal: `0x8c864722d3db8e713f4c31c0383ccbcaecaab639a87bced56a17c8c651e8c079`
-
-The cross-chain route used source Nexus `0xaCD357a1C49C86E644FD3b1d47347d22AD107b4A`. The commit claim pulled `16.096972` Base Sepolia USDC and delivered one unit of Sepolia USDC. The reveal claim pulled `17.408604` USDC and delivered `0.9` USDC. Registration funds stayed in the wallet until the reveal claim.
-
-The cross-chain Rhinestone transactions were:
-
-- Commit claim: `0xe7c2d73e0f09ca2b1d2fcc8ba95e5c6f270eff9dcd2dfebab1cdd4e6e014ba48`
-- Commit fill: `0x7e1ab79719a43c28afe48822f57b839731fd17de6b33315a2f702919ef41fd08`
-- Reveal claim: `0x232e8f796a42105cf07aad2c39420ac526d04b43d6ead7756b0758fd53c82010`
-- Reveal fill: `0x3b1509df9733cfb35730b84d3f3ac2b69d5e535868f771c9af2d07f1281956db`
-
-The live HCA uses implementation `0xaff1833a2746373b749bca6f416b9d4eb5f4d7c4` and destination validator `0x67a4f4f3ba93b7c1299cc79b901c4b2e4375ef42`. The Base Sepolia source validator is `0xCd3498554f08AB38ACCa8eFcB0839421598364a1`. Their creation inputs match the compiled artifacts in this branch. The [Base Sepolia deployment record](../contracts/deployments/base-sepolia/HCAFundingSessionValidator.json) contains its transaction and bytecode hashes.
+The live HCA uses implementation `0xaff1833a2746373b749bca6f416b9d4eb5f4d7c4` and destination validator `0x67a4f4f3ba93b7c1299cc79b901c4b2e4375ef42`. The Base Sepolia source validator is `0x6FC0FdE0960003AcB24810FFd5dB6224B3d88974`. Their creation inputs match the compiled artifacts in this branch. The [Base Sepolia deployment record](../contracts/deployments/base-sepolia/HCAFundingSessionValidator.json) contains its transaction and bytecode hashes.
