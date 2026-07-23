@@ -81,8 +81,8 @@ contract HCAOwnerAndSessionValidator is IValidator {
         bytes32 sessionDigest;
     }
 
-    /// @dev Owner authorization used when the first cross-chain route enables an HCA session.
-    struct Permit2EnableProof {
+    /// @dev Owner authorization used when the first route enables an HCA session.
+    struct SessionEnableProof {
         address sessionKey;
         uint48 validUntil;
         uint96 sessionNonce;
@@ -158,11 +158,11 @@ contract HCAOwnerAndSessionValidator is IValidator {
         65 + PERMIT2_CLAIM_DATA_LENGTH;
 
     /// @dev Mode, permission ID, and four-byte enable-proof length.
-    uint256 internal constant FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH = 37;
+    uint256 internal constant FIXED_SESSION_ENABLE_PREFIX_LENGTH = 37;
 
     /// @dev Minimum envelope size before the first same-chain operation.
     uint256 internal constant FIXED_SESSION_REFUND_ENABLE_MIN_LENGTH =
-        FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH +
+        FIXED_SESSION_ENABLE_PREFIX_LENGTH +
         FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH + ECDSA_SIGNATURE_LENGTH;
 
     /// @dev Smart Session payload mode for an already-enabled permission.
@@ -824,33 +824,27 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @dev Validates the first Permit2 route and its reusable multi-chain session authorization.
     function _validateFixedPermit2SessionEnable(bytes32 hash, bytes calldata data) internal view {
-        if (
-            data.length <=
-            FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH + 32 + PERMIT2_CLAIM_DATA_LENGTH + 65
-        ) {
+        if (data.length <= FIXED_SESSION_ENABLE_PREFIX_LENGTH + 32 + PERMIT2_CLAIM_DATA_LENGTH + 65) {
             revert InvalidSessionData();
         }
 
         bytes32 permissionId = bytes32(data[1:33]);
         uint256 proofLength = uint32(bytes4(data[33:37]));
-        uint256 proofEnd = FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH + proofLength;
+        uint256 proofEnd = FIXED_SESSION_ENABLE_PREFIX_LENGTH + proofLength;
         uint256 operationOffset = proofEnd + 32 + PERMIT2_CLAIM_DATA_LENGTH;
         uint256 signatureOffset = data.length - ECDSA_SIGNATURE_LENGTH;
         if (proofLength == 0 || operationOffset >= signatureOffset) {
             revert InvalidSessionData();
         }
 
-        Permit2EnableProof memory proof =
-            abi.decode(
-                data[FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH:proofEnd],
-                (Permit2EnableProof)
-            );
-        address accountOwner = _validatePermit2EnableProof(permissionId, proof);
+        SessionEnableProof memory proof =
+            abi.decode(data[FIXED_SESSION_ENABLE_PREFIX_LENGTH:proofEnd], (SessionEnableProof));
+        address accountOwner = _validateSessionEnableProof(permissionId, proof);
         _validatePermit2EnableIntent(hash, data, proofEnd, permissionId, accountOwner, proof);
     }
 
     /// @dev Validates the fixed HCA fields authorized by the owner.
-    function _validatePermit2EnableProof(bytes32 permissionId, Permit2EnableProof memory proof)
+    function _validateSessionEnableProof(bytes32 permissionId, SessionEnableProof memory proof)
         internal
         view
         returns (address owner_)
@@ -887,7 +881,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         uint256 proofEnd,
         bytes32 permissionId,
         address accountOwner,
-        Permit2EnableProof memory proof
+        SessionEnableProof memory proof
     )
         internal
         view
@@ -922,7 +916,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
         bytes32 permissionId = bytes32(data[1:33]);
         uint256 proofLength = uint32(bytes4(data[33:37]));
-        uint256 proofEnd = FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH + proofLength;
+        uint256 proofEnd = FIXED_SESSION_ENABLE_PREFIX_LENGTH + proofLength;
         if (
             proofLength == 0 ||
             proofEnd + FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH >=
@@ -931,12 +925,9 @@ contract HCAOwnerAndSessionValidator is IValidator {
             revert InvalidSessionData();
         }
 
-        Permit2EnableProof memory proof =
-            abi.decode(
-                data[FIXED_SESSION_PERMIT2_ENABLE_PREFIX_LENGTH:proofEnd],
-                (Permit2EnableProof)
-            );
-        address accountOwner = _validatePermit2EnableProof(permissionId, proof);
+        SessionEnableProof memory proof =
+            abi.decode(data[FIXED_SESSION_ENABLE_PREFIX_LENGTH:proofEnd], (SessionEnableProof));
+        address accountOwner = _validateSessionEnableProof(permissionId, proof);
         (bytes calldata operationData, GasRefund memory gasRefund) =
             _validateFixedRefundSessionEnablePayload(hash, data, proofEnd, proof);
         _checkInitialRegistrationPolicy(
@@ -954,7 +945,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         bytes32 hash,
         bytes calldata data,
         uint256 proofEnd,
-        Permit2EnableProof memory proof
+        SessionEnableProof memory proof
     )
         internal
         view
@@ -984,7 +975,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         address owner_,
         bytes32 salt,
         bytes memory validatorInitData,
-        Permit2EnableProof memory proof
+        SessionEnableProof memory proof
     )
         internal
         view
@@ -1275,7 +1266,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         address account,
         address owner,
         bytes32 permissionId,
-        Permit2EnableProof memory proof,
+        SessionEnableProof memory proof,
         bytes calldata operationData,
         GasRefund memory gasRefund
     )
@@ -1714,7 +1705,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     }
 
     /// @dev Hashes the fixed HCA fields stored in the standard Smart Session salt.
-    function _sessionAuthorizationSalt(Permit2EnableProof memory proof)
+    function _sessionAuthorizationSalt(SessionEnableProof memory proof)
         internal
         pure
         returns (bytes32)

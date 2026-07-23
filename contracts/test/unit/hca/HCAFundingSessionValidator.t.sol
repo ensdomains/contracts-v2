@@ -422,7 +422,7 @@ contract HCAFundingSessionValidatorTest is Test {
     function test_rejectsClaimWithoutReusableOwnerAuthorization() public {
         bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
         (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
-        bytes memory legacyEnvelope =
+        bytes memory envelopeWithoutOwnerProof =
             abi.encodePacked(
                 bytes1(uint8(0)),
                 config.permissionId,
@@ -432,7 +432,7 @@ contract HCAFundingSessionValidatorTest is Test {
             );
 
         vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
-        _validate(digest, legacyEnvelope);
+        _validate(digest, envelopeWithoutOwnerProof);
     }
 
     function test_rejectsPullAboveSignedPermit2Claim() public {

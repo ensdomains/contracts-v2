@@ -24,7 +24,7 @@ export default execute(
     >("HCAOwnerAndSessionValidator");
     const localExecutor = getOrNull<
       (typeof artifacts.MockRegistrationIntentExecutor)["abi"]
-    >("HCARegistrationIntentExecutor");
+    >("MockRegistrationIntentExecutor");
     const existingExecutor = getOrNull<Abi>("IntentExecutor");
     const intentExecutor = resolveHCAIntentExecutor({
       tags,
@@ -70,7 +70,7 @@ export default execute(
     ],
     dependencies: [
       "HCAOwnerAndSessionValidator",
-      "HCARegistrationIntentExecutor",
+      "MockRegistrationIntentExecutor",
     ],
   },
 );

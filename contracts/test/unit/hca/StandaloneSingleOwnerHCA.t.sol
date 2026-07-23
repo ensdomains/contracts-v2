@@ -940,7 +940,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function test_validator_internalPolicyGuards() public {
-        HCAOwnerAndSessionValidator.Permit2EnableProof memory proof;
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof;
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund;
 
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector);
@@ -1954,7 +1954,7 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
         address account,
         address owner,
         bytes32 permissionId,
-        Permit2EnableProof calldata proof,
+        SessionEnableProof calldata proof,
         bytes calldata operationData,
         GasRefund calldata gasRefund
     )

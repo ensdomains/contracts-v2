@@ -11,7 +11,7 @@ export default execute(
     if (process.env.HCA_INTENT_EXECUTOR) return;
     if (!shouldDeployMockIntentExecutor(tags)) return;
 
-    await deploy("HCARegistrationIntentExecutor", {
+    await deploy("MockRegistrationIntentExecutor", {
       account: deployer,
       artifact: artifacts.MockRegistrationIntentExecutor,
       args: [],
@@ -19,7 +19,7 @@ export default execute(
   },
   {
     tags: [
-      "HCARegistrationIntentExecutor",
+      "MockRegistrationIntentExecutor",
       "StandaloneHCA",
       "hca",
       "migration:phase1:deploy-v2",

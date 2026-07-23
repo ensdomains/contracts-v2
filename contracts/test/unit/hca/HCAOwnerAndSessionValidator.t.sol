@@ -11,7 +11,7 @@ import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.
 
 import {MockStandaloneHCA} from "../../mocks/MockStandaloneHCAStack.sol";
 
-contract HCAOwnerAndSessionValidatorPermit2Test is Test {
+contract HCAOwnerAndSessionValidatorTest is Test {
     struct ClaimFixture {
         uint256 nonce;
         uint256 deadline;
@@ -141,7 +141,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
         public
         view
     {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         bytes memory operationData = _withHybridMode(_initialCommitOperation(permissionId, proof));
         (bytes memory claimData, bytes32 digest) =
@@ -189,7 +189,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsInvalidFirstUseProofAndSessionSignature() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         bytes memory operationData = _initialCommitOperation(permissionId, proof);
         (bytes memory claimData, bytes32 digest) =
@@ -221,7 +221,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstPermit2RouteWithInvalidOwnerAuthorization() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         proof.ownerR = bytes32(uint256(proof.ownerR) + 1);
         bytes memory operationData = _initialCommitOperation(permissionId, proof);
@@ -237,7 +237,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstPermit2RouteForAnotherSelectedChain() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         proof.hashesAndChainIds[proof.sessionToEnableIndex].chainId = uint64(SOURCE_CHAIN_ID);
         bytes memory operationData = _initialCommitOperation(permissionId, proof);
@@ -253,7 +253,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstPermit2RouteWithStaleSessionNonce() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         hca.setSessionNonce(1);
         bytes memory operationData = _initialCommitOperation(permissionId, proof);
@@ -269,7 +269,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstPermit2RouteWithMismatchedEnableCall() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         bytes memory operationData =
             _initialCommitOperation(permissionId, proof, proof.validUntil - 1);
@@ -288,7 +288,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
         public
         view
     {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
             HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
@@ -317,7 +317,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsInvalidFirstSameChainDigestAndSignature() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
             HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
@@ -378,7 +378,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstSameChainRouteAboveAuthorizedRefund() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
             HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
@@ -405,7 +405,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingPullToAnotherAccount() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
             HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
@@ -433,7 +433,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingWithoutTransfer() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         HCAOwnerAndSessionValidator.Execution[] memory executions =
             _initialRefundExecutions(permissionId, proof);
@@ -447,7 +447,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingWhenCallsAreNotAdjacent() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         HCAOwnerAndSessionValidator.Execution[] memory executions =
             _initialRefundExecutions(permissionId, proof);
@@ -459,7 +459,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingWithMismatchedAmounts() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         HCAOwnerAndSessionValidator.Execution[] memory executions =
             _initialRefundExecutions(permissionId, proof);
@@ -474,7 +474,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingWithZeroAmount() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         HCAOwnerAndSessionValidator.Execution[] memory executions =
             _initialRefundExecutions(permissionId, proof);
@@ -499,7 +499,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingWithDuplicatePermit() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         HCAOwnerAndSessionValidator.Execution[] memory executions =
             _initialRefundExecutions(permissionId, proof);
@@ -514,7 +514,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingFromAnotherOwner() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         HCAOwnerAndSessionValidator.Execution[] memory executions =
             _initialRefundExecutions(permissionId, proof);
@@ -533,7 +533,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingForAnotherSpender() public {
-        (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId) =
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
             _multiChainEnableProof();
         HCAOwnerAndSessionValidator.Execution[] memory executions =
             _initialRefundExecutions(permissionId, proof);
@@ -574,7 +574,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
 
     function _initialCommitOperation(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.Permit2EnableProof memory proof
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof
     )
         internal
         view
@@ -585,7 +585,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
 
     function _initialCommitOperation(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.Permit2EnableProof memory proof,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
         uint48 enabledUntil
     )
         internal
@@ -616,7 +616,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
 
     function _initialEnvelope(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.Permit2EnableProof memory proof,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
         bytes memory claimData,
         bytes memory operationData,
         bytes32 digest
@@ -641,7 +641,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
 
     function _initialRefundCommitOperation(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.Permit2EnableProof memory proof
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof
     )
         internal
         view
@@ -652,7 +652,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
 
     function _initialRefundCommitOperation(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.Permit2EnableProof memory proof,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
         address fundingRecipient
     )
         internal
@@ -704,7 +704,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
 
     function _initialRefundEnvelope(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.Permit2EnableProof memory proof,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
         uint256 nonce,
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund,
         bytes memory operationData,
@@ -732,7 +732,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
 
     function _initialRefundExecutions(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.Permit2EnableProof memory proof
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof
     )
         internal
         view
@@ -772,7 +772,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
 
     function _assertInitialRefundPolicyFailure(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.Permit2EnableProof memory proof,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
         uint256 nonce,
         bytes memory operationData
     )
@@ -808,7 +808,7 @@ contract HCAOwnerAndSessionValidatorPermit2Test is Test {
     function _multiChainEnableProof()
         internal
         view
-        returns (HCAOwnerAndSessionValidator.Permit2EnableProof memory proof, bytes32 permissionId)
+        returns (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId)
     {
         proof.sessionKey = sessionSigner;
         proof.validUntil = uint48(block.timestamp + 1 days);

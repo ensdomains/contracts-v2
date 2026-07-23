@@ -3216,7 +3216,7 @@ export async function deployV2(opts: DeployV2Options) {
     "ReverseRegistrarAdapter",
     "DefaultReverseRegistrarAdapter",
     "DefaultReverseRegistrarHCAAdapter",
-    "HCARegistrationIntentExecutor",
+    "MockRegistrationIntentExecutor",
     "HCAOwnerAndSessionValidator",
     "StandaloneHCAFactory",
     "HCAUpgradeGate",

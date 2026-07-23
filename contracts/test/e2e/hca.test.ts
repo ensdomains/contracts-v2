@@ -206,7 +206,7 @@ describe("Standalone HCA", () => {
   // implementation with the default reverse adapter.
   const stack = {
     factory: env.hca.StandaloneHCAFactory,
-    executor: env.hca.HCARegistrationIntentExecutor,
+    executor: env.hca.MockRegistrationIntentExecutor,
     hcaImplementation: env.hca.StandaloneHCAImplementation,
     validator: env.hca.HCAOwnerAndSessionValidator,
   };

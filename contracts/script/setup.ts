@@ -528,9 +528,9 @@ export async function setupDevnet({
     };
 
     const hca = {
-      HCARegistrationIntentExecutor: getContract({
+      MockRegistrationIntentExecutor: getContract({
         abi: artifacts.MockRegistrationIntentExecutor.abi,
-        address: rocketh.deployments["HCARegistrationIntentExecutor"].address,
+        address: rocketh.deployments["MockRegistrationIntentExecutor"].address,
         client,
       }),
       HCAOwnerAndSessionValidator: getContract({
