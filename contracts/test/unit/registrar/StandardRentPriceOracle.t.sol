@@ -233,7 +233,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
 
     function test_getPaymentTokenRatio_exists() external view {
         (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(tokenUSDC);
-        PaymentRatio memory pr = StandardRegistrar.ratioFromStable(tokenUSDC);
+        PaymentRatio memory pr = StandardRegistrar.ratioFromParts(tokenUSDC, tokenUSDC.decimals());
         assertEq(numer, pr.numer, "numer");
         assertEq(denom, pr.denom, "denom");
     }
@@ -493,6 +493,55 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
             StandardRegistrar.MIN_REGISTER_DURATION,
             invalidPaymentToken
         );
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Chainlink Oracle
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_ethOracle() external view {
+        assertEq(
+            uint256(ethOracle.latestAnswer()),
+            StandardRegistrar.ETH_PRICE * 10 ** ethOracle.decimals()
+        );
+    }
+
+    function test_ethOracle_null() external {
+        StandardRentPriceOracle oracle =
+            new StandardRentPriceOracle(
+                address(this),
+                StandardRegistrar.getBaseRates(),
+                StandardRegistrar.getDiscountPoints(),
+                StandardRegistrar.DISCOUNT_DENOMINATOR,
+                StandardRegistrar.PREMIUM_PRICE_INITIAL,
+                StandardRegistrar.PREMIUM_HALVING_PERIOD,
+                StandardRegistrar.PREMIUM_PERIOD,
+                paymentRatios,
+                tokenWETH,
+                IChainlinkAggregator(address(0))
+            );
+        (uint128 numer, uint128 denom) = oracle.getPaymentTokenRatio(tokenETH);
+        assertEq(numer, 0, "numer");
+        assertEq(denom, 0, "denom");
+    }
+
+    function test_ethOracle_invalidAnswer() external {
+        StandardRentPriceOracle oracle =
+            new StandardRentPriceOracle(
+                address(this),
+                StandardRegistrar.getBaseRates(),
+                StandardRegistrar.getDiscountPoints(),
+                StandardRegistrar.DISCOUNT_DENOMINATOR,
+                StandardRegistrar.PREMIUM_PRICE_INITIAL,
+                StandardRegistrar.PREMIUM_HALVING_PERIOD,
+                StandardRegistrar.PREMIUM_PERIOD,
+                paymentRatios,
+                tokenWETH,
+                invalidOracle
+            );
+        (uint128 numer, uint128 denom) = oracle.getPaymentTokenRatio(tokenETH);
+        assertEq(numer, 0, "numer");
+        assertEq(denom, 0, "denom");
     }
 
     ////////////////////////////////////////////////////////////////////////

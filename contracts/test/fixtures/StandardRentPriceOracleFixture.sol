@@ -22,6 +22,7 @@ import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 contract StandardRentPriceOracleFixture is Test {
     StandardRentPriceOracle rentPriceOracle;
     MockChainlinkAggregator ethOracle;
+    MockChainlinkAggregator invalidOracle;
 
     MockERC20 tokenETH = MockERC20(NATIVE_ETH);
     MockERC20 tokenWETH;
@@ -33,6 +34,7 @@ contract StandardRentPriceOracleFixture is Test {
     MockERC20FalseReturn tokenFalse;
 
     MockERC20[] paymentTokens;
+    PaymentRatio[] paymentRatios;
 
     address beneficiary = makeAddr("beneficiary");
     address refundTo = makeAddr("refundTo");
@@ -47,7 +49,10 @@ contract StandardRentPriceOracleFixture is Test {
         tokenVoid = new MockERC20VoidReturn();
         tokenFalse = new MockERC20FalseReturn();
 
-        ethOracle = new MockChainlinkAggregator(2000 * 10 ** 8, 8); // $2000
+        uint8 decimals = 8; // arbitrary
+        uint256 ethPrice = StandardRegistrar.ETH_PRICE;
+        ethOracle = new MockChainlinkAggregator(int256(ethPrice * 10 ** decimals), decimals);
+        invalidOracle = new MockChainlinkAggregator(0, 0);
 
         paymentTokens = new MockERC20[](7);
         paymentTokens[0] = tokenUSDC;
@@ -58,12 +63,11 @@ contract StandardRentPriceOracleFixture is Test {
         paymentTokens[5] = tokenFalse;
         paymentTokens[6] = tokenWETH;
 
-        PaymentRatio[] memory paymentRatios = new PaymentRatio[](paymentTokens.length + 1); // room for eth
         for (uint256 i; i < paymentTokens.length; ++i) {
-            paymentRatios[i] = StandardRegistrar.ratioFromStable(paymentTokens[i]);
+            MockERC20 token = paymentTokens[i];
+            paymentRatios.push(StandardRegistrar.ratioFromParts(token, token.decimals()));
         }
-        paymentRatios[paymentTokens.length] = StandardRegistrar.ratioFromStable(tokenWETH); // use weth
-        paymentRatios[paymentTokens.length].paymentToken = tokenETH; // replace with eth
+        paymentRatios.push(StandardRegistrar.ratioFromParts(tokenETH, 18));
 
         rentPriceOracle = new StandardRentPriceOracle(
             address(this),

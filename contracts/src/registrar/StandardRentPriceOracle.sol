@@ -107,14 +107,14 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     /// @notice Precomputed premium halving at end of period.
     uint256 public immutable PREMIUM_PRICE_OFFSET;
 
+    /// @notice Wrapped Ether token.
+    IERC20 public immutable WETH;
+
     /// @notice Chainlink Oracle for ETH/USD.
     IChainlinkAggregator public immutable ETH_ORACLE;
 
     /// @dev Scaling for ETH/USD conversions.
     uint128 internal immutable _ETH_ORACLE_SCALE;
-
-    /// @notice Wrapped Ether token.
-    IERC20 public immutable WETH;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
@@ -167,8 +167,8 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     /// @param premiumHalvingPeriod Premium halving period, in seconds.
     /// @param premiumPeriod Premium period, in seconds.
     /// @param paymentRatios List of payment tokens with exchange rates.
-    /// @param weth Wrapped Ether token.
-    /// @param ethOracle Chainlink Oracle for ETH/USD.
+    /// @param weth Wrapped Ether token or null.
+    /// @param ethOracle Chainlink Oracle for ETH/USD or null.
     constructor(
         address rootAccount,
         uint256[] memory baseRatePerCp,
@@ -300,6 +300,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     }
 
     /// @notice Get numerator/denominator for `paymentToken`.
+    ///         If ETH, includes ETH/USD ratio.
     /// @param paymentToken The payment token.
     /// @return numer The numerator of the exchange rate.
     /// @return denom The denominator of the exchange rate.
@@ -308,7 +309,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         view
         returns (uint128 numer, uint128 denom)
     {
-        Ratio memory ratio = _getPaymentRatio(paymentToken);
+        Ratio memory ratio = _computePaymentRatio(paymentToken);
         return (ratio.numer, ratio.denom);
     }
 
@@ -432,21 +433,30 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         }
     }
 
-    /// @dev Get payment ratio. If (W)ETH, use oracle.
-    function _getPaymentRatio(IERC20 paymentToken) internal view returns (Ratio memory ratio) {
+    /// @dev Determine ratio for `paymentToken`.
+    ///      If ETH, includes ETH/USD ratio.
+    ///      If invalid, `denom = 0`.
+    function _computePaymentRatio(IERC20 paymentToken) internal view returns (Ratio memory ratio) {
         ratio = _paymentRatios[paymentToken];
-        if (address(paymentToken) == NATIVE_ETH || paymentToken == WETH) {
+        if (
+            address(paymentToken) == NATIVE_ETH ||
+            (paymentToken == WETH && address(WETH) != address(0))
+        ) {
+            if (address(ETH_ORACLE) == address(0)) {
+                return Ratio(0, 0); // no oracle
+            }
             int256 answer = ETH_ORACLE.latestAnswer();
             if (answer < 1) {
-                revert PaymentTokenNotSupported(paymentToken); // none or invalid
+                return Ratio(0, 0); // invalid response
             }
+            // note: the oracle is USD per ETH => use reciprocal
             ratio = Ratio(_ETH_ORACLE_SCALE * ratio.numer, uint128(uint256(answer)) * ratio.denom);
         }
     }
 
     /// @dev Ensure `paymentToken` is supported.
     function _requirePaymentToken(IERC20 paymentToken) internal view returns (Ratio memory ratio) {
-        ratio = _getPaymentRatio(paymentToken);
+        ratio = _computePaymentRatio(paymentToken);
         if (ratio.denom == 0) {
             revert PaymentTokenNotSupported(paymentToken);
         }

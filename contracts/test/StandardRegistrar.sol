@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 import {PaymentRatio, DiscountPoint} from "~src/registrar/StandardRentPriceOracle.sol";
-import {MockERC20} from "~test/mocks/MockERC20.sol";
 
 library StandardRegistrar {
     uint64 internal constant SEC_PER_YEAR = 365 * 1 days; // 31536000
@@ -19,6 +20,8 @@ library StandardRegistrar {
 
     uint8 internal constant PRICE_DECIMALS = 12;
     uint256 internal constant PRICE_SCALE = 10 ** PRICE_DECIMALS;
+
+    uint256 internal constant ETH_PRICE = 2000; // dollars
 
     uint256 internal constant PREMIUM_PRICE_INITIAL = 100_000_000 * PRICE_SCALE;
     uint64 internal constant PREMIUM_HALVING_PERIOD = 1 days;
@@ -81,12 +84,15 @@ library StandardRegistrar {
         return uint128((DISCOUNT_DENOMINATOR * numer + denom - 1) / denom); // round up
     }
 
-    function ratioFromStable(MockERC20 token) internal view returns (PaymentRatio memory) {
-        uint8 d = token.decimals();
-        if (d > PRICE_DECIMALS) {
-            return PaymentRatio(token, uint128(10) ** (d - PRICE_DECIMALS), 1);
+    function ratioFromParts(IERC20 token, uint8 decimals)
+        internal
+        pure
+        returns (PaymentRatio memory)
+    {
+        if (decimals > PRICE_DECIMALS) {
+            return PaymentRatio(token, uint128(10) ** (decimals - PRICE_DECIMALS), 1);
         } else {
-            return PaymentRatio(token, 1, uint128(10) ** (PRICE_DECIMALS - d));
+            return PaymentRatio(token, 1, uint128(10) ** (PRICE_DECIMALS - decimals));
         }
     }
 }

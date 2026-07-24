@@ -3561,19 +3561,20 @@ async function registerViaV2Registrar({
   const client = publicClient(rpcUrl, chain);
   const wallet = walletClient({ rpcUrl, chain, privateKey });
   const payer = privateKeyToAccount(privateKey).address;
+  const commitData = {
+    label,
+    owner,
+    secret: zeroHash,
+    subregistry: zeroAddress,
+    resolver: zeroAddress,
+    duration: V2_REGISTRATION_DURATION,
+    referrer: zeroHash,
+  };
   const commitment = (await client.readContract({
     address: ethRegistrar.address,
     abi: ethRegistrar.abi,
     functionName: "makeCommitment",
-    args: [
-      label,
-      owner,
-      zeroHash,
-      zeroAddress,
-      zeroAddress,
-      V2_REGISTRATION_DURATION,
-      zeroHash,
-    ],
+    args: [commitData],
   })) as `0x${string}`;
   let hash = await wallet.writeContract({
     address: ethRegistrar.address,
@@ -3624,16 +3625,7 @@ async function registerViaV2Registrar({
     address: ethRegistrar.address,
     abi: ethRegistrar.abi,
     functionName: "register",
-    args: [
-      label,
-      owner,
-      zeroHash,
-      zeroAddress,
-      zeroAddress,
-      V2_REGISTRATION_DURATION,
-      mockUsdc.address,
-      zeroHash,
-    ],
+    args: [commitData, mockUsdc.address, zeroAddress],
   });
   await waitForSuccessfulReceipt(client, hash, `v2 register ${label}.eth`);
 }
