@@ -8,7 +8,8 @@ import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
-import {AbstractResolverBase} from "./AbstractResolverBase.sol";
+import {AbstractRecordResolver} from "./AbstractRecordResolver.sol";
+import {ISharedResolver} from "./interfaces/ISharedResolver.sol";
 import {IABISetter} from "./interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "./interfaces/setters/IAddressSetter.sol";
 import {IContentHashSetter} from "./interfaces/setters/IContentHashSetter.sol";
@@ -19,7 +20,7 @@ import {IPubkeySetter} from "./interfaces/setters/IPubkeySetter.sol";
 import {ITextSetter} from "./interfaces/setters/ITextSetter.sol";
 
 /// @notice PublicResolver that respects the ENSv2 registry and uses name-based setters.
-contract SharedResolver is AbstractResolverBase, DelegatedContractNamer {
+contract SharedResolver is ISharedResolver, AbstractRecordResolver, DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -33,7 +34,7 @@ contract SharedResolver is AbstractResolverBase, DelegatedContractNamer {
     // Immutables
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The ENSv2  Root Registry contract.
+    /// @notice The ENSv2 Root Registry contract.
     IPermissionedRegistry public immutable ROOT_REGISTRY;
 
     ////////////////////////////////////////////////////////////////////////
@@ -47,39 +48,6 @@ contract SharedResolver is AbstractResolverBase, DelegatedContractNamer {
     mapping(address owner => mapping(address operator => mapping(bytes32 node => bool approved))) internal _approvals;
 
     ////////////////////////////////////////////////////////////////////////
-    // Events
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice `recordId` was associated with `name`.
-    /// @param recordId The record ID.
-    /// @param name The DNS-encoded name.
-    event Named(uint256 indexed recordId, bytes name);
-
-    /// @notice All values assocated with `recordId` were cleared.
-    /// @param recordId The record ID.
-    event Cleared(uint256 indexed recordId);
-
-    /// @notice Authorization for `name` has changed.
-    /// @param recordId The record ID.
-    /// @param owner The owner account.
-    /// @param operator The authorized account.
-    /// @param approved The authorization state.
-    event ApprovalUpdated(
-        uint256 indexed recordId,
-        address indexed owner,
-        address indexed operator,
-        bool approved
-    );
-
-    ////////////////////////////////////////////////////////////////////////
-    // Errors
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Caller cannot modify name.
-    /// @dev Error selector: `0x76652b32`
-    error CannotModifyName(bytes name);
-
-    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
@@ -91,11 +59,11 @@ contract SharedResolver is AbstractResolverBase, DelegatedContractNamer {
         ROOT_REGISTRY = rootRegistry;
     }
 
-    /// @inheritdoc AbstractResolverBase
+    /// @inheritdoc AbstractRecordResolver
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(AbstractResolverBase, DelegatedContractNamer)
+        override(AbstractRecordResolver, DelegatedContractNamer)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
@@ -105,19 +73,14 @@ contract SharedResolver is AbstractResolverBase, DelegatedContractNamer {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Authorize `operator` for `name`.
-    ///         Use root name to authorize all names.
-    /// @param name The DNS-encoded name.
-    /// @param operator The account to authorize.
-    /// @param approved The authorization state.
+    /// @inheritdoc ISharedResolver
     function approve(bytes calldata name, address operator, bool approved) external {
         bytes32 node = NameCoder.namehash(name, 0);
         _approvals[msg.sender][operator][node] = approved;
         emit ApprovalUpdated(uint256(node), msg.sender, operator, approved);
     }
 
-    /// @notice Clear all records for `name`.
-    /// @param name The DNS-encoded name.
+    /// @inheritdoc ISharedResolver
     function clear(bytes calldata name) external {
         bytes32 node = _checkAuth(name);
         if (_pointers[node].version > 0) {
@@ -186,19 +149,12 @@ contract SharedResolver is AbstractResolverBase, DelegatedContractNamer {
         emit TextUpdated(uint256(node), key, key, value);
     }
 
-    /// @notice Determine if `operator` is authorized.
-    /// @param name The name to check.
-    /// @param operator The account requesting authorization.
-    /// @return `true` if authorized.
+    /// @inheritdoc ISharedResolver
     function canModifyName(bytes calldata name, address operator) external view returns (bool) {
         return _canModifyNode(ownerOf(name), operator, NameCoder.namehash(name, 0));
     }
 
-    /// @notice Check if `operator` is approved by `owner` for `name`.
-    /// @param name The DNS-encoded name.
-    /// @param owner The owner account.
-    /// @param operator The authorized account.
-    /// @return `true` if `operator` is approved.
+    /// @inheritdoc ISharedResolver
     function isApproved(bytes calldata name, address owner, address operator)
         external
         view
@@ -207,9 +163,7 @@ contract SharedResolver is AbstractResolverBase, DelegatedContractNamer {
         return _approvals[owner][operator][NameCoder.namehash(name, 0)];
     }
 
-    /// @notice Find the owner for `name`.
-    /// @param name The DNS-encoded name.
-    /// @return The owner address or null if unowned or not found.
+    /// @inheritdoc ISharedResolver
     function ownerOf(bytes calldata name) public view returns (address) {
         return LibRegistry.findOwner(ROOT_REGISTRY, name, 0);
     }
@@ -224,7 +178,7 @@ contract SharedResolver is AbstractResolverBase, DelegatedContractNamer {
         RecordPointer storage p = _pointers[node];
         if (p.version == 0) {
             p.version = 1;
-            emit Named(uint256(node), name);
+            emit Linked(uint256(node), node, name);
         }
     }
 

@@ -9,7 +9,7 @@ import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
-import {AbstractResolverBase} from "./AbstractResolverBase.sol";
+import {AbstractRecordResolver} from "./AbstractRecordResolver.sol";
 import {IPermissionedResolver} from "./interfaces/IPermissionedResolver.sol";
 import {IABISetter} from "./interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "./interfaces/setters/IAddressSetter.sol";
@@ -77,7 +77,7 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 ///
 contract PermissionedResolver is
     IPermissionedResolver,
-    AbstractResolverBase,
+    AbstractRecordResolver,
     EnhancedAccessControl,
     IContractNamer,
     UUPSUpgradeable,
@@ -123,12 +123,12 @@ contract PermissionedResolver is
         multicall(setters);
     }
 
-    /// @inheritdoc AbstractResolverBase
+    /// @inheritdoc AbstractRecordResolver
     function supportsInterface(bytes4 interfaceId)
         public
         view
         virtual
-        override(AbstractResolverBase, EnhancedAccessControl)
+        override(AbstractRecordResolver, EnhancedAccessControl)
         returns (bool)
     {
         return
@@ -143,8 +143,7 @@ contract PermissionedResolver is
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Associate `name` with a new record.
-    /// @param name The DNS-encoded name.
+    /// @inheritdoc IPermissionedResolver
     function clear(bytes calldata name)
         external
         onlyRootRoles(PermissionedResolverLib.ROLE_MANAGER)
@@ -152,7 +151,7 @@ contract PermissionedResolver is
         bytes32 node = NameCoder.namehash(name, 0);
         uint256 recordId = ++_recordCount;
         _recordIds[node] = recordId;
-        emit Linked(node, name, recordId);
+        emit Linked(recordId, node, name);
     }
 
     /// @inheritdoc IABISetter
@@ -253,18 +252,14 @@ contract PermissionedResolver is
     {
         bytes32 sourceNode = NameCoder.namehash(sourceName, 0);
         uint256 recordId;
-        if (targetNode == bytes32(0)) {
-            if (_recordIds[sourceNode] == 0) {
-                revert AlreadyUnlinked();
-            }
-        } else {
+        if (targetNode != bytes32(0)) {
             recordId = _recordIds[targetNode];
             if (recordId == 0) {
                 revert InvalidRecord();
             }
         }
         _recordIds[sourceNode] = recordId;
-        emit Linked(sourceNode, sourceName, recordId);
+        emit Linked(recordId, sourceNode, sourceName);
     }
 
     /// @inheritdoc IPermissionedResolver
@@ -372,7 +367,7 @@ contract PermissionedResolver is
         if (recordId == 0) {
             recordId = ++_recordCount;
             _recordIds[node] = recordId;
-            emit Linked(node, name, recordId);
+            emit Linked(recordId, node, name);
         }
     }
 

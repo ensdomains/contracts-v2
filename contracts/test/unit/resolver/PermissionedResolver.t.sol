@@ -38,7 +38,7 @@ import {ITextSetter} from "~src/resolver/interfaces/setters/ITextSetter.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
-import {AbstractResolverBase} from "~src/resolver/AbstractResolverBase.sol";
+import {IRecordResolver} from "~src/resolver/interfaces/IRecordResolver.sol";
 import {IPermissionedResolver} from "~src/resolver/interfaces/IPermissionedResolver.sol";
 import {PermissionedResolverLib} from "~src/resolver/libraries/PermissionedResolverLib.sol";
 import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
@@ -268,7 +268,7 @@ contract PermissionedResolverTest is V2Fixture {
         resolver.setName(testName, "NAME");
 
         vm.expectEmit();
-        emit IPermissionedResolver.Linked(NameCoder.namehash(otherName, 0), otherName, 1);
+        emit IRecordResolver.Linked(1, NameCoder.namehash(otherName, 0), otherName);
         vm.prank(owner);
         resolver.link(otherName, NameCoder.namehash(testName, 0));
 
@@ -283,7 +283,7 @@ contract PermissionedResolverTest is V2Fixture {
     }
 
     function test_link_unknownRecord() external {
-        vm.expectRevert(abi.encodeWithSelector(IPermissionedResolver.InvalidRecord.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRecordResolver.InvalidRecord.selector));
         vm.prank(owner);
         resolver.link(testName, keccak256("dne"));
     }
@@ -301,8 +301,9 @@ contract PermissionedResolverTest is V2Fixture {
         resolver.link(testName, bytes32(0));
     }
 
-    function test_link_alreadyUnlinked() external {
-        vm.expectRevert(abi.encodeWithSelector(IPermissionedResolver.AlreadyUnlinked.selector));
+    function test_link_unlinkTwice() external {
+        vm.prank(owner);
+        resolver.link(testName, bytes32(0));
         vm.prank(owner);
         resolver.link(testName, bytes32(0));
     }
@@ -313,12 +314,12 @@ contract PermissionedResolverTest is V2Fixture {
 
     function test_clear() external {
         vm.expectEmit();
-        emit IPermissionedResolver.Linked(NameCoder.namehash(testName, 0), testName, 1);
+        emit IRecordResolver.Linked(1, NameCoder.namehash(testName, 0), testName);
         vm.prank(owner);
         resolver.clear(testName);
 
         vm.expectEmit();
-        emit IPermissionedResolver.Linked(NameCoder.namehash(testName, 0), testName, 2);
+        emit IRecordResolver.Linked(2, NameCoder.namehash(testName, 0), testName);
         vm.prank(owner);
         resolver.clear(testName);
     }
@@ -409,7 +410,6 @@ contract PermissionedResolverTest is V2Fixture {
         vm.assume(resource > 0 && roleBit < 64);
         uint256 roleBitmap = 1 << (roleBit << 2);
 
-        vm.prank(owner);
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACCannotGrantRoles.selector,
@@ -418,6 +418,7 @@ contract PermissionedResolverTest is V2Fixture {
                 account
             )
         );
+        vm.prank(owner);
         resolver.grantRoles(resource, roleBitmap, account);
     }
 
@@ -474,7 +475,7 @@ contract PermissionedResolverTest is V2Fixture {
     function test_decodeSetter_unknown() external {
         vm.expectRevert(
             abi.encodeWithSelector(
-                AbstractResolverBase.UnsupportedResolverProfile.selector,
+                IRecordResolver.UnsupportedResolverProfile.selector,
                 TEST_SELECTOR
             )
         );
@@ -944,10 +945,7 @@ contract PermissionedResolverTest is V2Fixture {
 
     function test_resolve_noCalldata() external {
         vm.expectRevert(
-            abi.encodeWithSelector(
-                AbstractResolverBase.UnsupportedResolverProfile.selector,
-                bytes4(0)
-            )
+            abi.encodeWithSelector(IRecordResolver.UnsupportedResolverProfile.selector, bytes4(0))
         );
         resolver.resolve(testName, "");
     }
@@ -955,7 +953,7 @@ contract PermissionedResolverTest is V2Fixture {
     function test_resolve_unsupported() external {
         vm.expectRevert(
             abi.encodeWithSelector(
-                AbstractResolverBase.UnsupportedResolverProfile.selector,
+                IRecordResolver.UnsupportedResolverProfile.selector,
                 TEST_SELECTOR
             )
         );
