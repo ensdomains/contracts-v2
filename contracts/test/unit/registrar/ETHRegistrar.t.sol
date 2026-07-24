@@ -652,10 +652,10 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
     function test_renew_eth_insufficientETH() external {
         this.register();
         uint256 amount = ethRegistrar.getRenewPrice(testLabel, testDuration, tokenETH);
-        vm.prank(testOwner);
         vm.expectRevert(
             abi.encodeWithSelector(IETHRenewer.InsufficientETH.selector, amount - 1, amount)
         );
+        vm.prank(testOwner);
         ethRegistrar.renew{value: amount - 1}(
             RenewData(testLabel, testDuration, testReferrer),
             tokenETH,
