@@ -7,8 +7,25 @@ import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
 import {IETHRenewer} from "./IETHRenewer.sol";
 
+struct CommitData {
+    /// @param label The name to register.
+    string label;
+    /// @param owner The owner address.
+    address owner;
+    /// @param secret The secret for the registration.
+    bytes32 secret;
+    /// @param subregistry The initial registry address.
+    IRegistry subregistry;
+    /// @param resolver The initial resolver address.
+    address resolver;
+    /// @param duration The registration duration, in seconds.
+    uint64 duration;
+    /// @param referrer The referrer hash.
+    bytes32 referrer;
+}
+
 /// @notice Interface for registering ".eth" names.
-/// @dev Interface selector: `0xc1401b80`
+/// @dev Interface selector: `0x432eb5d9`
 interface IETHRegistrar is IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -72,27 +89,24 @@ interface IETHRegistrar is IETHRenewer {
     function commit(bytes32 commitment) external;
 
     /// @notice Register a name.
-    /// @param label The name from commitment.
-    /// @param owner The owner from commitment.
-    /// @param secret The secret from commitment.
-    /// @param subregistry The registry from commitment.
-    /// @param resolver The resolver from commitment.
-    /// @param duration The registration from commitment.
+    /// @param cd The commit data.
     /// @param paymentToken The payment token.
-    /// @param referrer The referrer hash.
+    /// @param refundTo The refund address if ether is used.
     /// @return The registered token ID.
-    function register(
-        string memory label,
-        address owner,
-        bytes32 secret,
-        IRegistry subregistry,
-        address resolver,
-        uint64 duration,
-        IERC20 paymentToken,
-        bytes32 referrer
-    )
+    function register(CommitData calldata cd, IERC20 paymentToken, address refundTo)
         external
+        payable
         returns (uint256);
+
+    /// @notice Register multiple names.
+    /// @param cds The commit data.
+    /// @param paymentToken The payment token.
+    /// @param refundTo The refund address if ether is used.
+    /// @return The registered token IDs.
+    function registerBatch(CommitData[] calldata cds, IERC20 paymentToken, address refundTo)
+        external
+        payable
+        returns (uint256[] memory);
 
     /// @notice Get timestamp of a prior commitment.
     /// @param commitment The commitment hash.
@@ -116,24 +130,7 @@ interface IETHRegistrar is IETHRenewer {
     function isAvailable(string memory label) external view returns (bool);
 
     /// @notice Compute hash of registration parameters.
-    /// @param label The name to register.
-    /// @param owner The owner address.
-    /// @param secret The secret for the registration.
-    /// @param subregistry The initial registry address.
-    /// @param resolver The initial resolver address.
-    /// @param duration The registration duration, in seconds.
-    /// @param referrer The referrer hash.
+    /// @param cd The commit data.
     /// @return The commitment hash.
-    function makeCommitment(
-        string calldata label,
-        address owner,
-        bytes32 secret,
-        IRegistry subregistry,
-        address resolver,
-        uint64 duration,
-        bytes32 referrer
-    )
-        external
-        pure
-        returns (bytes32);
+    function makeCommitment(CommitData calldata cd) external pure returns (bytes32);
 }

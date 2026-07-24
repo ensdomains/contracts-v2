@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
-import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {AbstractETHRegistrar} from "./AbstractETHRegistrar.sol";
-import {IETHRegistrar} from "./interfaces/IETHRegistrar.sol";
+import {IETHRegistrar, CommitData} from "./interfaces/IETHRegistrar.sol";
 import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
@@ -120,54 +119,30 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @inheritdoc IETHRegistrar
-    function register(
-        string calldata label,
-        address owner,
-        bytes32 secret,
-        IRegistry subregistry,
-        address resolver,
-        uint64 duration,
-        IERC20 paymentToken,
-        bytes32 referrer
-    )
+    function register(CommitData calldata cd, IERC20 paymentToken, address refundTo)
         external
+        payable
         returns (uint256 tokenId)
     {
-        if (owner == address(0)) {
-            revert InvalidOwner();
+        uint256 amount;
+        (amount, tokenId) = _register(cd, paymentToken);
+        _transferPayment(paymentToken, amount, refundTo);
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function registerBatch(CommitData[] calldata cds, IERC20 paymentToken, address refundTo)
+        external
+        payable
+        returns (uint256[] memory tokenIds)
+    {
+        tokenIds = new uint256[](cds.length);
+        uint256 total;
+        uint256 amount;
+        for (uint256 i; i < cds.length; ++i) {
+            (amount, tokenIds[i]) = _register(cds[i], paymentToken);
+            total += amount;
         }
-        _consumeCommitment(
-            makeCommitment(label, owner, secret, subregistry, resolver, duration, referrer)
-        ); // reverts if no commitment
-        IPermissionedRegistry.State memory state = _requireAvailable(label, duration); // reverts if not
-        (uint256 base, uint256 premium) =
-            rentPriceOracle.getRegisterPrice(
-                label,
-                _availablePeriod(state.expiry),
-                duration,
-                paymentToken
-            ); // reverts if invalid
-        SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, base + premium); // reverts if payment failed
-        tokenId = ETH_REGISTRY.register(
-            label,
-            owner,
-            subregistry,
-            resolver,
-            REGISTRATION_ROLE_BITMAP,
-            uint64(block.timestamp) + duration // new expiry
-        ); // should not revert
-        emit NameRegistered(
-            tokenId,
-            label,
-            owner,
-            subregistry,
-            resolver,
-            duration,
-            paymentToken,
-            referrer,
-            base,
-            premium
-        );
+        _transferPayment(paymentToken, total, refundTo);
     }
 
     /// @inheritdoc IETHRegistrar
@@ -202,27 +177,64 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @inheritdoc IETHRegistrar
-    function makeCommitment(
-        string calldata label,
-        address owner,
-        bytes32 secret,
-        IRegistry subregistry,
-        address resolver,
-        uint64 duration,
-        bytes32 referrer
-    )
-        public
-        pure
-        override
-        returns (bytes32)
-    {
+    function makeCommitment(CommitData calldata cd) public pure override returns (bytes32) {
         return
-            keccak256(abi.encode(label, owner, secret, subregistry, resolver, duration, referrer));
+            keccak256(
+                abi.encode(
+                    cd.label,
+                    cd.owner,
+                    cd.secret,
+                    cd.subregistry,
+                    cd.resolver,
+                    cd.duration,
+                    cd.referrer
+                )
+            );
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Register a name and return the amount of `paymentToken` and token ID.
+    function _register(CommitData calldata cd, IERC20 paymentToken)
+        internal
+        returns (uint256 amount, uint256 tokenId)
+    {
+        if (cd.owner == address(0)) {
+            revert InvalidOwner();
+        }
+        _consumeCommitment(makeCommitment(cd)); // reverts if no commitment
+        IPermissionedRegistry.State memory state = _requireAvailable(cd.label, cd.duration); // reverts if not
+        (uint256 base, uint256 premium) =
+            rentPriceOracle.getRegisterPrice(
+                cd.label,
+                _availablePeriod(state.expiry),
+                cd.duration,
+                paymentToken
+            ); // reverts if invalid
+        amount = base + premium;
+        tokenId = ETH_REGISTRY.register(
+            cd.label,
+            cd.owner,
+            cd.subregistry,
+            cd.resolver,
+            REGISTRATION_ROLE_BITMAP,
+            uint64(block.timestamp) + cd.duration // new expiry
+        ); // should not revert
+        emit NameRegistered(
+            tokenId,
+            cd.label,
+            cd.owner,
+            cd.subregistry,
+            cd.resolver,
+            cd.duration,
+            paymentToken,
+            cd.referrer,
+            base,
+            premium
+        );
+    }
 
     /// @dev Validates that the given `commitment` was recorded within the allowed time window
     ///      (between minimum and maximum commitment age), then deletes it so it cannot be reused.

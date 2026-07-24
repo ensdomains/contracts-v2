@@ -1,26 +1,36 @@
+import type { Address } from "viem";
+
 export const MAX_EXPIRY = (1n << 64n) - 1n; // see: DatastoreUtils.sol
 
 export const LOCAL_BATCH_GATEWAY_URL = "x-batch-gateway:true";
-export const DEPLOYED_UNIVERSAL_RESOLVER_PROXY =
-  "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe" as const;
+export const DEPLOYED_UNIVERSAL_RESOLVER_PROXY: Address =
+  "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe";
 
 // Networks whose top URP already fronts a long-lived intermediate (managed) URP
 // whose admin we control, keyed by network name. On these networks a fresh v2
 // deployment reuses the existing intermediate URP instead of deploying a new one.
-export const KNOWN_INTERMEDIATE_URP: Record<string, `0x${string}`> = {
+export const KNOWN_INTERMEDIATE_URP: Record<string, Address> = {
   sepolia: "0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1",
 };
 
 export const SEPOLIA_USDC =
-  "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
+  "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" satisfies Address;
+export const SEPOLIA_WETH =
+  "0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c" satisfies Address;
+export const SEPOLIA_ETH_ORACLE =
+  "0x10E7e7D64d7dA687f7DcF8443Df58A0415329b15" satisfies Address;
 
 // Real mainnet payment tokens used by the rent price oracle in place of the
 // free-mint test mocks (which must never ship to mainnet). Confirm/adjust the
 // accepted set before a mainnet deploy.
 export const MAINNET_USDC =
-  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" as const;
+  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" satisfies Address;
 export const MAINNET_DAI =
-  "0x6B175474E89094C44Da98b954EedeAC495271d0F" as const;
+  "0x6B175474E89094C44Da98b954EedeAC495271d0F" satisfies Address;
+export const MAINNET_WETH =
+  "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" satisfies Address;
+export const MAINNET_ETH_ORACLE =
+  "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419" satisfies Address;
 
 export const STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS = 12n;
 export const STANDARD_RENT_PRICE_ORACLE_PRICE_SCALE =

@@ -1,3 +1,4 @@
+import { zeroAddress, type Address } from "viem";
 import { artifacts, execute } from "@rocketh";
 import {
   SEC_PER_YEAR,
@@ -12,10 +13,11 @@ import {
   SEPOLIA_USDC,
   MAINNET_USDC,
   MAINNET_DAI,
+  MAINNET_WETH,
+  MAINNET_ETH_ORACLE,
+  SEPOLIA_WETH,
+  SEPOLIA_ETH_ORACLE,
 } from "../script/deploy-constants.js";
-
-type MockERC20 =
-  (typeof artifacts)["test/mocks/MockERC20.sol/MockERC20"]["abi"];
 
 export default execute(
   async ({
@@ -27,22 +29,29 @@ export default execute(
     namedAccounts: { deployer, owner },
     tags,
   }) => {
-    const mockTokenArtifact = artifacts["test/mocks/MockERC20.sol/MockERC20"];
     // Mainnet whitelists the real payment tokens; the free-mint mocks are only
     // deployed (and only accepted) on test/dev networks. The ERC20 metadata
     // reads below (symbol/decimals) work against the real tokens too.
-    const paymentTokens = tags.hasDao
-      ? [
-          { address: MAINNET_USDC, abi: mockTokenArtifact.abi },
-          { address: MAINNET_DAI, abi: mockTokenArtifact.abi },
-        ]
-      : [
-          get<MockERC20>("MockUSDC"),
-          get<MockERC20>("MockDAI"),
-          ...(tags.sepolia || tags["clean-testnet"]
-            ? [{ address: SEPOLIA_USDC, abi: mockTokenArtifact.abi }]
-            : []),
-        ];
+
+    const paymentTokens: Address[] = [];
+    let wethAddress: Address;
+    let ethOracleAddress: Address;
+    if (tags.hasDao) {
+      ethOracleAddress = MAINNET_ETH_ORACLE;
+      wethAddress = MAINNET_WETH;
+      paymentTokens.push(MAINNET_USDC);
+      paymentTokens.push(MAINNET_DAI);
+    } else if (tags.sepolia) {
+      ethOracleAddress = SEPOLIA_ETH_ORACLE;
+      wethAddress = SEPOLIA_WETH;
+      paymentTokens.push(SEPOLIA_USDC);
+    } else {
+      ethOracleAddress = get("MockChainlinkETHUSD").address;
+      wethAddress = get("MockWETH").address;
+      paymentTokens.push(get("MockUSDC").address);
+      paymentTokens.push(get("MockDAI").address);
+    }
+    paymentTokens.push(wethAddress);
 
     const baseRates = BASE_RATE_PER_CP.flatMap((rate, i) => {
       const yearly = Number(rate * SEC_PER_YEAR) / Number(PRICE_SCALE);
@@ -50,15 +59,16 @@ export default execute(
     }).reverse();
 
     const paymentFactors = await Promise.all(
-      paymentTokens.map(async (x) => {
+      paymentTokens.map(async (address) => {
+        const { abi } = artifacts["test/mocks/MockERC20.sol/MockERC20"];
         const [symbol, decimalsResult] = await Promise.all([
-          read(x, { functionName: "symbol" }),
-          read(x, { functionName: "decimals" }),
+          read({ address, abi }, { functionName: "symbol" }),
+          read({ address, abi }, { functionName: "decimals" }),
         ]);
         const decimals = Number(decimalsResult);
         return {
           MockERC20: symbol,
-          paymentToken: x.address,
+          paymentToken: address,
           decimals,
           Δ: decimals - PRICE_DECIMALS,
           numer: 10n ** BigInt(Math.max(decimals - PRICE_DECIMALS, 0)),
@@ -66,6 +76,15 @@ export default execute(
         };
       }),
     );
+
+    const wethIndex = paymentTokens.indexOf(wethAddress);
+    if (wethIndex >= 0) {
+      paymentFactors.push({
+        ...paymentFactors[wethIndex],
+        MockERC20: "[ether]",
+        paymentToken: zeroAddress,
+      });
+    }
 
     console.table(paymentFactors);
 
@@ -89,9 +108,12 @@ export default execute(
           PREMIUM_HALVING_PERIOD,
           PREMIUM_PERIOD,
           paymentFactors,
+          wethAddress,
+          ethOracleAddress,
         ],
       }));
 
+    // sync ratios
     for (const paymentFactor of paymentFactors) {
       const [numer, denom] = (await read(standardRentPriceOracle, {
         functionName: "getPaymentTokenRatio",
