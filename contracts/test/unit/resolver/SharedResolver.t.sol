@@ -155,6 +155,8 @@ contract SharedResolverTest is V2Fixture {
         assertFalse(resolver.canModifyName(testName, address(friend)), "before:modify");
 
         vm.expectEmit();
+        emit IRecordResolver.Linked(uint256(testNode), testNode, testName);
+        vm.expectEmit();
         emit ISharedResolver.ApprovalUpdated(uint256(testNode), address(this), friend, true);
         resolver.approve(testName, friend, true);
 
@@ -198,7 +200,16 @@ contract SharedResolverTest is V2Fixture {
         assertFalse(resolver.canModifyName(otherName, address(friend)), "revoked:other");
     }
 
-    function test_Named_emit_once() external {
+    function test_approve_name_alreadyLinked() external {
+        resolver.setName(testName, "");
+        vm.recordLogs();
+        vm.expectEmit();
+        emit ISharedResolver.ApprovalUpdated(uint256(testNode), address(this), friend, true);
+        resolver.approve(testName, friend, true);
+        _expectNoEmit(vm.getRecordedLogs(), IRecordResolver.Linked.selector);
+    }
+
+    function test_checkAuth_alreadyLinked() external {
         vm.expectEmit();
         emit IRecordResolver.Linked(uint256(testNode), testNode, testName);
         resolver.setName(testName, "a");

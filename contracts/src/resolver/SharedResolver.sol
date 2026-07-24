@@ -76,6 +76,7 @@ contract SharedResolver is ISharedResolver, AbstractRecordResolver, DelegatedCon
     /// @inheritdoc ISharedResolver
     function approve(bytes calldata name, address operator, bool approved) external {
         bytes32 node = NameCoder.namehash(name, 0);
+        _ensureLinked(node, name);
         _approvals[msg.sender][operator][node] = approved;
         emit ApprovalUpdated(uint256(node), msg.sender, operator, approved);
     }
@@ -175,6 +176,11 @@ contract SharedResolver is ISharedResolver, AbstractRecordResolver, DelegatedCon
     /// @dev Check authorization and ensure record exists for `name`.
     function _ensureRecord(bytes calldata name) internal returns (bytes32 node) {
         node = _checkAuth(name);
+        _ensureLinked(node, name);
+    }
+
+    /// @dev Ensure `Linked` is emit once.
+    function _ensureLinked(bytes32 node, bytes calldata name) internal {
         RecordPointer storage p = _pointers[node];
         if (p.version == 0) {
             p.version = 1;
