@@ -14,7 +14,7 @@ import { idFromLabel } from "../utils/utils.js";
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 
 describe("preMigrateDevnetNames", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
 
   const cleanupFiles = [
     "preMigration-checkpoint.json",
