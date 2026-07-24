@@ -139,8 +139,11 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
         );
     }
 
-    /// @dev Pay beneficiary and refund any leftovers.
+    /// @dev Pay beneficiary and refund extra ether.
     function _transferPayment(IERC20 paymentToken, uint256 amount, address refundTo) internal {
+        if (amount == 0) {
+            return;
+        }
         if (address(paymentToken) == NATIVE_ETH) {
             if (msg.value < amount) {
                 revert InsufficientETH(msg.value, amount);
@@ -156,6 +159,9 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
                 }
             }
         } else {
+            if (msg.value > 0) {
+                revert UnexpectedETH(msg.value);
+            }
             SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, amount); // reverts if payment failed
         }
     }

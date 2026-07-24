@@ -275,7 +275,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
             testPaymentToken,
             address(0)
         );
-        assertEq(owner0 - amount, testPaymentToken.balanceOf(testOwner), "owner");
+        assertEq(owner0 - amount, testPaymentToken.balanceOf(testOwner), "payer");
         assertEq(beneficiary0 + amount, testPaymentToken.balanceOf(beneficiary), "beneficiary");
     }
 
@@ -362,6 +362,37 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
             tokenETH,
             refundTo
         );
+    }
+
+    function test_renewBatch(uint8 n) external {
+        vm.assume(n < 10);
+        RenewData[] memory rds = new RenewData[](n);
+        uint256 total;
+        for (uint256 i; i < n; ++i) {
+            string memory label = _label(i);
+            registerUnwrapped(label);
+            uint64 duration = testDuration + uint64(i);
+            rds[i] = RenewData(label, duration, testReferrer);
+            total += ethRenewerV1.getRenewPrice(label, duration, testPaymentToken);
+        }
+        uint256 owner0 = testPaymentToken.balanceOf(testOwner);
+        uint256 beneficiary0 = testPaymentToken.balanceOf(beneficiary);
+        vm.prank(testOwner);
+        ethRenewerV1.renewBatch(rds, testPaymentToken, address(0));
+        assertEq(owner0 - total, testPaymentToken.balanceOf(testOwner), "payer");
+        assertEq(beneficiary0 + total, testPaymentToken.balanceOf(beneficiary), "beneficiary");
+    }
+
+    function test_renewBatch_repeated() external {
+        (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
+        RenewData[] memory rds = new RenewData[](2);
+        for (uint256 i; i < rds.length; ++i) {
+            rds[i] = RenewData(testLabel, testDuration, testReferrer);
+        }
+        uint256 expiry = baseRegistrar.nameExpires(tokenIdV1);
+        vm.prank(testOwner);
+        ethRenewerV1.renewBatch(rds, testPaymentToken, address(0));
+        assertEq(baseRegistrar.nameExpires(tokenIdV1), expiry + testDuration * rds.length);
     }
 
     ////////////////////////////////////////////////////////////////////////

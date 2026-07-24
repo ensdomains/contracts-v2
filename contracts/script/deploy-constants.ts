@@ -21,7 +21,7 @@ export const SEPOLIA_USDC =
 export const SEPOLIA_WETH =
   "0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c" satisfies Address;
 export const SEPOLIA_ETH_ORACLE =
-  "0x10E7e7D64d7dA687f7DcF8443Df58A0415329b15" satisfies Address;
+  "0x694AA1769357215DE4FAC081bf1f309aDC325306" satisfies Address;
 
 // Real mainnet payment tokens used by the rent price oracle in place of the
 // free-mint test mocks (which must never ship to mainnet). Confirm/adjust the

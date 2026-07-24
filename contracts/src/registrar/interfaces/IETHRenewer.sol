@@ -59,6 +59,10 @@ interface IETHRenewer {
     /// @dev Error selector: `0x1fbeaea0`
     error InsufficientETH(uint256 supplied, uint256 required);
 
+    /// @notice `supplied` ether was positive.
+    /// @dev Error selector: `0x31e99b9f`
+    error UnexpectedETH(uint256 supplied);
+
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
