@@ -30,7 +30,7 @@ export async function registerTestNames(
   const duration = BigInt(durationInDays * ONE_DAY_SECONDS);
   const paymentToken = env.erc20.MockUSDC.address;
   const referrer =
-    "0x0000000000000000000000000000000000000000000000000000000000000000";
+    "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 
   // use account's resolver (already deployed by devnet)
   const { resolver } = account;
@@ -40,13 +40,15 @@ export async function registerTestNames(
   // Step 1: Commit all names
   for (let i = 0; i < labels.length; i++) {
     const commitment = await env.v2.ETHRegistrar.read.makeCommitment([
-      labels[i],
-      account.address,
-      secret(i),
-      zeroAddress,
-      resolver.address,
-      duration,
-      referrer,
+      {
+        label: labels[i],
+        duration: duration,
+        owner: account.address,
+        secret: secret(i),
+        subregistry: zeroAddress,
+        resolver: resolver.address,
+        referrer,
+      },
     ]);
     const receipt = await env.waitFor(
       env.v2.ETHRegistrar.write.commit([commitment], {
@@ -92,14 +94,17 @@ export async function registerTestNames(
     const receipt = await env.waitFor(
       env.v2.ETHRegistrar.write.register(
         [
-          labels[i],
-          account.address,
-          secret(i),
-          zeroAddress,
-          resolver.address,
-          duration,
+          {
+            label: labels[i],
+            duration: duration,
+            owner: account.address,
+            secret: secret(i),
+            subregistry: zeroAddress,
+            resolver: resolver.address,
+            referrer,
+          },
           paymentToken,
-          referrer,
+          zeroAddress,
         ],
         { account },
       ),
@@ -228,9 +233,10 @@ export async function renewName(
   });
 
   const receipt = await env.waitFor(
-    env.v2.ETHRegistrar.write.renew([label, duration, paymentToken, referrer], {
-      account,
-    }),
+    env.v2.ETHRegistrar.write.renew(
+      [{ label, duration, referrer }, paymentToken, zeroAddress],
+      { account },
+    ),
   );
 
   const newExpiry = await env.v2.ETHRegistry.read.getExpiry([
