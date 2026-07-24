@@ -1,4 +1,4 @@
-import { zeroAddress, type Address } from "viem";
+import type { Address } from "viem";
 import { artifacts, execute } from "@rocketh";
 import {
   SEC_PER_YEAR,
@@ -17,6 +17,7 @@ import {
   MAINNET_ETH_ORACLE,
   SEPOLIA_WETH,
   SEPOLIA_ETH_ORACLE,
+  NATIVE_ETH,
 } from "../script/deploy-constants.js";
 
 export default execute(
@@ -82,7 +83,7 @@ export default execute(
       paymentFactors.push({
         ...paymentFactors[wethIndex],
         MockERC20: "[ether]",
-        paymentToken: zeroAddress,
+        paymentToken: NATIVE_ETH,
       });
     }
 

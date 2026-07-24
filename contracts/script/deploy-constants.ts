@@ -6,6 +6,9 @@ export const LOCAL_BATCH_GATEWAY_URL = "x-batch-gateway:true";
 export const DEPLOYED_UNIVERSAL_RESOLVER_PROXY: Address =
   "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe";
 
+export const NATIVE_ETH =
+  "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" satisfies Address;
+
 // Networks whose top URP already fronts a long-lived intermediate (managed) URP
 // whose admin we control, keyed by network name. On these networks a fresh v2
 // deployment reuses the existing intermediate URP instead of deploying a new one.

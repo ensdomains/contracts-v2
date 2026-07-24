@@ -110,8 +110,8 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     /// @notice Chainlink Oracle for ETH/USD.
     IChainlinkAggregator public immutable ETH_ORACLE;
 
-    /// @dev Denominator for ETH/USD conversions.
-    uint128 internal immutable _ETH_DENOM;
+    /// @dev Scaling for ETH/USD conversions.
+    uint128 internal immutable _ETH_ORACLE_SCALE;
 
     /// @notice Wrapped Ether token.
     IERC20 public immutable WETH;
@@ -228,7 +228,9 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
 
         WETH = weth;
         ETH_ORACLE = ethOracle;
-        _ETH_DENOM = uint128(address(ethOracle) == address(0) ? 0 : 10 ** ethOracle.decimals());
+        _ETH_ORACLE_SCALE = uint128(
+            address(ethOracle) == address(0) ? 0 : 10 ** ethOracle.decimals()
+        );
     }
 
     /// @inheritdoc ERC165
@@ -438,7 +440,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
             if (answer < 1) {
                 revert PaymentTokenNotSupported(paymentToken); // none or invalid
             }
-            ratio = Ratio(uint128(uint256(answer)), _ETH_DENOM * ratio.denom);
+            ratio = Ratio(_ETH_ORACLE_SCALE * ratio.numer, uint128(uint256(answer)) * ratio.denom);
         }
     }
 

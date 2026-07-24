@@ -249,8 +249,12 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         (uint128 numer1, uint128 denom1) = rentPriceOracle.getPaymentTokenRatio(tokenWETH);
         assertEq(numer0, numer1, "same numer");
         assertEq(denom0, denom1, "same denom");
-        assertEq(numer1, 10 ** (18 - StandardRegistrar.PRICE_DECIMALS), "numer");
-        assertEq(denom0, 1, "denom");
+        assertEq(
+            numer1,
+            10 ** (tokenWETH.decimals() + ethOracle.decimals() - StandardRegistrar.PRICE_DECIMALS),
+            "numer"
+        );
+        assertEq(denom1, uint256(ethOracle.latestAnswer()), "denom");
     }
 
     function test_updatePaymentToken_add() external {
