@@ -66,7 +66,8 @@ contract SharedResolver is ISharedResolver, AbstractRecordResolver, DelegatedCon
         override(AbstractRecordResolver, DelegatedContractNamer)
         returns (bool)
     {
-        return super.supportsInterface(interfaceId);
+        return
+            type(ISharedResolver).interfaceId == interfaceId || super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////

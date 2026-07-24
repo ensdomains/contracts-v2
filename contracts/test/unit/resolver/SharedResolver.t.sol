@@ -70,6 +70,14 @@ contract SharedResolverTest is V2Fixture {
 
     function test_supportsInterface() external view {
         assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(ISharedResolver).interfaceId),
+            "ISharedResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IRecordResolver).interfaceId),
+            "IRecordResolver"
+        );
+        assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(IContractNamer).interfaceId),
             "IContractNamer"
         );

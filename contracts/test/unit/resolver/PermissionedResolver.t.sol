@@ -144,6 +144,10 @@ contract PermissionedResolverTest is V2Fixture {
             "IPermissionedResolver"
         );
         assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IRecordResolver).interfaceId),
+            "IRecordResolver"
+        );
+        assertTrue(
             ERC165Checker.supportsInterface(
                 address(resolver),
                 type(IEnhancedAccessControl).interfaceId
