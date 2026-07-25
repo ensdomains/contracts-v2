@@ -59,6 +59,15 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 | 6 | Enable the v2 controller | `disable-batch-registrar` → `activate-v1-handoff-controllers` → `activate-v1-renewer` → `enable-v2-registrar` (+ `verify-*`) | live + clean-testnet | registry root-role admin + v1 owner |
 | 7 | Switch Universal Resolver to v2 (cutover) | `phase upgrade-managed-urp` (+ `switch-urp-to-managed` on bootstrap) (+ `verify-urp`) | live + clean-testnet (bootstrap step mainnet/fresh only) | `urManager` (+ top URP owner on bootstrap) |
 
+> **Re-deploying fresh onto an already-migrated network.** "Re-deploying fresh" means deploying a
+> brand-new v2 set onto a network whose v1 a previous deployment already migrated — the earlier v2 set
+> is archived (see [Deployment artifacts](#deployment-artifacts)) and left orphaned on-chain. Phase 1
+> is where the fresh deploy happens; the later phases re-seed and re-wire v1 to the **new** contract
+> addresses rather than the archived ones. Phases below carry a **Re-deploying fresh** note wherever
+> that changes what you run — most importantly, phase 1 needs a `reclaim-v1-registrar-ownership` prep
+> step and phase 3 becomes a no-op. The one-command shortcut is [`fork full`](#fork-full), which
+> detects an already-migrated chain and adjusts automatically.
+
 ### Phase 0: deploy fresh v1 (clean-testnet only)
 
 - **Applies to:** clean-testnet only. Skipped for live deployments — sepolia/mainnet already have v1.
@@ -87,9 +96,6 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   Add `--include-testnet-premigration-registrar` on testnet/clean runs to also deploy
   `TestnetV1PremigrationRegistrar`. Re-run with `--resume` to continue an interrupted deploy.
 - **Prerequisites:** `bun run compile`; a freshly funded deployer (phase 1 sends many transactions).
-  Re-deploying onto an **already-migrated** chain first requires `phase
-  reclaim-v1-registrar-ownership` (the v1 `BaseRegistrar` is still owned by the prior `ETHRenewerV1`,
-  and one deferred tx is an owner-gated `setResolver`).
 - **Env / args:** `DEPLOYER_KEY` (also the `owner`/`urManager` fallback and the BatchRegistrar owner);
   `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` for the deferred v1-owner replay. `phase deploy-v2` cannot
   sign v1-owner transactions itself, hence the defer-then-replay flow above.
@@ -99,6 +105,13 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   (see [universalResolver.md](./universalResolver.md)); the v2 reverse-registrar adapters are deployed
   and authorized as controllers on the v1 reverse registrars; artifacts written to
   `deployments/<network>/` (deploys fresh by default — see [Deployment artifacts](#deployment-artifacts)).
+- **Re-deploying fresh:** `deploy-v2` archives the existing `deployments/<network>/` namespace and
+  deploys a brand-new v2 set with new addresses (`--resume` is only for continuing an *interrupted*
+  deploy into the same namespace, not for a fresh redeploy). First run
+  [`phase reclaim-v1-registrar-ownership`](#cli-commands): the v1 `BaseRegistrar` is still owned by the
+  prior deployment's `ETHRenewerV1`, and one deferred phase-1 tx is an owner-gated `setResolver` the v1
+  owner must sign. Every later phase then seeds and wires v1 to this **new** set; the prior set stays
+  on-chain but orphaned.
 
 > External deployments on the migration timeline (e.g. an HCA component) live outside this repo and
 > are not driven by `phase deploy-v2`.
@@ -119,6 +132,9 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   or `DEPLOYER_KEY`); `--csv-file`, `--work-dir`, `--bonus-period-days` (default 62).
 - **Expected outcome:** every active or in-grace v1 `.eth` 2LD seeded as a **reserved** entry on v2,
   with v2 expiry = v1 expiry + bonus period. `premigration verify` confirms the reservations.
+- **Re-deploying fresh:** the new v2 registry is empty, so this seeds it from scratch exactly like a
+  first run. Reservations from the prior deployment lived on the now-archived registry and do **not**
+  carry over. Use a fresh `--work-dir` so no stale `preMigration-checkpoint.json` is picked up.
 
 ### Phase 3: disable v1 registrars
 
@@ -138,6 +154,10 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   `WrappedETHRegistrarController`, and `NameWrapper` removed as v1 `BaseRegistrar` controllers (via
   `RegistrarSecurityController` when deployed); new v1 registrations frozen.
   `verify-v1-registrars-disabled` confirms.
+- **Re-deploying fresh:** normally a **no-op you can skip** — the v1 registrars were removed by the
+  prior deployment and stay frozen (reclaiming v1 `BaseRegistrar` ownership in phase 1 does not
+  re-enable them). Re-running is harmless (each controller logs "already disabled"); prefer just
+  `verify-v1-registrars-disabled` to confirm the freeze is still in place.
 
 ### Phase 4: authorize ETHRenewerV1
 
@@ -155,6 +175,10 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   transaction. This does **not** reopen the phase 3 registration freeze. The final lock-down that
   transfers v1 `BaseRegistrar` ownership to `ETHRenewerV1` is deferred to
   [phase 6](#phase-6-enable-the-v2-controller).
+- **Re-deploying fresh:** authorizes the **newly-deployed** `ETHRenewerV1` (a new address) as a v1
+  controller — must be re-run. The prior deployment's `ETHRenewerV1` remains an authorized controller
+  (orphaned but harmless); the tooling does not deauthorize it, so remove it manually only if you want
+  a clean controller set.
 
 > **Mainnet renewal continuity.** Renewals are paused between phase 3 (freeze) and phase 4
 > (authorize), and the phase 5 sync can run for days. When the v1 owner is a DAO/multisig, execute
@@ -176,6 +200,8 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 - **Expected outcome:** names already reserved on v2 are re-reserved with their bonus-adjusted expiry
   — picking up any expiry extensions from `ETHRenewerV1` renewals since phase 4 — and newly eligible
   names are reserved for the first time.
+- **Re-deploying fresh:** same as [phase 2](#phase-2-initial-pre-migration) — re-seeds the new
+  registry against a fresh post-freeze CSV and a fresh `--work-dir`.
 
 ### Phase 6: enable the v2 controller
 
@@ -202,6 +228,11 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   `ETHRenewerV1` (final lock-down); `ETHRegistrar` granted `REGISTRAR | RENEW` on the v2 `ETHRegistry`
   — live v2 registrations open. `verify-v2-registrar` confirms the grant. This bundle replaces the
   all-at-once role swap done by [prepareMigration.md](./prepareMigration.md).
+- **Re-deploying fresh:** re-points v1 at the new set and must be re-run —
+  `activate-v1-handoff-controllers` authorizes the new `Graveyard`, `activate-v1-renewer` transfers v1
+  `BaseRegistrar` ownership to the new `ETHRenewerV1` (the ownership you reclaimed in phase 1), and
+  `enable-v2-registrar` grants the new `ETHRegistrar`. The prior deployment's `Graveyard`/`ETHRenewerV1`
+  remain authorized as orphaned v1 controllers.
 
 ### Phase 7: switch the Universal Resolver to v2
 
@@ -227,6 +258,11 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   `UniversalResolverV2` and public resolution serves v2. `verify-urp` confirms both proxy
   implementations. See [universalResolver.md](./universalResolver.md) for the proxy chain and the
   optional post-cutover step.
+- **Re-deploying fresh:** on a reuse network (sepolia) the top **and** intermediate URPs are adopted by
+  address and never redeployed — phase 1 deploys a fresh `UniversalResolverV2` implementation and
+  `upgrade-managed-urp` re-points the reused intermediate URP at it, orphaning the prior
+  implementation. Bootstrap networks (mainnet/fresh) deploy a fresh intermediate URP instead. Must be
+  re-run to serve the new implementation.
 
 ## Live deployment (Sepolia)
 
@@ -284,6 +320,11 @@ prerequisites, and expected outcome:
 6. [Phase 6 — enable the v2 controller](#phase-6-enable-the-v2-controller).
 7. [Phase 7 — resolution cutover](#phase-7-switch-the-universal-resolver-to-v2): sepolia is a reuse
    network, so only `upgrade-managed-urp` + `verify-urp` run.
+
+> **Re-deploying onto an already-migrated Sepolia?** This runbook assumes a first migration. On a
+> repeat deploy the order is unchanged, but read each phase's **Re-deploying fresh** note first: run
+> [`phase reclaim-v1-registrar-ownership`](#cli-commands) before phase 1, skip phase 3 (v1 is already
+> frozen), and expect phases 2, 4, 5, 6, and 7 to re-seed and re-wire v1 to the new contract set.
 
 ### After
 

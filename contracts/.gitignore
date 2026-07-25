@@ -30,6 +30,7 @@ deployments/*-fork/
 deployments/*-clean-*/
 deployments/v1/*
 !deployments/v1/sepolia/
+deployments/devnet*/
 
 # pre-migration
 preMigration.log
