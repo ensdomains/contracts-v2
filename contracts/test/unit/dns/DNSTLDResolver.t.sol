@@ -79,42 +79,42 @@ contract DNSTLDResolverTest is Test, ERC1155Holder {
     }
 
     function test_parseResolver_name(bool extended) external {
-        bytes memory name = NameCoder.encode("abc");
+        string memory label = "test";
         DummyShapeshiftResolver r = new DummyShapeshiftResolver();
         r.setExtended(extended);
         r.setResponse(
-            abi.encodeCall(IAddrResolver.addr, (NameCoder.namehash(name, 0))),
+            abi.encodeCall(IAddrResolver.addr, (NameCoder.namehash(NameCoder.encode(label), 0))),
             abi.encode(resolver)
         );
         rootRegistry.register(
-            NameCoder.firstLabel(name),
+            label,
             address(0),
             IRegistry(address(0)),
             address(r),
             0,
             uint64(block.timestamp) + 86400
         );
-        assertEq(dns.parseResolver("abc"), resolver);
+        assertEq(dns.parseResolver(bytes(label)), resolver);
     }
 
     function test_parseResolver_name_offchain(bool extended) external {
-        bytes memory name = NameCoder.encode("abc");
+        string memory label = "test";
         DummyShapeshiftResolver r = new DummyShapeshiftResolver();
         r.setExtended(extended);
         r.setOffchain(true);
         r.setResponse(
-            abi.encodeCall(IAddrResolver.addr, (NameCoder.namehash(name, 0))),
+            abi.encodeCall(IAddrResolver.addr, (NameCoder.namehash(NameCoder.encode(label), 0))),
             abi.encode(resolver)
         );
         rootRegistry.register(
-            NameCoder.firstLabel(name),
+            label,
             address(0),
             IRegistry(address(0)),
             address(r),
             0,
             uint64(block.timestamp) + 86400
         );
-        assertEq(dns.parseResolver(name), address(0));
+        assertEq(dns.parseResolver(bytes(label)), address(0));
     }
 }
 
