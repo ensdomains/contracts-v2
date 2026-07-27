@@ -698,7 +698,7 @@ async function main() {
     ),
     defaultReverseRegistrarAdapter: deploymentFromEnv(
       "HCA_DEFAULT_REVERSE_REGISTRAR_ADAPTER",
-      ["DefaultReverseRegistrarHCAAdapter"],
+      ["DefaultReverseRegistrarAdapter"],
       HCA_DEPLOYMENT_NETWORK,
     ),
     universalResolver: deploymentFromEnv("UNIVERSAL_RESOLVER", [

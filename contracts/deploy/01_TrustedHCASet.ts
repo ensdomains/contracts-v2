@@ -7,13 +7,6 @@ export default execute(
       artifact: artifacts.PermissionedAddressSet,
       args: [owner],
     });
-
-    // example: trust an implementation
-    // await write(trustedHCASet, {
-    //   account: owner,
-    //   functionName: "approve",
-    //   args: [<impl>, true],
-    // });
   },
-  { tags: ["TrustedHCASet", "v2"] },
+  { tags: ["TrustedHCASet", "v2", "hca"] },
 );

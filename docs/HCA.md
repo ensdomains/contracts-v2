@@ -28,13 +28,14 @@ The application must not select an HCA without user approval. A direct wallet or
 
 A registration uses an HCA on the registration chain. A cross-chain registration also uses the user's Nexus on the source chain. The Nexus gets the authorized source funds. The HCA makes the ENS calls.
 
-| Contract | Function |
-|---|---|
-| `StandaloneSingleOwnerHCA` | Stores one owner, executes calls, revokes sessions, and controls upgrades. |
-| `StandaloneHCAFactory` | Deploys an HCA through the shared `VerifiableFactory`. |
-| `HCAOwnerAndSessionValidator` | Validates owner actions and the fixed ENS session policy. |
-| `HCAFundingSessionValidator` | Limits how a source Nexus can fund the HCA. |
-| `ApprovedUpgradeGate` | Stores the implementation upgrades that the DAO permits. |
+| Contract                      | Function                                                                   |
+| ----------------------------- | -------------------------------------------------------------------------- |
+| `StandaloneSingleOwnerHCA`    | Stores one owner, executes calls, revokes sessions, and controls upgrades. |
+| `StandaloneHCAFactory`        | Deploys an HCA through the shared `VerifiableFactory`.                     |
+| `HCAOwnerAndSessionValidator` | Validates owner actions and the fixed ENS session policy.                  |
+| `HCAFundingSessionValidator`  | Limits how a source Nexus can fund the HCA.                                |
+| `TrustedHCASet`               | Stores the trusted HCA implementations.                                    |
+| `ApprovedUpgradeGate`         | Stores the implementation upgrades that the DAO permits.                   |
 
 The HCA uses a Nexus implementation with a fixed validator and executor. The source Nexus uses the fixed funding validator. The HCA prevents module installation and removal. An approved upgrade can change the fixed modules.
 
@@ -53,11 +54,11 @@ Anyone can call `StandaloneHCAFactory.deploy(owner, implementation, userSalt)`. 
 
 Use these values for this account version:
 
-| Field | Required value |
-|---|---|
-| SDK account version | `ens-standalone-1.1.0` |
-| On-chain `accountId()` | `ens-standalone-hca.1.1.0` |
-| `userSalt` | `0` |
+| Field                  | Required value                                                     |
+| ---------------------- | ------------------------------------------------------------------ |
+| SDK account version    | `ens-standalone-1.1.0`                                             |
+| On-chain `accountId()` | `ens-standalone-hca.1.1.0`                                         |
+| `userSalt`             | `0`                                                                |
 | Initial implementation | `StandaloneHCAImplementation` from the selected network deployment |
 
 The SDK version and the account ID are different identifiers. Do not compare them. The initial implementation is part of the HCA address. A different initial implementation gives the wallet a different predicted HCA.
@@ -74,7 +75,7 @@ Complete these checks before you use an HCA that already has code:
 2. Call `owner()`. The result must equal the connected wallet.
 3. Call `accountId()`. The result must equal `ens-standalone-hca.1.1.0`.
 4. Call `VerifiableFactory.verifyContract(hca)`. At launch, the result must equal the initial implementation. After an upgrade, it must equal an implementation that the DAO approved.
-5. Before a primary-name action, check `trustedHCAImplementations(currentImplementation)` on the HCA reverse adapter. The result must be `true`.
+5. Before a primary-name action, check `includes(currentImplementation)` on the Trusted HCA Set. The result must be `true`.
 
 Stop if a check fails. Do not select a different account without user approval.
 
@@ -98,15 +99,16 @@ Run the command from `contracts`. It reads the existing core deployment records.
 
 Sepolia is the current registration network. Base Sepolia is the enabled test source network.
 
-| Use | Network | Chain ID | Payment token | Funding validator | Frontend status |
-|---|---|---:|---|---|---|
-| Registration | Sepolia | `11155111` | USDC at `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | Not applicable | Enabled |
-| Source | Base Sepolia | `84532` | USDC at `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `0x6FC0FdE0960003AcB24810FFd5dB6224B3d88974` | Enabled for integration |
-| Source | Arbitrum Sepolia | `421614` | USDC at `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` | Not deployed | Do not enable |
+| Use          | Network          |   Chain ID | Payment token                                        | Funding validator                            | Frontend status         |
+| ------------ | ---------------- | ---------: | ---------------------------------------------------- | -------------------------------------------- | ----------------------- |
+| Registration | Sepolia          | `11155111` | USDC at `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | Not applicable                               | Enabled                 |
+| Source       | Base Sepolia     |    `84532` | USDC at `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `0x6FC0FdE0960003AcB24810FFd5dB6224B3d88974` | Enabled for integration |
+| Source       | Arbitrum Sepolia |   `421614` | USDC at `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` | Not deployed                                 | Do not enable           |
 
 Use the [Sepolia deployment address table](../contracts/docs/addresses/sepolia.md) for shared contract addresses. The frontend needs these entries:
 
-- `DefaultReverseRegistrarHCAAdapter`
+- `DefaultReverseRegistrarAdapter`
+- `TrustedHCASet`
 - `ETHRegistrar`
 - `HCAOwnerAndSessionValidator`
 - `PermissionedResolverImpl`
@@ -126,17 +128,17 @@ Count each signature or transaction as one wallet interaction. Do not count wall
 
 Manager means the ENS Manager application. Explorer means the ENS Explorer application.
 
-| Action | Route | Wallet interactions | Result |
-|---|---|---:|---|
-| Cross-chain registration | Stablecoin-paid Rhinestone session | 2 signatures, 0 transactions | Deploy, commit, and register from a selected source chain. |
-| Same-chain registration | Stablecoin-paid Rhinestone session | 2 signatures, 0 transactions for a fresh funded wallet | Deploy, fund, commit, and register on the registration chain. |
-| Sponsored same-chain registration | Sponsored Rhinestone session | 1 owner signature, plus any required funding action | Sponsor execution, then use the session for the reveal. |
-| Later record or primary-name update | Existing Rhinestone session | 0 while the session is valid | Make an allowed update in the application. |
-| Wallet-paid HCA action | Direct `executeByOwner` transaction | 1 transaction for each batch | Use the HCA as an owner-controlled multicaller. |
-| Renewal | Payer, owner-authorized HCA, or direct wallet | Depends on the selected route | Renew outside the fixed session. |
-| Registry approval | Direct wallet | 1 transaction | Give or remove persistent registry authority. |
-| Session revocation | Direct wallet | 1 transaction | Invalidate all current HCA sessions. |
-| Fund recovery | Direct `executeByOwner` transaction | 1 transaction | Send HCA funds to an owner-selected address. |
+| Action                              | Route                                         |                                    Wallet interactions | Result                                                        |
+| ----------------------------------- | --------------------------------------------- | -----------------------------------------------------: | ------------------------------------------------------------- |
+| Cross-chain registration            | Stablecoin-paid Rhinestone session            |                           2 signatures, 0 transactions | Deploy, commit, and register from a selected source chain.    |
+| Same-chain registration             | Stablecoin-paid Rhinestone session            | 2 signatures, 0 transactions for a fresh funded wallet | Deploy, fund, commit, and register on the registration chain. |
+| Sponsored same-chain registration   | Sponsored Rhinestone session                  |    1 owner signature, plus any required funding action | Sponsor execution, then use the session for the reveal.       |
+| Later record or primary-name update | Existing Rhinestone session                   |                           0 while the session is valid | Make an allowed update in the application.                    |
+| Wallet-paid HCA action              | Direct `executeByOwner` transaction           |                           1 transaction for each batch | Use the HCA as an owner-controlled multicaller.               |
+| Renewal                             | Payer, owner-authorized HCA, or direct wallet |                          Depends on the selected route | Renew outside the fixed session.                              |
+| Registry approval                   | Direct wallet                                 |                                          1 transaction | Give or remove persistent registry authority.                 |
+| Session revocation                  | Direct wallet                                 |                                          1 transaction | Invalidate all current HCA sessions.                          |
+| Fund recovery                       | Direct `executeByOwner` transaction           |                                          1 transaction | Send HCA funds to an owner-selected address.                  |
 
 Manager must select the supported route with the fewest wallet interactions. Explorer can show all supported routes and their interaction counts.
 
@@ -254,14 +256,14 @@ price = base + premium
 
 The reveal is one atomic HCA operation. Set `value` to zero for every inner call.
 
-| Order | Call | Required values |
-|---:|---|---|
-| 1 | `VerifiableFactory.deployProxy(...)` | Use the approved resolver implementation, the selected salt, and `initialize(HCA, ROLES.ALL, [])`. Omit this call if the resolver exists. |
-| 2 | `paymentToken.approve(ETHRegistrar, price)` | Approve only the current registration price. |
-| 3 | `ETHRegistrar.register(...)` | Use the wallet as owner, the session resolver, and the commitment inputs. |
-| 4 | Resolver setters | Add only the records selected by the user. |
-| 5 | `DefaultReverseRegistrarHCAAdapter.setNameWithHCA(wallet, name)` | Add this call when the user selects a primary name. |
-| 6 | `PermissionedResolver.authorizeNameRoles(hex"00", ROLES.ALL, wallet, true)` | Include this call in every session registration batch. |
+| Order | Call                                                                        | Required values                                                                                                                           |
+| ----: | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+|     1 | `VerifiableFactory.deployProxy(...)`                                        | Use the approved resolver implementation, the selected salt, and `initialize(HCA, ROLES.ALL, [])`. Omit this call if the resolver exists. |
+|     2 | `paymentToken.approve(ETHRegistrar, price)`                                 | Approve only the current registration price.                                                                                              |
+|     3 | `ETHRegistrar.register(...)`                                                | Use the wallet as owner, the session resolver, and the commitment inputs.                                                                 |
+|     4 | Resolver setters                                                            | Add only the records selected by the user.                                                                                                |
+|     5 | `DefaultReverseRegistrarAdapter.setNameWithHCA(wallet, name)`               | Add this call when the user selects a primary name.                                                                                       |
+|     6 | `PermissionedResolver.authorizeNameRoles(hex"00", ROLES.ALL, wallet, true)` | Include this call in every session registration batch.                                                                                    |
 
 The session supports these resolver calls:
 
@@ -430,26 +432,26 @@ Create the HCA account with this configuration:
 
 ```ts
 const accountConfig = {
-  account: {
-    type: "hca",
-    version: "ens-standalone-1.1.0",
-    factory: STANDALONE_HCA_FACTORY,
-    implementation: STANDALONE_HCA_IMPLEMENTATION,
-    validator: HCA_OWNER_AND_SESSION_VALIDATOR,
-    verifiableFactory: VERIFIABLE_FACTORY,
-    proxyLogic: VERIFIABLE_FACTORY_PROXY_LOGIC,
-    userSalt: 0n,
-  },
-  owners: {
-    type: "ecdsa",
-    accounts: [walletOwner],
-    module: HCA_OWNER_AND_SESSION_VALIDATOR,
-  },
-  experimental_sessions: {
-    enabled: true,
-    module: HCA_OWNER_AND_SESSION_VALIDATOR,
-  },
-}
+	account: {
+		type: "hca",
+		version: "ens-standalone-1.1.0",
+		factory: STANDALONE_HCA_FACTORY,
+		implementation: STANDALONE_HCA_IMPLEMENTATION,
+		validator: HCA_OWNER_AND_SESSION_VALIDATOR,
+		verifiableFactory: VERIFIABLE_FACTORY,
+		proxyLogic: VERIFIABLE_FACTORY_PROXY_LOGIC,
+		userSalt: 0n,
+	},
+	owners: {
+		type: "ecdsa",
+		accounts: [walletOwner],
+		module: HCA_OWNER_AND_SESSION_VALIDATOR,
+	},
+	experimental_sessions: {
+		enabled: true,
+		module: HCA_OWNER_AND_SESSION_VALIDATOR,
+	},
+};
 ```
 
 Call `sdk.createAccount(accountConfig)` to derive a new or predicted HCA. If verified code exists, call `sdk.createAccount({...accountConfig, initData: {address: hca}})`.
@@ -464,12 +466,12 @@ The SDK adds `StandaloneHCAFactory.deploy(owner, implementation, userSalt)` when
 
 Select one resolver salt. Derive the resolver as a `VerifiableFactory` proxy with these values:
 
-| Field | Value |
-|---|---|
-| Deployer | HCA |
-| Implementation | Approved `PermissionedResolverImpl` |
-| Salt | Frontend-selected resolver salt |
-| Initializer | `PermissionedResolver.initialize(HCA, ROLES.ALL, [])` |
+| Field          | Value                                                 |
+| -------------- | ----------------------------------------------------- |
+| Deployer       | HCA                                                   |
+| Implementation | Approved `PermissionedResolverImpl`                   |
+| Salt           | Frontend-selected resolver salt                       |
+| Initializer    | `PermissionedResolver.initialize(HCA, ROLES.ALL, [])` |
 
 Bind the session to this exact resolver. One session can use the resolver for more than one name. A different resolver needs a new session authorization.
 
@@ -515,13 +517,13 @@ Pass this data in `experimental_sessions.initData`. The SDK includes the Nexus s
 
 Use these request parts for each route:
 
-| Request | Source work | HCA calls | Signer |
-|---|---|---|---|
-| Same-chain commit | Stablecoin permit and transfer to HCA, when needed | Enable session and `commit` | Destination session; wallet authorization on first use |
-| Same-chain reveal | None | Reveal batch | Session key |
-| Cross-chain commit | Permit and exact commit-cost transfer to source Nexus | Enable session and `commit` | Source and destination sessions; wallet authorization on first use |
-| Cross-chain reveal | Exact reveal-cost transfer to source Nexus | Reveal batch | Source and destination sessions |
-| Later name update | None | Supported resolver or primary-name calls | Destination session |
+| Request            | Source work                                           | HCA calls                                | Signer                                                             |
+| ------------------ | ----------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------ |
+| Same-chain commit  | Stablecoin permit and transfer to HCA, when needed    | Enable session and `commit`              | Destination session; wallet authorization on first use             |
+| Same-chain reveal  | None                                                  | Reveal batch                             | Session key                                                        |
+| Cross-chain commit | Permit and exact commit-cost transfer to source Nexus | Enable session and `commit`              | Source and destination sessions; wallet authorization on first use |
+| Cross-chain reveal | Exact reveal-cost transfer to source Nexus            | Reveal batch                             | Source and destination sessions                                    |
+| Later name update  | None                                                  | Supported resolver or primary-name calls | Destination session                                                |
 
 For an unsponsored route, set the supported stablecoin as `feeAsset`. Disable gas, bridge, and swap sponsorship. Let the SDK add its Permit2 claim, account setup, route fees, and required approvals.
 
@@ -569,11 +571,11 @@ Start the devnet and mockestrator from the repository root:
 docker compose --profile default up -d --build mockestrator
 ```
 
-| URL | Service |
-|---|---|
-| `http://127.0.0.1:8545` | Devnet RPC |
-| `http://127.0.0.1:8000/deployments` | Local deployment addresses |
-| `http://127.0.0.1:3007` | Mock Rhinestone route and fill service |
+| URL                                 | Service                                |
+| ----------------------------------- | -------------------------------------- |
+| `http://127.0.0.1:8545`             | Devnet RPC                             |
+| `http://127.0.0.1:8000/deployments` | Local deployment addresses             |
+| `http://127.0.0.1:3007`             | Mock Rhinestone route and fill service |
 
 Set these frontend variables:
 
@@ -597,14 +599,14 @@ bun run check:hca-live -- cross-chain
 
 Use `bun run check:hca-live -- --help` to list all proof routes. Each command changes testnet state.
 
-| Command | Route |
-|---|---|
-| `bun run check:hca-live -- same-chain` | Sponsored same-chain registration |
-| `bun run check:hca-live -- same-chain-usdc` | Same-chain registration paid with wallet USDC |
-| `bun run check:hca-live -- same-session` | Same authorization used for same-chain and cross-chain registration |
-| `bun run check:hca-live -- cross-chain` | Deferred cross-chain registration with two wallet signatures |
-| `bun run check:hca-live -- cross-chain-upfront-permit` | Comparison route that pulls the source budget at commit |
-| `bun run check:hca-live -- cross-chain-wallet-funded` | Comparison route with a wallet funding transaction |
+| Command                                                | Route                                                               |
+| ------------------------------------------------------ | ------------------------------------------------------------------- |
+| `bun run check:hca-live -- same-chain`                 | Sponsored same-chain registration                                   |
+| `bun run check:hca-live -- same-chain-usdc`            | Same-chain registration paid with wallet USDC                       |
+| `bun run check:hca-live -- same-session`               | Same authorization used for same-chain and cross-chain registration |
+| `bun run check:hca-live -- cross-chain`                | Deferred cross-chain registration with two wallet signatures        |
+| `bun run check:hca-live -- cross-chain-upfront-permit` | Comparison route that pulls the source budget at commit             |
+| `bun run check:hca-live -- cross-chain-wallet-funded`  | Comparison route with a wallet funding transaction                  |
 
 For the cross-chain proof, fund the printed wallet with Base Sepolia USDC. Do not fund it with native gas. The command also needs Sepolia and Base Sepolia RPC URLs, `DEPLOYER_KEY`, and `RHINESTONE_API_KEY`.
 

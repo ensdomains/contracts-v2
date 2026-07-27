@@ -54,6 +54,7 @@ export default execute(
       "DefaultReverseRegistrarAdapter",
       "migration:phase1:deploy-v2",
       "v2",
+      "hca",
     ],
     dependencies: ["ContractNamer", "VerifiableFactory", "TrustedHCASet"],
   },
