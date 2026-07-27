@@ -7,12 +7,8 @@ import {ENSRegistry} from "@ens/contracts/registry/ENSRegistry.sol";
 import {ReverseRegistrar} from "@ens/contracts/reverseRegistrar/ReverseRegistrar.sol";
 import {MockOwnable} from "@ens/contracts/test/mocks/MockOwnable.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
-import {
-    VerifiableFactory
-} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
-import {
-    IVerifiableFactory
-} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {MockContractNamer} from "~test/mocks/MockContractNamer.sol";
 import {ReverseRegistrarAdapter} from "~src/reverse-registrar/ReverseRegistrarAdapter.sol";

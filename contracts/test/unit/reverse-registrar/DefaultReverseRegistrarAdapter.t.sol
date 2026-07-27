@@ -6,12 +6,8 @@ pragma solidity ^0.8.13;
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {DefaultReverseRegistrar} from "@ens/contracts/reverseRegistrar/DefaultReverseRegistrar.sol";
 import {MockOwnable} from "@ens/contracts/test/mocks/MockOwnable.sol";
-import {
-    VerifiableFactory
-} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
-import {
-    IVerifiableFactory
-} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {
     DefaultReverseRegistrarAdapter
