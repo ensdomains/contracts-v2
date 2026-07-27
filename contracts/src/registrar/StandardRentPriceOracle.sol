@@ -389,8 +389,9 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     /// @return The base price, in standard units, or 0 if not valid.
     function getBasePrice(string calldata label, uint64 duration) public view returns (uint256) {
         uint256 n = bytes(label).length;
-        if (n == 0 || n > 255)
+        if (n == 0 || n > 255) {
             return 0; // too long or too short
+        }
         uint256 i = getLength(label);
         if (i > _baseRatePerCp.length) {
             i = _baseRatePerCp.length;

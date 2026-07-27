@@ -137,8 +137,8 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     {
         tokenIds = new uint256[](cds.length);
         uint256 total;
-        uint256 amount;
         for (uint256 i; i < cds.length; ++i) {
+            uint256 amount;
             (amount, tokenIds[i]) = _register(cds[i], paymentToken);
             total += amount;
         }
