@@ -1,5 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { privateKeyToAccount } from "viem/accounts";
+
+import { runPreMigrationCommand } from "../../script/migration.js";
 
 // The BatchRegistrar owner that fork/clean-testnet runs impersonate. The env
 // deployer key below does NOT control it.
@@ -13,16 +15,9 @@ const deployerAccount = privateKeyToAccount(DEPLOYER_KEY);
 
 let capturedArgs: string[] | null = null;
 
-const realPreMigration = await import("../../script/preMigration.js");
-
-mock.module("../../script/preMigration.js", () => ({
-  ...realPreMigration,
-  main: async (args: string[]) => {
-    capturedArgs = args;
-  },
-}));
-
-const { runPreMigrationCommand } = await import("../../script/migration.js");
+async function captureArgs(args: string[]) {
+  capturedArgs = args;
+}
 
 function flagValue(args: string[], flag: string): string | undefined {
   const i = args.indexOf(flag);
@@ -64,6 +59,7 @@ describe("runPreMigrationCommand signer resolution", () => {
     await runPreMigrationCommand(
       { ...baseOpts, account: ownerAccount.address },
       false,
+      captureArgs,
     );
     expect(capturedArgs).not.toBeNull();
     expect(flagValue(capturedArgs!, "--account")).toBe(ownerAccount.address);
@@ -74,13 +70,14 @@ describe("runPreMigrationCommand signer resolution", () => {
     await runPreMigrationCommand(
       { ...baseOpts, account: deployerAccount.address },
       false,
+      captureArgs,
     );
     expect(flagValue(capturedArgs!, "--private-key")).toBe(DEPLOYER_KEY);
     expect(flagValue(capturedArgs!, "--account")).toBe(deployerAccount.address);
   });
 
   it("uses the env fallback when no account is supplied", async () => {
-    await runPreMigrationCommand({ ...baseOpts }, false);
+    await runPreMigrationCommand({ ...baseOpts }, false, captureArgs);
     expect(flagValue(capturedArgs!, "--private-key")).toBe(DEPLOYER_KEY);
     expect(capturedArgs).not.toContain("--account");
   });
@@ -89,6 +86,7 @@ describe("runPreMigrationCommand signer resolution", () => {
     await runPreMigrationCommand(
       { ...baseOpts, privateKey: OWNER_KEY, account: ownerAccount.address },
       false,
+      captureArgs,
     );
     expect(flagValue(capturedArgs!, "--private-key")).toBe(OWNER_KEY);
     expect(flagValue(capturedArgs!, "--account")).toBe(ownerAccount.address);

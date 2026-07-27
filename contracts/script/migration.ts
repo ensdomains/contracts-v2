@@ -41,6 +41,10 @@ import { Artifact_BaseRegistrarImplementation } from "generated/artifacts/BaseRe
 import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
 import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
+import {
+  isHCAOnlyDeployment,
+  resolveDeployV2Scripts,
+} from "../deploy/hca/_helpers.js";
 import { config as rockethConfig } from "../rocketh/config.js";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
 import { generateAddressMarkdown } from "./addressDocs.js";
@@ -1113,6 +1117,7 @@ export async function runPreMigrationCommand(
     dryRun?: boolean;
   },
   resume: boolean,
+  run: (args: string[]) => Promise<void> = preMigrationMain,
 ) {
   const network = opts.network ?? "mainnet";
   const deploymentNetwork = opts.deploymentNetwork ?? network;
@@ -1189,7 +1194,7 @@ export async function runPreMigrationCommand(
     if (opts.bonusPeriodDays)
       args.push("--bonus-period-days", opts.bonusPeriodDays);
     if (resume) args.push("--continue");
-    await preMigrationMain(args);
+    await run(args);
   } finally {
     process.chdir(previousCwd);
   }
@@ -2908,6 +2913,7 @@ function buildDeployV2RockethConfig(
   ];
   const tags = uniqueTags([
     opts.network === "sepolia" ? "sepolia" : undefined,
+    opts.tags?.includes("hca") ? "hca" : undefined,
     "deferV2Registrar",
     opts.tenderly ? "tenderly" : undefined,
     opts.includeTestnetPremigrationRegistrar
@@ -2959,7 +2965,10 @@ function buildDeployV2RockethConfig(
       [deploymentNetwork]: {
         ...baseEnvironment,
         chain: chainId,
-        scripts: baseEnvironment.scripts ?? ["deploy"],
+        scripts: resolveDeployV2Scripts({
+          tags: opts.tags,
+          scripts: baseEnvironment.scripts,
+        }),
         overrides: {
           ...baseEnvironment.overrides,
           tags,
@@ -3138,6 +3147,11 @@ export async function deployV2(opts: DeployV2Options) {
   // A fresh deployment archives any existing namespace and therefore must
   // persist the new one, so it implies saving regardless of the flag.
   const persist = Boolean(opts.saveDeployments) || Boolean(opts.fresh);
+  if (opts.fresh && isHCAOnlyDeployment(opts.tags)) {
+    throw new Error(
+      "an HCA-only deploy requires --resume because it reuses the existing core deployments",
+    );
+  }
   const { provider, chainId, chain } =
     await resolveDeployProviderAndChain(opts);
   if (opts.deferV1OwnerTransactions && !opts.deferredV1OwnerTransactionsFile) {
@@ -3201,6 +3215,12 @@ export async function deployV2(opts: DeployV2Options) {
     "UpgradableUniversalResolverProxy",
     "ReverseRegistrarAdapter",
     "DefaultReverseRegistrarAdapter",
+    "DefaultReverseRegistrarHCAAdapter",
+    "MockRegistrationIntentExecutor",
+    "HCAOwnerAndSessionValidator",
+    "StandaloneHCAFactory",
+    "HCAUpgradeGate",
+    "StandaloneHCAImplementation",
   ]);
 
   // Refresh the generated address table for a persisted deploy so the docs
@@ -5192,7 +5212,7 @@ export async function main(argv = process.argv): Promise<void> {
             .option("--debug-rpc", "Log JSON-RPC error responses", false)
             .option(
               "--tags <tags>",
-              "Comma-separated deploy tags to run instead of the default v2 migration tags",
+              "Comma-separated deploy tags to run instead of the default v2 migration tags; use --resume --tags hca for an HCA-only update",
             ),
         ),
       ),

@@ -14,6 +14,12 @@ export const KNOWN_INTERMEDIATE_URP: Record<string, `0x${string}`> = {
 export const SEPOLIA_USDC =
   "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
 
+export const RHINESTONE_INTENT_EXECUTOR =
+  "0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF" as const;
+
+export const RHINESTONE_GAS_REFUND_PAYMASTER =
+  "0x1d7df6Ddc7328Ac827EB4D7f171C60AFB7f9A599" as const;
+
 // Real mainnet payment tokens used by the rent price oracle in place of the
 // free-mint test mocks (which must never ship to mainnet). Confirm/adjust the
 // accepted set before a mainnet deploy.

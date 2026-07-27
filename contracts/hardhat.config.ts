@@ -12,6 +12,7 @@ import HardhatMigrationPlugin from "./plugins/migration/index.ts";
 import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
 const version = "0.8.25";
+const hcaVersion = "0.8.27";
 const outputSelection = {
   "*": {
     "*": ["storageLayout"],
@@ -43,6 +44,17 @@ const config = {
             runs: 1000,
           },
           evmVersion: "cancun",
+          outputSelection,
+        },
+      },
+      {
+        version: hcaVersion,
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1000,
+          },
+          evmVersion: "prague",
           outputSelection,
         },
       },
@@ -84,6 +96,12 @@ const config = {
     },
   },
   networks: {
+    sepolia: {
+      type: 'http',
+      url: configVariable('SEPOLIA_RPC_URL'),
+      accounts: [configVariable('DEPLOYER_KEY')],
+      chainId: 11155111,
+    },
     'sepolia-dev': {
       type: 'http',
       url: configVariable('SEPOLIA_RPC_URL'),

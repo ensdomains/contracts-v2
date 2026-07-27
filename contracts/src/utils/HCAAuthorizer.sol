@@ -4,6 +4,8 @@ pragma solidity ^0.8.25;
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
+import {IStandaloneHCAOwner} from "../hca/interfaces/IStandaloneHCAOwner.sol";
+
 /// @dev Authorizes an account through a VerifiableFactory-verified HCA caller.
 abstract contract HCAAuthorizer is Ownable {
     ////////////////////////////////////////////////////////////////////////
@@ -113,7 +115,7 @@ abstract contract HCAAuthorizer is Ownable {
         if (!trustedHCAImplementations[hcaImplementation]) {
             revert HCAImplementationNotTrusted(hcaImplementation);
         }
-        try Ownable(msg.sender).owner() returns (address hcaOwner) {
+        try IStandaloneHCAOwner(msg.sender).owner() returns (address hcaOwner) {
             if (hcaOwner != address(0)) {
                 return hcaOwner;
             }
