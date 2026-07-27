@@ -156,9 +156,9 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 
   | Surface | Candidates considered | Revoked via |
   | --- | --- | --- |
-  | `BaseRegistrar` | the four v1 registration controllers, the handoff contracts (`ETHRenewerV1`, `Graveyard`, `TestnetV1PremigrationRegistrar`) of **every** namespace on this chain, and any address in the registrar's `ControllerAdded` history that no local artifact accounts for | `RegistrarSecurityController.removeRegistrarController` when deployed, else `removeController` |
-  | `ReverseRegistrar` | this tooling's handoff contracts only | `setController(addr, false)` |
-  | `DefaultReverseRegistrar` | this tooling's handoff contracts only | `setController(addr, false)` |
+  | `BaseRegistrar` | the four v1 registration controllers, the handoff contracts (`ETHRenewerV1`, `Graveyard`, `TestnetV1PremigrationRegistrar`) of **every** namespace on this chain, and any address in the registrar's `ControllerAdded` history that no local artifact accounts for | `RegistrarSecurityController.removeRegistrarController` while it still owns the registrar, else `removeController` |
+  | `ReverseRegistrar` | this tooling's handoff contracts granted there (`TestnetV1PremigrationRegistrar`, `ReverseRegistrarAdapter`) of **every** namespace on this chain | `setController(addr, false)` |
+  | `DefaultReverseRegistrar` | this tooling's handoff contracts granted there (`TestnetV1PremigrationRegistrar`, `DefaultReverseRegistrarAdapter`) of **every** namespace on this chain | `setController(addr, false)` |
 
   Only the **active** namespace's handoff contracts are left authorized.
   `verify-v1-registrars-disabled` asserts that complete set and fails on anything else.
