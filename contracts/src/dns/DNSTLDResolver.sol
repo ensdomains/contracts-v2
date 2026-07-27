@@ -356,8 +356,8 @@ contract DNSTLDResolver is
         bytes memory name = NameCoder.encode(string(v));
         (, address r, , ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
         if (r != address(0)) {
-            // according to ENSv1, this was immediate onchain only
-            // however this should support IExtendedResolver too
+            // in ENSv1, this was immediate only, but now supports IExtendedResolver
+            // does not support offchain
             try this.callResolver(
                 r,
                 name,
