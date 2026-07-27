@@ -1,0 +1,1085 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.27;
+
+// solhint-disable private-vars-leading-underscore, func-name-mixedcase
+
+import {Test} from "forge-std/Test.sol";
+
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+
+import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+
+import {MockStandaloneHCA} from "../../mocks/MockStandaloneHCAStack.sol";
+
+contract HCAOwnerAndSessionValidatorTest is Test {
+    struct ClaimFixture {
+        uint256 nonce;
+        uint256 deadline;
+        uint256 sourceAmount;
+        uint256 destinationAmount;
+        uint256 fillExpiry;
+        uint128 minGas;
+        address recipient;
+        uint256 targetChainId;
+        bytes32 originOpsHash;
+        bytes32 destinationOpsHash;
+        bytes32 qualifierHash;
+    }
+
+    bytes4 constant ERC1271_MAGICVALUE = 0x1626ba7e;
+    bytes4 constant COMMIT_SELECTOR = 0xf14fcbc8;
+
+    address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    bytes32 constant DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
+    bytes32 constant PERMIT2_NAME_HASH = keccak256("Permit2");
+    bytes32 constant TOKEN_PERMISSIONS_TYPEHASH =
+        keccak256("TokenPermissions(address token,uint256 amount)");
+    bytes32 constant TOKEN_TYPEHASH = keccak256("Token(address token,uint256 amount)");
+    bytes32 constant OPS_TYPEHASH = keccak256("Ops(address to,uint256 value,bytes data)");
+    bytes32 constant OP_TYPEHASH =
+        keccak256("Op(bytes32 vt,Ops[] ops)Ops(address to,uint256 value,bytes data)");
+    bytes32 constant TARGET_TYPEHASH =
+        keccak256(
+            "Target(address recipient,Token[] tokenOut,uint256 targetChain,uint256 fillExpiry)Token(address token,uint256 amount)"
+        );
+    bytes32 constant MANDATE_TYPEHASH =
+        keccak256(
+            "Mandate(Target target,uint128 minGas,Op originOps,Op destOps,bytes32 q)Op(bytes32 vt,Ops[] ops)Ops(address to,uint256 value,bytes data)Target(address recipient,Token[] tokenOut,uint256 targetChain,uint256 fillExpiry)Token(address token,uint256 amount)"
+        );
+    bytes32 constant PERMIT_TYPEHASH =
+        keccak256(
+            "PermitBatchWitnessTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline,Mandate mandate)Mandate(Target target,uint128 minGas,Op originOps,Op destOps,bytes32 q)Op(bytes32 vt,Ops[] ops)Ops(address to,uint256 value,bytes data)Target(address recipient,Token[] tokenOut,uint256 targetChain,uint256 fillExpiry)Token(address token,uint256 amount)TokenPermissions(address token,uint256 amount)"
+        );
+    bytes32 constant SMART_SESSION_DOMAIN_TYPEHASH =
+        0xb03948446334eb9b2196d5eb166f69b9d49403eb4a12f36de8d3f9f3cb8e15c3;
+    bytes32 constant SMART_SESSION_NAME_HASH =
+        0x909aaff4c04d02fd420ef163a6d750c002b0a00dc41a031ba039e3fdb4732133;
+    bytes32 constant SMART_SESSION_VERSION_HASH =
+        0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6;
+    bytes32 constant SIGNED_SESSION_TYPEHASH =
+        0x984917e689987af96289e12c5f5e934fcdf1df4186108f69ff7e8c3df950ce33;
+    bytes32 constant CHAIN_SESSION_TYPEHASH =
+        0xabc350ff4773ba356e85e2d2ee58d7d7511767acdb108b59058f5b4a5afc074b;
+    bytes32 constant MULTI_CHAIN_SESSION_TYPEHASH =
+        0xb4323194e4ca3723804b96dc7a0960bde1afff2b080b8b288fdc264c82e21357;
+    bytes32 constant DEFAULT_SIGNED_PERMISSIONS_HASH =
+        0x242b79d1322c5e6b12b617584cc2d5766cf18be6feb6acfa469ccf289e11e504;
+
+    address constant SMART_SESSION_EMISSARY = 0xad568B3F825A8d5FFc06DD3253526B64D810Ae89;
+    address constant OWNABLE_SESSION_VALIDATOR = 0x000000000013fdB5234E4E3162a810F54d9f7E98;
+
+    uint256 constant SOURCE_CHAIN_ID = 84_532;
+    uint256 constant SESSION_KEY = 0x5E5510;
+    uint256 constant OWNER_KEY = 0x0A11CE;
+
+    address owner = vm.addr(OWNER_KEY);
+    address sessionSigner = vm.addr(SESSION_KEY);
+    address intentExecutor = makeAddr("intent-executor");
+    address ethRegistrar = makeAddr("eth-registrar");
+    address sourceToken = makeAddr("source-token");
+    address paymentToken = makeAddr("payment-token");
+    address gasRefundPaymaster = makeAddr("refund-paymaster");
+
+    HCAOwnerAndSessionValidatorEnableHarness validator;
+    MockStandaloneHCA hca;
+
+    function setUp() public {
+        hca = new MockStandaloneHCA(owner);
+        VerifiableFactory factory = new VerifiableFactory();
+        validator = new HCAOwnerAndSessionValidatorEnableHarness(
+            makeAddr("reverse-adapter"),
+            makeAddr("resolver-implementation"),
+            ethRegistrar,
+            address(factory),
+            paymentToken,
+            makeAddr("secondary-payment-token"),
+            intentExecutor,
+            gasRefundPaymaster
+        );
+    }
+
+    function test_validator_acceptsPermit2SessionForExactDestinationOperation() public {
+        bytes32 permissionId = _enableSession();
+        bytes memory operationData = _withHybridMode(_commitOperation(bytes32("commitment")));
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+
+        assertEq(
+            hca.validate(
+                validator,
+                digest,
+                _envelope(permissionId, claimData, operationData, digest)
+            ),
+            ERC1271_MAGICVALUE
+        );
+    }
+
+    function test_validator_rejectsOperationThatDiffersFromPermit2Mandate() public {
+        bytes32 permissionId = _enableSession();
+        bytes memory operationData = _commitOperation(bytes32("commitment"));
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+        bytes memory changedOperation = _commitOperation(bytes32("different"));
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, digest, _envelope(permissionId, claimData, changedOperation, digest));
+    }
+
+    function test_validator_rejectsPermit2MandateForAnotherDestination() public {
+        bytes32 permissionId = _enableSession();
+        bytes memory operationData = _commitOperation(bytes32("commitment"));
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, makeAddr("another-account"), block.chainid);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
+    }
+
+    function test_validator_acceptsFirstPermit2RouteWithMultiChainSessionAuthorization()
+        public
+        view
+    {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        bytes memory operationData = _withHybridMode(_initialCommitOperation(permissionId, proof));
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+        bytes memory proofData = abi.encode(proof);
+        bytes memory envelope =
+            abi.encodePacked(
+                bytes1(uint8(4)),
+                permissionId,
+                bytes4(uint32(proofData.length)),
+                proofData,
+                SOURCE_CHAIN_ID,
+                claimData,
+                operationData,
+                _signRhinestoneMessage(SESSION_KEY, digest)
+            );
+
+        assertEq(hca.validate(validator, digest, envelope), ERC1271_MAGICVALUE);
+    }
+
+    function test_validator_rejectsMalformedFirstUseEnvelopes() public {
+        bytes memory envelope = new bytes(130);
+        envelope[0] = 0xFF;
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), envelope);
+
+        envelope[0] = 0x04;
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), envelope);
+
+        envelope = new bytes(545);
+        envelope[0] = 0x04;
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), envelope);
+
+        envelope = new bytes(130);
+        envelope[0] = 0x05;
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), envelope);
+
+        envelope = new bytes(219);
+        envelope[0] = 0x05;
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, bytes32(0), envelope);
+    }
+
+    function test_validator_rejectsInvalidFirstUseProofAndSessionSignature() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        bytes memory operationData = _initialCommitOperation(permissionId, proof);
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialEnvelope(keccak256("wrong-permission"), proof, claimData, operationData, digest)
+        );
+
+        proof.hashesAndChainIds = new HCAOwnerAndSessionValidator.HashAndChainId[](0);
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialEnvelope(permissionId, proof, claimData, operationData, digest)
+        );
+
+        (proof, permissionId) = _multiChainEnableProof();
+        operationData = _initialCommitOperation(permissionId, proof);
+        (claimData, digest) = _claim(operationData, address(hca), block.chainid);
+        bytes memory envelope =
+            _initialEnvelope(permissionId, proof, claimData, operationData, digest);
+        _replaceSignature(envelope, _signRhinestoneMessage(0xBAD, digest));
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, envelope);
+    }
+
+    function test_validator_rejectsFirstPermit2RouteWithInvalidOwnerAuthorization() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        proof.ownerR = bytes32(uint256(proof.ownerR) + 1);
+        bytes memory operationData = _initialCommitOperation(permissionId, proof);
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialEnvelope(permissionId, proof, claimData, operationData, digest)
+        );
+    }
+
+    function test_validator_rejectsFirstPermit2RouteForAnotherSelectedChain() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        proof.hashesAndChainIds[proof.sessionToEnableIndex].chainId = uint64(SOURCE_CHAIN_ID);
+        bytes memory operationData = _initialCommitOperation(permissionId, proof);
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialEnvelope(permissionId, proof, claimData, operationData, digest)
+        );
+    }
+
+    function test_validator_rejectsFirstPermit2RouteWithStaleSessionNonce() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        hca.setSessionNonce(1);
+        bytes memory operationData = _initialCommitOperation(permissionId, proof);
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialEnvelope(permissionId, proof, claimData, operationData, digest)
+        );
+    }
+
+    function test_validator_rejectsFirstPermit2RouteWithMismatchedEnableCall() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        bytes memory operationData =
+            _initialCommitOperation(permissionId, proof, proof.validUntil - 1);
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialEnvelope(permissionId, proof, claimData, operationData, digest)
+        );
+    }
+
+    function test_validator_acceptsFirstSameChainRouteWithMultiChainSessionAuthorization()
+        public
+        view
+    {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
+            HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
+                    proof.maxRefundAmount
+                ) <<
+                128) |
+            proof.maxRefundGasOverhead});
+        bytes memory operationData = _initialRefundCommitOperation(permissionId, proof);
+        uint256 nonce = 71;
+        bytes32 digest =
+            validator.singleChainDigestWithRefundHarness(
+                address(hca),
+                nonce,
+                operationData,
+                gasRefund
+            );
+
+        assertEq(
+            hca.validate(
+                validator,
+                digest,
+                _initialRefundEnvelope(permissionId, proof, nonce, gasRefund, operationData, digest)
+            ),
+            ERC1271_MAGICVALUE
+        );
+    }
+
+    function test_validator_rejectsInvalidFirstSameChainDigestAndSignature() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
+            HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
+                    proof.maxRefundAmount
+                ) <<
+                128) |
+            proof.maxRefundGasOverhead});
+        bytes memory operationData = _initialRefundCommitOperation(permissionId, proof);
+        uint256 nonce = 81;
+        bytes32 digest =
+            validator.singleChainDigestWithRefundHarness(
+                address(hca),
+                nonce,
+                operationData,
+                gasRefund
+            );
+        bytes memory envelope =
+            _initialRefundEnvelope(permissionId, proof, nonce, gasRefund, operationData, digest);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, keccak256("wrong-digest"), envelope);
+
+        _replaceSignature(envelope, _signRhinestoneMessage(0xBAD, digest));
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, envelope);
+    }
+
+    function test_validator_rejectsInvalidEnabledPermit2Session() public {
+        bytes memory operationData = _commitOperation(bytes32("commitment"));
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(
+            validator,
+            digest,
+            _envelope(keccak256("missing-session"), claimData, operationData, digest)
+        );
+
+        bytes32 permissionId = _enableSession();
+        hca.setSessionNonce(1);
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
+
+        hca.setSessionNonce(0);
+        bytes memory envelope = _envelope(permissionId, claimData, operationData, digest);
+        _replaceSignature(envelope, _signRhinestoneMessage(0xBAD, digest));
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, envelope);
+
+        claimData[84] = 0x02;
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
+
+        vm.warp(block.timestamp + 2 days);
+        vm.expectRevert(HCAOwnerAndSessionValidator.SessionExpired.selector);
+        hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
+    }
+
+    function test_validator_rejectsFirstSameChainRouteAboveAuthorizedRefund() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
+            HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
+                    proof.maxRefundAmount + 1
+                ) <<
+                128) |
+            proof.maxRefundGasOverhead});
+        bytes memory operationData = _initialRefundCommitOperation(permissionId, proof);
+        uint256 nonce = 72;
+        bytes32 digest =
+            validator.singleChainDigestWithRefundHarness(
+                address(hca),
+                nonce,
+                operationData,
+                gasRefund
+            );
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.GasRefundNotAllowed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialRefundEnvelope(permissionId, proof, nonce, gasRefund, operationData, digest)
+        );
+    }
+
+    function test_validator_rejectsFirstSameChainFundingPullToAnotherAccount() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
+            HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
+                    proof.maxRefundAmount
+                ) <<
+                128) |
+            proof.maxRefundGasOverhead});
+        bytes memory operationData =
+            _initialRefundCommitOperation(permissionId, proof, makeAddr("another-account"));
+        uint256 nonce = 73;
+        bytes32 digest =
+            validator.singleChainDigestWithRefundHarness(
+                address(hca),
+                nonce,
+                operationData,
+                gasRefund
+            );
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialRefundEnvelope(permissionId, proof, nonce, gasRefund, operationData, digest)
+        );
+    }
+
+    function test_validator_rejectsFirstSameChainFundingWithoutTransfer() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            _initialRefundExecutions(permissionId, proof);
+
+        _assertInitialRefundPolicyFailure(
+            permissionId,
+            proof,
+            74,
+            _encodeExecutions(_withoutExecution(executions, 1))
+        );
+    }
+
+    function test_validator_rejectsFirstSameChainFundingWhenCallsAreNotAdjacent() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            _initialRefundExecutions(permissionId, proof);
+        HCAOwnerAndSessionValidator.Execution memory transfer = executions[1];
+        executions[1] = executions[2];
+        executions[2] = transfer;
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 75, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsFirstSameChainFundingWithMismatchedAmounts() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            _initialRefundExecutions(permissionId, proof);
+        executions[1].callData = abi.encodeWithSelector(
+            validator.TRANSFER_FROM_SELECTOR(),
+            owner,
+            address(hca),
+            19_000_000
+        );
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 76, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsFirstSameChainFundingWithZeroAmount() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            _initialRefundExecutions(permissionId, proof);
+        executions[0].callData = abi.encodeWithSelector(
+            validator.PERMIT_SELECTOR(),
+            owner,
+            address(hca),
+            0,
+            block.timestamp + 1 hours,
+            uint8(27),
+            bytes32(uint256(1)),
+            bytes32(uint256(2))
+        );
+        executions[1].callData = abi.encodeWithSelector(
+            validator.TRANSFER_FROM_SELECTOR(),
+            owner,
+            address(hca),
+            0
+        );
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 77, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsFirstSameChainFundingWithDuplicatePermit() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            _initialRefundExecutions(permissionId, proof);
+        HCAOwnerAndSessionValidator.Execution[] memory duplicated =
+            new HCAOwnerAndSessionValidator.Execution[](executions.length + 1);
+        duplicated[0] = executions[0];
+        for (uint256 i; i < executions.length; ++i) {
+            duplicated[i + 1] = executions[i];
+        }
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 78, _encodeExecutions(duplicated));
+    }
+
+    function test_validator_rejectsFirstSameChainFundingFromAnotherOwner() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            _initialRefundExecutions(permissionId, proof);
+        executions[0].callData = abi.encodeWithSelector(
+            validator.PERMIT_SELECTOR(),
+            makeAddr("another-owner"),
+            address(hca),
+            20_000_000,
+            block.timestamp + 1 hours,
+            uint8(27),
+            bytes32(uint256(1)),
+            bytes32(uint256(2))
+        );
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 79, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsFirstSameChainFundingForAnotherSpender() public {
+        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
+            _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            _initialRefundExecutions(permissionId, proof);
+        executions[0].callData = abi.encodeWithSelector(
+            validator.PERMIT_SELECTOR(),
+            owner,
+            makeAddr("another-spender"),
+            20_000_000,
+            block.timestamp + 1 hours,
+            uint8(27),
+            bytes32(uint256(1)),
+            bytes32(uint256(2))
+        );
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 80, _encodeExecutions(executions));
+    }
+
+    function _enableSession() internal returns (bytes32 permissionId) {
+        permissionId = keccak256("cross-chain registration session");
+        vm.prank(address(hca));
+        validator.enableSession(
+            permissionId,
+            sessionSigner,
+            uint48(block.timestamp + 1 days),
+            address(0)
+        );
+    }
+
+    function _commitOperation(bytes32 commitment) internal view returns (bytes memory) {
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            new HCAOwnerAndSessionValidator.Execution[](1);
+        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+            COMMIT_SELECTOR,
+            commitment
+        )});
+        return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+    }
+
+    function _initialCommitOperation(
+        bytes32 permissionId,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof
+    )
+        internal
+        view
+        returns (bytes memory)
+    {
+        return _initialCommitOperation(permissionId, proof, proof.validUntil);
+    }
+
+    function _initialCommitOperation(
+        bytes32 permissionId,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
+        uint48 enabledUntil
+    )
+        internal
+        view
+        returns (bytes memory)
+    {
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            new HCAOwnerAndSessionValidator.Execution[](2);
+        executions[0] = HCAOwnerAndSessionValidator.Execution({target: address(validator), value: 0, callData: abi.encodeCall(
+            validator.enableSessionWithRefund,
+            (
+                permissionId,
+                proof.sessionKey,
+                enabledUntil,
+                proof.resolver,
+                proof.refundToken,
+                proof.maxRefundExchangeRate,
+                proof.maxRefundGasOverhead,
+                proof.maxRefundAmount
+            )
+        )});
+        executions[1] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+            COMMIT_SELECTOR,
+            bytes32("commitment")
+        )});
+        return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+    }
+
+    function _initialEnvelope(
+        bytes32 permissionId,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
+        bytes memory claimData,
+        bytes memory operationData,
+        bytes32 digest
+    )
+        internal
+        pure
+        returns (bytes memory)
+    {
+        bytes memory proofData = abi.encode(proof);
+        return
+            abi.encodePacked(
+                bytes1(uint8(4)),
+                permissionId,
+                bytes4(uint32(proofData.length)),
+                proofData,
+                SOURCE_CHAIN_ID,
+                claimData,
+                operationData,
+                _signRhinestoneMessage(SESSION_KEY, digest)
+            );
+    }
+
+    function _initialRefundCommitOperation(
+        bytes32 permissionId,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof
+    )
+        internal
+        view
+        returns (bytes memory)
+    {
+        return _initialRefundCommitOperation(permissionId, proof, address(hca));
+    }
+
+    function _initialRefundCommitOperation(
+        bytes32 permissionId,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
+        address fundingRecipient
+    )
+        internal
+        view
+        returns (bytes memory)
+    {
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            new HCAOwnerAndSessionValidator.Execution[](5);
+        executions[0] = HCAOwnerAndSessionValidator.Execution({target: paymentToken, value: 0, callData: abi.encodeWithSelector(
+            validator.PERMIT_SELECTOR(),
+            owner,
+            address(hca),
+            20_000_000,
+            block.timestamp + 1 hours,
+            uint8(27),
+            bytes32(uint256(1)),
+            bytes32(uint256(2))
+        )});
+        executions[1] = HCAOwnerAndSessionValidator.Execution({target: paymentToken, value: 0, callData: abi.encodeWithSelector(
+            validator.TRANSFER_FROM_SELECTOR(),
+            owner,
+            fundingRecipient,
+            20_000_000
+        )});
+        executions[2] = HCAOwnerAndSessionValidator.Execution({target: paymentToken, value: 0, callData: abi.encodeWithSelector(
+            validator.APPROVE_SELECTOR(),
+            gasRefundPaymaster,
+            proof.maxRefundAmount
+        )});
+        executions[3] = HCAOwnerAndSessionValidator.Execution({target: address(validator), value: 0, callData: abi.encodeCall(
+            validator.enableSessionWithRefund,
+            (
+                permissionId,
+                proof.sessionKey,
+                proof.validUntil,
+                proof.resolver,
+                proof.refundToken,
+                proof.maxRefundExchangeRate,
+                proof.maxRefundGasOverhead,
+                proof.maxRefundAmount
+            )
+        )});
+        executions[4] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+            COMMIT_SELECTOR,
+            bytes32("commitment")
+        )});
+        return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+    }
+
+    function _initialRefundEnvelope(
+        bytes32 permissionId,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
+        uint256 nonce,
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund,
+        bytes memory operationData,
+        bytes32 digest
+    )
+        internal
+        pure
+        returns (bytes memory)
+    {
+        bytes memory proofData = abi.encode(proof);
+        return
+            abi.encodePacked(
+                bytes1(uint8(5)),
+                permissionId,
+                bytes4(uint32(proofData.length)),
+                proofData,
+                nonce,
+                gasRefund.token,
+                gasRefund.exchangeRate,
+                gasRefund.overhead,
+                operationData,
+                _signRhinestoneMessage(SESSION_KEY, digest)
+            );
+    }
+
+    function _initialRefundExecutions(
+        bytes32 permissionId,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof
+    )
+        internal
+        view
+        returns (HCAOwnerAndSessionValidator.Execution[] memory)
+    {
+        return
+            abi.decode(
+                _slice(_initialRefundCommitOperation(permissionId, proof), 32),
+                (HCAOwnerAndSessionValidator.Execution[])
+            );
+    }
+
+    function _withoutExecution(
+        HCAOwnerAndSessionValidator.Execution[] memory executions,
+        uint256 removedIndex
+    )
+        internal
+        pure
+        returns (HCAOwnerAndSessionValidator.Execution[] memory remaining)
+    {
+        remaining = new HCAOwnerAndSessionValidator.Execution[](executions.length - 1);
+        uint256 next;
+        for (uint256 i; i < executions.length; ++i) {
+            if (i != removedIndex) {
+                remaining[next++] = executions[i];
+            }
+        }
+    }
+
+    function _encodeExecutions(HCAOwnerAndSessionValidator.Execution[] memory executions)
+        internal
+        view
+        returns (bytes memory)
+    {
+        return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+    }
+
+    function _assertInitialRefundPolicyFailure(
+        bytes32 permissionId,
+        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
+        uint256 nonce,
+        bytes memory operationData
+    )
+        internal
+    {
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
+            HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
+                    proof.maxRefundAmount
+                ) <<
+                128) |
+            proof.maxRefundGasOverhead});
+        bytes32 digest =
+            validator.singleChainDigestWithRefundHarness(
+                address(hca),
+                nonce,
+                operationData,
+                gasRefund
+            );
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialRefundEnvelope(permissionId, proof, nonce, gasRefund, operationData, digest)
+        );
+    }
+
+    function _withHybridMode(bytes memory operationData) internal pure returns (bytes memory) {
+        operationData[1] = bytes1(uint8(6));
+        return operationData;
+    }
+
+    function _multiChainEnableProof()
+        internal
+        view
+        returns (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId)
+    {
+        proof.sessionKey = sessionSigner;
+        proof.validUntil = uint48(block.timestamp + 1 days);
+        proof.sessionNonce = 0;
+        proof.refundToken = paymentToken;
+        proof.maxRefundExchangeRate = 5_000_000_000;
+        proof.maxRefundGasOverhead = 100_000;
+        proof.maxRefundAmount = 25_000_000;
+        proof.sessionToEnableIndex = 1;
+
+        address[] memory sessionOwners = new address[](1);
+        sessionOwners[0] = sessionSigner;
+        bytes memory validatorInitData = abi.encode(uint256(1), sessionOwners);
+        bytes32 salt =
+            keccak256(
+                abi.encode(
+                    proof.sessionNonce,
+                    proof.validUntil,
+                    proof.resolver,
+                    proof.refundToken,
+                    proof.maxRefundExchangeRate,
+                    proof.maxRefundGasOverhead,
+                    proof.maxRefundAmount
+                )
+            );
+        permissionId = keccak256(abi.encode(OWNABLE_SESSION_VALIDATOR, validatorInitData, salt));
+        bytes32 destinationSessionDigest =
+            keccak256(
+                abi.encode(
+                    SIGNED_SESSION_TYPEHASH,
+                    address(hca),
+                    type(uint256).max,
+                    uint256(0),
+                    DEFAULT_SIGNED_PERMISSIONS_HASH,
+                    salt,
+                    OWNABLE_SESSION_VALIDATOR,
+                    keccak256(validatorInitData),
+                    SMART_SESSION_EMISSARY
+                )
+            );
+        proof.hashesAndChainIds = new HCAOwnerAndSessionValidator.HashAndChainId[](2);
+        proof.hashesAndChainIds[0] = HCAOwnerAndSessionValidator.HashAndChainId({chainId: uint64(
+            SOURCE_CHAIN_ID
+        ), sessionDigest: keccak256("source session")});
+        proof.hashesAndChainIds[1] = HCAOwnerAndSessionValidator.HashAndChainId({chainId: uint64(
+            block.chainid
+        ), sessionDigest: destinationSessionDigest});
+
+        bytes32[] memory chainSessionHashes = new bytes32[](2);
+        for (uint256 i; i < 2; ++i) {
+            HCAOwnerAndSessionValidator.HashAndChainId memory item = proof.hashesAndChainIds[i];
+            chainSessionHashes[i] = keccak256(
+                abi.encode(CHAIN_SESSION_TYPEHASH, item.chainId, item.sessionDigest)
+            );
+        }
+        bytes32 structHash =
+            keccak256(
+                abi.encode(
+                    MULTI_CHAIN_SESSION_TYPEHASH,
+                    keccak256(abi.encodePacked(chainSessionHashes))
+                )
+            );
+        bytes32 domainSeparator =
+            keccak256(
+                abi.encode(
+                    SMART_SESSION_DOMAIN_TYPEHASH,
+                    SMART_SESSION_NAME_HASH,
+                    SMART_SESSION_VERSION_HASH
+                )
+            );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        (proof.ownerV, proof.ownerR, proof.ownerS) = vm.sign(OWNER_KEY, digest);
+    }
+
+    function _claim(bytes memory operationData, address recipient, uint256 targetChainId)
+        internal
+        view
+        returns (bytes memory claimData, bytes32 digest)
+    {
+        ClaimFixture memory claim =
+            ClaimFixture({nonce: 42, deadline: block.timestamp + 1 hours, sourceAmount: 20_000_000, destinationAmount: 900_000, fillExpiry: block.timestamp +
+            30 minutes, minGas: 1_000_000, recipient: recipient, targetChainId: targetChainId, originOpsHash: keccak256(
+                "origin operation"
+            ), destinationOpsHash: _operationHash(operationData), qualifierHash: keccak256(
+                "qualifier"
+            )});
+
+        claimData = bytes.concat(
+            abi.encodePacked(
+                intentExecutor,
+                claim.nonce,
+                claim.deadline,
+                uint8(1),
+                bytes32(uint256(uint160(sourceToken))),
+                claim.sourceAmount
+            ),
+            abi.encodePacked(
+                claim.recipient,
+                claim.targetChainId,
+                claim.fillExpiry,
+                uint8(1),
+                bytes32(uint256(uint160(paymentToken))),
+                claim.destinationAmount
+            ),
+            abi.encodePacked(
+                claim.minGas,
+                claim.originOpsHash,
+                claim.destinationOpsHash,
+                claim.qualifierHash
+            )
+        );
+        assertEq(claimData.length, 410);
+
+        digest = _permitDigest(claim);
+    }
+
+    function _permitDigest(ClaimFixture memory claim) internal view returns (bytes32 digest) {
+        bytes32 tokenPermissionsHash =
+            keccak256(
+                abi.encodePacked(
+                    keccak256(
+                        abi.encode(TOKEN_PERMISSIONS_TYPEHASH, sourceToken, claim.sourceAmount)
+                    )
+                )
+            );
+        bytes32 tokenOutHash =
+            keccak256(
+                abi.encodePacked(
+                    keccak256(abi.encode(TOKEN_TYPEHASH, paymentToken, claim.destinationAmount))
+                )
+            );
+        bytes32 targetHash =
+            keccak256(
+                abi.encode(
+                    TARGET_TYPEHASH,
+                    claim.recipient,
+                    tokenOutHash,
+                    claim.targetChainId,
+                    claim.fillExpiry
+                )
+            );
+        bytes32 mandateHash =
+            keccak256(
+                abi.encode(
+                    MANDATE_TYPEHASH,
+                    targetHash,
+                    claim.minGas,
+                    claim.originOpsHash,
+                    claim.destinationOpsHash,
+                    claim.qualifierHash
+                )
+            );
+        bytes32 permitHash =
+            keccak256(
+                abi.encode(
+                    PERMIT_TYPEHASH,
+                    tokenPermissionsHash,
+                    intentExecutor,
+                    claim.nonce,
+                    claim.deadline,
+                    mandateHash
+                )
+            );
+        bytes32 domainSeparator =
+            keccak256(abi.encode(DOMAIN_TYPEHASH, PERMIT2_NAME_HASH, SOURCE_CHAIN_ID, PERMIT2));
+        digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, permitHash));
+    }
+
+    function _operationHash(bytes memory operationData) internal pure returns (bytes32) {
+        bytes32 mode;
+        assembly ("memory-safe") {
+            mode := mload(add(operationData, 0x20))
+        }
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            abi.decode(_slice(operationData, 32), (HCAOwnerAndSessionValidator.Execution[]));
+        bytes32[] memory executionHashes = new bytes32[](executions.length);
+        for (uint256 i; i < executions.length; ++i) {
+            executionHashes[i] = keccak256(
+                abi.encode(
+                    OPS_TYPEHASH,
+                    executions[i].target,
+                    executions[i].value,
+                    keccak256(executions[i].callData)
+                )
+            );
+        }
+        return
+            keccak256(abi.encode(OP_TYPEHASH, mode, keccak256(abi.encodePacked(executionHashes))));
+    }
+
+    function _envelope(
+        bytes32 permissionId,
+        bytes memory claimData,
+        bytes memory operationData,
+        bytes32 digest
+    )
+        internal
+        pure
+        returns (bytes memory)
+    {
+        return
+            abi.encodePacked(
+                bytes1(uint8(3)),
+                permissionId,
+                SOURCE_CHAIN_ID,
+                claimData,
+                operationData,
+                _signRhinestoneMessage(SESSION_KEY, digest)
+            );
+    }
+
+    function _slice(bytes memory data, uint256 start) internal pure returns (bytes memory result) {
+        result = new bytes(data.length - start);
+        for (uint256 i; i < result.length; ++i) {
+            result[i] = data[start + i];
+        }
+    }
+
+    function _signRhinestoneMessage(uint256 privateKey, bytes32 digest)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        bytes32 personalDigest =
+            keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", digest));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, personalDigest);
+        return abi.encodePacked(r, s, v + 4);
+    }
+
+    function _replaceSignature(bytes memory envelope, bytes memory signature) internal pure {
+        uint256 signatureOffset = envelope.length - signature.length;
+        for (uint256 i; i < signature.length; ++i) {
+            envelope[signatureOffset + i] = signature[i];
+        }
+    }
+}
+
+
+contract HCAOwnerAndSessionValidatorEnableHarness is HCAOwnerAndSessionValidator {
+    constructor(
+        address defaultReverseRegistrarHCAAdapter,
+        address permittedResolverImpl,
+        address ethRegistrar,
+        address verifiableFactory,
+        address paymentToken,
+        address secondaryPaymentToken,
+        address intentExecutor,
+        address gasRefundPaymaster
+    )
+        HCAOwnerAndSessionValidator(
+            defaultReverseRegistrarHCAAdapter,
+            permittedResolverImpl,
+            ethRegistrar,
+            verifiableFactory,
+            paymentToken,
+            secondaryPaymentToken,
+            intentExecutor,
+            gasRefundPaymaster
+        )
+    {}
+
+    function singleChainDigestWithRefundHarness(
+        address account,
+        uint256 nonce,
+        bytes calldata operationData,
+        GasRefund calldata gasRefund
+    )
+        external
+        view
+        returns (bytes32)
+    {
+        return _singleChainDigest(account, nonce, operationData, gasRefund);
+    }
+}

@@ -6,8 +6,8 @@ import {
 } from "@ens/contracts/reverseRegistrar/IDefaultReverseRegistrar.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
+import {HCAAuthorizer} from "../hca/HCAAuthorizer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
-import {HCAAuthorizer} from "../utils/HCAAuthorizer.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {IContractNamer} from "./interfaces/IContractNamer.sol";
@@ -49,12 +49,18 @@ contract DefaultReverseRegistrarAdapter is DelegatedContractNamer, HCAAuthorizer
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Set account's `default.reverse` primary name.
-    ///         If caller is trusted HCA, the namer is the underlying owner.
     /// @param account The contract address.
     /// @param name The primary name to store.
     function setName(address account, string calldata name) external {
-        (, address namer) = _unwrapHCA(msg.sender);
-        AccountNamerLib.requireNamer(account, namer);
+        AccountNamerLib.requireNamer(account, msg.sender);
+        DEFAULT_REVERSE_REGISTRAR.setNameForAddr(account, name);
+    }
+
+    /// @notice Sets account's `default.reverse` primary name through an HCA caller.
+    /// @param account The account to name.
+    /// @param name The primary name to store.
+    function setNameWithHCA(address account, string calldata name) external {
+        _requireHCAForAccount(account);
         DEFAULT_REVERSE_REGISTRAR.setNameForAddr(account, name);
     }
 }

@@ -6,7 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
 import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
-import {IHCA} from "~src/utils/interfaces/IHCA.sol";
+import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
 
 abstract contract HCAFixture is Test {
     PermissionedAddressSet trustedHCASet;
@@ -44,7 +44,7 @@ abstract contract HCAFixture is Test {
 }
 
 
-contract MockHCA is IHCA {
+contract MockHCA is IStandaloneHCAOwner {
     address internal _owner;
     function initialize(address owner_) external {
         _owner = owner_;
@@ -52,11 +52,15 @@ contract MockHCA is IHCA {
     function owner() external view virtual returns (address) {
         return _owner;
     }
+    function ownerAndSessionNonce() external view returns (address, uint96) {
+        return (_owner, 0);
+    }
 }
 
 
 contract MockRevertingHCA is MockHCA {
+    error OwnerUnavailable();
     function owner() external pure override returns (address) {
-        revert();
+        revert OwnerUnavailable();
     }
 }

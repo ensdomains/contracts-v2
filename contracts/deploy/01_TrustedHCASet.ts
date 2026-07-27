@@ -8,10 +8,11 @@ export default execute(
       args: [owner],
     });
 
+    // example: trust an implementation
     // await write(trustedHCASet, {
     //   account: owner,
     //   functionName: "approve",
-    //   args: [addr, true],
+    //   args: [<impl>, true],
     // });
   },
   { tags: ["TrustedHCASet", "v2"] },

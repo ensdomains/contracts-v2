@@ -4,8 +4,8 @@ pragma solidity ^0.8.25;
 import {IReverseRegistrar} from "@ens/contracts/reverseRegistrar/IReverseRegistrar.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
+import {HCAAuthorizer} from "../hca/HCAAuthorizer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
-import {HCAAuthorizer} from "../utils/HCAAuthorizer.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {IContractNamer} from "./interfaces/IContractNamer.sol";
@@ -47,13 +47,21 @@ contract ReverseRegistrarAdapter is DelegatedContractNamer, HCAAuthorizer {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Claims account's `addr.reverse` node and sets its resolver.
-    ///         If caller is trusted HCA, the namer is the underlying owner.
     /// @param account The account to claim.
     /// @param resolver The resolver to set.
     /// @return The ENS node hash for the contract's reverse record.
     function claim(address account, address resolver) external returns (bytes32) {
-        (, address namer) = _unwrapHCA(msg.sender);
-        AccountNamerLib.requireNamer(account, namer);
-        return REVERSE_REGISTRAR.claimForAddr(account, namer, resolver);
+        address sender = msg.sender;
+        AccountNamerLib.requireNamer(account, sender);
+        return REVERSE_REGISTRAR.claimForAddr(account, sender, resolver);
+    }
+
+    /// @notice Claims account's `addr.reverse` node through an HCA caller.
+    /// @param account The account to claim.
+    /// @param resolver The resolver to set.
+    /// @return The ENS node hash for the contract's reverse record.
+    function claimWithHCA(address account, address resolver) external returns (bytes32) {
+        address hcaOwner = _requireHCAForAccount(account);
+        return REVERSE_REGISTRAR.claimForAddr(account, hcaOwner, resolver);
     }
 }

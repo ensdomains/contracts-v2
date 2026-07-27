@@ -527,9 +527,37 @@ export async function setupDevnet({
       }),
     };
 
+    const hca = {
+      MockRegistrationIntentExecutor: getContract({
+        abi: artifacts.MockRegistrationIntentExecutor.abi,
+        address: rocketh.deployments["MockRegistrationIntentExecutor"].address,
+        client,
+      }),
+      HCAOwnerAndSessionValidator: getContract({
+        abi: artifacts.HCAOwnerAndSessionValidator.abi,
+        address: rocketh.deployments["HCAOwnerAndSessionValidator"].address,
+        client,
+      }),
+      StandaloneHCAImplementation: getContract({
+        abi: artifacts.StandaloneSingleOwnerHCA.abi,
+        address: rocketh.deployments["StandaloneHCAImplementation"].address,
+        client,
+      }),
+      StandaloneHCAFactory: getContract({
+        abi: artifacts.StandaloneHCAFactory.abi,
+        address: rocketh.deployments["StandaloneHCAFactory"].address,
+        client,
+      }),
+      HCAUpgradeGate: getContract({
+        abi: artifacts.ApprovedUpgradeGate.abi,
+        address: rocketh.deployments["HCAUpgradeGate"].address,
+        client,
+      }),
+    };
+
     const verifiableProxyLogic = await v2.VerifiableFactory.read.proxyLogic();
 
-    [shared, v1, v2, erc20]
+    [shared, v1, v2, erc20, hca]
       .flatMap((x) => Object.values(x))
       .forEach(patchContractWrite);
     console.log("Linked contracts");
@@ -570,6 +598,7 @@ export async function setupDevnet({
       v1,
       v2,
       erc20,
+      hca,
       sync,
       waitFor,
       saveState,
