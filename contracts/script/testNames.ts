@@ -92,7 +92,7 @@ export async function testNames(env: DevnetEnvironment) {
   }
 
   const aliasTx = await env.waitFor(
-    env.namedAccounts.owner.resolver.write.link([
+    env.namedAccounts.owner.resolver.write.linkToNode([
       dnsEncodeName("alias.eth"),
       namehash("test.eth"),
     ]),
@@ -155,7 +155,7 @@ export async function testNames(env: DevnetEnvironment) {
 
   // With PermissionedResolver (node-keyed), children of linked names need an alias so
   // that wallet.linked.parent.eth resolves to the same records as wallet.sub1.sub2.parent.eth
-  await env.namedAccounts.owner.resolver.write.link([
+  await env.namedAccounts.owner.resolver.write.linkToNode([
     dnsEncodeName("sub1.sub2.parent.eth"),
     namehash("linked.parent.eth"),
   ]);
