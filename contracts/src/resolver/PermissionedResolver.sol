@@ -9,7 +9,7 @@ import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
-import {AbstractResolverBase} from "./AbstractResolverBase.sol";
+import {AbstractRecordResolver} from "./AbstractRecordResolver.sol";
 import {IPermissionedResolver} from "./interfaces/IPermissionedResolver.sol";
 import {IABISetter} from "./interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "./interfaces/setters/IAddressSetter.sol";
@@ -41,13 +41,12 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 ///
 /// `getRecordId(node)` reveals the internal record ID.
 ///
-/// `link(name, node)` makes `name` use the record currently used by `node`.
-/// `link(name, bytes32(0))` unlinks `name` from the record.
+/// `linkToNode(name, node)` makes `name` use the record currently used by `node`.
+/// `linkToRecord(name, recordId)` makes `name` use a specific record ID.
+/// `linkToRecord(name, 0)` unlinks `name` from the record.
 /// `clear(name)` makes `name` use a new record.
 ///
 /// To link or clear, `ROLE_MANAGER` is required on root.
-///
-/// Once a record is no longer linked to, it becomes unreachable and is effectively deleted.
 ///
 /// Names without a record use the default record, which can be managed using the root name (`0x00`).
 ///
@@ -77,7 +76,7 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 ///
 contract PermissionedResolver is
     IPermissionedResolver,
-    AbstractResolverBase,
+    AbstractRecordResolver,
     EnhancedAccessControl,
     IContractNamer,
     UUPSUpgradeable,
@@ -123,19 +122,19 @@ contract PermissionedResolver is
         multicall(setters);
     }
 
-    /// @inheritdoc AbstractResolverBase
+    /// @inheritdoc AbstractRecordResolver
     function supportsInterface(bytes4 interfaceId)
         public
         view
         virtual
-        override(AbstractResolverBase, EnhancedAccessControl)
+        override(AbstractRecordResolver, EnhancedAccessControl)
         returns (bool)
     {
         return
             type(IPermissionedResolver).interfaceId == interfaceId ||
-            type(IContractNamer).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
             type(IProxyAuthorization).interfaceId == interfaceId ||
+            type(IContractNamer).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -143,8 +142,7 @@ contract PermissionedResolver is
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Associate `name` with a new record.
-    /// @param name The DNS-encoded name.
+    /// @inheritdoc IPermissionedResolver
     function clear(bytes calldata name)
         external
         onlyRootRoles(PermissionedResolverLib.ROLE_MANAGER)
@@ -152,7 +150,7 @@ contract PermissionedResolver is
         bytes32 node = NameCoder.namehash(name, 0);
         uint256 recordId = ++_recordCount;
         _recordIds[node] = recordId;
-        emit Linked(node, name, recordId);
+        emit Linked(recordId, node, name);
     }
 
     /// @inheritdoc IABISetter
@@ -251,12 +249,9 @@ contract PermissionedResolver is
         external
         onlyRootRoles(PermissionedResolverLib.ROLE_MANAGER)
     {
-        uint256 recordId;
-        if (targetNode != bytes32(0)) {
-            recordId = _recordIds[targetNode];
-            if (recordId == 0) {
-                revert InvalidRecord(); // prevent linking unknown targets
-            }
+        uint256 recordId = _recordIds[targetNode];
+        if (recordId == 0) {
+            revert InvalidRecord(); // prevent linking unknown targets
         }
         _link(sourceName, recordId);
     }
@@ -377,18 +372,15 @@ contract PermissionedResolver is
         if (recordId == 0) {
             recordId = ++_recordCount;
             _recordIds[node] = recordId;
-            emit Linked(node, name, recordId);
+            emit Linked(recordId, node, name);
         }
     }
 
     /// @dev Set `sourceName` to `recordId`.
     function _link(bytes calldata sourceName, uint256 recordId) internal {
         bytes32 sourceNode = NameCoder.namehash(sourceName, 0);
-        if (recordId == 0 && _recordIds[sourceNode] == 0) {
-            revert AlreadyUnlinked(); // prevent unnecessary unlinking
-        }
         _recordIds[sourceNode] = recordId;
-        emit Linked(sourceNode, sourceName, recordId);
+        emit Linked(recordId, sourceNode, sourceName);
     }
 
     /// @dev Avoid permission checks during initialization.

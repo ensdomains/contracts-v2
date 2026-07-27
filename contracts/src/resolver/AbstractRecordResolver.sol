@@ -20,6 +20,7 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
+import {IRecordResolver} from "./interfaces/IRecordResolver.sol";
 import {IABISetter} from "./interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "./interfaces/setters/IAddressSetter.sol";
 import {IContentHashSetter} from "./interfaces/setters/IContentHashSetter.sol";
@@ -30,20 +31,7 @@ import {IPubkeySetter} from "./interfaces/setters/IPubkeySetter.sol";
 import {ITextSetter} from "./interfaces/setters/ITextSetter.sol";
 
 /// @dev Abstract resolver implementation that supports multicall and the standardized resolver profiles.
-abstract contract AbstractResolverBase is
-    ERC165,
-    IExtendedResolver,
-    IERC7996,
-    IMulticallable,
-    IABISetter,
-    IAddressSetter,
-    IContentHashSetter,
-    IDataSetter,
-    IInterfaceSetter,
-    INameSetter,
-    IPubkeySetter,
-    ITextSetter
-{
+abstract contract AbstractRecordResolver is ERC165, IRecordResolver, IERC7996, IMulticallable {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -60,14 +48,6 @@ abstract contract AbstractResolverBase is
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Errors
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice The resolver profile cannot be answered.
-    /// @dev Error selector: `0x7b1c461b`
-    error UnsupportedResolverProfile(bytes4 selector);
-
-    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
@@ -75,6 +55,7 @@ abstract contract AbstractResolverBase is
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(IExtendedResolver).interfaceId ||
+            interfaceId == type(IRecordResolver).interfaceId ||
             interfaceId == type(IERC7996).interfaceId ||
             interfaceId == type(IMulticallable).interfaceId ||
             interfaceId == type(IABISetter).interfaceId ||

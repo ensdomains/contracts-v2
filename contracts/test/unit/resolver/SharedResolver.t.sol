@@ -35,7 +35,8 @@ import {IInterfaceSetter} from "~src/resolver/interfaces/setters/IInterfaceSette
 import {INameSetter} from "~src/resolver/interfaces/setters/INameSetter.sol";
 import {IPubkeySetter} from "~src/resolver/interfaces/setters/IPubkeySetter.sol";
 import {ITextSetter} from "~src/resolver/interfaces/setters/ITextSetter.sol";
-import {AbstractResolverBase} from "~src/resolver/AbstractResolverBase.sol";
+import {IRecordResolver} from "~src/resolver/interfaces/IRecordResolver.sol";
+import {ISharedResolver} from "~src/resolver/interfaces/ISharedResolver.sol";
 import {SharedResolver} from "~src/resolver/SharedResolver.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
@@ -68,6 +69,14 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_supportsInterface() external view {
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(ISharedResolver).interfaceId),
+            "ISharedResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(resolver), type(IRecordResolver).interfaceId),
+            "IRecordResolver"
+        );
         assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(IContractNamer).interfaceId),
             "IContractNamer"
@@ -154,7 +163,9 @@ contract SharedResolverTest is V2Fixture {
         assertFalse(resolver.canModifyName(testName, address(friend)), "before:modify");
 
         vm.expectEmit();
-        emit SharedResolver.ApprovalUpdated(uint256(testNode), address(this), friend, true);
+        emit IRecordResolver.Linked(uint256(testNode), testNode, testName);
+        vm.expectEmit();
+        emit ISharedResolver.ApprovalUpdated(uint256(testNode), address(this), friend, true);
         resolver.approve(testName, friend, true);
 
         assertTrue(resolver.isApproved(testName, address(this), friend), "approved:testName");
@@ -162,7 +173,7 @@ contract SharedResolverTest is V2Fixture {
         assertFalse(resolver.canModifyName(testName, address(actor)), "modify:actor");
 
         vm.expectEmit();
-        emit SharedResolver.ApprovalUpdated(uint256(testNode), address(this), friend, false);
+        emit ISharedResolver.ApprovalUpdated(uint256(testNode), address(this), friend, false);
         resolver.approve(testName, friend, false);
 
         assertFalse(resolver.isApproved(testName, address(this), friend), "revoked:approved");
@@ -175,7 +186,7 @@ contract SharedResolverTest is V2Fixture {
         assertFalse(resolver.canModifyName(testName, address(friend)), "before:modify");
 
         vm.expectEmit();
-        emit SharedResolver.ApprovalUpdated(0, address(this), friend, true);
+        emit ISharedResolver.ApprovalUpdated(0, address(this), friend, true);
         resolver.approve(rootName, friend, true);
 
         assertTrue(resolver.isApproved(rootName, address(this), friend), "approved:null");
@@ -188,7 +199,7 @@ contract SharedResolverTest is V2Fixture {
         assertTrue(resolver.canModifyName(otherName, address(friend)), "modify:other");
 
         vm.expectEmit();
-        emit SharedResolver.ApprovalUpdated(0, address(this), friend, false);
+        emit ISharedResolver.ApprovalUpdated(0, address(this), friend, false);
         resolver.approve(rootName, friend, false);
 
         assertFalse(resolver.isApproved(rootName, address(this), friend), "revoked:null");
@@ -197,14 +208,23 @@ contract SharedResolverTest is V2Fixture {
         assertFalse(resolver.canModifyName(otherName, address(friend)), "revoked:other");
     }
 
-    function test_Named_emit_once() external {
+    function test_approve_name_alreadyLinked() external {
+        resolver.setName(testName, "");
+        vm.recordLogs();
         vm.expectEmit();
-        emit SharedResolver.Named(uint256(testNode), testName);
+        emit ISharedResolver.ApprovalUpdated(uint256(testNode), address(this), friend, true);
+        resolver.approve(testName, friend, true);
+        _expectNoEmit(vm.getRecordedLogs(), IRecordResolver.Linked.selector);
+    }
+
+    function test_checkAuth_alreadyLinked() external {
+        vm.expectEmit();
+        emit IRecordResolver.Linked(uint256(testNode), testNode, testName);
         resolver.setName(testName, "a");
 
         vm.recordLogs();
         resolver.setName(testName, "b");
-        _expectNoEmit(vm.getRecordedLogs(), SharedResolver.Named.selector);
+        _expectNoEmit(vm.getRecordedLogs(), IRecordResolver.Linked.selector);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -213,10 +233,7 @@ contract SharedResolverTest is V2Fixture {
 
     function test_resolve_noCalldata() external {
         vm.expectRevert(
-            abi.encodeWithSelector(
-                AbstractResolverBase.UnsupportedResolverProfile.selector,
-                bytes4(0)
-            )
+            abi.encodeWithSelector(IRecordResolver.UnsupportedResolverProfile.selector, bytes4(0))
         );
         resolver.resolve(testName, "");
     }
@@ -224,7 +241,7 @@ contract SharedResolverTest is V2Fixture {
     function test_resolve_unsupported() external {
         vm.expectRevert(
             abi.encodeWithSelector(
-                AbstractResolverBase.UnsupportedResolverProfile.selector,
+                IRecordResolver.UnsupportedResolverProfile.selector,
                 TEST_SELECTOR
             )
         );
@@ -248,7 +265,7 @@ contract SharedResolverTest is V2Fixture {
 
         bytes[] memory results = new bytes[](1);
         results[0] = abi.encodeWithSelector(
-            AbstractResolverBase.UnsupportedResolverProfile.selector,
+            IRecordResolver.UnsupportedResolverProfile.selector,
             TEST_SELECTOR
         );
 
@@ -295,7 +312,7 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_setABI_notAuthorized() external {
-        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, testName));
+        vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, testName));
         vm.prank(actor);
         resolver.setABI(testName, 1, "");
     }
@@ -421,7 +438,7 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_setAddress_notAuthorized() external {
-        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, testName));
+        vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, testName));
         vm.prank(actor);
         resolver.setAddress(testName, 0, "");
     }
@@ -442,7 +459,7 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_setContentHash_notAuthorized() external {
-        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, testName));
+        vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, testName));
         vm.prank(actor);
         resolver.setContentHash(testName, "");
     }
@@ -463,7 +480,7 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_setData_notAuthorized() external {
-        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, testName));
+        vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, testName));
         vm.prank(actor);
         resolver.setData(testName, "", "");
     }
@@ -502,7 +519,7 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_setInterface_notAuthorized() external {
-        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, testName));
+        vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, testName));
         vm.prank(actor);
         resolver.setInterface(testName, bytes4(0), address(0));
     }
@@ -523,7 +540,7 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_setName_notAuthorized() external {
-        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, testName));
+        vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, testName));
         vm.prank(actor);
         resolver.setName(testName, "");
     }
@@ -544,7 +561,7 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_setPubkey_notAuthorized() external {
-        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, testName));
+        vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, testName));
         vm.prank(actor);
         resolver.setPubkey(testName, bytes32(0), bytes32(0));
     }
@@ -565,7 +582,7 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_setText_notAuthorized() external {
-        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, testName));
+        vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, testName));
         vm.prank(actor);
         resolver.setText(testName, "", "");
     }
@@ -593,7 +610,7 @@ contract SharedResolverTest is V2Fixture {
     }
 
     function test_clear_notAuthorized() external {
-        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, testName));
+        vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, testName));
         vm.prank(actor);
         resolver.clear(testName);
     }
@@ -658,7 +675,7 @@ contract SharedResolverTest is V2Fixture {
         m[0] = abi.encodeCall(INameSetter.setName, (testName, ""));
         m[1] = abi.encodeCall(INameSetter.setName, (dneName, "")); // wrong
 
-        vm.expectRevert(abi.encodeWithSelector(SharedResolver.CannotModifyName.selector, dneName));
+        vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, dneName));
         resolver.multicall(m);
     }
 

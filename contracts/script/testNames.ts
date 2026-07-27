@@ -23,7 +23,7 @@ import {
   renewName,
 } from "./testNames/registrar.js";
 import { showName, showAlias, formatStatus } from "./testNames/display.js";
-import { ADDR_ABI } from "../test/utils/resolvers.js";
+import { ADDR_ABI } from "../test/utils/resolver-abis.js";
 
 // Re-export all utilities for external consumers
 export {

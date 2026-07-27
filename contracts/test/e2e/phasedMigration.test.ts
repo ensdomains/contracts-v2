@@ -35,7 +35,7 @@ const MIN_V2_REGISTRATION_SECONDS = 28n * 24n * 60n * 60n;
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 
 describe("Phased migration rehearsal", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
   const csvFilePath = join(process.cwd(), "test-phased-migration.csv");
   const cleanupFiles = [
     csvFilePath,

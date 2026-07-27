@@ -45,7 +45,7 @@ const defaultProfile = {
 } as const satisfies Partial<KnownProfile>;
 
 describe("Migration", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
 
   setupEnv({
     resetOnEach: true,
