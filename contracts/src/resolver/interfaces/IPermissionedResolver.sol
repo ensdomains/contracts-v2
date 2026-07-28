@@ -34,7 +34,7 @@ interface IPermissionedResolver is IRecordResolver, IEnhancedAccessControl, IMul
 
     /// @notice Associate `name` with `targetNode`.
     /// @param sourceName The DNS-encoded name to link.
-    /// @param targetNode The target namehash or null to unlink.
+    /// @param targetNode The target namehash.
     function linkToNode(bytes calldata sourceName, bytes32 targetNode) external;
 
     /// @notice Associate `name` with `recordId`.

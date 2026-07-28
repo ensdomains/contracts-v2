@@ -33,22 +33,16 @@ interface ISharedResolver is IRecordResolver {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Clear all records for `name`.
+    /// @param name The DNS-encoded name.
+    function clear(bytes calldata name) external;
+
     /// @notice Authorize `operator` for `name`.
     ///         Use root name to authorize all names.
     /// @param name The DNS-encoded name.
     /// @param operator The account to authorize.
     /// @param approved The authorization state.
     function approve(bytes calldata name, address operator, bool approved) external;
-
-    /// @notice Clear all records for `name`.
-    /// @param name The DNS-encoded name.
-    function clear(bytes calldata name) external;
-
-    /// @notice Determine if `operator` is authorized.
-    /// @param name The name to check.
-    /// @param operator The account requesting authorization.
-    /// @return `true` if authorized.
-    function canModifyName(bytes calldata name, address operator) external view returns (bool);
 
     /// @notice Check if `operator` is approved by `owner` for `name`.
     /// @param name The DNS-encoded name.
@@ -59,6 +53,12 @@ interface ISharedResolver is IRecordResolver {
         external
         view
         returns (bool);
+
+    /// @notice Determine if `operator` is authorized.
+    /// @param name The name to check.
+    /// @param operator The account requesting authorization.
+    /// @return `true` if authorized.
+    function canModifyName(bytes calldata name, address operator) external view returns (bool);
 
     /// @notice Find the owner for `name`.
     /// @param name The DNS-encoded name.
