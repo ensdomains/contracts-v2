@@ -200,7 +200,7 @@ async function withMockedIntentRoute<T>(
 }
 
 describe("Standalone HCA", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
 
   // The devnet deploy scripts deploy the local HCA stack and register its
   // implementation with the default reverse adapter.

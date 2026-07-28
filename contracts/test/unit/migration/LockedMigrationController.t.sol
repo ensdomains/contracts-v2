@@ -38,25 +38,18 @@ import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAc
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {WrapperRegistry, IWrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
-import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
-import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
-    ApprovedUpgradeGate approvedUpgradeGate;
-    WrapperRegistry wrapperRegistryImpl;
-    PermissionedAddressSet publicResolverSet;
     PublicResolverV2 publicResolver;
+    WrapperRegistry wrapperRegistryImpl;
 
     function setUp() external {
         deployMigrationControllerFixture();
 
-        approvedUpgradeGate = new ApprovedUpgradeGate(address(this));
-
-        publicResolverSet = new PermissionedAddressSet(address(this));
         publicResolver = new PublicResolverV2(nameWrapper, rootRegistry, contractNamer);
 
         vm.expectEmit();
@@ -66,7 +59,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(graveyard),
             verifiableFactory,
             address(ensV1Resolver),
-            approvedUpgradeGate,
+            registryUpgradeSet,
             labelStore,
             publicResolverSet,
             address(publicResolver),
@@ -174,7 +167,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         WrapperRegistry registry = _deployWrapperRegistryProxy();
         WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
 
-        approvedUpgradeGate.setImplementationApproval(address(newImplementation), true);
+        registryUpgradeSet.approve(address(newImplementation), true);
 
         vm.prank(testOwner);
         registry.upgradeToAndCall(address(newImplementation), "");
@@ -186,7 +179,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         WrapperRegistry registry = _deployWrapperRegistryProxy();
         WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
 
-        approvedUpgradeGate.setImplementationApproval(address(newImplementation), true);
+        registryUpgradeSet.approve(address(newImplementation), true);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -1361,7 +1354,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 address(graveyard),
                 verifiableFactory,
                 address(ensV1Resolver),
-                approvedUpgradeGate,
+                registryUpgradeSet,
                 labelStore,
                 publicResolverSet,
                 address(publicResolver),
@@ -1377,7 +1370,7 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
         address graveyard,
         IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
-        ApprovedUpgradeGate upgradeGate,
+        IAddressSet upgradeSet,
         ILabelStore labelStore,
         IAddressSet publicResolverSet,
         address publicResolver,
@@ -1388,7 +1381,7 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
             graveyard,
             verifiableFactory,
             ensV1Resolver,
-            upgradeGate,
+            upgradeSet,
             labelStore,
             publicResolverSet,
             publicResolver,

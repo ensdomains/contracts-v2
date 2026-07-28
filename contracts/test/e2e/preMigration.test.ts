@@ -41,7 +41,7 @@ import {
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 
 describe("PreMigration", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
 
   const csvFilePath = join(tmpdir(), "test-premigration.csv");
   const cleanupFiles = [
@@ -677,11 +677,13 @@ describe("PreMigration", () => {
     expect(checkpoint).not.toBeNull();
     expect(checkpoint!.successCount).toBe(2);
     expect(checkpoint!.skippedCount).toBe(1);
+    expect(checkpoint!.skippedNeverRegisteredCount).toBe(1);
+    expect(checkpoint!.skippedPastGraceCount).toBe(0);
     expect(checkpoint!.failureCount).toBe(0);
     expect(checkpoint!.totalProcessed).toBe(3);
   });
 
-  it("checkpoint tracks failures for already-registered names", async () => {
+  it("checkpoint tracks already-registered names separately from failures", async () => {
     const registeredLabel = "cptregfail";
     const validLabel = "cptregvalid";
     const { user, deployer } = env.namedAccounts;
@@ -705,7 +707,8 @@ describe("PreMigration", () => {
     const checkpoint = readTestCheckpoint();
     expect(checkpoint).not.toBeNull();
     expect(checkpoint!.successCount).toBe(1);
-    expect(checkpoint!.failureCount).toBe(1);
+    expect(checkpoint!.alreadyRegisteredCount).toBe(1);
+    expect(checkpoint!.failureCount).toBe(0);
   });
 
   it("checkpoint tracks renewed count separately", async () => {
@@ -730,6 +733,25 @@ describe("PreMigration", () => {
     const checkpointAfter = readTestCheckpoint();
     expect(checkpointAfter!.renewedCount).toBe(1);
     expect(checkpointAfter!.successCount).toBe(0);
+  });
+
+  it("fresh run clears a stale checkpoint left by a previous run", async () => {
+    writeTestCheckpoint(
+      createTestCheckpoint({
+        totalProcessed: 5,
+        successCount: 5,
+        totalExpected: 5,
+      }),
+    );
+
+    // Header-only CSV: a fresh run processes zero batches and writes no new
+    // checkpoint, so the stale one must be cleared rather than left to be
+    // mistaken for this run's result.
+    createCSVFile(csvFilePath, []);
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    expect(readTestCheckpoint()).toBeNull();
   });
 
   // ─── Invalid label handling ────────────────────────────────────────
@@ -1210,7 +1232,7 @@ describe("PreMigration", () => {
     expect(checkpoint!.failureCount).toBe(0);
   });
 
-  it("multiple registered names in batch are all counted as failures", async () => {
+  it("multiple already-registered names in batch are all counted separately from failures", async () => {
     const registeredLabels = ["mreg1", "mreg2"];
     const validLabel = "mregvalid";
     const { user, deployer } = env.namedAccounts;
@@ -1236,7 +1258,8 @@ describe("PreMigration", () => {
 
     const checkpoint = readTestCheckpoint();
     expect(checkpoint!.successCount).toBe(1);
-    expect(checkpoint!.failureCount).toBe(2);
+    expect(checkpoint!.alreadyRegisteredCount).toBe(2);
+    expect(checkpoint!.failureCount).toBe(0);
   });
 
   it("re-running same batch after successful reservation uses renewal path", async () => {

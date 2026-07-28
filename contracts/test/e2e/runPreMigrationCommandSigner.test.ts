@@ -1,5 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { privateKeyToAccount } from "viem/accounts";
+import {
+  CHECKPOINT_FILE,
+  createFreshCheckpoint,
+  type Checkpoint,
+} from "../../script/preMigration.js";
 
 import { runPreMigrationCommand } from "../../script/migration.js";
 
@@ -14,9 +29,19 @@ const DEPLOYER_KEY =
 const deployerAccount = privateKeyToAccount(DEPLOYER_KEY);
 
 let capturedArgs: string[] | null = null;
+// When set, the mocked pre-migration run writes this checkpoint to its workDir,
+// standing in for the real run so the metadata-persistence path can be exercised.
+let checkpointToWrite: Checkpoint | null = null;
 
 async function captureArgs(args: string[]) {
   capturedArgs = args;
+  if (checkpointToWrite) {
+    writeFileSync(CHECKPOINT_FILE, JSON.stringify(checkpointToWrite));
+  }
+}
+
+function makeCheckpoint(overrides: Partial<Checkpoint>): Checkpoint {
+  return { ...createFreshCheckpoint(), ...overrides };
 }
 
 function flagValue(args: string[], flag: string): string | undefined {
@@ -90,5 +115,195 @@ describe("runPreMigrationCommand signer resolution", () => {
     );
     expect(flagValue(capturedArgs!, "--private-key")).toBe(OWNER_KEY);
     expect(flagValue(capturedArgs!, "--account")).toBe(ownerAccount.address);
+  });
+});
+
+describe("runPreMigrationCommand metadata persistence", () => {
+  let deploymentsDir: string;
+  let workDir: string;
+  const deploymentNetwork = "mainnet";
+
+  beforeEach(() => {
+    process.env.DEPLOYER_KEY = DEPLOYER_KEY;
+    deploymentsDir = mkdtempSync(join(tmpdir(), "premigration-meta-deploy-"));
+    workDir = mkdtempSync(join(tmpdir(), "premigration-meta-work-"));
+    // The namespace dir must exist for the sidecar to be written.
+    mkdirSync(join(deploymentsDir, deploymentNetwork), { recursive: true });
+  });
+
+  afterEach(() => {
+    checkpointToWrite = null;
+    delete process.env.DEPLOYER_KEY;
+    rmSync(deploymentsDir, { recursive: true, force: true });
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  const metadataPath = () =>
+    join(deploymentsDir, deploymentNetwork, ".premigration.json");
+
+  const readMetadata = () => JSON.parse(readFileSync(metadataPath(), "utf-8"));
+
+  it("writes a run summary and resolved roll-up, upserting by label", async () => {
+    checkpointToWrite = makeCheckpoint({
+      totalExpected: 9,
+      totalProcessed: 9,
+      successCount: 5,
+      renewedCount: 0,
+      skippedCount: 3,
+      skippedNeverRegisteredCount: 2,
+      skippedPastGraceCount: 1,
+      alreadyRegisteredCount: 0,
+      invalidLabelCount: 1,
+      failureCount: 0,
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork,
+        workDir,
+        metadataLabel: "initial",
+      },
+      false,
+      captureArgs,
+    );
+
+    let metadata = readMetadata();
+    expect(metadata.chainId).toBe(1);
+    expect(metadata.runs).toHaveLength(1);
+    expect(metadata.runs[0]).toMatchObject({
+      label: "initial",
+      reserved: 5,
+      renewed: 0,
+      skippedNeverRegistered: 2,
+      skippedExpiredPastGrace: 1,
+      invalidLabels: 1,
+      alreadyOnV2: 0,
+      failed: 0,
+    });
+
+    // Resume re-writes the same label's accumulated checkpoint: upsert, not append.
+    checkpointToWrite = makeCheckpoint({
+      totalExpected: 9,
+      totalProcessed: 9,
+      successCount: 6,
+      skippedCount: 3,
+      skippedNeverRegisteredCount: 2,
+      skippedPastGraceCount: 1,
+      invalidLabelCount: 0,
+      timestamp: "2026-01-01T01:00:00.000Z",
+    });
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork,
+        workDir,
+        metadataLabel: "initial",
+      },
+      true,
+      captureArgs,
+    );
+    metadata = readMetadata();
+    expect(metadata.runs).toHaveLength(1);
+    expect(metadata.runs[0].reserved).toBe(6);
+
+    // A second logical run (final-sync) appends and drives the resolved section,
+    // being the most recently finished run.
+    checkpointToWrite = makeCheckpoint({
+      totalExpected: 10,
+      totalProcessed: 10,
+      successCount: 1,
+      renewedCount: 5,
+      skippedCount: 3,
+      skippedNeverRegisteredCount: 2,
+      skippedPastGraceCount: 1,
+      alreadyRegisteredCount: 1,
+      invalidLabelCount: 1,
+      failureCount: 0,
+      timestamp: "2026-01-02T00:00:00.000Z",
+    });
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork,
+        workDir,
+        metadataLabel: "final-sync",
+      },
+      false,
+      captureArgs,
+    );
+    metadata = readMetadata();
+    expect(metadata.runs).toHaveLength(2);
+    expect(metadata.resolved).toMatchObject({
+      finishedAt: "2026-01-02T00:00:00.000Z",
+      totalNames: 10,
+      namesPreMigrated: 6,
+      newReservations: 1,
+      expiryResyncs: 5,
+      skippedNeverRegistered: 2,
+      skippedExpiredPastGrace: 1,
+      invalidLabels: 1,
+      alreadyOnV2: 1,
+      failed: 0,
+    });
+  });
+
+  it("skips the write on dry run and when persistMetadata is false", async () => {
+    checkpointToWrite = makeCheckpoint({
+      successCount: 1,
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork,
+        workDir,
+        metadataLabel: "run",
+        dryRun: true,
+      },
+      false,
+      captureArgs,
+    );
+    expect(existsSync(metadataPath())).toBe(false);
+
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork,
+        workDir,
+        metadataLabel: "run",
+        persistMetadata: false,
+      },
+      false,
+      captureArgs,
+    );
+    expect(existsSync(metadataPath())).toBe(false);
+  });
+
+  it("does not write when the namespace directory is absent", async () => {
+    checkpointToWrite = makeCheckpoint({
+      successCount: 1,
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork: "does-not-exist",
+        workDir,
+        metadataLabel: "run",
+      },
+      false,
+      captureArgs,
+    );
+    expect(
+      existsSync(join(deploymentsDir, "does-not-exist", ".premigration.json")),
+    ).toBe(false);
   });
 });

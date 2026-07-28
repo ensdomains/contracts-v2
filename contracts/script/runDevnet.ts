@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { parseArgs } from "node:util";
 import { getAddress } from "viem";
+import { preMigrateDevnetNames } from "./preMigrateDevnetNames.js";
 import { setupDevnet } from "./setup.js";
 import { testNames } from "./testNames.js";
 import { COIN_TYPE_ETH } from "../test/utils/utils.js";
@@ -15,6 +16,12 @@ const args = parseArgs({
     },
     testNames: {
       type: "boolean",
+    },
+    preMigrate: {
+      type: "boolean",
+    },
+    preMigrateOwner: {
+      type: "string",
     },
     chainId: {
       type: "string",
@@ -38,9 +45,19 @@ const args = parseArgs({
 const forkUrl = args.values.forkUrl ?? process.env.FORK_URL;
 const forkBlock = args.values.forkBlock ?? process.env.FORK_BLOCK;
 const quiet = args.values.quiet ?? process.env.DEVNET_QUIET === "1";
+const preMigrate =
+  args.values.preMigrate ?? process.env.DEVNET_PREMIGRATE === "1";
+const preMigrateOwner =
+  args.values.preMigrateOwner ?? process.env.DEVNET_PREMIGRATE_OWNER;
 
 if (forkUrl && args.values.testNames) {
   console.error("--testNames is incompatible with --forkUrl");
+  process.exit(2);
+}
+
+// Pre-migration reserves real v1 names, which only exist on a mainnet fork.
+if (preMigrate && !forkUrl) {
+  console.error("--preMigrate requires --forkUrl");
   process.exit(2);
 }
 
@@ -87,10 +104,17 @@ if (!quiet) {
     await Promise.all(
       Object.entries(env.rocketh.deployments).map(
         async ([name, { address }]) => {
-          const [primary] = await env.v2.UniversalResolver.read.reverse([
-            address,
-            COIN_TYPE_ETH,
-          ]);
+          // On a mainnet fork, reverse resolution for freshly-deployed
+          // contracts can revert; fall back to no primary name rather than
+          // crashing the whole table.
+          let primary = "";
+          try {
+            const result = await env.v2.UniversalResolver.read.reverse([
+              address,
+              COIN_TYPE_ETH,
+            ]);
+            primary = result[0];
+          } catch {}
           return {
             "Contract Name": name,
             "Contract Address": getAddress(address),
@@ -125,6 +149,9 @@ await env.sync({ warpSec: "local" });
 // expected to grant controller roles themselves via test-side setup.
 if (forkUrl) {
   await env.activateV2();
+  if (preMigrate) {
+    await preMigrateDevnetNames(env, { reassignOwnerTo: preMigrateOwner });
+  }
 }
 
 console.log(new Date(), `Ready! <${Date.now() - t0}ms>`);

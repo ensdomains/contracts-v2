@@ -56,6 +56,8 @@ import {
 } from "./deploy-constants.js";
 import { main as exportRegistrationsMain } from "./exportTheGraphRegistrations.js";
 import {
+  CHECKPOINT_FILE,
+  type Checkpoint,
   createFreshCheckpoint,
   isValidLabel,
   loadCheckpoint,
@@ -1111,6 +1113,8 @@ export async function runPreMigrationCommand(
     v1BaseRegistrar?: Address;
     workDir?: string;
     dryRun?: boolean;
+    metadataLabel?: string;
+    persistMetadata?: boolean;
   },
   resume: boolean,
   run: (args: string[]) => Promise<void> = preMigrationMain,
@@ -1191,6 +1195,24 @@ export async function runPreMigrationCommand(
       args.push("--bonus-period-days", opts.bonusPeriodDays);
     if (resume) args.push("--continue");
     await run(args);
+
+    // Persist a durable counts sidecar into the deployment namespace. Skipped on
+    // dry runs and when the caller opts out (e.g. a fork rehearsal that does not
+    // save deployments), so a committed namespace is never touched by a throwaway
+    // run. The checkpoint lands in the workDir (or cwd when none was set).
+    if (!opts.dryRun && (opts.persistMetadata ?? true)) {
+      const cpDir = opts.workDir ? resolve(opts.workDir) : previousCwd;
+      const checkpoint = loadCheckpoint(join(cpDir, CHECKPOINT_FILE));
+      if (checkpoint) {
+        recordPreMigrationMetadata({
+          deploymentsDir,
+          deploymentNetwork,
+          network,
+          label: opts.metadataLabel ?? "run",
+          checkpoint,
+        });
+      }
+    }
   } finally {
     process.chdir(previousCwd);
   }
@@ -4259,6 +4281,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
         batchSize: opts.batchSize,
         limit: opts.initialLimit,
         workDir,
+        metadataLabel: "initial",
+        persistMetadata: Boolean(opts.saveDeployments),
       },
       resumeFromPhase === 2,
     );
@@ -4359,8 +4383,10 @@ export async function runForkFull(opts: RunForkFullOptions) {
         batchSize: opts.batchSize,
         limit: opts.finishLimit,
         workDir: finalSyncWorkDir,
+        metadataLabel: "final-sync",
+        persistMetadata: Boolean(opts.saveDeployments),
       },
-      existsSync(join(finalSyncWorkDir, "preMigration-checkpoint.json")),
+      existsSync(join(finalSyncWorkDir, CHECKPOINT_FILE)),
     );
     if (!postMigration) {
       await assertV2State({
@@ -4868,6 +4894,125 @@ function recordDeploymentMetadata(
   );
 }
 
+const PREMIGRATION_METADATA_FILE = ".premigration.json";
+
+// One summary entry per logical pre-migration run (initial, final-sync, or a
+// standalone run). Counts only — never label strings.
+interface PreMigrationRunSummary {
+  label: string;
+  finishedAt: string;
+  totalExpected: number;
+  totalProcessed: number;
+  reserved: number;
+  renewed: number;
+  skippedNeverRegistered: number;
+  skippedExpiredPastGrace: number;
+  invalidLabels: number;
+  alreadyOnV2: number;
+  failed: number;
+}
+
+interface PreMigrationMetadata {
+  network: string;
+  deploymentNetwork: string;
+  chainId?: number;
+  updatedAt: string;
+  resolved: {
+    finishedAt: string;
+    totalNames: number;
+    namesPreMigrated: number;
+    newReservations: number;
+    expiryResyncs: number;
+    skippedNeverRegistered: number;
+    skippedExpiredPastGrace: number;
+    invalidLabels: number;
+    alreadyOnV2: number;
+    failed: number;
+  };
+  runs: PreMigrationRunSummary[];
+}
+
+function checkpointToRunSummary(
+  label: string,
+  checkpoint: Checkpoint,
+): PreMigrationRunSummary {
+  return {
+    label,
+    finishedAt: checkpoint.timestamp,
+    totalExpected: checkpoint.totalExpected,
+    totalProcessed: checkpoint.totalProcessed,
+    reserved: checkpoint.successCount,
+    renewed: checkpoint.renewedCount,
+    skippedNeverRegistered: checkpoint.skippedNeverRegisteredCount,
+    skippedExpiredPastGrace: checkpoint.skippedPastGraceCount,
+    invalidLabels: checkpoint.invalidLabelCount,
+    alreadyOnV2: checkpoint.alreadyRegisteredCount,
+    failed: checkpoint.failureCount,
+  };
+}
+
+// The resolved roll-up reflects the run that finished most recently, which in
+// the phased flow is the final-sync pass that re-scans the whole corpus and so
+// represents the end state. `namesPreMigrated` = names currently reserved on v2
+// (newly reserved this run + already-reserved names whose expiry was re-synced).
+function resolveFromRuns(
+  runs: PreMigrationRunSummary[],
+): PreMigrationMetadata["resolved"] {
+  const latest = runs.reduce((a, b) => (b.finishedAt >= a.finishedAt ? b : a));
+  return {
+    finishedAt: latest.finishedAt,
+    totalNames: latest.totalExpected,
+    namesPreMigrated: latest.reserved + latest.renewed,
+    newReservations: latest.reserved,
+    expiryResyncs: latest.renewed,
+    skippedNeverRegistered: latest.skippedNeverRegistered,
+    skippedExpiredPastGrace: latest.skippedExpiredPastGrace,
+    invalidLabels: latest.invalidLabels,
+    alreadyOnV2: latest.alreadyOnV2,
+    failed: latest.failed,
+  };
+}
+
+// Persists a compact pre-migration counts sidecar into the deployment
+// namespace, alongside `.deployment.json`. A dotfile so rocketh's loader ignores
+// it (it only reads `.migrations.json` + non-dot `*.json` artifacts). Each run
+// is upserted by `label` so a resume that re-writes its accumulated checkpoint
+// updates its own entry in place instead of appending a duplicate.
+function recordPreMigrationMetadata(opts: {
+  deploymentsDir: string;
+  deploymentNetwork: string;
+  network: MigrationNetwork;
+  label: string;
+  checkpoint: Checkpoint;
+}) {
+  const dir = join(opts.deploymentsDir, opts.deploymentNetwork);
+  if (!existsSync(dir)) return;
+  const metadataPath = join(dir, PREMIGRATION_METADATA_FILE);
+
+  let existing: PreMigrationMetadata | undefined;
+  if (existsSync(metadataPath)) {
+    try {
+      existing = JSON.parse(readFileSync(metadataPath, "utf-8"));
+    } catch {
+      existing = undefined;
+    }
+  }
+
+  const runs = (existing?.runs ?? []).filter((run) => run.label !== opts.label);
+  runs.push(checkpointToRunSummary(opts.label, opts.checkpoint));
+
+  const metadata: PreMigrationMetadata = {
+    network: opts.network,
+    deploymentNetwork: opts.deploymentNetwork,
+    chainId: NETWORKS[opts.network].chain.id,
+    updatedAt: new Date().toISOString(),
+    resolved: resolveFromRuns(runs),
+    runs,
+  };
+
+  writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
+}
+
 // Resolves a namespace's deploy time, preferring the recorded metadata and
 // falling back to the latest `.migrations.json` entry (unix-epoch seconds).
 function readDeploymentDeployedAt(path: string): string | undefined {
@@ -5111,6 +5256,7 @@ export async function main(argv = process.argv): Promise<void> {
       await runPreMigrationCommand(
         {
           ...networkOpts,
+          metadataLabel: "run",
         },
         false,
       );
@@ -5124,6 +5270,7 @@ export async function main(argv = process.argv): Promise<void> {
       await runPreMigrationCommand(
         {
           ...networkOpts,
+          metadataLabel: "run",
         },
         true,
       );
