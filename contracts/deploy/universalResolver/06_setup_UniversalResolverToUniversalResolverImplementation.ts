@@ -7,23 +7,15 @@ import {
 } from "../../script/universalResolverDeployUtils.js";
 
 export default execute(
-  async ({
-    get,
-    execute: write,
-    read,
-    namedAccounts: { owner },
-    tags,
-  }) => {
+  async ({ get, execute: write, read, namedAccounts: { owner }, tags }) => {
     if (tags.local) return true;
 
-    const topUrp =
-      get<(typeof artifacts.UpgradableUniversalResolverProxy)["abi"]>(
-        "UpgradableUniversalResolverProxy",
-      );
-    const universalResolverV2 =
-      get<(typeof artifacts.UniversalResolverV2)["abi"]>(
-        "UniversalResolverV2",
-      );
+    const topUrp = get<
+      (typeof artifacts.UpgradableUniversalResolverProxy)["abi"]
+    >("UpgradableUniversalResolverProxy");
+    const universalResolverV2 = get<
+      (typeof artifacts.UniversalResolverV2)["abi"]
+    >("UniversalResolverV2");
 
     const ownerLabel = externalTopProxyOwnerLabel(tags);
     if (ownerLabel) {
@@ -54,6 +46,8 @@ export default execute(
       "UniversalResolverToUniversalResolverImplementation",
       "v2",
     ],
-    dependencies: ["ManagedUniversalResolverProxyToUniversalResolverImplementation"],
+    dependencies: [
+      "ManagedUniversalResolverProxyToUniversalResolverImplementation",
+    ],
   },
 );

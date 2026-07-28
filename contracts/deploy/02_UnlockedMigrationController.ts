@@ -2,7 +2,13 @@ import { artifacts, execute } from "@rocketh";
 import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
 
 export default execute(
-  async ({ deploy, execute: write, get, getV1, namedAccounts: { deployer } }) => {
+  async ({
+    deploy,
+    execute: write,
+    get,
+    getV1,
+    namedAccounts: { deployer },
+  }) => {
     const nameWrapper =
       await getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
 

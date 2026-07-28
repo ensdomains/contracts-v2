@@ -7,9 +7,7 @@ export default execute(
 
     const batchGatewayProvider = await getV1<
       (typeof artifacts.GatewayProvider)["abi"]
-    >(
-      "BatchGatewayProvider",
-    );
+    >("BatchGatewayProvider");
 
     const contractNamer =
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");

@@ -13,9 +13,7 @@ export default execute(
   }) => {
     const batchGatewayProvider = await getV1<
       (typeof artifacts.GatewayProvider)["abi"]
-    >(
-      "BatchGatewayProvider",
-    );
+    >("BatchGatewayProvider");
 
     const contractNamer =
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
@@ -36,28 +34,31 @@ export default execute(
       functionName: "resolver",
       args: [namehash("eth")],
     });
-    const ethResolver = getAddress(currentResolver) === getAddress(zeroAddress)
-      ? await getV1<(typeof artifacts.OwnedResolver)["abi"]>("OwnedResolver")
-        .then((deployment) => deployment.address)
-        .catch(() => currentResolver)
-      : currentResolver;
+    const ethResolver =
+      getAddress(currentResolver) === getAddress(zeroAddress)
+        ? await getV1<(typeof artifacts.OwnedResolver)["abi"]>("OwnedResolver")
+            .then((deployment) => deployment.address)
+            .catch(() => currentResolver)
+        : currentResolver;
     console.log(`  - Got: ${ethResolver}`);
 
-    const existingEnsV2Resolver = getOrNull<
-      (typeof artifacts.ENSV2Resolver)["abi"]
-    >("ENSV2Resolver");
-    const ensV2Resolver = existingEnsV2Resolver ?? await deploy("ENSV2Resolver", {
-      account: deployer,
-      artifact: artifacts.ENSV2Resolver,
-      args: [
-        batchGatewayProvider.address,
-        contractNamer.address,
-        rootRegistry.address,
-        ethResolver,
-      ],
-    });
+    const existingEnsV2Resolver =
+      getOrNull<(typeof artifacts.ENSV2Resolver)["abi"]>("ENSV2Resolver");
+    const ensV2Resolver =
+      existingEnsV2Resolver ??
+      (await deploy("ENSV2Resolver", {
+        account: deployer,
+        artifact: artifacts.ENSV2Resolver,
+        args: [
+          batchGatewayProvider.address,
+          contractNamer.address,
+          rootRegistry.address,
+          ethResolver,
+        ],
+      }));
 
-    if (getAddress(currentResolver) === getAddress(ensV2Resolver.address)) return;
+    if (getAddress(currentResolver) === getAddress(ensV2Resolver.address))
+      return;
 
     console.log("  - Setting ENSv1 .eth resolver to ENSV2Resolver");
     if (registrarSecurityController) {

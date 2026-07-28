@@ -140,10 +140,11 @@ const NEXUS_BOOTSTRAP_ABI = parseAbi([
   "function initNexusWithDefaultValidatorAndOtherModulesNoRegistry(bytes defaultValidatorInitData, BootstrapConfig[] validators, BootstrapConfig[] executors, BootstrapConfig hook, BootstrapConfig[] fallbacks, BootstrapPreValidationHookConfig[] preValidationHooks)",
 ]);
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3" as const;
-const RHINESTONE_ROUTER =
-  "0x000000000004598D17aaD017bF0734a364c5588b" as const;
-const BASE_SEPOLIA_HCA_FUNDING_SESSION_VALIDATOR =
-  deployment("HCAFundingSessionValidator", "base-sepolia");
+const RHINESTONE_ROUTER = "0x000000000004598D17aaD017bF0734a364c5588b" as const;
+const BASE_SEPOLIA_HCA_FUNDING_SESSION_VALIDATOR = deployment(
+  "HCAFundingSessionValidator",
+  "base-sepolia",
+);
 const HCA_FUNDING_SESSION_VALIDATOR = (process.env
   .HCA_FUNDING_SESSION_VALIDATOR ??
   (sourceChain.id === baseSepolia.id
@@ -605,11 +606,7 @@ async function ensureFundingSessionValidator() {
     RHINESTONE_INTENT_EXECUTOR,
   );
   assertAddress("funding-session validator Permit2", permit2, PERMIT2);
-  assertAddress(
-    "funding-session validator Router",
-    router,
-    RHINESTONE_ROUTER,
-  );
+  assertAddress("funding-session validator Router", router, RHINESTONE_ROUTER);
   return { address, deploymentTransactionHash };
 }
 
@@ -719,7 +716,8 @@ async function main() {
   );
   if (
     HCA_CROSS_CHAIN &&
-    deployments.paymentToken.toLowerCase() !== TARGET_PAYMENT_TOKEN.toLowerCase()
+    deployments.paymentToken.toLowerCase() !==
+      TARGET_PAYMENT_TOKEN.toLowerCase()
   ) {
     throw new Error(
       `cross-chain test payment token must be Circle Sepolia USDC ${TARGET_PAYMENT_TOKEN}`,
