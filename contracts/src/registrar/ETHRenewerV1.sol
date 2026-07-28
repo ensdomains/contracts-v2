@@ -13,9 +13,8 @@ import {AbstractETHRegistrar} from "./AbstractETHRegistrar.sol";
 import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
-/// @notice `ETHRegistrarController.renew()` stub interface.
-/// @dev Interface selector: `0xacf1a841`
 // https://github.com/ensdomains/ens-contracts/blob/staging/deployments/mainnet/WrappedETHRegistrarController.json
+/// @notice `ETHRegistrarController.renew()` stub interface.
 /// @dev Interface selector: `0xacf1a841`
 interface IWrappedETHRegistrarController {
     /// @notice Renew an ENSv1 name.

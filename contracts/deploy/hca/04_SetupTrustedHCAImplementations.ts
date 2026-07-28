@@ -6,7 +6,6 @@ export default execute(
   async ({
     execute: write,
     get,
-    getOrNull,
     namedAccounts: { owner, deployer },
     read,
     tags,
@@ -17,23 +16,19 @@ export default execute(
     const implementation = get<
       (typeof artifacts.StandaloneSingleOwnerHCA)["abi"]
     >("StandaloneHCAImplementation");
-    const defaultReverseRegistrarAdapter =
-      getOrNull<(typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]>(
-        "DefaultReverseRegistrarHCAAdapter",
-      ) ??
-      get<(typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]>(
-        "DefaultReverseRegistrarAdapter",
-      );
 
-    const trusted = await read(defaultReverseRegistrarAdapter, {
-      functionName: "trustedHCAImplementations",
+    const trustedHCASet =
+      get<(typeof artifacts.PermissionedAddressSet)["abi"]>("TrustedHCASet");
+
+    const isTrusted = await read(trustedHCASet, {
+      functionName: "includes",
       args: [implementation.address],
     });
-    if (trusted) return;
+    if (isTrusted) return;
 
-    await write(defaultReverseRegistrarAdapter, {
+    await write(trustedHCASet, {
       account,
-      functionName: "setTrustedHCAImplementation",
+      functionName: "approve",
       args: [implementation.address, true],
     });
   },
@@ -45,9 +40,6 @@ export default execute(
       "migration:phase1:deploy-v2",
       "v2",
     ],
-    dependencies: [
-      "StandaloneHCAImplementation",
-      "DefaultReverseRegistrarHCAAdapter",
-    ],
+    dependencies: ["TrustedHCASet", "StandaloneHCAImplementation"],
   },
 );

@@ -3,51 +3,43 @@ pragma solidity ^0.8.13;
 
 // solhint-disable private-vars-leading-underscore, state-visibility, func-name-mixedcase
 
-import {Test} from "forge-std/Test.sol";
-
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {DefaultReverseRegistrar} from "@ens/contracts/reverseRegistrar/DefaultReverseRegistrar.sol";
 import {MockOwnable} from "@ens/contracts/test/mocks/MockOwnable.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {
     DefaultReverseRegistrarAdapter
 } from "~src/reverse-registrar/DefaultReverseRegistrarAdapter.sol";
 import {MockContractNamer} from "~test/mocks/MockContractNamer.sol";
-import {MockHCA} from "~test/mocks/MockHCA.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {AccountNamerLib} from "~src/reverse-registrar/libraries/AccountNamerLib.sol";
-import {HCAAuthorizer} from "~src/utils/HCAAuthorizer.sol";
+import {HCAAuthorizer} from "~src/hca/HCAAuthorizer.sol";
+import {HCAFixture} from "~test/fixtures/HCAFixture.sol";
 
-contract DefaultReverseRegistrarAdapterTest is Test {
+contract DefaultReverseRegistrarAdapterTest is HCAFixture {
     DefaultReverseRegistrar defaultReverseRegistrar;
     DefaultReverseRegistrarAdapter defaultAdapter;
     VerifiableFactory verifiableFactory;
     MockContractNamer delegatedNamer;
-    MockHCA hcaImplementation;
-    MockHCA otherHCAImplementation;
 
     address owner = makeAddr("owner");
-    address adapterOwner = makeAddr("adapterOwner");
-    address other = makeAddr("other");
+    address actor = makeAddr("actor");
     string name = "primary.eth";
-    uint256 nextSalt = 1;
 
     function setUp() external {
+        deployHCAFixture();
+
         defaultReverseRegistrar = new DefaultReverseRegistrar();
         verifiableFactory = new VerifiableFactory();
         delegatedNamer = new MockContractNamer(owner);
-        hcaImplementation = new MockHCA();
-        otherHCAImplementation = new MockHCA();
 
-        address[] memory trustedHCAImplementations = new address[](1);
-        trustedHCAImplementations[0] = address(hcaImplementation);
         defaultAdapter = new DefaultReverseRegistrarAdapter(
             defaultReverseRegistrar,
-            delegatedNamer,
             verifiableFactory,
-            adapterOwner,
-            trustedHCAImplementations
+            trustedHCASet,
+            delegatedNamer
         );
 
         defaultReverseRegistrar.setController(address(defaultAdapter), true);
@@ -64,49 +56,26 @@ contract DefaultReverseRegistrarAdapterTest is Test {
             address(verifiableFactory),
             "VERIFIABLE_FACTORY"
         );
+        assertEq(
+            address(defaultAdapter.TRUSTED_HCA_SET()),
+            address(trustedHCASet),
+            "TRUSTED_HCA_SET"
+        );
         assertEq(address(defaultAdapter.CONTRACT_NAMER()), address(delegatedNamer), "CONTRACT_NAMER");
-        assertEq(defaultAdapter.owner(), adapterOwner, "owner");
-        assertTrue(defaultAdapter.trustedHCAImplementations(address(hcaImplementation)), "trusted");
-        assertFalse(
-            defaultAdapter.trustedHCAImplementations(address(otherHCAImplementation)),
-            "untrusted"
-        );
-    }
-
-    function test_constructor_revert_verifiableFactoryCannotBeZero() external {
-        address[] memory trustedHCAImplementations = new address[](0);
-
-        vm.expectRevert(HCAAuthorizer.VerifiableFactoryCannotBeZero.selector);
-        new DefaultReverseRegistrarAdapter(
-            defaultReverseRegistrar,
-            delegatedNamer,
-            VerifiableFactory(address(0)),
-            adapterOwner,
-            trustedHCAImplementations
-        );
-    }
-
-    function test_constructor_revert_initialHCAImplementationCannotBeZero() external {
-        address[] memory trustedHCAImplementations = new address[](1);
-
-        vm.expectRevert(HCAAuthorizer.HCAImplementationCannotBeZero.selector);
-        new DefaultReverseRegistrarAdapter(
-            defaultReverseRegistrar,
-            delegatedNamer,
-            verifiableFactory,
-            adapterOwner,
-            trustedHCAImplementations
-        );
     }
 
     function test_supportsInterface() external view {
-        assertTrue(defaultAdapter.supportsInterface(type(IContractNamer).interfaceId));
-        assertFalse(defaultAdapter.supportsInterface(0xffffffff));
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(defaultAdapter),
+                type(IContractNamer).interfaceId
+            )
+        );
     }
 
     function test_delegatesContractNamer() external view {
         assertTrue(defaultAdapter.isContractNamer(owner));
-        assertFalse(defaultAdapter.isContractNamer(other));
+        assertFalse(defaultAdapter.isContractNamer(actor));
     }
 
     function test_setName_EOA() external {
@@ -117,8 +86,8 @@ contract DefaultReverseRegistrarAdapterTest is Test {
     }
 
     function test_setName_revert_unauthorized() external {
-        vm.expectRevert(abi.encodeWithSelector(AccountNamerLib.UnauthorizedNamer.selector, other));
-        vm.prank(other);
+        vm.expectRevert(abi.encodeWithSelector(AccountNamerLib.UnauthorizedNamer.selector, actor));
+        vm.prank(actor);
         defaultAdapter.setName(owner, name);
     }
 
@@ -140,27 +109,8 @@ contract DefaultReverseRegistrarAdapterTest is Test {
         assertEq(defaultReverseRegistrar.nameForAddr(address(c)), name);
     }
 
-    function test_setTrustedHCAImplementation() external {
-        vm.expectEmit(true, true, true, true);
-        emit HCAAuthorizer.TrustedHCAImplementationUpdated(address(otherHCAImplementation), true);
-
-        vm.prank(adapterOwner);
-        defaultAdapter.setTrustedHCAImplementation(address(otherHCAImplementation), true);
-
-        assertTrue(
-            defaultAdapter.trustedHCAImplementations(address(otherHCAImplementation)),
-            "trusted"
-        );
-    }
-
-    function test_setTrustedHCAImplementation_revert_onlyOwner() external {
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, other));
-        vm.prank(other);
-        defaultAdapter.setTrustedHCAImplementation(address(otherHCAImplementation), true);
-    }
-
     function test_setNameWithHCA_EOA() external {
-        address hca = _deployHCA(owner, address(hcaImplementation));
+        address hca = _deployHCA(verifiableFactory, owner, address(trustedHCAImpl));
 
         vm.prank(hca);
         defaultAdapter.setNameWithHCA(owner, name);
@@ -170,7 +120,7 @@ contract DefaultReverseRegistrarAdapterTest is Test {
     }
 
     function test_setNameWithHCA_revert_hcaOwnerMismatch_ownable() external {
-        address hca = _deployHCA(owner, address(hcaImplementation));
+        address hca = _deployHCA(verifiableFactory, owner, address(trustedHCAImpl));
         MockOwnable c = new MockOwnable(owner);
 
         vm.expectRevert(
@@ -181,7 +131,7 @@ contract DefaultReverseRegistrarAdapterTest is Test {
     }
 
     function test_setNameWithHCA_revert_hcaOwnerMismatch_contractNamer() external {
-        address hca = _deployHCA(owner, address(hcaImplementation));
+        address hca = _deployHCA(verifiableFactory, owner, address(trustedHCAImpl));
         MockContractNamer c = new MockContractNamer(owner);
 
         vm.expectRevert(
@@ -192,31 +142,44 @@ contract DefaultReverseRegistrarAdapterTest is Test {
     }
 
     function test_setNameWithHCA_revert_hcaImplementationNotTrusted() external {
-        address hca = _deployHCA(owner, address(otherHCAImplementation));
+        address hca = _deployHCA(verifiableFactory, owner, address(untrustedHCAImpl));
 
         vm.expectRevert(
             abi.encodeWithSelector(
                 HCAAuthorizer.HCAImplementationNotTrusted.selector,
-                address(otherHCAImplementation)
+                address(untrustedHCAImpl)
             )
         );
         vm.prank(hca);
         defaultAdapter.setNameWithHCA(owner, name);
     }
 
-    function test_setNameWithHCA_revert_hcaOwnerMismatch() external {
-        address hca = _deployHCA(owner, address(hcaImplementation));
-
+    function test_setNameWithHCA_revert_hcaVerificationFailed() external {
         vm.expectRevert(
-            abi.encodeWithSelector(HCAAuthorizer.HCAOwnerMismatch.selector, other, owner)
+            abi.encodeWithSelector(
+                IVerifiableFactory.VerificationFailed.selector,
+                address(trustedHCAImpl)
+            )
         );
-        vm.prank(hca);
-        defaultAdapter.setNameWithHCA(other, name);
+        vm.prank(address(trustedHCAImpl));
+        defaultAdapter.setNameWithHCA(owner, name);
     }
 
-    function _deployHCA(address hcaOwner, address hcaImplementation_) internal returns (address) {
-        bytes memory data = abi.encodeCall(MockHCA.initialize, (hcaOwner));
-        vm.prank(owner);
-        return verifiableFactory.deployProxy(hcaImplementation_, nextSalt++, data);
+    function test_setNameWithHCA_revert_hcaOwnerReverts() external {
+        address hca = _deployHCA(verifiableFactory, owner, address(revertingHCAImpl));
+
+        vm.expectRevert(abi.encodeWithSelector(HCAAuthorizer.HCAOwnerUnavailable.selector, hca));
+        vm.prank(hca);
+        defaultAdapter.setNameWithHCA(owner, name);
+    }
+
+    function test_setNameWithHCA_revert_hcaOwnerMismatch() external {
+        address hca = _deployHCA(verifiableFactory, owner, address(trustedHCAImpl));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(HCAAuthorizer.HCAOwnerMismatch.selector, actor, owner)
+        );
+        vm.prank(hca);
+        defaultAdapter.setNameWithHCA(actor, name);
     }
 }

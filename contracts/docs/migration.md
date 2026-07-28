@@ -14,16 +14,16 @@ Phase numbering below matches the console output of the `runForkFull` orchestrat
 
 ## Phases
 
-| Phase | Action | CLI command(s) | Signer |
-| --- | --- | --- | --- |
-| 0 † | Deploy fresh v1 contracts (clean-testnet only) | part of `clean-testnet` | `deployer` |
-| 1 | Deploy all v2 contracts (including reverse-registrar adapters and the HCA stack on HCA-enabled networks), registrar deferred | `phase deploy-v2` | `deployer` / `owner` / `urManager` (+ `v1Owner` txs, deferrable) |
-| 2 | Initial pre-migration: seed v1 names as reserved on v2 | `premigration run` / `resume`, then `premigration verify` | BatchRegistrar owner |
-| 3 | Disable v1 registrar controllers (v1 registration freeze) | `phase disable-v1-registrars`, then `phase verify-v1-registrars-disabled` | v1 owner |
-| 4 | Authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable | `phase authorize-v1-renewer` | v1 owner |
-| 5 | Final pre-migration sync from a fresh post-freeze export (picks up renewed expiries) | `premigration run`, then `premigration verify` | BatchRegistrar owner |
-| 6 | Enable the v2 controller: revoke `REGISTRAR \| RENEW` from `BatchRegistrar` → authorize v1 handoff controllers (`Graveyard`, testnet helper) → transfer v1 `BaseRegistrar` ownership to `ETHRenewerV1` → grant `REGISTRAR \| RENEW` to `ETHRegistrar` | `phase disable-batch-registrar`, `phase activate-v1-handoff-controllers`, `phase activate-v1-renewer`, `phase enable-v2-registrar` (+ the matching `verify-*`) | registry root-role admin + v1 owner |
-| 7 | Switch Universal Resolver to v2 (resolution cutover): intermediate URP → `UniversalResolverV2` (sepolia reuses the existing top URP → intermediate URP wiring; bootstrap networks first switch top URP → intermediate URP) | `phase upgrade-managed-urp`, then `phase verify-urp` (bootstrap also runs `phase switch-urp-to-managed` first) | `urManager` (intermediate URP admin); bootstrap also needs the top URP admin (DAO on mainnet) for the switch |
+| Phase | Action                                                                                                                                                                                                                                                | CLI command(s)                                                                                                                                                 | Signer                                                                                                       |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 0 †   | Deploy fresh v1 contracts (clean-testnet only)                                                                                                                                                                                                        | part of `clean-testnet`                                                                                                                                        | `deployer`                                                                                                   |
+| 1     | Deploy all v2 contracts (including reverse-registrar adapters and the HCA stack on HCA-enabled networks), registrar deferred                                                                                                                          | `phase deploy-v2`                                                                                                                                              | `deployer` / `owner` / `urManager` (+ `v1Owner` txs, deferrable)                                             |
+| 2     | Initial pre-migration: seed v1 names as reserved on v2                                                                                                                                                                                                | `premigration run` / `resume`, then `premigration verify`                                                                                                      | BatchRegistrar owner                                                                                         |
+| 3     | Disable v1 registrar controllers (v1 registration freeze)                                                                                                                                                                                             | `phase disable-v1-registrars`, then `phase verify-v1-registrars-disabled`                                                                                      | v1 owner                                                                                                     |
+| 4     | Authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable                                                                                                                                                                        | `phase authorize-v1-renewer`                                                                                                                                   | v1 owner                                                                                                     |
+| 5     | Final pre-migration sync from a fresh post-freeze export (picks up renewed expiries)                                                                                                                                                                  | `premigration run`, then `premigration verify`                                                                                                                 | BatchRegistrar owner                                                                                         |
+| 6     | Enable the v2 controller: revoke `REGISTRAR \| RENEW` from `BatchRegistrar` → authorize v1 handoff controllers (`Graveyard`, testnet helper) → transfer v1 `BaseRegistrar` ownership to `ETHRenewerV1` → grant `REGISTRAR \| RENEW` to `ETHRegistrar` | `phase disable-batch-registrar`, `phase activate-v1-handoff-controllers`, `phase activate-v1-renewer`, `phase enable-v2-registrar` (+ the matching `verify-*`) | registry root-role admin + v1 owner                                                                          |
+| 7     | Switch Universal Resolver to v2 (resolution cutover): intermediate URP → `UniversalResolverV2` (sepolia reuses the existing top URP → intermediate URP wiring; bootstrap networks first switch top URP → intermediate URP)                            | `phase upgrade-managed-urp`, then `phase verify-urp` (bootstrap also runs `phase switch-urp-to-managed` first)                                                 | `urManager` (intermediate URP admin); bootstrap also needs the top URP admin (DAO on mainnet) for the switch |
 
 † Phase 0 only exists in `clean-testnet`, which deploys a fresh v1 stack (from `lib/ens-contracts/deploy`) into a `deployments/v1/<namespace>` directory before running phases 1–7.
 
@@ -33,11 +33,11 @@ Every phase command takes `--network sepolia|mainnet` plus `--rpc-url` (or the `
 
 Runs all deploy scripts tagged `migration:phase1:deploy-v2` with the `deferV2Registrar` tag set, so [`deploy/03_ETHRegistrar.ts`](../deploy/03_ETHRegistrar.ts) deploys `ETHRegistrar` **without** granting it `REGISTRAR | RENEW` at the registry root — that grant is deferred to [phase 6](#phase-6-enable-the-v2-controller). `BatchRegistrar` holds the roles in the meantime for pre-migration seeding. The deploy also sets up the URP proxy chain pointing at the v1 `UniversalResolver` (see [universalResolver.md](./universalResolver.md)) and deploys the v2 reverse-registrar adapters ([`deploy/02_ReverseRegistrarAdapter.ts`](../deploy/02_ReverseRegistrarAdapter.ts) and [`deploy/02_DefaultReverseRegistrarAdapter.ts`](../deploy/02_DefaultReverseRegistrarAdapter.ts)), each authorized as a controller on the corresponding v1 reverse registrar via a v1-owner transaction.
 
-On an HCA-enabled network, the same phase-1 tag also deploys `DefaultReverseRegistrarHCAAdapter`, `HCAOwnerAndSessionValidator`, `StandaloneHCAFactory`, `HCAUpgradeGate`, and `StandaloneHCAImplementation`. Phase 1 authorizes the HCA reverse adapter as a v1 `DefaultReverseRegistrar` controller and records the implementation as trusted by that adapter. This deploys only the shared HCA infrastructure; individual owner-bound HCAs remain counterfactual and are deployed lazily through `StandaloneHCAFactory` when a user first uses one. Sepolia is HCA-enabled by its environment tags and defaults to the fixed Rhinestone intent executor and production USDC addresses in [`script/deploy-constants.ts`](../script/deploy-constants.ts). `clean-testnet`, local, and test deployments continue to use their local mock executor and payment tokens. The `HCA_*` address variables are optional explicit overrides.
+On an HCA-enabled network, the same phase-1 tag also deploys `HCAOwnerAndSessionValidator`, `StandaloneHCAFactory`, `HCAUpgradeGate`, and `StandaloneHCAImplementation`. Phase 1 authorizes the HCA reverse adapter as a v1 `DefaultReverseRegistrar` controller and records the implementation as trusted by that adapter. This deploys only the shared HCA infrastructure; individual owner-bound HCAs remain counterfactual and are deployed lazily through `StandaloneHCAFactory` when a user first uses one. Sepolia is HCA-enabled by its environment tags and defaults to the fixed Rhinestone intent executor and production USDC addresses in [`script/deploy-constants.ts`](../script/deploy-constants.ts). `clean-testnet`, local, and test deployments continue to use their local mock executor and payment tokens. The `HCA_*` address variables are optional explicit overrides.
 
 Use `--resume --tags hca` to update only the shared HCA contracts in an existing deployment namespace. This mode loads only `deploy/hca` and reuses the existing core deployment records. It does not run core deploy scripts. An HCA-only deploy requires `--resume`.
 
-Several steps require a v1-owner signature: pointing the v1 `.eth` resolver at `ENSV2Resolver` ([`deploy/00_ENSV2Resolver.ts`](../deploy/00_ENSV2Resolver.ts)) and the reverse-adapter controller grants above, including `DefaultReverseRegistrarHCAAdapter` when HCA is enabled. With `--defer-v1-owner-transactions` (and `--deferred-v1-owner-transactions-file <path>`) such transactions are recorded to a JSONL file instead of broadcast; the owner executes them later with `phase execute-owner-txs --file <path> --role v1Owner`.
+Several steps require a v1-owner signature: pointing the v1 `.eth` resolver at `ENSV2Resolver` ([`deploy/00_ENSV2Resolver.ts`](../deploy/00_ENSV2Resolver.ts)) and the reverse-adapter controller grants above, including `DefaultReverseRegistrarAdapter` when HCA is enabled. With `--defer-v1-owner-transactions` (and `--deferred-v1-owner-transactions-file <path>`) such transactions are recorded to a JSONL file instead of broadcast; the owner executes them later with `phase execute-owner-txs --file <path> --role v1Owner`.
 
 `--include-testnet-premigration-registrar` additionally deploys `TestnetV1PremigrationRegistrar` (see [premigration.md](./premigration.md)).
 
@@ -53,7 +53,7 @@ Removes `LegacyETHRegistrarController`, `ETHRegistrarController`, `WrappedETHReg
 
 ### Phase 4: authorize ETHRenewerV1
 
-`phase authorize-v1-renewer` authorizes `ETHRenewerV1` as a v1 `BaseRegistrar` controller (via `RegistrarSecurityController` when deployed). `ETHRenewerV1` *only renews* names already reserved on v2, so this does **not** reopen the registration freeze from phase 3 — it keeps unmigrated names renewable throughout the migration window, with each renewal extending both the v1 registration and the v2 reservation in a single transaction. The final lock-down step that transfers v1 `BaseRegistrar` ownership to `ETHRenewerV1` is deferred to phase 6, after the handoff controllers are authorized.
+`phase authorize-v1-renewer` authorizes `ETHRenewerV1` as a v1 `BaseRegistrar` controller (via `RegistrarSecurityController` when deployed). `ETHRenewerV1` _only renews_ names already reserved on v2, so this does **not** reopen the registration freeze from phase 3 — it keeps unmigrated names renewable throughout the migration window, with each renewal extending both the v1 registration and the v2 reservation in a single transaction. The final lock-down step that transfers v1 `BaseRegistrar` ownership to `ETHRenewerV1` is deferred to phase 6, after the handoff controllers are authorized.
 
 Because `ETHRenewerV1` can only renew names that are already `RESERVED` on v2, this phase is effective only once the initial pre-migration (phase 2) has completed.
 
@@ -88,34 +88,34 @@ Phase 1 reads and writes rocketh deployment artifacts under [`deployments/`](../
 
 `bun run migration -- <command>` from `contracts/` (entrypoint [`script/migration.ts`](../script/migration.ts), wired through `package.json`). The CLI auto-loads `contracts/.env` (already-set environment variables win). Run `bun run migration -- <command> --help` for full options.
 
-| Command | Purpose |
-| --- | --- |
-| `fetch-data` | Export ENS registrations from the TheGraph subgraph (mainnet or sepolia) into a pre-migration CSV |
-| `premigration run` | Start pre-migration reservations from a fresh checkpoint (phases 2/4) |
-| `premigration resume` | Resume pre-migration from the checkpoint |
-| `premigration status` | Print the current pre-migration checkpoint JSON |
-| `premigration verify` | Verify eligible CSV names were reserved or registered on v2 |
-| `phase deploy-v2` | Phase 1: deploy the v2 migration contracts (including reverse-registrar adapters and enabled HCA infrastructure) with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy instead) |
-| `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the Phase 1 deferred-tx replay on an already-migrated chain); signed by the prior renewer's owner / urManager |
-| `phase disable-v1-registrars` | Phase 3: disable v1 registrar controllers |
-| `phase set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` (v1-owner write) |
-| `phase verify-v1-registrars-disabled` | Verify v1 registrar controllers are disabled |
-| `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable |
-| `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`) |
-| `phase disable-batch-registrar` | Phase 6: revoke registrar/renew roles from `BatchRegistrar` |
-| `phase verify-batch-registrar-disabled` | Verify `BatchRegistrar` no longer has registrar/renew roles |
-| `phase batch-registrar-owner` | Print and optionally verify the `BatchRegistrar` owner |
-| `phase activate-v1-handoff-controllers` | Phase 6: authorize `Graveyard` + testnet helper as v1 controllers |
-| `phase activate-v1-graveyard` | Phase 6 (individual): authorize `Graveyard` only |
-| `phase authorize-testnet-v1-premigration-registrar` | Phase 6 (individual, testnet): authorize the testnet premigration helper |
-| `phase activate-v1-renewer` | Phase 6: transfer v1 `BaseRegistrar` ownership to `ETHRenewerV1` (final lock-down) |
-| `phase enable-v2-registrar` | Phase 6: grant registrar/renew roles to `ETHRegistrar` |
-| `phase verify-v2-registrar` | Verify `ETHRegistrar` has registrar/renew roles |
-| `phase switch-urp-to-managed` | Phase 7: point the top URP at the managed URP |
-| `phase upgrade-managed-urp` | Phase 7: upgrade the managed URP to `UniversalResolverV2` (resolution cutover) |
-| `phase verify-urp` | Verify top and managed URP implementations |
-| `fork full` | Run the full phased migration rehearsal against an Anvil fork |
-| `clean-testnet` | Deploy fresh testnet v1 contracts and run the full phased migration (sepolia only) |
+| Command                                             | Purpose                                                                                                                                                                                                                                                         |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fetch-data`                                        | Export ENS registrations from the TheGraph subgraph (mainnet or sepolia) into a pre-migration CSV                                                                                                                                                               |
+| `premigration run`                                  | Start pre-migration reservations from a fresh checkpoint (phases 2/4)                                                                                                                                                                                           |
+| `premigration resume`                               | Resume pre-migration from the checkpoint                                                                                                                                                                                                                        |
+| `premigration status`                               | Print the current pre-migration checkpoint JSON                                                                                                                                                                                                                 |
+| `premigration verify`                               | Verify eligible CSV names were reserved or registered on v2                                                                                                                                                                                                     |
+| `phase deploy-v2`                                   | Phase 1: deploy the v2 migration contracts (including reverse-registrar adapters and enabled HCA infrastructure) with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy instead) |
+| `phase reclaim-v1-registrar-ownership`              | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the Phase 1 deferred-tx replay on an already-migrated chain); signed by the prior renewer's owner / urManager                 |
+| `phase disable-v1-registrars`                       | Phase 3: disable v1 registrar controllers                                                                                                                                                                                                                       |
+| `phase set-v1-reverse-default-resolver`             | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` (v1-owner write)                                                                                                                                                                    |
+| `phase verify-v1-registrars-disabled`               | Verify v1 registrar controllers are disabled                                                                                                                                                                                                                    |
+| `phase authorize-v1-renewer`                        | Phase 4: authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable                                                                                                                                                                         |
+| `phase execute-owner-txs`                           | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`)                                                                                                                                                                         |
+| `phase disable-batch-registrar`                     | Phase 6: revoke registrar/renew roles from `BatchRegistrar`                                                                                                                                                                                                     |
+| `phase verify-batch-registrar-disabled`             | Verify `BatchRegistrar` no longer has registrar/renew roles                                                                                                                                                                                                     |
+| `phase batch-registrar-owner`                       | Print and optionally verify the `BatchRegistrar` owner                                                                                                                                                                                                          |
+| `phase activate-v1-handoff-controllers`             | Phase 6: authorize `Graveyard` + testnet helper as v1 controllers                                                                                                                                                                                               |
+| `phase activate-v1-graveyard`                       | Phase 6 (individual): authorize `Graveyard` only                                                                                                                                                                                                                |
+| `phase authorize-testnet-v1-premigration-registrar` | Phase 6 (individual, testnet): authorize the testnet premigration helper                                                                                                                                                                                        |
+| `phase activate-v1-renewer`                         | Phase 6: transfer v1 `BaseRegistrar` ownership to `ETHRenewerV1` (final lock-down)                                                                                                                                                                              |
+| `phase enable-v2-registrar`                         | Phase 6: grant registrar/renew roles to `ETHRegistrar`                                                                                                                                                                                                          |
+| `phase verify-v2-registrar`                         | Verify `ETHRegistrar` has registrar/renew roles                                                                                                                                                                                                                 |
+| `phase switch-urp-to-managed`                       | Phase 7: point the top URP at the managed URP                                                                                                                                                                                                                   |
+| `phase upgrade-managed-urp`                         | Phase 7: upgrade the managed URP to `UniversalResolverV2` (resolution cutover)                                                                                                                                                                                  |
+| `phase verify-urp`                                  | Verify top and managed URP implementations                                                                                                                                                                                                                      |
+| `fork full`                                         | Run the full phased migration rehearsal against an Anvil fork                                                                                                                                                                                                   |
+| `clean-testnet`                                     | Deploy fresh testnet v1 contracts and run the full phased migration (sepolia only)                                                                                                                                                                              |
 
 ## Hardhat plugin tasks
 
@@ -127,40 +127,40 @@ bunx hardhat --network <net> migration <task> [--options]
 
 The tasks select the migration network with `--migration-network sepolia|mainnet` and use the Hardhat network's RPC and configured signer (so private keys can come from the Hardhat keystore instead of flags/env). See `bunx hardhat migration <task> --help` for options.
 
-| Task | Purpose |
-| --- | --- |
-| `snapshot` | Create an RPC state snapshot (`evm_snapshot`), optionally writing the id to `--file` |
-| `revert` | Revert to a snapshot id (from `--snapshot-id` or `--file`) |
-| `verify-all` | Verify final migration wiring plus resolution smoke checks against `--names` |
-| `batch-registrar-owner` | Print and optionally verify the `BatchRegistrar` owner |
-| `fork-full` | Run the full phased migration rehearsal (Hardhat-signer variant of `fork full`) |
-| `clean-testnet` | Deploy fresh testnet v1 and run the full phased migration |
-| `smoke-v2-registrar` | Register a fresh `.eth` name through the enabled v2 registrar |
-| `set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` |
-| `deploy-v2` | Deploy the v2 migration contracts (phase 1) |
-| `premigration-run` | Run pre-migration reservations (phases 2/5) with the Hardhat signer as BatchRegistrar owner |
+| Task                              | Purpose                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------- |
+| `snapshot`                        | Create an RPC state snapshot (`evm_snapshot`), optionally writing the id to `--file`        |
+| `revert`                          | Revert to a snapshot id (from `--snapshot-id` or `--file`)                                  |
+| `verify-all`                      | Verify final migration wiring plus resolution smoke checks against `--names`                |
+| `batch-registrar-owner`           | Print and optionally verify the `BatchRegistrar` owner                                      |
+| `fork-full`                       | Run the full phased migration rehearsal (Hardhat-signer variant of `fork full`)             |
+| `clean-testnet`                   | Deploy fresh testnet v1 and run the full phased migration                                   |
+| `smoke-v2-registrar`              | Register a fresh `.eth` name through the enabled v2 registrar                               |
+| `set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver`                 |
+| `deploy-v2`                       | Deploy the v2 migration contracts (phase 1)                                                 |
+| `premigration-run`                | Run pre-migration reservations (phases 2/5) with the Hardhat signer as BatchRegistrar owner |
 
 ## Environment variables
 
 Resolved by [`script/migration.ts`](../script/migration.ts) (the CLI also auto-loads `contracts/.env`):
 
-| Variable | Used for |
-| --- | --- |
-| `SEPOLIA_RPC_URL` / `MAINNET_RPC_URL` | Default RPC when `--rpc-url` is omitted |
-| `DEPLOYER_KEY` | Deployer key (`phase deploy-v2`); fallback for owner/urManager keys |
-| `OWNER_KEY` | Owner / registry root-role admin (`phase deploy-v2`, `disable-batch-registrar`, `enable-v2-registrar`; falls back to `DEPLOYER_KEY`) |
-| `UR_MANAGER_KEY` | Intermediate URP admin (`phase upgrade-managed-urp`; falls back to `DEPLOYER_KEY`) |
-| `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` | v1 owner (`disable-v1-registrars` †, `set-v1-reverse-default-resolver`, `authorize-v1-renewer`, `activate-v1-*`, `authorize-testnet-v1-premigration-registrar`) |
-| `SEPOLIA_TOP_URP_OWNER_KEY` / `TOP_URP_OWNER_KEY` | Top URP admin (`phase switch-urp-to-managed`) |
-| `OWNER_TX_KEY` | Generic signer for `phase execute-owner-txs` when no role-specific key matches |
-| `HCA_INTENT_EXECUTOR` | Optional intent-executor override; live/forked Sepolia defaults to the fixed Rhinestone address in `script/deploy-constants.ts` |
-| `HCA_ENTRY_POINT` | Optional HCA ERC-4337 EntryPoint override |
-| `HCA_PAYMENT_TOKEN` / `HCA_USDC`, `HCA_SECONDARY_PAYMENT_TOKEN` / `HCA_DAI` | Optional HCA validator payment-token overrides; live/forked Sepolia defaults both slots to production USDC, while local/test/clean-testnet use mock artifacts |
-| `HCA_GAS_REFUND_PAYMASTER` | Optional HCA validator gas-refund paymaster override |
+| Variable                                                                                                 | Used for                                                                                                                                                           |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SEPOLIA_RPC_URL` / `MAINNET_RPC_URL`                                                                    | Default RPC when `--rpc-url` is omitted                                                                                                                            |
+| `DEPLOYER_KEY`                                                                                           | Deployer key (`phase deploy-v2`); fallback for owner/urManager keys                                                                                                |
+| `OWNER_KEY`                                                                                              | Owner / registry root-role admin (`phase deploy-v2`, `disable-batch-registrar`, `enable-v2-registrar`; falls back to `DEPLOYER_KEY`)                               |
+| `UR_MANAGER_KEY`                                                                                         | Intermediate URP admin (`phase upgrade-managed-urp`; falls back to `DEPLOYER_KEY`)                                                                                 |
+| `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY`                                                                  | v1 owner (`disable-v1-registrars` †, `set-v1-reverse-default-resolver`, `authorize-v1-renewer`, `activate-v1-*`, `authorize-testnet-v1-premigration-registrar`)    |
+| `SEPOLIA_TOP_URP_OWNER_KEY` / `TOP_URP_OWNER_KEY`                                                        | Top URP admin (`phase switch-urp-to-managed`)                                                                                                                      |
+| `OWNER_TX_KEY`                                                                                           | Generic signer for `phase execute-owner-txs` when no role-specific key matches                                                                                     |
+| `HCA_INTENT_EXECUTOR`                                                                                    | Optional intent-executor override; live/forked Sepolia defaults to the fixed Rhinestone address in `script/deploy-constants.ts`                                    |
+| `HCA_ENTRY_POINT`                                                                                        | Optional HCA ERC-4337 EntryPoint override                                                                                                                          |
+| `HCA_PAYMENT_TOKEN` / `HCA_USDC`, `HCA_SECONDARY_PAYMENT_TOKEN` / `HCA_DAI`                              | Optional HCA validator payment-token overrides; live/forked Sepolia defaults both slots to production USDC, while local/test/clean-testnet use mock artifacts      |
+| `HCA_GAS_REFUND_PAYMASTER`                                                                               | Optional HCA validator gas-refund paymaster override                                                                                                               |
 | `<PREFIX>_MNEMONIC`, `<PREFIX>_MNEMONIC_PATH`, `<PREFIX>_MNEMONIC_INDEX`, `<PREFIX>_MNEMONIC_PASSPHRASE` | Mnemonic-backed signer alternatives for `phase execute-owner-txs`; prefixes `OWNER_TX`, `SEPOLIA_V1_OWNER` / `V1_OWNER`, `SEPOLIA_TOP_URP_OWNER` / `TOP_URP_OWNER` |
-| `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
-| `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` |
-| `ETHERSCAN_API_KEY` | Etherscan v2 (multichain) API key for source-code verification (`bun run verify:<network>`); not needed for Sourcify |
+| `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY`                                  | BatchRegistrar owner key fallbacks for `premigration run` / `resume`                                                                                               |
+| `THEGRAPH_API_KEY` / `GRAPH_API_KEY`                                                                     | TheGraph Gateway key for `fetch-data`                                                                                                                              |
+| `ETHERSCAN_API_KEY`                                                                                      | Etherscan v2 (multichain) API key for source-code verification (`bun run verify:<network>`); not needed for Sourcify                                               |
 
 † `phase disable-v1-registrars` takes the key via `--private-key`; the env fallbacks apply when it is executed through `phase execute-owner-txs` with `--role v1Owner`.
 

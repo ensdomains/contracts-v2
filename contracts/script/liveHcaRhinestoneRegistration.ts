@@ -50,6 +50,7 @@ import {
   StandaloneHCAFactory,
   StandaloneSingleOwnerHCA,
   test_mocks_MockERC20_sol_MockERC20 as MockERC20,
+  PermissionedAddressSet,
   UniversalResolverV2,
   VerifiableFactory,
 } from "../generated/artifacts/index.ts";
@@ -679,6 +680,7 @@ async function main() {
     ethRegistrar: deployment("ETHRegistrar"),
     ethRegistry: deployment("ETHRegistry"),
     paymentToken: deploymentFromEnv("HCA_TEST_PAYMENT_TOKEN", ["MockUSDC"]),
+    trustedHCASet: deploymentFromEnv("HCA_TRUSTED_SET", ["TrustedHCASet"]),
     standaloneHcaFactory: deploymentFromEnv(
       "HCA_STANDALONE_HCA_FACTORY",
       ["StandaloneHCAFactory"],
@@ -696,7 +698,7 @@ async function main() {
     ),
     defaultReverseRegistrarAdapter: deploymentFromEnv(
       "HCA_DEFAULT_REVERSE_REGISTRAR_ADAPTER",
-      ["DefaultReverseRegistrarHCAAdapter"],
+      ["DefaultReverseRegistrarAdapter"],
       HCA_DEPLOYMENT_NETWORK,
     ),
     universalResolver: deploymentFromEnv("UNIVERSAL_RESOLVER", [
@@ -837,9 +839,9 @@ async function main() {
     throw new Error("HCA reverse adapter is not a default.reverse controller");
   }
   const implementationIsTrusted = await publicClient.readContract({
-    address: deployments.defaultReverseRegistrarAdapter,
-    abi: DefaultReverseRegistrarAdapter.abi,
-    functionName: "trustedHCAImplementations",
+    address: deployments.trustedHCASet,
+    abi: PermissionedAddressSet.abi,
+    functionName: "includes",
     args: [deployments.standaloneHcaImplementation],
   });
   if (!implementationIsTrusted) {
