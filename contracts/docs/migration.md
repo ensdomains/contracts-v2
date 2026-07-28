@@ -157,15 +157,24 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   | Surface | Candidates considered | Revoked via |
   | --- | --- | --- |
   | `BaseRegistrar` | the four v1 registration controllers, the handoff contracts (`ETHRenewerV1`, `Graveyard`, `TestnetV1PremigrationRegistrar`) of **every** namespace on this chain, and any address in the registrar's `ControllerAdded` history that no local artifact accounts for | `RegistrarSecurityController.removeRegistrarController` while it still owns the registrar, else `removeController` |
-  | `ReverseRegistrar` | this tooling's handoff contracts granted there (`TestnetV1PremigrationRegistrar`, `ReverseRegistrarAdapter`) of **every** namespace on this chain | `setController(addr, false)` |
-  | `DefaultReverseRegistrar` | this tooling's handoff contracts granted there (`TestnetV1PremigrationRegistrar`, `DefaultReverseRegistrarAdapter`) of **every** namespace on this chain | `setController(addr, false)` |
+  | `ReverseRegistrar` | this tooling's handoff contracts granted there (`TestnetV1PremigrationRegistrar`, `ReverseRegistrarAdapter`) of **every** namespace on this chain, plus any address in the registrar's `ControllerChanged` history that reports forwarding to it | `setController(addr, false)` |
+  | `DefaultReverseRegistrar` | this tooling's handoff contracts granted there (`TestnetV1PremigrationRegistrar`, `DefaultReverseRegistrarAdapter`) of **every** namespace on this chain, plus any address in the registrar's `ControllerChanged` history that reports forwarding to it | `setController(addr, false)` |
 
   Only the **active** namespace's handoff contracts are left authorized.
   `verify-v1-registrars-disabled` asserts that complete set and fails on anything else.
 
+  Namespaces are matched against both the network and the active `--deployment-network`, so a custom
+  namespace and the archives named after it are scanned too. The active namespace's artifacts are
+  read directly rather than through that scan: its grants are the ones that must survive, so they can
+  never depend on a directory listing.
+
   > v1-side controllers on the reverse registrars (the official registrar controllers, which set
   > reverse records during registration) are deliberately **not** touched — revoking them is outside
-  > the migration's remit and would break unrelated v1 behaviour.
+  > the migration's remit and would break unrelated v1 behaviour. A discovered address counts as this
+  > tooling's own only when it answers `REVERSE_REGISTRAR()` / `DEFAULT_REVERSE_REGISTRAR()` with the
+  > registrar holding the grant; everything else is listed as `v1-owned, outside migration remit` and
+  > left enabled. That back-reference is what lets a superseded adapter be revoked when its deployment
+  > namespace is no longer on disk.
 - **Re-deploying fresh:** **must be run — not a no-op.** The v1 registration controllers stay frozen
   from the prior deployment, but that deployment's own handoff contracts are still authorized, and
   `TestnetV1PremigrationRegistrar` among them is a permissionless free registrar: leaving it enabled
@@ -173,10 +182,17 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   registry rather than the live one (they are also invisible to the TheGraph-based CSV export, so a
   later pre-migration will not pick them up). Run the phase, then `verify-v1-registrars-disabled`.
 
-> **Controller discovery.** The registrar's controller history is read from its events. When the RPC
-> cannot serve that range (a fork whose history predates its fork block, or a provider range limit)
-> both commands print a warning and fall back to controllers backed by a local deployment artifact —
-> treat a warned run as an incomplete audit and re-check against an archival RPC.
+> **Controller discovery.** Each surface's controller history is read from its events across the whole
+> chain. Providers cap `eth_getLogs` by block span or result count (free tiers commonly at 1k–10k
+> blocks), and a load-balanced endpoint may apply a cap to only some requests, so a refused span is
+> bisected and each half requested in turn until the provider accepts — the blocks covered are the
+> same either way. Anything else — a fork whose history predates its fork block, a refusal that
+> persists at the smallest span — fails both commands rather than reverting to the locally-described
+> controllers: that reduced set says nothing about grants no artifact accounts for, and a partial
+> audit must never pass for a complete one.
+>
+> An uncapped archival RPC reads each surface in a single request. Against a capped one the scan still
+> completes and returns the same controllers, but costs hundreds of requests and several minutes.
 
 ### Phase 4: authorize ETHRenewerV1
 

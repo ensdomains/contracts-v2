@@ -12,6 +12,10 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
+  AbiDecodingZeroDataError,
+  BaseError,
+  ContractFunctionRevertedError,
+  ContractFunctionZeroDataError,
   createPublicClient,
   createWalletClient,
   custom,
@@ -28,6 +32,7 @@ import {
   stringToHex,
   zeroAddress,
   zeroHash,
+  type AbiEvent,
   type Address,
   type Chain,
 } from "viem";
@@ -804,7 +809,10 @@ function installRpcCompatibility(debugRpc: boolean): void {
     const response = await originalFetch(input, init);
     try {
       const payload = await response.clone().json();
-      if (payload?.error && request?.method === "eth_feeHistory") {
+      if (
+        request?.method === "eth_feeHistory" &&
+        isMissingFeeHistory(payload?.error)
+      ) {
         return new Response(JSON.stringify(buildFeeHistoryResponse(request)), {
           headers: { "content-type": "application/json" },
           status: 200,
@@ -1613,12 +1621,29 @@ const V1_HANDOFF_CONTROLLER_NAMES = [
   ...new Set(Object.values(V1_HANDOFF_CONTROLLERS).flat()),
 ];
 
+// Controller-history events, differing per v1 surface: the BaseRegistrar records
+// grants and revocations separately, the reverse registrars carry both in one event.
 const V1_CONTROLLER_ADDED_EVENT = parseAbiItem(
   "event ControllerAdded(address indexed controller)",
 );
 const V1_CONTROLLER_REMOVED_EVENT = parseAbiItem(
   "event ControllerRemoved(address indexed controller)",
 );
+const V1_CONTROLLER_CHANGED_EVENT = parseAbiItem(
+  "event ControllerChanged(address indexed controller, bool enabled)",
+);
+
+// Getter each handoff contract exposes for the reverse registrar it forwards to,
+// so an instance no local artifact describes can still be recognised from chain
+// state. v1's own reverse controllers hold the registrar under a different name
+// and so do not answer these calls.
+const V1_REVERSE_REGISTRAR_BACK_REFERENCES: Record<
+  (typeof V1_REVERSE_REGISTRAR_NAMES)[number],
+  string
+> = {
+  ReverseRegistrar: "REVERSE_REGISTRAR",
+  DefaultReverseRegistrar: "DEFAULT_REVERSE_REGISTRAR",
+};
 
 type V1ControllerState = {
   // The v1 contract holding the authorization, e.g. "v1 BaseRegistrar".
@@ -1628,6 +1653,10 @@ type V1ControllerState = {
   enabled: boolean;
   // Authorized by the active deployment and expected to stay enabled.
   keep: boolean;
+  // A v1-side controller this tooling never granted. Reported but never revoked:
+  // the reverse registrars' own controllers set reverse records during
+  // registration, so revoking them would break unrelated v1 behaviour.
+  foreign: boolean;
   // Contract the revoke transaction targets, and whose owner() gates it.
   target: JsonDeployment;
   revokeFunctionName: string;
@@ -1636,14 +1665,12 @@ type V1ControllerState = {
 
 type V1ControllerAudit = {
   controllers: V1ControllerState[];
-  // True when the registrar's controller history could not be read, so only
-  // controllers backed by a local deployment artifact were considered.
-  discoveryIncomplete: boolean;
 };
 
 function v1ControllersToRemove(audit: V1ControllerAudit): V1ControllerState[] {
   return audit.controllers.filter(
-    (controller) => controller.enabled && !controller.keep,
+    (controller) =>
+      controller.enabled && !controller.keep && !controller.foreign,
   );
 }
 
@@ -1671,38 +1698,47 @@ async function readControllerFlags(
 }
 
 // Reads a namespace's recorded chain id, absent when the namespace predates the
-// metadata or the file cannot be parsed.
+// metadata. A metadata file that exists but cannot be parsed raises.
 function readDeploymentChainId(path: string): number | undefined {
   const chainPath = join(path, ".chain");
   if (!existsSync(chainPath)) return undefined;
+  let chainId: unknown;
   try {
-    const { chainId } = JSON.parse(readFileSync(chainPath, "utf-8"));
-    const parsed = Number(chainId);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
+    ({ chainId } = JSON.parse(readFileSync(chainPath, "utf-8")));
+  } catch (error) {
+    throw new Error(`unreadable deployment metadata: ${chainPath}`, {
+      cause: error,
+    });
   }
+  const parsed = Number(chainId);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`invalid chainId in ${chainPath}: ${String(chainId)}`);
+  }
+  return parsed;
 }
 
-// Deployment namespaces that target the same chain: every namespace named for this
-// network — the canonical one, the dated archives a fresh deploy renamed aside, and
-// the `-fork` / `-clean-` runtime sets. Keyed off the network rather than the active
-// namespace so a fork run (`sepolia-fork`) still recognises the canonical `sepolia`
-// set as superseded, whose contracts hold live grants on the forked v1. A namespace
-// whose recorded chain id matches none of the expected ids is excluded so unrelated
-// deployment sets are never treated as this chain's orphans.
+// Deployment namespaces that target the same chain: every namespace named for one
+// of the given base names — the canonical one, the dated archives a fresh deploy
+// renamed aside, and the `-fork` / `-clean-` runtime sets. The network is included
+// alongside the active namespace so a fork run (`sepolia-fork`) still recognises the
+// canonical `sepolia` set as superseded, whose contracts hold live grants on the
+// forked v1, and so a custom namespace (`--deployment-network staging`) still finds
+// its own archives. A namespace whose recorded chain id matches none of the expected
+// ids is excluded so unrelated deployment sets are never treated as this chain's
+// orphans.
 function siblingDeploymentNamespaces(opts: {
   deploymentsDir: string;
-  network: string;
+  networks: string[];
   chainIds: number[];
 }): string[] {
   const root = resolve(opts.deploymentsDir);
   if (!existsSync(root)) return [];
+  const bases = [...new Set(opts.networks)];
   return readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .filter(
-      (name) => name === opts.network || name.startsWith(`${opts.network}-`),
+    .filter((name) =>
+      bases.some((base) => name === base || name.startsWith(`${base}-`)),
     )
     .filter((name) => {
       const chainId = readDeploymentChainId(join(root, name));
@@ -1711,29 +1747,141 @@ function siblingDeploymentNamespaces(opts: {
     .sort();
 }
 
-// Every address the registrar has ever had as a controller, recovered from its
-// controller events. Returns null when the log range cannot be served (a fork
-// whose history predates its fork block, or a provider range limit) so an empty
-// result is never mistaken for a clean controller set.
+// Smallest block span worth requesting before a provider's refusal is taken at face
+// value rather than as a demand for a narrower one.
+const LOG_SCAN_MIN_SPAN = 1_000n;
+
+// Refusals of the span rather than of the query: the block range or the result count
+// exceeded a server-side cap. Both are answered by requesting a narrower span.
+const LOG_SCAN_SPAN_REFUSALS = [
+  "block range",
+  "range exceeds",
+  "narrow your filter",
+  "query returned more than",
+  "more than 10000 results",
+  "log response size",
+  "response size exceeded",
+  "query timeout exceeded",
+];
+
+function isLogSpanRefusal(error: unknown): boolean {
+  const message = errorMessageChain(error).join(" ").toLowerCase();
+  return LOG_SCAN_SPAN_REFUSALS.some((refusal) => message.includes(refusal));
+}
+
+// Every `controller` address one event has ever carried on a contract. Providers cap
+// `eth_getLogs` by block span or by result count, and a load-balanced endpoint may
+// apply a cap to only some requests, so a refused span is bisected and each half
+// requested in turn. The widest span the provider has accepted is carried across the
+// scan, so the cap is discovered once rather than rediscovered per subrange. The
+// blocks covered are the same either way; a refusal at the smallest span, or any
+// error that is not about the span, raises.
+async function readControllerEventAddresses(
+  client: ReturnType<typeof publicClient>,
+  args: { address: Address; event: AbiEvent; toBlock: bigint },
+): Promise<Address[]> {
+  let acceptedSpan: bigint | undefined;
+
+  const readSpan = async (
+    fromBlock: bigint,
+    toBlock: bigint,
+  ): Promise<Address[]> => {
+    const span = toBlock - fromBlock + 1n;
+    const bisect = () => {
+      const mid = fromBlock + span / 2n;
+      return readSpan(fromBlock, mid - 1n).then(async (left) => [
+        ...left,
+        ...(await readSpan(mid, toBlock)),
+      ]);
+    };
+    if (acceptedSpan !== undefined && span > acceptedSpan) return bisect();
+    try {
+      const logs = await client.getLogs({
+        address: args.address,
+        event: args.event,
+        fromBlock,
+        toBlock,
+      });
+      if (acceptedSpan === undefined || span > acceptedSpan) acceptedSpan = span;
+      return logs.map((log) =>
+        getAddress((log.args as { controller: Address }).controller),
+      );
+    } catch (error) {
+      if (!isLogSpanRefusal(error) || span <= LOG_SCAN_MIN_SPAN) throw error;
+      return bisect();
+    }
+  };
+  return readSpan(0n, args.toBlock);
+}
+
+// Every address a v1 surface has ever had as a controller, across the whole chain.
 async function discoverV1ControllerAddresses(
   client: ReturnType<typeof publicClient>,
   address: Address,
-): Promise<Address[] | null> {
-  try {
-    const toBlock = await client.getBlockNumber();
-    const logs = await Promise.all(
-      [V1_CONTROLLER_ADDED_EVENT, V1_CONTROLLER_REMOVED_EVENT].map((event) =>
-        client.getLogs({ address, event, fromBlock: 0n, toBlock }),
-      ),
-    );
-    return logs
-      .flat()
-      .map((log) =>
-        getAddress((log.args as { controller: Address }).controller),
-      );
-  } catch {
-    return null;
+  events: readonly AbiEvent[],
+): Promise<Address[]> {
+  const toBlock = await client.getBlockNumber();
+  const discovered = await Promise.all(
+    events.map((event) =>
+      readControllerEventAddresses(client, { address, event, toBlock }),
+    ),
+  );
+  return discovered.flat();
+}
+
+// True when the call reached the chain and the contract declined to answer: it
+// reverted, or the address returned no data because it holds no such function. The
+// message is checked alongside the error type because a provider that flattens
+// JSON-RPC errors loses the type viem would otherwise attach.
+function isContractProbeRejection(error: unknown): boolean {
+  if (
+    error instanceof BaseError &&
+    error.walk(
+      (cause) =>
+        cause instanceof ContractFunctionRevertedError ||
+        cause instanceof ContractFunctionZeroDataError ||
+        cause instanceof AbiDecodingZeroDataError,
+    ) !== null
+  ) {
+    return true;
   }
+  const message = errorMessageChain(error).join(" ").toLowerCase();
+  return (
+    message.includes("execution reverted") ||
+    message.includes("reverted for an unknown reason") ||
+    message.includes("returned no data")
+  );
+}
+
+// Filters discovered addresses down to this tooling's own handoff contracts, by
+// asking each one which reverse registrar it forwards to. An address that declines
+// the call, or answers with a different registrar, belongs to v1. Any other failure
+// means the answer is unknown and is raised.
+async function filterHandoffControllersByBackReference(
+  client: ReturnType<typeof publicClient>,
+  surface: JsonDeployment,
+  getterName: string,
+  addresses: Address[],
+): Promise<Address[]> {
+  const abi = [
+    parseAbiItem(`function ${getterName}() view returns (address)`),
+  ] as const;
+  const matches = await Promise.all(
+    addresses.map(async (address) => {
+      try {
+        const backReference = (await client.readContract({
+          address,
+          abi,
+          functionName: getterName,
+        })) as Address;
+        return getAddress(backReference) === getAddress(surface.address);
+      } catch (error) {
+        if (!isContractProbeRejection(error)) throw error;
+        return false;
+      }
+    }),
+  );
+  return addresses.filter((_, index) => matches[index]);
 }
 
 type RegistrarControlRoute = {
@@ -1791,26 +1939,27 @@ type V1ControllerAuditOptions = {
   deploymentNetwork?: string;
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
-  extraControllers?: Array<{ name: string; address: Address }>;
 };
 
 // Builds the full picture of the v1 authorizations a migration hands out, across
 // every v1 contract it grants against.
 //
-// On the BaseRegistrar, candidates are drawn from the named v1 registration
-// controllers, the handoff controllers of every deployment namespace on this chain
-// (so a superseded deployment's instances are not left authorized), and a
-// best-effort scan of the registrar's controller events that catches addresses no
-// local artifact describes.
+// Candidates come from three places: the named v1 registration controllers, the
+// handoff contracts recorded in each deployment namespace on this chain (so a
+// superseded deployment's instances are not left authorized), and a scan of each
+// surface's controller events that catches addresses no local artifact describes.
 //
-// On the reverse registrars, candidates are restricted to this tooling's own handoff
-// contracts for that registrar. v1-side controllers there (the official registrar
-// controllers, which set reverse records on registration) are deliberately left
-// alone: revoking them is outside the migration's remit and would break unrelated v1
-// behaviour.
+// What a discovered address means differs by surface. On the BaseRegistrar the
+// freeze bans all v1 minting, so every controller the active deployment did not
+// authorize is revoked. On the reverse registrars only this tooling's own forwarders
+// are in remit: a discovered address is claimed only when it reports forwarding to
+// that registrar, and everything else — the official registrar controllers, which set
+// reverse records during registration — is reported and left alone, since revoking
+// them would break unrelated v1 behaviour.
 //
-// In both cases only the active namespace's handoff contracts are expected to stay
-// authorized.
+// The active namespace's handoff contracts are read directly rather than through the
+// namespace scan, so a namespace naming or chain-id mismatch can only ever cause an
+// under-revoke, never revoke the live deployment's own grants.
 async function auditV1Controllers(
   opts: V1ControllerAuditOptions & { client: ReturnType<typeof publicClient> },
 ): Promise<V1ControllerAudit> {
@@ -1855,15 +2004,17 @@ async function auditV1Controllers(
     if (controller) addCandidate(registrarCandidates, controller.address, name);
   }
 
-  for (const namespace of siblingDeploymentNamespaces({
-    deploymentsDir,
-    network: opts.network,
-    chainIds: [parseNumber(opts.chainId, canonicalChainId), canonicalChainId],
-  })) {
-    const isActiveNamespace = namespace === deploymentNetwork;
+  // Registers a namespace's handoff contracts against every surface they hold a
+  // grant on, and reports how many the namespace actually describes.
+  const addNamespaceHandoffControllers = (
+    namespace: string,
+    isActiveNamespace: boolean,
+  ) => {
+    let found = 0;
     for (const name of V1_HANDOFF_CONTROLLER_NAMES) {
       const controller = maybeLoadV2Deployment(deploymentsDir, namespace, name);
       if (!controller) continue;
+      found += 1;
       if (isActiveNamespace) keepAddresses.add(getAddress(controller.address));
       const label = `${name} (${namespace})`;
       for (const [surface, handoffNames] of V1_HANDOFF_CONTROLLER_ENTRIES) {
@@ -1872,18 +2023,25 @@ async function auditV1Controllers(
         }
       }
     }
+    return found;
+  };
+
+  // The active namespace is read directly, and first so its label wins, rather than
+  // waiting for the scan below to surface it: an empty keep set would mark the live
+  // deployment's own grants superseded and revoke them.
+  if (addNamespaceHandoffControllers(deploymentNetwork, true) === 0) {
+    throw new Error(
+      `no handoff contract artifacts under ${join(resolve(deploymentsDir), deploymentNetwork)}: cannot tell the active deployment's v1 authorizations from a superseded deployment's`,
+    );
   }
 
-  for (const { name, address } of opts.extraControllers ?? []) {
-    addCandidate(registrarCandidates, address, name);
-  }
-
-  const discovered = await discoverV1ControllerAddresses(
-    opts.client,
-    baseRegistrar.address,
-  );
-  for (const address of discovered ?? []) {
-    addCandidate(registrarCandidates, address, "unrecognized controller");
+  for (const namespace of siblingDeploymentNamespaces({
+    deploymentsDir,
+    networks: [opts.network, deploymentNetwork],
+    chainIds: [parseNumber(opts.chainId, canonicalChainId), canonicalChainId],
+  })) {
+    if (namespace === deploymentNetwork) continue;
+    addNamespaceHandoffControllers(namespace, false);
   }
 
   const registrarRoute = await resolveRegistrarControlRoute({
@@ -1898,6 +2056,11 @@ async function auditV1Controllers(
     revokeFunctionName: string;
     revokeArgs: (address: Address) => readonly unknown[];
     candidates: Map<Address, string>;
+    events: readonly AbiEvent[];
+    // Getter a discovered address must answer with this surface to be claimed as
+    // this tooling's own. Absent on the BaseRegistrar, where the freeze revokes
+    // every controller the active deployment did not authorize.
+    backReferenceGetter?: string;
   }> = [
     {
       surface: "v1 BaseRegistrar",
@@ -1906,12 +2069,12 @@ async function auditV1Controllers(
       revokeFunctionName: registrarRoute.removeFunctionName,
       revokeArgs: (address) => [address],
       candidates: registrarCandidates,
+      events: [V1_CONTROLLER_ADDED_EVENT, V1_CONTROLLER_REMOVED_EVENT],
     },
   ];
 
   for (const name of V1_REVERSE_REGISTRAR_NAMES) {
-    const reverseRegistrar = loadV1Deployment(opts.network, name, opts);
-    if (!reverseRegistrar) continue;
+    const reverseRegistrar = requireV1Deployment(opts.network, name, opts);
     surfaces.push({
       surface: `v1 ${name}`,
       authority: reverseRegistrar,
@@ -1919,11 +2082,50 @@ async function auditV1Controllers(
       revokeFunctionName: "setController",
       revokeArgs: (address) => [address, false],
       candidates: candidatesFor(name),
+      events: [V1_CONTROLLER_CHANGED_EVENT],
+      backReferenceGetter: V1_REVERSE_REGISTRAR_BACK_REFERENCES[name],
     });
   }
 
   const controllers: V1ControllerState[] = [];
   for (const surface of surfaces) {
+    const discovered = await discoverV1ControllerAddresses(
+      opts.client,
+      surface.authority.address,
+      surface.events,
+    );
+
+    // Addresses the history turned up that no artifact accounts for. Each is
+    // claimed or disowned before it joins the candidate set, so the revoke pass
+    // never has to guess whose grant it is.
+    const unknown = [
+      ...new Set(discovered.map((address) => getAddress(address))),
+    ].filter((address) => !surface.candidates.has(address));
+    const claimed = new Set(
+      surface.backReferenceGetter
+        ? await filterHandoffControllersByBackReference(
+            opts.client,
+            surface.authority,
+            surface.backReferenceGetter,
+            unknown,
+          )
+        : unknown,
+    );
+    const foreignAddresses = new Set(
+      unknown.filter((address) => !claimed.has(address)),
+    );
+    for (const address of unknown) {
+      addCandidate(
+        surface.candidates,
+        address,
+        !surface.backReferenceGetter
+          ? "unrecognized controller"
+          : claimed.has(address)
+            ? "handoff contract (no local artifact)"
+            : "v1 controller",
+      );
+    }
+
     const entries = [...surface.candidates.entries()];
     if (entries.length === 0) continue;
     const flags = await readControllerFlags(
@@ -1938,6 +2140,7 @@ async function auditV1Controllers(
         address,
         enabled: flags[index],
         keep: keepAddresses.has(address),
+        foreign: foreignAddresses.has(address),
         target: surface.target,
         revokeFunctionName: surface.revokeFunctionName,
         revokeArgs: surface.revokeArgs(address),
@@ -1945,7 +2148,7 @@ async function auditV1Controllers(
     });
   }
 
-  return { controllers, discoveryIncomplete: discovered === null };
+  return { controllers };
 }
 
 export async function disableV1Registrars(
@@ -1959,14 +2162,13 @@ export async function disableV1Registrars(
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
   const audit = await auditV1Controllers({ ...opts, client });
 
-  if (audit.discoveryIncomplete) {
-    console.warn(
-      "warning: the registrar's controller history could not be read; only controllers with a local deployment artifact were checked",
-    );
-  }
   for (const controller of audit.controllers) {
-    const { enabled, keep } = controller;
-    if (enabled && keep) {
+    const { enabled, keep, foreign } = controller;
+    if (enabled && foreign) {
+      console.log(
+        `leaving v1-owned controller: ${describeV1Controller(controller)}`,
+      );
+    } else if (enabled && keep) {
       console.log(
         `keeping active deployment grant: ${describeV1Controller(controller)}`,
       );
@@ -2434,16 +2636,13 @@ export async function verifyV1RegistrarsDisabled(
 
   for (const controller of audit.controllers) {
     const state = controller.enabled
-      ? controller.keep
-        ? "enabled (authorized by active deployment)"
-        : "ENABLED"
+      ? controller.foreign
+        ? "enabled (v1-owned, outside migration remit)"
+        : controller.keep
+          ? "enabled (authorized by active deployment)"
+          : "ENABLED"
       : "disabled";
     console.log(`${describeV1Controller(controller)}: ${state}`);
-  }
-  if (audit.discoveryIncomplete) {
-    console.warn(
-      "warning: the registrar's controller history could not be read; only controllers with a local deployment artifact were checked",
-    );
   }
 
   const unexpected = v1ControllersToRemove(audit);

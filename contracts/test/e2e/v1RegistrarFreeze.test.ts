@@ -7,6 +7,7 @@ import {
   disableV1Registrars,
   verifyV1RegistrarsDisabled,
 } from "../../script/migration.js";
+import { deployArtifact } from "../integration/fixtures/deployArtifact.js";
 
 // Each revoke waits a full receipt poll, so the freeze needs more than the default
 // per-test budget.
@@ -18,6 +19,11 @@ const TEST_TIMEOUT_MS = 120_000;
 const NETWORK = "mainnet";
 const ACTIVE_NAMESPACE = "mainnet";
 const ARCHIVED_NAMESPACE = "mainnet-archived-20260101";
+
+// A `--deployment-network` that shares no prefix with the network it targets, whose
+// archives are therefore named after the namespace rather than the network.
+const CUSTOM_NAMESPACE = "staging";
+const CUSTOM_ARCHIVED_NAMESPACE = "staging-20260101-r1";
 
 // Stand-ins for a superseded deployment's handoff contracts: the freeze only reads
 // their controller flags, so any address that is not an active deployment's works.
@@ -67,7 +73,10 @@ describe("v1 registrar freeze", () => {
   // Mirrors the artifact layout the freeze reads: the shared v1 contracts under the
   // v1 deployments root, and one v2 namespace per deployment — the active one plus a
   // superseded one whose handoff contracts must be revoked.
-  function writeDeploymentArtifacts() {
+  function writeDeploymentArtifacts({
+    activeNamespace = ACTIVE_NAMESPACE,
+    archivedNamespace = ARCHIVED_NAMESPACE,
+  }: { activeNamespace?: string; archivedNamespace?: string } = {}) {
     rmSync(workDir, { recursive: true, force: true });
     for (const [name, contract] of [
       ["BaseRegistrarImplementation", env.v1.BaseRegistrar],
@@ -85,24 +94,57 @@ describe("v1 registrar freeze", () => {
         env.shared.DefaultReverseRegistrarAdapter,
       ],
     ] as const) {
-      writeDeployment(deploymentsDir, ACTIVE_NAMESPACE, name, contract);
+      writeDeployment(deploymentsDir, activeNamespace, name, contract);
     }
-    writeNamespaceMetadata(deploymentsDir, ACTIVE_NAMESPACE);
+    writeNamespaceMetadata(deploymentsDir, activeNamespace);
 
     for (const [name, address] of [
       ["ReverseRegistrarAdapter", ARCHIVED_REVERSE_ADAPTER],
       ["DefaultReverseRegistrarAdapter", ARCHIVED_DEFAULT_REVERSE_ADAPTER],
       ["ETHRenewerV1", ARCHIVED_ETH_RENEWER],
     ] as const) {
-      writeDeployment(deploymentsDir, ARCHIVED_NAMESPACE, name, {
+      writeDeployment(deploymentsDir, archivedNamespace, name, {
         address,
         abi: [],
       });
     }
-    writeNamespaceMetadata(deploymentsDir, ARCHIVED_NAMESPACE);
+    writeNamespaceMetadata(deploymentsDir, archivedNamespace);
   }
 
-  function freezeOptions() {
+  // Wraps the devnet RPC so `eth_getLogs` is answered only for spans up to `cap`,
+  // the way a provider with a block-range limit does. A cap of zero refuses every
+  // span with a message that is not about the span at all.
+  function providerCappingLogSpan(cap: bigint | null) {
+    const transport = env.createClient(env.accounts[0]);
+    const state = { refusals: 0 };
+    return {
+      state,
+      provider: {
+        request(args: { method: string; params?: readonly unknown[] | object }) {
+          if (args.method === "eth_getLogs") {
+            const [filter] = args.params as [
+              { fromBlock: `0x${string}`; toBlock: `0x${string}` },
+            ];
+            const span = BigInt(filter.toBlock) - BigInt(filter.fromBlock) + 1n;
+            if (cap === null) {
+              return Promise.reject(new Error("log reads are unavailable"));
+            }
+            if (span > cap) {
+              state.refusals += 1;
+              return Promise.reject(
+                new Error(
+                  "query block range exceeds server limit, narrow your filter",
+                ),
+              );
+            }
+          }
+          return transport.request(args as never);
+        },
+      },
+    };
+  }
+
+  function freezeOptions(overrides: { deploymentNetwork?: string } = {}) {
     return {
       network: NETWORK,
       rpcUrl: `http://${env.hostPort}`,
@@ -112,6 +154,7 @@ describe("v1 registrar freeze", () => {
       v1DeploymentsDir,
       v1DeploymentNetwork: NETWORK,
       impersonateOwner: true,
+      ...overrides,
     } as const;
   }
 
@@ -148,6 +191,45 @@ describe("v1 registrar freeze", () => {
       [ARCHIVED_ETH_RENEWER],
       { account: securityOwner },
     );
+  }
+
+  // Stands up a superseded deployment's reverse adapters the way a pruned or
+  // never-committed namespace leaves them: real contracts holding real grants, with
+  // no artifact on disk pointing at them. Only their on-chain back-reference to the
+  // registrar they forward to identifies them as this tooling's.
+  async function deployUntrackedReverseAdapters() {
+    const wallet = env.createClient(env.accounts[0]);
+    const contractNamer =
+      await env.shared.ReverseRegistrarAdapter.read.CONTRACT_NAMER();
+    // Sequential: both deployments sign from the same account, and the address is
+    // derived from the nonce read before sending.
+    const adapter = await deployArtifact(wallet, {
+      file: new URL(
+        "../../out/ReverseRegistrarAdapter.sol/ReverseRegistrarAdapter.json",
+        import.meta.url,
+      ),
+      args: [env.v1.ReverseRegistrar.address, contractNamer],
+    });
+    const defaultAdapter = await deployArtifact(wallet, {
+      file: new URL(
+        "../../out/DefaultReverseRegistrarAdapter.sol/DefaultReverseRegistrarAdapter.json",
+        import.meta.url,
+      ),
+      args: [env.shared.DefaultReverseRegistrar.address, contractNamer],
+    });
+
+    const reverseOwner = await ownerAccountOf(env.v1.ReverseRegistrar);
+    await env.v1.ReverseRegistrar.write.setController([adapter, true], {
+      account: reverseOwner,
+    });
+    const defaultReverseOwner = await ownerAccountOf(
+      env.shared.DefaultReverseRegistrar,
+    );
+    await env.shared.DefaultReverseRegistrar.write.setController(
+      [defaultAdapter, true],
+      { account: defaultReverseOwner },
+    );
+    return { adapter, defaultAdapter };
   }
 
   // Moves the BaseRegistrar out from under the security controller, the state a
@@ -249,6 +331,159 @@ describe("v1 registrar freeze", () => {
       ).resolves.toBe(false);
 
       await verifyV1RegistrarsDisabled(freezeOptions());
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "revokes superseded reverse adapters that no local artifact describes",
+    async () => {
+      writeDeploymentArtifacts();
+      const { adapter, defaultAdapter } = await deployUntrackedReverseAdapters();
+
+      // Artifact-only discovery cannot see these, so the audit has to recover them
+      // from the registrars' controller history.
+      await expect(verifyV1RegistrarsDisabled(freezeOptions())).rejects.toThrow(
+        /superseded v1 authorizations still enabled/,
+      );
+
+      await disableV1Registrars(freezeOptions());
+
+      await expect(
+        env.v1.ReverseRegistrar.read.controllers([adapter]),
+      ).resolves.toBe(false);
+      await expect(
+        env.shared.DefaultReverseRegistrar.read.controllers([defaultAdapter]),
+      ).resolves.toBe(false);
+
+      await expect(
+        env.v1.ReverseRegistrar.read.controllers([
+          env.shared.ReverseRegistrarAdapter.address,
+        ]),
+      ).resolves.toBe(true);
+      await expect(
+        env.shared.DefaultReverseRegistrar.read.controllers([
+          env.shared.DefaultReverseRegistrarAdapter.address,
+        ]),
+      ).resolves.toBe(true);
+
+      await verifyV1RegistrarsDisabled(freezeOptions());
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "leaves v1-owned reverse registrar controllers alone",
+    async () => {
+      writeDeploymentArtifacts();
+
+      // A contract that forwards to no reverse registrar: it answers no
+      // back-reference, so the audit must read it as v1's own rather than as a
+      // superseded handoff contract.
+      const v1Controller = env.v1.BaseRegistrar.address;
+      const reverseOwner = await ownerAccountOf(env.v1.ReverseRegistrar);
+      await env.v1.ReverseRegistrar.write.setController([v1Controller, true], {
+        account: reverseOwner,
+      });
+
+      await disableV1Registrars(freezeOptions());
+
+      await expect(
+        env.v1.ReverseRegistrar.read.controllers([v1Controller]),
+      ).resolves.toBe(true);
+      await verifyV1RegistrarsDisabled(freezeOptions());
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "resolves archives of a deployment namespace not named for the network",
+    async () => {
+      writeDeploymentArtifacts({
+        activeNamespace: CUSTOM_NAMESPACE,
+        archivedNamespace: CUSTOM_ARCHIVED_NAMESPACE,
+      });
+      await authorizeArchivedHandoffContracts();
+
+      const customOptions = freezeOptions({
+        deploymentNetwork: CUSTOM_NAMESPACE,
+      });
+      await disableV1Registrars(customOptions);
+
+      await expect(
+        env.v1.ReverseRegistrar.read.controllers([ARCHIVED_REVERSE_ADAPTER]),
+      ).resolves.toBe(false);
+      await expect(
+        env.v1.BaseRegistrar.read.controllers([ARCHIVED_ETH_RENEWER]),
+      ).resolves.toBe(false);
+
+      // The active namespace shares no prefix with the network, so a network-keyed
+      // scan would leave its grants unaccounted for and revoke them.
+      await expect(
+        env.v1.ReverseRegistrar.read.controllers([
+          env.shared.ReverseRegistrarAdapter.address,
+        ]),
+      ).resolves.toBe(true);
+      await expect(
+        env.shared.DefaultReverseRegistrar.read.controllers([
+          env.shared.DefaultReverseRegistrarAdapter.address,
+        ]),
+      ).resolves.toBe(true);
+
+      await verifyV1RegistrarsDisabled(customOptions);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "fails rather than auditing partially when controller history cannot be read",
+    async () => {
+      writeDeploymentArtifacts();
+      await authorizeArchivedHandoffContracts();
+      const { provider } = providerCappingLogSpan(null);
+
+      await expect(
+        verifyV1RegistrarsDisabled({ ...freezeOptions(), provider }),
+      ).rejects.toThrow(/log reads are unavailable/);
+      await expect(
+        disableV1Registrars({ ...freezeOptions(), provider }),
+      ).rejects.toThrow(/log reads are unavailable/);
+
+      // Nothing was revoked on the way to the failure.
+      await expect(
+        env.v1.ReverseRegistrar.read.controllers([ARCHIVED_REVERSE_ADAPTER]),
+      ).resolves.toBe(true);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "narrows the controller history scan to the span the provider serves",
+    async () => {
+      writeDeploymentArtifacts();
+      const { adapter, defaultAdapter } = await deployUntrackedReverseAdapters();
+
+      // The scan only narrows above its minimum span, so the chain has to be
+      // longer than one request's worth.
+      await env.client.mine({ blocks: 4096 });
+
+      const { provider, state } = providerCappingLogSpan(1_000n);
+      await disableV1Registrars({ ...freezeOptions(), provider });
+
+      expect(state.refusals).toBeGreaterThan(0);
+      await expect(
+        env.v1.ReverseRegistrar.read.controllers([adapter]),
+      ).resolves.toBe(false);
+      await expect(
+        env.shared.DefaultReverseRegistrar.read.controllers([defaultAdapter]),
+      ).resolves.toBe(false);
+      await expect(
+        env.v1.ReverseRegistrar.read.controllers([
+          env.shared.ReverseRegistrarAdapter.address,
+        ]),
+      ).resolves.toBe(true);
+
+      await verifyV1RegistrarsDisabled({ ...freezeOptions(), provider });
     },
     TEST_TIMEOUT_MS,
   );
