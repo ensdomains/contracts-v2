@@ -25,6 +25,10 @@ const ARCHIVED_NAMESPACE = "mainnet-archived-20260101";
 const CUSTOM_NAMESPACE = "staging";
 const CUSTOM_ARCHIVED_NAMESPACE = "staging-20260101-r1";
 
+// Height past which a whole-chain log request is wider than the smallest span the
+// scan will narrow to, so a capped provider forces it to split the range.
+const MIN_SCAN_NARROWING_BLOCK = 1_100n;
+
 // Stand-ins for a superseded deployment's handoff contracts: the freeze only reads
 // their controller flags, so any address that is not an active deployment's works.
 const ARCHIVED_REVERSE_ADAPTER = getAddress(
@@ -464,8 +468,11 @@ describe("v1 registrar freeze", () => {
       const { adapter, defaultAdapter } = await deployUntrackedReverseAdapters();
 
       // The scan only narrows above its minimum span, so the chain has to be
-      // longer than one request's worth.
-      await env.client.mine({ blocks: 4096 });
+      // longer than one request's worth. Mined in small batches, since a single
+      // large batch outruns the RPC request timeout on a slow machine.
+      while ((await env.client.getBlockNumber()) < MIN_SCAN_NARROWING_BLOCK) {
+        await env.client.mine({ blocks: 256 });
+      }
 
       const { provider, state } = providerCappingLogSpan(1_000n);
       await disableV1Registrars({ ...freezeOptions(), provider });
