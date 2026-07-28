@@ -15,9 +15,8 @@ export default execute(
 
     const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
 
-    const approvedUpgradeGate = get<
-      (typeof artifacts.ApprovedUpgradeGate)["abi"]
-    >("ApprovedUpgradeGate");
+    const registryUpgradeSet =
+      get<(typeof artifacts.IAddressSet)["abi"]>("RegistryUpgradeSet");
 
     const publicResolverSet =
       get<(typeof artifacts.IAddressSet)["abi"]>("PublicResolverSet");
@@ -33,7 +32,7 @@ export default execute(
         graveyard.address,
         verifiableFactory.address,
         ensV1Resolver.address,
-        approvedUpgradeGate.address,
+        registryUpgradeSet.address,
         labelStore.address,
         publicResolverSet.address,
         publicResolverV2.address,
@@ -48,7 +47,7 @@ export default execute(
       "Graveyard",
       "VerifiableFactory",
       "ENSV1Resolver",
-      "ApprovedUpgradeGate",
+      "RegistryUpgradeSet",
       "LabelStore",
       "PublicResolverSet",
       "PublicResolverV2",

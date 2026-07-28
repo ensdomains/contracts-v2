@@ -17,7 +17,6 @@ import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-import {ApprovedUpgradeGate} from "./ApprovedUpgradeGate.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
@@ -41,7 +40,7 @@ contract WrapperRegistry is
     address public immutable V1_RESOLVER;
 
     /// @notice Gate for approved implementation upgrade targets.
-    ApprovedUpgradeGate public immutable UPGRADE_GATE;
+    IAddressSet public immutable UPGRADE_SET;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
@@ -61,7 +60,7 @@ contract WrapperRegistry is
     /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.
-    /// @param upgradeGate The upgrade target allowlist.
+    /// @param upgradeSet The upgrade target allowlist.
     /// @param labelStore The shared label database.
     /// @param publicResolverSet The approved list of `PublicResolver` contracts.
     /// @param publicResolver The replacement `PublicResolver`.
@@ -71,7 +70,7 @@ contract WrapperRegistry is
         address graveyard,
         IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
-        ApprovedUpgradeGate upgradeGate,
+        IAddressSet upgradeSet,
         ILabelStore labelStore,
         IAddressSet publicResolverSet,
         address publicResolver,
@@ -92,7 +91,7 @@ contract WrapperRegistry is
         )
     {
         V1_RESOLVER = ensV1Resolver;
-        UPGRADE_GATE = upgradeGate;
+        UPGRADE_SET = upgradeSet;
         _disableInitializers();
     }
 
@@ -278,7 +277,7 @@ contract WrapperRegistry is
         override
         onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE)
     {
-        if (!UPGRADE_GATE.approvedImplementations(newImplementation)) {
+        if (!UPGRADE_SET.includes(newImplementation)) {
             revert UpgradeTargetNotApproved(newImplementation);
         }
     }
