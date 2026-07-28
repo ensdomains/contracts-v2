@@ -15,14 +15,12 @@ export default execute(
   }) => {
     if (tags.local) return true;
 
-    const managedUrp =
-      get<(typeof artifacts.UpgradableUniversalResolverProxy)["abi"]>(
-        "ManagedUniversalResolverProxy",
-      );
-    const universalResolverV2 =
-      get<(typeof artifacts.UniversalResolverV2)["abi"]>(
-        "UniversalResolverV2",
-      );
+    const managedUrp = get<
+      (typeof artifacts.UpgradableUniversalResolverProxy)["abi"]
+    >("ManagedUniversalResolverProxy");
+    const universalResolverV2 = get<
+      (typeof artifacts.UniversalResolverV2)["abi"]
+    >("UniversalResolverV2");
 
     if (tags.hasDao) {
       logUpgradeCalldata(

@@ -123,10 +123,7 @@ export async function bootstrapForkDeployments({
   // Mirror the canonical `.chain` so rocketh's chainId/genesisHash checks pass
   // against the live forked node (which exposes the upstream genesis at block
   // 0). rocketh stores chainId as a string and compares it strictly.
-  await copyFile(
-    join(canonicalDir, ".chain"),
-    join(deploymentsDir, ".chain"),
-  );
+  await copyFile(join(canonicalDir, ".chain"), join(deploymentsDir, ".chain"));
 
   // sanity: bail loudly if the canonical chainId disagrees with the live one
   const liveChainHeader = JSON.parse(

@@ -42,10 +42,9 @@ export default execute(
     // proxy currently serves so that later switching the top proxy onto it is
     // transparent for resolution. Fall back to the v1 UniversalResolver only when
     // the top proxy implementation is unset.
-    const topProxy =
-      get<typeof artifacts.UpgradableUniversalResolverProxy.abi>(
-        "UpgradableUniversalResolverProxy",
-      );
+    const topProxy = get<typeof artifacts.UpgradableUniversalResolverProxy.abi>(
+      "UpgradableUniversalResolverProxy",
+    );
     const topImplementation = (await read(topProxy, {
       functionName: "implementation",
     })) as `0x${string}`;
