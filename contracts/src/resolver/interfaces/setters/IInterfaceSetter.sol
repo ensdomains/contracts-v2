@@ -7,7 +7,7 @@ interface IInterfaceSetter {
     // Events
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Text was changed.
+    /// @notice Interface was changed.
     /// @param recordId The record ID.
     /// @param interfaceId The EIP-165 interface ID.
     /// @param implementer The address of the contract that implements the interface.

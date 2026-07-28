@@ -31,7 +31,7 @@ import {IPubkeySetter} from "./interfaces/setters/IPubkeySetter.sol";
 import {ITextSetter} from "./interfaces/setters/ITextSetter.sol";
 
 /// @dev Abstract resolver implementation that supports multicall and the standardized resolver profiles.
-abstract contract AbstractRecordResolver is ERC165, IRecordResolver, IERC7996, IMulticallable {
+abstract contract AbstractRecordResolver is ERC165, IRecordResolver, IERC7996 {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
