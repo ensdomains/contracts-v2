@@ -8,6 +8,10 @@
   "workspaces": [
     "contracts"
   ],
+  "scripts": {
+    "format:biome": "biome format .",
+    "format:biome:fix": "biome format --write ."
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.4.11",
     "husky": "^9.1.7",

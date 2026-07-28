@@ -300,7 +300,6 @@ class PreMigrationLogger extends Logger {
       `  → ⊘ Skipping: ${domainName} (invalid label name)`,
     );
   }
-
 }
 
 const logger = new PreMigrationLogger();

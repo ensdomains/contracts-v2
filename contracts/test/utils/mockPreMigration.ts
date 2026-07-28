@@ -110,7 +110,6 @@ export function buildMainArgs(
   return args;
 }
 
-
 export async function verifyV2State(
   env: DevnetEnvironment,
   label: string,

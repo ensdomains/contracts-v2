@@ -400,9 +400,7 @@ function csvLabelColumnIndex(header: string[]): number {
 // Quote a CSV field when it contains a delimiter, quote, or newline so labels
 // with such characters survive a round-trip through the premigration reader.
 function escapeCsvField(value: string): string {
-  return /[",\n\r]/.test(value)
-    ? `"${value.replace(/"/g, '""')}"`
-    : value;
+  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
 function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
@@ -411,9 +409,7 @@ function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
   const header = parseCSVLine(lines[0]);
   const labelIndex = csvLabelColumnIndex(header);
   if (labelIndex < 0) {
-    throw new Error(
-      `CSV must contain a labelName or label column: ${csvFile}`,
-    );
+    throw new Error(`CSV must contain a labelName or label column: ${csvFile}`);
   }
   const labels: string[] = [];
   for (const line of lines.slice(1)) {
@@ -1403,9 +1399,7 @@ async function verifyPreMigration(opts: {
   console.log(`eligible v1 names: ${eligible}`);
   console.log(`skipped ineligible names: ${skipped}`);
   console.log(`verified active names: ${verifiedActive}`);
-  console.log(
-    `verified expired-bonus names: ${verifiedExpiredBonus}`,
-  );
+  console.log(`verified expired-bonus names: ${verifiedExpiredBonus}`);
   console.log(`verified names: ${verifiedActive + verifiedExpiredBonus}`);
   if (errors.length > 0) {
     console.error(errors.slice(0, 20).join("\n"));
@@ -1532,7 +1526,8 @@ async function sendAdminWrite(opts: {
     );
     return;
   }
-  if (opts.impersonateAccount) await impersonate(opts.client, opts.impersonateAccount);
+  if (opts.impersonateAccount)
+    await impersonate(opts.client, opts.impersonateAccount);
   const wallet = walletClient({
     rpcUrl: opts.rpcUrl,
     chain: opts.chain,
@@ -2159,7 +2154,11 @@ function resolveRegistry(opts: {
 }): ContractRef {
   const registry = opts.registry
     ? null
-    : loadV2Deployment(opts.deploymentsDir, opts.deploymentNetwork, "ETHRegistry");
+    : loadV2Deployment(
+        opts.deploymentsDir,
+        opts.deploymentNetwork,
+        "ETHRegistry",
+      );
   return {
     address: opts.registry ?? registry!.address,
     abi: registry?.abi ?? Artifact_PermissionedRegistry.abi,
@@ -2206,7 +2205,11 @@ async function enableV2Registrar(opts: {
     deploymentNetwork,
     "ETHRegistrar",
   );
-  const beforeEnabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
+  const beforeEnabled = await readHasRegistrarRoles(
+    client,
+    registry,
+    ethRegistrar,
+  );
   console.log(`v2 registrar already enabled: ${beforeEnabled}`);
   if (beforeEnabled) return;
 
@@ -2221,7 +2224,11 @@ async function enableV2Registrar(opts: {
     privateKey: opts.privateKey,
     impersonateAccount: opts.impersonateAccount,
   });
-  const afterEnabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
+  const afterEnabled = await readHasRegistrarRoles(
+    client,
+    registry,
+    ethRegistrar,
+  );
   console.log(`v2 registrar enabled after phase: ${afterEnabled}`);
 }
 
@@ -2794,7 +2801,8 @@ function signerKeyForAccount(
   const keys = candidates.filter((key): key is `0x${string}` => Boolean(key));
   if (!target) return keys[0];
   return keys.find(
-    (key) => getAddress(privateKeyToAccount(key).address) === getAddress(target),
+    (key) =>
+      getAddress(privateKeyToAccount(key).address) === getAddress(target),
   );
 }
 
@@ -3143,7 +3151,9 @@ async function deployV1(opts: DeployV1Options) {
 export async function deployV2(opts: DeployV2Options) {
   const network = NETWORKS[opts.network];
   const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
-  const deploymentsDir = resolve(opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR);
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
   // A fresh deployment archives any existing namespace and therefore must
   // persist the new one, so it implies saving regardless of the flag.
   const persist = Boolean(opts.saveDeployments) || Boolean(opts.fresh);
@@ -3762,7 +3772,11 @@ function loadV2MigrationDeployments(
       deploymentNetwork,
       "ETHRenewerV1",
     ),
-    mockUsdc: maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, "MockUSDC"),
+    mockUsdc: maybeLoadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      "MockUSDC",
+    ),
     unlockedMigrationController: loadV2Deployment(
       deploymentsDir,
       deploymentNetwork,
@@ -4117,10 +4131,11 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // Signer for the v1-owner-gated controller changes (disable registrars,
     // authorize the renewer, hand off ownership). On a fork we impersonate the
     // owner; for a live run we require the key that controls it.
-    const v1OwnerSigner: { impersonateOwner: true } | { privateKey: `0x${string}` } =
-      useRpcStateControls
-        ? { impersonateOwner: true }
-        : { privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner") };
+    const v1OwnerSigner:
+      | { impersonateOwner: true }
+      | { privateKey: `0x${string}` } = useRpcStateControls
+      ? { impersonateOwner: true }
+      : { privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner") };
 
     // The migration wraps whatever the canonical top proxy currently serves.
     // When reusing a long-lived intermediate URP, the top proxy already fronts
@@ -4323,9 +4338,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
           "ETHRenewerV1 was not authorized as a v1 BaseRegistrar controller in phase 4",
         );
       }
-      console.log(
-        "smoke ETHRenewerV1 authorized as a v1 renewal controller",
-      );
+      console.log("smoke ETHRenewerV1 authorized as a v1 renewal controller");
     }
 
     console.log("phase 5: sync remaining names and finish pre-migration");
@@ -4386,7 +4399,9 @@ export async function runForkFull(opts: RunForkFullOptions) {
         status: STATUS.REGISTERED,
         owner: smokeMigrationOwner,
       });
-      console.log(`smoke migration registered ${smokeLabels.migrate}.eth on v2`);
+      console.log(
+        `smoke migration registered ${smokeLabels.migrate}.eth on v2`,
+      );
     }
 
     console.log(
@@ -4801,11 +4816,7 @@ function addV1OwnerWriteOptions(command: Command): Command {
   return command
     .option("--private-key <key>", "V1 owner private key")
     .option("--impersonate-owner", "Impersonate owner on a fork", false)
-    .option(
-      "--calldata-only",
-      "Print transaction target and calldata",
-      false,
-    );
+    .option("--calldata-only", "Print transaction target and calldata", false);
 }
 
 function assertCleanDeploymentNamespace(
@@ -4870,8 +4881,9 @@ function readDeploymentDeployedAt(path: string): string | undefined {
   const migrationsPath = join(path, ".migrations.json");
   if (existsSync(migrationsPath)) {
     try {
-      const migrations = JSON.parse(readFileSync(migrationsPath, "utf-8")) as
-        Record<string, number>;
+      const migrations = JSON.parse(
+        readFileSync(migrationsPath, "utf-8"),
+      ) as Record<string, number>;
       const timestamps = Object.values(migrations).filter(
         (value) => typeof value === "number" && Number.isFinite(value),
       );
@@ -4893,8 +4905,7 @@ function archiveExistingDeploymentNamespace(root: string, environment: string) {
     (file) => file.endsWith(".json") || file === ".chain",
   );
   if (!hasArtifacts) return;
-  const deployedAt =
-    readDeploymentDeployedAt(path) ?? new Date().toISOString();
+  const deployedAt = readDeploymentDeployedAt(path) ?? new Date().toISOString();
   const stamp = deployedAt.slice(0, 10).replace(/-/g, "");
   let revision = 1;
   let archive = `${environment}-${stamp}-r${revision}`;
@@ -5304,8 +5315,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await setV1ReverseDefaultResolver({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5418,8 +5428,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await authorizeTestnetV1PremigrationRegistrar({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5447,8 +5456,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await activateV1Graveyard({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5483,8 +5491,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await activateV1HandoffControllers({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5512,8 +5519,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await authorizeV1Renewer({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5541,8 +5547,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await activateV1RenewerAndTransferOwnership({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5577,8 +5582,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await reclaimV1RegistrarOwnership({
           ...networkOpts,
-          v1Owner:
-            opts.v1Owner ?? NETWORKS[networkOpts.network].defaultV1Owner,
+          v1Owner: opts.v1Owner ?? NETWORKS[networkOpts.network].defaultV1Owner,
           privateKey:
             opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
         });

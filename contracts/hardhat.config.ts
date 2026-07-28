@@ -20,10 +20,10 @@ const outputSelection = {
 };
 const tenderlySepoliaRpcUrl =
   process.env.TENDERLY_SEPOLIA_RPC_URL ??
-  configVariable('TENDERLY_SEPOLIA_RPC_URL');
+  configVariable("TENDERLY_SEPOLIA_RPC_URL");
 const plugins = [
   HardhatNetworkHelpersPlugin,
-  ...(process.env.HARDHAT_DISABLE_VIEM === '1'
+  ...(process.env.HARDHAT_DISABLE_VIEM === "1"
     ? []
     : [HardhatChaiMatchersViemPlugin, HardhatViem]),
   HardhatStorageLayoutPlugin,
@@ -97,21 +97,21 @@ const config = {
   },
   networks: {
     sepolia: {
-      type: 'http',
-      url: configVariable('SEPOLIA_RPC_URL'),
-      accounts: [configVariable('DEPLOYER_KEY')],
+      type: "http",
+      url: configVariable("SEPOLIA_RPC_URL"),
+      accounts: [configVariable("DEPLOYER_KEY")],
       chainId: 11155111,
     },
-    'sepolia-dev': {
-      type: 'http',
-      url: configVariable('SEPOLIA_RPC_URL'),
-      accounts: [configVariable('DEV_DEPLOYER_KEY')],
+    "sepolia-dev": {
+      type: "http",
+      url: configVariable("SEPOLIA_RPC_URL"),
+      accounts: [configVariable("DEV_DEPLOYER_KEY")],
       chainId: 11155111,
     },
-    'tenderly-sepolia': {
-      type: 'http',
+    "tenderly-sepolia": {
+      type: "http",
       url: tenderlySepoliaRpcUrl,
-      accounts: [configVariable('DEPLOYER_KEY')],
+      accounts: [configVariable("DEPLOYER_KEY")],
     },
   },
   paths: {

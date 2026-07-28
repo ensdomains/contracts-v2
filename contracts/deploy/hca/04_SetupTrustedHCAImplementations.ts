@@ -14,10 +14,9 @@ export default execute(
     if (!shouldDeployStandaloneHCA(tags)) return;
 
     const account = owner ?? deployer;
-    const implementation =
-      get<(typeof artifacts.StandaloneSingleOwnerHCA)["abi"]>(
-        "StandaloneHCAImplementation",
-      );
+    const implementation = get<
+      (typeof artifacts.StandaloneSingleOwnerHCA)["abi"]
+    >("StandaloneHCAImplementation");
     const defaultReverseRegistrarAdapter =
       getOrNull<(typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]>(
         "DefaultReverseRegistrarHCAAdapter",

@@ -4,10 +4,9 @@ export default execute(
   async ({ deploy, get, getV1, namedAccounts: { deployer } }) => {
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-    const batchGatewayProvider =
-      await getV1<(typeof artifacts.GatewayProvider)["abi"]>(
-        "BatchGatewayProvider",
-      );
+    const batchGatewayProvider = await getV1<
+      (typeof artifacts.GatewayProvider)["abi"]
+    >("BatchGatewayProvider");
     const contractNamer =
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
 

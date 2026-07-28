@@ -18,13 +18,17 @@ const action: TaskOverrideActionFunction = async (
   runSuper,
 ) => {
   const originals = await Promise.all(
-    REMAPPINGS_PATHS.map(async (path) => [path, await readFile(path, "utf8")] as const),
+    REMAPPINGS_PATHS.map(
+      async (path) => [path, await readFile(path, "utf8")] as const,
+    ),
   );
   await Promise.all(originals.map(([path]) => writeFile(path, "")));
   try {
     return await runSuper(taskArguments);
   } finally {
-    await Promise.all(originals.map(([path, original]) => writeFile(path, original)));
+    await Promise.all(
+      originals.map(([path, original]) => writeFile(path, original)),
+    );
   }
 };
 

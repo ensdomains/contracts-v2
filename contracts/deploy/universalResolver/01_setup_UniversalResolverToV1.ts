@@ -18,9 +18,9 @@ export default execute(
   }) => {
     if (tags.local) return true;
 
-    const topUrp = get<
-      typeof artifacts.UpgradableUniversalResolverProxy.abi
-    >("UpgradableUniversalResolverProxy");
+    const topUrp = get<typeof artifacts.UpgradableUniversalResolverProxy.abi>(
+      "UpgradableUniversalResolverProxy",
+    );
 
     // Only a freshly bootstrapped top URP with an unset implementation needs
     // initializing to v1. An adopted top URP already serves either v1 or the
