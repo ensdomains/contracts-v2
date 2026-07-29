@@ -1807,7 +1807,8 @@ async function readControllerEventAddresses(
         fromBlock,
         toBlock,
       });
-      if (acceptedSpan === undefined || span > acceptedSpan) acceptedSpan = span;
+      if (acceptedSpan === undefined || span > acceptedSpan)
+        acceptedSpan = span;
       return logs.map((log) =>
         getAddress((log.args as { controller: Address }).controller),
       );

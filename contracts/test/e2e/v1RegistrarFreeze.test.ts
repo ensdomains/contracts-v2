@@ -80,7 +80,10 @@ describe("v1 registrar freeze", () => {
   function writeDeploymentArtifacts({
     activeNamespace = ACTIVE_NAMESPACE,
     archivedNamespace = ARCHIVED_NAMESPACE,
-  }: { activeNamespace?: string; archivedNamespace?: string } = {}) {
+  }: {
+    activeNamespace?: string;
+    archivedNamespace?: string;
+  } = {}) {
     rmSync(workDir, { recursive: true, force: true });
     for (const [name, contract] of [
       ["BaseRegistrarImplementation", env.v1.BaseRegistrar],
@@ -124,7 +127,10 @@ describe("v1 registrar freeze", () => {
     return {
       state,
       provider: {
-        request(args: { method: string; params?: readonly unknown[] | object }) {
+        request(args: {
+          method: string;
+          params?: readonly unknown[] | object;
+        }) {
           if (args.method === "eth_getLogs") {
             const [filter] = args.params as [
               { fromBlock: `0x${string}`; toBlock: `0x${string}` },
@@ -203,8 +209,13 @@ describe("v1 registrar freeze", () => {
   // registrar they forward to identifies them as this tooling's.
   async function deployUntrackedReverseAdapters() {
     const wallet = env.createClient(env.accounts[0]);
-    const contractNamer =
-      await env.shared.ReverseRegistrarAdapter.read.CONTRACT_NAMER();
+    const [verifiableFactory, trustedHCASet, contractNamer] = await Promise.all(
+      [
+        env.shared.ReverseRegistrarAdapter.read.VERIFIABLE_FACTORY(),
+        env.shared.ReverseRegistrarAdapter.read.TRUSTED_HCA_SET(),
+        env.shared.ReverseRegistrarAdapter.read.CONTRACT_NAMER(),
+      ],
+    );
     // Sequential: both deployments sign from the same account, and the address is
     // derived from the nonce read before sending.
     const adapter = await deployArtifact(wallet, {
@@ -212,14 +223,24 @@ describe("v1 registrar freeze", () => {
         "../../out/ReverseRegistrarAdapter.sol/ReverseRegistrarAdapter.json",
         import.meta.url,
       ),
-      args: [env.v1.ReverseRegistrar.address, contractNamer],
+      args: [
+        env.v1.ReverseRegistrar.address,
+        verifiableFactory,
+        trustedHCASet,
+        contractNamer,
+      ],
     });
     const defaultAdapter = await deployArtifact(wallet, {
       file: new URL(
         "../../out/DefaultReverseRegistrarAdapter.sol/DefaultReverseRegistrarAdapter.json",
         import.meta.url,
       ),
-      args: [env.shared.DefaultReverseRegistrar.address, contractNamer],
+      args: [
+        env.shared.DefaultReverseRegistrar.address,
+        verifiableFactory,
+        trustedHCASet,
+        contractNamer,
+      ],
     });
 
     const reverseOwner = await ownerAccountOf(env.v1.ReverseRegistrar);
@@ -343,7 +364,8 @@ describe("v1 registrar freeze", () => {
     "revokes superseded reverse adapters that no local artifact describes",
     async () => {
       writeDeploymentArtifacts();
-      const { adapter, defaultAdapter } = await deployUntrackedReverseAdapters();
+      const { adapter, defaultAdapter } =
+        await deployUntrackedReverseAdapters();
 
       // Artifact-only discovery cannot see these, so the audit has to recover them
       // from the registrars' controller history.
@@ -465,7 +487,8 @@ describe("v1 registrar freeze", () => {
     "narrows the controller history scan to the span the provider serves",
     async () => {
       writeDeploymentArtifacts();
-      const { adapter, defaultAdapter } = await deployUntrackedReverseAdapters();
+      const { adapter, defaultAdapter } =
+        await deployUntrackedReverseAdapters();
 
       // The scan only narrows above its minimum span, so the chain has to be
       // longer than one request's worth. Mined in small batches, since a single
