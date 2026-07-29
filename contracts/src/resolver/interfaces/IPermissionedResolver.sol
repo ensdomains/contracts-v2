@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {IMulticallable} from "@ens/contracts/resolvers/Multicallable.sol";
-
 import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedAccessControl.sol";
 
 import {IRecordResolver} from "./IRecordResolver.sol";
 
 /// @dev Interface selector: `0xd2392281`
-interface IPermissionedResolver is IRecordResolver, IEnhancedAccessControl, IMulticallable {
+interface IPermissionedResolver is IRecordResolver, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////

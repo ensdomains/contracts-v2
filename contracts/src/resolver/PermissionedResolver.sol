@@ -60,6 +60,7 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// | `setData()`        | `ROLE_SET_DATA`        | string key          |
 /// | `setInterface()`   | `ROLE_SET_INTERFACE`   | bytes4 interfaceId  |
 /// | `setName()`        | `ROLE_SET_NAME`        |                     |
+/// | `setPubkey()`      | `ROLE_SET_PUBKEY`      |                     |
 /// | `setText()`        | `ROLE_SET_TEXT`        | string key          |
 ///
 /// Every record setter has the form: `f(name, ...)`

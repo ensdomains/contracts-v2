@@ -7,7 +7,7 @@ interface IContentHashSetter {
     // Events
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Primary name was changed.
+    /// @notice Content hash was changed.
     /// @param recordId The record ID.
     /// @param contentHash The content hash.
     event ContentHashUpdated(uint256 indexed recordId, bytes contentHash);
@@ -16,7 +16,7 @@ interface IContentHashSetter {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Set contenthash.
+    /// @notice Set content hash.
     /// @param name The DNS-encoded name.
     /// @param contentHash The content hash.
     function setContentHash(bytes calldata name, bytes calldata contentHash) external;

@@ -62,7 +62,7 @@ export async function showName(env: DevnetEnvironment, names: string[]) {
 
       // Decode individual results
       ethAddress = decodeFunctionResult({
-        abi: PROFILE_ABI,
+        abi: ADDR_ABI,
         functionName: "addr",
         data: results[0],
       });

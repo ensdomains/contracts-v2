@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
+import {IMulticallable} from "@ens/contracts/resolvers/Multicallable.sol";
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 
 import {IABISetter} from "./setters/IABISetter.sol";
@@ -15,6 +16,7 @@ import {ITextSetter} from "./setters/ITextSetter.sol";
 /// @dev Interface selector: `0xd3fb9e08`
 interface IRecordResolver is
     IExtendedResolver,
+    IMulticallable,
     IABISetter,
     IAddressSetter,
     IContentHashSetter,
