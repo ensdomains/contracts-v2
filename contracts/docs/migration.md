@@ -65,8 +65,9 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 > is where the fresh deploy happens; the later phases re-seed and re-wire v1 to the **new** contract
 > addresses rather than the archived ones. Phases below carry a **Re-deploying fresh** note wherever
 > that changes what you run — most importantly, phase 1 needs a `reclaim-v1-registrar-ownership` prep
-> step and phase 3 becomes a no-op. The one-command shortcut is [`fork full`](#fork-full), which
-> detects an already-migrated chain and adjusts automatically.
+> step, and phase 3 must still be run: it is what removes the archived deployment's v1 controllers.
+> The one-command shortcut is [`fork full`](#fork-full), which detects an already-migrated chain and
+> adjusts automatically.
 
 ### Phase 0: deploy fresh v1 (clean-testnet only)
 
@@ -162,14 +163,48 @@ External infrastructure not implemented by this repository remains outside the m
   when it is run through `phase execute-owner-txs --role v1Owner`.
 - **Env / args:** v1 owner key via `--private-key` (or `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` through
   execute-owner-txs). `--calldata-only` emits calldata for a multisig instead of broadcasting.
-- **Expected outcome:** `LegacyETHRegistrarController`, `ETHRegistrarController`,
-  `WrappedETHRegistrarController`, and `NameWrapper` removed as v1 `BaseRegistrar` controllers (via
-  `RegistrarSecurityController` when deployed); new v1 registrations frozen.
-  `verify-v1-registrars-disabled` confirms.
-- **Re-deploying fresh:** normally a **no-op you can skip** — the v1 registrars were removed by the
-  prior deployment and stay frozen (reclaiming v1 `BaseRegistrar` ownership in phase 1 does not
-  re-enable them). Re-running is harmless (each controller logs "already disabled"); prefer just
-  `verify-v1-registrars-disabled` to confirm the freeze is still in place.
+- **Expected outcome:** every v1 authorization the active deployment did not itself grant is revoked;
+  new v1 registrations frozen. The phase audits three v1 surfaces:
+
+  | Surface | Candidates considered | Revoked via |
+  | --- | --- | --- |
+  | `BaseRegistrar` | the four v1 registration controllers, the handoff contracts (`ETHRenewerV1`, `Graveyard`, `TestnetV1PremigrationRegistrar`) of **every** namespace on this chain, and any address in the registrar's `ControllerAdded` history that no local artifact accounts for | `RegistrarSecurityController.removeRegistrarController` while it still owns the registrar, else `removeController` |
+  | `ReverseRegistrar` | this tooling's handoff contracts granted there (`TestnetV1PremigrationRegistrar`, `ReverseRegistrarAdapter`) of **every** namespace on this chain, plus any address in the registrar's `ControllerChanged` history that reports forwarding to it | `setController(addr, false)` |
+  | `DefaultReverseRegistrar` | this tooling's handoff contracts granted there (`TestnetV1PremigrationRegistrar`, `DefaultReverseRegistrarAdapter`) of **every** namespace on this chain, plus any address in the registrar's `ControllerChanged` history that reports forwarding to it | `setController(addr, false)` |
+
+  Only the **active** namespace's handoff contracts are left authorized.
+  `verify-v1-registrars-disabled` asserts that complete set and fails on anything else.
+
+  Namespaces are matched against both the network and the active `--deployment-network`, so a custom
+  namespace and the archives named after it are scanned too. The active namespace's artifacts are
+  read directly rather than through that scan: its grants are the ones that must survive, so they can
+  never depend on a directory listing.
+
+  > v1-side controllers on the reverse registrars (the official registrar controllers, which set
+  > reverse records during registration) are deliberately **not** touched — revoking them is outside
+  > the migration's remit and would break unrelated v1 behaviour. A discovered address counts as this
+  > tooling's own only when it answers `REVERSE_REGISTRAR()` / `DEFAULT_REVERSE_REGISTRAR()` with the
+  > registrar holding the grant; everything else is listed as `v1-owned, outside migration remit` and
+  > left enabled. That back-reference is what lets a superseded adapter be revoked when its deployment
+  > namespace is no longer on disk.
+- **Re-deploying fresh:** **must be run — not a no-op.** The v1 registration controllers stay frozen
+  from the prior deployment, but that deployment's own handoff contracts are still authorized, and
+  `TestnetV1PremigrationRegistrar` among them is a permissionless free registrar: leaving it enabled
+  silently reopens `.eth` registration on v1, and the names it mints reserve into the **archived** v2
+  registry rather than the live one (they are also invisible to the TheGraph-based CSV export, so a
+  later pre-migration will not pick them up). Run the phase, then `verify-v1-registrars-disabled`.
+
+> **Controller discovery.** Each surface's controller history is read from its events across the whole
+> chain. Providers cap `eth_getLogs` by block span or result count (free tiers commonly at 1k–10k
+> blocks), and a load-balanced endpoint may apply a cap to only some requests, so a refused span is
+> bisected and each half requested in turn until the provider accepts — the blocks covered are the
+> same either way. Anything else — a fork whose history predates its fork block, a refusal that
+> persists at the smallest span — fails both commands rather than reverting to the locally-described
+> controllers: that reduced set says nothing about grants no artifact accounts for, and a partial
+> audit must never pass for a complete one.
+>
+> An uncapped archival RPC reads each surface in a single request. Against a capped one the scan still
+> completes and returns the same controllers, but costs hundreds of requests and several minutes.
 
 ### Phase 4: authorize ETHRenewerV1
 
@@ -188,9 +223,8 @@ External infrastructure not implemented by this repository remains outside the m
   transfers v1 `BaseRegistrar` ownership to `ETHRenewerV1` is deferred to
   [phase 6](#phase-6-enable-the-v2-controller).
 - **Re-deploying fresh:** authorizes the **newly-deployed** `ETHRenewerV1` (a new address) as a v1
-  controller — must be re-run. The prior deployment's `ETHRenewerV1` remains an authorized controller
-  (orphaned but harmless); the tooling does not deauthorize it, so remove it manually only if you want
-  a clean controller set.
+  controller — must be re-run. The prior deployment's `ETHRenewerV1` is removed by
+  [phase 3](#phase-3-disable-v1-registrars), so run the phases in order rather than skipping ahead.
 
 > **Mainnet renewal continuity.** Renewals are paused between phase 3 (freeze) and phase 4
 > (authorize), and the phase 5 sync can run for days. When the v1 owner is a DAO/multisig, execute
@@ -225,6 +259,7 @@ External infrastructure not implemented by this repository remains outside the m
   bun run migration -- phase activate-v1-renewer              --network sepolia
   bun run migration -- phase enable-v2-registrar              --network sepolia
   bun run migration -- phase verify-v2-registrar              --network sepolia
+  bun run migration -- phase verify-v1-registrars-disabled    --network sepolia
   ```
 - **Prerequisites:** phase 5 complete. Order matters — the handoff controllers must be authorized
   **before** `activate-v1-renewer` transfers v1 `BaseRegistrar` ownership away from the v1 owner
@@ -240,11 +275,18 @@ External infrastructure not implemented by this repository remains outside the m
   `ETHRenewerV1` (final lock-down); `ETHRegistrar` granted `REGISTRAR | RENEW` on the v2 `ETHRegistry`
   — live v2 registrations open. `verify-v2-registrar` confirms the grant. This bundle replaces the
   all-at-once role swap done by [prepareMigration.md](./prepareMigration.md).
+
+  These handoff grants are the last step to touch v1 authorizations, so
+  `verify-v1-registrars-disabled` is re-run here to assert the final set: only the active deployment's
+  contracts may hold a v1 grant. `fork full` runs this assertion automatically. It is the check that
+  catches a superseded deployment's controller surviving the freeze — the phase 3 registration smoke
+  test cannot see one, because it only exercises the official registrar controller's path.
 - **Re-deploying fresh:** re-points v1 at the new set and must be re-run —
   `activate-v1-handoff-controllers` authorizes the new `Graveyard`, `activate-v1-renewer` transfers v1
   `BaseRegistrar` ownership to the new `ETHRenewerV1` (the ownership you reclaimed in phase 1), and
-  `enable-v2-registrar` grants the new `ETHRegistrar`. The prior deployment's `Graveyard`/`ETHRenewerV1`
-  remain authorized as orphaned v1 controllers.
+  `enable-v2-registrar` grants the new `ETHRegistrar`. The prior deployment's
+  `Graveyard`/`ETHRenewerV1`/`TestnetV1PremigrationRegistrar` are revoked by
+  [phase 3](#phase-3-disable-v1-registrars) in the same run.
 
 ### Phase 7: switch the Universal Resolver to v2
 
@@ -337,8 +379,9 @@ prerequisites, and expected outcome:
 
 > **Re-deploying onto an already-migrated Sepolia?** This runbook assumes a first migration. On a
 > repeat deploy the order is unchanged, but read each phase's **Re-deploying fresh** note first: run
-> [`phase reclaim-v1-registrar-ownership`](#cli-commands) before phase 1, skip phase 3 (v1 is already
-> frozen), and expect phases 2, 4, 5, 6, and 7 to re-seed and re-wire v1 to the new contract set.
+> [`phase reclaim-v1-registrar-ownership`](#cli-commands) before phase 1, run phase 3 (it removes the
+> archived deployment's controllers — do not skip it), and expect phases 2, 4, 5, 6, and 7 to re-seed
+> and re-wire v1 to the new contract set.
 
 ### After
 
@@ -524,9 +567,9 @@ Two commands are **not** on-chain and intentionally omit the network options:
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 |
 | `phase deploy-v2` | Phase 1: deploy the v2 migration contracts, reverse-registrar adapters, and enabled HCA infrastructure with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy) |
 | `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the Phase 1 deferred-tx replay on an already-migrated chain) |
-| `phase disable-v1-registrars` | Phase 3: disable v1 registrar controllers |
+| `phase disable-v1-registrars` | Phase 3: revoke every v1 authorization (BaseRegistrar + reverse registrars) the active deployment did not grant |
 | `phase set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` (v1-owner write) |
-| `phase verify-v1-registrars-disabled` | Verify v1 registrar controllers are disabled |
+| `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled |
 | `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable |
 | `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`) |
 | `phase disable-batch-registrar` | Phase 6: revoke registrar/renew roles from `BatchRegistrar` |
