@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {IExecutor} from "nexus/interfaces/modules/IExecutor.sol";
 import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 import {EncodedModuleTypes} from "nexus/lib/ModuleTypeLib.sol";
 
-import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {
+    HCAOwnerAndSessionValidator,
+    IHCARegistrationResolver
+} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
 /// @title Mock Standalone HCA
 /// @notice Test-only HCA stand-in that exposes an owner and forwards validation.
@@ -56,6 +62,78 @@ contract MockStandaloneHCA {
                 signature
             );
     }
+}
+
+
+/// @title Mock Address Set
+/// @notice Test-only administrator-controlled address set for HCA upgrade authorization.
+contract MockAddressSet is IAddressSet {
+    /// @notice The only account allowed to update the set.
+    address public immutable ADMIN;
+
+    mapping(address member => bool approved) private _approved;
+
+    /// @notice Thrown when an account other than the administrator updates the set.
+    /// @param caller The unauthorized caller.
+    error UnauthorizedAddressSetAdmin(address caller);
+
+    /// @param admin The account allowed to update the set.
+    constructor(address admin) {
+        ADMIN = admin;
+    }
+
+    /// @notice Adds or removes an address from the set.
+    /// @param member The address whose membership changes.
+    /// @param approved Whether the address is included.
+    function approve(address member, bool approved) external {
+        if (msg.sender != ADMIN) {
+            revert UnauthorizedAddressSetAdmin(msg.sender);
+        }
+        _approved[member] = approved;
+    }
+
+    /// @inheritdoc IAddressSet
+    function includes(address member) external view returns (bool) {
+        return _approved[member];
+    }
+}
+
+
+/// @title Mock HCA Registration Resolver
+/// @notice Test-only upgradeable resolver target implementing the HCA policy call surface.
+contract MockHCARegistrationResolver is
+    IHCARegistrationResolver,
+    IProxyAuthorization,
+    UUPSUpgradeable
+{
+    /// @notice Accepts the production resolver's constructor shape.
+    /// @dev The constructor argument is unused by this test implementation.
+    constructor(
+        address /* contractNamer */
+    )
+    {}
+
+    /// @inheritdoc IHCARegistrationResolver
+    function initialize(address, uint256, bytes[] calldata) external initializer {
+        __UUPSUpgradeable_init();
+    }
+
+    /// @inheritdoc IHCARegistrationResolver
+    function authorizeNameRoles(bytes calldata, uint256, address, bool)
+        external
+        pure
+        returns (bool success)
+    {
+        return true;
+    }
+
+    /// @inheritdoc IProxyAuthorization
+    function canUpgradeFrom(address) external pure returns (bool allowed) {
+        return true;
+    }
+
+    /// @dev Allows every upgrade because authorization behavior is outside this mock's scope.
+    function _authorizeUpgrade(address) internal override {}
 }
 
 

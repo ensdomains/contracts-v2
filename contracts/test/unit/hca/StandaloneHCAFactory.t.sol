@@ -9,11 +9,14 @@ import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
 import {Test} from "forge-std/Test.sol";
 
-import {MockExecutorModule, MockValidatorModule} from "../../mocks/MockStandaloneHCAStack.sol";
+import {
+    MockAddressSet,
+    MockExecutorModule,
+    MockValidatorModule
+} from "../../mocks/MockStandaloneHCAStack.sol";
 
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
-import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
 /// @title Standalone HCA Factory Tests
@@ -244,7 +247,7 @@ contract StandaloneHCAFactoryTest is Test {
                 address(new MockValidatorModule()),
                 address(new MockExecutorModule()),
                 "",
-                new PermissionedAddressSet(address(this)),
+                new MockAddressSet(address(this)),
                 IAddressSet(address(0))
             );
     }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.27;
+pragma solidity 0.8.27;
 
 import {INexus} from "nexus/interfaces/INexus.sol";
 import {IExecutor} from "nexus/interfaces/modules/IExecutor.sol";

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.27;
+pragma solidity ^0.8.13;
 
 /// @title Standalone HCA Owner Interface
 /// @notice Minimal owner view exposed by a standalone HCA account.

@@ -29,18 +29,21 @@ import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {Test} from "forge-std/Test.sol";
 
 import {
+    MockAddressSet,
     MockExecutorModule,
+    MockHCARegistrationResolver,
     MockStandaloneHCA,
     MockValidatorModule
 } from "../../mocks/MockStandaloneHCAStack.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
-import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {
+    HCAOwnerAndSessionValidator,
+    IHCARegistrationResolver
+} from "~src/hca/HCAOwnerAndSessionValidator.sol";
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
-import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
-import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
 contract StandaloneSingleOwnerHCATest is Test {
@@ -87,22 +90,22 @@ contract StandaloneSingleOwnerHCATest is Test {
     HCAOwnerAndSessionValidator validator;
     HCAOwnerAndSessionValidatorHarness validatorHarness;
     MockStandaloneHCA hca;
-    PermissionedAddressSet upgradeSet;
+    MockAddressSet upgradeSet;
 
     function setUp() public {
-        upgradeSet = new PermissionedAddressSet(upgradeSetAdmin);
+        upgradeSet = new MockAddressSet(upgradeSetAdmin);
         hca = new MockStandaloneHCA(owner);
 
         VerifiableFactory factory = new VerifiableFactory();
         verifiableFactory = address(factory);
-        permittedResolverImpl = address(new PermissionedResolver(makeAddr("resolver-namer")));
+        permittedResolverImpl = address(new MockHCARegistrationResolver(makeAddr("resolver-namer")));
         bytes[] memory setters = new bytes[](0);
         vm.prank(address(hca));
         resolver = factory.deployProxy(
             permittedResolverImpl,
             resolverSalt,
             abi.encodeCall(
-                PermissionedResolver.initialize,
+                IHCARegistrationResolver.initialize,
                 (address(hca), EACBaseRolesLib.ALL_ROLES, setters)
             )
         );
@@ -184,7 +187,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     function test_standaloneSingleOwnerHCA_upgradesThroughVerifiableFactoryProxy() public {
         VerifiableFactory factory = new VerifiableFactory();
         StandaloneSingleOwnerHCA implementation = _newAccount();
-        PermissionedAddressSet predecessorUpgradeSet = new PermissionedAddressSet(upgradeSetAdmin);
+        MockAddressSet predecessorUpgradeSet = new MockAddressSet(upgradeSetAdmin);
         StandaloneSingleOwnerHCA nextImplementation = _newAccount(predecessorUpgradeSet);
 
         address proxy =
@@ -1169,8 +1172,8 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function test_validator_rejectsChangedResolverImplementation() public {
-        PermissionedResolver otherImplementation =
-            new PermissionedResolver(makeAddr("other-resolver-namer"));
+        MockHCARegistrationResolver otherImplementation =
+            new MockHCARegistrationResolver(makeAddr("other-resolver-namer"));
         vm.prank(address(hca));
         IUUPSProxyUpgrade(resolver).upgradeToAndCall(address(otherImplementation), "");
 
@@ -1721,7 +1724,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         LegacyDelegatecallHCA implementation =
             new LegacyDelegatecallHCA(address(userOpEntryPoint), address(validator));
         VerifiableFactory factory = new VerifiableFactory();
-        PermissionedAddressSet trustedHCASet = new PermissionedAddressSet(address(this));
+        MockAddressSet trustedHCASet = new MockAddressSet(address(this));
         trustedHCASet.approve(address(implementation), true);
         StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
         deployer.setImplementationApproval(address(implementation), true);
@@ -1925,7 +1928,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         pure
         returns (bytes memory)
     {
-        return abi.encodeCall(PermissionedResolver.initialize, (admin, roleBitmap, setters));
+        return abi.encodeCall(IHCARegistrationResolver.initialize, (admin, roleBitmap, setters));
     }
 
     function _registrationOperationDataWithDefaultReverseName(
@@ -2443,7 +2446,7 @@ contract OwnerSpoofingPayload {
 contract ImplementationTrustOnlyDefaultAdapter {
     DefaultReverseRegistrar internal immutable REGISTRAR;
     VerifiableFactory internal immutable VERIFIABLE_FACTORY;
-    PermissionedAddressSet internal immutable TRUSTED_HCA_SET;
+    MockAddressSet internal immutable TRUSTED_HCA_SET;
 
     /// @param registrar The reverse registrar updated by the adapter.
     /// @param verifiableFactory The factory queried for the caller's current implementation.
@@ -2451,7 +2454,7 @@ contract ImplementationTrustOnlyDefaultAdapter {
     constructor(
         DefaultReverseRegistrar registrar,
         VerifiableFactory verifiableFactory,
-        PermissionedAddressSet trustedHCASet
+        MockAddressSet trustedHCASet
     )
     {
         REGISTRAR = registrar;
