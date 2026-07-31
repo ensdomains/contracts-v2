@@ -11,6 +11,9 @@ import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {TestPaymasterAcceptAll} from "account-abstraction/test/TestPaymasterAcceptAll.sol";
+import {
+    IModuleManagerEventsAndErrors
+} from "nexus/interfaces/base/IModuleManagerEventsAndErrors.sol";
 import {Nexus} from "nexus/Nexus.sol";
 import {ExecLib} from "nexus/lib/ExecLib.sol";
 import {
@@ -1508,10 +1511,36 @@ contract StandaloneSingleOwnerHCATest is Test {
         assertEq(account.owner(), owner);
     }
 
+    function test_standaloneSingleOwnerHCA_handlesOwnerUserOpCallDataShapes() public {
+        MockExecutorModule defaultExecutor = new MockExecutorModule();
+        StandaloneSingleOwnerHCA account = _newOwnerValidatedAccount(defaultExecutor);
+
+        assertEq(_validateOwnerUserOp(account, hex"", 0), 0);
+        assertEq(_validateOwnerUserOp(account, abi.encodePacked(Nexus.executeUserOp.selector), 0), 0);
+        assertEq(
+            _validateOwnerUserOp(
+                account,
+                abi.encodePacked(Nexus.executeUserOp.selector, Nexus.executeUserOp.selector),
+                0
+            ),
+            1
+        );
+        assertEq(_validateOwnerUserOp(account, hex"deadbeef", 0), 0);
+        assertEq(_validateOwnerUserOp(account, abi.encodePacked(Nexus.execute.selector), 0), 1);
+    }
+
     function test_standaloneSingleOwnerHCA_rejectsDefaultExecutorDelegatecall() public {
         MockExecutorModule defaultExecutor = new MockExecutorModule();
         StandaloneSingleOwnerHCA account = _newOwnerValidatedAccount(defaultExecutor);
         OwnerSlotWriter writer = new OwnerSlotWriter();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IModuleManagerEventsAndErrors.InvalidModule.selector,
+                address(this)
+            )
+        );
+        account.executeFromExecutor(ModeLib.encodeSimpleSingle(), "");
 
         vm.expectRevert(StandaloneSingleOwnerHCA.DelegateCallNotAllowed.selector);
         vm.prank(address(defaultExecutor));
