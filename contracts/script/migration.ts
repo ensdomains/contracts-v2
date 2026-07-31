@@ -1758,6 +1758,7 @@ const LOG_SCAN_MIN_SPAN = 1_000n;
 const LOG_SCAN_SPAN_REFUSALS = [
   "block range",
   "range exceeds",
+  "exceeds limit", // Infura: "range 11390003 exceeds limit of 10000"
   "narrow your filter",
   "query returned more than",
   "more than 10000 results",
@@ -1769,6 +1770,17 @@ const LOG_SCAN_SPAN_REFUSALS = [
 function isLogSpanRefusal(error: unknown): boolean {
   const message = errorMessageChain(error).join(" ").toLowerCase();
   return LOG_SCAN_SPAN_REFUSALS.some((refusal) => message.includes(refusal));
+}
+
+// Provider throttling (HTTP 429 / credit caps). Answered by waiting, not by
+// narrowing the span.
+function isRateLimitError(error: unknown): boolean {
+  const message = errorMessageChain(error).join(" ").toLowerCase();
+  return (
+    message.includes("too many requests") ||
+    message.includes("status: 429") ||
+    message.includes("rate limit")
+  );
 }
 
 // Every `controller` address one event has ever carried on a contract. Providers cap
@@ -1797,21 +1809,28 @@ async function readControllerEventAddresses(
       ]);
     };
     if (acceptedSpan !== undefined && span > acceptedSpan) return bisect();
-    try {
-      const logs = await client.getLogs({
-        address: args.address,
-        event: args.event,
-        fromBlock,
-        toBlock,
-      });
-      if (acceptedSpan === undefined || span > acceptedSpan)
-        acceptedSpan = span;
-      return logs.map((log) =>
-        getAddress((log.args as { controller: Address }).controller),
-      );
-    } catch (error) {
-      if (!isLogSpanRefusal(error) || span <= LOG_SCAN_MIN_SPAN) throw error;
-      return bisect();
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const logs = await client.getLogs({
+          address: args.address,
+          event: args.event,
+          fromBlock,
+          toBlock,
+        });
+        if (acceptedSpan === undefined || span > acceptedSpan)
+          acceptedSpan = span;
+        return logs.map((log) =>
+          getAddress((log.args as { controller: Address }).controller),
+        );
+      } catch (error) {
+        if (isRateLimitError(error) && attempt < 10) {
+          const delayMs = Math.min(1000 * 2 ** attempt, 15_000);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+        if (!isLogSpanRefusal(error) || span <= LOG_SCAN_MIN_SPAN) throw error;
+        return bisect();
+      }
     }
   };
   return readSpan(0n, args.toBlock);
@@ -1824,11 +1843,14 @@ async function discoverV1ControllerAddresses(
   events: readonly AbiEvent[],
 ): Promise<Address[]> {
   const toBlock = await client.getBlockNumber();
-  const discovered = await Promise.all(
-    events.map((event) =>
-      readControllerEventAddresses(client, { address, event, toBlock }),
-    ),
-  );
+  // Sequential rather than parallel: concurrent full-history bisections
+  // multiply request bursts and trip provider rate limits (HTTP 429).
+  const discovered: Address[][] = [];
+  for (const event of events) {
+    discovered.push(
+      await readControllerEventAddresses(client, { address, event, toBlock }),
+    );
+  }
   return discovered.flat();
 }
 

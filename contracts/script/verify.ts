@@ -136,7 +136,9 @@ function main() {
           "-e",
           network,
           backend,
-          ...passthrough,
+          // Extra args are options of the backend subcommand, so they follow
+          // it; a literal "--" would make commander treat them as positionals.
+          ...passthrough.filter((arg) => arg !== "--"),
         ],
         { cwd: contractsDir, stdio: "inherit", env: process.env },
       );
