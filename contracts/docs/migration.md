@@ -96,8 +96,11 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   ```
   Add `--include-testnet-premigration-registrar` on testnet/clean runs to also deploy
   `TestnetV1PremigrationRegistrar`. Re-run with `--resume` to continue an interrupted deploy. Use
-  `--resume --tags hca` to update only the shared HCA contracts in an existing namespace; this loads
-  only `deploy/hca` and reuses the existing core deployment records.
+  `--resume --tags hca` to update the shared HCA contracts and their reverse adapters in an existing
+  namespace. This reuses the existing core deployment records, deploys contracts whose bytecode or
+  constructor arguments changed, and prepares replacement-adapter grants followed by revocations of
+  every recorded prior adapter. Replay the deferred owner transactions, then verify that both
+  replacement adapters are controllers and every superseded adapter is not.
 - **Prerequisites:** `bun run compile`; a freshly funded deployer (phase 1 sends many transactions).
 - **Env / args:** `DEPLOYER_KEY` (also the `owner`/`urManager` fallback and the BatchRegistrar owner);
   `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` for the deferred v1-owner replay. `phase deploy-v2` cannot

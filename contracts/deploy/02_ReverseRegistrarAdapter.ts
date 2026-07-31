@@ -1,10 +1,17 @@
 import { artifacts, execute } from "@rocketh";
 
+import {
+  controllerAddressHistory,
+  replacedDeploymentAddresses,
+  SUPERSEDED_CONTROLLER_ADDRESSES,
+} from "./hca/_helpers.js";
+
 export default execute(
   async ({
     deploy,
     execute: write,
     get,
+    getOrNull,
     getV1,
     read,
     namedAccounts: { deployer, owner, v1Owner },
@@ -21,15 +28,26 @@ export default execute(
     const contractNamer =
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
 
-    const adapter = await deploy("ReverseRegistrarAdapter", {
-      account: deployer,
-      artifact: artifacts.ReverseRegistrarAdapter,
-      args: [
-        reverseRegistrar.address,
-        standaloneHCAFactory.address,
-        contractNamer.address,
-      ],
-    });
+    const previousAdapter = getOrNull("ReverseRegistrarAdapter");
+    const priorControllers = [previousAdapter];
+    const adapter = await deploy(
+      "ReverseRegistrarAdapter",
+      {
+        account: deployer,
+        artifact: artifacts.ReverseRegistrarAdapter,
+        args: [
+          reverseRegistrar.address,
+          standaloneHCAFactory.address,
+          contractNamer.address,
+        ],
+      },
+      {
+        linkedData: {
+          [SUPERSEDED_CONTROLLER_ADDRESSES]:
+            controllerAddressHistory(priorControllers),
+        },
+      },
+    );
 
     const adapterIsReverseController = await read(reverseRegistrar, {
       functionName: "controllers",
@@ -46,9 +64,31 @@ export default execute(
         args: [adapter.address, true],
       });
     }
+
+    for (const previousAddress of replacedDeploymentAddresses(
+      adapter,
+      priorControllers,
+    )) {
+      const previousIsController = await read(reverseRegistrar, {
+        functionName: "controllers",
+        args: [previousAddress],
+      });
+      if (previousIsController) {
+        await write(reverseRegistrar, {
+          account: v1Owner ?? owner,
+          functionName: "setController",
+          args: [previousAddress, false],
+        });
+      }
+    }
   },
   {
-    tags: ["ReverseRegistrarAdapter", "migration:phase1:deploy-v2", "v2"],
+    tags: [
+      "ReverseRegistrarAdapter",
+      "migration:phase1:deploy-v2",
+      "v2",
+      "hca",
+    ],
     dependencies: ["ContractNamer", "StandaloneHCAFactory"],
   },
 );

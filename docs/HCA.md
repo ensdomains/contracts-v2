@@ -86,13 +86,21 @@ The phase-1 migration deploys the shared HCA contracts on an HCA-enabled network
 
 Phase 1 does not deploy an HCA for each wallet. The first user operation deploys the wallet's HCA when necessary.
 
-Use this command to update only the shared HCA contracts on Sepolia:
+Use these commands to update the shared HCA contracts and their reverse adapters on Sepolia:
 
 ```sh
-bun run migration -- phase deploy-v2 --network sepolia --resume --tags hca
+bun run migration -- phase deploy-v2 --network sepolia --resume --tags hca \
+  --defer-v1-owner-transactions \
+  --deferred-v1-owner-transactions-file .dev/hca-v1owner.jsonl
+bun run migration -- phase execute-owner-txs --network sepolia \
+  --role v1Owner --file .dev/hca-v1owner.jsonl
 ```
 
-Run the command from `contracts`. It reads the existing core deployment records. It does not redeploy the core contracts.
+Run the commands from `contracts`. The deployment reuses existing core records, replaces HCA
+contracts and adapters only when their bytecode or constructor arguments changed, and prepares
+replacement-adapter grants followed by revocations of every recorded prior adapter. The
+`execute-owner-txs` step applies those controller changes. After it completes, verify that both
+replacement adapters are controllers and every superseded adapter is not.
 
 ### Test networks
 

@@ -1,4 +1,4 @@
-import { isAddress, type Address } from "viem";
+import { getAddress, isAddress, type Address } from "viem";
 
 import {
   MAINNET_DAI,
@@ -14,19 +14,54 @@ export function isHCAOnlyDeployment(tags?: readonly string[]) {
   return tags?.length === 1 && tags[0] === "hca";
 }
 
-export function resolveDeployV2Scripts({
-  tags,
-  scripts,
-}: {
-  tags?: readonly string[];
-  scripts?: string | readonly string[];
-}) {
-  const configuredScripts =
-    typeof scripts === "string" ? [scripts] : [...(scripts ?? ["deploy"])];
-  return isHCAOnlyDeployment(tags) ? ["deploy/hca"] : configuredScripts;
+export const SUPERSEDED_CONTROLLER_ADDRESSES = "supersededControllerAddresses";
+
+type DeploymentLike = {
+  address: Address;
+  linkedData?: Record<string, unknown>;
+};
+
+export function controllerAddressHistory(
+  deployments: readonly (DeploymentLike | null | undefined)[],
+): Address[] {
+  return [
+    ...new Set(
+      deployments.flatMap((deployment) => {
+        if (!deployment) return [];
+        const linkedHistory =
+          deployment.linkedData?.[SUPERSEDED_CONTROLLER_ADDRESSES];
+        if (linkedHistory === undefined) {
+          return [getAddress(deployment.address)];
+        }
+        if (
+          !Array.isArray(linkedHistory) ||
+          linkedHistory.some(
+            (address) => typeof address !== "string" || !isAddress(address),
+          )
+        ) {
+          throw new Error(
+            `invalid ${SUPERSEDED_CONTROLLER_ADDRESSES} deployment metadata`,
+          );
+        }
+        return [
+          getAddress(deployment.address),
+          ...linkedHistory.map((address) => getAddress(address)),
+        ];
+      }),
+    ),
+  ];
 }
 
-type DeploymentLike = { address: Address };
+export function replacedDeploymentAddresses(
+  deployment: DeploymentLike,
+  previousDeployments: readonly (DeploymentLike | null | undefined)[],
+): Address[] {
+  const deployedAddress = getAddress(deployment.address);
+  return controllerAddressHistory(previousDeployments).filter(
+    (previousAddress) => previousAddress !== deployedAddress,
+  );
+}
+
 type DeploymentLookup = (name: string) => DeploymentLike | null | undefined;
 
 type HCAAddressResolutionOptions = {

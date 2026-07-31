@@ -14,13 +14,9 @@ export default execute(
   async ({ deploy, get, getOrNull, namedAccounts: { deployer }, tags }) => {
     if (!shouldDeployStandaloneHCA(tags)) return;
 
-    const defaultReverseRegistrarAdapter =
-      getOrNull<(typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]>(
-        "DefaultReverseRegistrarHCAAdapter",
-      ) ??
-      get<(typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]>(
-        "DefaultReverseRegistrarAdapter",
-      );
+    const defaultReverseRegistrarAdapter = get<
+      (typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]
+    >("DefaultReverseRegistrarAdapter");
     const permittedResolverImpl = get<
       (typeof artifacts.PermissionedResolver)["abi"]
     >("PermissionedResolverImpl");
@@ -84,7 +80,6 @@ export default execute(
       "v2",
     ],
     dependencies: [
-      "DefaultReverseRegistrarHCAAdapter",
       "DefaultReverseRegistrarAdapter",
       "PermissionedResolverImpl",
       "ETHRegistrar",

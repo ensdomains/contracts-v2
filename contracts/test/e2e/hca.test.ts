@@ -767,6 +767,8 @@ describe("Standalone HCA", () => {
 
   it("matches the standalone HCA adapter to the deployed account", async () => {
     const owner = env.namedAccounts.user;
+    const configuredAdapter =
+      await stack.validator.read.DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER();
     const config = await standaloneConfig(owner);
     const account = await createRhinestoneAccount({
       ...sdkConfig(),
@@ -780,6 +782,9 @@ describe("Standalone HCA", () => {
     };
     const permissionId = getPermissionId(sdkSession);
 
+    expectVar({ configuredAdapter }).toEqualAddress(
+      env.shared.DefaultReverseRegistrarAdapter.address,
+    );
     expectVar({ sdkAddress: account.getAddress() }).toEqualAddress(hca);
     expectVar({ initData: account.getInitData() }).toStrictEqual({
       factory: stack.factory.address,
