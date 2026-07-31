@@ -5,6 +5,7 @@ import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFact
 
 /// @title Standalone HCA Factory Interface
 /// @notice Exposes governed HCA deployment and immutable factory-certified owner bindings.
+/// @dev Interface selector: `0xb2a3ab4f`
 interface IStandaloneHCAFactory {
     /// @notice Sets whether an implementation may initialize new HCAs through this factory.
     /// @dev Approval changes affect only future deployments.
