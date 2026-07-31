@@ -31,15 +31,14 @@ A registration uses an HCA on the registration chain. A cross-chain registration
 | Contract                      | Function                                                                   |
 | ----------------------------- | -------------------------------------------------------------------------- |
 | `StandaloneSingleOwnerHCA`    | Stores one owner, executes calls, revokes sessions, and controls upgrades. |
-| `StandaloneHCAFactory`        | Deploys an HCA through the shared `VerifiableFactory`.                     |
+| `StandaloneHCAFactory`        | Approves initial implementations and certifies each deployed HCA's owner.  |
 | `HCAOwnerAndSessionValidator` | Validates owner actions and the fixed ENS session policy.                  |
 | `HCAFundingSessionValidator`  | Limits how a source Nexus can fund the HCA.                                |
-| `TrustedHCASet`               | Stores the trusted HCA implementations.                                    |
 | `ApprovedUpgradeGate`         | Stores the implementation upgrades that the DAO permits.                   |
 
 The HCA uses a Nexus implementation with a fixed validator and executor. The source Nexus uses the fixed funding validator. The HCA prevents module installation and removal. An approved upgrade can change the fixed modules.
 
-The HCA rejects the standard ERC-721 and ERC-1155 receiver callbacks. It can hold ETH or supported tokens during an operation. Do not use it for long-term funds.
+The HCA rejects delegatecall execution and the standard ERC-721 and ERC-1155 receiver callbacks. It can hold ETH or supported tokens during an operation. Do not use it for long-term funds.
 
 ### HCA address
 
@@ -50,7 +49,7 @@ deploymentSalt = keccak256(abi.encode(userSalt, owner, initialImplementation))
 HCA = VerifiableFactory proxy address for (StandaloneHCAFactory, deploymentSalt)
 ```
 
-Anyone can call `StandaloneHCAFactory.deploy(owner, implementation, userSalt)`. The caller cannot change the expected owner, implementation, or HCA address.
+Anyone can call `StandaloneHCAFactory.deploy(owner, implementation, userSalt)` for an implementation approved by factory governance. The caller cannot change the expected owner, implementation, or HCA address. After deployment, the factory verifies the implementation and owner and permanently records the HCA-to-owner binding used by HCA-aware reverse adapters.
 
 Use these values for this account version:
 
@@ -75,7 +74,7 @@ Complete these checks before you use an HCA that already has code:
 2. Call `owner()`. The result must equal the connected wallet.
 3. Call `accountId()`. The result must equal `ens-standalone-hca.1.1.0`.
 4. Call `VerifiableFactory.verifyContract(hca)`. At launch, the result must equal the initial implementation. After an upgrade, it must equal an implementation that the DAO approved.
-5. Before a primary-name action, check `includes(currentImplementation)` on the Trusted HCA Set. The result must be `true`.
+5. Call `StandaloneHCAFactory.authorizedOwnerOf(hca)`. The result must equal the connected wallet.
 
 Stop if a check fails. Do not select a different account without user approval.
 
@@ -83,7 +82,7 @@ An address with no code is a predicted address. The first Rhinestone route can d
 
 ### Shared deployment
 
-The phase-1 migration deploys the shared HCA contracts on an HCA-enabled network. It also configures the reverse adapter and its trusted HCA implementation. See the [phase-1 migration runbook](../contracts/docs/migration.md#phase-1-deploy-v2-contracts).
+The phase-1 migration deploys the shared HCA contracts on an HCA-enabled network. It also configures the reverse adapters and approves the initial HCA implementation in `StandaloneHCAFactory`. See the [phase-1 migration runbook](../contracts/docs/migration.md#phase-1-deploy-v2-contracts).
 
 Phase 1 does not deploy an HCA for each wallet. The first user operation deploys the wallet's HCA when necessary.
 
@@ -108,7 +107,6 @@ Sepolia is the current registration network. Base Sepolia is the enabled test so
 Use the [Sepolia deployment address table](../contracts/docs/addresses/sepolia.md) for shared contract addresses. The frontend needs these entries:
 
 - `DefaultReverseRegistrarAdapter`
-- `TrustedHCASet`
 - `ETHRegistrar`
 - `HCAOwnerAndSessionValidator`
 - `PermissionedResolverImpl`

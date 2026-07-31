@@ -8,15 +8,17 @@ import {ReverseRegistrar} from "@ens/contracts/reverseRegistrar/ReverseRegistrar
 import {MockOwnable} from "@ens/contracts/test/mocks/MockOwnable.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
-import {IVerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {MockContractNamer} from "~test/mocks/MockContractNamer.sol";
 import {ReverseRegistrarAdapter} from "~src/reverse-registrar/ReverseRegistrarAdapter.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {AccountNamerLib} from "~src/reverse-registrar/libraries/AccountNamerLib.sol";
 import {HCAAuthorizer} from "~src/hca/HCAAuthorizer.sol";
+import {IStandaloneHCAFactory} from "~src/hca/interfaces/IStandaloneHCAFactory.sol";
 import {HCAFixture} from "~test/fixtures/HCAFixture.sol";
 
+/// @title Reverse Registrar Adapter Tests
+/// @notice Exercises authorization and naming through the reverse registrar adapter.
 contract ReverseRegistrarAdapterTest is HCAFixture {
     bytes32 constant REVERSE_LABELHASH = keccak256("reverse");
     bytes32 constant ADDR_LABELHASH = keccak256("addr");
@@ -42,8 +44,7 @@ contract ReverseRegistrarAdapterTest is HCAFixture {
 
         reverseAdapter = new ReverseRegistrarAdapter(
             reverseRegistrar,
-            verifiableFactory,
-            trustedHCASet,
+            IStandaloneHCAFactory(address(standaloneHCAFactory)),
             delegatedNamer
         );
 
@@ -60,14 +61,9 @@ contract ReverseRegistrarAdapterTest is HCAFixture {
             "REVERSE_REGISTRAR"
         );
         assertEq(
-            address(reverseAdapter.VERIFIABLE_FACTORY()),
-            address(verifiableFactory),
-            "VERIFIABLE_FACTORY"
-        );
-        assertEq(
-            address(reverseAdapter.TRUSTED_HCA_SET()),
-            address(trustedHCASet),
-            "TRUSTED_HCA_SET"
+            address(reverseAdapter.STANDALONE_HCA_FACTORY()),
+            address(standaloneHCAFactory),
+            "STANDALONE_HCA_FACTORY"
         );
         assertEq(address(reverseAdapter.CONTRACT_NAMER()), address(delegatedNamer), "CONTRACT_NAMER");
     }
@@ -156,44 +152,28 @@ contract ReverseRegistrarAdapterTest is HCAFixture {
         reverseAdapter.claimWithHCA(address(c), resolver);
     }
 
-    function test_claimWithHCA_revert_hcaImplementationNotTrusted() external {
-        address hca = _deployHCA(verifiableFactory, owner, address(untrustedHCAImpl));
+    function test_claimWithHCA_revert_hcaDeploymentNotTrusted() external {
+        address hca =
+            verifiableFactory.deployProxy(
+                address(trustedHCAImpl),
+                999,
+                abi.encodeCall(trustedHCAImpl.initialize, (owner))
+            );
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                HCAAuthorizer.HCAImplementationNotTrusted.selector,
-                address(untrustedHCAImpl)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(HCAAuthorizer.HCADeploymentNotTrusted.selector, hca));
         vm.prank(hca);
         reverseAdapter.claimWithHCA(owner, resolver);
     }
 
-    function test_claimWithHCA_revert_hcaVerificationFailed() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IVerifiableFactory.VerificationFailed.selector,
-                address(trustedHCAImpl)
-            )
-        );
-        vm.prank(address(trustedHCAImpl));
-        reverseAdapter.claimWithHCA(owner, resolver);
-    }
-
-    function test_claimWithHCA_revert_hcaOwnerZero() external {
-        address hca = _deployHCA(verifiableFactory, address(0), address(trustedHCAImpl));
-
-        vm.expectRevert(abi.encodeWithSelector(HCAAuthorizer.HCAOwnerUnavailable.selector, hca));
-        vm.prank(hca);
-        reverseAdapter.claimWithHCA(owner, resolver);
-    }
-
-    function test_claimWithHCA_revert_hcaOwnerReverts() external {
+    function test_claimWithHCA_usesFactoryOwnerWhenRuntimeOwnerReverts() external {
         address hca = _deployHCA(verifiableFactory, owner, address(revertingHCAImpl));
 
-        vm.expectRevert(abi.encodeWithSelector(HCAAuthorizer.HCAOwnerUnavailable.selector, hca));
         vm.prank(hca);
-        reverseAdapter.claimWithHCA(owner, resolver);
+        bytes32 node = reverseAdapter.claimWithHCA(owner, resolver);
+
+        assertEq(node, reverseRegistrar.node(owner), "node");
+        assertEq(registry.owner(node), owner, "owner");
+        assertEq(registry.resolver(node), resolver, "resolver");
     }
 
     function test_claimWithHCA_revert_hcaOwnerMismatch() external {

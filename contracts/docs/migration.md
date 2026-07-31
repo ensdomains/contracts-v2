@@ -107,7 +107,7 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   seeding); the URP proxy chain points at the v1 `UniversalResolver`
   (see [universalResolver.md](./universalResolver.md)); the v2 reverse-registrar adapters are deployed
   and authorized as controllers on the v1 reverse registrars; on HCA-enabled networks, the shared HCA
-  contracts are deployed and the standalone implementation is added to `TrustedHCASet`; artifacts written to
+  contracts are deployed and the standalone implementation is approved by `StandaloneHCAFactory`; artifacts written to
   `deployments/<network>/` (deploys fresh by default — see [Deployment artifacts](#deployment-artifacts)).
 - **Re-deploying fresh:** `deploy-v2` archives the existing `deployments/<network>/` namespace and
   deploys a brand-new v2 set with new addresses (`--resume` is only for continuing an *interrupted*

@@ -3,14 +3,14 @@ import { artifacts, execute } from "@rocketh";
 import { shouldDeployStandaloneHCA } from "./_helpers.js";
 
 export default execute(
-  async ({ deploy, get, namedAccounts: { deployer }, tags }) => {
+  async ({ deploy, get, namedAccounts: { deployer, owner }, tags }) => {
     if (!shouldDeployStandaloneHCA(tags)) return;
 
     const verifiableFactory = get("VerifiableFactory");
     await deploy("StandaloneHCAFactory", {
       account: deployer,
       artifact: artifacts.StandaloneHCAFactory,
-      args: [verifiableFactory.address],
+      args: [verifiableFactory.address, owner],
     });
   },
   {

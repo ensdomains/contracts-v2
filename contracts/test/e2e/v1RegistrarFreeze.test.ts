@@ -209,13 +209,10 @@ describe("v1 registrar freeze", () => {
   // registrar they forward to identifies them as this tooling's.
   async function deployUntrackedReverseAdapters() {
     const wallet = env.createClient(env.accounts[0]);
-    const [verifiableFactory, trustedHCASet, contractNamer] = await Promise.all(
-      [
-        env.shared.ReverseRegistrarAdapter.read.VERIFIABLE_FACTORY(),
-        env.shared.ReverseRegistrarAdapter.read.TRUSTED_HCA_SET(),
-        env.shared.ReverseRegistrarAdapter.read.CONTRACT_NAMER(),
-      ],
-    );
+    const [standaloneHCAFactory, contractNamer] = await Promise.all([
+      env.shared.ReverseRegistrarAdapter.read.STANDALONE_HCA_FACTORY(),
+      env.shared.ReverseRegistrarAdapter.read.CONTRACT_NAMER(),
+    ]);
     // Sequential: both deployments sign from the same account, and the address is
     // derived from the nonce read before sending.
     const adapter = await deployArtifact(wallet, {
@@ -225,8 +222,7 @@ describe("v1 registrar freeze", () => {
       ),
       args: [
         env.v1.ReverseRegistrar.address,
-        verifiableFactory,
-        trustedHCASet,
+        standaloneHCAFactory,
         contractNamer,
       ],
     });
@@ -237,8 +233,7 @@ describe("v1 registrar freeze", () => {
       ),
       args: [
         env.shared.DefaultReverseRegistrar.address,
-        verifiableFactory,
-        trustedHCASet,
+        standaloneHCAFactory,
         contractNamer,
       ],
     });

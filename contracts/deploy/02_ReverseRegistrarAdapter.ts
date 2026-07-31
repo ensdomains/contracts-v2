@@ -14,11 +14,9 @@ export default execute(
         "ReverseRegistrar",
       );
 
-    const verifiableFactory =
-      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
-
-    const trustedHCASet =
-      get<(typeof artifacts.PermissionedAddressSet)["abi"]>("TrustedHCASet");
+    const standaloneHCAFactory = get<
+      (typeof artifacts.StandaloneHCAFactory)["abi"]
+    >("StandaloneHCAFactory");
 
     const contractNamer =
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
@@ -28,8 +26,7 @@ export default execute(
       artifact: artifacts.ReverseRegistrarAdapter,
       args: [
         reverseRegistrar.address,
-        verifiableFactory.address,
-        trustedHCASet.address,
+        standaloneHCAFactory.address,
         contractNamer.address,
       ],
     });
@@ -52,6 +49,6 @@ export default execute(
   },
   {
     tags: ["ReverseRegistrarAdapter", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["ContractNamer", "VerifiableFactory", "TrustedHCASet"],
+    dependencies: ["ContractNamer", "StandaloneHCAFactory"],
   },
 );

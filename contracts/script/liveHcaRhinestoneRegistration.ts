@@ -50,7 +50,6 @@ import {
   StandaloneHCAFactory,
   StandaloneSingleOwnerHCA,
   test_mocks_MockERC20_sol_MockERC20 as MockERC20,
-  PermissionedAddressSet,
   UniversalResolverV2,
   VerifiableFactory,
 } from "../generated/artifacts/index.ts";
@@ -680,7 +679,6 @@ async function main() {
     ethRegistrar: deployment("ETHRegistrar"),
     ethRegistry: deployment("ETHRegistry"),
     paymentToken: deploymentFromEnv("HCA_TEST_PAYMENT_TOKEN", ["MockUSDC"]),
-    trustedHCASet: deploymentFromEnv("HCA_TRUSTED_SET", ["TrustedHCASet"]),
     standaloneHcaFactory: deploymentFromEnv(
       "HCA_STANDALONE_HCA_FACTORY",
       ["StandaloneHCAFactory"],
@@ -740,6 +738,16 @@ async function main() {
     "StandaloneHCAFactory.VERIFIABLE_FACTORY",
     configuredFactory,
     deployments.verifiableFactory,
+  );
+  const adapterFactory = (await publicClient.readContract({
+    address: deployments.defaultReverseRegistrarAdapter,
+    abi: DefaultReverseRegistrarAdapter.abi,
+    functionName: "STANDALONE_HCA_FACTORY",
+  })) as Address;
+  assertAddress(
+    "reverse adapter StandaloneHCAFactory",
+    adapterFactory,
+    deployments.standaloneHcaFactory,
   );
 
   const validatorBindings = await Promise.all(
@@ -838,15 +846,15 @@ async function main() {
   if (!adapterIsController) {
     throw new Error("HCA reverse adapter is not a default.reverse controller");
   }
-  const implementationIsTrusted = await publicClient.readContract({
-    address: deployments.trustedHCASet,
-    abi: PermissionedAddressSet.abi,
-    functionName: "includes",
+  const implementationIsApproved = await publicClient.readContract({
+    address: deployments.standaloneHcaFactory,
+    abi: StandaloneHCAFactory.abi,
+    functionName: "approvedImplementations",
     args: [deployments.standaloneHcaImplementation],
   });
-  if (!implementationIsTrusted) {
+  if (!implementationIsApproved) {
     throw new Error(
-      "HCA reverse adapter does not trust the HCA implementation",
+      "StandaloneHCAFactory does not approve the HCA implementation",
     );
   }
 

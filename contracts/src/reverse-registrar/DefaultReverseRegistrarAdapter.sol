@@ -4,11 +4,10 @@ pragma solidity ^0.8.25;
 import {
     IDefaultReverseRegistrar
 } from "@ens/contracts/reverseRegistrar/IDefaultReverseRegistrar.sol";
-import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
 import {HCAAuthorizer} from "../hca/HCAAuthorizer.sol";
+import {IStandaloneHCAFactory} from "../hca/interfaces/IStandaloneHCAFactory.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
-import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {IContractNamer} from "./interfaces/IContractNamer.sol";
 import {AccountNamerLib} from "./libraries/AccountNamerLib.sol";
@@ -29,16 +28,14 @@ contract DefaultReverseRegistrarAdapter is DelegatedContractNamer, HCAAuthorizer
     ////////////////////////////////////////////////////////////////////////
 
     /// @param defaultReverseRegistrar The v1 default reverse registrar for `default.reverse`.
-    /// @param verifiableFactory Shared factory for verifiable deployments.
-    /// @param trustedHCASet Set of trusted HCA implementations.
+    /// @param standaloneHCAFactory Factory certifying immutable HCA owner bindings.
     /// @param contractNamer Delegated contract namer.
     constructor(
         IDefaultReverseRegistrar defaultReverseRegistrar,
-        IVerifiableFactory verifiableFactory,
-        IAddressSet trustedHCASet,
+        IStandaloneHCAFactory standaloneHCAFactory,
         IContractNamer contractNamer
     )
-        HCAAuthorizer(verifiableFactory, trustedHCASet)
+        HCAAuthorizer(standaloneHCAFactory)
         DelegatedContractNamer(contractNamer)
     {
         DEFAULT_REVERSE_REGISTRAR = defaultReverseRegistrar;
