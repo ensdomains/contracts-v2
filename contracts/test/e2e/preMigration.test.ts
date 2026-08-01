@@ -41,7 +41,7 @@ import {
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 
 describe("PreMigration", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
 
   const csvFilePath = join(tmpdir(), "test-premigration.csv");
   const cleanupFiles = [

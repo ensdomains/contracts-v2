@@ -2,13 +2,13 @@ import { artifacts, execute } from "@rocketh";
 
 export default execute(
   async ({ deploy, namedAccounts: { deployer, owner } }) => {
-    await deploy("ApprovedUpgradeGate", {
+    await deploy("RegistryUpgradeSet", {
       account: deployer,
-      artifact: artifacts.ApprovedUpgradeGate,
+      artifact: artifacts.PermissionedAddressSet,
       args: [owner],
     });
   },
   {
-    tags: ["ApprovedUpgradeGate", "v2"],
+    tags: ["RegistryUpgradeSet", "v2"],
   },
 );

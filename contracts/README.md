@@ -145,7 +145,7 @@ Roles granted during core deployment.
 
 Legend: A = admin only, R = regular only, AR = admin and regular
 
-_`ETHRegistrar`, `ETHRenewerV1`, and `ApprovedUpgradeGate` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
+_`ETHRegistrar` and `ETHRenewerV1` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
 
 _Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 6](docs/migration.md#phase-6-enable-the-v2-controller)._
 
@@ -418,6 +418,46 @@ This runs `testNames()` which creates 17 names in various states. For details on
 
 - [Indexing Test Names](../docs/indexing-test-names.md) — what each test name does and which events it emits
 - [Indexing ENSv2 Events](../docs/indexing-ensv2-events.md) — full reference of all ENSv2 contract events
+
+### Mainnet Fork Mode
+
+Instead of a synthetic chain, the devnet can fork mainnet so that real ENS v1 names are present. Enable it by pointing at a mainnet RPC (these are also what [morticia](https://github.com/ensdomains/morticia)'s e2e runner uses):
+
+```sh
+FORK_URL=<mainnet-rpc> bun run devnet         # or --forkUrl <mainnet-rpc>
+FORK_URL=<mainnet-rpc> FORK_BLOCK=<block> bun run devnet   # pin the fork block (or --forkBlock)
+```
+
+On a fork you can also **pre-migrate** a curated set of real names — reserving them on the v2 registry (RESERVED state, `ENSV1Resolver` fallback) once the devnet is up, mirroring the DAO's pre-migration so the frontend can drive the v1 → v2 migrate flow:
+
+```sh
+FORK_URL=<mainnet-rpc> bun run devnet --preMigrate
+```
+
+Optionally reassign v1 ownership of the pre-migrated names to a devnet account (`deployer`/`owner`/`user`/`user2`, or a raw address) so a fixed test wallet owns them and can migrate in-app without impersonation:
+
+```sh
+FORK_URL=<mainnet-rpc> bun run devnet --preMigrate --preMigrateOwner user
+```
+
+Both flags have env-var equivalents (`DEVNET_PREMIGRATE=1`, `DEVNET_PREMIGRATE_OWNER=<account|address>`). `--preMigrate` requires a fork.
+
+The ten names cover every migration state (unwrapped, wrapped-locked, wrapped-unlocked):
+
+| Name                 | State                            | Notes                                                            |
+| -------------------- | -------------------------------- | ---------------------------------------------------------------- |
+| `swissborg.eth`      | unwrapped                        | normal happy-path name                                           |
+| `00relayer.eth`      | unwrapped                        | leading-zero label, small subtree                                |
+| `2718.eth`           | unwrapped                        | all-numeric label, multiple subnames                             |
+| `$beep.eth`          | wrapped-locked                   | special `$` char, minimal subtree                                |
+| `agi.eth`            | wrapped-locked                   | carries a locked child + a third-party child                     |
+| `ethscriptions.eth`  | wrapped-locked                   | burn-address owner, emancipated child                            |
+| `holer.eth`          | wrapped-**unlocked**/emancipated | no `CANNOT_UNWRAP`                                               |
+| `analyzes.eth`       | wrapped-locked                   | shared batch owner                                               |
+| `daomarketplace.eth` | wrapped-locked                   | shared batch owner                                               |
+| `alertbot.eth`       | wrapped-locked                   | `CANNOT_TRANSFER` — stays reserve-only under `--preMigrateOwner` |
+
+> The list is curated from [morticia](https://github.com/ensdomains/morticia)'s mainnet-fork e2e scenarios, whose states hold near mainnet block `25120743` (~2026-05). Every name's live state is read from the fork at runtime, so reservation stays correct at any block; a name no longer claimable on v1 is skipped with a log. For the documented locked/unlocked mix, fork near that block.
 
 ### Using Docker Compose
 
