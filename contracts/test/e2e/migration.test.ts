@@ -333,7 +333,7 @@ describe("Migration", () => {
         target = x.wrapperRegistry().address;
       }
       for (const x of v) {
-        const registry = await env.v2.UniversalResolver.read.findExactRegistry([
+        const registry = await env.v2.UniversalHelper.read.findExactRegistry([
           dnsEncodeName(x.name),
         ]);
         expectVar({ registry }).toEqualAddress(x.wrapperRegistry().address);

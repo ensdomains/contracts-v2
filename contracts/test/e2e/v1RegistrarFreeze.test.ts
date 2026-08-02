@@ -80,12 +80,15 @@ describe("v1 registrar freeze", () => {
   function writeDeploymentArtifacts({
     activeNamespace = ACTIVE_NAMESPACE,
     archivedNamespace = ARCHIVED_NAMESPACE,
-  }: { activeNamespace?: string; archivedNamespace?: string } = {}) {
+  }: {
+    activeNamespace?: string;
+    archivedNamespace?: string;
+  } = {}) {
     rmSync(workDir, { recursive: true, force: true });
     for (const [name, contract] of [
       ["BaseRegistrarImplementation", env.v1.BaseRegistrar],
       ["RegistrarSecurityController", env.v1.RegistrarSecurityController],
-      ["ReverseRegistrar", env.v1.ReverseRegistrar],
+      ["ReverseRegistrar", env.shared.ETHReverseRegistrar],
       ["DefaultReverseRegistrar", env.shared.DefaultReverseRegistrar],
     ] as const) {
       writeDeployment(v1DeploymentsDir, NETWORK, name, contract);
@@ -124,7 +127,10 @@ describe("v1 registrar freeze", () => {
     return {
       state,
       provider: {
-        request(args: { method: string; params?: readonly unknown[] | object }) {
+        request(args: {
+          method: string;
+          params?: readonly unknown[] | object;
+        }) {
           if (args.method === "eth_getLogs") {
             const [filter] = args.params as [
               { fromBlock: `0x${string}`; toBlock: `0x${string}` },
@@ -176,8 +182,8 @@ describe("v1 registrar freeze", () => {
   // Grants a superseded deployment's handoff contracts the same v1 authorizations a
   // prior migration would have left behind.
   async function authorizeArchivedHandoffContracts() {
-    const reverseOwner = await ownerAccountOf(env.v1.ReverseRegistrar);
-    await env.v1.ReverseRegistrar.write.setController(
+    const reverseOwner = await ownerAccountOf(env.shared.ETHReverseRegistrar);
+    await env.shared.ETHReverseRegistrar.write.setController(
       [ARCHIVED_REVERSE_ADAPTER, true],
       { account: reverseOwner },
     );
@@ -212,7 +218,7 @@ describe("v1 registrar freeze", () => {
         "../../out/ReverseRegistrarAdapter.sol/ReverseRegistrarAdapter.json",
         import.meta.url,
       ),
-      args: [env.v1.ReverseRegistrar.address, contractNamer],
+      args: [env.shared.ETHReverseRegistrar.address, contractNamer],
     });
     const defaultAdapter = await deployArtifact(wallet, {
       file: new URL(
@@ -222,8 +228,8 @@ describe("v1 registrar freeze", () => {
       args: [env.shared.DefaultReverseRegistrar.address, contractNamer],
     });
 
-    const reverseOwner = await ownerAccountOf(env.v1.ReverseRegistrar);
-    await env.v1.ReverseRegistrar.write.setController([adapter, true], {
+    const reverseOwner = await ownerAccountOf(env.shared.ETHReverseRegistrar);
+    await env.shared.ETHReverseRegistrar.write.setController([adapter, true], {
       account: reverseOwner,
     });
     const defaultReverseOwner = await ownerAccountOf(
@@ -263,7 +269,9 @@ describe("v1 registrar freeze", () => {
       await disableV1Registrars(freezeOptions());
 
       await expect(
-        env.v1.ReverseRegistrar.read.controllers([ARCHIVED_REVERSE_ADAPTER]),
+        env.shared.ETHReverseRegistrar.read.controllers([
+          ARCHIVED_REVERSE_ADAPTER,
+        ]),
       ).resolves.toBe(false);
       await expect(
         env.shared.DefaultReverseRegistrar.read.controllers([
@@ -276,7 +284,7 @@ describe("v1 registrar freeze", () => {
 
       // The active deployment's adapters keep writing reverse records.
       await expect(
-        env.v1.ReverseRegistrar.read.controllers([
+        env.shared.ETHReverseRegistrar.read.controllers([
           env.shared.ReverseRegistrarAdapter.address,
         ]),
       ).resolves.toBe(true);
@@ -331,7 +339,9 @@ describe("v1 registrar freeze", () => {
         env.v1.BaseRegistrar.read.controllers([env.v1.NameWrapper.address]),
       ).resolves.toBe(false);
       await expect(
-        env.v1.ReverseRegistrar.read.controllers([ARCHIVED_REVERSE_ADAPTER]),
+        env.shared.ETHReverseRegistrar.read.controllers([
+          ARCHIVED_REVERSE_ADAPTER,
+        ]),
       ).resolves.toBe(false);
 
       await verifyV1RegistrarsDisabled(freezeOptions());
@@ -343,7 +353,8 @@ describe("v1 registrar freeze", () => {
     "revokes superseded reverse adapters that no local artifact describes",
     async () => {
       writeDeploymentArtifacts();
-      const { adapter, defaultAdapter } = await deployUntrackedReverseAdapters();
+      const { adapter, defaultAdapter } =
+        await deployUntrackedReverseAdapters();
 
       // Artifact-only discovery cannot see these, so the audit has to recover them
       // from the registrars' controller history.
@@ -354,14 +365,14 @@ describe("v1 registrar freeze", () => {
       await disableV1Registrars(freezeOptions());
 
       await expect(
-        env.v1.ReverseRegistrar.read.controllers([adapter]),
+        env.shared.ETHReverseRegistrar.read.controllers([adapter]),
       ).resolves.toBe(false);
       await expect(
         env.shared.DefaultReverseRegistrar.read.controllers([defaultAdapter]),
       ).resolves.toBe(false);
 
       await expect(
-        env.v1.ReverseRegistrar.read.controllers([
+        env.shared.ETHReverseRegistrar.read.controllers([
           env.shared.ReverseRegistrarAdapter.address,
         ]),
       ).resolves.toBe(true);
@@ -385,15 +396,18 @@ describe("v1 registrar freeze", () => {
       // back-reference, so the audit must read it as v1's own rather than as a
       // superseded handoff contract.
       const v1Controller = env.v1.BaseRegistrar.address;
-      const reverseOwner = await ownerAccountOf(env.v1.ReverseRegistrar);
-      await env.v1.ReverseRegistrar.write.setController([v1Controller, true], {
-        account: reverseOwner,
-      });
+      const reverseOwner = await ownerAccountOf(env.shared.ETHReverseRegistrar);
+      await env.shared.ETHReverseRegistrar.write.setController(
+        [v1Controller, true],
+        {
+          account: reverseOwner,
+        },
+      );
 
       await disableV1Registrars(freezeOptions());
 
       await expect(
-        env.v1.ReverseRegistrar.read.controllers([v1Controller]),
+        env.shared.ETHReverseRegistrar.read.controllers([v1Controller]),
       ).resolves.toBe(true);
       await verifyV1RegistrarsDisabled(freezeOptions());
     },
@@ -415,7 +429,9 @@ describe("v1 registrar freeze", () => {
       await disableV1Registrars(customOptions);
 
       await expect(
-        env.v1.ReverseRegistrar.read.controllers([ARCHIVED_REVERSE_ADAPTER]),
+        env.shared.ETHReverseRegistrar.read.controllers([
+          ARCHIVED_REVERSE_ADAPTER,
+        ]),
       ).resolves.toBe(false);
       await expect(
         env.v1.BaseRegistrar.read.controllers([ARCHIVED_ETH_RENEWER]),
@@ -424,7 +440,7 @@ describe("v1 registrar freeze", () => {
       // The active namespace shares no prefix with the network, so a network-keyed
       // scan would leave its grants unaccounted for and revoke them.
       await expect(
-        env.v1.ReverseRegistrar.read.controllers([
+        env.shared.ETHReverseRegistrar.read.controllers([
           env.shared.ReverseRegistrarAdapter.address,
         ]),
       ).resolves.toBe(true);
@@ -455,7 +471,9 @@ describe("v1 registrar freeze", () => {
 
       // Nothing was revoked on the way to the failure.
       await expect(
-        env.v1.ReverseRegistrar.read.controllers([ARCHIVED_REVERSE_ADAPTER]),
+        env.shared.ETHReverseRegistrar.read.controllers([
+          ARCHIVED_REVERSE_ADAPTER,
+        ]),
       ).resolves.toBe(true);
     },
     TEST_TIMEOUT_MS,
@@ -465,7 +483,8 @@ describe("v1 registrar freeze", () => {
     "narrows the controller history scan to the span the provider serves",
     async () => {
       writeDeploymentArtifacts();
-      const { adapter, defaultAdapter } = await deployUntrackedReverseAdapters();
+      const { adapter, defaultAdapter } =
+        await deployUntrackedReverseAdapters();
 
       // The scan only narrows above its minimum span, so the chain has to be
       // longer than one request's worth. Mined in small batches, since a single
@@ -479,13 +498,13 @@ describe("v1 registrar freeze", () => {
 
       expect(state.refusals).toBeGreaterThan(0);
       await expect(
-        env.v1.ReverseRegistrar.read.controllers([adapter]),
+        env.shared.ETHReverseRegistrar.read.controllers([adapter]),
       ).resolves.toBe(false);
       await expect(
         env.shared.DefaultReverseRegistrar.read.controllers([defaultAdapter]),
       ).resolves.toBe(false);
       await expect(
-        env.v1.ReverseRegistrar.read.controllers([
+        env.shared.ETHReverseRegistrar.read.controllers([
           env.shared.ReverseRegistrarAdapter.address,
         ]),
       ).resolves.toBe(true);

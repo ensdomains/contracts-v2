@@ -1,15 +1,13 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import type { Abi_ENSV1Resolver } from "generated/abis/ENSV1Resolver.js";
 import { zeroAddress } from "viem";
 import { DEPLOYMENT_ROLES, MAX_EXPIRY } from "../script/deploy-constants.js";
 
-// TODO: ownership
 export default execute(
   async ({ execute: write, get, namedAccounts: { deployer, owner } }) => {
-    const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-
-    const ensV1Resolver =
-      get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
+    const rootRegistry = get<Abi_IPermissionedRegistry>("RootRegistry");
+    const ensV1Resolver = get<Abi_ENSV1Resolver>("ENSV1Resolver");
 
     await write(rootRegistry, {
       account: deployer,

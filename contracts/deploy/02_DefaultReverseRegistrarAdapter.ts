@@ -1,4 +1,7 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_DefaultReverseRegistrar } from "generated/abis/DefaultReverseRegistrar.js";
+import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
+import { Artifact_DefaultReverseRegistrarAdapter } from "generated/artifacts/DefaultReverseRegistrarAdapter.js";
 
 export default execute(
   async ({
@@ -9,16 +12,14 @@ export default execute(
     read,
     namedAccounts: { deployer, owner, v1Owner },
   }) => {
-    const defaultReverseRegistrar = await getV1<
-      (typeof artifacts.DefaultReverseRegistrar)["abi"]
-    >("DefaultReverseRegistrar");
-
-    const contractNamer =
-      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+    const defaultReverseRegistrar = await getV1<Abi_DefaultReverseRegistrar>(
+      "DefaultReverseRegistrar",
+    );
+    const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
     const adapter = await deploy("DefaultReverseRegistrarAdapter", {
       account: deployer,
-      artifact: artifacts.DefaultReverseRegistrarAdapter,
+      artifact: Artifact_DefaultReverseRegistrarAdapter,
       args: [defaultReverseRegistrar.address, contractNamer.address],
     });
 
@@ -39,7 +40,11 @@ export default execute(
     }
   },
   {
-    tags: ["DefaultReverseRegistrarAdapter", "migration:phase1:deploy-v2", "v2"],
+    tags: [
+      "DefaultReverseRegistrarAdapter",
+      "migration:phase1:deploy-v2",
+      "v2",
+    ],
     dependencies: ["ContractNamer"],
   },
 );
