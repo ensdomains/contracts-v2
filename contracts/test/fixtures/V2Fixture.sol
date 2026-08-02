@@ -15,6 +15,7 @@ import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {ContractNamer} from "~src/utils/ContractNamer.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
+import {UniversalHelper} from "~src/universalResolver/UniversalHelper.sol";
 
 /// @dev Reusable testing fixture for ENSv2 with a basic ".eth" deployment.
 contract V2Fixture is Test, ERC1155Holder {
@@ -26,6 +27,7 @@ contract V2Fixture is Test, ERC1155Holder {
     PermissionedRegistry ethRegistry;
     GatewayProvider batchGatewayProvider;
     UniversalResolverV2 universalResolver;
+    UniversalHelper universalHelper;
 
     /// @dev Role bitmaps matching README Static Deployment Permissions.
     function _rootRegistryRootRoles() internal pure returns (uint256) {
@@ -91,6 +93,7 @@ contract V2Fixture is Test, ERC1155Holder {
             batchGatewayProvider,
             contractNamer
         );
+        universalHelper = new UniversalHelper(rootRegistry, contractNamer);
     }
 
     function findResolverV2(bytes memory name) public view returns (address resolver) {

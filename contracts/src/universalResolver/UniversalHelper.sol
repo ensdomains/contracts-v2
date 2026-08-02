@@ -8,7 +8,7 @@ import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {LibRegistry} from "./libraries/LibRegistry.sol";
 
-/// @notice Collection of non-essential ENS functions.
+/// @notice Collection of non-essential ENSv2 functions.
 contract UniversalHelper is DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
