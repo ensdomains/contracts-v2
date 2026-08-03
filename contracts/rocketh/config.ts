@@ -216,7 +216,9 @@ function deploymentNameFor(env: Environment, deployment: { address: Address }) {
   const target = getAddress(deployment.address);
   const found = Object.entries(env.deployments).find(([name, candidate]) => {
     if (typeof candidate?.address !== "string") {
-      console.warn(`  - deployment '${name}' has no address; skipping in name lookup`);
+      console.warn(
+        `  - deployment '${name}' has no address; skipping in name lookup`,
+      );
       return false;
     }
     return getAddress(candidate.address) === target;
