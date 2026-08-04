@@ -1775,17 +1775,6 @@ function isLogSpanRefusal(error: unknown): boolean {
   return LOG_SCAN_SPAN_REFUSALS.some((refusal) => message.includes(refusal));
 }
 
-// Provider throttling (HTTP 429 / credit caps). Answered by waiting, not by
-// narrowing the span.
-function isRateLimitError(error: unknown): boolean {
-  const message = errorMessageChain(error).join(" ").toLowerCase();
-  return (
-    message.includes("too many requests") ||
-    message.includes("status: 429") ||
-    message.includes("rate limit")
-  );
-}
-
 // Every `controller` address one event has ever carried on a contract. Providers cap
 // `eth_getLogs` by block span or by result count, and a load-balanced endpoint may
 // apply a cap to only some requests, so a refused span is bisected and each half
@@ -1812,33 +1801,21 @@ async function readControllerEventAddresses(
       ]);
     };
     if (acceptedSpan !== undefined && span > acceptedSpan) return bisect();
-    for (let attempt = 0; ; attempt++) {
-      try {
-        const logs = await client.getLogs({
-          address: args.address,
-          event: args.event,
-          fromBlock,
-          toBlock,
-        });
-        if (acceptedSpan === undefined || span > acceptedSpan)
-          acceptedSpan = span;
-        return logs.map((log) =>
-          getAddress((log.args as { controller: Address }).controller),
-        );
-      } catch (error) {
-        // A rate limit means "too many requests", so retry the SAME range
-        // after an increasing pause (1s, 2s, 4s... capped at 15s). Splitting
-        // the range here would only create more requests and more throttling.
-        // A "range too wide" refusal is the opposite case and is handled
-        // below by splitting.
-        if (isRateLimitError(error) && attempt < 10) {
-          const delayMs = Math.min(1000 * 2 ** attempt, 15_000);
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
-          continue;
-        }
-        if (!isLogSpanRefusal(error) || span <= LOG_SCAN_MIN_SPAN) throw error;
-        return bisect();
-      }
+    try {
+      const logs = await client.getLogs({
+        address: args.address,
+        event: args.event,
+        fromBlock,
+        toBlock,
+      });
+      if (acceptedSpan === undefined || span > acceptedSpan)
+        acceptedSpan = span;
+      return logs.map((log) =>
+        getAddress((log.args as { controller: Address }).controller),
+      );
+    } catch (error) {
+      if (!isLogSpanRefusal(error) || span <= LOG_SCAN_MIN_SPAN) throw error;
+      return bisect();
     }
   };
   return readSpan(0n, args.toBlock);
@@ -1851,14 +1828,11 @@ async function discoverV1ControllerAddresses(
   events: readonly AbiEvent[],
 ): Promise<Address[]> {
   const toBlock = await client.getBlockNumber();
-  // Sequential rather than parallel: concurrent full-history bisections
-  // multiply request bursts and trip provider rate limits (HTTP 429).
-  const discovered: Address[][] = [];
-  for (const event of events) {
-    discovered.push(
-      await readControllerEventAddresses(client, { address, event, toBlock }),
-    );
-  }
+  const discovered = await Promise.all(
+    events.map((event) =>
+      readControllerEventAddresses(client, { address, event, toBlock }),
+    ),
+  );
   return discovered.flat();
 }
 
