@@ -1758,7 +1758,10 @@ const LOG_SCAN_MIN_SPAN = 1_000n;
 const LOG_SCAN_SPAN_REFUSALS = [
   "block range",
   "range exceeds",
-  "exceeds limit", // Infura: "range 11390003 exceeds limit of 10000"
+  // Some providers put the offending count between the words, e.g. Infura's
+  // "range 11390003 exceeds limit of 10000", which "range exceeds" misses —
+  // without this entry that refusal is rethrown as fatal instead of bisected.
+  "exceeds limit",
   "narrow your filter",
   "query returned more than",
   "more than 10000 results",
