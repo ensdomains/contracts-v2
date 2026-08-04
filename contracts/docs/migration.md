@@ -415,7 +415,16 @@ both Etherscan and Sourcify via [`@rocketh/verifier`](https://www.npmjs.com/pack
 It is idempotent and re-runnable: contracts already verified on a backend are detected and skipped. The
 verifier rebuilds the solc standard-JSON input from each artifact's metadata, backfilling source
 content from disk for forge-compiled artifacts, so a contract verifies regardless of which compiler
-produced it. Flags after `--` pass through (e.g. `bun run verify -- --network sepolia --etherscan-only`).
+produced it. Unrecognized flags are forwarded to the `rocketh-verify` backend subcommand — append them
+directly, **without** a `--` separator (a literal `--` makes the verifier CLI treat them as positional
+arguments and fail). For example, to stay under Etherscan's free-tier rate limit of 3 calls/sec:
+
+```bash
+bun run verify:sepolia --etherscan-only --min-interval 400
+# equivalent via the generic script (this leading -- is bun's own separator, consumed before
+# the script runs — only a *second* -- among the script's arguments breaks the verifier):
+bun run verify -- --network sepolia --etherscan-only --min-interval 400
+```
 
 ## Rehearsals
 

@@ -48,7 +48,7 @@ function parseArgs(argv: string[]) {
   }
   if (!network) {
     throw new Error(
-      "usage: bun ./script/verify.ts --network <name> [--etherscan-only|--sourcify-only] [-- <extra rocketh-verify args>]",
+      "usage: bun ./script/verify.ts --network <name> [--etherscan-only|--sourcify-only] [<extra rocketh-verify args>] (do not separate extra args with --; they are forwarded as-is)",
     );
   }
   return { network, backends, passthrough };
@@ -136,9 +136,7 @@ function main() {
           "-e",
           network,
           backend,
-          // Extra args are options of the backend subcommand, so they follow
-          // it; a literal "--" would make commander treat them as positionals.
-          ...passthrough.filter((arg) => arg !== "--"),
+          ...passthrough,
         ],
         { cwd: contractsDir, stdio: "inherit", env: process.env },
       );
