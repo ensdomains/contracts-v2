@@ -121,7 +121,7 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   on-chain but orphaned.
 
 On an HCA-enabled network, phase 1 deploys `HCAOwnerAndSessionValidator`, `StandaloneHCAFactory`,
-`HCAUpgradeGate`, and `StandaloneHCAImplementation`. This deploys only the shared HCA infrastructure;
+`HCAUpgradeSet`, and `StandaloneHCAImplementation`. This deploys only the shared HCA infrastructure;
 individual owner-bound HCAs remain counterfactual and are deployed lazily through
 `StandaloneHCAFactory`. Sepolia defaults to the fixed Rhinestone intent executor and production USDC
 addresses in [`script/deploy-constants.ts`](../script/deploy-constants.ts); local, test, and

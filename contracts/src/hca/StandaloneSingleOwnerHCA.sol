@@ -21,7 +21,7 @@ import {Nexus} from "nexus/Nexus.sol";
 import {VALIDATION_FAILED} from "nexus/types/Constants.sol";
 import {Execution} from "nexus/types/DataTypes.sol";
 
-import {ApprovedUpgradeGate} from "../registry/ApprovedUpgradeGate.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 /// @title Standalone Single Owner HCA
 /// @notice Nexus account whose owner is set once during account initialization.
@@ -48,12 +48,12 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     /// @dev Returned by `onERC1155BatchReceived`.
     bytes4 internal constant ERC1155_BATCH_RECEIVED_SELECTOR = 0xbc197c81;
 
-    /// @notice The allowlist gating upgrade target implementations from this implementation.
-    ApprovedUpgradeGate public immutable UPGRADE_GATE;
+    /// @notice The allowlist of upgrade target implementations permitted from this implementation.
+    IAddressSet public immutable UPGRADE_SET;
 
     /// @notice The allowlist of implementations permitted to upgrade into this implementation.
     /// @dev The initial trusted implementation uses the zero address and rejects all predecessors.
-    ApprovedUpgradeGate public immutable PREDECESSOR_UPGRADE_GATE;
+    IAddressSet public immutable PREDECESSOR_UPGRADE_SET;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
@@ -135,20 +135,20 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     /// @param defaultValidator_ Validator module used as the account's default validator.
     /// @param intentExecutor_ Executor module used by the intent execution flow.
     /// @param validatorInitData_ Initialization data passed to the default validator.
-    /// @param upgradeGate_ The allowlist gating upgrade target implementations.
-    /// @param predecessorUpgradeGate_ The predecessor allowlist; zero rejects every predecessor.
+    /// @param upgradeSet_ The allowlist of permitted upgrade target implementations.
+    /// @param predecessorUpgradeSet_ The predecessor allowlist; zero rejects every predecessor.
     constructor(
         address entryPoint_,
         address defaultValidator_,
         address intentExecutor_,
         bytes memory validatorInitData_,
-        ApprovedUpgradeGate upgradeGate_,
-        ApprovedUpgradeGate predecessorUpgradeGate_
+        IAddressSet upgradeSet_,
+        IAddressSet predecessorUpgradeSet_
     )
         Nexus(entryPoint_, defaultValidator_, intentExecutor_, validatorInitData_, "")
     {
-        UPGRADE_GATE = upgradeGate_;
-        PREDECESSOR_UPGRADE_GATE = predecessorUpgradeGate_;
+        UPGRADE_SET = upgradeSet_;
+        PREDECESSOR_UPGRADE_SET = predecessorUpgradeSet_;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -269,10 +269,9 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
         override
         returns (bool allowed)
     {
-        ApprovedUpgradeGate predecessorGate = PREDECESSOR_UPGRADE_GATE;
+        IAddressSet predecessorSet = PREDECESSOR_UPGRADE_SET;
         return
-            address(predecessorGate) != address(0) &&
-            predecessorGate.approvedImplementations(previousImplementation);
+            address(predecessorSet) != address(0) && predecessorSet.includes(previousImplementation);
     }
 
     /// @inheritdoc Nexus
@@ -315,10 +314,10 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
         super._fallback(callData);
     }
 
-    /// @dev Requires the owner as caller and gate approval for the target implementation.
+    /// @dev Requires the owner as caller and allowlist approval for the target implementation.
     /// @param newImplementation The implementation to upgrade to.
     function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
-        if (!UPGRADE_GATE.approvedImplementations(newImplementation)) {
+        if (!UPGRADE_SET.includes(newImplementation)) {
             revert UpgradeTargetNotApproved(newImplementation);
         }
     }

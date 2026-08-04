@@ -34,7 +34,7 @@ A registration uses an HCA on the registration chain. A cross-chain registration
 | `StandaloneHCAFactory`        | Approves initial implementations and certifies each deployed HCA's owner.  |
 | `HCAOwnerAndSessionValidator` | Validates owner actions and the fixed ENS session policy.                  |
 | `HCAFundingSessionValidator`  | Limits how a source Nexus can fund the HCA.                                |
-| `ApprovedUpgradeGate`         | Stores the implementation upgrades that the DAO permits.                   |
+| `PermissionedAddressSet`      | Stores the implementation upgrades that the DAO permits.                   |
 
 The HCA uses a Nexus implementation with a fixed validator and executor. The source Nexus uses the fixed funding validator. The HCA prevents module installation and removal. An approved upgrade can change the fixed modules.
 
@@ -341,10 +341,10 @@ The owner validator also accepts owner-signed ERC-4337 UserOperations. Local tes
 An HCA upgrade needs all these approvals:
 
 - The HCA owner starts the upgrade.
-- The current implementation gate permits the new implementation.
-- The predecessor gate of the new implementation permits the current implementation.
+- The current implementation's upgrade set permits the new implementation.
+- The predecessor set of the new implementation permits the current implementation.
 
-The DAO controls the gates. The initial implementation has no predecessor gate. A deployed HCA cannot upgrade to the initial implementation.
+The DAO controls the sets. The initial implementation has no predecessor set. A deployed HCA cannot upgrade to the initial implementation.
 
 ## Session policy
 

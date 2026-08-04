@@ -38,11 +38,11 @@ export default execute(
       );
     }
 
-    // This target gate belongs to the initial HCA implementation. A later implementation also
-    // receives its own predecessor gate so DAO approvals remain directional.
-    const upgradeGate = await deploy("HCAUpgradeGate", {
+    // Each implementation uses independent target and predecessor sets so approvals remain
+    // directional across an upgrade.
+    const upgradeSet = await deploy("HCAUpgradeSet", {
       account: deployer,
-      artifact: artifacts.ApprovedUpgradeGate,
+      artifact: artifacts.PermissionedAddressSet,
       args: [owner],
     });
 
@@ -55,7 +55,7 @@ export default execute(
         validator.address,
         intentExecutor,
         "0x",
-        upgradeGate.address,
+        upgradeSet.address,
         zeroAddress,
       ],
     });
