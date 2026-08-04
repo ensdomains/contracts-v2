@@ -246,22 +246,28 @@ describe("Hardhat compiler isolation", () => {
     }
   });
 
-  it("uses the HCA compiler without exceeding the deployment size limit", async () => {
-    const hcaContracts = [
-      ["src/hca/HCAFundingSessionValidator.sol", "HCAFundingSessionValidator"],
-      [
-        "src/hca/HCAOwnerAndSessionValidator.sol",
-        "HCAOwnerAndSessionValidator",
-      ],
-      ["src/hca/StandaloneHCAFactory.sol", "StandaloneHCAFactory"],
-      ["src/hca/StandaloneSingleOwnerHCA.sol", "StandaloneSingleOwnerHCA"],
-    ] as const;
+  it.skipIf(Boolean(process.env.COVERAGE))(
+    "uses the HCA compiler without exceeding the deployment size limit",
+    async () => {
+      const hcaContracts = [
+        [
+          "src/hca/HCAFundingSessionValidator.sol",
+          "HCAFundingSessionValidator",
+        ],
+        [
+          "src/hca/HCAOwnerAndSessionValidator.sol",
+          "HCAOwnerAndSessionValidator",
+        ],
+        ["src/hca/StandaloneHCAFactory.sol", "StandaloneHCAFactory"],
+        ["src/hca/StandaloneSingleOwnerHCA.sol", "StandaloneSingleOwnerHCA"],
+      ] as const;
 
-    for (const [sourcePath, contractName] of hcaContracts) {
-      const artifact = await readArtifact(sourcePath, contractName);
-      const deployedSize = (artifact.deployedBytecode.length - 2) / 2;
+      for (const [sourcePath, contractName] of hcaContracts) {
+        const artifact = await readArtifact(sourcePath, contractName);
+        const deployedSize = (artifact.deployedBytecode.length - 2) / 2;
 
-      expect(deployedSize, contractName).toBeLessThanOrEqual(24_576);
-    }
-  });
+        expect(deployedSize, contractName).toBeLessThanOrEqual(24_576);
+      }
+    },
+  );
 });

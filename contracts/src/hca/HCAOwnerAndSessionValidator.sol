@@ -17,7 +17,7 @@ import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
 
 /// @notice Resolver calls encoded and validated by the HCA registration policy.
-/// @dev Interface selector: `0xcb811eec`.
+/// @dev Interface selector: `0xcb811eec`
 interface IHCARegistrationResolver {
     /// @notice Initializes a resolver proxy for an account.
     /// @param admin The initial resolver administrator.
@@ -38,7 +38,7 @@ interface IHCARegistrationResolver {
 
 
 /// @notice Reverse-registration call encoded and validated by the HCA registration policy.
-/// @dev Interface selector: `0xab863445`.
+/// @dev Interface selector: `0xab863445`
 interface IHCAReverseRegistrarAdapter {
     /// @notice Sets the primary name for an account through its HCA.
     /// @param account The account whose primary name is set.
