@@ -143,12 +143,18 @@ describe("HCA deployment script scope", () => {
     expect(deployReverseRegistrarAdapter.tags).toContain("hca");
   });
 
-  it("pins the HCA validator to the canonical default reverse adapter", () => {
+  it("pins the HCA validator to stable authorization dependencies", () => {
     expect(deployHCAOwnerAndSessionValidator.dependencies).toContain(
       "DefaultReverseRegistrarAdapter",
     );
     expect(deployHCAOwnerAndSessionValidator.dependencies).not.toContain(
       "DefaultReverseRegistrarHCAAdapter",
+    );
+    expect(deployHCAOwnerAndSessionValidator.dependencies).toContain(
+      "ETHRegistry",
+    );
+    expect(deployHCAOwnerAndSessionValidator.dependencies).not.toContain(
+      "ETHRegistrar",
     );
   });
 

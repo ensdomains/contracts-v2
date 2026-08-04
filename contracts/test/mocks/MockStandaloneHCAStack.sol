@@ -8,6 +8,28 @@ import {EncodedModuleTypes} from "nexus/lib/ModuleTypeLib.sol";
 
 import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
 
+/// @title Mock Registrar Role Registry
+/// @notice Test-only registry stand-in that exposes mutable root-role membership.
+contract MockRegistrarRoleRegistry {
+    mapping(address account => uint256 roles) internal _rootRoles;
+
+    /// @notice Replaces an account's root-role bitmap.
+    /// @param account The account whose roles are updated.
+    /// @param roles The complete root-role bitmap to store.
+    function setRootRoles(address account, uint256 roles) external {
+        _rootRoles[account] = roles;
+    }
+
+    /// @notice Checks whether an account holds every requested root role.
+    /// @param roleBitmap The roles that must all be present.
+    /// @param account The account to inspect.
+    /// @return Whether the account holds every requested role.
+    function hasRootRoles(uint256 roleBitmap, address account) external view returns (bool) {
+        return (_rootRoles[account] & roleBitmap) == roleBitmap;
+    }
+}
+
+
 /// @title Mock Standalone HCA
 /// @notice Test-only HCA stand-in that exposes an owner and forwards validation.
 contract MockStandaloneHCA {

@@ -30,6 +30,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {
     MockExecutorModule,
+    MockRegistrarRoleRegistry,
     MockStandaloneHCA,
     MockValidatorModule
 } from "../../mocks/MockStandaloneHCAStack.sol";
@@ -42,8 +43,11 @@ import {
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
+/// @title Standalone Single-Owner HCA Tests
+/// @notice Exercises account ownership, sessions, execution, and upgrade authorization.
 contract StandaloneSingleOwnerHCATest is Test {
     string internal constant PERMISSIONED_ADDRESS_SET_ARTIFACT =
         "src/utils/PermissionedAddressSet.sol:PermissionedAddressSet";
@@ -92,12 +96,15 @@ contract StandaloneSingleOwnerHCATest is Test {
 
     HCAOwnerAndSessionValidator validator;
     HCAOwnerAndSessionValidatorHarness validatorHarness;
+    MockRegistrarRoleRegistry ethRegistry;
     MockStandaloneHCA hca;
     IAddressSetApproval upgradeSet;
 
     function setUp() public {
         upgradeSet = _deployPermissionedAddressSet(upgradeSetAdmin);
         hca = new MockStandaloneHCA(owner);
+        ethRegistry = new MockRegistrarRoleRegistry();
+        ethRegistry.setRootRoles(ethRegistrar, RegistryRolesLib.ROLE_REGISTRAR);
 
         VerifiableFactory factory = new VerifiableFactory();
         verifiableFactory = address(factory);
@@ -117,7 +124,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         validator = new HCAOwnerAndSessionValidator(
             defaultReverseRegistrarHCAAdapter,
             permittedResolverImpl,
-            ethRegistrar,
+            address(ethRegistry),
             verifiableFactory,
             usdc,
             dai,
@@ -127,7 +134,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         validatorHarness = new HCAOwnerAndSessionValidatorHarness(
             defaultReverseRegistrarHCAAdapter,
             permittedResolverImpl,
-            ethRegistrar,
+            address(ethRegistry),
             verifiableFactory,
             usdc,
             dai,
@@ -666,7 +673,7 @@ contract StandaloneSingleOwnerHCATest is Test {
             new HCAOwnerAndSessionValidatorHarness(
                 defaultReverseRegistrarHCAAdapter,
                 permittedResolverImpl,
-                ethRegistrar,
+                address(ethRegistry),
                 verifiableFactory,
                 usdc,
                 dai,
@@ -1222,6 +1229,99 @@ contract StandaloneSingleOwnerHCATest is Test {
             resolver,
             _operationData(executions)
         );
+    }
+
+    function test_validator_acceptsMultipleRegistryAuthorizedRegistrars() public {
+        address alternateRegistrar = makeAddr("alternate-registrar");
+        ethRegistry.setRootRoles(alternateRegistrar, RegistryRolesLib.ROLE_REGISTRAR);
+
+        HCAOwnerAndSessionValidator.Execution[] memory executions =
+            new HCAOwnerAndSessionValidator.Execution[](4);
+        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
+            "alice",
+            owner,
+            resolver
+        )});
+        executions[1] = HCAOwnerAndSessionValidator.Execution({target: alternateRegistrar, value: 0, callData: _registerCallDataForLabel(
+            "bob",
+            owner,
+            resolver
+        )});
+        executions[2] = HCAOwnerAndSessionValidator.Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
+            APPROVE_SELECTOR,
+            alternateRegistrar,
+            1 ether
+        )});
+        executions[3] = HCAOwnerAndSessionValidator.Execution({target: resolver, value: 0, callData: _resolverRoleCall(
+            hex"00",
+            EACBaseRolesLib.ALL_ROLES,
+            owner,
+            true
+        )});
+
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            resolver,
+            _operationData(executions)
+        );
+    }
+
+    function test_validator_rejectsRegistrarImmediatelyAfterRoleRevocation() public {
+        ethRegistry.setRootRoles(ethRegistrar, 0);
+        bytes memory operationData =
+            _singleOperationData(
+                ethRegistrar,
+                0,
+                abi.encodeWithSelector(COMMIT_SELECTOR, bytes32("commitment"))
+            );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                HCAOwnerAndSessionValidator.ActionNotAllowed.selector,
+                ethRegistrar,
+                COMMIT_SELECTOR
+            )
+        );
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            operationData
+        );
+    }
+
+    function test_validator_rejectsApprovalAfterRegistrarRoleRevocation() public {
+        ethRegistry.setRootRoles(ethRegistrar, 0);
+        bytes memory operationData =
+            _singleOperationData(
+                usdc,
+                0,
+                abi.encodeWithSelector(APPROVE_SELECTOR, ethRegistrar, 1 ether)
+            );
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            operationData
+        );
+    }
+
+    function test_validator_rejectsUnapprovedRegistrarTarget() public {
+        address unapprovedRegistrar = makeAddr("unapproved-registrar");
+        bytes memory operationData =
+            _singleOperationData(unapprovedRegistrar, 0, _registerCallData(owner, resolver));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                HCAOwnerAndSessionValidator.ActionNotAllowed.selector,
+                unapprovedRegistrar,
+                REGISTER_SELECTOR
+            )
+        );
+        validatorHarness.checkRegistrationPolicyHarness(address(hca), owner, resolver, operationData);
     }
 
     function test_validator_rejectsPolicyViolations() public {
@@ -2214,11 +2314,13 @@ contract StandaloneSingleOwnerHCATest is Test {
 }
 
 
+/// @title HCA Owner and Session Validator Harness
+/// @notice Exposes internal validator helpers for policy-focused tests.
 contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
     constructor(
         address defaultReverseRegistrarHCAAdapter,
         address permittedResolverImpl,
-        address ethRegistrar,
+        address ethRegistry,
         address verifiableFactory,
         address paymentToken,
         address secondaryPaymentToken,
@@ -2228,7 +2330,7 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
         HCAOwnerAndSessionValidator(
             defaultReverseRegistrarHCAAdapter,
             permittedResolverImpl,
-            ethRegistrar,
+            ethRegistry,
             verifiableFactory,
             paymentToken,
             secondaryPaymentToken,

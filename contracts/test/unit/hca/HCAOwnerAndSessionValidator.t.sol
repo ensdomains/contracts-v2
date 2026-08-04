@@ -8,9 +8,12 @@ import {Test} from "forge-std/Test.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 
-import {MockStandaloneHCA} from "../../mocks/MockStandaloneHCAStack.sol";
+import {MockRegistrarRoleRegistry, MockStandaloneHCA} from "../../mocks/MockStandaloneHCAStack.sol";
 
+/// @title HCA Owner and Session Validator Tests
+/// @notice Exercises owner signatures, session permissions, and registration policies.
 contract HCAOwnerAndSessionValidatorTest is Test {
     struct ClaimFixture {
         uint256 nonce;
@@ -83,15 +86,18 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     address gasRefundPaymaster = makeAddr("refund-paymaster");
 
     HCAOwnerAndSessionValidatorEnableHarness validator;
+    MockRegistrarRoleRegistry ethRegistry;
     MockStandaloneHCA hca;
 
     function setUp() public {
         hca = new MockStandaloneHCA(owner);
+        ethRegistry = new MockRegistrarRoleRegistry();
+        ethRegistry.setRootRoles(ethRegistrar, RegistryRolesLib.ROLE_REGISTRAR);
         VerifiableFactory factory = new VerifiableFactory();
         validator = new HCAOwnerAndSessionValidatorEnableHarness(
             makeAddr("reverse-adapter"),
             makeAddr("resolver-implementation"),
-            ethRegistrar,
+            address(ethRegistry),
             address(factory),
             paymentToken,
             makeAddr("secondary-payment-token"),
@@ -1047,11 +1053,13 @@ contract HCAOwnerAndSessionValidatorTest is Test {
 }
 
 
+/// @title HCA Owner and Session Validator Enable Harness
+/// @notice Exposes internal digest construction for session-enable unit tests.
 contract HCAOwnerAndSessionValidatorEnableHarness is HCAOwnerAndSessionValidator {
     constructor(
         address defaultReverseRegistrarHCAAdapter,
         address permittedResolverImpl,
-        address ethRegistrar,
+        address ethRegistry,
         address verifiableFactory,
         address paymentToken,
         address secondaryPaymentToken,
@@ -1061,7 +1069,7 @@ contract HCAOwnerAndSessionValidatorEnableHarness is HCAOwnerAndSessionValidator
         HCAOwnerAndSessionValidator(
             defaultReverseRegistrarHCAAdapter,
             permittedResolverImpl,
-            ethRegistrar,
+            ethRegistry,
             verifiableFactory,
             paymentToken,
             secondaryPaymentToken,
