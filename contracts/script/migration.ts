@@ -1826,6 +1826,11 @@ async function readControllerEventAddresses(
           getAddress((log.args as { controller: Address }).controller),
         );
       } catch (error) {
+        // A rate limit means "too many requests", so retry the SAME range
+        // after an increasing pause (1s, 2s, 4s... capped at 15s). Splitting
+        // the range here would only create more requests and more throttling.
+        // A "range too wide" refusal is the opposite case and is handled
+        // below by splitting.
         if (isRateLimitError(error) && attempt < 10) {
           const delayMs = Math.min(1000 * 2 ** attempt, 15_000);
           await new Promise((resolve) => setTimeout(resolve, delayMs));
