@@ -67,6 +67,7 @@ async function fixture() {
     mockDNSSEC.address,
     oracleGatewayProvider.address,
     v2.batchGatewayProvider.address,
+    v2.ensip15.address,
     v2.contractNamer.address,
   ]);
   await v1.setupName({
@@ -86,6 +87,7 @@ async function fixture() {
     [
       v2.rootRegistry.address,
       v2.batchGatewayProvider.address,
+      v2.ensip15.address,
       v2.contractNamer.address,
     ],
   );

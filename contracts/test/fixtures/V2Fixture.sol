@@ -16,6 +16,8 @@ import {ContractNamer} from "~src/utils/ContractNamer.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
 import {UniversalHelper} from "~src/universalResolver/UniversalHelper.sol";
+import {MockENSIP15} from "~test/mocks/MockENSIP15.sol";
+import {IENSIP15} from "~src/universalResolver/interfaces/IENSIP15.sol";
 
 /// @dev Reusable testing fixture for ENSv2 with a basic ".eth" deployment.
 contract V2Fixture is Test, ERC1155Holder {
@@ -28,6 +30,8 @@ contract V2Fixture is Test, ERC1155Holder {
     GatewayProvider batchGatewayProvider;
     UniversalResolverV2 universalResolver;
     UniversalHelper universalHelper;
+    IENSIP15 ensip15Impl;
+    IENSIP15 ensip15;
 
     /// @dev Role bitmaps matching README Static Deployment Permissions.
     function _rootRegistryRootRoles() internal pure returns (uint256) {
@@ -88,9 +92,12 @@ contract V2Fixture is Test, ERC1155Holder {
         ethRegistry.setParent(rootRegistry, "eth");
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(this));
         batchGatewayProvider = new GatewayProvider(address(this), new string[](0));
+        ensip15Impl = new MockENSIP15();
+        ensip15 = IENSIP15(address(new ERC1967Proxy(address(ensip15Impl), "")));
         universalResolver = new UniversalResolverV2(
             rootRegistry,
             batchGatewayProvider,
+            ensip15,
             contractNamer
         );
         universalHelper = new UniversalHelper(rootRegistry, contractNamer);

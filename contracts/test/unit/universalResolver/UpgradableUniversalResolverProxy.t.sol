@@ -18,6 +18,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
+import {IENSIP15} from "~src/universalResolver/interfaces/IENSIP15.sol";
 import {
     UpgradableUniversalResolverProxy
 } from "~src/universalResolver/UpgradableUniversalResolverProxy.sol";
@@ -52,6 +53,7 @@ contract ProxyTest is Test {
         urV2 = new UniversalResolverV2(
             IPermissionedRegistry(address(0)),
             batchGatewayProvider,
+            IENSIP15(address(0)),
             IContractNamer(address(0))
         );
 

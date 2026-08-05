@@ -5,6 +5,7 @@ import type { Abi_SimplePublicSuffixList } from "generated/abis/SimplePublicSuff
 import type { Abi_DNSSECImpl } from "generated/abis/DNSSECImpl.js";
 import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
 import type { Abi_IGatewayProvider } from "generated/abis/IGatewayProvider.js";
+import type { Abi_IENSIP15 } from "generated/abis/IENSIP15.js";
 import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
 import { Artifact_DNSTLDResolver } from "generated/artifacts/DNSTLDResolver.js";
 import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
@@ -39,6 +40,7 @@ export default execute(
     const dnssecGatewayProvider = get<Abi_IGatewayProvider>(
       "DNSSECGatewayProvider",
     );
+    const ensip15 = get<Abi_IENSIP15>("MockENSIP15");
     const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
     const dnsTLDResolver = await deploy("DNSTLDResolver", {
@@ -51,6 +53,7 @@ export default execute(
         dnssecOracle.address,
         dnssecGatewayProvider.address,
         batchGatewayProvider.address,
+        ensip15.address,
         contractNamer.address,
       ],
     });

@@ -10,6 +10,7 @@ import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistr
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
+import {IENSIP15} from "./interfaces/IENSIP15.sol";
 import {IUniversalResolverV2} from "./interfaces/IUniversalResolverV2.sol";
 import {LibRegistry} from "./libraries/LibRegistry.sol";
 
@@ -24,25 +25,31 @@ contract UniversalResolverV2 is
     // Immutables
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The ENSv2 root registry.
+    /// @notice ENSv2 root registry.
     IPermissionedRegistry public immutable ROOT_REGISTRY;
+
+    /// @notice ENSIP-15 normalization implementation.
+    IENSIP15 public immutable ENSIP_15;
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param rootRegistry The root registry.
-    /// @param batchGatewayProvider The batch gateway provider.
+    /// @param rootRegistry ENSv2 root registry.
+    /// @param batchGatewayProvider Shared batch gateway provider.
+    /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @param contractNamer Delegated contract namer.
     constructor(
         IPermissionedRegistry rootRegistry,
         IGatewayProvider batchGatewayProvider,
+        IENSIP15 ensip15,
         IContractNamer contractNamer
     )
         AbstractUniversalResolver(batchGatewayProvider)
         DelegatedContractNamer(contractNamer)
     {
         ROOT_REGISTRY = rootRegistry;
+        ENSIP_15 = ensip15;
     }
 
     /// @inheritdoc AbstractUniversalResolver
@@ -65,8 +72,8 @@ contract UniversalResolverV2 is
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IUniversalResolverV2
-    function isENSv2() external pure returns (bool) {
-        return true;
+    function normalize(bytes calldata name) external view returns (bytes memory) {
+        return LibRegistry.normalize(name, 0, ENSIP_15);
     }
 
     /// @inheritdoc AbstractUniversalResolver
@@ -76,6 +83,6 @@ contract UniversalResolverV2 is
         override
         returns (address resolver, bytes32 node, uint256 offset)
     {
-        (, resolver, node, offset) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
+        (, resolver, node, offset) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0, ENSIP_15);
     }
 }

@@ -6,33 +6,71 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 
 import {IOwnedRegistry} from "../../registry/interfaces/IOwnedRegistry.sol";
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
+import {IENSIP15} from "../interfaces/IENSIP15.sol";
 
 /// @dev Recursive traversal helpers for the namechain registry tree — resolver lookup, registry
 ///      discovery, canonical name construction, and ancestry enumeration.
 library LibRegistry {
+    /// @notice `name` was not normalized.
+    /// @dev Error selector: `0x9f640079`
+    error NotNormalized(bytes name, uint256 offset);
+
+    /// @dev Normalize a name according to ENSIP-15.
+    /// @param name The DNS-encoded name to normalize.
+    /// @param offset The offset into `name` to begin the normalization.
+    /// @param ensip15 ENSIP-15 normalization implementation.
+    /// @return The normalized DNS-encoded name.
+    function normalize(bytes memory name, uint256 offset, IENSIP15 ensip15)
+        internal
+        view
+        returns (bytes memory)
+    {
+        (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
+        return
+            bytes(label).length == 0
+                ? bytes(hex"00")
+                : NameCoder.addLabel(normalize(name, next, ensip15), ensip15.normalize(label));
+    }
+
     /// @dev Find the resolver address for `name[offset:]`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
     /// @param offset The offset into `name` to begin the search.
+    /// @param ensip15 ENSIP-15 normalization implementation.
     /// @return exactRegistry The exact registry or null if not exact.
     /// @return resolver The resolver or null if not found.
     /// @return node The namehash of `name[offset:]`.
     /// @return resolverOffset The offset into `name` corresponding to `resolver`.
-    function findResolver(IRegistry rootRegistry, bytes memory name, uint256 offset)
+    function findResolver(
+        IRegistry rootRegistry,
+        bytes memory name,
+        uint256 offset,
+        IENSIP15 ensip15
+    )
         internal
         view
         returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 resolverOffset)
     {
         // supply <root> if end of name
-        (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, offset);
-        if (labelHash == bytes32(0)) {
+        (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
+        if (bytes(label).length == 0) {
             return (rootRegistry, address(0), bytes32(0), offset);
         }
+        if (
+            address(ensip15) != address(0) &&
+            keccak256(bytes(label)) != keccak256(bytes(ensip15.normalize(label)))
+        ) {
+            revert NotNormalized(name, offset);
+        }
         // lookup parent name
-        (exactRegistry, resolver, node, resolverOffset) = findResolver(rootRegistry, name, next);
+        (exactRegistry, resolver, node, resolverOffset) = findResolver(
+            rootRegistry,
+            name,
+            next,
+            ensip15
+        );
         // if there was a parent registry...
         if (address(exactRegistry) != address(0)) {
-            (string memory label, ) = NameCoder.extractLabel(name, offset);
             // remember the resolver (if it exists)
             address res = exactRegistry.getResolver(label);
             if (res != address(0)) {
@@ -41,7 +79,7 @@ library LibRegistry {
             }
             exactRegistry = exactRegistry.getSubregistry(label);
         }
-        node = NameCoder.namehash(node, labelHash); // update namehash
+        node = NameCoder.namehash(node, keccak256(bytes(label))); // update namehash
     }
 
     /// @dev Find the owner for `name[offset:]`.

@@ -33,8 +33,13 @@ contract UniversalResolverV2Test is V2Fixture {
         );
     }
 
-    function test_isENSV2() external view {
-        assertTrue(universalResolver.isENSv2());
+    function test_normalize() external view {
+        assertEq(universalResolver.normalize(NameCoder.encode("")), NameCoder.encode(""));
+        assertEq(universalResolver.normalize(NameCoder.encode("ETH")), NameCoder.encode("eth"));
+        assertEq(
+            universalResolver.normalize(NameCoder.encode("TEST.ETH")),
+            NameCoder.encode("test.eth")
+        );
     }
 
     function test_findResolver_1LD() external {

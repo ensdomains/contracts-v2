@@ -1,6 +1,7 @@
 import { execute } from "@rocketh";
 import type { Abi_IPermissionedResolver } from "generated/abis/IPermissionedResolver.js";
 import type { Abi_IGatewayProvider } from "generated/abis/IGatewayProvider.js";
+import type { Abi_IENSIP15 } from "generated/abis/IENSIP15.js";
 import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
 import { Artifact_UniversalResolverV2 } from "generated/artifacts/UniversalResolverV2.js";
 
@@ -10,6 +11,7 @@ export default execute(
     const batchGatewayProvider = await getV1<Abi_IGatewayProvider>(
       "BatchGatewayProvider",
     );
+    const ensip15 = get<Abi_IENSIP15>("MockENSIP15");
     const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
     await deploy("UniversalResolverV2", {
@@ -18,6 +20,7 @@ export default execute(
       args: [
         rootRegistry.address,
         batchGatewayProvider.address,
+        ensip15.address,
         contractNamer.address,
       ],
     });
@@ -35,6 +38,7 @@ export default execute(
     dependencies: [
       "RootRegistry",
       "BatchGatewayProvider",
+      "MockENSIP15",
       "ContractNamer",
       "ManagedUniversalResolverProxy",
     ],

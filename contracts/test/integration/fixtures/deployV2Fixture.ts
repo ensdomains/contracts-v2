@@ -53,9 +53,15 @@ export async function deployV2Fixture(
     "GatewayProvider",
     [walletClient.account.address, [LOCAL_BATCH_GATEWAY_URL]],
   );
+  const ensip15 = await network.viem.deployContract("MockENSIP15");
   const universalResolver = await network.viem.deployContract(
     "UniversalResolverV2",
-    [rootRegistry.address, batchGatewayProvider.address, contractNamer.address],
+    [
+      rootRegistry.address,
+      batchGatewayProvider.address,
+      ensip15.address,
+      contractNamer.address,
+    ],
     { client: { public: publicClient } },
   );
   const universalHelper = await network.viem.deployContract("UniversalHelper", [
@@ -92,6 +98,7 @@ export async function deployV2Fixture(
     rootRegistry,
     ethRegistry,
     batchGatewayProvider,
+    ensip15,
     universalResolver,
     universalHelper,
     deployPermissionedResolver,

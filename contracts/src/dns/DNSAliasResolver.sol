@@ -13,6 +13,7 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {ResolverProfileRewriterLib} from "../resolver/libraries/ResolverProfileRewriterLib.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {IENSIP15} from "../universalResolver/interfaces/IENSIP15.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
@@ -45,6 +46,9 @@ contract DNSAliasResolver is
     /// @notice Provider for batch CCIP-Read gateway URLs, used when forwarding resolution calls.
     IGatewayProvider public immutable BATCH_GATEWAY_PROVIDER;
 
+    /// @notice ENSIP-15 normalization implementation.
+    IENSIP15 public immutable ENSIP_15;
+
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
@@ -62,10 +66,12 @@ contract DNSAliasResolver is
 
     /// @param rootRegistry The ENSv2 root registry.
     /// @param batchGatewayProvider The batch gateway provider.
+    /// @param ensip15 ENSIP-15 normalization implementation.
     /// @param contractNamer Delegated contract namer.
     constructor(
         IPermissionedRegistry rootRegistry,
         IGatewayProvider batchGatewayProvider,
+        IENSIP15 ensip15,
         IContractNamer contractNamer
     )
         CCIPReader(DEFAULT_UNSAFE_CALL_GAS)
@@ -73,6 +79,7 @@ contract DNSAliasResolver is
     {
         ROOT_REGISTRY = rootRegistry;
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
+        ENSIP_15 = ensip15;
     }
 
     /// @inheritdoc DelegatedContractNamer
@@ -105,7 +112,8 @@ contract DNSAliasResolver is
         returns (bytes memory)
     {
         bytes memory newName = rewriteNameWithContext(name, context);
-        (, address resolver, bytes32 node, ) = LibRegistry.findResolver(ROOT_REGISTRY, newName, 0);
+        (, address resolver, bytes32 node, ) =
+            LibRegistry.findResolver(ROOT_REGISTRY, newName, 0, ENSIP_15);
         callResolver(
             resolver,
             newName,
