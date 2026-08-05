@@ -29,9 +29,7 @@ import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {Test} from "forge-std/Test.sol";
 
 import {
-    MockAddressSet,
     MockExecutorModule,
-    MockHCARegistrationResolver,
     MockStandaloneHCA,
     MockValidatorModule
 } from "../../mocks/MockStandaloneHCAStack.sol";
@@ -47,6 +45,11 @@ import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
 contract StandaloneSingleOwnerHCATest is Test {
+    string internal constant PERMISSIONED_ADDRESS_SET_ARTIFACT =
+        "src/utils/PermissionedAddressSet.sol:PermissionedAddressSet";
+    string internal constant PERMISSIONED_RESOLVER_ARTIFACT =
+        "src/resolver/PermissionedResolver.sol:PermissionedResolver";
+
     bytes4 constant ERC1271_MAGICVALUE = 0x1626ba7e;
 
     bytes4 constant COMMIT_SELECTOR = 0xf14fcbc8;
@@ -90,15 +93,15 @@ contract StandaloneSingleOwnerHCATest is Test {
     HCAOwnerAndSessionValidator validator;
     HCAOwnerAndSessionValidatorHarness validatorHarness;
     MockStandaloneHCA hca;
-    MockAddressSet upgradeSet;
+    IAddressSetApproval upgradeSet;
 
     function setUp() public {
-        upgradeSet = new MockAddressSet(upgradeSetAdmin);
+        upgradeSet = _deployPermissionedAddressSet(upgradeSetAdmin);
         hca = new MockStandaloneHCA(owner);
 
         VerifiableFactory factory = new VerifiableFactory();
         verifiableFactory = address(factory);
-        permittedResolverImpl = address(new MockHCARegistrationResolver(makeAddr("resolver-namer")));
+        permittedResolverImpl = _deployPermissionedResolver(makeAddr("resolver-namer"));
         bytes[] memory setters = new bytes[](0);
         vm.prank(address(hca));
         resolver = factory.deployProxy(
@@ -187,7 +190,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     function test_standaloneSingleOwnerHCA_upgradesThroughVerifiableFactoryProxy() public {
         VerifiableFactory factory = new VerifiableFactory();
         StandaloneSingleOwnerHCA implementation = _newAccount();
-        MockAddressSet predecessorUpgradeSet = new MockAddressSet(upgradeSetAdmin);
+        IAddressSetApproval predecessorUpgradeSet = _deployPermissionedAddressSet(upgradeSetAdmin);
         StandaloneSingleOwnerHCA nextImplementation = _newAccount(predecessorUpgradeSet);
 
         address proxy =
@@ -1172,10 +1175,9 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function test_validator_rejectsChangedResolverImplementation() public {
-        MockHCARegistrationResolver otherImplementation =
-            new MockHCARegistrationResolver(makeAddr("other-resolver-namer"));
+        address otherImplementation = _deployPermissionedResolver(makeAddr("other-resolver-namer"));
         vm.prank(address(hca));
-        IUUPSProxyUpgrade(resolver).upgradeToAndCall(address(otherImplementation), "");
+        IUUPSProxyUpgrade(resolver).upgradeToAndCall(otherImplementation, "");
 
         _expectValidationRevert(
             _singleOperationData(
@@ -1724,7 +1726,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         LegacyDelegatecallHCA implementation =
             new LegacyDelegatecallHCA(address(userOpEntryPoint), address(validator));
         VerifiableFactory factory = new VerifiableFactory();
-        MockAddressSet trustedHCASet = new MockAddressSet(address(this));
+        IAddressSetApproval trustedHCASet = _deployPermissionedAddressSet(address(this));
         trustedHCASet.approve(address(implementation), true);
         StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
         deployer.setImplementationApproval(address(implementation), true);
@@ -1854,6 +1856,20 @@ contract StandaloneSingleOwnerHCATest is Test {
                 upgradeSet,
                 IAddressSet(address(0))
             );
+    }
+
+    function _deployPermissionedAddressSet(address rootAccount)
+        internal
+        returns (IAddressSetApproval)
+    {
+        return
+            IAddressSetApproval(
+                deployCode(PERMISSIONED_ADDRESS_SET_ARTIFACT, abi.encode(rootAccount))
+            );
+    }
+
+    function _deployPermissionedResolver(address namer) internal returns (address) {
+        return deployCode(PERMISSIONED_RESOLVER_ARTIFACT, abi.encode(namer));
     }
 
     function _resolverAddress(VerifiableFactory factory, address deployer, uint256 salt)
@@ -2446,7 +2462,7 @@ contract OwnerSpoofingPayload {
 contract ImplementationTrustOnlyDefaultAdapter {
     DefaultReverseRegistrar internal immutable REGISTRAR;
     VerifiableFactory internal immutable VERIFIABLE_FACTORY;
-    MockAddressSet internal immutable TRUSTED_HCA_SET;
+    IAddressSet internal immutable TRUSTED_HCA_SET;
 
     /// @param registrar The reverse registrar updated by the adapter.
     /// @param verifiableFactory The factory queried for the caller's current implementation.
@@ -2454,7 +2470,7 @@ contract ImplementationTrustOnlyDefaultAdapter {
     constructor(
         DefaultReverseRegistrar registrar,
         VerifiableFactory verifiableFactory,
-        MockAddressSet trustedHCASet
+        IAddressSet trustedHCASet
     )
     {
         REGISTRAR = registrar;
@@ -2471,6 +2487,16 @@ contract ImplementationTrustOnlyDefaultAdapter {
         require(IStandaloneHCAOwner(msg.sender).owner() == account);
         REGISTRAR.setNameForAddr(account, name);
     }
+}
+
+
+/// @title Address Set Approval Interface
+/// @notice Exposes the mutation used with production address-set deployments in these tests.
+interface IAddressSetApproval is IAddressSet {
+    /// @notice Adds or removes an address from the set.
+    /// @param addr The address whose membership changes.
+    /// @param approved Whether the address is included.
+    function approve(address addr, bool approved) external;
 }
 
 
