@@ -60,6 +60,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
         ensV1Resolver = new ENSV1Resolver(batchGatewayProvider, contractNamer, registryV1);
         ensV2Resolver = new ENSV2Resolver(
             batchGatewayProvider,
+            ensip15,
             contractNamer,
             rootRegistry,
             address(0)

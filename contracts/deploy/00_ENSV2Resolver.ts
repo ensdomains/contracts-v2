@@ -2,6 +2,7 @@ import { execute } from "@rocketh";
 import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
 import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
 import type { Abi_IGatewayProvider } from "generated/abis/IGatewayProvider.js";
+import type { Abi_IENSIP15 } from "generated/abis/IENSIP15.js";
 import type { Abi_RegistrarSecurityController } from "generated/abis/RegistrarSecurityController.js";
 import type { Abi_BaseRegistrarImplementation } from "generated/abis/BaseRegistrarImplementation.js";
 import type { Abi_OwnedResolver } from "generated/abis/OwnedResolver.js";
@@ -22,6 +23,7 @@ export default execute(
     const batchGatewayProvider = await getV1<Abi_IGatewayProvider>(
       "BatchGatewayProvider",
     );
+    const ensip15 = get<Abi_IENSIP15>("MockENSIP15");
     const contractNamer = get<Abi_IContractNamer>("ContractNamer");
     const rootRegistry = get<Abi_IPermissionedRegistry>("RootRegistry");
     const ensRegistry = await getV1<Abi_ENS>("ENSRegistry");
@@ -53,6 +55,7 @@ export default execute(
         artifact: Artifact_ENSV2Resolver,
         args: [
           batchGatewayProvider.address,
+          ensip15.address,
           contractNamer.address,
           rootRegistry.address,
           ethResolver,
@@ -85,6 +88,7 @@ export default execute(
     tags: ["ENSV2Resolver", "migration:phase1:deploy-v2", "v2"],
     dependencies: [
       "BatchGatewayProvider",
+      "MockENSIP15",
       "ContractNamer",
       "RootRegistry",
       "EthOwnedResolver", // BaseRegistrarImplementation:setup => eventually setup as OwnedResolver

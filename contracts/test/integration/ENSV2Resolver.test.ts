@@ -21,6 +21,7 @@ async function fixture() {
   const ethResolver = v1.ownedResolver.address;
   const ensV2Resolver = await network.viem.deployContract("ENSV2Resolver", [
     v2.batchGatewayProvider.address,
+    v2.ensip15.address,
     v2.contractNamer.address,
     v2.rootRegistry.address,
     ethResolver,
