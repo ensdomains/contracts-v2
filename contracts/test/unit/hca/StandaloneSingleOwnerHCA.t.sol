@@ -267,8 +267,8 @@ contract StandaloneSingleOwnerHCATest is Test {
         executions[0].callData = abi.encodeCall(WalletPaidTarget.setValue, (11));
         executions[1].callData = abi.encodeCall(WalletPaidTarget.fail, ());
 
-        vm.prank(owner);
         vm.expectRevert(WalletPaidTarget.Failed.selector);
+        vm.prank(owner);
         account.executeByOwner(executions);
         assertEq(firstTarget.value(), 7);
     }
@@ -789,17 +789,17 @@ contract StandaloneSingleOwnerHCATest is Test {
 
         vm.expectRevert(HCAOwnerAndSessionValidator.OwnerUnavailable.selector);
         validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
-        vm.prank(address(hca));
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        vm.prank(address(hca));
         validator.enableSession(permissionId, address(0), validUntil, resolver);
 
         vm.warp(block.timestamp + 1);
-        vm.prank(address(hca));
         vm.expectRevert(HCAOwnerAndSessionValidator.SessionExpired.selector);
+        vm.prank(address(hca));
         validator.enableSession(permissionId, sessionSigner, uint48(block.timestamp - 1), resolver);
 
-        vm.prank(address(hca));
         vm.expectRevert(HCAOwnerAndSessionValidator.GasRefundNotAllowed.selector);
+        vm.prank(address(hca));
         validator.enableSessionWithRefund(
             permissionId,
             sessionSigner,
@@ -824,12 +824,12 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.expectRevert(HCAOwnerAndSessionValidator.CallerNotIntentExecutor.selector);
         validator.verifyExecution(address(hca), keccak256(operationData), validData, operation);
 
-        vm.prank(intentExecutor);
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        vm.prank(intentExecutor);
         validator.verifyExecution(address(hca), keccak256(operationData), hex"01", operation);
 
-        vm.prank(intentExecutor);
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        vm.prank(intentExecutor);
         validator.verifyExecution(
             address(hca),
             keccak256(operationData),
