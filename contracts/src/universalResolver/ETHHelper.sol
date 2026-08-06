@@ -14,13 +14,13 @@ import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-/// @notice TODO: merge this with https://github.com/ensdomains/contracts-v2/pull/330
-contract RegistryHelper is DelegatedContractNamer {
+/// @notice Helper contract for determining .eth state.
+contract ETHHelper is DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
 
-    enum ETHStatus {
+    enum Status {
         AVAILABLE,
         WRAPPED,
         UNWRAPPED,
@@ -29,8 +29,8 @@ contract RegistryHelper is DelegatedContractNamer {
         GRACE_V2
     }
 
-    struct ETHState {
-        ETHStatus status;
+    struct State {
+        Status status;
         uint256 tokenId;
         address owner;
         uint64 expiry;
@@ -99,24 +99,29 @@ contract RegistryHelper is DelegatedContractNamer {
     /// @return ethState The .eth state.
     /// @return blockNumber The block number.
     /// @return timestamp The current time, in seconds.
-    function getETHState(string calldata label)
+    function getState(string calldata label)
         external
         view
-        returns (ETHState memory ethState, uint256 blockNumber, uint64 timestamp)
+        returns (State memory ethState, uint256 blockNumber, uint64 timestamp)
     {
         uint256 labelId = LibLabel.id(label);
         IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(labelId);
         if (state.status == IPermissionedRegistry.Status.RESERVED) {
-            ethState.tokenId = labelId;
             ethState.expiry = uint64(BASE_REGISTRAR.nameExpires(labelId));
             bytes32 node = NameCoder.namehash(NameCoder.ETH_NODE, bytes32(labelId));
-            address owner = BASE_REGISTRAR.ownerOf(labelId);
-            if (owner == address(NAME_WRAPPER)) {
+            if (NAME_WRAPPER.isWrapped(NameCoder.ETH_NODE, bytes32(labelId))) {
+                ethState.tokenId = uint256(node);
                 ethState.owner = NAME_WRAPPER.ownerOf(uint256(node));
-                ethState.status = ETHStatus.WRAPPED;
+                ethState.status = Status.WRAPPED;
             } else {
-                ethState.owner = owner;
-                ethState.status = ETHStatus.UNWRAPPED;
+                ethState.tokenId = labelId;
+                try BASE_REGISTRAR.ownerOf(labelId) returns (address owner) {
+                    ethState.owner = owner;
+                    ethState.status = Status.UNWRAPPED;
+                } catch {
+                    ethState.status = Status.GRACE_V1;
+                    ethState.expiry = state.expiry;
+                }
             }
             ethState.resolver = REGISTRY_V1.resolver(node);
             ethState.manager = REGISTRY_V1.owner(node);
@@ -124,15 +129,15 @@ contract RegistryHelper is DelegatedContractNamer {
             ethState.tokenId = state.tokenId;
             ethState.expiry = state.expiry;
             if (state.status == IPermissionedRegistry.Status.REGISTERED) {
-                ethState.status = ETHStatus.REGISTERED;
+                ethState.status = Status.REGISTERED;
                 ethState.owner = state.latestOwner;
                 ethState.resolver = ETH_REGISTRY.getResolver(label);
                 ethState.subregistry = ETH_REGISTRY.getSubregistry(label);
             } else if (state.expiry + GRACE_PERIOD_V2 > block.timestamp) {
                 if (state.latestOwner == address(0)) {
-                    ethState.status = ETHStatus.GRACE_V1;
+                    ethState.status = Status.GRACE_V1;
                 } else {
-                    ethState.status = ETHStatus.GRACE_V2;
+                    ethState.status = Status.GRACE_V2;
                 }
             }
         }
