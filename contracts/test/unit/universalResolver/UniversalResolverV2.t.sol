@@ -82,6 +82,12 @@ contract UniversalResolverV2Test is V2Fixture {
         );
     }
 
+    function test_resolve_unnormalized() external {
+        bytes memory name = NameCoder.encode("TEST.eth");
+        vm.expectRevert(abi.encodeWithSelector(LibRegistry.NotNormalized.selector, name, 0));
+        universalResolver.resolve(name, "");
+    }
+
     function test_reverse_normalized() external {
         ethRegistry.register(
             "test",
@@ -114,14 +120,6 @@ contract UniversalResolverV2Test is V2Fixture {
     }
 
     function test_reverse_unnormalized() external {
-        ethRegistry.register(
-            "TEST",
-            address(0),
-            IRegistry(address(0)),
-            address(resolver),
-            0,
-            type(uint64).max
-        );
         rootRegistry.register(
             "reverse",
             address(0),
@@ -135,11 +133,6 @@ contract UniversalResolverV2Test is V2Fixture {
         bytes memory reverseName =
             NameCoder.encode(ENSIP19.reverseName(encodedAddress, COIN_TYPE_ETH));
         resolver.setName(NameCoder.namehash(reverseName, 0), primaryName);
-        resolver.setAddr(
-            NameCoder.namehash(NameCoder.encode(primaryName), 0),
-            COIN_TYPE_ETH,
-            encodedAddress
-        );
         vm.expectRevert(
             abi.encodeWithSelector(
                 LibRegistry.NotNormalized.selector,

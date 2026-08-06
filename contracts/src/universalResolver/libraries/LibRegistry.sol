@@ -51,11 +51,12 @@ library LibRegistry {
         view
         returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 resolverOffset)
     {
-        // supply <root> if end of name
         (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
+        // supply <root> if end of name
         if (bytes(label).length == 0) {
             return (rootRegistry, address(0), bytes32(0), offset);
         }
+        // ensure every label is normalized (if supplied)
         if (
             address(ensip15) != address(0) &&
             keccak256(bytes(label)) != keccak256(bytes(ensip15.normalize(label)))
