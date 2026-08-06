@@ -14,6 +14,7 @@ import {LockedMigrationController} from "~src/migration/LockedMigrationControlle
 import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {MigrationHelper, LockedChildren} from "~src/migration/MigrationHelper.sol";
+import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract MigrationHelperTest is MigrationControllerFixture {
@@ -72,6 +73,7 @@ contract MigrationHelperTest is MigrationControllerFixture {
             rootRegistry,
             unlockedController,
             lockedController,
+            new StandaloneHCAFactory(verifiableFactory, address(this)),
             contractNamer
         );
     }
