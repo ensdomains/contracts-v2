@@ -47,10 +47,7 @@ import { Artifact_BaseRegistrarImplementation } from "generated/artifacts/BaseRe
 import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
 import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
-import {
-  isHCAOnlyDeployment,
-  resolveDeployV2Scripts,
-} from "../deploy/hca/_helpers.js";
+import { isHCAOnlyDeployment } from "../deploy/hca/_helpers.js";
 import { config as rockethConfig } from "../rocketh/config.js";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
 import { generateAddressMarkdown } from "./addressDocs.js";
@@ -3562,10 +3559,6 @@ function buildDeployV2RockethConfig(
       [deploymentNetwork]: {
         ...baseEnvironment,
         chain: chainId,
-        scripts: resolveDeployV2Scripts({
-          tags: opts.tags,
-          scripts: baseEnvironment.scripts,
-        }),
         overrides: {
           ...baseEnvironment.overrides,
           tags,

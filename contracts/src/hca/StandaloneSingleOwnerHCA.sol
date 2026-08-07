@@ -2,8 +2,23 @@
 pragma solidity ^0.8.27;
 
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
+import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {IModule} from "nexus/interfaces/modules/IModule.sol";
+import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
+import {
+    CALLTYPE_BATCH,
+    CALLTYPE_DELEGATECALL,
+    CALLTYPE_SINGLE,
+    EXECTYPE_DEFAULT,
+    EXECTYPE_TRY,
+    CallType,
+    ExecType,
+    ExecutionMode,
+    ModeLib
+} from "nexus/lib/ModeLib.sol";
+import {NonceLib} from "nexus/lib/NonceLib.sol";
 import {Nexus} from "nexus/Nexus.sol";
+import {VALIDATION_FAILED} from "nexus/types/Constants.sol";
 import {Execution} from "nexus/types/DataTypes.sol";
 
 import {ApprovedUpgradeGate} from "../registry/ApprovedUpgradeGate.sol";
@@ -14,6 +29,9 @@ import {ApprovedUpgradeGate} from "../registry/ApprovedUpgradeGate.sol";
 ///      remains the only validator path for the account. Upgrades are owner-triggered and require
 ///      DAO approval for both the target and its predecessor.
 contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
+    using ModeLib for ExecutionMode;
+    using NonceLib for uint256;
+
     ////////////////////////////////////////////////////////////////////////
     // Constants & Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -80,6 +98,10 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     /// @dev Error selector: `0x6e29a697`
     error NoNFTAllowed();
 
+    /// @notice Delegatecall execution is disabled to protect account storage invariants.
+    /// @dev Error selector: `0x0d89438e`
+    error DelegateCallNotAllowed();
+
     ////////////////////////////////////////////////////////////////////////
     // Modifiers
     ////////////////////////////////////////////////////////////////////////
@@ -89,6 +111,19 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
         if (msg.sender != _owner) {
             revert CallerNotOwner();
         }
+        _;
+    }
+
+    /// @dev Restricts executor entry to installed executors and rejects delegatecall execution.
+    modifier onlyExecutorModule() override {
+        if (!_isExecutorInstalled(msg.sender)) {
+            revert InvalidModule(msg.sender);
+        }
+        ExecutionMode mode;
+        assembly ("memory-safe") {
+            mode := calldataload(4)
+        }
+        _requireNonDelegateCall(mode);
         _;
     }
 
@@ -189,6 +224,28 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
         _executeBatchNoReturndata(executions);
     }
 
+    /// @inheritdoc Nexus
+    function validateUserOp(
+        PackedUserOperation calldata userOp,
+        bytes32 userOpHash,
+        uint256 missingAccountFunds
+    )
+        external
+        override
+        payPrefund(missingAccountFunds)
+        onlyEntryPoint
+        returns (uint256 validationData)
+    {
+        if (
+            !userOp.nonce.isValidateMode() ||
+            !userOp.nonce.isDefaultValidatorMode() ||
+            !_isAllowedUserOpCallData(userOp.callData)
+        ) {
+            return VALIDATION_FAILED;
+        }
+        return IValidator(_DEFAULT_VALIDATOR).validateUserOp(userOp, userOpHash);
+    }
+
     /// @notice Returns the account owner.
     function owner() external view returns (address) {
         return _owner;
@@ -216,6 +273,19 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
         return
             address(predecessorGate) != address(0) &&
             predecessorGate.approvedImplementations(previousImplementation);
+    }
+
+    /// @inheritdoc Nexus
+    function supportsExecutionMode(ExecutionMode mode)
+        external
+        pure
+        override
+        returns (bool isSupported)
+    {
+        (CallType callType, ExecType execType) = mode.decodeBasic();
+        return
+            (callType == CALLTYPE_SINGLE || callType == CALLTYPE_BATCH) &&
+            (execType == EXECTYPE_DEFAULT || execType == EXECTYPE_TRY);
     }
 
     /// @notice Returns the account implementation identifier.
@@ -251,5 +321,39 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
         if (!UPGRADE_GATE.approvedImplementations(newImplementation)) {
             revert UpgradeTargetNotApproved(newImplementation);
         }
+    }
+
+    /// @dev Reverts when an inherited executor entry requests delegatecall execution.
+    function _requireNonDelegateCall(ExecutionMode mode) internal pure {
+        if (mode.getCallType() == CALLTYPE_DELEGATECALL) {
+            revert DelegateCallNotAllowed();
+        }
+    }
+
+    /// @dev Rejects an owner UserOperation that directly or indirectly requests delegatecall.
+    function _isAllowedUserOpCallData(bytes calldata callData) internal pure returns (bool) {
+        if (callData.length < 4) {
+            return true;
+        }
+
+        bytes4 selector = bytes4(callData[:4]);
+        if (selector == Nexus.executeUserOp.selector) {
+            callData = callData[4:];
+            if (callData.length < 4) {
+                return true;
+            }
+            selector = bytes4(callData[:4]);
+            if (selector == Nexus.executeUserOp.selector) {
+                return false;
+            }
+        }
+        if (selector != Nexus.execute.selector) {
+            return true;
+        }
+        if (callData.length < 36) {
+            return false;
+        }
+
+        return ExecutionMode.wrap(bytes32(callData[4:36])).getCallType() != CALLTYPE_DELEGATECALL;
     }
 }

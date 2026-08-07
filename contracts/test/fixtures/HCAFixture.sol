@@ -3,64 +3,62 @@ pragma solidity >=0.8.13;
 
 import {Test} from "forge-std/Test.sol";
 
-import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
-import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
+import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
 
+/// @title HCA Test Fixture
+/// @notice Provides factory-certified and uncertified HCAs for adapter tests.
+/// @dev Certified HCAs are deployed through the real `StandaloneHCAFactory` so consumer tests
+///      exercise the production certification path; the fixture acts as factory governance.
 abstract contract HCAFixture is Test {
-    PermissionedAddressSet trustedHCASet;
-
     MockHCA trustedHCAImpl;
     MockHCA untrustedHCAImpl;
-    MockRevertingHCA revertingHCAImpl;
+    VerifiableFactory verifiableFactory;
+    StandaloneHCAFactory standaloneHCAFactory;
 
     uint256 private nextSalt = 1;
 
     function deployHCAFixture() public {
-        trustedHCASet = new PermissionedAddressSet(address(this));
-
+        verifiableFactory = new VerifiableFactory();
         trustedHCAImpl = new MockHCA();
         untrustedHCAImpl = new MockHCA();
-        revertingHCAImpl = new MockRevertingHCA();
-
-        trustedHCASet.approve(address(trustedHCAImpl), true);
-        trustedHCASet.approve(address(revertingHCAImpl), true);
+        standaloneHCAFactory = new StandaloneHCAFactory(verifiableFactory, address(this));
+        standaloneHCAFactory.setImplementationApproval(address(trustedHCAImpl), true);
     }
 
-    function test_trustedHCASet() external view {
-        assertTrue(trustedHCASet.includes(address(trustedHCAImpl)), "trusted");
-        assertFalse(trustedHCASet.includes(address(untrustedHCAImpl)), "untrusted");
-        assertTrue(trustedHCASet.includes(address(revertingHCAImpl)), "reverting");
-    }
-
-    function _deployHCA(IVerifiableFactory verifiableFactory, address hcaOwner, address hcaImpl)
-        internal
-        returns (address)
-    {
-        bytes memory data = abi.encodeCall(MockHCA.initialize, (hcaOwner));
-        return verifiableFactory.deployProxy(hcaImpl, nextSalt++, data);
+    /// @dev Deploys a factory-certified HCA owned by `hcaOwner`.
+    function _deployHCA(address hcaOwner, address hcaImpl) internal returns (address) {
+        return standaloneHCAFactory.deploy(hcaOwner, hcaImpl, nextSalt++);
     }
 }
 
 
+/// @title Mock HCA
+/// @notice Stores an initialized owner and exposes the standalone HCA ownership interface.
 contract MockHCA is IStandaloneHCAOwner {
     address internal _owner;
+
+    /// @notice Initializes the fixture owner directly.
+    /// @param owner_ The owner to store.
     function initialize(address owner_) external {
         _owner = owner_;
     }
+
+    /// @notice Initializes the fixture owner through the standalone account interface.
+    /// @param initData ABI-encoded owner address, as passed by `StandaloneHCAFactory.deploy`.
+    function initializeAccount(bytes calldata initData) external {
+        _owner = abi.decode(initData, (address));
+    }
+
+    /// @inheritdoc IStandaloneHCAOwner
     function owner() external view virtual returns (address) {
         return _owner;
     }
+
+    /// @inheritdoc IStandaloneHCAOwner
     function ownerAndSessionNonce() external view returns (address, uint96) {
         return (_owner, 0);
-    }
-}
-
-
-contract MockRevertingHCA is MockHCA {
-    error OwnerUnavailable();
-    function owner() external pure override returns (address) {
-        revert OwnerUnavailable();
     }
 }

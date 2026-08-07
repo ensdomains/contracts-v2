@@ -17,18 +17,19 @@ export default execute(
       (typeof artifacts.StandaloneSingleOwnerHCA)["abi"]
     >("StandaloneHCAImplementation");
 
-    const trustedHCASet =
-      get<(typeof artifacts.PermissionedAddressSet)["abi"]>("TrustedHCASet");
+    const hcaFactory = get<(typeof artifacts.StandaloneHCAFactory)["abi"]>(
+      "StandaloneHCAFactory",
+    );
 
-    const isTrusted = await read(trustedHCASet, {
-      functionName: "includes",
+    const isApproved = await read(hcaFactory, {
+      functionName: "approvedImplementations",
       args: [implementation.address],
     });
-    if (isTrusted) return;
+    if (isApproved) return;
 
-    await write(trustedHCASet, {
+    await write(hcaFactory, {
       account,
-      functionName: "approve",
+      functionName: "setImplementationApproval",
       args: [implementation.address, true],
     });
   },
@@ -40,6 +41,6 @@ export default execute(
       "migration:phase1:deploy-v2",
       "v2",
     ],
-    dependencies: ["TrustedHCASet", "StandaloneHCAImplementation"],
+    dependencies: ["StandaloneHCAFactory", "StandaloneHCAImplementation"],
   },
 );

