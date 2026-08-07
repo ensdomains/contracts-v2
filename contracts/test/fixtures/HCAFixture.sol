@@ -3,60 +3,34 @@ pragma solidity >=0.8.13;
 
 import {Test} from "forge-std/Test.sol";
 
-import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
+import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
 
 /// @title HCA Test Fixture
 /// @notice Provides factory-certified and uncertified HCAs for adapter tests.
+/// @dev Certified HCAs are deployed through the real `StandaloneHCAFactory` so consumer tests
+///      exercise the production certification path; the fixture acts as factory governance.
 abstract contract HCAFixture is Test {
     MockHCA trustedHCAImpl;
     MockHCA untrustedHCAImpl;
-    MockRevertingHCA revertingHCAImpl;
-    MockHCADeploymentRegistry standaloneHCAFactory;
+    VerifiableFactory verifiableFactory;
+    StandaloneHCAFactory standaloneHCAFactory;
 
     uint256 private nextSalt = 1;
 
     function deployHCAFixture() public {
+        verifiableFactory = new VerifiableFactory();
         trustedHCAImpl = new MockHCA();
         untrustedHCAImpl = new MockHCA();
-        revertingHCAImpl = new MockRevertingHCA();
-        standaloneHCAFactory = new MockHCADeploymentRegistry();
+        standaloneHCAFactory = new StandaloneHCAFactory(verifiableFactory, address(this));
+        standaloneHCAFactory.setImplementationApproval(address(trustedHCAImpl), true);
     }
 
-    function test_factoryCertificationFixture() external view {
-        assertEq(standaloneHCAFactory.authorizedOwnerOf(address(trustedHCAImpl)), address(0));
-    }
-
-    function _deployHCA(IVerifiableFactory verifiableFactory, address hcaOwner, address hcaImpl)
-        internal
-        returns (address)
-    {
-        bytes memory data = abi.encodeCall(MockHCA.initialize, (hcaOwner));
-        address hca = verifiableFactory.deployProxy(hcaImpl, nextSalt++, data);
-        standaloneHCAFactory.recordDeployment(hca, hcaOwner);
-        return hca;
-    }
-}
-
-
-/// @title Mock HCA Deployment Registry
-/// @notice Records immutable owner bindings treated as factory certifications by adapter tests.
-contract MockHCADeploymentRegistry {
-    mapping(address hca => address owner) public hcaOwners;
-
-    /// @notice Records an owner binding for a fixture HCA.
-    /// @param hca The fixture HCA.
-    /// @param owner The owner to bind to the HCA.
-    function recordDeployment(address hca, address owner) external {
-        hcaOwners[hca] = owner;
-    }
-
-    /// @notice Returns the certified owner for a fixture HCA.
-    /// @param hca The fixture HCA.
-    /// @return owner The recorded owner, or zero for an unknown HCA.
-    function authorizedOwnerOf(address hca) external view returns (address owner) {
-        return hcaOwners[hca];
+    /// @dev Deploys a factory-certified HCA owned by `hcaOwner`.
+    function _deployHCA(address hcaOwner, address hcaImpl) internal returns (address) {
+        return standaloneHCAFactory.deploy(hcaOwner, hcaImpl, nextSalt++);
     }
 }
 
@@ -66,10 +40,16 @@ contract MockHCADeploymentRegistry {
 contract MockHCA is IStandaloneHCAOwner {
     address internal _owner;
 
-    /// @notice Initializes the fixture owner.
+    /// @notice Initializes the fixture owner directly.
     /// @param owner_ The owner to store.
     function initialize(address owner_) external {
         _owner = owner_;
+    }
+
+    /// @notice Initializes the fixture owner through the standalone account interface.
+    /// @param initData ABI-encoded owner address, as passed by `StandaloneHCAFactory.deploy`.
+    function initializeAccount(bytes calldata initData) external {
+        _owner = abi.decode(initData, (address));
     }
 
     /// @inheritdoc IStandaloneHCAOwner
@@ -80,17 +60,5 @@ contract MockHCA is IStandaloneHCAOwner {
     /// @inheritdoc IStandaloneHCAOwner
     function ownerAndSessionNonce() external view returns (address, uint96) {
         return (_owner, 0);
-    }
-}
-
-
-/// @title Reverting Mock HCA
-/// @notice Models an HCA implementation whose owner cannot be queried at runtime.
-contract MockRevertingHCA is MockHCA {
-    error OwnerUnavailable();
-
-    /// @notice Reverts instead of returning the stored owner.
-    function owner() external pure override returns (address) {
-        revert OwnerUnavailable();
     }
 }

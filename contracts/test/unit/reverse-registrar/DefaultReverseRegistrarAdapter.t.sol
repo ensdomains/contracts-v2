@@ -7,7 +7,6 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {DefaultReverseRegistrar} from "@ens/contracts/reverseRegistrar/DefaultReverseRegistrar.sol";
 import {MockOwnable} from "@ens/contracts/test/mocks/MockOwnable.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
-import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {
     DefaultReverseRegistrarAdapter
@@ -27,7 +26,6 @@ import {HCAFixture} from "~test/fixtures/HCAFixture.sol";
 contract DefaultReverseRegistrarAdapterTest is HCAFixture {
     DefaultReverseRegistrar defaultReverseRegistrar;
     DefaultReverseRegistrarAdapter defaultAdapter;
-    VerifiableFactory verifiableFactory;
     MockContractNamer delegatedNamer;
 
     address owner = makeAddr("owner");
@@ -38,7 +36,6 @@ contract DefaultReverseRegistrarAdapterTest is HCAFixture {
         deployHCAFixture();
 
         defaultReverseRegistrar = new DefaultReverseRegistrar();
-        verifiableFactory = new VerifiableFactory();
         delegatedNamer = new MockContractNamer(owner);
 
         defaultAdapter = new DefaultReverseRegistrarAdapter(
@@ -110,7 +107,7 @@ contract DefaultReverseRegistrarAdapterTest is HCAFixture {
     }
 
     function test_setNameWithHCA_EOA() external {
-        address hca = _deployHCA(verifiableFactory, owner, address(trustedHCAImpl));
+        address hca = _deployHCA(owner, address(trustedHCAImpl));
 
         vm.prank(hca);
         defaultAdapter.setNameWithHCA(owner, name);
@@ -120,7 +117,7 @@ contract DefaultReverseRegistrarAdapterTest is HCAFixture {
     }
 
     function test_setNameWithHCA_revert_hcaOwnerMismatch_ownable() external {
-        address hca = _deployHCA(verifiableFactory, owner, address(trustedHCAImpl));
+        address hca = _deployHCA(owner, address(trustedHCAImpl));
         MockOwnable c = new MockOwnable(owner);
 
         vm.expectRevert(
@@ -131,7 +128,7 @@ contract DefaultReverseRegistrarAdapterTest is HCAFixture {
     }
 
     function test_setNameWithHCA_revert_hcaOwnerMismatch_contractNamer() external {
-        address hca = _deployHCA(verifiableFactory, owner, address(trustedHCAImpl));
+        address hca = _deployHCA(owner, address(trustedHCAImpl));
         MockContractNamer c = new MockContractNamer(owner);
 
         vm.expectRevert(
@@ -165,17 +162,8 @@ contract DefaultReverseRegistrarAdapterTest is HCAFixture {
         defaultAdapter.setNameWithHCA(owner, name);
     }
 
-    function test_setNameWithHCA_usesFactoryOwnerWhenRuntimeOwnerReverts() external {
-        address hca = _deployHCA(verifiableFactory, owner, address(revertingHCAImpl));
-
-        vm.prank(hca);
-        defaultAdapter.setNameWithHCA(owner, name);
-
-        assertEq(defaultReverseRegistrar.nameForAddr(owner), name);
-    }
-
     function test_setNameWithHCA_revert_hcaOwnerMismatch() external {
-        address hca = _deployHCA(verifiableFactory, owner, address(trustedHCAImpl));
+        address hca = _deployHCA(owner, address(trustedHCAImpl));
 
         vm.expectRevert(
             abi.encodeWithSelector(HCAAuthorizer.HCAOwnerMismatch.selector, actor, owner)
