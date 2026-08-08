@@ -750,7 +750,7 @@ export async function setupDevnet({
           implAddress,
           abi: v2.UserRegistryImpl.abi,
           functionName: "initialize",
-          args: [[admin, roles]],
+          args: [[[admin, roles]]],
           salt,
         }),
       );
