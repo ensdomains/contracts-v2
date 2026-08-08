@@ -247,24 +247,6 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         return super.revokeRoles(getResource(anyId), roleBitmap, account);
     }
 
-    /// @notice Perform multiple operations.
-    /// @dev Reverts with first error.
-    /// @param calls The calls to make.
-    /// @return results The results of the calls.
-    function multicall(bytes[] calldata calls) public returns (bytes[] memory results) {
-        results = new bytes[](calls.length);
-        for (uint256 i; i < calls.length; ++i) {
-            (bool ok, bytes memory v) = address(this).delegatecall(calls[i]);
-            if (!ok) {
-                assembly {
-                    revert(add(v, 32), mload(v)) // propagate the first error
-                }
-            }
-            results[i] = v;
-        }
-        return results;
-    }
-
     /// @inheritdoc IRegistry
     function getSubregistry(string calldata label) public view virtual returns (IRegistry) {
         Entry storage entry = _entry(LibLabel.id(label));

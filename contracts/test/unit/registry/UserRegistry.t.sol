@@ -13,8 +13,7 @@ import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAc
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
-import {UserRegistry} from "~src/registry/UserRegistry.sol";
+import {UserRegistry, Grant} from "~src/registry/UserRegistry.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 
@@ -43,11 +42,9 @@ contract UserRegistryTest is Test, ERC1155Holder {
         implementation = new UserRegistry(labelStore, address(this));
 
         // Create initialization data
-        bytes memory initData =
-            abi.encodeCall(
-                UserRegistry.initialize,
-                (admin, EACBaseRolesLib.ALL_ROLES, new bytes[](0))
-            );
+        Grant[] memory grants = new Grant[](1);
+        grants[0] = Grant(admin, EACBaseRolesLib.ALL_ROLES);
+        bytes memory initData = abi.encodeCall(UserRegistry.initialize, (grants));
 
         // Deploy the proxy using the factory
         vm.expectEmit();
@@ -69,49 +66,30 @@ contract UserRegistryTest is Test, ERC1155Holder {
                 factory.deployProxy(
                     address(implementation),
                     SALT,
-                    abi.encodeCall(UserRegistry.initialize, (address(0), 0, new bytes[](0)))
+                    abi.encodeCall(UserRegistry.initialize, (new Grant[](0)))
                 )
             );
         assertEq(r.roleCount(r.ROOT_RESOURCE()), 0);
     }
 
-    function test_initialize_with_calls() external {
-        bytes[] memory m = new bytes[](3);
-        m[0] = abi.encodeCall(
-            IStandardRegistry.register,
-            (
-                "test",
-                user1,
-                IRegistry(address(0)),
-                address(0),
-                EACBaseRolesLib.ALL_ROLES,
-                type(uint64).max
-            )
-        );
-        m[1] = abi.encodeCall(
-            IEnhancedAccessControl.grantRootRoles,
-            (EACBaseRolesLib.ALL_ROLES, user1)
-        );
-        m[2] = abi.encodeCall(
-            IEnhancedAccessControl.revokeRootRoles,
-            (EACBaseRolesLib.ALL_ROLES, admin)
-        );
+    function test_initialize_with_grants() external {
+        Grant[] memory grants = new Grant[](3);
+        grants[0] = Grant(admin, EACBaseRolesLib.ALL_ROLES);
+        grants[1] = Grant(user1, EACBaseRolesLib.ALL_ROLES);
+        grants[2] = Grant(user2, EACBaseRolesLib.ALL_ROLES);
 
         UserRegistry r =
             UserRegistry(
                 factory.deployProxy(
                     address(implementation),
                     SALT,
-                    abi.encodeCall(
-                        UserRegistry.initialize,
-                        (address(admin), EACBaseRolesLib.ALL_ROLES, m)
-                    )
+                    abi.encodeCall(UserRegistry.initialize, (grants))
                 )
             );
 
-        assertEq(r.findOwner("test"), user1, "owner");
-        assertEq(r.roles(r.ROOT_RESOURCE(), user1), EACBaseRolesLib.ALL_ROLES, "grant");
-        assertEq(r.roles(r.ROOT_RESOURCE(), admin), 0, "revoke");
+        for (uint256 i; i < grants.length; ++i) {
+            assertEq(r.roles(r.ROOT_RESOURCE(), grants[i].account), grants[i].roleBitmap);
+        }
     }
 
     function test_initialization() public view {

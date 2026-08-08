@@ -11,12 +11,22 @@ import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
+/// @dev Initialization-time structure for a grant.
+struct Grant {
+    address account;
+    uint256 roleBitmap;
+}
+
 /// @title UserRegistry
 /// @notice UUPS-upgradeable `PermissionedRegistry` designed to be deployed as a proxy via
 ///         `VerifiableFactory` for user-owned subdomain registries. The constructor disables
 ///         initializers on the implementation contract; proxies call `initialize()` to set up the
 ///         admin and initial roles. Upgrade authorization requires the upgrade role in the root resource.
 contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, IProxyAuthorization {
+    ////////////////////////////////////////////////////////////////////////
+    // Types
+    ////////////////////////////////////////////////////////////////////////
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -35,17 +45,13 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
     }
 
     /// @notice Initialize the contract.
-    /// @param rootAccount Account granted root roles.
-    /// @param roleBitmap The roles granted to `rootAccount`.
-    /// @param calls The calldata that avoids permission checks.
-    function initialize(address rootAccount, uint256 roleBitmap, bytes[] calldata calls)
-        public
-        initializer
-    {
+    /// @param grants Accounts and roles granted on root.
+    function initialize(Grant[] calldata grants) public initializer {
         __UUPSUpgradeable_init();
         emit RegistryCreated();
-        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
-        multicall(calls);
+        for (uint256 i; i < grants.length; ++i) {
+            _grantRoles(ROOT_RESOURCE, grants[i].roleBitmap, grants[i].account, false);
+        }
     }
 
     /// @inheritdoc IERC165
@@ -84,37 +90,4 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
         override
         onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE)
     {}
-
-    /// @dev Avoid permission checks during initialization.
-    function _checkRoles(uint256 resource, uint256 roleBitmap, address account)
-        internal
-        view
-        override
-    {
-        if (!_isInitializing()) {
-            super._checkRoles(resource, roleBitmap, account);
-        }
-    }
-
-    /// @dev Avoid permission checks during initialization.
-    function _checkCanGrantRoles(uint256 resource, uint256 roleBitmap, address account)
-        internal
-        view
-        override
-    {
-        if (!_isInitializing()) {
-            super._checkCanGrantRoles(resource, roleBitmap, account);
-        }
-    }
-
-    /// @dev Avoid permission checks during initialization.
-    function _checkCanRevokeRoles(uint256 resource, uint256 roleBitmap, address account)
-        internal
-        view
-        override
-    {
-        if (!_isInitializing()) {
-            super._checkCanRevokeRoles(resource, roleBitmap, account);
-        }
-    }
 }

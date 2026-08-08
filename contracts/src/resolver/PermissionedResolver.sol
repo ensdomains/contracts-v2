@@ -233,14 +233,14 @@ contract PermissionedResolver is
     /// @notice Initialize the contract.
     /// @param rootAccount Account granted root roles.
     /// @param roleBitmap The roles granted to `rootAccount`.
-    /// @param calls The calldata that avoids permission checks.
-    function initialize(address rootAccount, uint256 roleBitmap, bytes[] calldata calls)
+    /// @param setters The setter calldata that avoids permission checks.
+    function initialize(address rootAccount, uint256 roleBitmap, bytes[] calldata setters)
         external
         initializer
     {
         __UUPSUpgradeable_init();
         _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
-        multicall(calls);
+        multicall(setters);
     }
 
     ////////////////////////////////////////////////////////////////////////
