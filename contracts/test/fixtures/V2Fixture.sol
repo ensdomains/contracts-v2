@@ -106,7 +106,7 @@ contract V2Fixture is Test, ERC1155Holder {
                 verifiableFactory.deployProxy(
                     address(userRegistryImpl),
                     salt,
-                    abi.encodeCall(UserRegistry.initialize, (owner, roleBitmap))
+                    abi.encodeCall(UserRegistry.initialize, (owner, roleBitmap, new bytes[](0)))
                 )
             );
     }

@@ -83,7 +83,7 @@ contract PermissionedResolverTest is Test {
         assertEq(r.roleCount(r.ROOT_RESOURCE()), 0);
     }
 
-    function test_initalize_with_setters() external {
+    function test_initalize_with_calls() external {
         bytes[] memory m = new bytes[](2);
         m[0] = abi.encodeCall(PermissionedResolver.setName, (testNode, testString));
         m[1] = abi.encodeCall(PermissionedResolver.setContenthash, (testNode, testAddress));
@@ -925,7 +925,7 @@ contract PermissionedResolverTest is Test {
         answers[3] = abi.encode(testAddress);
 
         bytes memory result =
-            resolver.resolve(testName, abi.encodeCall(PermissionedResolver.multicall, (calls)));
+            resolver.resolve(testName, abi.encodeCall(IMulticallable.multicall, (calls)));
         assertEq(result, abi.encode(answers));
     }
 
@@ -945,7 +945,7 @@ contract PermissionedResolverTest is Test {
         );
 
         bytes memory result =
-            resolver.resolve(testName, abi.encodeCall(PermissionedResolver.multicall, (calls)));
+            resolver.resolve(testName, abi.encodeCall(IMulticallable.multicall, (calls)));
         assertEq(result, abi.encode(answers));
     }
 

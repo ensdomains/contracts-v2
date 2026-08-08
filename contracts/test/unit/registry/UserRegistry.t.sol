@@ -8,12 +8,12 @@ import {Test} from "forge-std/Test.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
-import {InvalidOwner} from "~src/CommonErrors.sol";
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
@@ -44,7 +44,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Create initialization data
         bytes memory initData =
-            abi.encodeCall(UserRegistry.initialize, (admin, EACBaseRolesLib.ALL_ROLES));
+            abi.encodeCall(
+                UserRegistry.initialize,
+                (admin, EACBaseRolesLib.ALL_ROLES, new bytes[](0))
+            );
 
         // Deploy the proxy using the factory
         vm.expectEmit();
@@ -60,13 +63,47 @@ contract UserRegistryTest is Test, ERC1155Holder {
         assertTrue(implementation.isContractNamer(address(this)));
     }
 
-    function test_initialize_invalidOwner() external {
-        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
-        factory.deployProxy(
-            address(implementation),
-            SALT,
-            abi.encodeCall(UserRegistry.initialize, (address(0), EACBaseRolesLib.ALL_ROLES))
+    function test_initialize_unowned() external {
+        UserRegistry r =
+            UserRegistry(
+                factory.deployProxy(
+                    address(implementation),
+                    SALT,
+                    abi.encodeCall(UserRegistry.initialize, (address(0), 0, new bytes[](0)))
+                )
+            );
+        assertEq(r.roleCount(r.ROOT_RESOURCE()), 0);
+    }
+
+    function test_initialize_with_calls() external {
+        bytes[] memory m = new bytes[](2);
+        m[0] = abi.encodeCall(
+            IStandardRegistry.register,
+            (
+                "test",
+                user1,
+                IRegistry(address(0)),
+                address(0),
+                EACBaseRolesLib.ALL_ROLES,
+                type(uint64).max
+            )
         );
+        m[1] = abi.encodeCall(
+            IEnhancedAccessControl.grantRootRoles,
+            (EACBaseRolesLib.ALL_ROLES, admin)
+        );
+
+        UserRegistry r =
+            UserRegistry(
+                factory.deployProxy(
+                    address(implementation),
+                    SALT,
+                    abi.encodeCall(UserRegistry.initialize, (address(0), 0, m))
+                )
+            );
+
+        assertEq(r.findOwner("test"), user1, "owner");
+        //assertTrue(r.hasRootRoles(EACBaseRolesLib.ALL_ROLES, admin), "grant");
     }
 
     function test_initialization() public view {

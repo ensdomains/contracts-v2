@@ -230,14 +230,17 @@ contract PermissionedResolver is
         return ResolverFeatures.RESOLVE_MULTICALL == feature;
     }
 
-    /// @inheritdoc IPermissionedResolver
-    function initialize(address admin, uint256 roleBitmap, bytes[] calldata setters)
+    /// @notice Initialize the contract.
+    /// @param rootAccount Account granted root roles.
+    /// @param roleBitmap The roles granted to `rootAccount`.
+    /// @param calls The calldata that avoids permission checks.
+    function initialize(address rootAccount, uint256 roleBitmap, bytes[] calldata calls)
         external
         initializer
     {
         __UUPSUpgradeable_init();
-        _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
-        multicall(setters);
+        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
+        multicall(calls);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -639,7 +642,7 @@ contract PermissionedResolver is
         return true;
     }
 
-    /// @notice Perform multiple write operations.
+    /// @notice Perform multiple operations.
     /// @dev Reverts with first error.
     /// @param calls The calls to make.
     /// @return results The results of the calls.

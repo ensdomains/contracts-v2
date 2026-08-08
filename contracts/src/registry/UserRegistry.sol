@@ -6,7 +6,6 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {InvalidOwner} from "../CommonErrors.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
@@ -35,17 +34,18 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
         _disableInitializers();
     }
 
-    /// @notice Initializes a proxy instance of `UserRegistry`.
-    /// @dev Grants the supplied role bitmap to `rootAccount` on the root resource.
-    ///      Reverts if the zero address.
+    /// @notice Initialize the contract.
     /// @param rootAccount Account granted root roles.
-    /// @param roleBitmap The role bitmap granted to `rootAccount`.
-    function initialize(address rootAccount, uint256 roleBitmap) public initializer {
-        if (rootAccount == address(0)) {
-            revert InvalidOwner();
-        }
+    /// @param roleBitmap The roles granted to `rootAccount`.
+    /// @param calls The calldata that avoids permission checks.
+    function initialize(address rootAccount, uint256 roleBitmap, bytes[] calldata calls)
+        public
+        initializer
+    {
+        __UUPSUpgradeable_init();
         emit RegistryCreated();
         _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
+        multicall(calls);
     }
 
     /// @inheritdoc IERC165
@@ -84,4 +84,37 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
         override
         onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE)
     {}
+
+    /// @dev Avoid permission checks during initialization.
+    function _checkRoles(uint256 resource, uint256 roleBitmap, address account)
+        internal
+        view
+        override
+    {
+        if (!_isInitializing()) {
+            super._checkRoles(resource, roleBitmap, account);
+        }
+    }
+
+    /// @dev Avoid permission checks during initialization.
+    function _checkCanGrantRoles(uint256 resource, uint256 roleBitmap, address account)
+        internal
+        view
+        override
+    {
+        if (!_isInitializing()) {
+            super._checkCanGrantRoles(resource, roleBitmap, account);
+        }
+    }
+
+    /// @dev Avoid permission checks during initialization.
+    function _checkCanRevokeRoles(uint256 resource, uint256 roleBitmap, address account)
+        internal
+        view
+        override
+    {
+        if (!_isInitializing()) {
+            super._checkCanRevokeRoles(resource, roleBitmap, account);
+        }
+    }
 }
