@@ -76,7 +76,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
     }
 
     function test_initialize_with_calls() external {
-        bytes[] memory m = new bytes[](2);
+        bytes[] memory m = new bytes[](3);
         m[0] = abi.encodeCall(
             IStandardRegistry.register,
             (
@@ -90,6 +90,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
         );
         m[1] = abi.encodeCall(
             IEnhancedAccessControl.grantRootRoles,
+            (EACBaseRolesLib.ALL_ROLES, user1)
+        );
+        m[2] = abi.encodeCall(
+            IEnhancedAccessControl.revokeRootRoles,
             (EACBaseRolesLib.ALL_ROLES, admin)
         );
 
@@ -98,12 +102,16 @@ contract UserRegistryTest is Test, ERC1155Holder {
                 factory.deployProxy(
                     address(implementation),
                     SALT,
-                    abi.encodeCall(UserRegistry.initialize, (address(0), 0, m))
+                    abi.encodeCall(
+                        UserRegistry.initialize,
+                        (address(admin), EACBaseRolesLib.ALL_ROLES, m)
+                    )
                 )
             );
 
         assertEq(r.findOwner("test"), user1, "owner");
-        //assertTrue(r.hasRootRoles(EACBaseRolesLib.ALL_ROLES, admin), "grant");
+        assertEq(r.roles(r.ROOT_RESOURCE(), user1), EACBaseRolesLib.ALL_ROLES, "grant");
+        assertEq(r.roles(r.ROOT_RESOURCE(), admin), 0, "revoke");
     }
 
     function test_initialization() public view {

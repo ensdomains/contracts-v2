@@ -1552,6 +1552,64 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // mulitcall()
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_multicall() external {
+        bytes[] memory m = new bytes[](3);
+        m[0] = abi.encodeCall(
+            IStandardRegistry.register,
+            (
+                "test",
+                user1,
+                IRegistry(address(0)),
+                address(0),
+                EACBaseRolesLib.ALL_ROLES,
+                type(uint64).max
+            )
+        );
+        m[1] = abi.encodeCall(
+            IEnhancedAccessControl.grantRootRoles,
+            (EACBaseRolesLib.ALL_ROLES, user1)
+        );
+        m[2] = abi.encodeCall(
+            IEnhancedAccessControl.revokeRootRoles,
+            (EACBaseRolesLib.ALL_ROLES, user2)
+        );
+
+        registry.multicall(m);
+
+        assertEq(registry.findOwner("test"), user1, "owner");
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), user1), EACBaseRolesLib.ALL_ROLES, "grant");
+        assertEq(registry.roles(registry.ROOT_RESOURCE(), user2), 0, "revoke");
+    }
+
+    function test_multicall_notAuthorized() external {
+        bytes[] memory m = new bytes[](1);
+        m[0] = abi.encodeCall(
+            IStandardRegistry.register,
+            (
+                "test",
+                user1,
+                IRegistry(address(0)),
+                address(0),
+                EACBaseRolesLib.ALL_ROLES,
+                type(uint64).max
+            )
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_REGISTRAR,
+                actor
+            )
+        );
+        vm.prank(actor);
+        registry.multicall(m);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // Specific Cases
     ////////////////////////////////////////////////////////////////////////
 
