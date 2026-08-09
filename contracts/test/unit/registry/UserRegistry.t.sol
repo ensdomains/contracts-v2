@@ -44,16 +44,18 @@ contract UserRegistryTest is Test, ERC1155Holder {
         // Create initialization data
         Grant[] memory grants = new Grant[](1);
         grants[0] = Grant(admin, EACBaseRolesLib.ALL_ROLES);
-        bytes memory initData = abi.encodeCall(UserRegistry.initialize, (grants));
 
         // Deploy the proxy using the factory
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
         vm.prank(admin);
-        address proxyAddress = factory.deployProxy(address(implementation), SALT, initData);
-
-        // Get the proxy contract
-        proxy = UserRegistry(proxyAddress);
+        proxy = UserRegistry(
+            factory.deployProxy(
+                address(implementation),
+                SALT,
+                abi.encodeCall(UserRegistry.initialize, (grants))
+            )
+        );
     }
 
     function test_implementationIsNameable() external view {
