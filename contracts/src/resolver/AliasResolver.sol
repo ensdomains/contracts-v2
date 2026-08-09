@@ -1,5 +1,3 @@
-
-
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
@@ -12,19 +10,14 @@ import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
-import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib.sol";
-import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
-/// @dev Resolver that mirrors resolution of the same name to a different registry.
-contract AliasResolver is
-    IExtendedResolver,
-    IERC7996,
-    ResolverCaller,
-    DelegatedContractNamer {
+import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib.sol";
 
-    
+/// @notice Resolver that forwards to another name.
+contract AliasResolver is IExtendedResolver, IERC7996, ResolverCaller, DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -40,17 +33,36 @@ contract AliasResolver is
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev A mapping from `node` to the replacement suffix.
-    mapping (bytes32 node => bytes suffix) _suffixes;
+    mapping(bytes32 node => bytes suffix) internal _suffixes;
 
     /// @dev A mapping from `(owner, operator, node)` to approval state.
     mapping(address owner => mapping(address operator => mapping(bytes32 node => bool approved))) internal _approvals;
 
     ////////////////////////////////////////////////////////////////////////
+    // Errors
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Caller cannot modify name.
+    /// @dev Error selector: `0x76652b32`
+    error CannotModifyName(bytes name);
+
+    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
-    
-    constructor(IRegistry rootRegistry, IContractNamer contractNamer) CCIPReader(DEFAULT_UNSAFE_CALL_GAS) DelegatedContractNamer(contractNamer) {
+
+    /// @param rootRegistry The ENSv2 root registry.
+    /// @param batchGatewayProvider The batch gateway provider.
+    /// @param contractNamer Delegated contract namer.
+    constructor(
+        IRegistry rootRegistry,
+        IGatewayProvider batchGatewayProvider,
+        IContractNamer contractNamer
+    )
+        CCIPReader(DEFAULT_UNSAFE_CALL_GAS)
+        DelegatedContractNamer(contractNamer)
+    {
         ROOT_REGISTRY = rootRegistry;
+        BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
     }
 
     /// @inheritdoc DelegatedContractNamer
@@ -72,15 +84,34 @@ contract AliasResolver is
         return ResolverFeatures.RESOLVE_MULTICALL == feature;
     }
 
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Make resolution of `*.[name]` become `*.[newName]`.
+    /// @param name The DNS-encoded source name.
+    /// @param newName The DNS-encoded target name.
+    function setAlias(bytes calldata name, bytes calldata newName) external {
+        NameCoder.namehash(newName, 0); // validate
+        _suffixes[_checkAuth(name)] = newName;
+    }
+
     /// @inheritdoc IExtendedResolver
     function resolve(bytes calldata name, bytes calldata data) external view returns (bytes memory) {
-        (, bytes memory suffix, uint256 offset) = _findAlias(name, 0);
-        if (suffix.length > 0) {
+        (, bytes memory suffix, uint256 offset) = _findSuffix(name, 0);
+        if (suffix.length == 0) {
             revert UnreachableName(name);
         }
-        bytes memory newName = abi.encodePacked(data[:offset], suffix);
+        bytes memory newName = abi.encodePacked(name[:offset], suffix);
         (, address resolver, bytes32 node, ) = LibRegistry.findResolver(ROOT_REGISTRY, newName, 0);
-        callResolver(resolver, newName, ResolverProfileRewriterLib.replaceNode(data, node), false, "", BATCH_GATEWAY_PROVIDER.gateways());
+        callResolver(
+            resolver,
+            newName,
+            ResolverProfileRewriterLib.replaceNode(data, node),
+            false,
+            "",
+            BATCH_GATEWAY_PROVIDER.gateways()
+        );
     }
 
     /// @notice Determine if `operator` is authorized.
@@ -104,15 +135,17 @@ contract AliasResolver is
         return _approvals[owner][operator][NameCoder.namehash(name, 0)];
     }
 
-    function setAlias(bytes calldata name, bytes calldata newName) external {
-        NameCoder.namehash(newName, 0); // validate
-        _suffixes[_checkAuth(name)] = newName;
+    /// @notice Apply aliasing to name.
+    /// @param name The DNS-encoded source name.
+    /// @return The DNS-encoced target name or null if no match.
+    function getAlias(bytes calldata name) external view returns (bytes memory) {
+        (, bytes memory suffix, uint256 offset) = _findSuffix(name, 0);
+        return suffix.length > 0 ? abi.encodePacked(name[:offset], suffix) : bytes("");
     }
 
-    function getAlias(bytes calldata name) external view returns (bytes memory suffix) {
-        (, suffix, ) = _findAlias(name, 0);
-    }
-
+    /// @notice Find the owner for `name`.
+    /// @param name The DNS-encoded name.
+    /// @return The owner address or null if unowned or not found.
     function ownerOf(bytes calldata name) public view returns (address) {
         return LibRegistry.findOwner(ROOT_REGISTRY, name, 0);
     }
@@ -120,7 +153,6 @@ contract AliasResolver is
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
-
 
     /// @dev Determine if `operator` can modify `node`.
     function _canModifyNode(address owner, address operator, bytes32 node)
@@ -145,18 +177,22 @@ contract AliasResolver is
         }
     }
 
-    function _findAlias(bytes memory name, uint256 offset) internal view returns (bytes32 node, bytes32 memory foundSuffix, uint256 foundOffset) { 
+    /// @dev Recursive function for finding a match. 
+    function _findSuffix(bytes memory name, uint256 offset)
+        internal
+        view
+        returns (bytes32 node, bytes memory foundSuffix, uint256 foundOffset)
+    {
         (bytes32 labelHash, uint256 nextOffset) = NameCoder.readLabel(name, offset);
         if (labelHash == bytes32(0)) {
-            return (bytes32(0), 0, bytes32(0));
+            return (bytes32(0), "", 0);
         }
-        (node, foundSuffix, foundOffset) = _findAlias(name, nextOffset);
+        (node, foundSuffix, foundOffset) = _findSuffix(name, nextOffset);
         node = NameCoder.namehash(node, labelHash);
-        bytes memory suffix = _aliases[node];
+        bytes memory suffix = _suffixes[node];
         if (suffix.length > 0) {
             foundSuffix = suffix;
             foundOffset = offset;
         }
     }
-
 }
