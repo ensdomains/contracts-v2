@@ -127,11 +127,13 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
     /// @inheritdoc IETHRenewer
     function renewBatch(RenewData[] calldata rds, IERC20 paymentToken) public override {
         super.renewBatch(rds, paymentToken);
-        string[] memory labels = new string[](rds.length);
-        for (uint256 i; i < rds.length; ++i) {
-            labels[i] = rds[i].label;
+        if (rds.length > 0) {
+            string[] memory labels = new string[](rds.length);
+            for (uint256 i; i < rds.length; ++i) {
+                labels[i] = rds[i].label;
+            }
+            syncWrapper(labels);
         }
-        syncWrapper(labels);
     }
 
     /// @notice Sync `NameWrapper` expiry with `BaseRegistrarImplementation` expiry.

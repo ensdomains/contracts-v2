@@ -21,6 +21,11 @@ import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixt
 import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOracleFixture.sol";
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 
+// [gas analysis]
+// test_commit(): 24420
+// test_register(): 165841
+// test_renew(): 32012
+
 contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracleFixture {
     ETHRegistrar ethRegistrar;
 
@@ -138,7 +143,10 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         );
         vm.expectEmit();
         emit IETHRegistrar.CommitmentMade(commitment);
+        uint256 g = gasleft();
         ethRegistrar.commit(commitment);
+        g -= gasleft();
+        console.log("Gas: %s", g);
         assertEq(ethRegistrar.commitmentAt(commitment), block.timestamp, "time");
     }
 
@@ -170,6 +178,30 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
 
     function test_isAvailable_unregistered() external view {
         assertTrue(ethRegistrar.isAvailable(testLabel));
+    }
+
+    function test_register_gas() external {
+        delete testRegistry;
+        delete testResolver;
+        labelStore.setLabel(testLabel);
+
+        ethRegistrar.commit(_makeCommitment());
+        vm.warp(block.timestamp + testCommitDelay);
+
+        vm.prank(testOwner);
+        uint256 g = gasleft();
+        ethRegistrar.register(
+            testLabel,
+            testOwner,
+            testSecret,
+            testRegistry,
+            testResolver,
+            testDuration,
+            testPaymentToken,
+            testReferrer
+        );
+        g -= gasleft();
+        console.log("Gas: %s", g);
     }
 
     function test_register(uint32 available, uint32 duration) external {
