@@ -201,8 +201,6 @@ export async function renewName(
 
   const duration = BigInt(durationInDays * ONE_DAY_SECONDS);
   const paymentToken = env.erc20.MockUSDC.address;
-  const referrer =
-    "0x0000000000000000000000000000000000000000000000000000000000000000";
 
   const price = await env.v2.ETHRegistrar.read.getRenewPrice([
     label,
@@ -228,9 +226,10 @@ export async function renewName(
   });
 
   const receipt = await env.waitFor(
-    env.v2.ETHRegistrar.write.renew([label, duration, paymentToken, referrer], {
-      account,
-    }),
+    env.v2.ETHRegistrar.write.renew(
+      [{ label, duration, referrer: namehash("referrer") }, paymentToken],
+      { account },
+    ),
   );
 
   const newExpiry = await env.v2.ETHRegistry.read.getExpiry([
