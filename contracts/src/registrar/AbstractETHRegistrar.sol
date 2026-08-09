@@ -81,12 +81,17 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     }
 
     /// @inheritdoc IETHRenewer
-    function renew(RenewData calldata rd, IERC20 paymentToken) external {
+    function isRenewable(string calldata label) external view returns (bool) {
+        return _isRenewable(ETH_REGISTRY.getState(LibLabel.id(label)));
+    }
+
+    /// @inheritdoc IETHRenewer
+    function renew(RenewData calldata rd, IERC20 paymentToken) public virtual {
         SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, _renew(rd, paymentToken)); // reverts if payment failed
     }
 
     /// @inheritdoc IETHRenewer
-    function renewBatch(RenewData[] calldata rds, IERC20 paymentToken) external payable {
+    function renewBatch(RenewData[] calldata rds, IERC20 paymentToken) public virtual {
         uint256 total;
         for (uint256 i; i < rds.length; ++i) {
             total += _renew(rds[i], paymentToken);
@@ -94,11 +99,6 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
         if (rds.length > 0) {
             SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, total); // reverts if payment failed
         }
-    }
-
-    /// @inheritdoc IETHRenewer
-    function isRenewable(string calldata label) external view returns (bool) {
-        return _isRenewable(ETH_REGISTRY.getState(LibLabel.id(label)));
     }
 
     /// @inheritdoc IETHRenewer

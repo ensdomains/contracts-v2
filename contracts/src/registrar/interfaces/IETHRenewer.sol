@@ -61,7 +61,7 @@ interface IETHRenewer {
     /// @notice Renew multiple names.
     /// @param rds The renew data.
     /// @param paymentToken The payment token.
-    function renewBatch(RenewData[] calldata rds, IERC20 paymentToken) external payable;
+    function renewBatch(RenewData[] calldata rds, IERC20 paymentToken) external;
 
     /// @notice Determine renew price for a name.
     /// @param label The name to renew.

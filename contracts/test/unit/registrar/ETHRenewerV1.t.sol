@@ -349,13 +349,57 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
                 string memory label = labels[i] = _label(k++);
                 registerWrappedETH2LD(label, 0);
                 vm.prank(address(ethControllerV1));
-                baseRegistrar.renew(LibLabel.id(label), 1);
+                baseRegistrar.renew(LibLabel.id(label), 10 ** i);
             }
             _activateV2(true);
             uint256 g = gasleft();
             ethRenewerV1.syncWrapper(labels);
             g -= gasleft();
             console.log("%s | %s", n, g);
+            for (uint256 i; i < n; ++i) {
+                uint256 tokenIdV1 = LibLabel.id(labels[i]);
+                (, , uint64 expiry) =
+                    nameWrapper.getData(
+                        uint256(NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenIdV1)))
+                    );
+                assertEq(baseRegistrar.nameExpires(tokenIdV1) + baseRegistrar.GRACE_PERIOD(), expiry);
+            }
+        }
+    }
+
+    function test_renew_autoSync() external {
+        registerWrappedETH2LD(testLabel, 0);
+        uint256 tokenIdV1 = LibLabel.id(testLabel);
+        vm.prank(address(ethControllerV1));
+        baseRegistrar.renew(tokenIdV1, 1);
+        _activateV2(true);
+        this.renew();
+        (, , uint64 expiry) =
+            nameWrapper.getData(uint256(NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenIdV1))));
+        assertEq(baseRegistrar.nameExpires(tokenIdV1) + baseRegistrar.GRACE_PERIOD(), expiry);
+    }
+
+    function test_renewBatch_autoSync(uint8 n) external {
+        vm.assume(n < 5);
+        RenewData[] memory rds = new RenewData[](n);
+        for (uint256 i; i < n; ++i) {
+            string memory label = _label(i);
+            rds[i].label = label;
+            rds[i].duration = 1000;
+            registerWrappedETH2LD(label, 0);
+            vm.prank(address(ethControllerV1));
+            baseRegistrar.renew(LibLabel.id(label), 1);
+        }
+        _activateV2(true);
+        vm.prank(testOwner);
+        ethRenewerV1.renewBatch(rds, testPaymentToken);
+        for (uint256 i; i < n; ++i) {
+            uint256 tokenIdV1 = LibLabel.id(rds[i].label);
+            (, , uint64 expiry) =
+                nameWrapper.getData(
+                    uint256(NameCoder.namehash(NameCoder.ETH_NODE, bytes32(tokenIdV1)))
+                );
+            assertEq(baseRegistrar.nameExpires(tokenIdV1) + baseRegistrar.GRACE_PERIOD(), expiry);
         }
     }
 
