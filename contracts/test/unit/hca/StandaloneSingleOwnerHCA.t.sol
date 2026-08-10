@@ -39,9 +39,9 @@ import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
-import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
 import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
 import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
+import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
 contract StandaloneSingleOwnerHCATest is Test {
     bytes4 constant ERC1271_MAGICVALUE = 0x1626ba7e;
@@ -82,15 +82,15 @@ contract StandaloneSingleOwnerHCATest is Test {
     uint256 counterfactualResolverSalt = 456;
     address counterfactualResolver;
 
-    address gateOwner = makeAddr("gate-owner");
+    address upgradeSetAdmin = makeAddr("upgrade-set-admin");
 
     HCAOwnerAndSessionValidator validator;
     HCAOwnerAndSessionValidatorHarness validatorHarness;
     MockStandaloneHCA hca;
-    ApprovedUpgradeGate upgradeGate;
+    PermissionedAddressSet upgradeSet;
 
     function setUp() public {
-        upgradeGate = new ApprovedUpgradeGate(gateOwner);
+        upgradeSet = new PermissionedAddressSet(upgradeSetAdmin);
         hca = new MockStandaloneHCA(owner);
 
         VerifiableFactory factory = new VerifiableFactory();
@@ -172,8 +172,8 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.prank(owner);
         accountHarness.authorizeUpgradeHarness(target);
 
-        vm.prank(gateOwner);
-        upgradeGate.setImplementationApproval(target, true);
+        vm.prank(upgradeSetAdmin);
+        upgradeSet.approve(target, true);
 
         vm.prank(owner);
         accountHarness.authorizeUpgradeHarness(target);
@@ -184,8 +184,8 @@ contract StandaloneSingleOwnerHCATest is Test {
     function test_standaloneSingleOwnerHCA_upgradesThroughVerifiableFactoryProxy() public {
         VerifiableFactory factory = new VerifiableFactory();
         StandaloneSingleOwnerHCA implementation = _newAccount();
-        ApprovedUpgradeGate predecessorUpgradeGate = new ApprovedUpgradeGate(gateOwner);
-        StandaloneSingleOwnerHCA nextImplementation = _newAccount(predecessorUpgradeGate);
+        PermissionedAddressSet predecessorUpgradeSet = new PermissionedAddressSet(upgradeSetAdmin);
+        StandaloneSingleOwnerHCA nextImplementation = _newAccount(predecessorUpgradeSet);
 
         address proxy =
             factory.deployProxy(
@@ -195,8 +195,8 @@ contract StandaloneSingleOwnerHCATest is Test {
             );
         assertEq(StandaloneSingleOwnerHCA(payable(proxy)).owner(), owner);
 
-        vm.prank(gateOwner);
-        upgradeGate.setImplementationApproval(address(nextImplementation), true);
+        vm.prank(upgradeSetAdmin);
+        upgradeSet.approve(address(nextImplementation), true);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -208,8 +208,8 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.prank(owner);
         IUUPSProxyUpgrade(proxy).upgradeToAndCall(address(nextImplementation), "");
 
-        vm.prank(gateOwner);
-        predecessorUpgradeGate.setImplementationApproval(address(implementation), true);
+        vm.prank(upgradeSetAdmin);
+        predecessorUpgradeSet.approve(address(implementation), true);
 
         vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotOwner.selector);
         IUUPSProxyUpgrade(proxy).upgradeToAndCall(address(nextImplementation), "");
@@ -1594,8 +1594,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 address(validator),
                 address(defaultExecutor),
                 "",
-                upgradeGate,
-                ApprovedUpgradeGate(address(0))
+                upgradeSet,
+                IAddressSet(address(0))
             );
         VerifiableFactory factory = new VerifiableFactory();
         StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
@@ -1668,8 +1668,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 address(validator),
                 address(defaultExecutor),
                 "",
-                upgradeGate,
-                ApprovedUpgradeGate(address(0))
+                upgradeSet,
+                IAddressSet(address(0))
             );
         VerifiableFactory factory = new VerifiableFactory();
         StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
@@ -1793,8 +1793,8 @@ contract StandaloneSingleOwnerHCATest is Test {
             address(validator),
             address(defaultExecutor),
             "",
-            upgradeGate,
-            ApprovedUpgradeGate(address(0))
+            upgradeSet,
+            IAddressSet(address(0))
         );
         account.initializeAccount(abi.encode(owner));
     }
@@ -1819,10 +1819,10 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function _newAccount() internal returns (StandaloneSingleOwnerHCA) {
-        return _newAccount(ApprovedUpgradeGate(address(0)));
+        return _newAccount(IAddressSet(address(0)));
     }
 
-    function _newAccount(ApprovedUpgradeGate predecessorUpgradeGate)
+    function _newAccount(IAddressSet predecessorUpgradeSet)
         internal
         returns (StandaloneSingleOwnerHCA)
     {
@@ -1834,8 +1834,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 address(defaultValidator),
                 address(defaultExecutor),
                 "",
-                upgradeGate,
-                predecessorUpgradeGate
+                upgradeSet,
+                predecessorUpgradeSet
             );
     }
 
@@ -1848,8 +1848,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 address(defaultValidator),
                 address(defaultExecutor),
                 "",
-                upgradeGate,
-                ApprovedUpgradeGate(address(0))
+                upgradeSet,
+                IAddressSet(address(0))
             );
     }
 
@@ -2323,16 +2323,16 @@ contract StandaloneSingleOwnerHCAHarness is StandaloneSingleOwnerHCA {
         address defaultValidator,
         address defaultExecutor,
         bytes memory validatorInitData,
-        ApprovedUpgradeGate upgradeGate,
-        ApprovedUpgradeGate predecessorUpgradeGate
+        IAddressSet upgradeSet,
+        IAddressSet predecessorUpgradeSet
     )
         StandaloneSingleOwnerHCA(
             entryPoint,
             defaultValidator,
             defaultExecutor,
             validatorInitData,
-            upgradeGate,
-            predecessorUpgradeGate
+            upgradeSet,
+            predecessorUpgradeSet
         )
     {}
 

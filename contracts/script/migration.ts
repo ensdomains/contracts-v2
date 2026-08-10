@@ -3811,7 +3811,7 @@ export async function deployV2(opts: DeployV2Options) {
     "MockRegistrationIntentExecutor",
     "HCAOwnerAndSessionValidator",
     "StandaloneHCAFactory",
-    "HCAUpgradeGate",
+    "HCAUpgradeSet",
     "StandaloneHCAImplementation",
   ]);
 

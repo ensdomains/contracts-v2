@@ -548,9 +548,9 @@ export async function setupDevnet({
         address: rocketh.deployments["StandaloneHCAFactory"].address,
         client,
       }),
-      HCAUpgradeGate: getContract({
-        abi: artifacts.ApprovedUpgradeGate.abi,
-        address: rocketh.deployments["HCAUpgradeGate"].address,
+      HCAUpgradeSet: getContract({
+        abi: artifacts.PermissionedAddressSet.abi,
+        address: rocketh.deployments["HCAUpgradeSet"].address,
         client,
       }),
     };

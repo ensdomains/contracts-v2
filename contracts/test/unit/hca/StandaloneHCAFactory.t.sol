@@ -13,7 +13,8 @@ import {MockExecutorModule, MockValidatorModule} from "../../mocks/MockStandalon
 
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
-import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
+import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
+import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
 /// @title Standalone HCA Factory Tests
 /// @notice Exercises governed deployment and immutable HCA owner certification.
@@ -243,8 +244,8 @@ contract StandaloneHCAFactoryTest is Test {
                 address(new MockValidatorModule()),
                 address(new MockExecutorModule()),
                 "",
-                new ApprovedUpgradeGate(address(this)),
-                ApprovedUpgradeGate(address(0))
+                new PermissionedAddressSet(address(this)),
+                IAddressSet(address(0))
             );
     }
 
