@@ -8,6 +8,7 @@ import {Test} from "forge-std/Test.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
+import {InvalidOwner} from "~src/CommonErrors.sol";
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
@@ -63,15 +64,12 @@ contract UserRegistryTest is Test, ERC1155Holder {
     }
 
     function test_initialize_unowned() external {
-        UserRegistry r =
-            UserRegistry(
-                factory.deployProxy(
-                    address(implementation),
-                    SALT,
-                    abi.encodeCall(UserRegistry.initialize, (new Grant[](0)))
-                )
-            );
-        assertEq(r.roleCount(r.ROOT_RESOURCE()), 0);
+        vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
+        factory.deployProxy(
+            address(implementation),
+            SALT,
+            abi.encodeCall(UserRegistry.initialize, (new Grant[](0)))
+        );
     }
 
     function test_initialize_with_grants() external {

@@ -6,6 +6,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {InvalidOwner} from "../CommonErrors.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
@@ -51,6 +52,9 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
         emit RegistryCreated();
         for (uint256 i; i < grants.length; ++i) {
             _grantRoles(ROOT_RESOURCE, grants[i].roleBitmap, grants[i].account, false);
+        }
+        if (roleCount(ROOT_RESOURCE) == 0) {
+            revert InvalidOwner();
         }
     }
 
