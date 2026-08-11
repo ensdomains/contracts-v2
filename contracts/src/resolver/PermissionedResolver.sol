@@ -11,6 +11,10 @@ import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol
 
 import {AbstractRecordResolver} from "./AbstractRecordResolver.sol";
 import {IPermissionedResolver} from "./interfaces/IPermissionedResolver.sol";
+import {
+    IPermissionedResolverInitializable,
+    Grant
+} from "./interfaces/IPermissionedResolverInitializable.sol";
 import {IABISetter} from "./interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "./interfaces/setters/IAddressSetter.sol";
 import {IContentHashSetter} from "./interfaces/setters/IContentHashSetter.sol";
@@ -77,6 +81,7 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 ///
 contract PermissionedResolver is
     IPermissionedResolver,
+    IPermissionedResolverInitializable,
     AbstractRecordResolver,
     EnhancedAccessControl,
     IContractNamer,
@@ -111,16 +116,12 @@ contract PermissionedResolver is
         _disableInitializers();
     }
 
-    /// @notice Initialize the resolver.
-    /// @param rootAccount Account granted root roles.
-    /// @param roleBitmap The role bitmap granted to `rootAccount`.
-    /// @param setters The setter calldata that avoids permission checks.
-    function initialize(address rootAccount, uint256 roleBitmap, bytes[] calldata setters)
-        external
-        initializer
-    {
-        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
-        multicall(setters);
+    /// @inheritdoc IPermissionedResolverInitializable
+    function initialize(Grant[] calldata grants, bytes[] calldata calls) external initializer {
+        for (uint256 i; i < grants.length; ++i) {
+            _grantRoles(ROOT_RESOURCE, grants[i].roleBitmap, grants[i].account, false);
+        }
+        multicall(calls);
     }
 
     /// @inheritdoc AbstractRecordResolver
@@ -136,6 +137,7 @@ contract PermissionedResolver is
             type(UUPSUpgradeable).interfaceId == interfaceId ||
             type(IProxyAuthorization).interfaceId == interfaceId ||
             type(IContractNamer).interfaceId == interfaceId ||
+            type(IPermissionedResolverInitializable).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 

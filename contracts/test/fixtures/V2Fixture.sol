@@ -11,7 +11,6 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
-import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {ContractNamer} from "~src/utils/ContractNamer.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
@@ -21,7 +20,6 @@ contract V2Fixture is Test, ERC1155Holder {
     ContractNamer contractNamer;
     VerifiableFactory verifiableFactory;
     LabelStore labelStore;
-    UserRegistry userRegistryImpl;
     PermissionedRegistry rootRegistry;
     PermissionedRegistry ethRegistry;
     GatewayProvider batchGatewayProvider;
@@ -72,7 +70,6 @@ contract V2Fixture is Test, ERC1155Holder {
         );
         verifiableFactory = new VerifiableFactory();
         labelStore = new LabelStore(contractNamer);
-        userRegistryImpl = new UserRegistry(labelStore, address(this));
         rootRegistry = new PermissionedRegistry(labelStore, address(this), _rootRegistryRootRoles());
         ethRegistry = new PermissionedRegistry(labelStore, address(this), _ethRegistryRootRoles());
         rootRegistry.register(
@@ -95,20 +92,6 @@ contract V2Fixture is Test, ERC1155Holder {
 
     function findResolverV2(bytes memory name) public view returns (address resolver) {
         (resolver, , ) = universalResolver.findResolver(name);
-    }
-
-    function deployUserRegistry(address owner, uint256 roleBitmap, uint256 salt)
-        public
-        returns (UserRegistry)
-    {
-        return
-            UserRegistry(
-                verifiableFactory.deployProxy(
-                    address(userRegistryImpl),
-                    salt,
-                    abi.encodeCall(UserRegistry.initialize, (owner, roleBitmap))
-                )
-            );
     }
 
     function _computeVerifiableFactoryAddress(address deployer, uint256 salt)

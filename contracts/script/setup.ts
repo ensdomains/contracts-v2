@@ -704,13 +704,13 @@ export async function setupDevnet({
       account, // deployer
       admin = account.address,
       roles = ROLES.ALL,
-      setters = [],
+      calls = [],
       salt,
     }: {
       account: Account;
       admin?: Address;
       roles?: bigint;
-      setters?: Hex[];
+      calls?: Hex[];
       salt?: bigint | { ownedVersion: bigint };
     }) {
       if (typeof salt === "object") {
@@ -723,7 +723,7 @@ export async function setupDevnet({
           implAddress: v2.PermissionedResolverImpl.address,
           abi: v2.PermissionedResolverImpl.abi,
           functionName: "initialize",
-          args: [admin, roles, setters],
+          args: [[[admin, roles]], calls],
           salt,
         }),
       );
@@ -751,7 +751,7 @@ export async function setupDevnet({
           implAddress,
           abi: v2.UserRegistryImpl.abi,
           functionName: "initialize",
-          args: [admin, roles],
+          args: [[[admin, roles]]],
           salt,
         }),
       );

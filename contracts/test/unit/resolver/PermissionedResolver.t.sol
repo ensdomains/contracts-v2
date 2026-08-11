@@ -40,6 +40,10 @@ import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {IRecordResolver} from "~src/resolver/interfaces/IRecordResolver.sol";
 import {IPermissionedResolver} from "~src/resolver/interfaces/IPermissionedResolver.sol";
+import {
+    IPermissionedResolverInitializable,
+    Grant
+} from "~src/resolver/interfaces/IPermissionedResolverInitializable.sol";
 import {PermissionedResolverLib} from "~src/resolver/libraries/PermissionedResolverLib.sol";
 import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
@@ -74,8 +78,10 @@ contract PermissionedResolverTest is V2Fixture {
         dneName = NameCoder.encode("dne");
         rootName = NameCoder.encode("");
 
+        Grant[] memory grants = new Grant[](1);
+        grants[0] = Grant(owner, DEFAULT_ROLES);
         bytes memory initData =
-            abi.encodeCall(PermissionedResolver.initialize, (owner, DEFAULT_ROLES, new bytes[](0)));
+            abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, new bytes[](0)));
         resolver = PermissionedResolver(
             verifiableFactory.deployProxy(
                 address(implementation),
@@ -98,7 +104,10 @@ contract PermissionedResolverTest is V2Fixture {
 
     function test_initialize_unowned() external {
         bytes memory initData =
-            abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, new bytes[](0)));
+            abi.encodeCall(
+                IPermissionedResolverInitializable.initialize,
+                (new Grant[](0), new bytes[](0))
+            );
         PermissionedResolver r =
             PermissionedResolver(
                 verifiableFactory.deployProxy(
@@ -115,7 +124,8 @@ contract PermissionedResolverTest is V2Fixture {
         m[0] = abi.encodeCall(PermissionedResolver.setName, (testName, "A"));
         m[1] = abi.encodeCall(PermissionedResolver.setContentHash, (testName, "B"));
 
-        bytes memory initData = abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, m));
+        bytes memory initData =
+            abi.encodeCall(IPermissionedResolverInitializable.initialize, (new Grant[](0), m));
         PermissionedResolver r =
             PermissionedResolver(
                 verifiableFactory.deployProxy(
@@ -135,6 +145,28 @@ contract PermissionedResolverTest is V2Fixture {
         );
     }
 
+    function test_initalize_with_grants() external {
+        Grant[] memory grants = new Grant[](3);
+        grants[0] = Grant(owner, EACBaseRolesLib.ALL_ROLES);
+        grants[1] = Grant(friend, EACBaseRolesLib.ALL_ROLES >> 128);
+        grants[1] = Grant(actor, 1);
+
+        bytes memory initData =
+            abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, new bytes[](0)));
+        PermissionedResolver r =
+            PermissionedResolver(
+                verifiableFactory.deployProxy(
+                    address(implementation),
+                    uint256(keccak256(initData)),
+                    initData
+                )
+            );
+
+        for (uint256 i; i < grants.length; ++i) {
+            assertEq(r.roles(r.ROOT_RESOURCE(), grants[i].account), grants[i].roleBitmap);
+        }
+    }
+
     function test_supportsInterface() external view {
         assertTrue(
             ERC165Checker.supportsInterface(
@@ -142,6 +174,13 @@ contract PermissionedResolverTest is V2Fixture {
                 type(IPermissionedResolver).interfaceId
             ),
             "IPermissionedResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(resolver),
+                type(IPermissionedResolverInitializable).interfaceId
+            ),
+            "IPermissionedResolverInitializable"
         );
         assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(IRecordResolver).interfaceId),
