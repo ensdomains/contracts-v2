@@ -30,7 +30,6 @@ import {Test} from "forge-std/Test.sol";
 
 import {
     MockExecutorModule,
-    MockRegistrarRoleRegistry,
     MockStandaloneHCA,
     MockValidatorModule
 } from "../../mocks/MockStandaloneHCAStack.sol";
@@ -43,6 +42,7 @@ import {
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
@@ -53,6 +53,8 @@ contract StandaloneSingleOwnerHCATest is Test {
         "src/utils/PermissionedAddressSet.sol:PermissionedAddressSet";
     string internal constant PERMISSIONED_RESOLVER_ARTIFACT =
         "src/resolver/PermissionedResolver.sol:PermissionedResolver";
+    string internal constant PERMISSIONED_REGISTRY_ARTIFACT =
+        "src/registry/PermissionedRegistry.sol:PermissionedRegistry";
 
     bytes4 constant ERC1271_MAGICVALUE = 0x1626ba7e;
 
@@ -96,15 +98,20 @@ contract StandaloneSingleOwnerHCATest is Test {
 
     HCAOwnerAndSessionValidator validator;
     HCAOwnerAndSessionValidatorHarness validatorHarness;
-    MockRegistrarRoleRegistry ethRegistry;
+    IPermissionedRegistry ethRegistry;
     MockStandaloneHCA hca;
     IAddressSetApproval upgradeSet;
 
     function setUp() public {
         upgradeSet = _deployPermissionedAddressSet(upgradeSetAdmin);
         hca = new MockStandaloneHCA(owner);
-        ethRegistry = new MockRegistrarRoleRegistry();
-        ethRegistry.setRootRoles(ethRegistrar, RegistryRolesLib.ROLE_REGISTRAR);
+        ethRegistry = IPermissionedRegistry(
+            deployCode(
+                PERMISSIONED_REGISTRY_ARTIFACT,
+                abi.encode(address(0), address(this), RegistryRolesLib.ROLE_REGISTRAR_ADMIN)
+            )
+        );
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, ethRegistrar);
 
         VerifiableFactory factory = new VerifiableFactory();
         verifiableFactory = address(factory);
@@ -1233,7 +1240,7 @@ contract StandaloneSingleOwnerHCATest is Test {
 
     function test_validator_acceptsMultipleRegistryAuthorizedRegistrars() public {
         address alternateRegistrar = makeAddr("alternate-registrar");
-        ethRegistry.setRootRoles(alternateRegistrar, RegistryRolesLib.ROLE_REGISTRAR);
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, alternateRegistrar);
 
         HCAOwnerAndSessionValidator.Execution[] memory executions =
             new HCAOwnerAndSessionValidator.Execution[](4);
@@ -1268,7 +1275,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function test_validator_rejectsRegistrarImmediatelyAfterRoleRevocation() public {
-        ethRegistry.setRootRoles(ethRegistrar, 0);
+        ethRegistry.revokeRootRoles(RegistryRolesLib.ROLE_REGISTRAR, ethRegistrar);
         bytes memory operationData =
             _singleOperationData(
                 ethRegistrar,
@@ -1292,7 +1299,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function test_validator_rejectsApprovalAfterRegistrarRoleRevocation() public {
-        ethRegistry.setRootRoles(ethRegistrar, 0);
+        ethRegistry.revokeRootRoles(RegistryRolesLib.ROLE_REGISTRAR, ethRegistrar);
         bytes memory operationData =
             _singleOperationData(
                 usdc,

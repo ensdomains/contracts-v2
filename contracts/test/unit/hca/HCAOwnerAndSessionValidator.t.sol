@@ -8,13 +8,17 @@ import {Test} from "forge-std/Test.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 
-import {MockRegistrarRoleRegistry, MockStandaloneHCA} from "../../mocks/MockStandaloneHCAStack.sol";
+import {MockStandaloneHCA} from "../../mocks/MockStandaloneHCAStack.sol";
 
 /// @title HCA Owner and Session Validator Tests
 /// @notice Exercises owner signatures, session permissions, and registration policies.
 contract HCAOwnerAndSessionValidatorTest is Test {
+    string internal constant PERMISSIONED_REGISTRY_ARTIFACT =
+        "src/registry/PermissionedRegistry.sol:PermissionedRegistry";
+
     struct ClaimFixture {
         uint256 nonce;
         uint256 deadline;
@@ -86,13 +90,18 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     address gasRefundPaymaster = makeAddr("refund-paymaster");
 
     HCAOwnerAndSessionValidatorEnableHarness validator;
-    MockRegistrarRoleRegistry ethRegistry;
+    IPermissionedRegistry ethRegistry;
     MockStandaloneHCA hca;
 
     function setUp() public {
         hca = new MockStandaloneHCA(owner);
-        ethRegistry = new MockRegistrarRoleRegistry();
-        ethRegistry.setRootRoles(ethRegistrar, RegistryRolesLib.ROLE_REGISTRAR);
+        ethRegistry = IPermissionedRegistry(
+            deployCode(
+                PERMISSIONED_REGISTRY_ARTIFACT,
+                abi.encode(address(0), address(this), RegistryRolesLib.ROLE_REGISTRAR_ADMIN)
+            )
+        );
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, ethRegistrar);
         VerifiableFactory factory = new VerifiableFactory();
         validator = new HCAOwnerAndSessionValidatorEnableHarness(
             makeAddr("reverse-adapter"),
