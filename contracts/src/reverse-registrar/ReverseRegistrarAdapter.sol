@@ -2,6 +2,7 @@
 pragma solidity 0.8.25;
 
 import {IReverseRegistrar} from "@ens/contracts/reverseRegistrar/IReverseRegistrar.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {HCAAuthorizer} from "../hca/HCAAuthorizer.sol";
 import {IStandaloneHCAFactory} from "../hca/interfaces/IStandaloneHCAFactory.sol";
@@ -65,5 +66,12 @@ contract ReverseRegistrarAdapter is
     function claimWithHCA(address account, address resolver) external returns (bytes32) {
         address hcaOwner = _requireHCAForAccount(account);
         return REVERSE_REGISTRAR.claimForAddr(account, hcaOwner, resolver);
+    }
+
+    /// @inheritdoc ERC165
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+        return
+            interfaceId == type(IReverseRegistrarAdapter).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 }

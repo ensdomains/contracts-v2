@@ -13,6 +13,9 @@ import {
 } from "~src/reverse-registrar/DefaultReverseRegistrarAdapter.sol";
 import {MockContractNamer} from "~test/mocks/MockContractNamer.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {
+    IDefaultReverseRegistrarAdapter
+} from "~src/reverse-registrar/interfaces/IDefaultReverseRegistrarAdapter.sol";
 import {AccountNamerLib} from "~src/reverse-registrar/libraries/AccountNamerLib.sol";
 import {HCAAuthorizer} from "~src/hca/HCAAuthorizer.sol";
 import {IStandaloneHCAFactory} from "~src/hca/interfaces/IStandaloneHCAFactory.sol";
@@ -66,6 +69,12 @@ contract DefaultReverseRegistrarAdapterTest is HCAFixture {
             ERC165Checker.supportsInterface(
                 address(defaultAdapter),
                 type(IContractNamer).interfaceId
+            )
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(defaultAdapter),
+                type(IDefaultReverseRegistrarAdapter).interfaceId
             )
         );
     }
