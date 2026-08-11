@@ -13,7 +13,7 @@ import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
 /// @dev Certified HCAs are deployed through the real `StandaloneHCAFactory` so consumer tests
 ///      exercise the production certification path; the fixture acts as factory governance.
 ///      The factory is deployed from its compiled artifact so consumer tests never import its
-///      `0.8.27` source into their own compiler profile.
+///      source into their own compiler profile.
 abstract contract HCAFixture is Test {
     string internal constant STANDALONE_HCA_FACTORY_ARTIFACT =
         "src/hca/StandaloneHCAFactory.sol:StandaloneHCAFactory";
