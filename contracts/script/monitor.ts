@@ -150,6 +150,10 @@ const v1ReverseRegistrarAbi = parseAbi([
   "function controllers(address) view returns (bool)",
 ]);
 
+const v1NameWrapperAbi = parseAbi([
+  "function getData(uint256 id) view returns (address owner, uint32 fuses, uint64 expiry)",
+]);
+
 const v2RegistryAbi = parseAbi([
   "function hasRootRoles(uint256 roleBitmap, address account) view returns (bool)",
   "function getSubregistry(string label) view returns (address)",
@@ -403,6 +407,9 @@ type MonitorState = {
   renewalWatermarks: { v2?: number; v1Renewer?: number; v1?: number };
   probeLabels: { registered?: string; reserved?: string };
   graveyardPending: { label: string; node: Hex; firstSeen: number }[];
+  // Migrated labels that could not be tracked because the pending list was at
+  // capacity — a nonzero count means graveyard-lag coverage has a gap.
+  graveyardOverflow: number;
   alertHistory: Record<string, { lastFired: number; failing: boolean }>;
   lastTick?: {
     at: number;
@@ -423,6 +430,7 @@ function newState(network: string, chainId: number): MonitorState {
     renewalWatermarks: {},
     probeLabels: {},
     graveyardPending: [],
+    graveyardOverflow: 0,
     alertHistory: {},
   };
 }
@@ -444,6 +452,7 @@ function loadState(
       `State file ${path} belongs to ${state.network}/${state.chainId}, not ${network}/${chainId}; use a different --work-dir`,
     );
   }
+  state.graveyardOverflow ??= 0;
   return state;
 }
 
@@ -1487,6 +1496,7 @@ async function scanEvents(
         events: [
           EV_LABEL_REGISTERED,
           EV_LABEL_RESERVED,
+          EV_LABEL_UNREGISTERED,
           EV_EAC_ROLES_CHANGED,
           EV_SUBREGISTRY_UPDATED,
           EV_RESOLVER_UPDATED,
@@ -1553,18 +1563,22 @@ async function scanEvents(
         same(sender, addrs.unlockedMigrationController) ||
         same(sender, addrs.lockedMigrationController)
       ) {
-        if (
-          state.graveyardPending.length < config.graveyardPendingMax &&
-          !state.graveyardPending.some((entry) => entry.label === label)
-        ) {
-          // Anchored to the migration event's block time so a backfill or a
-          // daemon restart cannot grant an already-overdue v1 record a fresh
-          // lag window.
-          state.graveyardPending.push({
-            label,
-            node: namehash(`${label}.eth`),
-            firstSeen: (await tsOf(log.blockNumber)) * 1000,
-          });
+        if (!state.graveyardPending.some((entry) => entry.label === label)) {
+          if (state.graveyardPending.length < config.graveyardPendingMax) {
+            // Anchored to the migration event's block time so a backfill or a
+            // daemon restart cannot grant an already-overdue v1 record a fresh
+            // lag window.
+            state.graveyardPending.push({
+              label,
+              node: namehash(`${label}.eth`),
+              firstSeen: (await tsOf(log.blockNumber)) * 1000,
+            });
+          } else {
+            // Never dropped silently: the overflow count keeps the coverage
+            // gap visible in the graveyard-lag check until an operator raises
+            // the cap and backfills.
+            state.graveyardOverflow += 1;
+          }
         }
       } else if (same(sender, addrs.batchRegistrar)) {
         outcomes.push(
@@ -1800,6 +1814,13 @@ async function scanEvents(
 // graveyard daemon clears it; some lag is expected, sustained lag is not.
 async function checkGraveyardLag(ctx: Ctx): Promise<CheckOutcome> {
   const { addrs, state, config } = ctx;
+  if (state.graveyardOverflow > 0 && state.graveyardPending.length === 0) {
+    return fail(
+      "graveyard-clear-lag",
+      "warning",
+      `${state.graveyardOverflow} migrated name(s) were never tracked because the pending list hit its cap — raise --graveyard-pending-max and re-run with --from-block to backfill, then reset graveyardOverflow in the state file`,
+    );
+  }
   if (state.graveyardPending.length === 0) {
     return ok("graveyard-clear-lag", "no migrated names awaiting v1 cleanup");
   }
@@ -1819,27 +1840,46 @@ async function checkGraveyardLag(ctx: Ctx): Promise<CheckOutcome> {
   const sample = [...candidates, ...rest].slice(0, 200);
   const sampledLabels = new Set(sample.map((entry) => entry.label));
 
-  const owners = (await withFailover(ctx, (client) =>
+  // Two reads per entry cover both migration classes: unwrapped/unlocked
+  // names are cleared when the Graveyard takes the v1 registry record, while
+  // locked names keep NameWrapper as the registry owner forever and count as
+  // cleared once the Graveyard holds the wrapper token.
+  const reads = (await withFailover(ctx, (client) =>
     client.multicall({
-      contracts: sample.map(
+      contracts: sample.flatMap(
         (entry) =>
-          ({
-            address: addrs.v1Registry,
-            abi: v1RegistryAbi,
-            functionName: "owner",
-            args: [entry.node],
-          }) as const,
+          [
+            {
+              address: addrs.v1Registry,
+              abi: v1RegistryAbi,
+              functionName: "owner",
+              args: [entry.node],
+            },
+            {
+              address: addrs.v1NameWrapper,
+              abi: v1NameWrapperAbi,
+              functionName: "getData",
+              args: [BigInt(entry.node)],
+            },
+          ] as const,
       ),
       allowFailure: true,
     }),
-  )) as { status: string; result?: Address }[];
+  )) as { status: string; result?: unknown }[];
   const cleared = new Set<string>();
   sample.forEach((entry, index) => {
-    const read = owners[index];
+    const ownerRead = reads[index * 2];
+    const wrapperRead = reads[index * 2 + 1];
+    const registryOwner =
+      ownerRead.status === "success" ? (ownerRead.result as Address) : null;
+    const wrapperOwner =
+      wrapperRead.status === "success"
+        ? ((wrapperRead.result as [Address, number, bigint])[0] as Address)
+        : null;
+    const graveyard = getAddress(addrs.graveyard);
     if (
-      read.status === "success" &&
-      read.result &&
-      getAddress(read.result) === getAddress(addrs.graveyard)
+      (registryOwner && getAddress(registryOwner) === graveyard) ||
+      (wrapperOwner && getAddress(wrapperOwner) === graveyard)
     ) {
       cleared.add(entry.label);
     }
@@ -1854,11 +1894,17 @@ async function checkGraveyardLag(ctx: Ctx): Promise<CheckOutcome> {
   const unverifiedOverdue = candidates.filter(
     (entry) => !sampledLabels.has(entry.label),
   ).length;
-  if (verifiedOverdue.length > 0) {
+  const overflowNote =
+    state.graveyardOverflow > 0
+      ? `; ${state.graveyardOverflow} migrated name(s) untracked (pending cap) — raise --graveyard-pending-max and backfill`
+      : "";
+  if (verifiedOverdue.length > 0 || state.graveyardOverflow > 0) {
     return fail(
       "graveyard-clear-lag",
       "warning",
-      `${verifiedOverdue.length} migrated name(s) verified with live v1 registry records after ${config.graveyardLagHours}h (oldest: "${verifiedOverdue[0].label}")${unverifiedOverdue > 0 ? `; ${unverifiedOverdue} more overdue entries await verification` : ""} — graveyard daemon may be stalled`,
+      verifiedOverdue.length > 0
+        ? `${verifiedOverdue.length} migrated name(s) verified with live v1 records after ${config.graveyardLagHours}h (oldest: "${verifiedOverdue[0].label}")${unverifiedOverdue > 0 ? `; ${unverifiedOverdue} more overdue entries await verification` : ""} — graveyard daemon may be stalled${overflowNote}`
+        : `graveyard-lag coverage gap${overflowNote}`,
     );
   }
   return ok(
@@ -2156,6 +2202,7 @@ type CommonCliOptions = {
   paymentToken?: string[];
   renewalStaleHours?: string;
   graveyardLagHours: string;
+  graveyardPendingMax: string;
   webhookUrl?: string;
   heartbeatUrl?: string;
   alertCooldownHours: string;
@@ -2227,7 +2274,7 @@ async function buildContext(options: CommonCliOptions): Promise<Ctx> {
         ? Number(options.renewalStaleHours)
         : networkConfig.defaultRenewalStaleHours,
     graveyardLagHours: Number(options.graveyardLagHours),
-    graveyardPendingMax: 5000,
+    graveyardPendingMax: Number(options.graveyardPendingMax),
     webhookUrl: options.webhookUrl ?? process.env.MONITOR_WEBHOOK_URL,
     heartbeatUrl: options.heartbeatUrl ?? process.env.MONITOR_HEARTBEAT_URL,
     alertCooldownHours: Number(options.alertCooldownHours),
@@ -2330,6 +2377,11 @@ function addCommonOptions(command: Command): Command {
       "--graveyard-lag-hours <n>",
       "acceptable v1-cleanup lag for migrated names",
       "24",
+    )
+    .option(
+      "--graveyard-pending-max <n>",
+      "max migrated names tracked for v1-cleanup lag (overflow is counted and alerted, never silent)",
+      "5000",
     )
     .option(
       "--webhook-url <url>",
