@@ -268,15 +268,17 @@ describe("Phased migration rehearsal", () => {
     const referrer = zeroHash;
     const secret = zeroHash;
     const paymentToken = env.erc20.MockUSDC.address;
-
-    const commitment = await env.v2.ETHRegistrar.read.makeCommitment([
+    const commitData = {
       label,
-      account.address,
+      owner: account.address,
       secret,
       subregistry,
       resolver,
       duration,
       referrer,
+    };
+    const commitment = await env.v2.ETHRegistrar.read.makeCommitment([
+      commitData,
     ]);
     await env.v2.ETHRegistrar.write.commit([commitment], { account });
     await env.sync({ warpSec: 61 });
@@ -294,16 +296,7 @@ describe("Phased migration rehearsal", () => {
       { account },
     );
     await env.v2.ETHRegistrar.write.register(
-      [
-        label,
-        account.address,
-        secret,
-        subregistry,
-        resolver,
-        duration,
-        paymentToken,
-        referrer,
-      ],
+      [commitData, paymentToken, zeroAddress],
       { account },
     );
   }

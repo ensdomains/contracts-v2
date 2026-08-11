@@ -19,6 +19,21 @@ export default execute(
       artifact: MockERC20,
       args: ["DAI", 18],
     });
+
+    await deploy("MockWETH", {
+      account: deployer,
+      artifact: MockERC20,
+      args: ["WETH", 18],
+    });
+
+    const ethPrice = 2000;
+    const decimals = 8; // arbitrary, matches mainnet
+    await deploy("MockChainlinkETHUSD", {
+      account: deployer,
+      artifact: artifacts.MockChainlinkAggregator,
+      args: [BigInt(ethPrice) * 10n ** BigInt(decimals), decimals],
+    });
+    console.log(`USD/ETH = $${ethPrice}`);
   },
   {
     tags: ["MockTokens", "migration:phase1:deploy-v2", "v2"],

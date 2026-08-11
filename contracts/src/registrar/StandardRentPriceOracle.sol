@@ -9,6 +9,8 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
+import {IChainlinkAggregator} from "./interfaces/IChainlinkAggregator.sol";
+import {NATIVE_ETH} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 import {LibHalving} from "./libraries/LibHalving.sol";
 
@@ -73,6 +75,8 @@ struct PaymentRatio {
 ///    Since no external oracle is consulted, only stablecoins.
 ///    Accounts with `ROLE_DISABLE_TOKEN` can only disable payment tokens.
 ///
+/// If `paymentToken = NATIVE_ETH`, uses ether.
+///
 contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, IContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -102,6 +106,15 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
 
     /// @notice Precomputed premium halving at end of period.
     uint256 public immutable PREMIUM_PRICE_OFFSET;
+
+    /// @notice Wrapped Ether token.
+    IERC20 public immutable WETH;
+
+    /// @notice Chainlink Oracle for ETH/USD.
+    IChainlinkAggregator public immutable ETH_ORACLE;
+
+    /// @dev Scaling for ETH/USD conversions.
+    uint128 internal immutable _ETH_ORACLE_SCALE;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
@@ -154,6 +167,8 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     /// @param premiumHalvingPeriod Premium halving period, in seconds.
     /// @param premiumPeriod Premium period, in seconds.
     /// @param paymentRatios List of payment tokens with exchange rates.
+    /// @param weth Wrapped Ether token or null.
+    /// @param ethOracle Chainlink Oracle for ETH/USD or null.
     constructor(
         address rootAccount,
         uint256[] memory baseRatePerCp,
@@ -162,7 +177,9 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         uint256 premiumPriceInitial,
         uint64 premiumHalvingPeriod,
         uint64 premiumPeriod,
-        PaymentRatio[] memory paymentRatios
+        PaymentRatio[] memory paymentRatios,
+        IERC20 weth,
+        IChainlinkAggregator ethOracle
     )
     {
         _grantRoles(ROOT_RESOURCE, DEFAULT_ROLE_BITMAP, rootAccount, false);
@@ -208,6 +225,12 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
             _paymentRatios[pr.paymentToken] = Ratio(pr.numer, pr.denom);
             emit PaymentTokenUpdated(pr.paymentToken, pr.numer, pr.denom);
         }
+
+        WETH = weth;
+        ETH_ORACLE = ethOracle;
+        _ETH_ORACLE_SCALE = uint128(
+            address(ethOracle) == address(0) ? 0 : 10 ** ethOracle.decimals()
+        );
     }
 
     /// @inheritdoc ERC165
@@ -277,6 +300,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     }
 
     /// @notice Get numerator/denominator for `paymentToken`.
+    ///         If ETH, includes ETH/USD ratio.
     /// @param paymentToken The payment token.
     /// @return numer The numerator of the exchange rate.
     /// @return denom The denominator of the exchange rate.
@@ -285,7 +309,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         view
         returns (uint128 numer, uint128 denom)
     {
-        Ratio storage ratio = _paymentRatios[paymentToken];
+        Ratio memory ratio = _computePaymentRatio(paymentToken);
         return (ratio.numer, ratio.denom);
     }
 
@@ -348,8 +372,9 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         uint128 numer;
         for (uint256 i; i < n; ++i) {
             DiscountPoint storage p = _discountPoints[i];
-            if (duration < p.duration)
+            if (duration < p.duration) {
                 break;
+            }
             numer = p.numer;
         }
         return
@@ -408,9 +433,30 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         }
     }
 
+    /// @dev Determine ratio for `paymentToken`.
+    ///      If ETH, includes ETH/USD ratio.
+    ///      If invalid, `denom = 0`.
+    function _computePaymentRatio(IERC20 paymentToken) internal view returns (Ratio memory ratio) {
+        ratio = _paymentRatios[paymentToken];
+        if (
+            address(paymentToken) == NATIVE_ETH ||
+            (paymentToken == WETH && address(WETH) != address(0))
+        ) {
+            if (address(ETH_ORACLE) == address(0)) {
+                return Ratio(0, 0); // no oracle
+            }
+            int256 answer = ETH_ORACLE.latestAnswer();
+            if (answer < 1) {
+                return Ratio(0, 0); // invalid response
+            }
+            // note: the oracle is USD per ETH => use reciprocal
+            ratio = Ratio(_ETH_ORACLE_SCALE * ratio.numer, uint128(uint256(answer)) * ratio.denom);
+        }
+    }
+
     /// @dev Ensure `paymentToken` is supported.
     function _requirePaymentToken(IERC20 paymentToken) internal view returns (Ratio memory ratio) {
-        ratio = _paymentRatios[paymentToken];
+        ratio = _computePaymentRatio(paymentToken);
         if (ratio.denom == 0) {
             revert PaymentTokenNotSupported(paymentToken);
         }

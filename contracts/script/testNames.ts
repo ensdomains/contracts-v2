@@ -92,21 +92,21 @@ export async function testNames(env: DevnetEnvironment) {
   }
 
   // Commit-reveal for alias.eth, using test.eth's resolver
-  const aliasSecret =
-    "0x00000000000000000000000000000000000000000000000000000000000000ff";
-  const aliasDuration = BigInt(28 * ONE_DAY_SECONDS);
-  const aliasPaymentToken = env.erc20.MockUSDC.address;
-  const aliasReferrer =
-    "0x0000000000000000000000000000000000000000000000000000000000000000";
 
+  const aliasPaymentToken = env.erc20.MockUSDC.address;
+  const aliasCommitData = {
+    label: "alias",
+    duration: BigInt(28 * ONE_DAY_SECONDS),
+    owner: env.namedAccounts.owner.address,
+    secret:
+      "0x00000000000000000000000000000000000000000000000000000000000000ff" as const,
+    subregistry: zeroAddress,
+    resolver: testNameData.resolver,
+    referrer:
+      "0x0000000000000000000000000000000000000000000000000000000000000000" as const,
+  };
   const aliasCommitment = await env.v2.ETHRegistrar.read.makeCommitment([
-    "alias",
-    env.namedAccounts.owner.address,
-    aliasSecret,
-    zeroAddress,
-    testNameData.resolver,
-    aliasDuration,
-    aliasReferrer,
+    aliasCommitData,
   ]);
   const aliasCommitReceipt = await env.waitFor(
     env.v2.ETHRegistrar.write.commit([aliasCommitment], {
@@ -122,7 +122,7 @@ export async function testNames(env: DevnetEnvironment) {
     await env.v2.StandardRentPriceOracle.read.getRegisterPrice([
       "alias",
       MAX_EXPIRY,
-      aliasDuration,
+      aliasCommitData.duration,
       aliasPaymentToken,
     ]);
   const aliasPrice = aliasBase + aliasPremium;
@@ -142,16 +142,7 @@ export async function testNames(env: DevnetEnvironment) {
 
   const aliasRegisterReceipt = await env.waitFor(
     env.v2.ETHRegistrar.write.register(
-      [
-        "alias",
-        env.namedAccounts.owner.address,
-        aliasSecret,
-        zeroAddress,
-        testNameData.resolver,
-        aliasDuration,
-        aliasPaymentToken,
-        aliasReferrer,
-      ],
+      [aliasCommitData, aliasPaymentToken, zeroAddress],
       { account: env.namedAccounts.owner },
     ),
   );

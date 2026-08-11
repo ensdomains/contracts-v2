@@ -8,7 +8,7 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
+import {IETHRenewer, RenewData, NATIVE_ETH} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
 /// @dev Abstract registrar implementation shared between `ETHRegistrar` and `ETHRenewerV1`.
@@ -81,16 +81,20 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     }
 
     /// @inheritdoc IETHRenewer
-    function renew(string calldata label, uint64 duration, IERC20 paymentToken, bytes32 referrer)
+    function renew(RenewData calldata rd, IERC20 paymentToken, address refundTo) external payable {
+        _transferPayment(paymentToken, _renew(rd, paymentToken), refundTo);
+    }
+
+    /// @inheritdoc IETHRenewer
+    function renewBatch(RenewData[] calldata rds, IERC20 paymentToken, address refundTo)
         external
+        payable
     {
-        IPermissionedRegistry.State memory state = _requireRenewable(label, duration); // reverts if not
-        uint64 newExpiry = state.expiry + duration; // reverts if overflow
-        uint256 amount = rentPriceOracle.getRenewPrice(label, state.expiry, duration, paymentToken); // reverts if invalid
-        SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, amount); // reverts if payment failed
-        ETH_REGISTRY.renew(state.tokenId, newExpiry);
-        _onRenew(label, duration);
-        emit NameRenewed(state.tokenId, label, duration, newExpiry, paymentToken, referrer, amount);
+        uint256 total;
+        for (uint256 i; i < rds.length; ++i) {
+            total += _renew(rds[i], paymentToken);
+        }
+        _transferPayment(paymentToken, total, refundTo);
     }
 
     /// @inheritdoc IETHRenewer
@@ -116,6 +120,51 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Renew a name and return the amount of `paymentToken`.
+    function _renew(RenewData calldata rd, IERC20 paymentToken) internal returns (uint256 amount) {
+        IPermissionedRegistry.State memory state = _requireRenewable(rd.label, rd.duration); // reverts if not
+        uint64 newExpiry = state.expiry + rd.duration; // reverts if overflow
+        amount = rentPriceOracle.getRenewPrice(rd.label, state.expiry, rd.duration, paymentToken); // reverts if invalid
+        ETH_REGISTRY.renew(state.tokenId, newExpiry);
+        _onRenew(rd.label, rd.duration);
+        emit NameRenewed(
+            state.tokenId,
+            rd.label,
+            rd.duration,
+            newExpiry,
+            paymentToken,
+            rd.referrer,
+            amount
+        );
+    }
+
+    /// @dev Pay beneficiary and refund extra ether.
+    function _transferPayment(IERC20 paymentToken, uint256 amount, address refundTo) internal {
+        if (amount == 0) {
+            return;
+        }
+        if (address(paymentToken) == NATIVE_ETH) {
+            if (msg.value < amount) {
+                revert InsufficientETH(msg.value, amount);
+            }
+            (bool ok, ) = payable(BENEFICIARY).call{value: amount}("");
+            if (!ok) {
+                revert ETHTransferFailed(BENEFICIARY);
+            }
+            if (msg.value > amount) {
+                (ok, ) = payable(refundTo).call{value: msg.value - amount}("");
+                if (!ok) {
+                    revert ETHTransferFailed(refundTo);
+                }
+            }
+        } else {
+            if (msg.value > 0) {
+                revert UnexpectedETH(msg.value);
+            }
+            SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, amount); // reverts if payment failed
+        }
+    }
 
     /// @dev Callback for when a name is renewed.
     function _onRenew(string calldata label, uint64 duration) internal virtual {}

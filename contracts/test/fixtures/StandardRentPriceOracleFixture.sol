@@ -8,6 +8,8 @@ import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {StandardRentPriceOracle, PaymentRatio} from "~src/registrar/StandardRentPriceOracle.sol";
+import {NATIVE_ETH} from "~src/registrar/interfaces/IETHRenewer.sol";
+import {MockChainlinkAggregator} from "~test/mocks/MockChainlinkAggregator.sol";
 import {
     MockERC20,
     MockERC20Blacklist,
@@ -19,7 +21,11 @@ import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 /// @dev Reusable testing fixture for StandardRentPriceOracle.
 contract StandardRentPriceOracleFixture is Test {
     StandardRentPriceOracle rentPriceOracle;
+    MockChainlinkAggregator ethOracle;
+    MockChainlinkAggregator invalidOracle;
 
+    MockERC20 tokenETH = MockERC20(NATIVE_ETH);
+    MockERC20 tokenWETH;
     MockERC20 tokenUSDC;
     MockERC20 tokenDAI;
     MockERC20 tokenIdentity;
@@ -28,11 +34,14 @@ contract StandardRentPriceOracleFixture is Test {
     MockERC20FalseReturn tokenFalse;
 
     MockERC20[] paymentTokens;
+    PaymentRatio[] paymentRatios;
 
     address beneficiary = makeAddr("beneficiary");
+    address refundTo = makeAddr("refundTo");
     IERC20 invalidPaymentToken = IERC20(makeAddr("invalidPaymentToken"));
 
     function deployStandardRentPriceOracleFixture() public {
+        tokenWETH = new MockERC20("WETH", 18);
         tokenUSDC = new MockERC20("USDC", 6);
         tokenDAI = new MockERC20("DAI", 18);
         tokenIdentity = new MockERC20("Identity", StandardRegistrar.PRICE_DECIMALS);
@@ -40,18 +49,26 @@ contract StandardRentPriceOracleFixture is Test {
         tokenVoid = new MockERC20VoidReturn();
         tokenFalse = new MockERC20FalseReturn();
 
-        paymentTokens = new MockERC20[](6);
+        uint8 decimals = 8; // arbitrary
+        uint256 ethPrice = StandardRegistrar.ETH_PRICE;
+        ethOracle = new MockChainlinkAggregator(int256(ethPrice * 10 ** decimals), decimals);
+        invalidOracle = new MockChainlinkAggregator(0, 0);
+
+        paymentTokens = new MockERC20[](7);
         paymentTokens[0] = tokenUSDC;
         paymentTokens[1] = tokenDAI;
         paymentTokens[2] = tokenIdentity;
         paymentTokens[3] = tokenBlack;
         paymentTokens[4] = tokenVoid;
         paymentTokens[5] = tokenFalse;
+        paymentTokens[6] = tokenWETH;
 
-        PaymentRatio[] memory paymentRatios = new PaymentRatio[](paymentTokens.length);
         for (uint256 i; i < paymentTokens.length; ++i) {
-            paymentRatios[i] = StandardRegistrar.ratioFromStable(paymentTokens[i]);
+            MockERC20 token = paymentTokens[i];
+            paymentRatios.push(StandardRegistrar.ratioFromParts(token, token.decimals()));
         }
+        paymentRatios.push(StandardRegistrar.ratioFromParts(tokenETH, 18));
+
         rentPriceOracle = new StandardRentPriceOracle(
             address(this),
             StandardRegistrar.getBaseRates(),
@@ -60,7 +77,9 @@ contract StandardRentPriceOracleFixture is Test {
             StandardRegistrar.PREMIUM_PRICE_INITIAL,
             StandardRegistrar.PREMIUM_HALVING_PERIOD,
             StandardRegistrar.PREMIUM_PERIOD,
-            paymentRatios
+            paymentRatios,
+            tokenWETH,
+            ethOracle
         );
 
         // give beneficiary non-zero balance
@@ -70,6 +89,7 @@ contract StandardRentPriceOracleFixture is Test {
     }
 
     function setupPaymentTokens(address owner, address approved) internal {
+        vm.deal(owner, 1e6 ether);
         for (uint256 i; i < paymentTokens.length; ++i) {
             MockERC20 token = paymentTokens[i];
             token.mint(owner, 1e9 * 10 ** token.decimals());

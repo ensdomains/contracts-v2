@@ -3,8 +3,19 @@ pragma solidity >=0.8.13;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+address constant NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE; // https://eips.ethereum.org/EIPS/eip-7528
+
+struct RenewData {
+    /// @param label The name to renew.
+    string label;
+    /// @param duration The duration extension, in seconds.
+    uint64 duration;
+    /// @param referrer The referrer hash.
+    bytes32 referrer;
+}
+
 /// @notice Interface for renewing ".eth" names.
-/// @dev Interface selector: `0x06aaeb32`
+/// @dev Interface selector: `0xca53b3c9`
 interface IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -40,17 +51,35 @@ interface IETHRenewer {
     /// @dev Error selector: `0x1caefaa0`
     error NameNotRenewable(string label);
 
+    /// @notice `account` unable to recieve ether.
+    /// @dev Error selector: `0x1c988062`
+    error ETHTransferFailed(address account);
+
+    /// @notice `supplied` ether less than `required` ether.
+    /// @dev Error selector: `0x1fbeaea0`
+    error InsufficientETH(uint256 supplied, uint256 required);
+
+    /// @notice `supplied` ether was positive.
+    /// @dev Error selector: `0x31e99b9f`
+    error UnexpectedETH(uint256 supplied);
+
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Renew a name.
-    /// @param label The name to renew.
-    /// @param duration The duration extension, in seconds.
+    /// @param rd The renew data.
     /// @param paymentToken The payment token.
-    /// @param referrer The referrer hash.
-    function renew(string memory label, uint64 duration, IERC20 paymentToken, bytes32 referrer)
-        external;
+    /// @param refundTo The refund address if ether is used.
+    function renew(RenewData calldata rd, IERC20 paymentToken, address refundTo) external payable;
+
+    /// @notice Renew multiple names.
+    /// @param rds The renew data.
+    /// @param paymentToken The payment token.
+    /// @param refundTo The refund address if ether is used.
+    function renewBatch(RenewData[] calldata rds, IERC20 paymentToken, address refundTo)
+        external
+        payable;
 
     /// @notice Determine renew price for a name.
     /// @param label The name to renew.
