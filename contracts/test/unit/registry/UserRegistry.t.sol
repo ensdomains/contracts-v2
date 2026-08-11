@@ -25,9 +25,6 @@ import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 
 contract UserRegistryTest is Test, ERC1155Holder {
-    // Test constants
-    uint256 constant SALT = 12345;
-
     // Contracts
     VerifiableFactory factory;
     LabelStore labelStore;
@@ -53,15 +50,12 @@ contract UserRegistryTest is Test, ERC1155Holder {
         grants[0] = Grant(admin, EACBaseRolesLib.ALL_ROLES);
 
         // Deploy the proxy using the factory
+        bytes memory initData = abi.encodeCall(IEACGrantInitializable.initialize, (grants));
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
         vm.prank(admin);
         proxy = UserRegistry(
-            factory.deployProxy(
-                address(implementation),
-                SALT,
-                abi.encodeCall(IEACGrantInitializable.initialize, (grants))
-            )
+            factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
         );
     }
 
@@ -70,27 +64,21 @@ contract UserRegistryTest is Test, ERC1155Holder {
     }
 
     function test_initialize_unowned() external {
+        bytes memory initData = abi.encodeCall(IEACGrantInitializable.initialize, (new Grant[](0)));
         vm.expectRevert(abi.encodeWithSelector(InvalidOwner.selector));
-        factory.deployProxy(
-            address(implementation),
-            SALT,
-            abi.encodeCall(IEACGrantInitializable.initialize, (new Grant[](0)))
-        );
+        factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData);
     }
 
     function test_initialize_with_grants() external {
         Grant[] memory grants = new Grant[](3);
         grants[0] = Grant(admin, EACBaseRolesLib.ALL_ROLES);
-        grants[1] = Grant(user1, EACBaseRolesLib.ALL_ROLES);
-        grants[2] = Grant(user2, EACBaseRolesLib.ALL_ROLES);
+        grants[1] = Grant(user1, EACBaseRolesLib.ALL_ROLES >> 128);
+        grants[2] = Grant(user2, 1);
 
+        bytes memory initData = abi.encodeCall(IEACGrantInitializable.initialize, (grants));
         UserRegistry r =
             UserRegistry(
-                factory.deployProxy(
-                    address(implementation),
-                    SALT,
-                    abi.encodeCall(IEACGrantInitializable.initialize, (grants))
-                )
+                factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
             );
 
         for (uint256 i; i < grants.length; ++i) {

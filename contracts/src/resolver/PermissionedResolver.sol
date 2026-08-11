@@ -28,7 +28,8 @@ import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol
 
 import {IPermissionedResolver} from "./interfaces/IPermissionedResolver.sol";
 import {
-    IPermissionedResolverInitializable
+    IPermissionedResolverInitializable,
+    Grant
 } from "./interfaces/IPermissionedResolverInitializable.sol";
 import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib.sol";
@@ -236,12 +237,11 @@ contract PermissionedResolver is
     }
 
     /// @inheritdoc IPermissionedResolverInitializable
-    function initialize(address rootAccount, uint256 roleBitmap, bytes[] calldata calls)
-        external
-        initializer
-    {
+    function initialize(Grant[] calldata grants, bytes[] calldata calls) external initializer {
         __UUPSUpgradeable_init();
-        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
+        for (uint256 i; i < grants.length; ++i) {
+            _grantRoles(ROOT_RESOURCE, grants[i].roleBitmap, grants[i].account, false);
+        }
         multicall(calls);
     }
 
