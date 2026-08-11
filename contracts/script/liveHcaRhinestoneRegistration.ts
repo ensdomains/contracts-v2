@@ -47,6 +47,8 @@ import {
   HCAOwnerAndSessionValidator,
   PermissionedRegistry,
   PermissionedResolver,
+  ReverseRegistrar,
+  ReverseRegistrarAdapter,
   StandaloneHCAFactory,
   StandaloneSingleOwnerHCA,
   test_mocks_MockERC20_sol_MockERC20 as MockERC20,
@@ -302,9 +304,11 @@ type HcaDeployments = {
   standaloneHcaImplementation: Address;
   validator: Address;
   defaultReverseRegistrarAdapter: Address;
+  reverseRegistrarAdapter: Address;
   universalResolver: Address;
   v1Registry: Address;
   defaultReverseRegistrar: Address;
+  reverseRegistrar: Address;
   intentExecutor: Address;
   gasRefundPaymaster: Address;
 };
@@ -699,12 +703,18 @@ async function main() {
       ["DefaultReverseRegistrarAdapter"],
       HCA_DEPLOYMENT_NETWORK,
     ),
+    reverseRegistrarAdapter: deploymentFromEnv(
+      "HCA_REVERSE_REGISTRAR_ADAPTER",
+      ["ReverseRegistrarAdapter"],
+      HCA_DEPLOYMENT_NETWORK,
+    ),
     universalResolver: deploymentFromEnv("UNIVERSAL_RESOLVER", [
       "UniversalResolverV2",
       "UniversalResolver",
     ]),
     v1Registry: v1Deployment("ENSRegistry"),
     defaultReverseRegistrar: v1Deployment("DefaultReverseRegistrar"),
+    reverseRegistrar: v1Deployment("ReverseRegistrar"),
     intentExecutor: RHINESTONE_INTENT_EXECUTOR,
     gasRefundPaymaster: RHINESTONE_GAS_REFUND_PAYMASTER,
   };
@@ -749,10 +759,21 @@ async function main() {
     adapterFactory,
     deployments.standaloneHcaFactory,
   );
+  const v1AdapterFactory = (await publicClient.readContract({
+    address: deployments.reverseRegistrarAdapter,
+    abi: ReverseRegistrarAdapter.abi,
+    functionName: "STANDALONE_HCA_FACTORY",
+  })) as Address;
+  assertAddress(
+    "addr.reverse adapter StandaloneHCAFactory",
+    v1AdapterFactory,
+    deployments.standaloneHcaFactory,
+  );
 
   const validatorBindings = await Promise.all(
     [
       "DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER",
+      "REVERSE_REGISTRAR_HCA_ADAPTER",
       "PERMITTED_RESOLVER_IMPL",
       "ETH_REGISTRY",
       "VERIFIABLE_FACTORY",
@@ -771,6 +792,7 @@ async function main() {
   );
   const [
     boundReverseAdapter,
+    boundV1ReverseAdapter,
     boundResolverImpl,
     boundRegistry,
     boundFactory,
@@ -783,6 +805,11 @@ async function main() {
     "validator reverse adapter",
     boundReverseAdapter,
     deployments.defaultReverseRegistrarAdapter,
+  );
+  assertAddress(
+    "validator addr.reverse adapter",
+    boundV1ReverseAdapter,
+    deployments.reverseRegistrarAdapter,
   );
   assertAddress(
     "validator resolver implementation",
@@ -856,6 +883,17 @@ async function main() {
   });
   if (!adapterIsController) {
     throw new Error("HCA reverse adapter is not a default.reverse controller");
+  }
+  const v1AdapterIsController = await publicClient.readContract({
+    address: deployments.reverseRegistrar,
+    abi: ReverseRegistrar.abi,
+    functionName: "controllers",
+    args: [deployments.reverseRegistrarAdapter],
+  });
+  if (!v1AdapterIsController) {
+    throw new Error(
+      "HCA addr.reverse adapter is not an addr.reverse controller",
+    );
   }
   const implementationIsApproved = await publicClient.readContract({
     address: deployments.standaloneHcaFactory,
