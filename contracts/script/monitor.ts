@@ -653,7 +653,10 @@ async function checkWiring(ctx: Ctx): Promise<CheckOutcome[]> {
       address: addrs.ethRegistry,
       abi: v2RegistryAbi,
       functionName: "hasRootRoles",
-      args: [ROLES.REGISTRY.REGISTER_RESERVED, addrs.unlockedMigrationController],
+      args: [
+        ROLES.REGISTRY.REGISTER_RESERVED,
+        addrs.unlockedMigrationController,
+      ],
     } as const,
     {
       address: addrs.ethRegistry,
@@ -750,7 +753,10 @@ async function checkWiring(ctx: Ctx): Promise<CheckOutcome[]> {
           "critical",
           "BatchRegistrar still holds REGISTRAR|RENEW — pre-migration seeding roles must be revoked",
         )
-      : ok("v2-batch-registrar-disabled", "BatchRegistrar has no registrar roles"),
+      : ok(
+          "v2-batch-registrar-disabled",
+          "BatchRegistrar has no registrar roles",
+        ),
   );
   outcomes.push(
     renewerEnabled
@@ -784,8 +790,7 @@ async function checkWiring(ctx: Ctx): Promise<CheckOutcome[]> {
   );
 
   const topOk =
-    same(topImpl, addrs.managedUrp) ||
-    same(topImpl, addrs.universalResolverV2);
+    same(topImpl, addrs.managedUrp) || same(topImpl, addrs.universalResolverV2);
   outcomes.push(
     topOk && same(managedImpl, addrs.universalResolverV2)
       ? ok(
@@ -987,7 +992,10 @@ async function checkV1Controllers(ctx: Ctx): Promise<CheckOutcome[]> {
     )) as Address;
     outcomes.push(
       getAddress(resolver) === getAddress(addrs.ensV2Resolver)
-        ? ok("v1-eth-resolver-v2", ".eth resolver on v1 registry is ENSV2Resolver")
+        ? ok(
+            "v1-eth-resolver-v2",
+            ".eth resolver on v1 registry is ENSV2Resolver",
+          )
         : fail(
             "v1-eth-resolver-v2",
             "warning",
@@ -1100,7 +1108,10 @@ async function probeRentPrices(ctx: Ctx): Promise<CheckOutcome[]> {
         state.probeLabels.registered = undefined;
       else state.probeLabels.reserved = undefined;
       outcomes.push(
-        ok(probe.id, `${probe.what}: probe label no longer renewable — re-learning`),
+        ok(
+          probe.id,
+          `${probe.what}: probe label no longer renewable — re-learning`,
+        ),
       );
       continue;
     }
@@ -1195,7 +1206,12 @@ async function probeResolution(ctx: Ctx): Promise<CheckOutcome[]> {
       );
     } catch (error) {
       outcomes.push(
-        fail(id, "critical", `resolution of ${name} reverted`, errorMessage(error)),
+        fail(
+          id,
+          "critical",
+          `resolution of ${name} reverted`,
+          errorMessage(error),
+        ),
       );
     }
   }
@@ -1240,7 +1256,8 @@ async function checkRpcConsistency(
     };
   }
   const max = live.reduce(
-    (acc, entry) => ((entry.head as bigint) > acc ? (entry.head as bigint) : acc),
+    (acc, entry) =>
+      (entry.head as bigint) > acc ? (entry.head as bigint) : acc,
     0n,
   );
   const laggards = live.filter((entry) => max - (entry.head as bigint) > 10n);
@@ -1858,7 +1875,9 @@ function runDeepAudits(ctx: Ctx, csvFile?: string): CheckOutcome[] {
     });
   }
   for (const command of commands) {
-    console.log(gray(`running deep audit: migration ${command.args.join(" ")}`));
+    console.log(
+      gray(`running deep audit: migration ${command.args.join(" ")}`),
+    );
     const result = spawnSync(
       "bun",
       [
@@ -1878,7 +1897,9 @@ function runDeepAudits(ctx: Ctx, csvFile?: string): CheckOutcome[] {
       { cwd: CONTRACTS_DIR, encoding: "utf8", timeout: 30 * 60_000 },
     );
     if (result.status === 0) {
-      outcomes.push(ok(command.id, `migration ${command.args.join(" ")} passed`));
+      outcomes.push(
+        ok(command.id, `migration ${command.args.join(" ")} passed`),
+      );
     } else {
       const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
       outcomes.push(
@@ -1915,7 +1936,9 @@ async function runTick(
   outcomes.push(
     ...(await runCheck("probe-sync-wrapper", () => probeSyncWrapper(ctx))),
   );
-  outcomes.push(...(await runCheck("probe-rent-price", () => probeRentPrices(ctx))));
+  outcomes.push(
+    ...(await runCheck("probe-rent-price", () => probeRentPrices(ctx))),
+  );
   outcomes.push(
     ...(await runCheck("probe-resolution", () => probeResolution(ctx))),
   );
@@ -2231,7 +2254,11 @@ function addCommonOptions(command: Command): Command {
       "--heartbeat-url <url>",
       "GET this URL after each healthy tick — dead man's switch (or MONITOR_HEARTBEAT_URL)",
     )
-    .option("--alert-cooldown-hours <n>", "re-alert interval while failing", "6")
+    .option(
+      "--alert-cooldown-hours <n>",
+      "re-alert interval while failing",
+      "6",
+    )
     .option("--top-urp <address>", "top Universal Resolver proxy override")
     .option("--v1-base-registrar <address>", "v1 BaseRegistrar override")
     .option("--v1-registry <address>", "v1 ENS registry override")
@@ -2248,7 +2275,9 @@ export async function main(argv = process.argv): Promise<void> {
   addCommonOptions(
     program
       .command("check")
-      .description("run every check once and exit (0 ok, 1 warning, 2 critical)"),
+      .description(
+        "run every check once and exit (0 ok, 1 warning, 2 critical)",
+      ),
   )
     .option("--from-block <n>", "backfill event scanning from this block")
     .option("--deep", "also run the heavy audits via the migration CLI")
