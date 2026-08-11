@@ -1458,94 +1458,79 @@ async function scanEvents(
 ): Promise<CheckOutcome[]> {
   const { addrs, state, config } = ctx;
   const outcomes: CheckOutcome[] = [];
-  const client = ctx.clients[0];
   const span = config.maxLogSpan;
+
+  // Each scan group fails over to the next provider as a whole: re-scanning a
+  // range is idempotent, and a dead primary must not stall event monitoring
+  // while the invariant reads keep succeeding through healthy providers.
+  const scanGroup = (params: {
+    address: Address | Address[];
+    events: AbiEvent[];
+  }) =>
+    withFailover(ctx, (client) =>
+      scanLogs(client, params, fromBlock, toBlock, span),
+    );
 
   const [registryLogs, rootLogs, renewalLogs, v1Logs, reverseLogs, urpLogs] =
     await Promise.all([
-      scanLogs(
-        client,
-        {
-          address: addrs.ethRegistry,
-          events: [
-            EV_LABEL_REGISTERED,
-            EV_LABEL_RESERVED,
-            EV_LABEL_UNREGISTERED,
-            EV_EAC_ROLES_CHANGED,
-          ],
-        },
-        fromBlock,
-        toBlock,
-        span,
-      ),
-      scanLogs(
-        client,
-        {
-          address: addrs.rootRegistry,
-          events: [
-            EV_LABEL_REGISTERED,
-            EV_LABEL_RESERVED,
-            EV_EAC_ROLES_CHANGED,
-            EV_SUBREGISTRY_UPDATED,
-            EV_RESOLVER_UPDATED,
-          ],
-        },
-        fromBlock,
-        toBlock,
-        span,
-      ),
-      scanLogs(
-        client,
-        {
-          address: [addrs.ethRegistrar, addrs.ethRenewerV1],
-          events: [EV_V2_NAME_RENEWED, EV_ORACLE_UPDATED],
-        },
-        fromBlock,
-        toBlock,
-        span,
-      ),
-      scanLogs(
-        client,
-        {
-          address: addrs.v1BaseRegistrar,
-          events: [
-            EV_V1_CONTROLLER_ADDED,
-            EV_V1_CONTROLLER_REMOVED,
-            EV_V1_NAME_REGISTERED,
-            EV_V1_NAME_RENEWED,
-            EV_OWNERSHIP_TRANSFERRED,
-          ],
-        },
-        fromBlock,
-        toBlock,
-        span,
-      ),
+      scanGroup({
+        address: addrs.ethRegistry,
+        events: [
+          EV_LABEL_REGISTERED,
+          EV_LABEL_RESERVED,
+          EV_LABEL_UNREGISTERED,
+          EV_EAC_ROLES_CHANGED,
+        ],
+      }),
+      scanGroup({
+        address: addrs.rootRegistry,
+        events: [
+          EV_LABEL_REGISTERED,
+          EV_LABEL_RESERVED,
+          EV_EAC_ROLES_CHANGED,
+          EV_SUBREGISTRY_UPDATED,
+          EV_RESOLVER_UPDATED,
+        ],
+      }),
+      scanGroup({
+        address: [addrs.ethRegistrar, addrs.ethRenewerV1],
+        events: [EV_V2_NAME_RENEWED, EV_ORACLE_UPDATED],
+      }),
+      scanGroup({
+        address: addrs.v1BaseRegistrar,
+        events: [
+          EV_V1_CONTROLLER_ADDED,
+          EV_V1_CONTROLLER_REMOVED,
+          EV_V1_NAME_REGISTERED,
+          EV_V1_NAME_RENEWED,
+          EV_OWNERSHIP_TRANSFERRED,
+        ],
+      }),
       addrs.v1ReverseRegistrar || addrs.v1DefaultReverseRegistrar
-        ? scanLogs(
-            client,
-            {
-              address: [
-                addrs.v1ReverseRegistrar,
-                addrs.v1DefaultReverseRegistrar,
-              ].filter(Boolean) as Address[],
-              events: [EV_V1_CONTROLLER_CHANGED],
-            },
-            fromBlock,
-            toBlock,
-            span,
-          )
+        ? scanGroup({
+            address: [
+              addrs.v1ReverseRegistrar,
+              addrs.v1DefaultReverseRegistrar,
+            ].filter(Boolean) as Address[],
+            events: [EV_V1_CONTROLLER_CHANGED],
+          })
         : Promise.resolve([]),
-      scanLogs(
-        client,
-        {
-          address: [addrs.topUrp, addrs.managedUrp],
-          events: [EV_URP_UPGRADED, EV_URP_ADMIN_CHANGED, EV_URP_ADMIN_REMOVED],
-        },
-        fromBlock,
-        toBlock,
-        span,
-      ),
+      scanGroup({
+        address: [addrs.topUrp, addrs.managedUrp],
+        events: [EV_URP_UPGRADED, EV_URP_ADMIN_CHANGED, EV_URP_ADMIN_REMOVED],
+      }),
     ]);
+
+  // Block timestamps are shared across handlers in this scan so repeated
+  // lookups for the same block cost one RPC read.
+  const blockTsCache = new Map<bigint, number>();
+  const tsOf = async (blockNumber: bigint): Promise<number> => {
+    const cached = blockTsCache.get(blockNumber);
+    if (cached !== undefined) return cached;
+    const ts = await blockTimestamp(ctx, blockNumber);
+    blockTsCache.set(blockNumber, ts);
+    return ts;
+  };
 
   const same = (a?: Address | null, b?: Address | null) =>
     !!a && !!b && getAddress(a) === getAddress(b);
@@ -1572,10 +1557,13 @@ async function scanEvents(
           state.graveyardPending.length < config.graveyardPendingMax &&
           !state.graveyardPending.some((entry) => entry.label === label)
         ) {
+          // Anchored to the migration event's block time so a backfill or a
+          // daemon restart cannot grant an already-overdue v1 record a fresh
+          // lag window.
           state.graveyardPending.push({
             label,
             node: namehash(`${label}.eth`),
-            firstSeen: Date.now(),
+            firstSeen: (await tsOf(log.blockNumber)) * 1000,
           });
         }
       } else if (same(sender, addrs.batchRegistrar)) {
@@ -1686,15 +1674,11 @@ async function scanEvents(
     }
   }
   if (latestV2Renewal) {
-    state.renewalWatermarks.v2 = await blockTimestamp(
-      ctx,
-      latestV2Renewal.block,
-    );
+    state.renewalWatermarks.v2 = await tsOf(latestV2Renewal.block);
     state.probeLabels.registered = latestV2Renewal.label;
   }
   if (latestV1RenewerRenewal) {
-    state.renewalWatermarks.v1Renewer = await blockTimestamp(
-      ctx,
+    state.renewalWatermarks.v1Renewer = await tsOf(
       latestV1RenewerRenewal.block,
     );
     state.probeLabels.reserved = latestV1RenewerRenewal.label;
@@ -1764,7 +1748,7 @@ async function scanEvents(
     }
   }
   if (latestV1Renewal) {
-    state.renewalWatermarks.v1 = await blockTimestamp(ctx, latestV1Renewal);
+    state.renewalWatermarks.v1 = await tsOf(latestV1Renewal);
   }
 
   for (const log of reverseLogs) {
