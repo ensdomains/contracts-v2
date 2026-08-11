@@ -14,10 +14,13 @@ import {LockedMigrationController} from "~src/migration/LockedMigrationControlle
 import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {MigrationHelper, LockedChildren} from "~src/migration/MigrationHelper.sol";
-import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
+import {IStandaloneHCAFactory} from "~src/hca/interfaces/IStandaloneHCAFactory.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract MigrationHelperTest is MigrationControllerFixture {
+    string internal constant STANDALONE_HCA_FACTORY_ARTIFACT =
+        "src/hca/StandaloneHCAFactory.sol:StandaloneHCAFactory";
+
     UnlockedMigrationController unlockedController;
     LockedMigrationController lockedController;
     WrapperRegistry wrapperRegistryImpl;
@@ -73,7 +76,12 @@ contract MigrationHelperTest is MigrationControllerFixture {
             rootRegistry,
             unlockedController,
             lockedController,
-            new StandaloneHCAFactory(verifiableFactory, address(this)),
+            IStandaloneHCAFactory(
+                deployCode(
+                    STANDALONE_HCA_FACTORY_ARTIFACT,
+                    abi.encode(verifiableFactory, address(this))
+                )
+            ),
             contractNamer
         );
     }
