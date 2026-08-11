@@ -1803,7 +1803,22 @@ async function checkGraveyardLag(ctx: Ctx): Promise<CheckOutcome> {
   if (state.graveyardPending.length === 0) {
     return ok("graveyard-clear-lag", "no migrated names awaiting v1 cleanup");
   }
-  const sample = state.graveyardPending.slice(0, 200);
+  const now = Date.now();
+  const lagMs = config.graveyardLagHours * 3_600_000;
+
+  // Overdue candidates are re-read first, so the lag alert is only ever
+  // raised on an entry whose v1 record was verified live in this tick; any
+  // remaining read budget spot-checks the oldest of the rest. A backlog
+  // larger than one tick's budget drains across successive ticks as cleared
+  // entries drop out.
+  const byAge = [...state.graveyardPending].sort(
+    (a, b) => a.firstSeen - b.firstSeen,
+  );
+  const candidates = byAge.filter((entry) => now - entry.firstSeen > lagMs);
+  const rest = byAge.filter((entry) => now - entry.firstSeen <= lagMs);
+  const sample = [...candidates, ...rest].slice(0, 200);
+  const sampledLabels = new Set(sample.map((entry) => entry.label));
+
   const owners = (await withFailover(ctx, (client) =>
     client.multicall({
       contracts: sample.map(
@@ -1833,21 +1848,22 @@ async function checkGraveyardLag(ctx: Ctx): Promise<CheckOutcome> {
     (entry) => !cleared.has(entry.label),
   );
 
-  const now = Date.now();
-  const lagMs = config.graveyardLagHours * 3_600_000;
-  const overdue = state.graveyardPending.filter(
-    (entry) => now - entry.firstSeen > lagMs,
+  const verifiedOverdue = candidates.filter(
+    (entry) => sampledLabels.has(entry.label) && !cleared.has(entry.label),
   );
-  if (overdue.length > 0) {
+  const unverifiedOverdue = candidates.filter(
+    (entry) => !sampledLabels.has(entry.label),
+  ).length;
+  if (verifiedOverdue.length > 0) {
     return fail(
       "graveyard-clear-lag",
       "warning",
-      `${overdue.length} migrated name(s) still have live v1 registry records after ${config.graveyardLagHours}h (oldest: "${overdue[0].label}") — graveyard daemon may be stalled`,
+      `${verifiedOverdue.length} migrated name(s) verified with live v1 registry records after ${config.graveyardLagHours}h (oldest: "${verifiedOverdue[0].label}")${unverifiedOverdue > 0 ? `; ${unverifiedOverdue} more overdue entries await verification` : ""} — graveyard daemon may be stalled`,
     );
   }
   return ok(
     "graveyard-clear-lag",
-    `${state.graveyardPending.length} migrated name(s) awaiting v1 cleanup, all within the ${config.graveyardLagHours}h window`,
+    `${state.graveyardPending.length} migrated name(s) awaiting v1 cleanup${unverifiedOverdue > 0 ? ` (${unverifiedOverdue} overdue entries not yet re-verified this tick)` : `, all within the ${config.graveyardLagHours}h window`}`,
   );
 }
 
@@ -2226,11 +2242,45 @@ async function buildContext(options: CommonCliOptions): Promise<Ctx> {
     }),
   );
 
-  const chainId = await clients[0].getChainId();
-  if (chainId !== networkConfig.chain.id) {
+  // Startup validation must survive a dead primary: every reachable provider
+  // is checked (a wrong-chain provider would poison failover reads and is a
+  // hard error), unreachable ones are reported and tolerated as long as at
+  // least one provider answers.
+  const chainChecks = await Promise.all(
+    clients.map(async (client, index) => {
+      try {
+        return { url: rpcUrls[index], chainId: await client.getChainId() };
+      } catch {
+        return { url: rpcUrls[index], chainId: null };
+      }
+    }),
+  );
+  const wrongChain = chainChecks.filter(
+    (entry) =>
+      entry.chainId !== null && entry.chainId !== networkConfig.chain.id,
+  );
+  if (wrongChain.length > 0) {
     throw new Error(
-      `RPC ${rpcUrls[0]} reports chain ${chainId}, expected ${networkConfig.chain.id} for ${network}`,
+      wrongChain
+        .map(
+          (entry) =>
+            `RPC ${entry.url} reports chain ${entry.chainId}, expected ${networkConfig.chain.id} for ${network}`,
+        )
+        .join("; "),
     );
+  }
+  const reachable = chainChecks.filter((entry) => entry.chainId !== null);
+  if (reachable.length === 0) {
+    throw new Error(`No RPC provider is reachable: ${rpcUrls.join(", ")}`);
+  }
+  for (const entry of chainChecks) {
+    if (entry.chainId === null) {
+      console.error(
+        yellow(
+          `provider unreachable at startup, relying on failover: ${entry.url}`,
+        ),
+      );
+    }
   }
 
   const state = loadState(config.workDir, network, networkConfig.chain.id);
