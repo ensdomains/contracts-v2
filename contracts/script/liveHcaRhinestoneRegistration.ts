@@ -754,7 +754,7 @@ async function main() {
     [
       "DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER",
       "PERMITTED_RESOLVER_IMPL",
-      "ETH_REGISTRAR",
+      "ETH_REGISTRY",
       "VERIFIABLE_FACTORY",
       "PAYMENT_TOKEN",
       "SECONDARY_PAYMENT_TOKEN",
@@ -772,7 +772,7 @@ async function main() {
   const [
     boundReverseAdapter,
     boundResolverImpl,
-    boundRegistrar,
+    boundRegistry,
     boundFactory,
     boundPaymentToken,
     boundSecondaryPaymentToken,
@@ -790,10 +790,21 @@ async function main() {
     deployments.permissionedResolverImpl,
   );
   assertAddress(
-    "validator registrar",
-    boundRegistrar,
-    deployments.ethRegistrar,
+    "validator ETH registry",
+    boundRegistry,
+    deployments.ethRegistry,
   );
+  const registrarAuthorized = (await publicClient.readContract({
+    address: deployments.ethRegistry,
+    abi: PermissionedRegistry.abi,
+    functionName: "hasRootRoles",
+    args: [ROLES.REGISTRY.REGISTRAR, deployments.ethRegistrar],
+  })) as boolean;
+  if (!registrarAuthorized) {
+    throw new Error(
+      `selected registrar ${deployments.ethRegistrar} does not hold ETHRegistry ROLE_REGISTRAR`,
+    );
+  }
   assertAddress(
     "validator factory",
     boundFactory,

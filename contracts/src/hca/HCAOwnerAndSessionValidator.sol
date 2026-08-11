@@ -13,6 +13,8 @@ import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 
 import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
+import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
 
@@ -377,8 +379,8 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @notice The resolver implementation permitted for resolver deployment.
     address public immutable PERMITTED_RESOLVER_IMPL;
 
-    /// @notice The ENS registrar permitted for registration actions.
-    address public immutable ETH_REGISTRAR;
+    /// @notice The ENS registry whose root registrar role authorizes registration targets.
+    address public immutable ETH_REGISTRY;
 
     /// @notice The VerifiableFactory permitted for resolver deployment.
     address public immutable VERIFIABLE_FACTORY;
@@ -489,7 +491,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @param defaultReverseRegistrarHcaAdapter The HCA-aware default reverse registrar adapter.
     /// @param permittedResolverImpl The resolver implementation accepted in resolver deployment actions.
-    /// @param ethRegistrar The ENS registrar accepted by the registration policy.
+    /// @param ethRegistry The ENS registry that authorizes registrars through its root roles.
     /// @param verifiableFactory The VerifiableFactory accepted by the registration policy.
     /// @param paymentToken The primary ERC20 payment token accepted by the registration policy.
     /// @param secondaryPaymentToken The secondary ERC20 payment token accepted by the registration policy.
@@ -498,7 +500,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     constructor(
         address defaultReverseRegistrarHcaAdapter,
         address permittedResolverImpl,
-        address ethRegistrar,
+        address ethRegistry,
         address verifiableFactory,
         address paymentToken,
         address secondaryPaymentToken,
@@ -508,7 +510,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     {
         DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER = defaultReverseRegistrarHcaAdapter;
         PERMITTED_RESOLVER_IMPL = permittedResolverImpl;
-        ETH_REGISTRAR = ethRegistrar;
+        ETH_REGISTRY = ethRegistry;
         VERIFIABLE_FACTORY = verifiableFactory;
         VERIFIABLE_PROXY_LOGIC = VerifiableFactory(verifiableFactory).proxyLogic();
         PAYMENT_TOKEN = paymentToken;
@@ -1374,15 +1376,18 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
             bytes4 selector = _selector(execution.callData);
 
-            if (execution.target == ETH_REGISTRAR) {
-                if (selector != COMMIT_SELECTOR && selector != REGISTER_SELECTOR) {
+            if (selector == COMMIT_SELECTOR) {
+                if (!_isAuthorizedRegistrar(execution.target)) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
-                if (selector == REGISTER_SELECTOR) {
-                    state.usesResolver = true;
-                    if (policyResolver.code.length == 0 && !state.deploysResolver) {
-                        revert PolicyRuleFailed();
-                    }
+                continue;
+            }
+
+            if (selector == REGISTER_SELECTOR) {
+                // The preceding registration scan verifies the target's live registrar role.
+                state.usesResolver = true;
+                if (policyResolver.code.length == 0 && !state.deploysResolver) {
+                    revert PolicyRuleFailed();
                 }
                 continue;
             }
@@ -1459,11 +1464,11 @@ contract HCAOwnerAndSessionValidator is IValidator {
     {
         for (uint256 i; i < executions.length; ++i) {
             Execution memory execution = executions[i];
-            if (
-                execution.target != ETH_REGISTRAR ||
-                _selector(execution.callData) != REGISTER_SELECTOR
-            ) {
+            if (_selector(execution.callData) != REGISTER_SELECTOR) {
                 continue;
+            }
+            if (!_isAuthorizedRegistrar(execution.target)) {
+                revert ActionNotAllowed(execution.target, REGISTER_SELECTOR);
             }
 
             (address registrant, address resolver) = _registerFields(execution.callData);
@@ -1568,7 +1573,8 @@ contract HCAOwnerAndSessionValidator is IValidator {
             );
     }
 
-    /// @dev Allows registrar payment approvals and exact, signed executor-refund approvals.
+    /// @dev Allows payment approvals to registry-authorized registrars and exact, signed
+    ///      executor-refund approvals.
     function _checkPaymentTokenApproval(
         address token,
         bytes memory callData,
@@ -1578,7 +1584,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         view
     {
         address spender = _readAddress(callData, 4);
-        if (spender == ETH_REGISTRAR) {
+        if (_isAuthorizedRegistrar(spender)) {
             return;
         }
         if (
@@ -1588,6 +1594,17 @@ contract HCAOwnerAndSessionValidator is IValidator {
         ) {
             revert PolicyRuleFailed();
         }
+    }
+
+    /// @dev Returns whether the pinned registry currently authorizes an account to register names.
+    /// @param account The prospective registrar.
+    /// @return authorized Whether the account holds the root registrar role.
+    function _isAuthorizedRegistrar(address account) internal view returns (bool authorized) {
+        return
+            IPermissionedRegistry(ETH_REGISTRY).hasRootRoles(
+                RegistryRolesLib.ROLE_REGISTRAR,
+                account
+            );
     }
 
     /// @dev Finds and checks an optional EIP-2612 funding pull into the HCA.

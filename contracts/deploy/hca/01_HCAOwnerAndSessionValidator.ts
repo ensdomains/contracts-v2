@@ -20,8 +20,8 @@ export default execute(
     const permittedResolverImpl = get<
       (typeof artifacts.PermissionedResolver)["abi"]
     >("PermissionedResolverImpl");
-    const ethRegistrar =
-      get<(typeof artifacts.ETHRegistrar)["abi"]>("ETHRegistrar");
+    const ethRegistry =
+      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
     const verifiableFactory =
       get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
     const localExecutor = getOrNull<
@@ -62,7 +62,7 @@ export default execute(
       args: [
         defaultReverseRegistrarAdapter.address,
         permittedResolverImpl.address,
-        ethRegistrar.address,
+        ethRegistry.address,
         verifiableFactory.address,
         paymentToken,
         secondaryPaymentToken,
@@ -82,7 +82,7 @@ export default execute(
     dependencies: [
       "DefaultReverseRegistrarAdapter",
       "PermissionedResolverImpl",
-      "ETHRegistrar",
+      "ETHRegistry",
       "VerifiableFactory",
       "MockRegistrationIntentExecutor",
     ],
