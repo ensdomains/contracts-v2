@@ -18,6 +18,31 @@ const outputSelection = {
     "*": ["storageLayout"],
   },
 };
+// Keep exactly one general compiler so every non-overridden production root
+// remains on the protocol compiler. New compiler versions must be scoped with
+// explicit overrides and added to the compiler-policy regression.
+const protocolCompiler = {
+  version,
+  settings: {
+    optimizer: {
+      enabled: true,
+      runs: 1000,
+    },
+    evmVersion: "cancun",
+    outputSelection,
+  },
+} as const;
+const hcaCompiler = {
+  version: hcaVersion,
+  settings: {
+    optimizer: {
+      enabled: true,
+      runs: 1000,
+    },
+    evmVersion: "cancun",
+    outputSelection,
+  },
+} as const;
 const tenderlySepoliaRpcUrl =
   process.env.TENDERLY_SEPOLIA_RPC_URL ??
   configVariable("TENDERLY_SEPOLIA_RPC_URL");
@@ -35,31 +60,18 @@ const plugins = [
 ];
 const config = {
   solidity: {
-    compilers: [
-      {
-        version,
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 1000,
-          },
-          evmVersion: "cancun",
-          outputSelection,
-        },
-      },
-      {
-        version: hcaVersion,
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 1000,
-          },
-          evmVersion: "prague",
-          outputSelection,
-        },
-      },
-    ],
+    compilers: [protocolCompiler],
     overrides: {
+      "src/hca/HCAFundingSessionValidator.sol": hcaCompiler,
+      "src/hca/HCAOwnerAndSessionValidator.sol": hcaCompiler,
+      "src/hca/StandaloneHCAFactory.sol": hcaCompiler,
+      "src/hca/StandaloneSingleOwnerHCA.sol": hcaCompiler,
+      "test/mocks/MockRegistrationIntentExecutor.sol": hcaCompiler,
+      "test/mocks/MockStandaloneHCAStack.sol": hcaCompiler,
+      "test/unit/hca/HCAFundingSessionValidator.t.sol": hcaCompiler,
+      "test/unit/hca/HCAOwnerAndSessionValidator.t.sol": hcaCompiler,
+      "test/unit/hca/StandaloneHCAFactory.t.sol": hcaCompiler,
+      "test/unit/hca/StandaloneSingleOwnerHCA.t.sol": hcaCompiler,
       "lib/ens-contracts/contracts/wrapper/NameWrapper.sol": {
         version: "0.8.17",
         settings: {
@@ -67,6 +79,8 @@ const config = {
             enabled: true,
             runs: 1200,
           },
+          evmVersion: "london",
+          outputSelection,
         },
       },
       // 23k at 1
@@ -79,17 +93,6 @@ const config = {
             runs: 100,
           },
           evmVersion: "cancun",
-          outputSelection,
-        },
-      },
-      "src/L2/reverse-registrar/L2ReverseRegistrar.sol": {
-        version,
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 1_000_000,
-          },
-          evmVersion: "paris",
           outputSelection,
         },
       },

@@ -13,12 +13,14 @@ import {MockExecutorModule, MockValidatorModule} from "../../mocks/MockStandalon
 
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
-import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
 /// @title Standalone HCA Factory Tests
 /// @notice Exercises governed deployment and immutable HCA owner certification.
 contract StandaloneHCAFactoryTest is Test {
+    string internal constant PERMISSIONED_ADDRESS_SET_ARTIFACT =
+        "src/utils/PermissionedAddressSet.sol:PermissionedAddressSet";
+
     uint256 internal constant USER_SALT = 7;
 
     address internal owner = makeAddr("owner");
@@ -244,9 +246,13 @@ contract StandaloneHCAFactoryTest is Test {
                 address(new MockValidatorModule()),
                 address(new MockExecutorModule()),
                 "",
-                new PermissionedAddressSet(address(this)),
+                _deployPermissionedAddressSet(address(this)),
                 IAddressSet(address(0))
             );
+    }
+
+    function _deployPermissionedAddressSet(address rootAccount) internal returns (IAddressSet) {
+        return IAddressSet(deployCode(PERMISSIONED_ADDRESS_SET_ARTIFACT, abi.encode(rootAccount)));
     }
 
     function _expectedAddress(address owner_, address implementation_, uint256 userSalt)

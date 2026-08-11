@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.27;
+pragma solidity 0.8.27;
 
 import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
@@ -13,12 +13,39 @@ import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 
 import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
-import {PermissionedResolver} from "../resolver/PermissionedResolver.sol";
-import {
-    DefaultReverseRegistrarAdapter
-} from "../reverse-registrar/DefaultReverseRegistrarAdapter.sol";
 
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
+
+/// @notice Resolver calls encoded and validated by the HCA registration policy.
+/// @dev Interface selector: `0xcb811eec`
+interface IHCARegistrationResolver {
+    /// @notice Initializes a resolver proxy for an account.
+    /// @param admin The initial resolver administrator.
+    /// @param roleBitmap The roles granted to the administrator.
+    /// @param setters Initial resolver calls executed during initialization.
+    function initialize(address admin, uint256 roleBitmap, bytes[] calldata setters) external;
+
+    /// @notice Updates an account's roles for an ENS name.
+    /// @param name The DNS-encoded name whose roles are updated.
+    /// @param roleBitmap The roles to update.
+    /// @param account The account receiving or losing the roles.
+    /// @param grant Whether the roles are granted or revoked.
+    /// @return success Whether the roles were updated.
+    function authorizeNameRoles(bytes calldata name, uint256 roleBitmap, address account, bool grant)
+        external
+        returns (bool success);
+}
+
+
+/// @notice Reverse-registration call encoded and validated by the HCA registration policy.
+/// @dev Interface selector: `0xab863445`
+interface IHCAReverseRegistrarAdapter {
+    /// @notice Sets the primary name for an account through its HCA.
+    /// @param account The account whose primary name is set.
+    /// @param name The primary name to set.
+    function setNameWithHCA(address account, string calldata name) external;
+}
+
 
 /// @title HCA Owner and Session Validator
 /// @notice Fixed validator for standalone HCA owner authorization and scoped ENS sessions.
@@ -302,7 +329,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @notice Selector for DefaultReverseRegistrarAdapter.setNameWithHCA(address,string).
     bytes4 public constant SET_NAME_WITH_HCA_SELECTOR =
-        DefaultReverseRegistrarAdapter.setNameWithHCA.selector;
+        IHCAReverseRegistrarAdapter.setNameWithHCA.selector;
 
     /// @notice Selector for PermissionedResolver.clearRecords(bytes32).
     bytes4 public constant CLEAR_RECORDS_SELECTOR = 0x3603d758;
@@ -342,7 +369,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @notice Selector for PermissionedResolver.authorizeNameRoles(bytes,uint256,address,bool).
     bytes4 public constant AUTHORIZE_NAME_ROLES_SELECTOR =
-        PermissionedResolver.authorizeNameRoles.selector;
+        IHCARegistrationResolver.authorizeNameRoles.selector;
 
     /// @notice The HCA-aware default reverse registrar adapter permitted for default primary-name setup.
     address public immutable DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER;
@@ -1472,7 +1499,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         bytes[] memory setters = new bytes[](0);
         bytes memory expectedInitData =
             abi.encodeCall(
-                PermissionedResolver.initialize,
+                IHCARegistrationResolver.initialize,
                 (account, EACBaseRolesLib.ALL_ROLES, setters)
             );
         bytes memory expectedCallData =
@@ -1826,7 +1853,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         if (selector == AUTHORIZE_NAME_ROLES_SELECTOR) {
             bytes memory expectedCallData =
                 abi.encodeCall(
-                    PermissionedResolver.authorizeNameRoles,
+                    IHCARegistrationResolver.authorizeNameRoles,
                     (hex"00", EACBaseRolesLib.ALL_ROLES, owner, true)
                 );
             if (keccak256(callData) != keccak256(expectedCallData)) {

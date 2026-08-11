@@ -5,18 +5,23 @@ import {Test} from "forge-std/Test.sol";
 
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
-import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
+import {IStandaloneHCAFactory} from "~src/hca/interfaces/IStandaloneHCAFactory.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
 
 /// @title HCA Test Fixture
 /// @notice Provides factory-certified and uncertified HCAs for adapter tests.
 /// @dev Certified HCAs are deployed through the real `StandaloneHCAFactory` so consumer tests
 ///      exercise the production certification path; the fixture acts as factory governance.
+///      The factory is deployed from its compiled artifact so consumer tests never import its
+///      source into their own compiler profile.
 abstract contract HCAFixture is Test {
+    string internal constant STANDALONE_HCA_FACTORY_ARTIFACT =
+        "src/hca/StandaloneHCAFactory.sol:StandaloneHCAFactory";
+
     MockHCA trustedHCAImpl;
     MockHCA untrustedHCAImpl;
     VerifiableFactory verifiableFactory;
-    StandaloneHCAFactory standaloneHCAFactory;
+    IStandaloneHCAFactory standaloneHCAFactory;
 
     uint256 private nextSalt = 1;
 
@@ -24,7 +29,9 @@ abstract contract HCAFixture is Test {
         verifiableFactory = new VerifiableFactory();
         trustedHCAImpl = new MockHCA();
         untrustedHCAImpl = new MockHCA();
-        standaloneHCAFactory = new StandaloneHCAFactory(verifiableFactory, address(this));
+        standaloneHCAFactory = IStandaloneHCAFactory(
+            deployCode(STANDALONE_HCA_FACTORY_ARTIFACT, abi.encode(verifiableFactory, address(this)))
+        );
         standaloneHCAFactory.setImplementationApproval(address(trustedHCAImpl), true);
     }
 

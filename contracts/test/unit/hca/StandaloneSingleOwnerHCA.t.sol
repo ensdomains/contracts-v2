@@ -35,15 +35,21 @@ import {
 } from "../../mocks/MockStandaloneHCAStack.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
-import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {
+    HCAOwnerAndSessionValidator,
+    IHCARegistrationResolver
+} from "~src/hca/HCAOwnerAndSessionValidator.sol";
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
-import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
-import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
 contract StandaloneSingleOwnerHCATest is Test {
+    string internal constant PERMISSIONED_ADDRESS_SET_ARTIFACT =
+        "src/utils/PermissionedAddressSet.sol:PermissionedAddressSet";
+    string internal constant PERMISSIONED_RESOLVER_ARTIFACT =
+        "src/resolver/PermissionedResolver.sol:PermissionedResolver";
+
     bytes4 constant ERC1271_MAGICVALUE = 0x1626ba7e;
 
     bytes4 constant COMMIT_SELECTOR = 0xf14fcbc8;
@@ -87,22 +93,22 @@ contract StandaloneSingleOwnerHCATest is Test {
     HCAOwnerAndSessionValidator validator;
     HCAOwnerAndSessionValidatorHarness validatorHarness;
     MockStandaloneHCA hca;
-    PermissionedAddressSet upgradeSet;
+    IAddressSetApproval upgradeSet;
 
     function setUp() public {
-        upgradeSet = new PermissionedAddressSet(upgradeSetAdmin);
+        upgradeSet = _deployPermissionedAddressSet(upgradeSetAdmin);
         hca = new MockStandaloneHCA(owner);
 
         VerifiableFactory factory = new VerifiableFactory();
         verifiableFactory = address(factory);
-        permittedResolverImpl = address(new PermissionedResolver(makeAddr("resolver-namer")));
+        permittedResolverImpl = _deployPermissionedResolver(makeAddr("resolver-namer"));
         bytes[] memory setters = new bytes[](0);
         vm.prank(address(hca));
         resolver = factory.deployProxy(
             permittedResolverImpl,
             resolverSalt,
             abi.encodeCall(
-                PermissionedResolver.initialize,
+                IHCARegistrationResolver.initialize,
                 (address(hca), EACBaseRolesLib.ALL_ROLES, setters)
             )
         );
@@ -184,7 +190,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     function test_standaloneSingleOwnerHCA_upgradesThroughVerifiableFactoryProxy() public {
         VerifiableFactory factory = new VerifiableFactory();
         StandaloneSingleOwnerHCA implementation = _newAccount();
-        PermissionedAddressSet predecessorUpgradeSet = new PermissionedAddressSet(upgradeSetAdmin);
+        IAddressSetApproval predecessorUpgradeSet = _deployPermissionedAddressSet(upgradeSetAdmin);
         StandaloneSingleOwnerHCA nextImplementation = _newAccount(predecessorUpgradeSet);
 
         address proxy =
@@ -1169,10 +1175,9 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function test_validator_rejectsChangedResolverImplementation() public {
-        PermissionedResolver otherImplementation =
-            new PermissionedResolver(makeAddr("other-resolver-namer"));
+        address otherImplementation = _deployPermissionedResolver(makeAddr("other-resolver-namer"));
         vm.prank(address(hca));
-        IUUPSProxyUpgrade(resolver).upgradeToAndCall(address(otherImplementation), "");
+        IUUPSProxyUpgrade(resolver).upgradeToAndCall(otherImplementation, "");
 
         _expectValidationRevert(
             _singleOperationData(
@@ -1721,7 +1726,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         LegacyDelegatecallHCA implementation =
             new LegacyDelegatecallHCA(address(userOpEntryPoint), address(validator));
         VerifiableFactory factory = new VerifiableFactory();
-        PermissionedAddressSet trustedHCASet = new PermissionedAddressSet(address(this));
+        IAddressSetApproval trustedHCASet = _deployPermissionedAddressSet(address(this));
         trustedHCASet.approve(address(implementation), true);
         StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
         deployer.setImplementationApproval(address(implementation), true);
@@ -1853,6 +1858,20 @@ contract StandaloneSingleOwnerHCATest is Test {
             );
     }
 
+    function _deployPermissionedAddressSet(address rootAccount)
+        internal
+        returns (IAddressSetApproval)
+    {
+        return
+            IAddressSetApproval(
+                deployCode(PERMISSIONED_ADDRESS_SET_ARTIFACT, abi.encode(rootAccount))
+            );
+    }
+
+    function _deployPermissionedResolver(address namer) internal returns (address) {
+        return deployCode(PERMISSIONED_RESOLVER_ARTIFACT, abi.encode(namer));
+    }
+
     function _resolverAddress(VerifiableFactory factory, address deployer, uint256 salt)
         internal
         view
@@ -1925,7 +1944,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         pure
         returns (bytes memory)
     {
-        return abi.encodeCall(PermissionedResolver.initialize, (admin, roleBitmap, setters));
+        return abi.encodeCall(IHCARegistrationResolver.initialize, (admin, roleBitmap, setters));
     }
 
     function _registrationOperationDataWithDefaultReverseName(
@@ -2443,7 +2462,7 @@ contract OwnerSpoofingPayload {
 contract ImplementationTrustOnlyDefaultAdapter {
     DefaultReverseRegistrar internal immutable REGISTRAR;
     VerifiableFactory internal immutable VERIFIABLE_FACTORY;
-    PermissionedAddressSet internal immutable TRUSTED_HCA_SET;
+    IAddressSet internal immutable TRUSTED_HCA_SET;
 
     /// @param registrar The reverse registrar updated by the adapter.
     /// @param verifiableFactory The factory queried for the caller's current implementation.
@@ -2451,7 +2470,7 @@ contract ImplementationTrustOnlyDefaultAdapter {
     constructor(
         DefaultReverseRegistrar registrar,
         VerifiableFactory verifiableFactory,
-        PermissionedAddressSet trustedHCASet
+        IAddressSet trustedHCASet
     )
     {
         REGISTRAR = registrar;
@@ -2468,6 +2487,16 @@ contract ImplementationTrustOnlyDefaultAdapter {
         require(IStandaloneHCAOwner(msg.sender).owner() == account);
         REGISTRAR.setNameForAddr(account, name);
     }
+}
+
+
+/// @title Address Set Approval Interface
+/// @notice Exposes the mutation used with production address-set deployments in these tests.
+interface IAddressSetApproval is IAddressSet {
+    /// @notice Adds or removes an address from the set.
+    /// @param addr The address whose membership changes.
+    /// @param approved Whether the address is included.
+    function approve(address addr, bool approved) external;
 }
 
 
