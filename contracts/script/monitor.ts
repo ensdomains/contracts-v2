@@ -641,7 +641,13 @@ async function checkWiring(ctx: Ctx): Promise<CheckOutcome[]> {
       address: addrs.ethRegistry,
       abi: v2RegistryAbi,
       functionName: "hasRootRoles",
-      args: [REGISTRAR_ROLES, addrs.batchRegistrar],
+      args: [ROLES.REGISTRY.REGISTRAR, addrs.batchRegistrar],
+    } as const,
+    {
+      address: addrs.ethRegistry,
+      abi: v2RegistryAbi,
+      functionName: "hasRootRoles",
+      args: [ROLES.REGISTRY.RENEW, addrs.batchRegistrar],
     } as const,
     {
       address: addrs.ethRegistry,
@@ -713,7 +719,8 @@ async function checkWiring(ctx: Ctx): Promise<CheckOutcome[]> {
   let i = 0;
   const v1Owner = results[i++] as Address;
   const registrarEnabled = results[i++] as boolean;
-  const batchEnabled = results[i++] as boolean;
+  const batchCanRegister = results[i++] as boolean;
+  const batchCanRenew = results[i++] as boolean;
   const renewerEnabled = results[i++] as boolean;
   const unlockedRole = results[i++] as boolean;
   const lockedRole = results[i++] as boolean;
@@ -746,12 +753,19 @@ async function checkWiring(ctx: Ctx): Promise<CheckOutcome[]> {
           "ETHRegistrar lost REGISTRAR|RENEW on ETHRegistry — registrations/renewals are down",
         ),
   );
+  // The forbidden roles are checked one bit at a time: a combined-mask read
+  // would miss a partial re-grant of only REGISTRAR or only RENEW.
   outcomes.push(
-    batchEnabled
+    batchCanRegister || batchCanRenew
       ? fail(
           "v2-batch-registrar-disabled",
           "critical",
-          "BatchRegistrar still holds REGISTRAR|RENEW — pre-migration seeding roles must be revoked",
+          `BatchRegistrar still holds ${[
+            batchCanRegister ? "REGISTRAR" : null,
+            batchCanRenew ? "RENEW" : null,
+          ]
+            .filter(Boolean)
+            .join("|")} — pre-migration seeding roles must be revoked`,
         )
       : ok(
           "v2-batch-registrar-disabled",
@@ -1341,8 +1355,15 @@ async function judgeOrganicRegistration(
   txHash: string,
 ): Promise<CheckOutcome | null> {
   const v1TokenId = BigInt(labelHash);
-  const reads = await withFailover(ctx, (client) =>
-    client.multicall({
+  const registeredAt = BigInt(await blockTimestamp(ctx, blockNumber));
+
+  // Evaluated independently per provider: "protected" means the v1
+  // registration (plus its 90-day grace) had not elapsed at registration time
+  // and the v1 token was not already retired to the Graveyard.
+  const evaluate = async (
+    client: PublicClient,
+  ): Promise<{ isProtected: boolean; description: string }> => {
+    const reads = await client.multicall({
       contracts: [
         {
           address: ctx.addrs.v1BaseRegistrar,
@@ -1358,44 +1379,74 @@ async function judgeOrganicRegistration(
         },
       ],
       allowFailure: true,
-    }),
-  );
-  const expires =
-    reads[0].status === "success" ? (reads[0].result as bigint) : null;
-  const v1Owner =
-    reads[1].status === "success" ? (reads[1].result as Address) : null;
+    });
+    if (reads[0].status !== "success") {
+      throw new Error("nameExpires read failed");
+    }
+    const expires = reads[0].result as bigint;
+    const v1Owner =
+      reads[1].status === "success" ? (reads[1].result as Address) : null;
+    if (expires === 0n) {
+      return { isProtected: false, description: "never registered on v1" };
+    }
+    if (v1Owner && getAddress(v1Owner) === getAddress(ctx.addrs.graveyard)) {
+      return { isProtected: false, description: "v1 token held by Graveyard" };
+    }
+    if (registeredAt >= expires + GRACE_PERIOD_V1) {
+      return {
+        isProtected: false,
+        description: `v1 expiry ${expires} + grace elapsed`,
+      };
+    }
+    return { isProtected: true, description: `v1 expiry ${expires}` };
+  };
 
-  if (expires === null || expires === 0n) return null;
-  if (v1Owner && getAddress(v1Owner) === getAddress(ctx.addrs.graveyard)) {
-    return null;
-  }
-  const registeredAt = BigInt(await blockTimestamp(ctx, blockNumber));
-  if (registeredAt >= expires + GRACE_PERIOD_V1) return null;
-
-  // Re-read on every other provider so one bad RPC cannot fire this alone.
-  const confirmations: string[] = [];
-  for (let index = 1; index < ctx.clients.length; index++) {
+  // A single provider must be able to neither fabricate nor veto the finding:
+  // every reachable provider is polled, a unanimous "protected" verdict fires
+  // the critical alert, and an explicit contradiction downgrades it to a
+  // warning for manual review. Unreachable providers are reported but do not
+  // suppress the finding.
+  const verdicts: {
+    url: string;
+    verdict: { isProtected: boolean; description: string } | null;
+  }[] = [];
+  for (let index = 0; index < ctx.clients.length; index++) {
     try {
-      const cross = (await ctx.clients[index].readContract({
-        address: ctx.addrs.v1BaseRegistrar,
-        abi: v1BaseRegistrarAbi,
-        functionName: "nameExpires",
-        args: [v1TokenId],
-      })) as bigint;
-      confirmations.push(`${ctx.config.rpcUrls[index]}: nameExpires=${cross}`);
+      verdicts.push({
+        url: ctx.config.rpcUrls[index],
+        verdict: await evaluate(ctx.clients[index]),
+      });
     } catch {
-      confirmations.push(`${ctx.config.rpcUrls[index]}: unavailable`);
+      verdicts.push({ url: ctx.config.rpcUrls[index], verdict: null });
     }
   }
+  const reachable = verdicts.filter((entry) => entry.verdict !== null);
+  if (reachable.length === 0) {
+    return fail(
+      `missed-name-unverifiable:${label}`,
+      "warning",
+      `organic v2 registration of "${label}.eth" could not be checked against v1 — every RPC provider failed`,
+      `tx ${txHash}`,
+    );
+  }
+  if (!reachable.some((entry) => entry.verdict?.isProtected)) return null;
+
+  const contradicted = reachable.filter((entry) => !entry.verdict?.isProtected);
+  const providerNotes = verdicts.map(
+    (entry) =>
+      `${entry.url}: ${entry.verdict ? `${entry.verdict.isProtected ? "protected" : "not protected"} (${entry.verdict.description})` : "unavailable"}`,
+  );
 
   return fail(
     `missed-name:${label}`,
-    "critical",
-    `"${label}.eth" was organically registered on v2 by ${owner} while its v1 registration is still protected (v1 expiry ${expires}, +90d grace not elapsed at registration time ${registeredAt})`,
+    contradicted.length > 0 ? "warning" : "critical",
+    contradicted.length > 0
+      ? `RPC providers disagree on whether "${label}.eth" (organically registered on v2 by ${owner}) was still protected on v1 — verify manually`
+      : `"${label}.eth" was organically registered on v2 by ${owner} while its v1 registration is still protected (+90d grace not elapsed at registration time ${registeredAt})`,
     [
-      `This name appears to have been missed by pre-migration — the v1 owner may lose it.`,
+      `This name may have been missed by pre-migration — the v1 owner may lose it.`,
       `tx ${txHash}`,
-      ...confirmations,
+      ...providerNotes,
     ].join("\n  "),
   );
 }

@@ -65,8 +65,10 @@ Pass multiple `--rpc-url` values (or comma-separate them in `SEPOLIA_RPC_URL` /
 
 - fails over reads to the next provider when one errors,
 - compares head blocks across providers each tick and warns on lag or unreachability,
-- re-reads every **missed-name** finding against *all* providers before alerting, so a single
-  faulty provider can neither hide nor fabricate the highest-severity finding.
+- evaluates every **missed-name** finding on *all* providers before alerting — a unanimous
+  verdict fires the critical, an explicit disagreement downgrades it to a warning for manual
+  review — so a single faulty provider can neither hide nor fabricate the highest-severity
+  finding.
 
 ## Check catalogue
 
