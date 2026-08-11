@@ -1315,6 +1315,19 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
     }
 
+    function test_validator_rejectsReverseClaimWithUndeployedResolver() public {
+        address codelessResolver = makeAddr("codeless-resolver");
+        _expectValidationRevert(
+            _singleOperationData(
+                reverseRegistrarHCAAdapter,
+                0,
+                abi.encodeWithSelector(CLAIM_WITH_HCA_SELECTOR, owner, codelessResolver)
+            ),
+            codelessResolver,
+            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
+        );
+    }
+
     function test_validator_rejectsReverseClaimPolicyViolations() public {
         _expectValidationRevert(
             _singleOperationData(

@@ -1246,7 +1246,8 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @dev Checks target, selector, value, and selected ABI arguments for each execution.
     ///      A default reverse name may be updated when the policy has a nonzero resolver and the
     ///      named account is the HCA owner. The owner's `addr.reverse` node may be claimed with
-    ///      either a zero resolver or the session's bound resolver.
+    ///      either a zero resolver or the session's bound resolver; a nonzero claim resolver
+    ///      counts as resolver use and must pass the resolver binding checks.
     /// @param account The HCA that executes the operation.
     /// @param owner The owner recorded for the HCA.
     /// @param allowedResolver The resolver bound to the enabled session.
@@ -1432,8 +1433,11 @@ contract HCAOwnerAndSessionValidator is IValidator {
                     revert PolicyRuleFailed();
                 }
                 address claimResolver = _readAddress(execution.callData, 4 + 32);
-                if (claimResolver != address(0) && claimResolver != policyResolver) {
-                    revert PolicyRuleFailed();
+                if (claimResolver != address(0)) {
+                    if (claimResolver != policyResolver) {
+                        revert PolicyRuleFailed();
+                    }
+                    state.usesResolver = true;
                 }
                 continue;
             }
