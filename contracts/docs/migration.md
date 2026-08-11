@@ -654,6 +654,9 @@ role-specific variables are tried in order.
 
 ## Related docs
 
+- [monitoring.md](./monitoring.md) — continuous post-migration monitoring: the `bun run monitor`
+  daemon that re-verifies the end-state of phases 3–7, watches for missed names, and probes
+  renewals, wrapper sync, and resolution.
 - [premigration.md](./premigration.md) — the `BatchRegistrar` seeding step in detail (phases 2 and 5):
   CSV format, continuity expiry, checkpoints, verification.
 - [universalResolver.md](./universalResolver.md) — the URP proxy chain behind phase 7, and the
