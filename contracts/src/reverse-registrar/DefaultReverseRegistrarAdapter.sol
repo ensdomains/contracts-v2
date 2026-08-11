@@ -47,6 +47,13 @@ contract DefaultReverseRegistrarAdapter is
         DEFAULT_REVERSE_REGISTRAR = defaultReverseRegistrar;
     }
 
+    /// @inheritdoc ERC165
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+        return
+            interfaceId == type(IDefaultReverseRegistrarAdapter).interfaceId ||
+            super.supportsInterface(interfaceId);
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
@@ -65,12 +72,5 @@ contract DefaultReverseRegistrarAdapter is
     function setNameWithHCA(address account, string calldata name) external {
         _requireHCAForAccount(account);
         DEFAULT_REVERSE_REGISTRAR.setNameForAddr(account, name);
-    }
-
-    /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return
-            interfaceId == type(IDefaultReverseRegistrarAdapter).interfaceId ||
-            super.supportsInterface(interfaceId);
     }
 }

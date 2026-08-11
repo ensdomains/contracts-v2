@@ -45,6 +45,13 @@ contract ReverseRegistrarAdapter is
         REVERSE_REGISTRAR = reverseRegistrar;
     }
 
+    /// @inheritdoc ERC165
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+        return
+            interfaceId == type(IReverseRegistrarAdapter).interfaceId ||
+            super.supportsInterface(interfaceId);
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
@@ -66,12 +73,5 @@ contract ReverseRegistrarAdapter is
     function claimWithHCA(address account, address resolver) external returns (bytes32) {
         address hcaOwner = _requireHCAForAccount(account);
         return REVERSE_REGISTRAR.claimForAddr(account, hcaOwner, resolver);
-    }
-
-    /// @inheritdoc ERC165
-    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return
-            interfaceId == type(IReverseRegistrarAdapter).interfaceId ||
-            super.supportsInterface(interfaceId);
     }
 }
