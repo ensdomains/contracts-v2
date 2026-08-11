@@ -5,7 +5,7 @@ import {IReverseRegistrar} from "@ens/contracts/reverseRegistrar/IReverseRegistr
 
 /// @title Reverse Registrar Adapter Interface
 /// @notice Forwards v1 `addr.reverse` registrar claims for contracts and HCAs.
-/// @dev Interface selector: `0x7deeb961`
+/// @dev Interface selector: `0x7deebf61`
 interface IReverseRegistrarAdapter {
     /// @notice Claims account's `addr.reverse` node and sets its resolver.
     /// @param account The account to claim.
