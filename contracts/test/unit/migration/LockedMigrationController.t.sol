@@ -36,7 +36,11 @@ import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegis
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
-import {WrapperRegistry, IWrapperRegistry} from "~src/registry/WrapperRegistry.sol";
+import {IWrapperRegistry} from "~src/registry/interfaces/IWrapperRegistry.sol";
+import {
+    IWrapperRegistryInitializable
+} from "~src/registry/interfaces/IWrapperRegistryInitializable.sol";
+import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
@@ -142,6 +146,13 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 type(IWrapperRegistry).interfaceId
             ),
             "IWrapperRegistry"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(wrapperRegistryImpl),
+                type(IWrapperRegistryInitializable).interfaceId
+            ),
+            "IWrapperRegistryInitializable"
         );
     }
 
@@ -589,7 +600,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         IPermissionedRegistry registry =
             IPermissionedRegistry(address(ethRegistry.getSubregistry(md.label)));
-        address virtualOwner = address(ethRegistry);
 
         assertEq(registry.roles(registry.ROOT_RESOURCE(), actor), 0);
 
@@ -1340,7 +1350,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 address(wrapperRegistryImpl),
                 salt,
                 abi.encodeCall(
-                    IWrapperRegistry.initialize,
+                    IWrapperRegistryInitializable.initialize,
                     (node, ethRegistry, testLabel, RegistryRolesLib.ROLE_UPGRADE)
                 )
             );

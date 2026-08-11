@@ -29,6 +29,10 @@ import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAc
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {IPermissionedResolver} from "~src/resolver/interfaces/IPermissionedResolver.sol";
+import {
+    IPermissionedResolverInitializable,
+    Grant
+} from "~src/resolver/interfaces/IPermissionedResolverInitializable.sol";
 import {PermissionedResolverLib} from "~src/resolver/libraries/PermissionedResolverLib.sol";
 import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
 
@@ -58,8 +62,10 @@ contract PermissionedResolverTest is Test {
         testName = NameCoder.encode("test.eth");
         testNode = NameCoder.namehash(testName, 0);
 
+        Grant[] memory grants = new Grant[](1);
+        grants[0] = Grant(owner, DEFAULT_ROLES);
         bytes memory initData =
-            abi.encodeCall(PermissionedResolver.initialize, (owner, DEFAULT_ROLES, new bytes[](0)));
+            abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, new bytes[](0)));
         resolver = PermissionedResolver(
             factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
         );
@@ -75,7 +81,10 @@ contract PermissionedResolverTest is Test {
 
     function test_initialize_unowned() external {
         bytes memory initData =
-            abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, new bytes[](0)));
+            abi.encodeCall(
+                IPermissionedResolverInitializable.initialize,
+                (new Grant[](0), new bytes[](0))
+            );
         PermissionedResolver r =
             PermissionedResolver(
                 factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
@@ -83,12 +92,13 @@ contract PermissionedResolverTest is Test {
         assertEq(r.roleCount(r.ROOT_RESOURCE()), 0);
     }
 
-    function test_initalize_with_setters() external {
+    function test_initalize_with_calls() external {
         bytes[] memory m = new bytes[](2);
         m[0] = abi.encodeCall(PermissionedResolver.setName, (testNode, testString));
         m[1] = abi.encodeCall(PermissionedResolver.setContenthash, (testNode, testAddress));
 
-        bytes memory initData = abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, m));
+        bytes memory initData =
+            abi.encodeCall(IPermissionedResolverInitializable.initialize, (new Grant[](0), m));
         PermissionedResolver r =
             PermissionedResolver(
                 factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
@@ -96,6 +106,24 @@ contract PermissionedResolverTest is Test {
 
         assertEq(r.name(testNode), testString, "name()");
         assertEq(r.contenthash(testNode), testAddress, "contenthash()");
+    }
+
+    function test_initalize_with_grants() external {
+        Grant[] memory grants = new Grant[](3);
+        grants[0] = Grant(owner, EACBaseRolesLib.ALL_ROLES);
+        grants[1] = Grant(friend, EACBaseRolesLib.ALL_ROLES >> 128);
+        grants[1] = Grant(actor, 1);
+
+        bytes memory initData =
+            abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, new bytes[](0)));
+        PermissionedResolver r =
+            PermissionedResolver(
+                factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
+            );
+
+        for (uint256 i; i < grants.length; ++i) {
+            assertEq(r.roles(r.ROOT_RESOURCE(), grants[i].account), grants[i].roleBitmap);
+        }
     }
 
     function test_canUpgradeFrom() external view {
@@ -132,6 +160,13 @@ contract PermissionedResolverTest is Test {
                 type(IPermissionedResolver).interfaceId
             ),
             "IPermissionedResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(resolver),
+                type(IPermissionedResolverInitializable).interfaceId
+            ),
+            "IPermissionedResolverInitializable"
         );
         assertTrue(
             ERC165Checker.supportsInterface(
@@ -925,7 +960,7 @@ contract PermissionedResolverTest is Test {
         answers[3] = abi.encode(testAddress);
 
         bytes memory result =
-            resolver.resolve(testName, abi.encodeCall(PermissionedResolver.multicall, (calls)));
+            resolver.resolve(testName, abi.encodeCall(IMulticallable.multicall, (calls)));
         assertEq(result, abi.encode(answers));
     }
 
@@ -945,7 +980,7 @@ contract PermissionedResolverTest is Test {
         );
 
         bytes memory result =
-            resolver.resolve(testName, abi.encodeCall(PermissionedResolver.multicall, (calls)));
+            resolver.resolve(testName, abi.encodeCall(IMulticallable.multicall, (calls)));
         assertEq(result, abi.encode(answers));
     }
 
