@@ -6,7 +6,7 @@ import {IRegistry} from "./IRegistry.sol";
 /// @notice Interface for initializing a `WrapperRegistry`.
 /// @dev Interface selector: `0x1542c01a`
 interface IWrapperRegistryInitializable {
-    /// @notice Initializes the contract.
+    /// @notice Initialize the contract.
     /// @param node Namehash of this registry.
     /// @param parentRegistry The parent of this registry.
     /// @param childLabel The subdomain for this registry.

@@ -27,6 +27,9 @@ import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAcce
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
 import {IPermissionedResolver} from "./interfaces/IPermissionedResolver.sol";
+import {
+    IPermissionedResolverInitializable
+} from "./interfaces/IPermissionedResolverInitializable.sol";
 import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib.sol";
 
@@ -86,6 +89,7 @@ import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib
 ///
 contract PermissionedResolver is
     IPermissionedResolver,
+    IPermissionedResolverInitializable,
     UUPSUpgradeable,
     EnhancedAccessControl,
     IERC7996,
@@ -222,6 +226,7 @@ contract PermissionedResolver is
             type(UUPSUpgradeable).interfaceId == interfaceId ||
             type(IProxyAuthorization).interfaceId == interfaceId ||
             type(IContractNamer).interfaceId == interfaceId ||
+            type(IPermissionedResolverInitializable).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -230,17 +235,14 @@ contract PermissionedResolver is
         return ResolverFeatures.RESOLVE_MULTICALL == feature;
     }
 
-    /// @notice Initialize the contract.
-    /// @param rootAccount Account granted root roles.
-    /// @param roleBitmap The roles granted to `rootAccount`.
-    /// @param setters The setter calldata that avoids permission checks.
-    function initialize(address rootAccount, uint256 roleBitmap, bytes[] calldata setters)
+    /// @inheritdoc IPermissionedResolverInitializable
+    function initialize(address rootAccount, uint256 roleBitmap, bytes[] calldata calls)
         external
         initializer
     {
         __UUPSUpgradeable_init();
         _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
-        multicall(setters);
+        multicall(calls);
     }
 
     ////////////////////////////////////////////////////////////////////////

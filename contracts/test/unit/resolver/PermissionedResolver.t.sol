@@ -29,6 +29,9 @@ import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAc
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {IPermissionedResolver} from "~src/resolver/interfaces/IPermissionedResolver.sol";
+import {
+    IPermissionedResolverInitializable
+} from "~src/resolver/interfaces/IPermissionedResolverInitializable.sol";
 import {PermissionedResolverLib} from "~src/resolver/libraries/PermissionedResolverLib.sol";
 import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
 
@@ -59,7 +62,10 @@ contract PermissionedResolverTest is Test {
         testNode = NameCoder.namehash(testName, 0);
 
         bytes memory initData =
-            abi.encodeCall(PermissionedResolver.initialize, (owner, DEFAULT_ROLES, new bytes[](0)));
+            abi.encodeCall(
+                IPermissionedResolverInitializable.initialize,
+                (owner, DEFAULT_ROLES, new bytes[](0))
+            );
         resolver = PermissionedResolver(
             factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
         );
@@ -75,7 +81,10 @@ contract PermissionedResolverTest is Test {
 
     function test_initialize_unowned() external {
         bytes memory initData =
-            abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, new bytes[](0)));
+            abi.encodeCall(
+                IPermissionedResolverInitializable.initialize,
+                (address(0), 0, new bytes[](0))
+            );
         PermissionedResolver r =
             PermissionedResolver(
                 factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
@@ -88,7 +97,8 @@ contract PermissionedResolverTest is Test {
         m[0] = abi.encodeCall(PermissionedResolver.setName, (testNode, testString));
         m[1] = abi.encodeCall(PermissionedResolver.setContenthash, (testNode, testAddress));
 
-        bytes memory initData = abi.encodeCall(PermissionedResolver.initialize, (address(0), 0, m));
+        bytes memory initData =
+            abi.encodeCall(IPermissionedResolverInitializable.initialize, (address(0), 0, m));
         PermissionedResolver r =
             PermissionedResolver(
                 factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
@@ -132,6 +142,13 @@ contract PermissionedResolverTest is Test {
                 type(IPermissionedResolver).interfaceId
             ),
             "IPermissionedResolver"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(resolver),
+                type(IPermissionedResolverInitializable).interfaceId
+            ),
+            "IPermissionedResolverInitializable"
         );
         assertTrue(
             ERC165Checker.supportsInterface(

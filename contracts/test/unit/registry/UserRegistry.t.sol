@@ -60,7 +60,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
             factory.deployProxy(
                 address(implementation),
                 SALT,
-                abi.encodeCall(UserRegistry.initialize, (grants))
+                abi.encodeCall(IEACGrantInitializable.initialize, (grants))
             )
         );
     }
@@ -74,7 +74,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
         factory.deployProxy(
             address(implementation),
             SALT,
-            abi.encodeCall(UserRegistry.initialize, (new Grant[](0)))
+            abi.encodeCall(IEACGrantInitializable.initialize, (new Grant[](0)))
         );
     }
 
@@ -89,7 +89,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
                 factory.deployProxy(
                     address(implementation),
                     SALT,
-                    abi.encodeCall(UserRegistry.initialize, (grants))
+                    abi.encodeCall(IEACGrantInitializable.initialize, (grants))
                 )
             );
 
