@@ -6,15 +6,21 @@ pragma solidity >=0.8.13;
 import {Test} from "forge-std/Test.sol";
 
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {InvalidOwner} from "~src/CommonErrors.sol";
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
+import {
+    IEACGrantInitializable,
+    Grant
+} from "~src/access-control/interfaces/IEACGrantInitializable.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {UserRegistry, Grant} from "~src/registry/UserRegistry.sol";
+import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 
@@ -123,11 +129,21 @@ contract UserRegistryTest is Test, ERC1155Holder {
             proxy.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, user1),
             "User1 should not have registrar role"
         );
+    }
 
-        // Verify proxy supports required interfaces
-        assertTrue(proxy.supportsInterface(type(IRegistry).interfaceId), "Should support IRegistry");
-        // UUPSUpgradeable doesn't have an interface ID, so we check for ERC1155 interface
-        assertTrue(proxy.supportsInterface(0xd9b67a26), "Should support ERC1155");
+    function test_supportsInterface() external view {
+        assertTrue(
+            ERC165Checker.supportsInterface(address(proxy), type(IRegistry).interfaceId),
+            "IRegistry"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(proxy), type(IProxyAuthorization).interfaceId),
+            "IProxyAuthorization"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(proxy), type(IEACGrantInitializable).interfaceId),
+            "IEACGrantInitializable"
+        );
     }
 
     function test_domain_registration() public {

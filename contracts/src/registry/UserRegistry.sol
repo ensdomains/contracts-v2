@@ -6,24 +6,28 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {
+    IEACGrantInitializable,
+    Grant
+} from "../access-control/interfaces/IEACGrantInitializable.sol";
 import {InvalidOwner} from "../CommonErrors.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
-/// @dev Initialization-time structure for a grant.
-struct Grant {
-    address account;
-    uint256 roleBitmap;
-}
-
 /// @title UserRegistry
 /// @notice UUPS-upgradeable `PermissionedRegistry` designed to be deployed as a proxy via
 ///         `VerifiableFactory` for user-owned subdomain registries. The constructor disables
 ///         initializers on the implementation contract; proxies call `initialize()` to set up the
 ///         admin and initial roles. Upgrade authorization requires the upgrade role in the root resource.
-contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, IProxyAuthorization {
+contract UserRegistry is
+    Initializable,
+    PermissionedRegistry,
+    UUPSUpgradeable,
+    IProxyAuthorization,
+    IEACGrantInitializable
+{
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -41,8 +45,7 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
         _disableInitializers();
     }
 
-    /// @notice Initialize the contract.
-    /// @param grants Accounts and roles granted on root.
+    /// @inheritdoc IEACGrantInitializable
     function initialize(Grant[] calldata grants) public initializer {
         __UUPSUpgradeable_init();
         emit RegistryCreated();
@@ -59,6 +62,7 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
         return
             interfaceId == type(UUPSUpgradeable).interfaceId ||
             interfaceId == type(IProxyAuthorization).interfaceId ||
+            interfaceId == type(IEACGrantInitializable).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
