@@ -64,6 +64,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     bytes4 constant APPROVE_SELECTOR = 0x095ea7b3;
     bytes4 constant DEPLOY_PROXY_SELECTOR = 0x5d84121a;
     bytes4 constant SET_NAME_WITH_HCA_SELECTOR = 0xab863445;
+    bytes4 constant CLAIM_WITH_HCA_SELECTOR = 0xc90695df;
     bytes4 constant SET_ADDR_SELECTOR = 0xd5fa2b00;
     bytes4 constant SET_TEXT_SELECTOR = 0x10f13a8c;
     bytes4 constant SET_NAME_SELECTOR = 0x77372213;
@@ -78,6 +79,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     address owner = vm.addr(ownerKey);
     address sessionSigner = vm.addr(sessionKey);
     address defaultReverseRegistrarHCAAdapter = makeAddr("default-reverse-adapter");
+    address reverseRegistrarHCAAdapter = makeAddr("addr-reverse-adapter");
     address permittedResolverImpl = makeAddr("resolver-impl");
     address ethRegistrar = makeAddr("eth-registrar");
     address verifiableFactory = makeAddr("verifiable-factory");
@@ -130,6 +132,7 @@ contract StandaloneSingleOwnerHCATest is Test {
 
         validator = new HCAOwnerAndSessionValidator(
             defaultReverseRegistrarHCAAdapter,
+            reverseRegistrarHCAAdapter,
             permittedResolverImpl,
             address(ethRegistry),
             verifiableFactory,
@@ -140,6 +143,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
         validatorHarness = new HCAOwnerAndSessionValidatorHarness(
             defaultReverseRegistrarHCAAdapter,
+            reverseRegistrarHCAAdapter,
             permittedResolverImpl,
             address(ethRegistry),
             verifiableFactory,
@@ -679,6 +683,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         HCAOwnerAndSessionValidatorHarness vectorValidator =
             new HCAOwnerAndSessionValidatorHarness(
                 defaultReverseRegistrarHCAAdapter,
+                reverseRegistrarHCAAdapter,
                 permittedResolverImpl,
                 address(ethRegistry),
                 verifiableFactory,
@@ -1271,6 +1276,81 @@ contract StandaloneSingleOwnerHCATest is Test {
             owner,
             resolver,
             _operationData(executions)
+        );
+    }
+
+    function test_validator_acceptsReverseClaimForOwnerWithSessionResolver() public view {
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            resolver,
+            _singleOperationData(
+                reverseRegistrarHCAAdapter,
+                0,
+                abi.encodeWithSelector(CLAIM_WITH_HCA_SELECTOR, owner, resolver)
+            )
+        );
+    }
+
+    function test_validator_acceptsReverseClaimWithZeroResolver() public view {
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            resolver,
+            _singleOperationData(
+                reverseRegistrarHCAAdapter,
+                0,
+                abi.encodeWithSelector(CLAIM_WITH_HCA_SELECTOR, owner, address(0))
+            )
+        );
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            _singleOperationData(
+                reverseRegistrarHCAAdapter,
+                0,
+                abi.encodeWithSelector(CLAIM_WITH_HCA_SELECTOR, owner, address(0))
+            )
+        );
+    }
+
+    function test_validator_rejectsReverseClaimPolicyViolations() public {
+        _expectValidationRevert(
+            _singleOperationData(
+                reverseRegistrarHCAAdapter,
+                0,
+                abi.encodeWithSelector(COMMIT_SELECTOR, bytes32("commitment"))
+            ),
+            resolver,
+            HCAOwnerAndSessionValidator.ActionNotAllowed.selector
+        );
+        _expectValidationRevert(
+            _singleOperationData(
+                reverseRegistrarHCAAdapter,
+                0,
+                abi.encodeWithSelector(CLAIM_WITH_HCA_SELECTOR, owner, resolver)
+            ),
+            address(0),
+            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
+        );
+        _expectValidationRevert(
+            _singleOperationData(
+                reverseRegistrarHCAAdapter,
+                0,
+                abi.encodeWithSelector(CLAIM_WITH_HCA_SELECTOR, vm.addr(badKey), resolver)
+            ),
+            resolver,
+            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
+        );
+        _expectValidationRevert(
+            _singleOperationData(
+                reverseRegistrarHCAAdapter,
+                0,
+                abi.encodeWithSelector(CLAIM_WITH_HCA_SELECTOR, owner, permittedResolverImpl)
+            ),
+            resolver,
+            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
         );
     }
 
@@ -2326,6 +2406,7 @@ contract StandaloneSingleOwnerHCATest is Test {
 contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
     constructor(
         address defaultReverseRegistrarHCAAdapter,
+        address reverseRegistrarHCAAdapter,
         address permittedResolverImpl,
         address ethRegistry,
         address verifiableFactory,
@@ -2336,6 +2417,7 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
     )
         HCAOwnerAndSessionValidator(
             defaultReverseRegistrarHCAAdapter,
+            reverseRegistrarHCAAdapter,
             permittedResolverImpl,
             ethRegistry,
             verifiableFactory,

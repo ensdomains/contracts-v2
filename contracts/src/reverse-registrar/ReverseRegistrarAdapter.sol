@@ -8,12 +8,17 @@ import {IStandaloneHCAFactory} from "../hca/interfaces/IStandaloneHCAFactory.sol
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {IContractNamer} from "./interfaces/IContractNamer.sol";
+import {IReverseRegistrarAdapter} from "./interfaces/IReverseRegistrarAdapter.sol";
 import {AccountNamerLib} from "./libraries/AccountNamerLib.sol";
 
 /// @title Reverse Registrar Adapter
 /// @notice Forwarder for v1 `addr.reverse` registrar updates.
 /// @dev The adapter must be configured as a controller on the reverse registrar.
-contract ReverseRegistrarAdapter is DelegatedContractNamer, HCAAuthorizer {
+contract ReverseRegistrarAdapter is
+    DelegatedContractNamer,
+    HCAAuthorizer,
+    IReverseRegistrarAdapter
+{
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////

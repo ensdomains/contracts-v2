@@ -15,6 +15,12 @@ import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+import {
+    IDefaultReverseRegistrarAdapter
+} from "../reverse-registrar/interfaces/IDefaultReverseRegistrarAdapter.sol";
+import {
+    IReverseRegistrarAdapter
+} from "../reverse-registrar/interfaces/IReverseRegistrarAdapter.sol";
 
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
 
@@ -36,16 +42,6 @@ interface IHCARegistrationResolver {
     function authorizeNameRoles(bytes calldata name, uint256 roleBitmap, address account, bool grant)
         external
         returns (bool success);
-}
-
-
-/// @notice Reverse-registration call encoded and validated by the HCA registration policy.
-/// @dev Interface selector: `0xab863445`
-interface IHCAReverseRegistrarAdapter {
-    /// @notice Sets the primary name for an account through its HCA.
-    /// @param account The account whose primary name is set.
-    /// @param name The primary name to set.
-    function setNameWithHCA(address account, string calldata name) external;
 }
 
 
@@ -331,7 +327,10 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @notice Selector for DefaultReverseRegistrarAdapter.setNameWithHCA(address,string).
     bytes4 public constant SET_NAME_WITH_HCA_SELECTOR =
-        IHCAReverseRegistrarAdapter.setNameWithHCA.selector;
+        IDefaultReverseRegistrarAdapter.setNameWithHCA.selector;
+
+    /// @notice Selector for ReverseRegistrarAdapter.claimWithHCA(address,address).
+    bytes4 public constant CLAIM_WITH_HCA_SELECTOR = IReverseRegistrarAdapter.claimWithHCA.selector;
 
     /// @notice Selector for PermissionedResolver.clearRecords(bytes32).
     bytes4 public constant CLEAR_RECORDS_SELECTOR = 0x3603d758;
@@ -375,6 +374,9 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @notice The HCA-aware default reverse registrar adapter permitted for default primary-name setup.
     address public immutable DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER;
+
+    /// @notice The HCA-aware `addr.reverse` registrar adapter permitted for v1 reverse claims.
+    address public immutable REVERSE_REGISTRAR_HCA_ADAPTER;
 
     /// @notice The resolver implementation permitted for resolver deployment.
     address public immutable PERMITTED_RESOLVER_IMPL;
@@ -490,6 +492,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     ////////////////////////////////////////////////////////////////////////
 
     /// @param defaultReverseRegistrarHcaAdapter The HCA-aware default reverse registrar adapter.
+    /// @param reverseRegistrarHcaAdapter The HCA-aware `addr.reverse` registrar adapter.
     /// @param permittedResolverImpl The resolver implementation accepted in resolver deployment actions.
     /// @param ethRegistry The ENS registry that authorizes registrars through its root roles.
     /// @param verifiableFactory The VerifiableFactory accepted by the registration policy.
@@ -499,6 +502,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @param gasRefundPaymaster The paymaster allowed to settle signed executor refunds.
     constructor(
         address defaultReverseRegistrarHcaAdapter,
+        address reverseRegistrarHcaAdapter,
         address permittedResolverImpl,
         address ethRegistry,
         address verifiableFactory,
@@ -509,6 +513,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     )
     {
         DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER = defaultReverseRegistrarHcaAdapter;
+        REVERSE_REGISTRAR_HCA_ADAPTER = reverseRegistrarHcaAdapter;
         PERMITTED_RESOLVER_IMPL = permittedResolverImpl;
         ETH_REGISTRY = ethRegistry;
         VERIFIABLE_FACTORY = verifiableFactory;
@@ -1240,7 +1245,8 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @notice Validates every execution against the hardcoded registration and name-management action set.
     /// @dev Checks target, selector, value, and selected ABI arguments for each execution.
     ///      A default reverse name may be updated when the policy has a nonzero resolver and the
-    ///      named account is the HCA owner.
+    ///      named account is the HCA owner. The owner's `addr.reverse` node may be claimed with
+    ///      either a zero resolver or the session's bound resolver.
     /// @param account The HCA that executes the operation.
     /// @param owner The owner recorded for the HCA.
     /// @param allowedResolver The resolver bound to the enabled session.
@@ -1412,6 +1418,21 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 }
                 address namedAccount = _readAddress(execution.callData, 4);
                 if (namedAccount != owner) {
+                    revert PolicyRuleFailed();
+                }
+                continue;
+            }
+
+            if (execution.target == REVERSE_REGISTRAR_HCA_ADAPTER) {
+                if (selector != CLAIM_WITH_HCA_SELECTOR) {
+                    revert ActionNotAllowed(execution.target, selector);
+                }
+                address claimedAccount = _readAddress(execution.callData, 4);
+                if (claimedAccount != owner) {
+                    revert PolicyRuleFailed();
+                }
+                address claimResolver = _readAddress(execution.callData, 4 + 32);
+                if (claimResolver != address(0) && claimResolver != policyResolver) {
                     revert PolicyRuleFailed();
                 }
                 continue;
