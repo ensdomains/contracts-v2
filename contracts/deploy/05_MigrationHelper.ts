@@ -13,6 +13,10 @@ export default execute(
       (typeof artifacts.LockedMigrationController)["abi"]
     >("LockedMigrationController");
 
+    const standaloneHCAFactory = get<
+      (typeof artifacts.StandaloneHCAFactory)["abi"]
+    >("StandaloneHCAFactory");
+
     const contractNamer =
       get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
 
@@ -23,16 +27,18 @@ export default execute(
         rootRegistry.address,
         unlockedMigrationController.address,
         lockedMigrationController.address,
+        standaloneHCAFactory.address,
         contractNamer.address,
       ],
     });
   },
   {
-    tags: ["MigrationHelper", "migration:phase1:deploy-v2", "v2"],
+    tags: ["MigrationHelper", "migration:phase1:deploy-v2", "v2", "hca"],
     dependencies: [
       "RootRegistry",
       "UnlockedMigrationController",
       "LockedMigrationController",
+      "StandaloneHCAFactory",
       "ContractNamer",
     ],
   },
