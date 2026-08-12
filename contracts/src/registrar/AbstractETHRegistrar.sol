@@ -67,7 +67,10 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer, IRentPri
 
     /// @inheritdoc ERC165
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return interfaceId == type(IETHRenewer).interfaceId || super.supportsInterface(interfaceId);
+        return
+            interfaceId == type(IETHRenewer).interfaceId ||
+            interfaceId == type(IRentPriceOracleProvider).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
