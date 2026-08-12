@@ -3,6 +3,7 @@ import type { Address } from "viem";
 
 import {
   RHINESTONE_INTENT_EXECUTOR,
+  SEPOLIA_MOCK_USDC,
   SEPOLIA_USDC,
 } from "../../script/deploy-constants.js";
 import deployDefaultReverseRegistrarAdapter from "../../deploy/02_DefaultReverseRegistrarAdapter.js";
@@ -65,7 +66,7 @@ describe("HCA deployment address resolution", () => {
         paymentToken: paymentToken!,
         env: {},
       }),
-    ).toBe(SEPOLIA_USDC);
+    ).toBe(SEPOLIA_MOCK_USDC);
   });
 
   it("uses the same Sepolia defaults for the live dev environment", () => {

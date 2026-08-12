@@ -18,7 +18,7 @@
 | ETHRegistry | [0xbdc85dd5b15d7ecb354cd7cb6f2c50b4f2c4f0e2](https://sepolia.etherscan.io/address/0xbdc85dd5b15d7ecb354cd7cb6f2c50b4f2c4f0e2) |
 | ETHRenewerV1 | [0x4ad56feb5fc7b8298db06e88fd5cbc41d64602fa](https://sepolia.etherscan.io/address/0x4ad56feb5fc7b8298db06e88fd5cbc41d64602fa) |
 | Graveyard | [0xf83fe2658f702a072f3c7b0dc4a0ab8c7b044750](https://sepolia.etherscan.io/address/0xf83fe2658f702a072f3c7b0dc4a0ab8c7b044750) |
-| HCAOwnerAndSessionValidator | [0x976d90c51afb2c11660eaee94bd42a7e84751d08](https://sepolia.etherscan.io/address/0x976d90c51afb2c11660eaee94bd42a7e84751d08) |
+| HCAOwnerAndSessionValidator | [0x5f249fca8bb4949105651146858c347e8bfb0f7e](https://sepolia.etherscan.io/address/0x5f249fca8bb4949105651146858c347e8bfb0f7e) |
 | HCAUpgradeGate | [0x3a121fc283e53d2f45564edf97dc8685ede35005](https://sepolia.etherscan.io/address/0x3a121fc283e53d2f45564edf97dc8685ede35005) |
 | LabelStore | [0x532cd0cc4ac0793d838f71a67d29b2d790d18777](https://sepolia.etherscan.io/address/0x532cd0cc4ac0793d838f71a67d29b2d790d18777) |
 | LockedMigrationController | [0x5c39e36a69a9897f08954c71acb1f36e0bd4f409](https://sepolia.etherscan.io/address/0x5c39e36a69a9897f08954c71acb1f36e0bd4f409) |
@@ -33,7 +33,7 @@
 | ReverseRegistrarAdapter | [0x035ae6188ac22ab79b5018039dfbda4ffe7990e9](https://sepolia.etherscan.io/address/0x035ae6188ac22ab79b5018039dfbda4ffe7990e9) |
 | RootRegistry | [0x8115186e8f2e0b0281e86ab91f0f48ba90364354](https://sepolia.etherscan.io/address/0x8115186e8f2e0b0281e86ab91f0f48ba90364354) |
 | StandaloneHCAFactory | [0x900ff7cf617ef9d802178b4ef480491e3a782672](https://sepolia.etherscan.io/address/0x900ff7cf617ef9d802178b4ef480491e3a782672) |
-| StandaloneHCAImplementation | [0xd213de41421fed3a5e475943f9d634a0cf64a385](https://sepolia.etherscan.io/address/0xd213de41421fed3a5e475943f9d634a0cf64a385) |
+| StandaloneHCAImplementation | [0xaa761541620fc1a42bb701a26a9f107a9df1e904](https://sepolia.etherscan.io/address/0xaa761541620fc1a42bb701a26a9f107a9df1e904) |
 | StandardRentPriceOracle | [0x8914b66260eb8c4fff795650c3ae8cd335958987](https://sepolia.etherscan.io/address/0x8914b66260eb8c4fff795650c3ae8cd335958987) |
 | TrustedHCASet | [0xb3240a0e6c80984c14def037f4f540edc3502b48](https://sepolia.etherscan.io/address/0xb3240a0e6c80984c14def037f4f540edc3502b48) |
 | UniversalResolverV2 | [0x4a1817d13e9cf196f471725176355c1234b63c70](https://sepolia.etherscan.io/address/0x4a1817d13e9cf196f471725176355c1234b63c70) |

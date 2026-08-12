@@ -4,6 +4,7 @@ import {
   MAINNET_DAI,
   MAINNET_USDC,
   RHINESTONE_INTENT_EXECUTOR,
+  SEPOLIA_MOCK_USDC,
   SEPOLIA_USDC,
 } from "../../script/deploy-constants.js";
 
@@ -138,7 +139,7 @@ export function resolveHCASecondaryPaymentToken({
       env.HCA_SECONDARY_PAYMENT_TOKEN,
     ) ??
     optionalEnvAddress("HCA_DAI", env.HCA_DAI) ??
-    (usesSepoliaHCAProductionDefaults(tags) ? paymentToken : undefined) ??
+    (usesSepoliaHCAProductionDefaults(tags) ? SEPOLIA_MOCK_USDC : undefined) ??
     (tags.hasDao ? MAINNET_DAI : undefined) ??
     getOrNull("MockDAI")?.address ??
     paymentToken

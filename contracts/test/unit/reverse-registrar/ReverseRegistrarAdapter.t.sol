@@ -159,11 +159,7 @@ contract ReverseRegistrarAdapterTest is HCAFixture {
 
         vm.expectRevert(abi.encodeWithSelector(HCAAuthorizer.HCADeploymentNotTrusted.selector, hca));
         vm.prank(hca);
-        bytes32 node = reverseAdapter.claimWithHCA(owner, resolver);
-
-        assertEq(node, reverseRegistrar.node(owner), "node");
-        assertEq(registry.owner(node), owner, "owner");
-        assertEq(registry.resolver(node), resolver, "resolver");
+        reverseAdapter.claimWithHCA(owner, resolver);
     }
 
     function test_claimWithHCA_revert_hcaOwnerMismatch() external {

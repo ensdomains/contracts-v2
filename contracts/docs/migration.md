@@ -639,7 +639,7 @@ Resolved by [`script/migration.ts`](../script/migration.ts) (the CLI also auto-l
 | `OWNER_TX_KEY` | Generic signer for `phase execute-owner-txs` when no role-specific key matches |
 | `HCA_INTENT_EXECUTOR` | Optional intent-executor override; live/forked Sepolia defaults to the fixed Rhinestone address in `script/deploy-constants.ts` |
 | `HCA_ENTRY_POINT` | Optional HCA ERC-4337 EntryPoint override |
-| `HCA_PAYMENT_TOKEN` / `HCA_USDC`, `HCA_SECONDARY_PAYMENT_TOKEN` / `HCA_DAI` | Optional HCA validator payment-token overrides; live/forked Sepolia defaults both slots to production USDC, while local/test/clean-testnet use mock artifacts |
+| `HCA_PAYMENT_TOKEN` / `HCA_USDC`, `HCA_SECONDARY_PAYMENT_TOKEN` / `HCA_DAI` | Optional HCA validator payment-token overrides; live/forked Sepolia defaults the primary slot to production USDC and the secondary slot to the faucet-minted MockUSDC (`SEPOLIA_MOCK_USDC`), while local/test/clean-testnet use mock artifacts |
 | `HCA_GAS_REFUND_PAYMASTER` | Optional HCA validator gas-refund paymaster override |
 | `<PREFIX>_MNEMONIC`, `<PREFIX>_MNEMONIC_PATH`, `<PREFIX>_MNEMONIC_INDEX`, `<PREFIX>_MNEMONIC_PASSPHRASE` | Mnemonic-backed signer alternatives for `phase execute-owner-txs`; prefixes `OWNER_TX`, `SEPOLIA_V1_OWNER` / `V1_OWNER`, `SEPOLIA_TOP_URP_OWNER` / `TOP_URP_OWNER` |
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
