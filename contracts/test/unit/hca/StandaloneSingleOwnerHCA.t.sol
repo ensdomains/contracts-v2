@@ -42,6 +42,8 @@ import {
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
+import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
+import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
@@ -1498,6 +1500,57 @@ contract StandaloneSingleOwnerHCATest is Test {
         assertTrue(
             validatorHarness.isBatchRegistrarPaymentTokenHarness(commitBatch, makeAddr("junk-token"))
         );
+
+        assertFalse(validatorHarness.isBatchRegistrarPaymentTokenHarness(hex"", usdc));
+    }
+
+    function test_validator_treatsUnresponsiveRegistrarOracleAsUnsupported() public {
+        bytes memory operationData =
+            _singleOperationData(
+                usdc,
+                0,
+                abi.encodeWithSelector(APPROVE_SELECTOR, ethRegistrar, 1 ether)
+            );
+        bytes4 oracleGetter = IRentPriceOracleProvider.rentPriceOracle.selector;
+
+        vm.mockCallRevert(ethRegistrar, abi.encodeWithSelector(oracleGetter), "");
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            operationData
+        );
+        vm.clearMockedCalls();
+
+        vm.mockCall(
+            ethRegistrar,
+            abi.encodeWithSelector(oracleGetter),
+            abi.encode(makeAddr("codeless-oracle"))
+        );
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            operationData
+        );
+        vm.clearMockedCalls();
+
+        address oracle = address(IRentPriceOracleProvider(ethRegistrar).rentPriceOracle());
+        vm.mockCallRevert(
+            oracle,
+            abi.encodeWithSelector(IRentPriceOracle.isPaymentToken.selector),
+            ""
+        );
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            operationData
+        );
+        vm.clearMockedCalls();
     }
 
     function test_validator_rejectsUnapprovedRegistrarTarget() public {
