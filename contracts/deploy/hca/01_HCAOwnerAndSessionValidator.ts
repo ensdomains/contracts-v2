@@ -5,8 +5,6 @@ import { RHINESTONE_GAS_REFUND_PAYMASTER } from "../../script/deploy-constants.j
 import {
   optionalEnvAddress,
   resolveHCAIntentExecutor,
-  resolveHCAPaymentToken,
-  resolveHCASecondaryPaymentToken,
   shouldDeployStandaloneHCA,
 } from "./_helpers.js";
 
@@ -41,17 +39,6 @@ export default execute(
         "HCA_INTENT_EXECUTOR must be set when no IntentExecutor deployment is available",
       );
     }
-    const paymentToken = resolveHCAPaymentToken({ getOrNull, tags });
-    if (!paymentToken) {
-      throw new Error(
-        "HCA_PAYMENT_TOKEN or HCA_USDC must be set when no payment token deployment is available",
-      );
-    }
-    const secondaryPaymentToken = resolveHCASecondaryPaymentToken({
-      getOrNull,
-      tags,
-      paymentToken,
-    });
     const gasRefundPaymaster =
       optionalEnvAddress("HCA_GAS_REFUND_PAYMASTER") ??
       localExecutor?.address ??
@@ -68,8 +55,6 @@ export default execute(
         permittedResolverImpl.address,
         ethRegistry.address,
         verifiableFactory.address,
-        paymentToken,
-        secondaryPaymentToken,
         intentExecutor,
         gasRefundPaymaster,
       ],

@@ -10,9 +10,10 @@ import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
+import {IRentPriceOracleProvider} from "./interfaces/IRentPriceOracleProvider.sol";
 
 /// @dev Abstract registrar implementation shared between `ETHRegistrar` and `ETHRenewerV1`.
-abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
+abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer, IRentPriceOracleProvider {
     ////////////////////////////////////////////////////////////////////////
     // Constants & Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -31,7 +32,7 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Oracle for registration and renewal costs.
-    IRentPriceOracle public rentPriceOracle;
+    IRentPriceOracle public override rentPriceOracle;
 
     ////////////////////////////////////////////////////////////////////////
     // Events

@@ -109,8 +109,6 @@ contract HCAOwnerAndSessionValidatorTest is Test {
             makeAddr("resolver-implementation"),
             address(ethRegistry),
             address(factory),
-            paymentToken,
-            makeAddr("secondary-payment-token"),
             intentExecutor,
             gasRefundPaymaster
         );
@@ -1072,8 +1070,6 @@ contract HCAOwnerAndSessionValidatorEnableHarness is HCAOwnerAndSessionValidator
         address permittedResolverImpl,
         address ethRegistry,
         address verifiableFactory,
-        address paymentToken,
-        address secondaryPaymentToken,
         address intentExecutor,
         address gasRefundPaymaster
     )
@@ -1083,8 +1079,6 @@ contract HCAOwnerAndSessionValidatorEnableHarness is HCAOwnerAndSessionValidator
             permittedResolverImpl,
             ethRegistry,
             verifiableFactory,
-            paymentToken,
-            secondaryPaymentToken,
             intentExecutor,
             gasRefundPaymaster
         )
