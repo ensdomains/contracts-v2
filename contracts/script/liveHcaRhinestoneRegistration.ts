@@ -51,6 +51,7 @@ import {
   ReverseRegistrarAdapter,
   StandaloneHCAFactory,
   StandaloneSingleOwnerHCA,
+  StandardRentPriceOracle,
   test_mocks_MockERC20_sol_MockERC20 as MockERC20,
   UniversalResolverV2,
   VerifiableFactory,
@@ -868,15 +869,7 @@ async function main() {
   })) as Address;
   const paymentTokenSupported = (await publicClient.readContract({
     address: registrarRentPriceOracle,
-    abi: [
-      {
-        type: "function",
-        name: "isPaymentToken",
-        stateMutability: "view",
-        inputs: [{ type: "address" }],
-        outputs: [{ type: "bool" }],
-      },
-    ],
+    abi: StandardRentPriceOracle.abi,
     functionName: "isPaymentToken",
     args: [deployments.paymentToken],
   })) as boolean;
