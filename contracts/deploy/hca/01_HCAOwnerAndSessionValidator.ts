@@ -17,6 +17,9 @@ export default execute(
     const defaultReverseRegistrarAdapter = get<
       (typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]
     >("DefaultReverseRegistrarAdapter");
+    const reverseRegistrarAdapter = get<
+      (typeof artifacts.ReverseRegistrarAdapter)["abi"]
+    >("ReverseRegistrarAdapter");
     const permittedResolverImpl = get<
       (typeof artifacts.PermissionedResolver)["abi"]
     >("PermissionedResolverImpl");
@@ -61,6 +64,7 @@ export default execute(
       artifact: artifacts.HCAOwnerAndSessionValidator,
       args: [
         defaultReverseRegistrarAdapter.address,
+        reverseRegistrarAdapter.address,
         permittedResolverImpl.address,
         ethRegistry.address,
         verifiableFactory.address,
@@ -81,6 +85,7 @@ export default execute(
     ],
     dependencies: [
       "DefaultReverseRegistrarAdapter",
+      "ReverseRegistrarAdapter",
       "PermissionedResolverImpl",
       "ETHRegistry",
       "VerifiableFactory",

@@ -11,6 +11,9 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {MockContractNamer} from "~test/mocks/MockContractNamer.sol";
 import {ReverseRegistrarAdapter} from "~src/reverse-registrar/ReverseRegistrarAdapter.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {
+    IReverseRegistrarAdapter
+} from "~src/reverse-registrar/interfaces/IReverseRegistrarAdapter.sol";
 import {AccountNamerLib} from "~src/reverse-registrar/libraries/AccountNamerLib.sol";
 import {HCAAuthorizer} from "~src/hca/HCAAuthorizer.sol";
 import {IStandaloneHCAFactory} from "~src/hca/interfaces/IStandaloneHCAFactory.sol";
@@ -70,6 +73,12 @@ contract ReverseRegistrarAdapterTest is HCAFixture {
             ERC165Checker.supportsInterface(
                 address(reverseAdapter),
                 type(IContractNamer).interfaceId
+            )
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(reverseAdapter),
+                type(IReverseRegistrarAdapter).interfaceId
             )
         );
     }

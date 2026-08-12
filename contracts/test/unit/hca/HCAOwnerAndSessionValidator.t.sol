@@ -105,6 +105,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         VerifiableFactory factory = new VerifiableFactory();
         validator = new HCAOwnerAndSessionValidatorEnableHarness(
             makeAddr("reverse-adapter"),
+            makeAddr("addr-reverse-adapter"),
             makeAddr("resolver-implementation"),
             address(ethRegistry),
             address(factory),
@@ -1067,6 +1068,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
 contract HCAOwnerAndSessionValidatorEnableHarness is HCAOwnerAndSessionValidator {
     constructor(
         address defaultReverseRegistrarHCAAdapter,
+        address reverseRegistrarHCAAdapter,
         address permittedResolverImpl,
         address ethRegistry,
         address verifiableFactory,
@@ -1077,6 +1079,7 @@ contract HCAOwnerAndSessionValidatorEnableHarness is HCAOwnerAndSessionValidator
     )
         HCAOwnerAndSessionValidator(
             defaultReverseRegistrarHCAAdapter,
+            reverseRegistrarHCAAdapter,
             permittedResolverImpl,
             ethRegistry,
             verifiableFactory,

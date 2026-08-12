@@ -271,7 +271,8 @@ The reveal is one atomic HCA operation. Set `value` to zero for every inner call
 |     3 | `ETHRegistrar.register(...)`                                                | Use the wallet as owner, the session resolver, and the commitment inputs.                                                                 |
 |     4 | Resolver setters                                                            | Add only the records selected by the user.                                                                                                |
 |     5 | `DefaultReverseRegistrarAdapter.setNameWithHCA(wallet, name)`               | Add this call when the user selects a primary name.                                                                                       |
-|     6 | `PermissionedResolver.authorizeNameRoles(hex"00", ROLES.ALL, wallet, true)` | Include this call in every session registration batch.                                                                                    |
+|     6 | `ReverseRegistrarAdapter.claimWithHCA(wallet, resolver)`                    | Add this call to claim the wallet's `addr.reverse` node. Use the session resolver or the zero address.                                   |
+|     7 | `PermissionedResolver.authorizeNameRoles(hex"00", ROLES.ALL, wallet, true)` | Include this call in every session registration batch.                                                                                    |
 
 The session supports these resolver calls:
 
@@ -298,9 +299,9 @@ The same HCA, resolver, and session can register more names. Each name needs a n
 
 ### Resolver records and primary name
 
-A valid session can change supported resolver records. It can also call `setNameWithHCA(wallet, name)`. These actions do not need a new wallet prompt.
+A valid session can change supported resolver records. It can also call `setNameWithHCA(wallet, name)` and `claimWithHCA(wallet, resolver)`. These actions do not need a new wallet prompt.
 
-The session can select the record values and primary-name string. The HCA must still own the required resolver roles. The reverse adapter must trust the HCA implementation.
+The session can select the record values and primary-name string. The HCA must still own the required resolver roles. The reverse adapter must trust the HCA implementation. A reverse claim must name the wallet and use the session resolver or the zero address.
 
 ### Renewal
 
