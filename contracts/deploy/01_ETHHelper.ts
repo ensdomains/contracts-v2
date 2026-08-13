@@ -23,7 +23,12 @@ export default execute(
     });
   },
   {
-    tags: ["ETHHelper", "v2"],
-    dependencies: ["NameWrapper", "RootRegistry", "ContractNamer"],
+    tags: ["ETHHelper", "v2", "migration:phase1:deploy-v2"],
+    dependencies: [
+      "NameWrapper",
+      "RootRegistry",
+      "ETHRegistry", // referenced internally
+      "ContractNamer",
+    ],
   },
 );

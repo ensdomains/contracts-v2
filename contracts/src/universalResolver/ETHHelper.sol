@@ -115,10 +115,10 @@ contract ETHHelper is DelegatedContractNamer {
                 ethState.status = Status.WRAPPED;
             } else {
                 ethState.tokenId = labelId;
-                try BASE_REGISTRAR.ownerOf(labelId) returns (address owner) {
-                    ethState.owner = owner;
+                if (ethState.expiry > block.timestamp) {
+                    ethState.owner = BASE_REGISTRAR.ownerOf(labelId);
                     ethState.status = Status.UNWRAPPED;
-                } catch {
+                } else {
                     ethState.status = Status.GRACE_V1;
                     ethState.expiry = state.expiry;
                 }
