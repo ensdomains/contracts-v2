@@ -23,7 +23,7 @@ export default execute(
     const batchGatewayProvider = await getV1<Abi_IGatewayProvider>(
       "BatchGatewayProvider",
     );
-    const ensip15 = get<Abi_IENSIP15>("MockENSIP15");
+    const ensip15Proxy = get<Abi_IENSIP15>("MockENSIP15");
     const contractNamer = get<Abi_IContractNamer>("ContractNamer");
     const rootRegistry = get<Abi_IPermissionedRegistry>("RootRegistry");
     const ensRegistry = await getV1<Abi_ENS>("ENSRegistry");
@@ -55,7 +55,7 @@ export default execute(
         artifact: Artifact_ENSV2Resolver,
         args: [
           batchGatewayProvider.address,
-          ensip15.address,
+          ensip15Proxy.address,
           contractNamer.address,
           rootRegistry.address,
           ethResolver,

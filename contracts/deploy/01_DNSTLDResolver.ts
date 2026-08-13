@@ -40,7 +40,7 @@ export default execute(
     const dnssecGatewayProvider = get<Abi_IGatewayProvider>(
       "DNSSECGatewayProvider",
     );
-    const ensip15 = get<Abi_IENSIP15>("MockENSIP15");
+    const ensip15Proxy = get<Abi_IENSIP15>("MockENSIP15");
     const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
     const dnsTLDResolver = await deploy("DNSTLDResolver", {
@@ -53,7 +53,7 @@ export default execute(
         dnssecOracle.address,
         dnssecGatewayProvider.address,
         batchGatewayProvider.address,
-        ensip15.address,
+        ensip15Proxy.address,
         contractNamer.address,
       ],
     });
