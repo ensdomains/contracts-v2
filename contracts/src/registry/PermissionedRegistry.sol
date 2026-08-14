@@ -154,9 +154,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         emit ResolverUpdated(tokenId, resolver, msg.sender);
     }
 
-    /// @notice Set the URI for the registry.
-    /// @param uri_ The new URI.
-    /// @param renderer The new renderer address.
+    /// @inheritdoc IStandardRegistry
     function setURI(string calldata uri_, IRegistryURIRenderer renderer)
         public
         virtual
@@ -262,6 +260,11 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// @inheritdoc IRegistry
     function getParent() public view returns (IRegistry parent, string memory label) {
         return (_parentRegistry, _childLabel);
+    }
+
+    /// @inheritdoc IStandardRegistry
+    function getURI() public view returns (string memory uri, IRegistryURIRenderer renderer) {
+        return (_uri, _uriRenderer);
     }
 
     /// @inheritdoc IContractNamer

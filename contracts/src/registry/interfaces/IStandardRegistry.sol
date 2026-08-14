@@ -2,12 +2,13 @@
 pragma solidity >=0.8.13;
 
 import {IRegistry} from "./IRegistry.sol";
+import {IRegistryURIRenderer} from "./IRegistryURIRenderer.sol";
 import {ITemporalRegistry} from "./ITemporalRegistry.sol";
 import {ITokenizedRegistry} from "./ITokenizedRegistry.sol";
 
 /// @title IStandardRegistry
 /// @notice A tokenized registry with registrations that expire.
-/// @dev Interface selector: `0xb844ab6c`
+/// @dev Interface selector: `0x877814a5`
 interface IStandardRegistry is ITemporalRegistry, ITokenizedRegistry {
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -66,11 +67,13 @@ interface IStandardRegistry is ITemporalRegistry, ITokenizedRegistry {
     function unregister(uint256 anyId) external;
 
     /// @notice Change registry of label.
+    /// @dev Should emit `SubregistryUpdated`.
     /// @param anyId The labelhash, token ID, or resource.
     /// @param registry The new registry.
     function setSubregistry(uint256 anyId, IRegistry registry) external;
 
     /// @notice Change resolver of label.
+    /// @dev Should emit `ResolverUpdated`.
     /// @param anyId The labelhash, token ID, or resource.
     /// @param resolver The new resolver.
     function setResolver(uint256 anyId, address resolver) external;
@@ -80,6 +83,17 @@ interface IStandardRegistry is ITemporalRegistry, ITokenizedRegistry {
     /// @param parent The canonical parent of this registry.
     /// @param label The canonical subdomain of this registry.
     function setParent(IRegistry parent, string calldata label) external;
+
+    /// @notice Change metadata parameters.
+    /// @dev Should emit `URIUpdated`.
+    /// @param uri The new URI.
+    /// @param renderer The new renderer address.
+    function setURI(string calldata uri, IRegistryURIRenderer renderer) external;
+
+    /// @notice Get metadata parameters.
+    /// @return uri The metadata URI.
+    /// @return renderer The metadata renderer address.
+    function getURI() external view returns (string memory uri, IRegistryURIRenderer renderer);
 
     /// @notice Get expiry of label.
     /// @param anyId The labelhash, token ID, or resource.
