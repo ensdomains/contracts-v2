@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-/// @dev Interface selector: `0x6e057a4e`
-interface IContentHashSetter {
+/// @dev Interface selector: `0xc5d7badd`
+interface IContenthashSetter {
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Content hash was changed.
+    /// @notice Contenthash was changed.
     /// @param recordId The record ID.
-    /// @param contentHash The content hash.
-    event ContentHashUpdated(uint256 indexed recordId, bytes contentHash);
+    /// @param hash The content hash.
+    event ContenthashUpdated(uint256 indexed recordId, bytes hash);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Set content hash.
+    /// @notice Set contenthash.
     /// @param name The DNS-encoded name.
-    /// @param contentHash The content hash.
-    function setContentHash(bytes calldata name, bytes calldata contentHash) external;
+    /// @param hash The content hash.
+    function setContenthash(bytes calldata name, bytes calldata hash) external;
 }

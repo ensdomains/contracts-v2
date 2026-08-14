@@ -11,7 +11,6 @@ import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedReso
 import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
 import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
 import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
-import {IPubkeyResolver} from "@ens/contracts/resolvers/profiles/IPubkeyResolver.sol";
 import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {ENSIP19, COIN_TYPE_ETH, COIN_TYPE_DEFAULT} from "@ens/contracts/utils/ENSIP19.sol";
@@ -23,11 +22,10 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {IRecordResolver} from "./interfaces/IRecordResolver.sol";
 import {IABISetter} from "./interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "./interfaces/setters/IAddressSetter.sol";
-import {IContentHashSetter} from "./interfaces/setters/IContentHashSetter.sol";
+import {IContenthashSetter} from "./interfaces/setters/IContenthashSetter.sol";
 import {IDataSetter} from "./interfaces/setters/IDataSetter.sol";
 import {IInterfaceSetter} from "./interfaces/setters/IInterfaceSetter.sol";
 import {INameSetter} from "./interfaces/setters/INameSetter.sol";
-import {IPubkeySetter} from "./interfaces/setters/IPubkeySetter.sol";
 import {ITextSetter} from "./interfaces/setters/ITextSetter.sol";
 
 /// @dev Abstract resolver implementation that supports multicall and the standardized resolver profiles.
@@ -37,8 +35,7 @@ abstract contract AbstractRecordResolver is ERC165, IRecordResolver, IERC7996 {
     ////////////////////////////////////////////////////////////////////////
 
     struct Record {
-        bytes contentHash;
-        bytes32[2] pubkey;
+        bytes contenthash;
         string name;
         mapping(uint256 coinType => bytes addressBytes) addresses;
         mapping(string key => string value) texts;
@@ -60,11 +57,10 @@ abstract contract AbstractRecordResolver is ERC165, IRecordResolver, IERC7996 {
             interfaceId == type(IMulticallable).interfaceId ||
             interfaceId == type(IABISetter).interfaceId ||
             interfaceId == type(IAddressSetter).interfaceId ||
-            interfaceId == type(IContentHashSetter).interfaceId ||
+            interfaceId == type(IContenthashSetter).interfaceId ||
             interfaceId == type(IDataSetter).interfaceId ||
             interfaceId == type(IInterfaceSetter).interfaceId ||
             interfaceId == type(INameSetter).interfaceId ||
-            interfaceId == type(IPubkeySetter).interfaceId ||
             interfaceId == type(ITextSetter).interfaceId ||
             super.supportsInterface(interfaceId);
     }
@@ -145,12 +141,10 @@ abstract contract AbstractRecordResolver is ERC165, IRecordResolver, IERC7996 {
         } else if (selector == INameResolver.name.selector) {
             return abi.encode(r.name); // string
         } else if (selector == IContentHashResolver.contenthash.selector) {
-            return abi.encode(r.contentHash); // bytes
+            return abi.encode(r.contenthash); // bytes
         } else if (selector == IHasAddressResolver.hasAddr.selector) {
             (, uint256 coinType) = abi.decode(data[4:], (bytes32, uint256));
             return abi.encode(r.addresses[coinType].length > 0); // boolean
-        } else if (selector == IPubkeyResolver.pubkey.selector) {
-            return abi.encode(r.pubkey); // (bytes32, bytes32)
         } else if (selector == IABIResolver.ABI.selector) {
             (, uint256 contentTypes) = abi.decode(data[4:], (bytes32, uint256));
             (uint256 contentType, bytes memory value) = _getABI(r, contentTypes);

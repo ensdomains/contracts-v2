@@ -16,7 +16,6 @@ import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedReso
 import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
 import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
 import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
-import {IPubkeyResolver} from "@ens/contracts/resolvers/profiles/IPubkeyResolver.sol";
 import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {
@@ -29,11 +28,10 @@ import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 
 import {IABISetter} from "~src/resolver/interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "~src/resolver/interfaces/setters/IAddressSetter.sol";
-import {IContentHashSetter} from "~src/resolver/interfaces/setters/IContentHashSetter.sol";
+import {IContenthashSetter} from "~src/resolver/interfaces/setters/IContenthashSetter.sol";
 import {IDataSetter} from "~src/resolver/interfaces/setters/IDataSetter.sol";
 import {IInterfaceSetter} from "~src/resolver/interfaces/setters/IInterfaceSetter.sol";
 import {INameSetter} from "~src/resolver/interfaces/setters/INameSetter.sol";
-import {IPubkeySetter} from "~src/resolver/interfaces/setters/IPubkeySetter.sol";
 import {ITextSetter} from "~src/resolver/interfaces/setters/ITextSetter.sol";
 import {IRecordResolver} from "~src/resolver/interfaces/IRecordResolver.sol";
 import {ISharedResolver} from "~src/resolver/interfaces/ISharedResolver.sol";
@@ -104,8 +102,8 @@ contract SharedResolverTest is V2Fixture {
             "IAddressSetter"
         );
         assertTrue(
-            ERC165Checker.supportsInterface(address(resolver), type(IContentHashSetter).interfaceId),
-            "IContentHashSetter"
+            ERC165Checker.supportsInterface(address(resolver), type(IContenthashSetter).interfaceId),
+            "IContenthashSetter"
         );
         assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(IDataSetter).interfaceId),
@@ -118,10 +116,6 @@ contract SharedResolverTest is V2Fixture {
         assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(INameSetter).interfaceId),
             "INameSetter"
-        );
-        assertTrue(
-            ERC165Checker.supportsInterface(address(resolver), type(IPubkeySetter).interfaceId),
-            "IPubkeySetter"
         );
         assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(ITextSetter).interfaceId),
@@ -444,24 +438,24 @@ contract SharedResolverTest is V2Fixture {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // setContentHash()
+    // setContenthash()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_setContentHash(bytes calldata contentHash) external {
+    function test_setContenthash(bytes calldata hash) external {
         vm.expectEmit();
-        emit IContentHashSetter.ContentHashUpdated(uint256(testNode), contentHash);
-        resolver.setContentHash(testName, contentHash);
+        emit IContenthashSetter.ContenthashUpdated(uint256(testNode), hash);
+        resolver.setContenthash(testName, hash);
 
         assertEq(
             _resolveWithUR(testName, abi.encodeCall(IContentHashResolver.contenthash, (bytes32(0)))),
-            abi.encode(contentHash)
+            abi.encode(hash)
         );
     }
 
-    function test_setContentHash_notAuthorized() external {
+    function test_setContenthash_notAuthorized() external {
         vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, testName));
         vm.prank(actor);
-        resolver.setContentHash(testName, "");
+        resolver.setContenthash(testName, "");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -546,27 +540,6 @@ contract SharedResolverTest is V2Fixture {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // setPubkey()
-    ////////////////////////////////////////////////////////////////////////
-
-    function test_setPubkey(bytes32 x, bytes32 y) external {
-        vm.expectEmit();
-        emit IPubkeySetter.PubkeyUpdated(uint256(testNode), x, y);
-        resolver.setPubkey(testName, x, y);
-
-        assertEq(
-            _resolveWithUR(testName, abi.encodeCall(IPubkeyResolver.pubkey, (bytes32(0)))),
-            abi.encode(x, y)
-        );
-    }
-
-    function test_setPubkey_notAuthorized() external {
-        vm.expectRevert(abi.encodeWithSelector(ISharedResolver.CannotModifyName.selector, testName));
-        vm.prank(actor);
-        resolver.setPubkey(testName, bytes32(0), bytes32(0));
-    }
-
-    ////////////////////////////////////////////////////////////////////////
     // setText()
     ////////////////////////////////////////////////////////////////////////
 
@@ -625,7 +598,7 @@ contract SharedResolverTest is V2Fixture {
 
         bytes[] memory m = new bytes[](6);
         m[0] = abi.encodeCall(IAddressSetter.setAddress, (testName, COIN_TYPE_DEFAULT, v));
-        m[1] = abi.encodeCall(IContentHashSetter.setContentHash, (testName, v));
+        m[1] = abi.encodeCall(IContenthashSetter.setContenthash, (testName, v));
         m[2] = abi.encodeCall(IDataSetter.setData, (testName, s, v));
         m[3] = abi.encodeCall(IInterfaceSetter.setInterface, (testName, TEST_SELECTOR, friend));
         m[4] = abi.encodeCall(INameSetter.setName, (testName, s));

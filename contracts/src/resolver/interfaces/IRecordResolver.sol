@@ -6,11 +6,10 @@ import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedReso
 
 import {IABISetter} from "./setters/IABISetter.sol";
 import {IAddressSetter} from "./setters/IAddressSetter.sol";
-import {IContentHashSetter} from "./setters/IContentHashSetter.sol";
+import {IContenthashSetter} from "./setters/IContenthashSetter.sol";
 import {IDataSetter} from "./setters/IDataSetter.sol";
 import {IInterfaceSetter} from "./setters/IInterfaceSetter.sol";
 import {INameSetter} from "./setters/INameSetter.sol";
-import {IPubkeySetter} from "./setters/IPubkeySetter.sol";
 import {ITextSetter} from "./setters/ITextSetter.sol";
 
 /// @dev Interface selector: `0xd3fb9e08`
@@ -19,11 +18,10 @@ interface IRecordResolver is
     IMulticallable,
     IABISetter,
     IAddressSetter,
-    IContentHashSetter,
+    IContenthashSetter,
     IDataSetter,
     IInterfaceSetter,
     INameSetter,
-    IPubkeySetter,
     ITextSetter
 {
     ////////////////////////////////////////////////////////////////////////
