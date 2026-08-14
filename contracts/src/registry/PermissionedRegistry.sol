@@ -154,7 +154,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         emit ResolverUpdated(tokenId, resolver, msg.sender);
     }
 
-    /// @inheritdoc IStandardRegistry
+    /// @inheritdoc IPermissionedRegistry
     function setURI(string calldata uri_, IRegistryURIRenderer renderer)
         public
         virtual
@@ -262,8 +262,8 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         return (_parentRegistry, _childLabel);
     }
 
-    /// @inheritdoc IStandardRegistry
-    function getURI() public view returns (string memory uri, IRegistryURIRenderer renderer) {
+    /// @inheritdoc IPermissionedRegistry
+    function getURI() public view returns (string memory uri_, IRegistryURIRenderer renderer) {
         return (_uri, _uriRenderer);
     }
 
