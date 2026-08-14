@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-/// @dev Interface selector: `0x6e057a4e`
+/// @dev Interface selector: `0xc5d7badd`
 interface IContenthashSetter {
     ////////////////////////////////////////////////////////////////////////
     // Events
