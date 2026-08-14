@@ -46,12 +46,15 @@ import {
 } from "~src/resolver/interfaces/IPermissionedResolverInitializable.sol";
 import {PermissionedResolverLib} from "~src/resolver/libraries/PermissionedResolverLib.sol";
 import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {LibRegistry} from "~src/universalResolver/libraries/LibRegistry.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
 bytes4 constant TEST_SELECTOR = 0x12345678;
 
 contract PermissionedResolverTest is V2Fixture {
-    uint256 constant DEFAULT_ROLES = EACBaseRolesLib.ALL_ROLES;
+    uint256 constant DEFAULT_ROLES =
+        EACBaseRolesLib.ALL_ROLES ^ PermissionedResolverLib.ROLE_CAN_USE;
 
     PermissionedResolver implementation;
     PermissionedResolver resolver;
@@ -71,7 +74,7 @@ contract PermissionedResolverTest is V2Fixture {
     function setUp() external {
         deployV2Fixture();
 
-        implementation = new PermissionedResolver(address(this));
+        implementation = new PermissionedResolver(rootRegistry, address(this));
 
         testName = NameCoder.encode("test.eth");
         otherName = NameCoder.encode("other.eth");
@@ -958,7 +961,7 @@ contract PermissionedResolverTest is V2Fixture {
 
         // give friend setText(*) on any record
         vm.prank(owner);
-        assertTrue(resolver.grantRootRoles(PermissionedResolverLib.ROLE_SET_TEXT, friend), "granted");
+        assertTrue(resolver.grantRootRoles(PermissionedResolverLib.ROLE_SET_TEXT, friend), "grant");
 
         // friend can change same setter of testName
         vm.prank(friend);
@@ -1234,6 +1237,57 @@ contract PermissionedResolverTest is V2Fixture {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // Use Restrictions
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_use_unowned() external {
+        vm.prank(owner);
+        assertTrue(resolver.grantRootRoles(PermissionedResolverLib.ROLE_CAN_USE, owner), "grant");
+
+        assertNotEq(LibRegistry.findOwner(rootRegistry, testName, 0), owner, "owner");
+
+        vm.expectRevert();
+        resolver.resolve(testName, abi.encodeCall(IAddrResolver.addr, (bytes32(0))));
+    }
+
+    function test_use_authorized() external {
+        vm.prank(owner);
+        assertTrue(resolver.grantRootRoles(PermissionedResolverLib.ROLE_CAN_USE, owner), "grant");
+
+        ethRegistry.register(
+            "test",
+            owner,
+            IRegistry(address(0)),
+            address(resolver),
+            0,
+            type(uint64).max
+        );
+
+        assertEq(LibRegistry.findOwner(rootRegistry, testName, 0), owner, "owner");
+
+        resolver.resolve(testName, abi.encodeCall(IAddrResolver.addr, (bytes32(0))));
+    }
+
+    function test_use_unauthorized() external {
+        vm.prank(owner);
+        assertTrue(resolver.grantRootRoles(PermissionedResolverLib.ROLE_CAN_USE, owner), "grant");
+
+        ethRegistry.register(
+            "test",
+            actor,
+            IRegistry(address(0)),
+            address(resolver),
+            0,
+            type(uint64).max
+        );
+
+        assertNotEq(LibRegistry.findOwner(rootRegistry, testName, 0), owner, "owner");
+
+        vm.expectRevert();
+        resolver.resolve(testName, abi.encodeCall(IAddrResolver.addr, (bytes32(0))));
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // IContractNamer
     ////////////////////////////////////////////////////////////////////////
 
@@ -1246,11 +1300,11 @@ contract PermissionedResolverTest is V2Fixture {
         assertFalse(resolver.isContractNamer(friend), "before");
 
         vm.prank(owner);
-        resolver.grantRootRoles(PermissionedResolverLib.ROLE_CAN_NAME, friend);
+        assertTrue(resolver.grantRootRoles(PermissionedResolverLib.ROLE_CAN_NAME, friend), "grant");
         assertTrue(resolver.isContractNamer(friend), "granted");
 
         vm.prank(owner);
-        resolver.revokeRootRoles(PermissionedResolverLib.ROLE_CAN_NAME, friend);
+        assertTrue(resolver.revokeRootRoles(PermissionedResolverLib.ROLE_CAN_NAME, friend), "revoke");
         assertFalse(resolver.isContractNamer(friend), "revoked");
     }
 

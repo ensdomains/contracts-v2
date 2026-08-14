@@ -54,6 +54,11 @@ library PermissionedResolverLib {
     /// @dev Nybble 40: authorizes setting ROLE_MANAGER.
     uint256 internal constant ROLE_MANAGER_ADMIN = ROLE_MANAGER << 128;
 
+    /// @dev Nybble 9: authorizes use of this resolver.  Root-only.
+    uint256 internal constant ROLE_CAN_USE = 1 << 36;
+    /// @dev Nybble 41: authorizes setting ROLE_CAN_USE.
+    uint256 internal constant ROLE_CAN_USE_ADMIN = ROLE_CAN_USE << 128;
+
     /// @dev Nybble 30: authorizes contract naming. Root-only.
     uint256 internal constant ROLE_CAN_NAME = 1 << 120;
     /// @dev Nybble 62: authorizes setting ROLE_CAN_NAME.

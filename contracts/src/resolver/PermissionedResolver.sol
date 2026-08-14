@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
+import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
+import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 
 import {AbstractRecordResolver} from "./AbstractRecordResolver.sol";
 import {IPermissionedResolver} from "./interfaces/IPermissionedResolver.sol";
@@ -89,6 +92,13 @@ contract PermissionedResolver is
     IProxyAuthorization
 {
     ////////////////////////////////////////////////////////////////////////
+    // Immutables
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice ENSv2 root registry.
+    IRegistry public immutable ROOT_REGISTRY;
+
+    ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
@@ -105,8 +115,10 @@ contract PermissionedResolver is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @param rootRegistry ENSv2 root registry.
     /// @param namer The implementation namer.
-    constructor(address namer) {
+    constructor(IRegistry rootRegistry, address namer) {
+        ROOT_REGISTRY = rootRegistry;
         _grantRoles(
             ROOT_RESOURCE,
             PermissionedResolverLib.ROLE_CAN_NAME | PermissionedResolverLib.ROLE_CAN_NAME_ADMIN,
@@ -305,6 +317,25 @@ contract PermissionedResolver is
         returns (bool allowed)
     {
         return true;
+    }
+
+    /// @inheritdoc AbstractRecordResolver
+    function resolve(bytes calldata name, bytes calldata data)
+        public
+        view
+        override(AbstractRecordResolver, IExtendedResolver)
+        returns (bytes memory)
+    {
+        if (
+            hasAssignees(ROOT_RESOURCE, PermissionedResolverLib.ROLE_CAN_USE) &&
+            !hasRootRoles(
+                PermissionedResolverLib.ROLE_CAN_USE,
+                LibRegistry.findOwner(ROOT_REGISTRY, name, 0)
+            )
+        ) {
+            revert UnauthorizedNameOwner(name);
+        }
+        return super.resolve(name, data);
     }
 
     /// @inheritdoc IContractNamer
