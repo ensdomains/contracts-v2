@@ -94,15 +94,17 @@ const FLAGS = {
   },
   // see: PermissionedResolver.sol / PermissionedResolverLib.sol
   RESOLVER: {
-    SET_ADDR: 1n << 0n,
+    SET_ADDRESS: 1n << 0n,
     SET_TEXT: 1n << 4n,
     SET_CONTENTHASH: 1n << 8n,
     SET_PUBKEY: 1n << 12n,
     SET_ABI: 1n << 16n,
     SET_INTERFACE: 1n << 20n,
     SET_NAME: 1n << 24n,
-    SET_ALIAS: 1n << 28n,
-    CLEAR: 1n << 32n,
+    SET_DATA: 1n << 28n,
+    MANAGER: 1n << 32n,
+    CAN_USE: 1n << 36n,
+    CAN_NAME: 1n << 120n,
     UPGRADE: 1n << 124n,
   },
   // see: StandardRentPriceOracle.sol

@@ -703,7 +703,7 @@ export async function setupDevnet({
     async function deployPermissionedResolver({
       account, // deployer
       admin = account.address,
-      roles = ROLES.ALL,
+      roles = ROLES.ALL ^ ROLES.RESOLVER.CAN_USE,
       calls = [],
       salt,
     }: {
