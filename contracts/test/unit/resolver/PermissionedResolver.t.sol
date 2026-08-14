@@ -24,16 +24,14 @@ import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedReso
 import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
 import {IInterfaceResolver} from "@ens/contracts/resolvers/profiles/IInterfaceResolver.sol";
 import {INameResolver} from "@ens/contracts/resolvers/profiles/INameResolver.sol";
-import {IPubkeyResolver} from "@ens/contracts/resolvers/profiles/IPubkeyResolver.sol";
 import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
 
 import {IABISetter} from "~src/resolver/interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "~src/resolver/interfaces/setters/IAddressSetter.sol";
-import {IContentHashSetter} from "~src/resolver/interfaces/setters/IContentHashSetter.sol";
+import {IContenthashSetter} from "~src/resolver/interfaces/setters/IContenthashSetter.sol";
 import {IDataSetter} from "~src/resolver/interfaces/setters/IDataSetter.sol";
 import {IInterfaceSetter} from "~src/resolver/interfaces/setters/IInterfaceSetter.sol";
 import {INameSetter} from "~src/resolver/interfaces/setters/INameSetter.sol";
-import {IPubkeySetter} from "~src/resolver/interfaces/setters/IPubkeySetter.sol";
 import {ITextSetter} from "~src/resolver/interfaces/setters/ITextSetter.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
@@ -122,7 +120,7 @@ contract PermissionedResolverTest is V2Fixture {
     function test_initalize_with_setters() external {
         bytes[] memory m = new bytes[](2);
         m[0] = abi.encodeCall(PermissionedResolver.setName, (testName, "A"));
-        m[1] = abi.encodeCall(PermissionedResolver.setContentHash, (testName, "B"));
+        m[1] = abi.encodeCall(PermissionedResolver.setContenthash, (testName, "B"));
 
         bytes memory initData =
             abi.encodeCall(IPermissionedResolverInitializable.initialize, (new Grant[](0), m));
@@ -228,8 +226,8 @@ contract PermissionedResolverTest is V2Fixture {
             "IAddressSetter"
         );
         assertTrue(
-            ERC165Checker.supportsInterface(address(resolver), type(IContentHashSetter).interfaceId),
-            "IContentHashSetter"
+            ERC165Checker.supportsInterface(address(resolver), type(IContenthashSetter).interfaceId),
+            "IContenthashSetter"
         );
         assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(IDataSetter).interfaceId),
@@ -242,10 +240,6 @@ contract PermissionedResolverTest is V2Fixture {
         assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(INameSetter).interfaceId),
             "INameSetter"
-        );
-        assertTrue(
-            ERC165Checker.supportsInterface(address(resolver), type(IPubkeySetter).interfaceId),
-            "IPubkeySetter"
         );
         assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(ITextSetter).interfaceId),
@@ -749,22 +743,22 @@ contract PermissionedResolverTest is V2Fixture {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // setContentHash()
+    // setContenthash()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_setContentHash(bytes calldata contentHash) external {
+    function test_setContenthash(bytes calldata hash) external {
         vm.expectEmit();
-        emit IContentHashSetter.ContentHashUpdated(1, contentHash);
+        emit IContenthashSetter.ContenthashUpdated(1, hash);
         vm.prank(owner);
-        resolver.setContentHash(testName, contentHash);
+        resolver.setContenthash(testName, hash);
 
         assertEq(
             _resolveWithUR(testName, abi.encodeCall(IContentHashResolver.contenthash, (bytes32(0)))),
-            abi.encode(contentHash)
+            abi.encode(hash)
         );
     }
 
-    function test_setContentHash_notAuthorized() external {
+    function test_setContenthash_notAuthorized() external {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -774,7 +768,7 @@ contract PermissionedResolverTest is V2Fixture {
             )
         );
         vm.prank(actor);
-        resolver.setContentHash(testName, "");
+        resolver.setContenthash(testName, "");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -883,35 +877,6 @@ contract PermissionedResolverTest is V2Fixture {
         );
         vm.prank(actor);
         resolver.setName(testName, "");
-    }
-
-    ////////////////////////////////////////////////////////////////////////
-    // setPubkey()
-    ////////////////////////////////////////////////////////////////////////
-
-    function test_setPubkey(bytes32 x, bytes32 y) external {
-        vm.expectEmit();
-        emit IPubkeySetter.PubkeyUpdated(1, x, y);
-        vm.prank(owner);
-        resolver.setPubkey(testName, x, y);
-
-        assertEq(
-            _resolveWithUR(testName, abi.encodeCall(IPubkeyResolver.pubkey, (bytes32(0)))),
-            abi.encode(x, y)
-        );
-    }
-
-    function test_setPubkey_notAuthorized() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                resolver.ROOT_RESOURCE(),
-                PermissionedResolverLib.ROLE_SET_PUBKEY,
-                actor
-            )
-        );
-        vm.prank(actor);
-        resolver.setPubkey(testName, 0, 0);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1049,12 +1014,12 @@ contract PermissionedResolverTest is V2Fixture {
     // multicall()
     ////////////////////////////////////////////////////////////////////////
 
-    function test_multicall_setters(bool checked, string calldata name, bytes calldata contentHash)
+    function test_multicall_setters(bool checked, string calldata name, bytes calldata hash)
         external
     {
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeCall(PermissionedResolver.setName, (testName, name));
-        calls[1] = abi.encodeCall(PermissionedResolver.setContentHash, (testName, contentHash));
+        calls[1] = abi.encodeCall(PermissionedResolver.setContenthash, (testName, hash));
 
         vm.prank(owner);
         if (checked) {
@@ -1070,7 +1035,7 @@ contract PermissionedResolverTest is V2Fixture {
         );
         assertEq(
             _resolveWithUR(testName, abi.encodeCall(IContentHashResolver.contenthash, bytes32(0))),
-            abi.encode(contentHash),
+            abi.encode(hash),
             "contenthash"
         );
     }
@@ -1095,7 +1060,7 @@ contract PermissionedResolverTest is V2Fixture {
         vm.startPrank(owner);
         resolver.setABI(testName, 1, "A");
         resolver.setAddress(testName, COIN_TYPE_DEFAULT, testAddress);
-        resolver.setContentHash(testName, "B");
+        resolver.setContenthash(testName, "B");
         resolver.setData(testName, "DATA", "C");
         resolver.setInterface(testName, TEST_SELECTOR, testAddr);
         resolver.setName(testName, "D");
@@ -1170,13 +1135,13 @@ contract PermissionedResolverTest is V2Fixture {
         );
     }
 
-    function test_default_setContentHash(bytes calldata contentHash) external {
+    function test_default_setContenthash(bytes calldata hash) external {
         vm.prank(owner);
-        resolver.setContentHash(rootName, contentHash);
+        resolver.setContenthash(rootName, hash);
 
         assertEq(
             resolver.resolve(dneName, abi.encodeCall(IContentHashResolver.contenthash, (bytes32(0)))),
-            abi.encode(contentHash)
+            abi.encode(hash)
         );
     }
 
@@ -1210,16 +1175,6 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(
             resolver.resolve(dneName, abi.encodeCall(INameResolver.name, (bytes32(0)))),
             abi.encode(name)
-        );
-    }
-
-    function test_default_setPubkey(bytes32 x, bytes32 y) external {
-        vm.prank(owner);
-        resolver.setPubkey(rootName, x, y);
-
-        assertEq(
-            resolver.resolve(dneName, abi.encodeCall(IPubkeyResolver.pubkey, (bytes32(0)))),
-            abi.encode(x, y)
         );
     }
 

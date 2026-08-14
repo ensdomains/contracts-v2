@@ -12,11 +12,10 @@ import {AbstractRecordResolver} from "./AbstractRecordResolver.sol";
 import {ISharedResolver} from "./interfaces/ISharedResolver.sol";
 import {IABISetter} from "./interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "./interfaces/setters/IAddressSetter.sol";
-import {IContentHashSetter} from "./interfaces/setters/IContentHashSetter.sol";
+import {IContenthashSetter} from "./interfaces/setters/IContenthashSetter.sol";
 import {IDataSetter} from "./interfaces/setters/IDataSetter.sol";
 import {IInterfaceSetter} from "./interfaces/setters/IInterfaceSetter.sol";
 import {INameSetter} from "./interfaces/setters/INameSetter.sol";
-import {IPubkeySetter} from "./interfaces/setters/IPubkeySetter.sol";
 import {ITextSetter} from "./interfaces/setters/ITextSetter.sol";
 
 /// @notice PublicResolver that respects the ENSv2 registry and uses name-based setters.
@@ -109,11 +108,11 @@ contract SharedResolver is ISharedResolver, AbstractRecordResolver, DelegatedCon
         emit AddressUpdated(uint256(node), coinType, addressBytes);
     }
 
-    /// @inheritdoc IContentHashSetter
-    function setContentHash(bytes calldata name, bytes calldata contentHash) external {
+    /// @inheritdoc IContenthashSetter
+    function setContenthash(bytes calldata name, bytes calldata hash) external {
         bytes32 node = _ensureRecord(name);
-        _record(node).contentHash = contentHash;
-        emit ContentHashUpdated(uint256(node), contentHash);
+        _record(node).contenthash = hash;
+        emit ContenthashUpdated(uint256(node), hash);
     }
 
     /// @inheritdoc IDataSetter
@@ -135,13 +134,6 @@ contract SharedResolver is ISharedResolver, AbstractRecordResolver, DelegatedCon
         bytes32 node = _ensureRecord(name);
         _record(node).name = primaryName;
         emit NameUpdated(uint256(node), primaryName);
-    }
-
-    /// @inheritdoc IPubkeySetter
-    function setPubkey(bytes calldata name, bytes32 x, bytes32 y) external {
-        bytes32 node = _ensureRecord(name);
-        _record(node).pubkey = [x, y];
-        emit PubkeyUpdated(uint256(node), x, y);
     }
 
     /// @inheritdoc ITextSetter

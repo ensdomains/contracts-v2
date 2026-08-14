@@ -17,11 +17,10 @@ import {
 } from "./interfaces/IPermissionedResolverInitializable.sol";
 import {IABISetter} from "./interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "./interfaces/setters/IAddressSetter.sol";
-import {IContentHashSetter} from "./interfaces/setters/IContentHashSetter.sol";
+import {IContenthashSetter} from "./interfaces/setters/IContenthashSetter.sol";
 import {IDataSetter} from "./interfaces/setters/IDataSetter.sol";
 import {IInterfaceSetter} from "./interfaces/setters/IInterfaceSetter.sol";
 import {INameSetter} from "./interfaces/setters/INameSetter.sol";
-import {IPubkeySetter} from "./interfaces/setters/IPubkeySetter.sol";
 import {ITextSetter} from "./interfaces/setters/ITextSetter.sol";
 import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 
@@ -32,7 +31,6 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// * ENSIP-1 / EIP-137: addr()
 /// * ENSIP-3 / EIP-181: name()
 /// * ENSIP-4 / EIP-205: ABI(contentTypes)
-/// * EIP-619: pubkey()
 /// * ENSIP-5 / EIP-634: text(key)
 /// * ENSIP-7 / EIP-1577: contenthash()
 /// * ENSIP-8: interfaceImplementer(interfaceId)
@@ -64,7 +62,6 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 /// | `setData()`        | `ROLE_SET_DATA`        | string key          |
 /// | `setInterface()`   | `ROLE_SET_INTERFACE`   | bytes4 interfaceId  |
 /// | `setName()`        | `ROLE_SET_NAME`        |                     |
-/// | `setPubkey()`      | `ROLE_SET_PUBKEY`      |                     |
 /// | `setText()`        | `ROLE_SET_TEXT`        | string key          |
 ///
 /// Every record setter has the form: `f(name, ...)`
@@ -184,14 +181,14 @@ contract PermissionedResolver is
         emit AddressUpdated(recordId, coinType, addressBytes);
     }
 
-    /// @inheritdoc IContentHashSetter
-    function setContentHash(bytes calldata name, bytes calldata contentHash)
+    /// @inheritdoc IContenthashSetter
+    function setContenthash(bytes calldata name, bytes calldata hash)
         external
         onlyRootRoles(PermissionedResolverLib.ROLE_SET_CONTENTHASH)
     {
         uint256 recordId = _ensureRecord(name);
-        _records[recordId].contentHash = contentHash;
-        emit ContentHashUpdated(recordId, contentHash);
+        _records[recordId].contenthash = hash;
+        emit ContenthashUpdated(recordId, hash);
     }
 
     /// @inheritdoc IDataSetter
@@ -225,16 +222,6 @@ contract PermissionedResolver is
         uint256 recordId = _ensureRecord(name);
         _records[recordId].name = primaryName;
         emit NameUpdated(recordId, primaryName);
-    }
-
-    /// @inheritdoc IPubkeySetter
-    function setPubkey(bytes calldata name, bytes32 x, bytes32 y)
-        external
-        onlyRootRoles(PermissionedResolverLib.ROLE_SET_PUBKEY)
-    {
-        uint256 recordId = _ensureRecord(name);
-        _records[recordId].pubkey = [x, y];
-        emit PubkeyUpdated(recordId, x, y);
     }
 
     /// @inheritdoc ITextSetter
