@@ -5,7 +5,7 @@ import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedA
 
 import {IRecordResolver} from "./IRecordResolver.sol";
 
-/// @dev Interface selector: `0xd2392281`
+/// @dev Interface selector: `0x8c2427cc`
 interface IPermissionedResolver is IRecordResolver, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -25,10 +25,6 @@ interface IPermissionedResolver is IRecordResolver, IEnhancedAccessControl {
     /// @param account The account to be authorize for role.
     /// @return `true` if an authorization was changed.
     function grantSetterRoles(bytes calldata setter, address account) external returns (bool);
-
-    /// @notice Associate `name` with a new record.
-    /// @param name The DNS-encoded name.
-    function clear(bytes calldata name) external;
 
     /// @notice Associate `name` with `targetNode`.
     /// @param sourceName The DNS-encoded name to link.
