@@ -108,7 +108,12 @@ abstract contract AbstractRecordResolver is ERC165, IRecordResolver, IERC7996 {
 
     /// @inheritdoc IExtendedResolver
     /// @dev The first argument of data (`bytes32 node`) is ignored.
-    function resolve(bytes calldata name, bytes calldata data) public view returns (bytes memory) {
+    function resolve(bytes calldata name, bytes calldata data)
+        public
+        view
+        virtual
+        returns (bytes memory)
+    {
         bytes4 selector = bytes4(data);
         if (selector == IMulticallable.multicall.selector) {
             bytes[] memory m = abi.decode(data[4:], (bytes[]));

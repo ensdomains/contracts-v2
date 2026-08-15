@@ -102,6 +102,7 @@ const FLAGS = {
     SET_NAME: 1n << 20n,
     SET_DATA: 1n << 24n,
     LINK: 1n << 28n,
+    CAN_USE: 1n << 32n,
     CAN_NAME: 1n << 120n,
     UPGRADE: 1n << 124n,
   },

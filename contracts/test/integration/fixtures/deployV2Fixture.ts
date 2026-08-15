@@ -77,7 +77,7 @@ export async function deployV2Fixture(
     await network.viem.deployContract("VerifiableFactory");
   const PermissionedResolverImpl = await network.viem.deployContract(
     "PermissionedResolver",
-    [contractNamer.address],
+    [rootRegistry.address, contractNamer.address],
   );
   return {
     network,
@@ -94,7 +94,7 @@ export async function deployV2Fixture(
   };
   async function deployPermissionedResolver({
     owner = walletClient.account.address,
-    roles = ROLES.ALL,
+    roles = ROLES.ALL ^ ROLES.RESOLVER.CAN_USE,
     setters = [],
     salt = idFromLabel(new Date().toISOString()),
   }: {

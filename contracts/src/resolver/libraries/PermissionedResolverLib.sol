@@ -49,6 +49,11 @@ library PermissionedResolverLib {
     /// @dev Nybble 39: authorizes setting ROLE_LINK.
     uint256 internal constant ROLE_LINK_ADMIN = ROLE_LINK << 128;
 
+    /// @dev Nybble 8: authorizes use of this resolver.  Root-only.
+    uint256 internal constant ROLE_CAN_USE = 1 << 32;
+    /// @dev Nybble 40: authorizes setting ROLE_CAN_USE.
+    uint256 internal constant ROLE_CAN_USE_ADMIN = ROLE_CAN_USE << 128;
+
     /// @dev Nybble 30: authorizes contract naming. Root-only.
     uint256 internal constant ROLE_CAN_NAME = 1 << 120;
     /// @dev Nybble 62: authorizes setting ROLE_CAN_NAME.
