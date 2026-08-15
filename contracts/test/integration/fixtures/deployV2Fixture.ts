@@ -94,7 +94,7 @@ export async function deployV2Fixture(
   };
   async function deployPermissionedResolver({
     owner = walletClient.account.address,
-    roles = ROLES.ALL,
+    roles = ROLES.ALL ^ ROLES.RESOLVER.CAN_USE,
     setters = [],
     salt = idFromLabel(new Date().toISOString()),
   }: {
