@@ -333,7 +333,7 @@ contract PermissionedResolverTest is V2Fixture {
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
                 resolver.ROOT_RESOURCE(),
-                PermissionedResolverLib.ROLE_MANAGER,
+                PermissionedResolverLib.ROLE_LINK,
                 actor
             )
         );
@@ -353,7 +353,7 @@ contract PermissionedResolverTest is V2Fixture {
         vm.startPrank(owner);
         resolver.setName(testName, "NAME");
         recordId = resolver.getRecordId(NameCoder.namehash(testName, 0));
-        resolver.clear(testName);
+        resolver.linkToRecord(testName, 0);
         vm.stopPrank();
 
         assertNotEq(resolver.getRecordId(NameCoder.namehash(testName, 0)), recordId);
@@ -382,58 +382,12 @@ contract PermissionedResolverTest is V2Fixture {
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
                 resolver.ROOT_RESOURCE(),
-                PermissionedResolverLib.ROLE_MANAGER,
+                PermissionedResolverLib.ROLE_LINK,
                 actor
             )
         );
         vm.prank(actor);
         resolver.linkToRecord(testName, 0);
-    }
-
-    ////////////////////////////////////////////////////////////////////////
-    // clear()
-    ////////////////////////////////////////////////////////////////////////
-
-    function test_clear() external {
-        vm.expectEmit();
-        emit IRecordResolver.Linked(1, NameCoder.namehash(testName, 0), testName);
-        vm.prank(owner);
-        resolver.clear(testName);
-
-        vm.expectEmit();
-        emit IRecordResolver.Linked(2, NameCoder.namehash(testName, 0), testName);
-        vm.prank(owner);
-        resolver.clear(testName);
-    }
-
-    function test_clear_notAuthorized() external {
-        // try without record
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                resolver.ROOT_RESOURCE(),
-                PermissionedResolverLib.ROLE_MANAGER,
-                actor
-            )
-        );
-        vm.prank(actor);
-        resolver.clear(testName);
-
-        // ensure record
-        vm.prank(owner);
-        resolver.clear(testName);
-
-        // try with record
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                resolver.ROOT_RESOURCE(),
-                PermissionedResolverLib.ROLE_MANAGER,
-                actor
-            )
-        );
-        vm.prank(actor);
-        resolver.clear(testName);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -452,12 +406,12 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(resolver.getRecordId(node1), 1, "new");
 
         vm.prank(owner);
-        resolver.clear(testName);
-        assertEq(resolver.getRecordId(node1), 2, "clear");
+        resolver.linkToNode(otherName, node1);
+        assertEq(resolver.getRecordId(node2), 1, "link");
 
         vm.prank(owner);
-        resolver.linkToNode(otherName, node1);
-        assertEq(resolver.getRecordId(node2), 2, "link2");
+        resolver.linkToRecord(testName, 0);
+        assertEq(resolver.getRecordId(node1), 0, "unlink");
 
         vm.prank(owner);
         resolver.linkToRecord(otherName, 0);
@@ -472,16 +426,16 @@ contract PermissionedResolverTest is V2Fixture {
         assertEq(resolver.getRecordCount(), 1, "new");
 
         vm.prank(owner);
-        resolver.clear(testName);
-        assertEq(resolver.getRecordCount(), 2, "clear");
+        resolver.linkToRecord(testName, 0);
+        assertEq(resolver.getRecordCount(), 1, "unlink");
 
         vm.prank(owner);
         resolver.setName(otherName, "");
-        assertEq(resolver.getRecordCount(), 3, "new2");
+        assertEq(resolver.getRecordCount(), 2, "new2");
 
         vm.prank(owner);
-        resolver.linkToNode(dneName, NameCoder.namehash(testName, 0));
-        assertEq(resolver.getRecordCount(), 3, "link");
+        resolver.linkToNode(dneName, NameCoder.namehash(otherName, 0));
+        assertEq(resolver.getRecordCount(), 2, "link");
     }
 
     ////////////////////////////////////////////////////////////////////////

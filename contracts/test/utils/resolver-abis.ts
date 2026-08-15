@@ -35,10 +35,9 @@ export const V1_SETTER_ABI = parseAbi([
 export const V2_SETTER_ABI = parseAbi([
   "function setABI(bytes, uint256 contentType, bytes data) external",
   "function setAddress(bytes, uint256 coinType, bytes value) external",
-  "function setContentHash(bytes, bytes value) external",
+  "function setContenthash(bytes, bytes value) external",
   "function setData(bytes, string key, bytes value) external",
   "function setInterface(bytes, bytes4 interfaceID, address implementer) external",
   "function setName(bytes, string name) external",
-  "function setPubkey(bytes, bytes32 x, bytes32 y) external",
   "function setText(bytes, string key, string value) external",
 ]);

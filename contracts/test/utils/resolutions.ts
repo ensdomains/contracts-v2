@@ -302,7 +302,7 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
       }),
       writeV2: encodeFunctionData({
         abi: V2_SETTER_ABI,
-        functionName: "setContentHash",
+        functionName: "setContenthash",
         args: [dnsName, value],
       }),
     });
@@ -335,11 +335,7 @@ export function makeResolutions(p: KnownProfile): KnownResolution[] {
         functionName: "setPubkey",
         args: [node, x, y],
       }),
-      writeV2: encodeFunctionData({
-        abi: V2_SETTER_ABI,
-        functionName: "setPubkey",
-        args: [dnsName, x, y],
-      }),
+      writeV2: "0x",
     });
   }
   if (p.primary) {

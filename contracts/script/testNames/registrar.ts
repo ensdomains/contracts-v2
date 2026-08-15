@@ -4,6 +4,7 @@ import {
   COIN_TYPE_ETH,
   dnsEncodeName,
   idFromLabel,
+  namehash,
 } from "../../test/utils/utils.js";
 import { formatExpiry } from "./display.js";
 import { trackGas } from "./gas.js";

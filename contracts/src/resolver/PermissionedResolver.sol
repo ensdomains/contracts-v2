@@ -31,49 +31,50 @@ import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 ///
 /// Supported profiles and standards:
 ///
-/// * ENSIP-1 / EIP-137: addr()
-/// * ENSIP-3 / EIP-181: name()
-/// * ENSIP-4 / EIP-205: ABI(contentTypes)
-/// * ENSIP-5 / EIP-634: text(key)
-/// * ENSIP-7 / EIP-1577: contenthash()
-/// * ENSIP-8: interfaceImplementer(interfaceId)
-/// * ENSIP-9 / EIP-2304: addr(coinType)
-/// * ENSIP-19: addr(default)
-/// * ENSIP-24: data(key)
-/// * IHasAddressResolver: hasAddr(coinType)
+/// | ENSIP | EIP  | Signature                           |
+/// | ----- | ---- | ----------------------------------- |
+/// | 1     | 137  | `addr()`                            |
+/// | 3     | 181  | `name()`                            |
+/// | 4     | 205  | `ABI(contentTypes)`                 |
+/// | 5     | 634  | `text(key)`                         |
+/// | 7     | 1577 | `contenthash()`                     |
+/// | 8     |      | `interfaceImplementer(interfaceId)` |
+/// | 9     | 2304 | `addr(coinType)`                    |
+/// | 19    |      | `addr(default)`                     |
+/// | 24    |      | `data(key)`                         |
+/// | TBD   |      | `hasAddr(coinType)`                 |
 ///
-/// Records are created automatically by setters and assigned internal ID numbers (starting at 1).
+/// Records are created automatically by setters and assigned record ID numbers (starting at 1).
 ///
 /// `getRecordId(node)` reveals the internal record ID.
 ///
 /// `linkToNode(name, node)` makes `name` use the record currently used by `node`.
 /// `linkToRecord(name, recordId)` makes `name` use a specific record ID.
 /// `linkToRecord(name, 0)` unlinks `name` from the record.
-/// `clear(name)` makes `name` use a new record.
 ///
-/// To link or clear, `ROLE_MANAGER` is required on root.
+/// To link, `ROLE_LINK` is required on root.
 ///
 /// Names without a record use the default record, which can be managed using the root name (`0x00`).
 ///
-/// Every record setter has a corresponding role.
+/// Every record setter has a corresponding role:
 ///
-/// | Function           | Role                   | Argument            |
-/// | ------------------ | ---------------------- | ------------------- |
-/// | `setABI()`         | `ROLE_SET_ABI`         | uint256 contentType |
-/// | `setAddress()`     | `ROLE_SET_ADDRESS`     | uint256 coinType    |
-/// | `setContentHash()` | `ROLE_SET_CONTENTHASH` |                     |
-/// | `setData()`        | `ROLE_SET_DATA`        | string key          |
-/// | `setInterface()`   | `ROLE_SET_INTERFACE`   | bytes4 interfaceId  |
-/// | `setName()`        | `ROLE_SET_NAME`        |                     |
-/// | `setText()`        | `ROLE_SET_TEXT`        | string key          |
+/// | Function           | Role                   | Argument              |
+/// | ------------------ | ---------------------- | --------------------- |
+/// | `setABI()`         | `ROLE_SET_ABI`         | `uint256 contentType` |
+/// | `setAddress()`     | `ROLE_SET_ADDRESS`     | `uint256 coinType`    |
+/// | `setContenthash()` | `ROLE_SET_CONTENTHASH` |                       |
+/// | `setData()`        | `ROLE_SET_DATA`        | `string key`          |
+/// | `setInterface()`   | `ROLE_SET_INTERFACE`   | `bytes4 interfaceId`  |
+/// | `setName()`        | `ROLE_SET_NAME`        |                       |
+/// | `setText()`        | `ROLE_SET_TEXT`        | `string key`          |
 ///
 /// Every record setter has the form: `f(name, ...)`
 /// Some record setters have the form: `f(name, <argument>, ...)`
 ///
 /// `grantSetterRoles(setter, account)` gives argument-specific permission.
 ///
-/// Every setter can be decoded with `decodeSetter(setter)`.
-/// Every argument can be converted to a resource with `PermissionedResolverLib.resource(<argument>)`.
+/// Every setter with an argument can be decoded with `decodeSetter(setter)`.
+/// Every argument can be translated to a resource with `PermissionedResolverLib.resource(<argument>)`.
 ///
 /// eg. `setText(<name>, "key", <value>)` will check the following resources for `ROLE_SET_TEXT` permission:
 /// 1. `PermissionedResolverLib.resource("key")` => only "key"
@@ -153,17 +154,6 @@ contract PermissionedResolver is
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
-
-    /// @inheritdoc IPermissionedResolver
-    function clear(bytes calldata name)
-        external
-        onlyRootRoles(PermissionedResolverLib.ROLE_MANAGER)
-    {
-        bytes32 node = NameCoder.namehash(name, 0);
-        uint256 recordId = ++_recordCount;
-        _recordIds[node] = recordId;
-        emit Linked(recordId, node, name);
-    }
 
     /// @inheritdoc IABISetter
     function setABI(bytes calldata name, uint256 contentType, bytes calldata data)
@@ -249,7 +239,7 @@ contract PermissionedResolver is
     /// @inheritdoc IPermissionedResolver
     function linkToNode(bytes calldata sourceName, bytes32 targetNode)
         external
-        onlyRootRoles(PermissionedResolverLib.ROLE_MANAGER)
+        onlyRootRoles(PermissionedResolverLib.ROLE_LINK)
     {
         uint256 recordId = _recordIds[targetNode];
         if (recordId == 0) {
@@ -261,7 +251,7 @@ contract PermissionedResolver is
     /// @inheritdoc IPermissionedResolver
     function linkToRecord(bytes calldata sourceName, uint256 recordId)
         external
-        onlyRootRoles(PermissionedResolverLib.ROLE_MANAGER)
+        onlyRootRoles(PermissionedResolverLib.ROLE_LINK)
     {
         if (recordId > _recordCount) {
             revert InvalidRecord(); // prevent linking future records
