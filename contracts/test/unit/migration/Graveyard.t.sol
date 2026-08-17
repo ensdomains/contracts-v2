@@ -7,6 +7,7 @@ import {
     CANNOT_UNWRAP,
     PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
+
 import {console} from "forge-std/console.sol";
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
@@ -516,10 +517,7 @@ contract GraveyardTest is MigrationControllerFixture {
 
     /// @dev Registers `count` 2LDs, optionally gives each a resolver, then
     ///      warps past expiry + grace so every one takes the reclaim branch.
-    function _expired2LDs(uint256 count, bool withResolver)
-        internal
-        returns (bytes[] memory names)
-    {
+    function _expired2LDs(uint256 count, bool withResolver) internal returns (bytes[] memory names) {
         names = new bytes[](count);
         for (uint256 i; i < count; ++i) {
             (bytes memory name, ) = registerUnwrapped(_label(i));
@@ -561,5 +559,4 @@ contract GraveyardTest is MigrationControllerFixture {
         assertGt(perName, GAS_PER_NAME_MIN, "below band");
         assertLt(perName, GAS_PER_NAME_MAX, "above band");
     }
-
 }
