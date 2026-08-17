@@ -8,10 +8,17 @@ import {Test} from "forge-std/Test.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 
 import {MockStandaloneHCA} from "../../mocks/MockStandaloneHCAStack.sol";
 
+/// @title HCA Owner and Session Validator Tests
+/// @notice Exercises owner signatures, session permissions, and registration policies.
 contract HCAOwnerAndSessionValidatorTest is Test {
+    string internal constant PERMISSIONED_REGISTRY_ARTIFACT =
+        "src/registry/PermissionedRegistry.sol:PermissionedRegistry";
+
     struct ClaimFixture {
         uint256 nonce;
         uint256 deadline;
@@ -83,18 +90,25 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     address gasRefundPaymaster = makeAddr("refund-paymaster");
 
     HCAOwnerAndSessionValidatorEnableHarness validator;
+    IPermissionedRegistry ethRegistry;
     MockStandaloneHCA hca;
 
     function setUp() public {
         hca = new MockStandaloneHCA(owner);
+        ethRegistry = IPermissionedRegistry(
+            deployCode(
+                PERMISSIONED_REGISTRY_ARTIFACT,
+                abi.encode(address(0), address(this), RegistryRolesLib.ROLE_REGISTRAR_ADMIN)
+            )
+        );
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, ethRegistrar);
         VerifiableFactory factory = new VerifiableFactory();
         validator = new HCAOwnerAndSessionValidatorEnableHarness(
             makeAddr("reverse-adapter"),
+            makeAddr("addr-reverse-adapter"),
             makeAddr("resolver-implementation"),
-            ethRegistrar,
+            address(ethRegistry),
             address(factory),
-            paymentToken,
-            makeAddr("secondary-payment-token"),
             intentExecutor,
             gasRefundPaymaster
         );
@@ -1047,24 +1061,24 @@ contract HCAOwnerAndSessionValidatorTest is Test {
 }
 
 
+/// @title HCA Owner and Session Validator Enable Harness
+/// @notice Exposes internal digest construction for session-enable unit tests.
 contract HCAOwnerAndSessionValidatorEnableHarness is HCAOwnerAndSessionValidator {
     constructor(
         address defaultReverseRegistrarHCAAdapter,
+        address reverseRegistrarHCAAdapter,
         address permittedResolverImpl,
-        address ethRegistrar,
+        address ethRegistry,
         address verifiableFactory,
-        address paymentToken,
-        address secondaryPaymentToken,
         address intentExecutor,
         address gasRefundPaymaster
     )
         HCAOwnerAndSessionValidator(
             defaultReverseRegistrarHCAAdapter,
+            reverseRegistrarHCAAdapter,
             permittedResolverImpl,
-            ethRegistrar,
+            ethRegistry,
             verifiableFactory,
-            paymentToken,
-            secondaryPaymentToken,
             intentExecutor,
             gasRefundPaymaster
         )

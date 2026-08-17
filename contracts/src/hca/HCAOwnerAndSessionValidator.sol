@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.27;
+pragma solidity 0.8.27;
 
 import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
@@ -13,12 +13,39 @@ import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 
 import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
-import {PermissionedResolver} from "../resolver/PermissionedResolver.sol";
+import {IRentPriceOracle} from "../registrar/interfaces/IRentPriceOracle.sol";
+import {IRentPriceOracleProvider} from "../registrar/interfaces/IRentPriceOracleProvider.sol";
+import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {
-    DefaultReverseRegistrarAdapter
-} from "../reverse-registrar/DefaultReverseRegistrarAdapter.sol";
+    IDefaultReverseRegistrarAdapter
+} from "../reverse-registrar/interfaces/IDefaultReverseRegistrarAdapter.sol";
+import {
+    IReverseRegistrarAdapter
+} from "../reverse-registrar/interfaces/IReverseRegistrarAdapter.sol";
 
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
+
+/// @notice Resolver calls encoded and validated by the HCA registration policy.
+/// @dev Interface selector: `0xcb811eec`
+interface IHCARegistrationResolver {
+    /// @notice Initializes a resolver proxy for an account.
+    /// @param admin The initial resolver administrator.
+    /// @param roleBitmap The roles granted to the administrator.
+    /// @param setters Initial resolver calls executed during initialization.
+    function initialize(address admin, uint256 roleBitmap, bytes[] calldata setters) external;
+
+    /// @notice Updates an account's roles for an ENS name.
+    /// @param name The DNS-encoded name whose roles are updated.
+    /// @param roleBitmap The roles to update.
+    /// @param account The account receiving or losing the roles.
+    /// @param grant Whether the roles are granted or revoked.
+    /// @return success Whether the roles were updated.
+    function authorizeNameRoles(bytes calldata name, uint256 roleBitmap, address account, bool grant)
+        external
+        returns (bool success);
+}
+
 
 /// @title HCA Owner and Session Validator
 /// @notice Fixed validator for standalone HCA owner authorization and scoped ENS sessions.
@@ -302,7 +329,10 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @notice Selector for DefaultReverseRegistrarAdapter.setNameWithHCA(address,string).
     bytes4 public constant SET_NAME_WITH_HCA_SELECTOR =
-        DefaultReverseRegistrarAdapter.setNameWithHCA.selector;
+        IDefaultReverseRegistrarAdapter.setNameWithHCA.selector;
+
+    /// @notice Selector for ReverseRegistrarAdapter.claimWithHCA(address,address).
+    bytes4 public constant CLAIM_WITH_HCA_SELECTOR = IReverseRegistrarAdapter.claimWithHCA.selector;
 
     /// @notice Selector for PermissionedResolver.clearRecords(bytes32).
     bytes4 public constant CLEAR_RECORDS_SELECTOR = 0x3603d758;
@@ -342,28 +372,25 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @notice Selector for PermissionedResolver.authorizeNameRoles(bytes,uint256,address,bool).
     bytes4 public constant AUTHORIZE_NAME_ROLES_SELECTOR =
-        PermissionedResolver.authorizeNameRoles.selector;
+        IHCARegistrationResolver.authorizeNameRoles.selector;
 
     /// @notice The HCA-aware default reverse registrar adapter permitted for default primary-name setup.
     address public immutable DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER;
 
+    /// @notice The HCA-aware `addr.reverse` registrar adapter permitted for v1 reverse claims.
+    address public immutable REVERSE_REGISTRAR_HCA_ADAPTER;
+
     /// @notice The resolver implementation permitted for resolver deployment.
     address public immutable PERMITTED_RESOLVER_IMPL;
 
-    /// @notice The ENS registrar permitted for registration actions.
-    address public immutable ETH_REGISTRAR;
+    /// @notice The ENS registry whose root registrar role authorizes registration targets.
+    address public immutable ETH_REGISTRY;
 
     /// @notice The VerifiableFactory permitted for resolver deployment.
     address public immutable VERIFIABLE_FACTORY;
 
     /// @notice The proxy logic used by the permitted VerifiableFactory.
     address public immutable VERIFIABLE_PROXY_LOGIC;
-
-    /// @notice The primary ERC20 payment token accepted by the registration policy.
-    address public immutable PAYMENT_TOKEN;
-
-    /// @notice The secondary ERC20 payment token accepted by the registration policy.
-    address public immutable SECONDARY_PAYMENT_TOKEN;
 
     /// @notice The only executor allowed to present session operations for verification.
     address public immutable INTENT_EXECUTOR;
@@ -461,31 +488,28 @@ contract HCAOwnerAndSessionValidator is IValidator {
     ////////////////////////////////////////////////////////////////////////
 
     /// @param defaultReverseRegistrarHcaAdapter The HCA-aware default reverse registrar adapter.
+    /// @param reverseRegistrarHcaAdapter The HCA-aware `addr.reverse` registrar adapter.
     /// @param permittedResolverImpl The resolver implementation accepted in resolver deployment actions.
-    /// @param ethRegistrar The ENS registrar accepted by the registration policy.
+    /// @param ethRegistry The ENS registry that authorizes registrars through its root roles.
     /// @param verifiableFactory The VerifiableFactory accepted by the registration policy.
-    /// @param paymentToken The primary ERC20 payment token accepted by the registration policy.
-    /// @param secondaryPaymentToken The secondary ERC20 payment token accepted by the registration policy.
     /// @param intentExecutor The fixed IntentExecutor allowed to present sponsored operations.
     /// @param gasRefundPaymaster The paymaster allowed to settle signed executor refunds.
     constructor(
         address defaultReverseRegistrarHcaAdapter,
+        address reverseRegistrarHcaAdapter,
         address permittedResolverImpl,
-        address ethRegistrar,
+        address ethRegistry,
         address verifiableFactory,
-        address paymentToken,
-        address secondaryPaymentToken,
         address intentExecutor,
         address gasRefundPaymaster
     )
     {
         DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER = defaultReverseRegistrarHcaAdapter;
+        REVERSE_REGISTRAR_HCA_ADAPTER = reverseRegistrarHcaAdapter;
         PERMITTED_RESOLVER_IMPL = permittedResolverImpl;
-        ETH_REGISTRAR = ethRegistrar;
+        ETH_REGISTRY = ethRegistry;
         VERIFIABLE_FACTORY = verifiableFactory;
         VERIFIABLE_PROXY_LOGIC = VerifiableFactory(verifiableFactory).proxyLogic();
-        PAYMENT_TOKEN = paymentToken;
-        SECONDARY_PAYMENT_TOKEN = secondaryPaymentToken;
         INTENT_EXECUTOR = intentExecutor;
         GAS_REFUND_PAYMASTER = gasRefundPaymaster;
     }
@@ -533,11 +557,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     )
         external
     {
-        if (
-            (refundToken != PAYMENT_TOKEN && refundToken != SECONDARY_PAYMENT_TOKEN) ||
-            maxRefundExchangeRate == 0 ||
-            maxRefundAmount == 0
-        ) {
+        if (refundToken == address(0) || maxRefundExchangeRate == 0 || maxRefundAmount == 0) {
             revert GasRefundNotAllowed();
         }
         _enableSession(
@@ -855,7 +875,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
             proof.sessionKey == address(0) ||
             proof.validUntil < block.timestamp ||
             proof.sessionNonce != sessionNonce ||
-            (proof.refundToken != PAYMENT_TOKEN && proof.refundToken != SECONDARY_PAYMENT_TOKEN) ||
+            proof.refundToken == address(0) ||
             proof.maxRefundExchangeRate == 0 ||
             proof.maxRefundAmount == 0
         ) {
@@ -1097,8 +1117,9 @@ contract HCAOwnerAndSessionValidator is IValidator {
             claim.recipient != msg.sender ||
             claim.targetChainId != block.chainid ||
             claim.fillExpiry < block.timestamp ||
-            (claim.tokenOut != PAYMENT_TOKEN && claim.tokenOut != SECONDARY_PAYMENT_TOKEN) ||
-            claim.amountOut == 0
+            claim.tokenOut == address(0) ||
+            claim.amountOut == 0 ||
+            !_isBatchRegistrarPaymentToken(operationData, claim.tokenOut)
         ) {
             revert PolicyRuleFailed();
         }
@@ -1211,7 +1232,8 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @notice Validates every execution against the hardcoded registration and name-management action set.
     /// @dev Checks target, selector, value, and selected ABI arguments for each execution.
     ///      A default reverse name may be updated when the policy has a nonzero resolver and the
-    ///      named account is the HCA owner.
+    ///      named account is the HCA owner. The owner's `addr.reverse` node may be claimed with a
+    ///      zero resolver or the session's bound resolver; the latter counts as resolver use.
     /// @param account The HCA that executes the operation.
     /// @param owner The owner recorded for the HCA.
     /// @param allowedResolver The resolver bound to the enabled session.
@@ -1347,15 +1369,18 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
             bytes4 selector = _selector(execution.callData);
 
-            if (execution.target == ETH_REGISTRAR) {
-                if (selector != COMMIT_SELECTOR && selector != REGISTER_SELECTOR) {
+            if (selector == COMMIT_SELECTOR) {
+                if (!_isAuthorizedRegistrar(execution.target)) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
-                if (selector == REGISTER_SELECTOR) {
-                    state.usesResolver = true;
-                    if (policyResolver.code.length == 0 && !state.deploysResolver) {
-                        revert PolicyRuleFailed();
-                    }
+                continue;
+            }
+
+            if (selector == REGISTER_SELECTOR) {
+                // The preceding registration scan verifies the target's live registrar role.
+                state.usesResolver = true;
+                if (policyResolver.code.length == 0 && !state.deploysResolver) {
+                    revert PolicyRuleFailed();
                 }
                 continue;
             }
@@ -1385,11 +1410,21 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 continue;
             }
 
-            if (execution.target == PAYMENT_TOKEN || execution.target == SECONDARY_PAYMENT_TOKEN) {
-                if (selector != APPROVE_SELECTOR) {
+            if (execution.target == REVERSE_REGISTRAR_HCA_ADAPTER) {
+                if (selector != CLAIM_WITH_HCA_SELECTOR) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
-                _checkPaymentTokenApproval(execution.target, execution.callData, gasRefund);
+                address claimedAccount = _readAddress(execution.callData, 4);
+                if (claimedAccount != owner) {
+                    revert PolicyRuleFailed();
+                }
+                address claimResolver = _readAddress(execution.callData, 4 + 32);
+                if (claimResolver != address(0)) {
+                    if (claimResolver != policyResolver) {
+                        revert PolicyRuleFailed();
+                    }
+                    state.usesResolver = true;
+                }
                 continue;
             }
 
@@ -1403,6 +1438,11 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 _checkResolverDeployment(account, policyResolver, execution.callData);
                 state.usesResolver = true;
                 state.deploysResolver = true;
+                continue;
+            }
+
+            if (selector == APPROVE_SELECTOR) {
+                _checkPaymentTokenApproval(execution.target, execution.callData, gasRefund);
                 continue;
             }
 
@@ -1432,11 +1472,11 @@ contract HCAOwnerAndSessionValidator is IValidator {
     {
         for (uint256 i; i < executions.length; ++i) {
             Execution memory execution = executions[i];
-            if (
-                execution.target != ETH_REGISTRAR ||
-                _selector(execution.callData) != REGISTER_SELECTOR
-            ) {
+            if (_selector(execution.callData) != REGISTER_SELECTOR) {
                 continue;
+            }
+            if (!_isAuthorizedRegistrar(execution.target)) {
+                revert ActionNotAllowed(execution.target, REGISTER_SELECTOR);
             }
 
             (address registrant, address resolver) = _registerFields(execution.callData);
@@ -1472,7 +1512,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         bytes[] memory setters = new bytes[](0);
         bytes memory expectedInitData =
             abi.encodeCall(
-                PermissionedResolver.initialize,
+                IHCARegistrationResolver.initialize,
                 (account, EACBaseRolesLib.ALL_ROLES, setters)
             );
         bytes memory expectedCallData =
@@ -1541,7 +1581,8 @@ contract HCAOwnerAndSessionValidator is IValidator {
             );
     }
 
-    /// @dev Allows registrar payment approvals and exact, signed executor-refund approvals.
+    /// @dev Allows payment approvals to registry-authorized registrars whose rent price oracle
+    ///      accepts the approved token, and exact, signed executor-refund approvals.
     function _checkPaymentTokenApproval(
         address token,
         bytes memory callData,
@@ -1551,7 +1592,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         view
     {
         address spender = _readAddress(callData, 4);
-        if (spender == ETH_REGISTRAR) {
+        if (_isAuthorizedRegistrar(spender) && _isRegistrarPaymentToken(spender, token)) {
             return;
         }
         if (
@@ -1561,6 +1602,69 @@ contract HCAOwnerAndSessionValidator is IValidator {
         ) {
             revert PolicyRuleFailed();
         }
+    }
+
+    /// @dev Returns whether the pinned registry currently authorizes an account to register names.
+    /// @param account The prospective registrar.
+    /// @return authorized Whether the account holds the root registrar role.
+    function _isAuthorizedRegistrar(address account) internal view returns (bool authorized) {
+        return
+            IPermissionedRegistry(ETH_REGISTRY).hasRootRoles(
+                RegistryRolesLib.ROLE_REGISTRAR,
+                account
+            );
+    }
+
+    /// @dev Returns whether a registrar's current rent price oracle accepts a payment token.
+    ///      Fails closed when the registrar or its oracle does not answer as expected.
+    /// @param registrar The registrar whose oracle decides payment-token support.
+    /// @param token The candidate payment token.
+    /// @return supported Whether the registrar's oracle accepts the token.
+    function _isRegistrarPaymentToken(address registrar, address token)
+        internal
+        view
+        returns (bool supported)
+    {
+        if (registrar.code.length == 0) {
+            return false;
+        }
+        try IRentPriceOracleProvider(registrar).rentPriceOracle() returns (IRentPriceOracle oracle) {
+            if (address(oracle).code.length == 0) {
+                return false;
+            }
+            try oracle.isPaymentToken(IERC20(token)) returns (bool isSupported) {
+                return isSupported;
+            } catch {
+                return false;
+            }
+        } catch {
+            return false;
+        }
+    }
+
+    /// @dev Returns whether every registration in a batch uses a registrar whose oracle accepts
+    ///      the token. Batches without a registration bind the token to the signed intent only.
+    /// @param operationData The encoded ERC-7579 operation payload.
+    /// @param token The token delivered to the account by the signed intent.
+    /// @return supported Whether every used registrar accepts the token.
+    function _isBatchRegistrarPaymentToken(bytes calldata operationData, address token)
+        internal
+        view
+        returns (bool supported)
+    {
+        if (operationData.length < 32) {
+            return false;
+        }
+        Execution[] memory executions = abi.decode(operationData[32:], (Execution[]));
+        for (uint256 i; i < executions.length; ++i) {
+            if (_selector(executions[i].callData) != REGISTER_SELECTOR) {
+                continue;
+            }
+            if (!_isRegistrarPaymentToken(executions[i].target, token)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// @dev Finds and checks an optional EIP-2612 funding pull into the HCA.
@@ -1826,7 +1930,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         if (selector == AUTHORIZE_NAME_ROLES_SELECTOR) {
             bytes memory expectedCallData =
                 abi.encodeCall(
-                    PermissionedResolver.authorizeNameRoles,
+                    IHCARegistrationResolver.authorizeNameRoles,
                     (hex"00", EACBaseRolesLib.ALL_ROLES, owner, true)
                 );
             if (keccak256(callData) != keccak256(expectedCallData)) {

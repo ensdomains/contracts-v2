@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.25;
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";

@@ -47,8 +47,11 @@ import {
   HCAOwnerAndSessionValidator,
   PermissionedRegistry,
   PermissionedResolver,
+  ReverseRegistrar,
+  ReverseRegistrarAdapter,
   StandaloneHCAFactory,
   StandaloneSingleOwnerHCA,
+  StandardRentPriceOracle,
   test_mocks_MockERC20_sol_MockERC20 as MockERC20,
   UniversalResolverV2,
   VerifiableFactory,
@@ -302,9 +305,11 @@ type HcaDeployments = {
   standaloneHcaImplementation: Address;
   validator: Address;
   defaultReverseRegistrarAdapter: Address;
+  reverseRegistrarAdapter: Address;
   universalResolver: Address;
   v1Registry: Address;
   defaultReverseRegistrar: Address;
+  reverseRegistrar: Address;
   intentExecutor: Address;
   gasRefundPaymaster: Address;
 };
@@ -699,12 +704,18 @@ async function main() {
       ["DefaultReverseRegistrarAdapter"],
       HCA_DEPLOYMENT_NETWORK,
     ),
+    reverseRegistrarAdapter: deploymentFromEnv(
+      "HCA_REVERSE_REGISTRAR_ADAPTER",
+      ["ReverseRegistrarAdapter"],
+      HCA_DEPLOYMENT_NETWORK,
+    ),
     universalResolver: deploymentFromEnv("UNIVERSAL_RESOLVER", [
       "UniversalResolverV2",
       "UniversalResolver",
     ]),
     v1Registry: v1Deployment("ENSRegistry"),
     defaultReverseRegistrar: v1Deployment("DefaultReverseRegistrar"),
+    reverseRegistrar: v1Deployment("ReverseRegistrar"),
     intentExecutor: RHINESTONE_INTENT_EXECUTOR,
     gasRefundPaymaster: RHINESTONE_GAS_REFUND_PAYMASTER,
   };
@@ -749,15 +760,24 @@ async function main() {
     adapterFactory,
     deployments.standaloneHcaFactory,
   );
+  const v1AdapterFactory = (await publicClient.readContract({
+    address: deployments.reverseRegistrarAdapter,
+    abi: ReverseRegistrarAdapter.abi,
+    functionName: "STANDALONE_HCA_FACTORY",
+  })) as Address;
+  assertAddress(
+    "addr.reverse adapter StandaloneHCAFactory",
+    v1AdapterFactory,
+    deployments.standaloneHcaFactory,
+  );
 
   const validatorBindings = await Promise.all(
     [
       "DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER",
+      "REVERSE_REGISTRAR_HCA_ADAPTER",
       "PERMITTED_RESOLVER_IMPL",
-      "ETH_REGISTRAR",
+      "ETH_REGISTRY",
       "VERIFIABLE_FACTORY",
-      "PAYMENT_TOKEN",
-      "SECONDARY_PAYMENT_TOKEN",
       "INTENT_EXECUTOR",
       "GAS_REFUND_PAYMASTER",
     ].map(
@@ -771,11 +791,10 @@ async function main() {
   );
   const [
     boundReverseAdapter,
+    boundV1ReverseAdapter,
     boundResolverImpl,
-    boundRegistrar,
+    boundRegistry,
     boundFactory,
-    boundPaymentToken,
-    boundSecondaryPaymentToken,
     boundIntentExecutor,
     boundGasRefundPaymaster,
   ] = validatorBindings;
@@ -785,15 +804,31 @@ async function main() {
     deployments.defaultReverseRegistrarAdapter,
   );
   assertAddress(
+    "validator addr.reverse adapter",
+    boundV1ReverseAdapter,
+    deployments.reverseRegistrarAdapter,
+  );
+  assertAddress(
     "validator resolver implementation",
     boundResolverImpl,
     deployments.permissionedResolverImpl,
   );
   assertAddress(
-    "validator registrar",
-    boundRegistrar,
-    deployments.ethRegistrar,
+    "validator ETH registry",
+    boundRegistry,
+    deployments.ethRegistry,
   );
+  const registrarAuthorized = (await publicClient.readContract({
+    address: deployments.ethRegistry,
+    abi: PermissionedRegistry.abi,
+    functionName: "hasRootRoles",
+    args: [ROLES.REGISTRY.REGISTRAR, deployments.ethRegistrar],
+  })) as boolean;
+  if (!registrarAuthorized) {
+    throw new Error(
+      `selected registrar ${deployments.ethRegistrar} does not hold ETHRegistry ROLE_REGISTRAR`,
+    );
+  }
   assertAddress(
     "validator factory",
     boundFactory,
@@ -827,13 +862,20 @@ async function main() {
     paymasterIntentExecutor,
     deployments.intentExecutor,
   );
-  if (
-    ![boundPaymentToken, boundSecondaryPaymentToken].some(
-      (token) => token.toLowerCase() === deployments.paymentToken.toLowerCase(),
-    )
-  ) {
+  const registrarRentPriceOracle = (await publicClient.readContract({
+    address: deployments.ethRegistrar,
+    abi: ETHRegistrar.abi,
+    functionName: "rentPriceOracle",
+  })) as Address;
+  const paymentTokenSupported = (await publicClient.readContract({
+    address: registrarRentPriceOracle,
+    abi: StandardRentPriceOracle.abi,
+    functionName: "isPaymentToken",
+    args: [deployments.paymentToken],
+  })) as boolean;
+  if (!paymentTokenSupported) {
     throw new Error(
-      `validator does not permit test payment token ${deployments.paymentToken}`,
+      `registrar oracle ${registrarRentPriceOracle} does not accept test payment token ${deployments.paymentToken}`,
     );
   }
 
@@ -845,6 +887,17 @@ async function main() {
   });
   if (!adapterIsController) {
     throw new Error("HCA reverse adapter is not a default.reverse controller");
+  }
+  const v1AdapterIsController = await publicClient.readContract({
+    address: deployments.reverseRegistrar,
+    abi: ReverseRegistrar.abi,
+    functionName: "controllers",
+    args: [deployments.reverseRegistrarAdapter],
+  });
+  if (!v1AdapterIsController) {
+    throw new Error(
+      "HCA addr.reverse adapter is not an addr.reverse controller",
+    );
   }
   const implementationIsApproved = await publicClient.readContract({
     address: deployments.standaloneHcaFactory,

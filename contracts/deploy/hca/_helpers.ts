@@ -1,12 +1,6 @@
 import { getAddress, isAddress, type Address } from "viem";
 
-import {
-  MAINNET_DAI,
-  MAINNET_USDC,
-  RHINESTONE_INTENT_EXECUTOR,
-  SEPOLIA_MOCK_USDC,
-  SEPOLIA_USDC,
-} from "../../script/deploy-constants.js";
+import { RHINESTONE_INTENT_EXECUTOR } from "../../script/deploy-constants.js";
 
 export const DEFAULT_ENTRY_POINT =
   "0x0000000071727De22E5E9d8BAf0edAc6f37da032" as const;
@@ -63,8 +57,6 @@ export function replacedDeploymentAddresses(
   );
 }
 
-type DeploymentLookup = (name: string) => DeploymentLike | null | undefined;
-
 type HCAAddressResolutionOptions = {
   tags: Record<string, unknown>;
   env?: NodeJS.ProcessEnv;
@@ -104,45 +96,6 @@ export function resolveHCAIntentExecutor({
       : undefined) ??
     localExecutor ??
     existingExecutor
-  );
-}
-
-export function resolveHCAPaymentToken({
-  getOrNull,
-  tags,
-  env = process.env,
-}: HCAAddressResolutionOptions & {
-  getOrNull: DeploymentLookup;
-}): Address | undefined {
-  return (
-    optionalEnvAddress("HCA_PAYMENT_TOKEN", env.HCA_PAYMENT_TOKEN) ??
-    optionalEnvAddress("HCA_USDC", env.HCA_USDC) ??
-    (usesSepoliaHCAProductionDefaults(tags) ? SEPOLIA_USDC : undefined) ??
-    (tags.hasDao ? MAINNET_USDC : undefined) ??
-    getOrNull("MockUSDC")?.address ??
-    (tags.sepolia || tags.dev ? SEPOLIA_USDC : undefined)
-  );
-}
-
-export function resolveHCASecondaryPaymentToken({
-  getOrNull,
-  tags,
-  paymentToken,
-  env = process.env,
-}: HCAAddressResolutionOptions & {
-  getOrNull: DeploymentLookup;
-  paymentToken: Address;
-}): Address {
-  return (
-    optionalEnvAddress(
-      "HCA_SECONDARY_PAYMENT_TOKEN",
-      env.HCA_SECONDARY_PAYMENT_TOKEN,
-    ) ??
-    optionalEnvAddress("HCA_DAI", env.HCA_DAI) ??
-    (usesSepoliaHCAProductionDefaults(tags) ? SEPOLIA_MOCK_USDC : undefined) ??
-    (tags.hasDao ? MAINNET_DAI : undefined) ??
-    getOrNull("MockDAI")?.address ??
-    paymentToken
   );
 }
 

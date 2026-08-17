@@ -1,19 +1,25 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.25;
+pragma solidity 0.8.25;
 
 import {IReverseRegistrar} from "@ens/contracts/reverseRegistrar/IReverseRegistrar.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {HCAAuthorizer} from "../hca/HCAAuthorizer.sol";
 import {IStandaloneHCAFactory} from "../hca/interfaces/IStandaloneHCAFactory.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {IContractNamer} from "./interfaces/IContractNamer.sol";
+import {IReverseRegistrarAdapter} from "./interfaces/IReverseRegistrarAdapter.sol";
 import {AccountNamerLib} from "./libraries/AccountNamerLib.sol";
 
 /// @title Reverse Registrar Adapter
 /// @notice Forwarder for v1 `addr.reverse` registrar updates.
 /// @dev The adapter must be configured as a controller on the reverse registrar.
-contract ReverseRegistrarAdapter is DelegatedContractNamer, HCAAuthorizer {
+contract ReverseRegistrarAdapter is
+    DelegatedContractNamer,
+    HCAAuthorizer,
+    IReverseRegistrarAdapter
+{
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -37,6 +43,13 @@ contract ReverseRegistrarAdapter is DelegatedContractNamer, HCAAuthorizer {
         DelegatedContractNamer(contractNamer)
     {
         REVERSE_REGISTRAR = reverseRegistrar;
+    }
+
+    /// @inheritdoc ERC165
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+        return
+            interfaceId == type(IReverseRegistrarAdapter).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////

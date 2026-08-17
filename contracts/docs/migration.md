@@ -121,7 +121,7 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   on-chain but orphaned.
 
 On an HCA-enabled network, phase 1 deploys `HCAOwnerAndSessionValidator`, `StandaloneHCAFactory`,
-`HCAUpgradeGate`, and `StandaloneHCAImplementation`. This deploys only the shared HCA infrastructure;
+`HCAUpgradeSet`, and `StandaloneHCAImplementation`. This deploys only the shared HCA infrastructure;
 individual owner-bound HCAs remain counterfactual and are deployed lazily through
 `StandaloneHCAFactory`. Sepolia defaults to the fixed Rhinestone intent executor and production USDC
 addresses in [`script/deploy-constants.ts`](../script/deploy-constants.ts); local, test, and
@@ -415,16 +415,7 @@ both Etherscan and Sourcify via [`@rocketh/verifier`](https://www.npmjs.com/pack
 It is idempotent and re-runnable: contracts already verified on a backend are detected and skipped. The
 verifier rebuilds the solc standard-JSON input from each artifact's metadata, backfilling source
 content from disk for forge-compiled artifacts, so a contract verifies regardless of which compiler
-produced it. Unrecognized flags are forwarded to the `rocketh-verify` backend subcommand — append them
-directly, **without** a `--` separator (a literal `--` makes the verifier CLI treat them as positional
-arguments and fail). For example, to stay under Etherscan's free-tier rate limit of 3 calls/sec:
-
-```bash
-bun run verify:sepolia --etherscan-only --min-interval 400
-# equivalent via the generic script (this leading -- is bun's own separator, consumed before
-# the script runs — only a *second* -- among the script's arguments breaks the verifier):
-bun run verify -- --network sepolia --etherscan-only --min-interval 400
-```
+produced it. Flags after `--` pass through (e.g. `bun run verify -- --network sepolia --etherscan-only`).
 
 ## Rehearsals
 
@@ -639,7 +630,6 @@ Resolved by [`script/migration.ts`](../script/migration.ts) (the CLI also auto-l
 | `OWNER_TX_KEY` | Generic signer for `phase execute-owner-txs` when no role-specific key matches |
 | `HCA_INTENT_EXECUTOR` | Optional intent-executor override; live/forked Sepolia defaults to the fixed Rhinestone address in `script/deploy-constants.ts` |
 | `HCA_ENTRY_POINT` | Optional HCA ERC-4337 EntryPoint override |
-| `HCA_PAYMENT_TOKEN` / `HCA_USDC`, `HCA_SECONDARY_PAYMENT_TOKEN` / `HCA_DAI` | Optional HCA validator payment-token overrides; live/forked Sepolia defaults the primary slot to production USDC and the secondary slot to the faucet-minted MockUSDC (`SEPOLIA_MOCK_USDC`), while local/test/clean-testnet use mock artifacts |
 | `HCA_GAS_REFUND_PAYMASTER` | Optional HCA validator gas-refund paymaster override |
 | `<PREFIX>_MNEMONIC`, `<PREFIX>_MNEMONIC_PATH`, `<PREFIX>_MNEMONIC_INDEX`, `<PREFIX>_MNEMONIC_PASSPHRASE` | Mnemonic-backed signer alternatives for `phase execute-owner-txs`; prefixes `OWNER_TX`, `SEPOLIA_V1_OWNER` / `V1_OWNER`, `SEPOLIA_TOP_URP_OWNER` / `TOP_URP_OWNER` |
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |

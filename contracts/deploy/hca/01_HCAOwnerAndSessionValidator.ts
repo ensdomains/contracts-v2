@@ -5,8 +5,6 @@ import { RHINESTONE_GAS_REFUND_PAYMASTER } from "../../script/deploy-constants.j
 import {
   optionalEnvAddress,
   resolveHCAIntentExecutor,
-  resolveHCAPaymentToken,
-  resolveHCASecondaryPaymentToken,
   shouldDeployStandaloneHCA,
 } from "./_helpers.js";
 
@@ -17,11 +15,14 @@ export default execute(
     const defaultReverseRegistrarAdapter = get<
       (typeof artifacts.DefaultReverseRegistrarAdapter)["abi"]
     >("DefaultReverseRegistrarAdapter");
+    const reverseRegistrarAdapter = get<
+      (typeof artifacts.ReverseRegistrarAdapter)["abi"]
+    >("ReverseRegistrarAdapter");
     const permittedResolverImpl = get<
       (typeof artifacts.PermissionedResolver)["abi"]
     >("PermissionedResolverImpl");
-    const ethRegistrar =
-      get<(typeof artifacts.ETHRegistrar)["abi"]>("ETHRegistrar");
+    const ethRegistry =
+      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
     const verifiableFactory =
       get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
     const localExecutor = getOrNull<
@@ -38,17 +39,6 @@ export default execute(
         "HCA_INTENT_EXECUTOR must be set when no IntentExecutor deployment is available",
       );
     }
-    const paymentToken = resolveHCAPaymentToken({ getOrNull, tags });
-    if (!paymentToken) {
-      throw new Error(
-        "HCA_PAYMENT_TOKEN or HCA_USDC must be set when no payment token deployment is available",
-      );
-    }
-    const secondaryPaymentToken = resolveHCASecondaryPaymentToken({
-      getOrNull,
-      tags,
-      paymentToken,
-    });
     const gasRefundPaymaster =
       optionalEnvAddress("HCA_GAS_REFUND_PAYMASTER") ??
       localExecutor?.address ??
@@ -61,11 +51,10 @@ export default execute(
       artifact: artifacts.HCAOwnerAndSessionValidator,
       args: [
         defaultReverseRegistrarAdapter.address,
+        reverseRegistrarAdapter.address,
         permittedResolverImpl.address,
-        ethRegistrar.address,
+        ethRegistry.address,
         verifiableFactory.address,
-        paymentToken,
-        secondaryPaymentToken,
         intentExecutor,
         gasRefundPaymaster,
       ],
@@ -81,8 +70,9 @@ export default execute(
     ],
     dependencies: [
       "DefaultReverseRegistrarAdapter",
+      "ReverseRegistrarAdapter",
       "PermissionedResolverImpl",
-      "ETHRegistrar",
+      "ETHRegistry",
       "VerifiableFactory",
       "MockRegistrationIntentExecutor",
     ],

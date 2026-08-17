@@ -34,9 +34,11 @@ A registration uses an HCA on the registration chain. A cross-chain registration
 | `StandaloneHCAFactory`        | Approves initial implementations and certifies each deployed HCA's owner.  |
 | `HCAOwnerAndSessionValidator` | Validates owner actions and the fixed ENS session policy.                  |
 | `HCAFundingSessionValidator`  | Limits how a source Nexus can fund the HCA.                                |
-| `ApprovedUpgradeGate`         | Stores the implementation upgrades that the DAO permits.                   |
+| `PermissionedAddressSet`      | Stores the implementation upgrades that the DAO permits.                   |
 
 The HCA uses a Nexus implementation with a fixed validator and executor. The source Nexus uses the fixed funding validator. The HCA prevents module installation and removal. An approved upgrade can change the fixed modules.
+
+The destination validator pins the long-lived `ETHRegistry`, not one registrar deployment. A registration target or payment-token spender is permitted only while that registry grants it the root `ROLE_REGISTRAR`. This supports concurrent registrars and registrar replacement without an HCA implementation upgrade. Revoking the role disables the registrar for existing sessions immediately.
 
 The HCA rejects delegatecall execution and the standard ERC-721 and ERC-1155 receiver callbacks. It can hold ETH or supported tokens during an operation. Do not use it for long-term funds.
 
@@ -265,11 +267,12 @@ The reveal is one atomic HCA operation. Set `value` to zero for every inner call
 | Order | Call                                                                        | Required values                                                                                                                           |
 | ----: | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 |     1 | `VerifiableFactory.deployProxy(...)`                                        | Use the approved resolver implementation, the selected salt, and `initialize(HCA, ROLES.ALL, [])`. Omit this call if the resolver exists. |
-|     2 | `paymentToken.approve(ETHRegistrar, price)`                                 | Approve only the current registration price.                                                                                              |
+|     2 | `paymentToken.approve(ETHRegistrar, price)`                                 | Approve only the current registration price. Use a token the registrar's rent price oracle accepts.                                      |
 |     3 | `ETHRegistrar.register(...)`                                                | Use the wallet as owner, the session resolver, and the commitment inputs.                                                                 |
 |     4 | Resolver setters                                                            | Add only the records selected by the user.                                                                                                |
 |     5 | `DefaultReverseRegistrarAdapter.setNameWithHCA(wallet, name)`               | Add this call when the user selects a primary name.                                                                                       |
-|     6 | `PermissionedResolver.authorizeNameRoles(hex"00", ROLES.ALL, wallet, true)` | Include this call in every session registration batch.                                                                                    |
+|     6 | `ReverseRegistrarAdapter.claimWithHCA(wallet, resolver)`                    | Add this call to claim the wallet's `addr.reverse` node. Use the session resolver or the zero address.                                   |
+|     7 | `PermissionedResolver.authorizeNameRoles(hex"00", ROLES.ALL, wallet, true)` | Include this call in every session registration batch.                                                                                    |
 
 The session supports these resolver calls:
 
@@ -296,9 +299,9 @@ The same HCA, resolver, and session can register more names. Each name needs a n
 
 ### Resolver records and primary name
 
-A valid session can change supported resolver records. It can also call `setNameWithHCA(wallet, name)`. These actions do not need a new wallet prompt.
+A valid session can change supported resolver records. It can also call `setNameWithHCA(wallet, name)` and `claimWithHCA(wallet, resolver)`. These actions do not need a new wallet prompt.
 
-The session can select the record values and primary-name string. The HCA must still own the required resolver roles. The reverse adapter must trust the HCA implementation.
+The session can select the record values and primary-name string. The HCA must still own the required resolver roles. The reverse adapter must trust the HCA implementation. A reverse claim must name the wallet and use the session resolver or the zero address.
 
 ### Renewal
 
@@ -341,10 +344,10 @@ The owner validator also accepts owner-signed ERC-4337 UserOperations. Local tes
 An HCA upgrade needs all these approvals:
 
 - The HCA owner starts the upgrade.
-- The current implementation gate permits the new implementation.
-- The predecessor gate of the new implementation permits the current implementation.
+- The current implementation's upgrade set permits the new implementation.
+- The predecessor set of the new implementation permits the current implementation.
 
-The DAO controls the gates. The initial implementation has no predecessor gate. A deployed HCA cannot upgrade to the initial implementation.
+The DAO controls the sets. The initial implementation has no predecessor set. A deployed HCA cannot upgrade to the initial implementation.
 
 ## Session policy
 
@@ -362,7 +365,7 @@ The fee limits specify the refund token, exchange rate, gas overhead, and maximu
 
 The session permits:
 
-- Commitment and registration calls
+- Commitment and registration calls to registry-authorized registrars
 - Deployment of the approved resolver implementation
 - Supported resolver record changes
 - Primary-name changes for the HCA owner
@@ -376,11 +379,13 @@ The validator applies these rules:
 - A new resolver must use the approved implementation and exact initializer.
 - An existing resolver must verify against the approved implementation.
 - Every registration must give root `ROLES.ALL` to the wallet.
-- A registrar approval can name only `ETHRegistrar` as spender.
+- A registrar approval can name only a current root `ROLE_REGISTRAR` holder as spender.
 - An execution-fee approval must match the signed fee and the session limits.
 - A first same-chain action can use one wallet permit followed by the same-value transfer into the HCA.
 
 The session key can select labels, records, and primary-name strings. The owner does not pre-sign one fixed registration. The session can register more than one name before expiry or revocation.
+
+Registrar-role governance is therefore part of the session trust boundary: granting the role makes that registrar available to already-enabled, short-lived sessions, while revocation removes it. The remaining selector, registrant, and resolver checks still apply to every authorized registrar.
 
 The session does not permit:
 
