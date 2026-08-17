@@ -51,6 +51,7 @@ import {
   ReverseRegistrarAdapter,
   StandaloneHCAFactory,
   StandaloneSingleOwnerHCA,
+  StandardRentPriceOracle,
   test_mocks_MockERC20_sol_MockERC20 as MockERC20,
   UniversalResolverV2,
   VerifiableFactory,
@@ -777,8 +778,6 @@ async function main() {
       "PERMITTED_RESOLVER_IMPL",
       "ETH_REGISTRY",
       "VERIFIABLE_FACTORY",
-      "PAYMENT_TOKEN",
-      "SECONDARY_PAYMENT_TOKEN",
       "INTENT_EXECUTOR",
       "GAS_REFUND_PAYMASTER",
     ].map(
@@ -796,8 +795,6 @@ async function main() {
     boundResolverImpl,
     boundRegistry,
     boundFactory,
-    boundPaymentToken,
-    boundSecondaryPaymentToken,
     boundIntentExecutor,
     boundGasRefundPaymaster,
   ] = validatorBindings;
@@ -865,13 +862,20 @@ async function main() {
     paymasterIntentExecutor,
     deployments.intentExecutor,
   );
-  if (
-    ![boundPaymentToken, boundSecondaryPaymentToken].some(
-      (token) => token.toLowerCase() === deployments.paymentToken.toLowerCase(),
-    )
-  ) {
+  const registrarRentPriceOracle = (await publicClient.readContract({
+    address: deployments.ethRegistrar,
+    abi: ETHRegistrar.abi,
+    functionName: "rentPriceOracle",
+  })) as Address;
+  const paymentTokenSupported = (await publicClient.readContract({
+    address: registrarRentPriceOracle,
+    abi: StandardRentPriceOracle.abi,
+    functionName: "isPaymentToken",
+    args: [deployments.paymentToken],
+  })) as boolean;
+  if (!paymentTokenSupported) {
     throw new Error(
-      `validator does not permit test payment token ${deployments.paymentToken}`,
+      `registrar oracle ${registrarRentPriceOracle} does not accept test payment token ${deployments.paymentToken}`,
     );
   }
 

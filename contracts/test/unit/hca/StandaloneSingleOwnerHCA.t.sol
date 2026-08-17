@@ -42,6 +42,8 @@ import {
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
+import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
+import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
@@ -55,6 +57,22 @@ contract StandaloneSingleOwnerHCATest is Test {
         "src/resolver/PermissionedResolver.sol:PermissionedResolver";
     string internal constant PERMISSIONED_REGISTRY_ARTIFACT =
         "src/registry/PermissionedRegistry.sol:PermissionedRegistry";
+    string internal constant STANDARD_RENT_PRICE_ORACLE_ARTIFACT =
+        "src/registrar/StandardRentPriceOracle.sol:StandardRentPriceOracle";
+    string internal constant ETH_REGISTRAR_ARTIFACT = "src/registrar/ETHRegistrar.sol:ETHRegistrar";
+
+    /// @dev Layout mirror of `StandardRentPriceOracle`'s `DiscountPoint` constructor argument.
+    struct OracleDiscountPoint {
+        uint64 duration;
+        uint128 numer;
+    }
+
+    /// @dev Layout mirror of `StandardRentPriceOracle`'s `PaymentRatio` constructor argument.
+    struct OraclePaymentRatio {
+        address paymentToken;
+        uint128 numer;
+        uint128 denom;
+    }
 
     bytes4 constant ERC1271_MAGICVALUE = 0x1626ba7e;
 
@@ -81,7 +99,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     address defaultReverseRegistrarHCAAdapter = makeAddr("default-reverse-adapter");
     address reverseRegistrarHCAAdapter = makeAddr("addr-reverse-adapter");
     address permittedResolverImpl = makeAddr("resolver-impl");
-    address ethRegistrar = makeAddr("eth-registrar");
+    address ethRegistrar;
     address verifiableFactory = makeAddr("verifiable-factory");
     address usdc = makeAddr("usdc");
     address dai = makeAddr("dai");
@@ -113,6 +131,7 @@ contract StandaloneSingleOwnerHCATest is Test {
                 abi.encode(address(0), address(this), RegistryRolesLib.ROLE_REGISTRAR_ADMIN)
             )
         );
+        ethRegistrar = _deployRegistrarWithOracle(_defaultPaymentTokens());
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, ethRegistrar);
 
         VerifiableFactory factory = new VerifiableFactory();
@@ -136,8 +155,6 @@ contract StandaloneSingleOwnerHCATest is Test {
             permittedResolverImpl,
             address(ethRegistry),
             verifiableFactory,
-            usdc,
-            dai,
             intentExecutor,
             gasRefundPaymaster
         );
@@ -147,8 +164,6 @@ contract StandaloneSingleOwnerHCATest is Test {
             permittedResolverImpl,
             address(ethRegistry),
             verifiableFactory,
-            usdc,
-            dai,
             intentExecutor,
             gasRefundPaymaster
         );
@@ -687,8 +702,6 @@ contract StandaloneSingleOwnerHCATest is Test {
                 permittedResolverImpl,
                 address(ethRegistry),
                 verifiableFactory,
-                usdc,
-                dai,
                 address(0x5678),
                 gasRefundPaymaster
             );
@@ -842,7 +855,7 @@ contract StandaloneSingleOwnerHCATest is Test {
             sessionSigner,
             validUntil,
             resolver,
-            makeAddr("unsupported-refund-token"),
+            address(0),
             1,
             0,
             1
@@ -1244,7 +1257,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function test_validator_acceptsMultipleRegistryAuthorizedRegistrars() public {
-        address alternateRegistrar = makeAddr("alternate-registrar");
+        address alternateRegistrar = _deployRegistrarWithOracle(_defaultPaymentTokens());
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, alternateRegistrar);
 
         HCAOwnerAndSessionValidator.Execution[] memory executions =
@@ -1407,6 +1420,137 @@ contract StandaloneSingleOwnerHCATest is Test {
             address(0),
             operationData
         );
+    }
+
+    function test_validator_acceptsApprovalOfAnyOracleListedToken() public {
+        address newToken = makeAddr("new-payment-token");
+        address[] memory tokens = new address[](1);
+        tokens[0] = newToken;
+        address newRegistrar = _deployRegistrarWithOracle(tokens);
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, newRegistrar);
+
+        bytes memory operationData =
+            _singleOperationData(
+                newToken,
+                0,
+                abi.encodeWithSelector(APPROVE_SELECTOR, newRegistrar, 1 ether)
+            );
+
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            operationData
+        );
+    }
+
+    function test_validator_rejectsApprovalOfTokenNotListedByRegistrarOracle() public {
+        bytes memory operationData =
+            _singleOperationData(
+                makeAddr("junk-token"),
+                0,
+                abi.encodeWithSelector(APPROVE_SELECTOR, ethRegistrar, 1 ether)
+            );
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            operationData
+        );
+    }
+
+    function test_validator_rejectsApprovalWhenRegistrarExposesNoOracle() public {
+        address oracleLessRegistrar = makeAddr("oracle-less-registrar");
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, oracleLessRegistrar);
+
+        bytes memory operationData =
+            _singleOperationData(
+                usdc,
+                0,
+                abi.encodeWithSelector(APPROVE_SELECTOR, oracleLessRegistrar, 1 ether)
+            );
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            operationData
+        );
+    }
+
+    function test_validator_checksIntentTokenAgainstBatchRegistrarOracles() public {
+        bytes memory registerBatch = _registrationOperationData(owner, resolver);
+        assertTrue(validatorHarness.isBatchRegistrarPaymentTokenHarness(registerBatch, usdc));
+        assertFalse(
+            validatorHarness.isBatchRegistrarPaymentTokenHarness(
+                registerBatch,
+                makeAddr("junk-token")
+            )
+        );
+
+        bytes memory commitBatch =
+            _singleOperationData(
+                ethRegistrar,
+                0,
+                abi.encodeWithSelector(COMMIT_SELECTOR, bytes32("commitment"))
+            );
+        assertTrue(
+            validatorHarness.isBatchRegistrarPaymentTokenHarness(commitBatch, makeAddr("junk-token"))
+        );
+
+        assertFalse(validatorHarness.isBatchRegistrarPaymentTokenHarness(hex"", usdc));
+    }
+
+    function test_validator_treatsUnresponsiveRegistrarOracleAsUnsupported() public {
+        bytes memory operationData =
+            _singleOperationData(
+                usdc,
+                0,
+                abi.encodeWithSelector(APPROVE_SELECTOR, ethRegistrar, 1 ether)
+            );
+        bytes4 oracleGetter = IRentPriceOracleProvider.rentPriceOracle.selector;
+
+        vm.mockCallRevert(ethRegistrar, abi.encodeWithSelector(oracleGetter), "");
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            operationData
+        );
+        vm.clearMockedCalls();
+
+        vm.mockCall(
+            ethRegistrar,
+            abi.encodeWithSelector(oracleGetter),
+            abi.encode(makeAddr("codeless-oracle"))
+        );
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            operationData
+        );
+        vm.clearMockedCalls();
+
+        address oracle = address(IRentPriceOracleProvider(ethRegistrar).rentPriceOracle());
+        vm.mockCallRevert(
+            oracle,
+            abi.encodeWithSelector(IRentPriceOracle.isPaymentToken.selector),
+            ""
+        );
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            address(0),
+            operationData
+        );
+        vm.clearMockedCalls();
     }
 
     function test_validator_rejectsUnapprovedRegistrarTarget() public {
@@ -2072,6 +2216,50 @@ contract StandaloneSingleOwnerHCATest is Test {
         return deployCode(PERMISSIONED_RESOLVER_ARTIFACT, abi.encode(namer));
     }
 
+    function _defaultPaymentTokens() internal view returns (address[] memory tokens) {
+        tokens = new address[](2);
+        tokens[0] = usdc;
+        tokens[1] = dai;
+    }
+
+    function _deployRegistrarWithOracle(address[] memory paymentTokens)
+        internal
+        returns (address registrar)
+    {
+        OraclePaymentRatio[] memory ratios = new OraclePaymentRatio[](paymentTokens.length);
+        for (uint256 i; i < paymentTokens.length; ++i) {
+            ratios[i] = OraclePaymentRatio(paymentTokens[i], 1, 1);
+        }
+        address oracle =
+            deployCode(
+                STANDARD_RENT_PRICE_ORACLE_ARTIFACT,
+                abi.encode(
+                    address(this),
+                    new uint256[](1),
+                    new OracleDiscountPoint[](0),
+                    uint128(0),
+                    uint256(0),
+                    uint64(0),
+                    uint64(0),
+                    ratios
+                )
+            );
+        return
+            deployCode(
+                ETH_REGISTRAR_ARTIFACT,
+                abi.encode(
+                    address(this),
+                    address(ethRegistry),
+                    address(this),
+                    oracle,
+                    uint64(90 days),
+                    uint64(1 minutes),
+                    uint64(1 days),
+                    uint64(28 days)
+                )
+            );
+    }
+
     function _resolverAddress(VerifiableFactory factory, address deployer, uint256 salt)
         internal
         view
@@ -2423,8 +2611,6 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
         address permittedResolverImpl,
         address ethRegistry,
         address verifiableFactory,
-        address paymentToken,
-        address secondaryPaymentToken,
         address intentExecutor,
         address gasRefundPaymaster
     )
@@ -2434,8 +2620,6 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
             permittedResolverImpl,
             ethRegistry,
             verifiableFactory,
-            paymentToken,
-            secondaryPaymentToken,
             intentExecutor,
             gasRefundPaymaster
         )
@@ -2443,6 +2627,14 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
 
     function callArgsHarness(bytes memory callData) external pure returns (bytes memory) {
         return _callArgs(callData);
+    }
+
+    function isBatchRegistrarPaymentTokenHarness(bytes calldata operationData, address token)
+        external
+        view
+        returns (bool)
+    {
+        return _isBatchRegistrarPaymentToken(operationData, token);
     }
 
     function recoverHarness(bytes32 digest, bytes calldata signature)
