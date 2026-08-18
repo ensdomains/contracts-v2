@@ -95,7 +95,7 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
     }
 
     /// @inheritdoc IUniversalResolverWithENSIP15
-    function resolve(string calldata ensName, bytes calldata data, IENSIP15 ensip15)
+    function resolveWithENSIP15(string calldata ensName, bytes calldata data, IENSIP15 ensip15)
         external
         view
         returns (bytes memory, address)
@@ -191,7 +191,7 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
     }
 
     /// @inheritdoc IUniversalResolverWithENSIP15
-    function reverse(bytes calldata lookupAddress, uint256 coinType, IENSIP15 ensip15)
+    function reverseWithENSIP15(bytes calldata lookupAddress, uint256 coinType, IENSIP15 ensip15)
         external
         view
         returns (string memory, address, address)

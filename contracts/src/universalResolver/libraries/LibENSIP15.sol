@@ -23,7 +23,7 @@ library LibENSIP15 {
         if (size == 0) {
             return (true, hex"00");
         }
-        uint256 labelCount;
+        uint256 labelCount = 1;
         for (uint256 i; i < size; ++i) {
             if (bytes(ensName)[i] == ".") {
                 ++labelCount;

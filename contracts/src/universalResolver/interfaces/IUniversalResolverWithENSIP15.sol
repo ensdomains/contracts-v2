@@ -30,7 +30,7 @@ interface IUniversalResolverWithENSIP15 {
     /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @return result The ABI-encoded response for the calldata.
     /// @return resolver The resolver that was used to resolve the name.
-    function resolve(string calldata ensName, bytes calldata data, IENSIP15 ensip15)
+    function resolveWithENSIP15(string calldata ensName, bytes calldata data, IENSIP15 ensip15)
         external
         view
         returns (bytes memory result, address resolver);
@@ -44,7 +44,7 @@ interface IUniversalResolverWithENSIP15 {
     /// @return primary The resolved normalized primary name.
     /// @return resolver The resolver address for primary name.
     /// @return reverseResolver The resolver address for the reverse name.
-    function reverse(bytes calldata lookupAddress, uint256 coinType, IENSIP15 ensip15)
+    function reverseWithENSIP15(bytes calldata lookupAddress, uint256 coinType, IENSIP15 ensip15)
         external
         view
         returns (string memory primary, address resolver, address reverseResolver);

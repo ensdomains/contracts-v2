@@ -10,6 +10,10 @@ import {ENSIP19, COIN_TYPE_ETH} from "@ens/contracts/utils/ENSIP19.sol";
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {
+    IPermissionedResolverInitializable,
+    Grant
+} from "~src/resolver/interfaces/IPermissionedResolverInitializable.sol";
+import {
     IUniversalResolverExtended
 } from "~src/universalResolver/interfaces/IUniversalResolverExtended.sol";
 import {
@@ -30,10 +34,12 @@ contract UniversalResolverV2Test is V2Fixture {
         deployV2Fixture();
         ensip15 = new MockENSIP15();
         PermissionedResolver impl = new PermissionedResolver(address(this));
+        Grant[] memory grants = new Grant[](1);
+        grants[0] = Grant(address(this), EACBaseRolesLib.ALL_ROLES);
         bytes memory initData =
             abi.encodeCall(
-                PermissionedResolver.initialize,
-                (address(this), EACBaseRolesLib.ALL_ROLES, new bytes[](0))
+                IPermissionedResolverInitializable.initialize,
+                (grants, new bytes[](0))
             );
         resolver = PermissionedResolver(
             verifiableFactory.deployProxy(address(impl), uint256(keccak256(initData)), initData)
@@ -116,7 +122,7 @@ contract UniversalResolverV2Test is V2Fixture {
         assertEq(name, NameCoder.encode("test.eth"));
     }
 
-    function test_resolve_unnormalized() external {
+    function test_resolveWithENSIP15_unnormalized() external {
         bytes memory name = NameCoder.encode("test.eth");
         ethRegistry.register(
             NameCoder.firstLabel(name),
@@ -136,14 +142,14 @@ contract UniversalResolverV2Test is V2Fixture {
                 resolver
             )
         );
-        universalResolver.resolve(
+        universalResolver.resolveWithENSIP15(
             "TEST.eth",
             abi.encodeCall(IAddrResolver.addr, (bytes32(0))),
             ensip15
         );
     }
 
-    function test_reverse_normalized() external {
+    function test_reverseWithENSIP15_normalized() external {
         string memory primaryName = "test.eth";
         ethRegistry.register(
             NameCoder.firstLabel(NameCoder.encode(primaryName)),
@@ -171,11 +177,11 @@ contract UniversalResolverV2Test is V2Fixture {
             encodedAddress
         );
         (string memory primary, , ) =
-            universalResolver.reverse(encodedAddress, COIN_TYPE_ETH, ensip15);
+            universalResolver.reverseWithENSIP15(encodedAddress, COIN_TYPE_ETH, ensip15);
         assertEq(primaryName, primary);
     }
 
-    function test_reverse_unnormalized() external {
+    function test_reverseWithENSIP15_unnormalized() external {
         rootRegistry.register(
             "reverse",
             address(0),
@@ -196,10 +202,10 @@ contract UniversalResolverV2Test is V2Fixture {
                 0
             )
         );
-        universalResolver.reverse(encodedAddress, COIN_TYPE_ETH, ensip15);
+        universalResolver.reverseWithENSIP15(encodedAddress, COIN_TYPE_ETH, ensip15);
     }
 
-    function test_reverse_withoutENSIP15() external {
+    function test_reverse_unnormalized() external {
         string memory primaryName = "TEST.eth";
         ethRegistry.register(
             NameCoder.firstLabel(NameCoder.encode(primaryName)),
