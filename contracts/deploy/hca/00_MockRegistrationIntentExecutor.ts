@@ -1,4 +1,5 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import { Artifact_MockRegistrationIntentExecutor } from "generated/artifacts/MockRegistrationIntentExecutor.js";
 
 import {
   shouldDeployMockIntentExecutor,
@@ -13,8 +14,7 @@ export default execute(
 
     await deploy("MockRegistrationIntentExecutor", {
       account: deployer,
-      artifact: artifacts.MockRegistrationIntentExecutor,
-      args: [],
+      artifact: Artifact_MockRegistrationIntentExecutor,
     });
   },
   {

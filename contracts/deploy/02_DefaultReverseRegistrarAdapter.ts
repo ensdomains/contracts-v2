@@ -1,5 +1,8 @@
-import { artifacts, execute } from "@rocketh";
-
+import { execute } from "@rocketh";
+import type { Abi_DefaultReverseRegistrar } from "generated/abis/DefaultReverseRegistrar.js";
+import type { Abi_StandaloneHCAFactory } from "generated/abis/StandaloneHCAFactory.js";
+import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
+import { Artifact_DefaultReverseRegistrarAdapter } from "generated/artifacts/DefaultReverseRegistrarAdapter.js";
 import {
   controllerAddressHistory,
   replacedDeploymentAddresses,
@@ -16,16 +19,13 @@ export default execute(
     read,
     namedAccounts: { deployer, owner, v1Owner },
   }) => {
-    const defaultReverseRegistrar = await getV1<
-      (typeof artifacts.DefaultReverseRegistrar)["abi"]
-    >("DefaultReverseRegistrar");
-
-    const standaloneHCAFactory = get<
-      (typeof artifacts.StandaloneHCAFactory)["abi"]
-    >("StandaloneHCAFactory");
-
-    const contractNamer =
-      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+    const defaultReverseRegistrar = await getV1<Abi_DefaultReverseRegistrar>(
+      "DefaultReverseRegistrar",
+    );
+    const standaloneHCAFactory = get<Abi_StandaloneHCAFactory>(
+      "StandaloneHCAFactory",
+    );
+    const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
     const previousAdapter = getOrNull("DefaultReverseRegistrarAdapter");
     const legacyHCAAdapter = getOrNull("DefaultReverseRegistrarHCAAdapter");
@@ -34,7 +34,7 @@ export default execute(
       "DefaultReverseRegistrarAdapter",
       {
         account: deployer,
-        artifact: artifacts.DefaultReverseRegistrarAdapter,
+        artifact: Artifact_DefaultReverseRegistrarAdapter,
         args: [
           defaultReverseRegistrar.address,
           standaloneHCAFactory.address,

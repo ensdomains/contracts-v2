@@ -9,9 +9,9 @@ import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IUniversalResolverV2} from "~src/universalResolver/interfaces/IUniversalResolverV2.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
-// NOTE: most of these tests are covered by LibRegistry.t.sol
-
 contract UniversalResolverV2Test is V2Fixture {
+    address resolverAddress = makeAddr("resolver");
+
     function setUp() external {
         deployV2Fixture();
     }
@@ -33,59 +33,33 @@ contract UniversalResolverV2Test is V2Fixture {
         );
     }
 
-    function test_findOwner() external {
-        assertEq(universalResolver.findOwner(NameCoder.encode("")), address(0));
-        assertEq(universalResolver.findOwner(NameCoder.encode("eth")), address(this));
+    function test_isENSV2() external view {
+        assertTrue(universalResolver.isENSv2());
+    }
 
-        ethRegistry.register(
+    function test_findResolver_1LD() external {
+        rootRegistry.register(
             "test",
-            address(1),
-            IRegistry(address(0)),
             address(0),
+            IRegistry(address(0)),
+            resolverAddress,
             0,
             type(uint64).max
         );
-        assertEq(universalResolver.findOwner(NameCoder.encode("test.eth")), address(1));
+        (address resolver, , ) = universalResolver.findResolver(NameCoder.encode("test"));
+        assertEq(resolver, resolverAddress);
     }
 
-    function test_findCanonicalName() external view {
-        assertEq(universalResolver.findCanonicalName(rootRegistry), NameCoder.encode(""));
-        assertEq(universalResolver.findCanonicalName(ethRegistry), NameCoder.encode("eth"));
-    }
-
-    function test_findCanonicalRegistry() external view {
-        assertEq(
-            address(universalResolver.findCanonicalRegistry(NameCoder.encode(""))),
-            address(rootRegistry)
+    function test_findResolver_test_eth() external {
+        ethRegistry.register(
+            "test",
+            address(0),
+            IRegistry(address(0)),
+            resolverAddress,
+            0,
+            type(uint64).max
         );
-        assertEq(
-            address(universalResolver.findCanonicalRegistry(NameCoder.encode("eth"))),
-            address(ethRegistry)
-        );
-    }
-
-    function test_findExactRegistry() external view {
-        assertEq(
-            address(universalResolver.findExactRegistry(NameCoder.encode(""))),
-            address(rootRegistry)
-        );
-        assertEq(
-            address(universalResolver.findExactRegistry(NameCoder.encode("eth"))),
-            address(ethRegistry)
-        );
-    }
-
-    function test_findParentRegistry() external view {
-        assertEq(address(universalResolver.findParentRegistry(NameCoder.encode(""))), address(0));
-        assertEq(
-            address(universalResolver.findParentRegistry(NameCoder.encode("eth"))),
-            address(rootRegistry)
-        );
-    }
-
-    function test_findRegistries() external view {
-        IRegistry[] memory v = universalResolver.findRegistries(NameCoder.encode("eth"));
-        assertEq(address(v[0]), address(ethRegistry));
-        assertEq(address(v[1]), address(rootRegistry));
+        (address resolver, , ) = universalResolver.findResolver(NameCoder.encode("test.eth"));
+        assertEq(resolver, resolverAddress);
     }
 }

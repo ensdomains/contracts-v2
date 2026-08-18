@@ -879,7 +879,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom_invalidReceiver() external {
-        uint256 tokenId = this._register();
+        this._register();
         uint256[] memory v;
         address to; // wrong
         vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, to));
@@ -888,7 +888,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom_invalidSender() external {
-        uint256 tokenId = this._register();
+        this._register();
         uint256[] memory v;
         address from; // wrong
         vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));

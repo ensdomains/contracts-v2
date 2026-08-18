@@ -1,5 +1,6 @@
-import { artifacts, execute } from "@rocketh";
-
+import { execute } from "@rocketh";
+import type { Abi_UpgradableUniversalResolverProxy } from "generated/abis/UpgradableUniversalResolverProxy.js";
+import type { Abi_UniversalResolverV2 } from "generated/abis/UniversalResolverV2.js";
 import {
   externalTopProxyOwnerLabel,
   logUpgradeCalldata,
@@ -10,12 +11,12 @@ export default execute(
   async ({ get, execute: write, read, namedAccounts: { owner }, tags }) => {
     if (tags.local) return true;
 
-    const topUrp = get<
-      (typeof artifacts.UpgradableUniversalResolverProxy)["abi"]
-    >("UpgradableUniversalResolverProxy");
-    const universalResolverV2 = get<
-      (typeof artifacts.UniversalResolverV2)["abi"]
-    >("UniversalResolverV2");
+    const topUrp = get<Abi_UpgradableUniversalResolverProxy>(
+      "UpgradableUniversalResolverProxy",
+    );
+    const universalResolverV2 = get<Abi_UniversalResolverV2>(
+      "UniversalResolverV2",
+    );
 
     const ownerLabel = externalTopProxyOwnerLabel(tags);
     if (ownerLabel) {

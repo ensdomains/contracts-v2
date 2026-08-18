@@ -1,5 +1,5 @@
-import { artifacts, execute } from "@rocketh";
-
+import { execute } from "@rocketh";
+import { Artifact_StandaloneHCAFactory } from "generated/artifacts/StandaloneHCAFactory.js";
 import { shouldDeployStandaloneHCA } from "./_helpers.js";
 
 export default execute(
@@ -9,7 +9,7 @@ export default execute(
     const verifiableFactory = get("VerifiableFactory");
     await deploy("StandaloneHCAFactory", {
       account: deployer,
-      artifact: artifacts.StandaloneHCAFactory,
+      artifact: Artifact_StandaloneHCAFactory,
       args: [verifiableFactory.address, owner],
     });
   },

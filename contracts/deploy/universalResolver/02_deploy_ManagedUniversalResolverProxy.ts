@@ -1,4 +1,6 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_UniversalResolver } from "generated/abis/UniversalResolver.js";
+import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
 import { getAddress, zeroAddress } from "viem";
 
 import {
@@ -21,7 +23,7 @@ export default execute(
     if (tags.local) return true;
 
     if (
-      getOrNull<typeof artifacts.UpgradableUniversalResolverProxy.abi>(
+      getOrNull<(typeof Artifact_UpgradableUniversalResolverProxy)["abi"]>(
         "ManagedUniversalResolverProxy",
       )
     )
@@ -42,24 +44,20 @@ export default execute(
     // proxy currently serves so that later switching the top proxy onto it is
     // transparent for resolution. Fall back to the v1 UniversalResolver only when
     // the top proxy implementation is unset.
-    const topProxy = get<typeof artifacts.UpgradableUniversalResolverProxy.abi>(
-      "UpgradableUniversalResolverProxy",
-    );
-    const topImplementation = (await read(topProxy, {
+    const topProxy = get<
+      (typeof Artifact_UpgradableUniversalResolverProxy)["abi"]
+    >("UpgradableUniversalResolverProxy");
+    const topImplementation = await read(topProxy, {
       functionName: "implementation",
-    })) as `0x${string}`;
+    });
     const seedImplementation =
       getAddress(topImplementation) !== getAddress(zeroAddress)
         ? topImplementation
-        : (
-            await getV1<(typeof artifacts.UniversalResolver)["abi"]>(
-              "UniversalResolver",
-            )
-          ).address;
+        : (await getV1<Abi_UniversalResolver>("UniversalResolver")).address;
 
     await deploy("ManagedUniversalResolverProxy", {
       account: deployer,
-      artifact: artifacts.UpgradableUniversalResolverProxy,
+      artifact: Artifact_UpgradableUniversalResolverProxy,
       args: [urManager ?? deployer, seedImplementation],
     });
     return true;

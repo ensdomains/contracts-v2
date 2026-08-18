@@ -1,5 +1,9 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
 import type { Abi, Address } from "viem";
+import type { Abi_HCAOwnerAndSessionValidator } from "generated/abis/HCAOwnerAndSessionValidator.js";
+import type { Abi_MockRegistrationIntentExecutor } from "generated/abis/MockRegistrationIntentExecutor.js";
+import { Artifact_PermissionedAddressSet } from "generated/artifacts/PermissionedAddressSet.js";
+import { Artifact_StandaloneSingleOwnerHCA } from "generated/artifacts/StandaloneSingleOwnerHCA.js";
 import { zeroAddress } from "viem";
 
 import {
@@ -19,12 +23,12 @@ export default execute(
   }) => {
     if (!shouldDeployStandaloneHCA(tags)) return;
 
-    const validator = get<
-      (typeof artifacts.HCAOwnerAndSessionValidator)["abi"]
-    >("HCAOwnerAndSessionValidator");
-    const localExecutor = getOrNull<
-      (typeof artifacts.MockRegistrationIntentExecutor)["abi"]
-    >("MockRegistrationIntentExecutor");
+    const validator = get<Abi_HCAOwnerAndSessionValidator>(
+      "HCAOwnerAndSessionValidator",
+    );
+    const localExecutor = getOrNull<Abi_MockRegistrationIntentExecutor>(
+      "MockRegistrationIntentExecutor",
+    );
     const existingExecutor = getOrNull<Abi>("IntentExecutor");
     const intentExecutor = resolveHCAIntentExecutor({
       tags,
@@ -42,13 +46,13 @@ export default execute(
     // directional across an upgrade.
     const upgradeSet = await deploy("HCAUpgradeSet", {
       account: deployer,
-      artifact: artifacts.PermissionedAddressSet,
+      artifact: Artifact_PermissionedAddressSet,
       args: [owner],
     });
 
     await deploy("StandaloneHCAImplementation", {
       account: deployer,
-      artifact: artifacts.StandaloneSingleOwnerHCA,
+      artifact: Artifact_StandaloneSingleOwnerHCA,
       args: [
         optionalEnvAddress("HCA_ENTRY_POINT") ??
           (DEFAULT_ENTRY_POINT as Address),

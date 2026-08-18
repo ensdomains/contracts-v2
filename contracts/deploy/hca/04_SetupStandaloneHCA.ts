@@ -1,5 +1,6 @@
-import { artifacts, execute } from "@rocketh";
-
+import { execute } from "@rocketh";
+import type { Abi_StandaloneSingleOwnerHCA } from "generated/abis/StandaloneSingleOwnerHCA.js";
+import type { Abi_StandaloneHCAFactory } from "generated/abis/StandaloneHCAFactory.js";
 import { shouldDeployStandaloneHCA } from "./_helpers.js";
 
 export default execute(
@@ -13,13 +14,10 @@ export default execute(
     if (!shouldDeployStandaloneHCA(tags)) return;
 
     const account = owner ?? deployer;
-    const implementation = get<
-      (typeof artifacts.StandaloneSingleOwnerHCA)["abi"]
-    >("StandaloneHCAImplementation");
-
-    const hcaFactory = get<(typeof artifacts.StandaloneHCAFactory)["abi"]>(
-      "StandaloneHCAFactory",
+    const implementation = get<Abi_StandaloneSingleOwnerHCA>(
+      "StandaloneHCAImplementation",
     );
+    const hcaFactory = get<Abi_StandaloneHCAFactory>("StandaloneHCAFactory");
 
     const isApproved = await read(hcaFactory, {
       functionName: "approvedImplementations",

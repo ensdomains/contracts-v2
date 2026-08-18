@@ -1,4 +1,9 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_INameWrapper } from "generated/abis/INameWrapper.js";
+import type { Abi_Graveyard } from "generated/abis/Graveyard.js";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
+import { Artifact_UnlockedMigrationController } from "generated/artifacts/UnlockedMigrationController.js";
 import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
 
 export default execute(
@@ -9,20 +14,14 @@ export default execute(
     getV1,
     namedAccounts: { deployer },
   }) => {
-    const nameWrapper =
-      await getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
-
-    const graveyard = get<(typeof artifacts.Graveyard)["abi"]>("Graveyard");
-
-    const ethRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
-
-    const contractNamer =
-      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+    const nameWrapper = await getV1<Abi_INameWrapper>("NameWrapper");
+    const graveyard = get<Abi_Graveyard>("Graveyard");
+    const ethRegistry = get<Abi_IPermissionedRegistry>("ETHRegistry");
+    const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
     const migrationController = await deploy("UnlockedMigrationController", {
       account: deployer,
-      artifact: artifacts.UnlockedMigrationController,
+      artifact: Artifact_UnlockedMigrationController,
       args: [
         nameWrapper.address,
         graveyard.address,
