@@ -61,6 +61,13 @@ const hcaSources = new Set([
   "src/hca/HCAOwnerAndSessionValidator.sol",
   "src/hca/StandaloneHCAFactory.sol",
   "src/hca/StandaloneSingleOwnerHCA.sol",
+  "src/hca/libraries/HCAExecutionLib.sol",
+  "src/hca/libraries/HCAOperationHashLib.sol",
+  "src/hca/libraries/HCAPermit2Lib.sol",
+  "src/hca/libraries/HCARegistrarPolicyLib.sol",
+  "src/hca/libraries/HCAResolverPolicyLib.sol",
+  "src/hca/libraries/HCASignatureLib.sol",
+  "src/hca/libraries/HCASmartSessionLib.sol",
 ]);
 const externalDeploymentSources = [
   "lib/ens-contracts/contracts/ccipRead/GatewayProvider.sol",
