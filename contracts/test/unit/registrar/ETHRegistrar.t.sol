@@ -15,6 +15,7 @@ import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegis
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
 import {IETHRenewer, RenewData} from "~src/registrar/interfaces/IETHRenewer.sol";
+import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
 import {ETHRegistrar, REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
 import {MockERC20, MockERC20Blacklist} from "~test/mocks/MockERC20.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
@@ -70,6 +71,13 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         assertTrue(
             ERC165Checker.supportsInterface(address(ethRegistrar), type(IETHRegistrar).interfaceId),
             "IETHRegistrar"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(ethRegistrar),
+                type(IRentPriceOracleProvider).interfaceId
+            ),
+            "IRentPriceOracleProvider"
         );
     }
 

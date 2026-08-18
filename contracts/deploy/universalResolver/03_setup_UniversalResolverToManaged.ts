@@ -8,18 +8,12 @@ import {
 } from "../../script/universalResolverDeployUtils.js";
 
 export default execute(
-  async ({
-    get,
-    execute: write,
-    read,
-    namedAccounts: { owner },
-    tags,
-  }) => {
+  async ({ get, execute: write, read, namedAccounts: { owner }, tags }) => {
     if (tags.local) return true;
 
-    const topUrp = get<
-      typeof artifacts.UpgradableUniversalResolverProxy.abi
-    >("UpgradableUniversalResolverProxy");
+    const topUrp = get<typeof artifacts.UpgradableUniversalResolverProxy.abi>(
+      "UpgradableUniversalResolverProxy",
+    );
     const managedUrp = get<
       typeof artifacts.UpgradableUniversalResolverProxy.abi
     >("ManagedUniversalResolverProxy");

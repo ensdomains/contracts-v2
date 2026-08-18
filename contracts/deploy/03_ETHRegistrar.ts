@@ -40,10 +40,7 @@ export default execute(
     if (!tags.deferV2Registrar) {
       await write(ethRegistry, {
         functionName: "grantRootRoles",
-        args: [
-          DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
-          ethRegistrar.address,
-        ],
+        args: [DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT, ethRegistrar.address],
         account: deployer,
       });
     }

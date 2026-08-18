@@ -4,12 +4,7 @@ import { DEPLOYMENT_ROLES, MAX_EXPIRY } from "../script/deploy-constants.js";
 
 // TODO: ownership
 export default execute(
-  async ({
-    execute: write,
-    get,
-    read,
-    namedAccounts: { deployer, owner },
-  }) => {
+  async ({ execute: write, get, read, namedAccounts: { deployer, owner } }) => {
     const rootRegistry =
       get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
 

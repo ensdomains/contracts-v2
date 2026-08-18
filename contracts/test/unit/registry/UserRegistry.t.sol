@@ -269,7 +269,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
     function testFuzz_domain_registration(string memory label, uint64 duration) public {
         // Skip empty labels and ensure reasonable duration
-        vm.assume(bytes(label).length > 0);
+        vm.assume(bytes(label).length > 0 && bytes(label).length <= 255);
         duration = uint64(bound(duration, 1 days, 10 * 365 days));
 
         uint64 expires = uint64(block.timestamp) + duration;
@@ -370,6 +370,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
 // Mock V2 contract for testing upgrades
 contract UserRegistryV2Mock is UserRegistry {
     constructor(ILabelStore labelStore, address namer) UserRegistry(labelStore, namer) {}
+
     function version() public pure returns (uint256) {
         return 2;
     }

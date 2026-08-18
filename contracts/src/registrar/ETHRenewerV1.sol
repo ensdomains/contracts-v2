@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {
     BaseRegistrarImplementation
@@ -14,9 +14,8 @@ import {AbstractETHRegistrar} from "./AbstractETHRegistrar.sol";
 import {IETHRenewer, RenewData} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
-/// @notice `ETHRegistrarController.renew()` stub interface.
-/// @dev Interface selector: `0xacf1a841`
 // https://github.com/ensdomains/ens-contracts/blob/staging/deployments/mainnet/WrappedETHRegistrarController.json
+/// @notice `ETHRegistrarController.renew()` stub interface.
 /// @dev Interface selector: `0xacf1a841`
 interface IWrappedETHRegistrarController {
     /// @notice Renew an ENSv1 name.
