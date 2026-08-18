@@ -23,7 +23,6 @@ import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {DNSTLDResolver} from "~src/dns/DNSTLDResolver.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
-import {IENSIP15} from "~src/universalResolver/interfaces/IENSIP15.sol";
 
 contract DNSTLDResolverTest is Test, ERC1155Holder {
     PermissionedRegistry rootRegistry;
@@ -129,7 +128,6 @@ contract MockDNS is DNSTLDResolver {
             DNSSEC(address(0)),
             new GatewayProvider(address(1), new string[](0)),
             new GatewayProvider(address(1), new string[](0)),
-            IENSIP15(address(0)),
             IContractNamer(address(0))
         )
     {}

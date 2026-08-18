@@ -1,7 +1,6 @@
 import { execute } from "@rocketh";
 import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
 import type { Abi_IGatewayProvider } from "generated/abis/IGatewayProvider.js";
-import type { Abi_IENSIP15 } from "generated/abis/IENSIP15.js";
 import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
 import { Artifact_DNSAliasResolver } from "generated/artifacts/DNSAliasResolver.js";
 
@@ -11,7 +10,6 @@ export default execute(
     const batchGatewayProvider = await getV1<Abi_IGatewayProvider>(
       "BatchGatewayProvider",
     );
-    const ensip15Proxy = get<Abi_IENSIP15>("MockENSIP15");
     const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
     await deploy("DNSAliasResolver", {
@@ -20,18 +18,12 @@ export default execute(
       args: [
         rootRegistry.address,
         batchGatewayProvider.address,
-        ensip15Proxy.address,
         contractNamer.address,
       ],
     });
   },
   {
     tags: ["DNSAliasResolver", "v2"],
-    dependencies: [
-      "RootRegistry",
-      "BatchGatewayProvider",
-      "MockENSIP15",
-      "ContractNamer",
-    ],
+    dependencies: ["RootRegistry", "BatchGatewayProvider", "ContractNamer"],
   },
 );

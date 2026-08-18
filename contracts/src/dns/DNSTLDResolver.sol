@@ -21,7 +21,6 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
-import {IENSIP15} from "../universalResolver/interfaces/IENSIP15.sol";
 import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
@@ -79,9 +78,6 @@ contract DNSTLDResolver is
     ///         resolvers.
     IGatewayProvider public immutable BATCH_GATEWAY_PROVIDER;
 
-    /// @notice ENSIP-15 normalization implementation.
-    IENSIP15 public immutable ENSIP_15;
-
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
@@ -100,7 +96,6 @@ contract DNSTLDResolver is
     /// @param dnssecOracle The DNSSEC oracle contract.
     /// @param oracleGatewayProvider The gateway provider for the DNSSEC oracle CCIP-Read queries.
     /// @param batchGatewayProvider The gateway provider for batch CCIP-Read calls when forwarding resolution to downstream resolvers.
-    /// @param ensip15 ENSIP-15 normalization implementation.
     /// @param contractNamer Delegated contract namer.
     constructor(
         ENS ensRegistryV1,
@@ -109,7 +104,6 @@ contract DNSTLDResolver is
         DNSSEC dnssecOracle,
         IGatewayProvider oracleGatewayProvider,
         IGatewayProvider batchGatewayProvider,
-        IENSIP15 ensip15,
         IContractNamer contractNamer
     )
         CCIPReader(DEFAULT_UNSAFE_CALL_GAS)
@@ -121,7 +115,6 @@ contract DNSTLDResolver is
         DNSSEC_ORACLE = dnssecOracle;
         ORACLE_GATEWAY_PROVIDER = oracleGatewayProvider;
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
-        ENSIP_15 = ensip15;
     }
 
     /// @inheritdoc DelegatedContractNamer
@@ -361,7 +354,7 @@ contract DNSTLDResolver is
             }
         }
         bytes memory name = NameCoder.encode(string(v));
-        (, address r, , ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0, ENSIP_15);
+        (, address r, , ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
         if (r != address(0)) {
             // in ENSv1, this was immediate only, but now supports IExtendedResolver
             // does not support offchain

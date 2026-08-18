@@ -56,12 +56,7 @@ export async function deployV2Fixture(
   const ensip15 = await network.viem.deployContract("MockENSIP15");
   const universalResolver = await network.viem.deployContract(
     "UniversalResolverV2",
-    [
-      rootRegistry.address,
-      batchGatewayProvider.address,
-      ensip15.address,
-      contractNamer.address,
-    ],
+    [rootRegistry.address, batchGatewayProvider.address, contractNamer.address],
     { client: { public: publicClient } },
   );
   const universalHelper = await network.viem.deployContract("UniversalHelper", [

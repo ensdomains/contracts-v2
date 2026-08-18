@@ -16,7 +16,6 @@ import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {LibRegistry} from "~src/universalResolver/libraries/LibRegistry.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
-import {IENSIP15} from "~src/universalResolver/interfaces/IENSIP15.sol";
 
 contract LibRegistryTest is Test, ERC1155Holder {
     PermissionedRegistry rootRegistry;
@@ -40,7 +39,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
         view
     {
         (IRegistry registry, address resolver, bytes32 node, uint256 resolverOffset_) =
-            LibRegistry.findResolver(rootRegistry, name, 0, IENSIP15(address(0)));
+            LibRegistry.findResolver(rootRegistry, name, 0);
         assertEq(
             address(LibRegistry.findExactRegistry(rootRegistry, name, 0)),
             address(registry),
