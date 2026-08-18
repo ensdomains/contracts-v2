@@ -198,8 +198,7 @@ contract UniversalResolverV2Test is V2Fixture {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IUniversalResolverWithENSIP15.PrimaryNameNotNormalized.selector,
-                primaryName,
-                0
+                primaryName
             )
         );
         universalResolver.reverseWithENSIP15(encodedAddress, COIN_TYPE_ETH, ensip15);
