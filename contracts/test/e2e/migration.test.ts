@@ -204,7 +204,10 @@ describe("Migration", () => {
         { account },
       );
       await env.v2.ETHRenewerV1.write.renew(
-        [label, duration, env.erc20.MockUSDC.address, namehash("referrer")],
+        [
+          { label, duration, referrer: namehash("referrer") },
+          env.erc20.MockUSDC.address,
+        ],
         { account },
       );
     }

@@ -1507,12 +1507,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // setURI() and uri()
+    // setURI(), getURI(), and uri()
     ////////////////////////////////////////////////////////////////////////
 
     function test_uri_unset() external view {
         assertEq(registry.uri(0), "");
         assertEq(registry.uri(1), "");
+    }
+
+    function test_getURI(string memory uri, address renderer) external {
+        registry.setURI(uri, IRegistryURIRenderer(renderer));
+
+        (string memory uri_, IRegistryURIRenderer renderer_) = registry.getURI();
+        assertEq(uri_, uri, "uri");
+        assertEq(address(renderer_), renderer, "renderer");
     }
 
     function test_setURI_onlyURI() external {

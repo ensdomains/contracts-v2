@@ -11,12 +11,16 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 
+import {Grant} from "../access-control/interfaces/IEACGrantInitializable.sol";
 import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
 import {IRentPriceOracle} from "../registrar/interfaces/IRentPriceOracle.sol";
 import {IRentPriceOracleProvider} from "../registrar/interfaces/IRentPriceOracleProvider.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+import {
+    IPermissionedResolverInitializable
+} from "../resolver/interfaces/IPermissionedResolverInitializable.sol";
 import {
     IDefaultReverseRegistrarAdapter
 } from "../reverse-registrar/interfaces/IDefaultReverseRegistrarAdapter.sol";
@@ -27,14 +31,8 @@ import {
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
 
 /// @notice Resolver calls encoded and validated by the HCA registration policy.
-/// @dev Interface selector: `0xcb811eec`
+/// @dev Interface selector: `0xbbd9abb5`
 interface IHCARegistrationResolver {
-    /// @notice Initializes a resolver proxy for an account.
-    /// @param admin The initial resolver administrator.
-    /// @param roleBitmap The roles granted to the administrator.
-    /// @param setters Initial resolver calls executed during initialization.
-    function initialize(address admin, uint256 roleBitmap, bytes[] calldata setters) external;
-
     /// @notice Updates an account's roles for an ENS name.
     /// @param name The DNS-encoded name whose roles are updated.
     /// @param roleBitmap The roles to update.
@@ -1509,12 +1507,11 @@ contract HCAOwnerAndSessionValidator is IValidator {
         view
     {
         uint256 salt = _readUint(callData, 4 + 32);
-        bytes[] memory setters = new bytes[](0);
+        Grant[] memory grants = new Grant[](1);
+        grants[0] = Grant({account: account, roleBitmap: EACBaseRolesLib.ALL_ROLES});
+        bytes[] memory calls = new bytes[](0);
         bytes memory expectedInitData =
-            abi.encodeCall(
-                IHCARegistrationResolver.initialize,
-                (account, EACBaseRolesLib.ALL_ROLES, setters)
-            );
+            abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, calls));
         bytes memory expectedCallData =
             abi.encodeCall(
                 IVerifiableFactory.deployProxy,

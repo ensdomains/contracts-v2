@@ -5023,7 +5023,7 @@ async function registrationCalls({
           encodeFunctionData({
             abi: PermissionedResolver.abi,
             functionName: "initialize",
-            args: [hca, ROLES.ALL, []],
+            args: [[{ account: hca, roleBitmap: ROLES.ALL }], []],
           }),
         ],
       }),

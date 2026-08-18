@@ -497,7 +497,7 @@ describe("Standalone HCA", () => {
             encodeFunctionData({
               abi: artifacts.PermissionedResolver.abi,
               functionName: "initialize",
-              args: [hca, ROLES.ALL, []],
+              args: [[{ account: hca, roleBitmap: ROLES.ALL }], []],
             }),
           ],
         }),
