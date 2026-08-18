@@ -86,8 +86,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
         override(ERC1155Holder, DelegatedContractNamer)
         returns (bool)
     {
-        return
-            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);
+        return super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////

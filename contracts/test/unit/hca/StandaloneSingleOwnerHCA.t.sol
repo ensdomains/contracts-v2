@@ -34,11 +34,9 @@ import {
     MockValidatorModule
 } from "../../mocks/MockStandaloneHCAStack.sol";
 
+import {Grant} from "~src/access-control/interfaces/IEACGrantInitializable.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
-import {
-    HCAOwnerAndSessionValidator,
-    IHCARegistrationResolver
-} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
@@ -46,6 +44,9 @@ import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
 import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {
+    IPermissionedResolverInitializable
+} from "~src/resolver/interfaces/IPermissionedResolverInitializable.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
 /// @title Standalone Single-Owner HCA Tests
@@ -142,10 +143,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         resolver = factory.deployProxy(
             permittedResolverImpl,
             resolverSalt,
-            abi.encodeCall(
-                IHCARegistrationResolver.initialize,
-                (address(hca), EACBaseRolesLib.ALL_ROLES, setters)
-            )
+            _resolverInitData(address(hca), EACBaseRolesLib.ALL_ROLES, setters)
         );
         counterfactualResolver = _resolverAddress(factory, address(hca), counterfactualResolverSalt);
 
@@ -2332,7 +2330,9 @@ contract StandaloneSingleOwnerHCATest is Test {
         pure
         returns (bytes memory)
     {
-        return abi.encodeCall(IHCARegistrationResolver.initialize, (admin, roleBitmap, setters));
+        Grant[] memory grants = new Grant[](1);
+        grants[0] = Grant({account: admin, roleBitmap: roleBitmap});
+        return abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, setters));
     }
 
     function _registrationOperationDataWithDefaultReverseName(

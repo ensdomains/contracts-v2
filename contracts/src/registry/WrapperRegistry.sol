@@ -12,13 +12,14 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
-import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
+import {IWrapperRegistry} from "./interfaces/IWrapperRegistry.sol";
+import {IWrapperRegistryInitializable} from "./interfaces/IWrapperRegistryInitializable.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
@@ -26,6 +27,7 @@ import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 ///         wrapped names into the namechain registry system.
 contract WrapperRegistry is
     IWrapperRegistry,
+    IWrapperRegistryInitializable,
     PermissionedRegistry,
     LockedWrapperReceiver,
     Initializable,
@@ -107,10 +109,11 @@ contract WrapperRegistry is
             type(IWrapperRegistry).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
             type(IProxyAuthorization).interfaceId == interfaceId ||
+            type(IWrapperRegistryInitializable).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
-    /// @inheritdoc IWrapperRegistry
+    /// @inheritdoc IWrapperRegistryInitializable
     function initialize(
         bytes32 node,
         IRegistry parentRegistry,
