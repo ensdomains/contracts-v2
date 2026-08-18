@@ -7,6 +7,8 @@ import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {DefaultReverseRegistrar} from "@ens/contracts/reverseRegistrar/DefaultReverseRegistrar.sol";
+import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
+import {COIN_TYPE_ETH} from "@ens/contracts/utils/ENSIP19.sol";
 import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
@@ -47,6 +49,9 @@ import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {
     IPermissionedResolverInitializable
 } from "~src/resolver/interfaces/IPermissionedResolverInitializable.sol";
+import {IAddressSetter} from "~src/resolver/interfaces/setters/IAddressSetter.sol";
+import {ITextSetter} from "~src/resolver/interfaces/setters/ITextSetter.sol";
+import {INameSetter} from "~src/resolver/interfaces/setters/INameSetter.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 
 /// @title Standalone Single-Owner HCA Tests
@@ -84,12 +89,9 @@ contract StandaloneSingleOwnerHCATest is Test {
     bytes4 constant DEPLOY_PROXY_SELECTOR = 0x5d84121a;
     bytes4 constant SET_NAME_WITH_HCA_SELECTOR = 0xab863445;
     bytes4 constant CLAIM_WITH_HCA_SELECTOR = 0xc90695df;
-    bytes4 constant SET_ADDR_SELECTOR = 0xd5fa2b00;
-    bytes4 constant SET_TEXT_SELECTOR = 0x10f13a8c;
-    bytes4 constant SET_NAME_SELECTOR = 0x77372213;
     bytes4 constant MULTICALL_SELECTOR = 0xac9650d8;
-    bytes4 constant MULTICALL_WITH_NODE_CHECK_SELECTOR = 0xe32954eb;
-    bytes4 constant AUTHORIZE_NAME_ROLES_SELECTOR = 0xbbd9abb5;
+
+    bytes NAME = "\x04test\x00";
 
     uint256 ownerKey = 0xA11CE;
     uint256 sessionKey = 0x5E5510;
@@ -138,12 +140,14 @@ contract StandaloneSingleOwnerHCATest is Test {
         VerifiableFactory factory = new VerifiableFactory();
         verifiableFactory = address(factory);
         permittedResolverImpl = _deployPermissionedResolver(makeAddr("resolver-namer"));
-        bytes[] memory setters = new bytes[](0);
         vm.prank(address(hca));
         resolver = factory.deployProxy(
             permittedResolverImpl,
             resolverSalt,
-            _resolverInitData(address(hca), EACBaseRolesLib.ALL_ROLES, setters)
+            abi.encodeCall(
+                IPermissionedResolverInitializable.initialize,
+                (_defaultGrants(), (new bytes[](0)))
+            )
         );
         counterfactualResolver = _resolverAddress(factory, address(hca), counterfactualResolverSalt);
 
@@ -894,53 +898,6 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.clearMockedCalls();
     }
 
-    function test_validator_allowsExactResolverRoleGrantToOwner() public {
-        bytes memory grantToOwner =
-            _resolverRoleCall(hex"00", EACBaseRolesLib.ALL_ROLES, owner, true);
-        bytes memory operationData = _singleOperationData(resolver, 0, grantToOwner);
-        validatorHarness.checkRegistrationPolicyHarness(address(hca), owner, resolver, operationData);
-
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = grantToOwner;
-        bytes memory multicallData =
-            _singleOperationData(resolver, 0, abi.encodeWithSelector(MULTICALL_SELECTOR, calls));
-        validatorHarness.checkRegistrationPolicyHarness(address(hca), owner, resolver, multicallData);
-
-        bytes memory grantToOther =
-            _resolverRoleCall(hex"00", EACBaseRolesLib.ALL_ROLES, sessionSigner, true);
-        _expectValidationRevert(
-            _singleOperationData(resolver, 0, grantToOther),
-            resolver,
-            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
-        );
-    }
-
-    function test_validator_rejectsInvalidResolverRoleGrantArguments() public {
-        _expectValidationRevert(
-            _singleOperationData(
-                resolver,
-                0,
-                _resolverRoleCall(hex"05616c69636500", EACBaseRolesLib.ALL_ROLES, owner, true)
-            ),
-            resolver,
-            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
-        );
-        _expectValidationRevert(
-            _singleOperationData(resolver, 0, _resolverRoleCall(hex"00", 1, owner, true)),
-            resolver,
-            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
-        );
-        _expectValidationRevert(
-            _singleOperationData(
-                resolver,
-                0,
-                _resolverRoleCall(hex"00", EACBaseRolesLib.ALL_ROLES, owner, false)
-            ),
-            resolver,
-            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
-        );
-    }
-
     function test_validator_allowsExactCounterfactualResolverDeployment() public view {
         validatorHarness.checkRegistrationPolicyHarness(
             address(hca),
@@ -949,8 +906,10 @@ contract StandaloneSingleOwnerHCATest is Test {
             _registrationWithResolverDeployment(
                 permittedResolverImpl,
                 counterfactualResolverSalt,
-                _resolverInitData(address(hca), EACBaseRolesLib.ALL_ROLES, new bytes[](0)),
-                true
+                abi.encodeCall(
+                    IPermissionedResolverInitializable.initialize,
+                    (_defaultGrants(), new bytes[](0))
+                )
             )
         );
     }
@@ -960,21 +919,18 @@ contract StandaloneSingleOwnerHCATest is Test {
             _resolverDeploymentCall(
                 permittedResolverImpl,
                 counterfactualResolverSalt,
-                _resolverInitData(address(hca), EACBaseRolesLib.ALL_ROLES, new bytes[](0))
+                abi.encodeCall(
+                    IPermissionedResolverInitializable.initialize,
+                    (_defaultGrants(), new bytes[](0))
+                )
             );
         HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](4);
+            new HCAOwnerAndSessionValidator.Execution[](3);
         executions[0] = HCAOwnerAndSessionValidator.Execution({target: verifiableFactory, value: 0, callData: deploymentCall});
         executions[1] = executions[0];
         executions[2] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             owner,
             counterfactualResolver
-        )});
-        executions[3] = HCAOwnerAndSessionValidator.Execution({target: counterfactualResolver, value: 0, callData: _resolverRoleCall(
-            hex"00",
-            EACBaseRolesLib.ALL_ROLES,
-            owner,
-            true
         )});
         bytes memory operationData = _operationData(executions);
 
@@ -1065,50 +1021,62 @@ contract StandaloneSingleOwnerHCATest is Test {
 
     function test_validator_rejectsInvalidCounterfactualResolverDeployment() public {
         bytes[] memory setters = new bytes[](0);
+        Grant[] memory grants = _defaultGrants();
         _expectValidationRevert(
             _registrationWithResolverDeployment(
                 permittedResolverImpl,
                 counterfactualResolverSalt + 1,
-                _resolverInitData(address(hca), EACBaseRolesLib.ALL_ROLES, setters),
-                true
-            ),
-            counterfactualResolver,
-            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
-        );
-        _expectValidationRevert(
-            _registrationWithResolverDeployment(
-                permittedResolverImpl,
-                counterfactualResolverSalt,
-                _resolverInitData(owner, EACBaseRolesLib.ALL_ROLES, setters),
-                true
-            ),
-            counterfactualResolver,
-            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
-        );
-        _expectValidationRevert(
-            _registrationWithResolverDeployment(
-                permittedResolverImpl,
-                counterfactualResolverSalt,
-                _resolverInitData(address(hca), 1, setters),
-                true
+                abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, setters))
             ),
             counterfactualResolver,
             HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
         );
 
-        setters = new bytes[](1);
-        setters[0] = abi.encodeWithSelector(
-            SET_TEXT_SELECTOR,
-            bytes32("node"),
-            "avatar",
-            "ipfs://avatar"
-        );
+        grants[0].roleBitmap = 1; // wrong roles
         _expectValidationRevert(
             _registrationWithResolverDeployment(
                 permittedResolverImpl,
                 counterfactualResolverSalt,
-                _resolverInitData(address(hca), EACBaseRolesLib.ALL_ROLES, setters),
-                true
+                abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, setters))
+            ),
+            counterfactualResolver,
+            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
+        );
+
+        grants = new Grant[](1);
+        grants[0] = Grant(address(hca), EACBaseRolesLib.ALL_ROLES); // missing owner
+        _expectValidationRevert(
+            _registrationWithResolverDeployment(
+                permittedResolverImpl,
+                counterfactualResolverSalt,
+                abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, setters))
+            ),
+            counterfactualResolver,
+            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
+        );
+
+        grants[0] = Grant(owner, EACBaseRolesLib.ALL_ROLES); // missing hca
+        _expectValidationRevert(
+            _registrationWithResolverDeployment(
+                permittedResolverImpl,
+                counterfactualResolverSalt,
+                abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, setters))
+            ),
+            counterfactualResolver,
+            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
+        );
+
+        grants = _defaultGrants();
+        setters = new bytes[](1);
+        setters[0] = abi.encodeCall(ITextSetter.setText, (NAME, "avatar", "ipfs://avatar"));
+        _expectValidationRevert(
+            _registrationWithResolverDeployment(
+                permittedResolverImpl,
+                counterfactualResolverSalt,
+                abi.encodeCall(
+                    IPermissionedResolverInitializable.initialize,
+                    (_defaultGrants(), setters)
+                )
             ),
             counterfactualResolver,
             HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
@@ -1117,8 +1085,10 @@ contract StandaloneSingleOwnerHCATest is Test {
             _registrationWithResolverDeployment(
                 permittedResolverImpl,
                 counterfactualResolverSalt,
-                abi.encodeWithSelector(SET_ADDR_SELECTOR, bytes32("node"), owner),
-                true
+                abi.encodeCall(
+                    IAddressSetter.setAddress,
+                    (NAME, COIN_TYPE_ETH, abi.encodePacked(owner))
+                )
             ),
             counterfactualResolver,
             HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
@@ -1127,16 +1097,10 @@ contract StandaloneSingleOwnerHCATest is Test {
 
     function test_validator_requiresDeploymentForCounterfactualResolver() public {
         HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](2);
+            new HCAOwnerAndSessionValidator.Execution[](1);
         executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             owner,
             counterfactualResolver
-        )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: counterfactualResolver, value: 0, callData: _resolverRoleCall(
-            hex"00",
-            EACBaseRolesLib.ALL_ROLES,
-            owner,
-            true
         )});
 
         _expectValidationRevert(
@@ -1151,22 +1115,18 @@ contract StandaloneSingleOwnerHCATest is Test {
             _resolverDeploymentCall(
                 permittedResolverImpl,
                 counterfactualResolverSalt,
-                _resolverInitData(address(hca), EACBaseRolesLib.ALL_ROLES, new bytes[](0))
+                abi.encodeCall(
+                    IPermissionedResolverInitializable.initialize,
+                    (_defaultGrants(), new bytes[](0))
+                )
             );
         HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](3);
+            new HCAOwnerAndSessionValidator.Execution[](2);
         executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             owner,
             counterfactualResolver
         )});
         executions[1] = HCAOwnerAndSessionValidator.Execution({target: verifiableFactory, value: 0, callData: deploymentCall});
-        executions[2] = HCAOwnerAndSessionValidator.Execution({target: counterfactualResolver, value: 0, callData: _resolverRoleCall(
-            hex"00",
-            EACBaseRolesLib.ALL_ROLES,
-            owner,
-            true
-        )});
-
         _expectValidationRevert(
             _operationData(executions),
             counterfactualResolver,
@@ -1174,32 +1134,15 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
 
         executions = new HCAOwnerAndSessionValidator.Execution[](2);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: counterfactualResolver, value: 0, callData: abi.encodeWithSelector(
-            SET_TEXT_SELECTOR,
-            bytes32("node"),
-            "avatar",
-            "ipfs://avatar"
+        executions[0] = HCAOwnerAndSessionValidator.Execution({target: counterfactualResolver, value: 0, callData: abi.encodeCall(
+            ITextSetter.setText,
+            (NAME, "avatar", "ipfs://avatar")
         )});
         executions[1] = HCAOwnerAndSessionValidator.Execution({target: verifiableFactory, value: 0, callData: deploymentCall});
 
         _expectValidationRevert(
             _operationData(executions),
             counterfactualResolver,
-            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
-        );
-    }
-
-    function test_validator_requiresOwnerResolverGrantForRegistration() public {
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
-            owner,
-            resolver
-        )});
-
-        _expectValidationRevert(
-            _operationData(executions),
-            resolver,
             HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
         );
     }
@@ -1213,7 +1156,7 @@ contract StandaloneSingleOwnerHCATest is Test {
             _singleOperationData(
                 resolver,
                 0,
-                abi.encodeWithSelector(SET_TEXT_SELECTOR, bytes32("node"), "avatar", "ipfs://avatar")
+                abi.encodeCall(ITextSetter.setText, (NAME, "avatar", "ipfs://avatar"))
             ),
             resolver,
             HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
@@ -1229,7 +1172,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
 
         HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](3);
+            new HCAOwnerAndSessionValidator.Execution[](2);
         executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
             "alice",
             owner,
@@ -1239,12 +1182,6 @@ contract StandaloneSingleOwnerHCATest is Test {
             "bob",
             owner,
             resolver
-        )});
-        executions[2] = HCAOwnerAndSessionValidator.Execution({target: resolver, value: 0, callData: _resolverRoleCall(
-            hex"00",
-            EACBaseRolesLib.ALL_ROLES,
-            owner,
-            true
         )});
         validatorHarness.checkRegistrationPolicyHarness(
             address(hca),
@@ -1259,7 +1196,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, alternateRegistrar);
 
         HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](4);
+            new HCAOwnerAndSessionValidator.Execution[](3);
         executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
             "alice",
             owner,
@@ -1274,12 +1211,6 @@ contract StandaloneSingleOwnerHCATest is Test {
             APPROVE_SELECTOR,
             alternateRegistrar,
             1 ether
-        )});
-        executions[3] = HCAOwnerAndSessionValidator.Execution({target: resolver, value: 0, callData: _resolverRoleCall(
-            hex"00",
-            EACBaseRolesLib.ALL_ROLES,
-            owner,
-            true
         )});
 
         validatorHarness.checkRegistrationPolicyHarness(
@@ -1643,7 +1574,10 @@ contract StandaloneSingleOwnerHCATest is Test {
             _singleOperationData(
                 ethRegistrar,
                 0,
-                abi.encodeWithSelector(SET_ADDR_SELECTOR, bytes32("node"), owner)
+                abi.encodeCall(
+                    IAddressSetter.setAddress,
+                    (NAME, COIN_TYPE_ETH, abi.encodePacked(owner))
+                )
             ),
             address(0),
             HCAOwnerAndSessionValidator.ActionNotAllowed.selector
@@ -2288,15 +2222,14 @@ contract StandaloneSingleOwnerHCATest is Test {
     function _registrationWithResolverDeployment(
         address implementation,
         uint256 salt,
-        bytes memory initData,
-        bool includeOwnerGrant
+        bytes memory initData
     )
         internal
         view
         returns (bytes memory)
     {
         HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](includeOwnerGrant ? 3 : 2);
+            new HCAOwnerAndSessionValidator.Execution[](2);
         executions[0] = HCAOwnerAndSessionValidator.Execution({target: verifiableFactory, value: 0, callData: _resolverDeploymentCall(
             implementation,
             salt,
@@ -2306,14 +2239,6 @@ contract StandaloneSingleOwnerHCATest is Test {
             owner,
             counterfactualResolver
         )});
-        if (includeOwnerGrant) {
-            executions[2] = HCAOwnerAndSessionValidator.Execution({target: counterfactualResolver, value: 0, callData: _resolverRoleCall(
-                hex"00",
-                EACBaseRolesLib.ALL_ROLES,
-                owner,
-                true
-            )});
-        }
         return _operationData(executions);
     }
 
@@ -2325,14 +2250,10 @@ contract StandaloneSingleOwnerHCATest is Test {
         return abi.encodeWithSelector(DEPLOY_PROXY_SELECTOR, implementation, salt, initData);
     }
 
-    function _resolverInitData(address admin, uint256 roleBitmap, bytes[] memory setters)
-        internal
-        pure
-        returns (bytes memory)
-    {
-        Grant[] memory grants = new Grant[](1);
-        grants[0] = Grant({account: admin, roleBitmap: roleBitmap});
-        return abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, setters));
+    function _defaultGrants() internal view returns (Grant[] memory grants) {
+        grants = new Grant[](2);
+        grants[0] = Grant({account: address(hca), roleBitmap: EACBaseRolesLib.ALL_ROLES});
+        grants[1] = Grant({account: owner, roleBitmap: EACBaseRolesLib.ALL_ROLES});
     }
 
     function _registrationOperationDataWithDefaultReverseName(
@@ -2345,61 +2266,35 @@ contract StandaloneSingleOwnerHCATest is Test {
         returns (bytes memory)
     {
         bytes[] memory resolverCalls = new bytes[](2);
-        resolverCalls[0] = abi.encodeWithSelector(
-            SET_TEXT_SELECTOR,
-            bytes32("node"),
-            "avatar",
-            "ipfs://avatar"
-        );
-        resolverCalls[1] = abi.encodeWithSelector(SET_NAME_SELECTOR, bytes32("node"), "alice.eth");
+        resolverCalls[0] = abi.encodeCall(ITextSetter.setText, (NAME, "avatar", "ipfs://avatar"));
+        resolverCalls[1] = abi.encodeCall(INameSetter.setName, (NAME, "alice.eth"));
 
         HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](7);
+            new HCAOwnerAndSessionValidator.Execution[](5);
         executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             registrant,
             registrationResolver
         )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: registrationResolver, value: 0, callData: abi.encodeWithSelector(
-            SET_ADDR_SELECTOR,
-            bytes32("node"),
-            registrant
+        executions[1] = HCAOwnerAndSessionValidator.Execution({target: registrationResolver, value: 0, callData: abi.encodeCall(
+            IAddressSetter.setAddress,
+            (NAME, COIN_TYPE_ETH, abi.encodePacked(registrant))
         )});
-        executions[2] = HCAOwnerAndSessionValidator.Execution({target: registrationResolver, value: 0, callData: abi.encodeWithSelector(
-            MULTICALL_SELECTOR,
-            resolverCalls
+        executions[2] = HCAOwnerAndSessionValidator.Execution({target: registrationResolver, value: 0, callData: abi.encodeCall(
+            IMulticallable.multicall,
+            (resolverCalls)
         )});
-        executions[3] = HCAOwnerAndSessionValidator.Execution({target: registrationResolver, value: 0, callData: abi.encodeWithSelector(
-            MULTICALL_WITH_NODE_CHECK_SELECTOR,
-            bytes32("node"),
-            resolverCalls
-        )});
-        executions[4] = HCAOwnerAndSessionValidator.Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
+        executions[3] = HCAOwnerAndSessionValidator.Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
             APPROVE_SELECTOR,
             ethRegistrar,
             1 ether
         )});
-        executions[5] = HCAOwnerAndSessionValidator.Execution({target: defaultReverseRegistrarHCAAdapter, value: 0, callData: abi.encodeWithSelector(
+        executions[4] = HCAOwnerAndSessionValidator.Execution({target: defaultReverseRegistrarHCAAdapter, value: 0, callData: abi.encodeWithSelector(
             SET_NAME_WITH_HCA_SELECTOR,
             registrant,
             defaultReverseName
         )});
-        executions[6] = HCAOwnerAndSessionValidator.Execution({target: registrationResolver, value: 0, callData: _resolverRoleCall(
-            hex"00",
-            EACBaseRolesLib.ALL_ROLES,
-            registrant,
-            true
-        )});
 
         return _operationData(executions);
-    }
-
-    function _resolverRoleCall(bytes memory toName, uint256 roleBitmap, address account, bool grant)
-        internal
-        pure
-        returns (bytes memory)
-    {
-        return
-            abi.encodeWithSelector(AUTHORIZE_NAME_ROLES_SELECTOR, toName, roleBitmap, account, grant);
     }
 
     function _registerCallData(address registrant, address registrationResolver)
@@ -2697,7 +2592,7 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
     {
         _checkResolverBinding(
             resolver,
-            RegistrationPolicyState({usesResolver: usesResolver, deploysResolver: deploysResolver, grantsOwnerResolverRoles: false})
+            RegistrationPolicyState({usesResolver: usesResolver, deploysResolver: deploysResolver})
         );
     }
 

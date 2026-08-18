@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
+import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
 import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
@@ -18,9 +19,17 @@ import {IRentPriceOracle} from "../registrar/interfaces/IRentPriceOracle.sol";
 import {IRentPriceOracleProvider} from "../registrar/interfaces/IRentPriceOracleProvider.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+import {IPermissionedResolver} from "../resolver/interfaces/IPermissionedResolver.sol";
 import {
     IPermissionedResolverInitializable
 } from "../resolver/interfaces/IPermissionedResolverInitializable.sol";
+import {IABISetter} from "../resolver/interfaces/setters/IABISetter.sol";
+import {IAddressSetter} from "../resolver/interfaces/setters/IAddressSetter.sol";
+import {IContenthashSetter} from "../resolver/interfaces/setters/IContenthashSetter.sol";
+import {IDataSetter} from "../resolver/interfaces/setters/IDataSetter.sol";
+import {IInterfaceSetter} from "../resolver/interfaces/setters/IInterfaceSetter.sol";
+import {INameSetter} from "../resolver/interfaces/setters/INameSetter.sol";
+import {ITextSetter} from "../resolver/interfaces/setters/ITextSetter.sol";
 import {
     IDefaultReverseRegistrarAdapter
 } from "../reverse-registrar/interfaces/IDefaultReverseRegistrarAdapter.sol";
@@ -29,21 +38,6 @@ import {
 } from "../reverse-registrar/interfaces/IReverseRegistrarAdapter.sol";
 
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
-
-/// @notice Resolver calls encoded and validated by the HCA registration policy.
-/// @dev Interface selector: `0xbbd9abb5`
-interface IHCARegistrationResolver {
-    /// @notice Updates an account's roles for an ENS name.
-    /// @param name The DNS-encoded name whose roles are updated.
-    /// @param roleBitmap The roles to update.
-    /// @param account The account receiving or losing the roles.
-    /// @param grant Whether the roles are granted or revoked.
-    /// @return success Whether the roles were updated.
-    function authorizeNameRoles(bytes calldata name, uint256 roleBitmap, address account, bool grant)
-        external
-        returns (bool success);
-}
-
 
 /// @title HCA Owner and Session Validator
 /// @notice Fixed validator for standalone HCA owner authorization and scoped ENS sessions.
@@ -127,7 +121,6 @@ contract HCAOwnerAndSessionValidator is IValidator {
     struct RegistrationPolicyState {
         bool usesResolver;
         bool deploysResolver;
-        bool grantsOwnerResolverRoles;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -332,45 +325,35 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @notice Selector for ReverseRegistrarAdapter.claimWithHCA(address,address).
     bytes4 public constant CLAIM_WITH_HCA_SELECTOR = IReverseRegistrarAdapter.claimWithHCA.selector;
 
-    /// @notice Selector for PermissionedResolver.clearRecords(bytes32).
-    bytes4 public constant CLEAR_RECORDS_SELECTOR = 0x3603d758;
+    /// @notice Selector for PermissionedResolver.linkToRecord(bytes,uint256).
+    bytes4 public constant LINK_TO_RECORD_SELECTOR = IPermissionedResolver.linkToRecord.selector;
 
-    /// @notice Selector for PermissionedResolver.setABI(bytes32,uint256,bytes).
-    bytes4 public constant SET_ABI_SELECTOR = 0x623195b0;
+    /// @notice Selector for PermissionedResolver.linkToNode(bytes,bytes32).
+    bytes4 public constant LINK_TO_NODE_SELECTOR = IPermissionedResolver.linkToNode.selector;
 
-    /// @notice Selector for PermissionedResolver.setAddr(bytes32,address).
-    bytes4 public constant SET_ADDR_SELECTOR = 0xd5fa2b00;
+    /// @notice Selector for PermissionedResolver.setABI(bytes,uint256,bytes).
+    bytes4 public constant SET_ABI_SELECTOR = IABISetter.setABI.selector;
 
-    /// @notice Selector for PermissionedResolver.setAddr(bytes32,uint256,bytes).
-    bytes4 public constant SET_ADDR_COIN_TYPE_SELECTOR = 0x8b95dd71;
+    /// @notice Selector for PermissionedResolver.setAddress(bytes,uint256,bytes).
+    bytes4 public constant SET_ADDRESS_SELECTOR = IAddressSetter.setAddress.selector;
 
-    /// @notice Selector for PermissionedResolver.setContenthash(bytes32,bytes).
-    bytes4 public constant SET_CONTENTHASH_SELECTOR = 0x304e6ade;
+    /// @notice Selector for PermissionedResolver.setContenthash(bytes,bytes).
+    bytes4 public constant SET_CONTENTHASH_SELECTOR = IContenthashSetter.setContenthash.selector;
 
-    /// @notice Selector for PermissionedResolver.setData(bytes32,string,bytes).
-    bytes4 public constant SET_DATA_SELECTOR = 0x4eb9c45e;
+    /// @notice Selector for PermissionedResolver.setData(bytes,string,bytes).
+    bytes4 public constant SET_DATA_SELECTOR = IDataSetter.setData.selector;
 
-    /// @notice Selector for PermissionedResolver.setInterface(bytes32,bytes4,address).
-    bytes4 public constant SET_INTERFACE_SELECTOR = 0xe59d895d;
+    /// @notice Selector for PermissionedResolver.setInterface(bytes,bytes4,address).
+    bytes4 public constant SET_INTERFACE_SELECTOR = IInterfaceSetter.setInterface.selector;
 
-    /// @notice Selector for PermissionedResolver.setPubkey(bytes32,bytes32,bytes32).
-    bytes4 public constant SET_PUBKEY_SELECTOR = 0x29cd62ea;
+    /// @notice Selector for PermissionedResolver.setText(bytes,string,string).
+    bytes4 public constant SET_TEXT_SELECTOR = ITextSetter.setText.selector;
 
-    /// @notice Selector for PermissionedResolver.setText(bytes32,string,string).
-    bytes4 public constant SET_TEXT_SELECTOR = 0x10f13a8c;
-
-    /// @notice Selector for PermissionedResolver.setName(bytes32,string).
-    bytes4 public constant SET_NAME_SELECTOR = 0x77372213;
+    /// @notice Selector for PermissionedResolver.setName(bytes,string).
+    bytes4 public constant SET_NAME_SELECTOR = INameSetter.setName.selector;
 
     /// @notice Selector for PermissionedResolver.multicall(bytes[]).
-    bytes4 public constant MULTICALL_SELECTOR = 0xac9650d8;
-
-    /// @notice Selector for PermissionedResolver.multicallWithNodeCheck(bytes32,bytes[]).
-    bytes4 public constant MULTICALL_WITH_NODE_CHECK_SELECTOR = 0xe32954eb;
-
-    /// @notice Selector for PermissionedResolver.authorizeNameRoles(bytes,uint256,address,bool).
-    bytes4 public constant AUTHORIZE_NAME_ROLES_SELECTOR =
-        IHCARegistrationResolver.authorizeNameRoles.selector;
+    bytes4 public constant MULTICALL_SELECTOR = IMulticallable.multicall.selector;
 
     /// @notice The HCA-aware default reverse registrar adapter permitted for default primary-name setup.
     address public immutable DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER;
@@ -1355,8 +1338,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         internal
         view
     {
-        (address policyResolver, bool seenRegister) =
-            _registrationResolver(executions, owner, allowedResolver);
+        (address policyResolver, ) = _registrationResolver(executions, owner, allowedResolver);
         RegistrationPolicyState memory state;
 
         for (uint256 i; i < executions.length; ++i) {
@@ -1388,9 +1370,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 if (policyResolver.code.length == 0 && !state.deploysResolver) {
                     revert PolicyRuleFailed();
                 }
-                if (_checkResolverCall(execution.callData, owner)) {
-                    state.grantsOwnerResolverRoles = true;
-                }
+                _checkResolverCall(execution.callData, owner);
                 continue;
             }
 
@@ -1433,7 +1413,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 if (state.deploysResolver) {
                     revert PolicyRuleFailed();
                 }
-                _checkResolverDeployment(account, policyResolver, execution.callData);
+                _checkResolverDeployment(account, owner, policyResolver, execution.callData);
                 state.usesResolver = true;
                 state.deploysResolver = true;
                 continue;
@@ -1445,10 +1425,6 @@ contract HCAOwnerAndSessionValidator is IValidator {
             }
 
             revert ActionNotAllowed(execution.target, selector);
-        }
-
-        if (seenRegister && !state.grantsOwnerResolverRoles) {
-            revert PolicyRuleFailed();
         }
         _checkResolverBinding(policyResolver, state);
     }
@@ -1499,16 +1475,23 @@ contract HCAOwnerAndSessionValidator is IValidator {
     }
 
     /// @dev Validates an exact deployment of the resolver bound to the session.
-    /// @param account The HCA that will call the factory.
+    /// @param hca The HCA that will call the factory.
+    /// @param owner The HCA owner.
     /// @param resolver The resolver address bound to the session.
     /// @param callData ABI-encoded `VerifiableFactory.deployProxy` call data.
-    function _checkResolverDeployment(address account, address resolver, bytes memory callData)
+    function _checkResolverDeployment(
+        address hca,
+        address owner,
+        address resolver,
+        bytes memory callData
+    )
         internal
         view
     {
         uint256 salt = _readUint(callData, 4 + 32);
-        Grant[] memory grants = new Grant[](1);
-        grants[0] = Grant({account: account, roleBitmap: EACBaseRolesLib.ALL_ROLES});
+        Grant[] memory grants = new Grant[](2);
+        grants[0] = Grant({account: hca, roleBitmap: EACBaseRolesLib.ALL_ROLES});
+        grants[1] = Grant({account: owner, roleBitmap: EACBaseRolesLib.ALL_ROLES});
         bytes[] memory calls = new bytes[](0);
         bytes memory expectedInitData =
             abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, calls));
@@ -1520,7 +1503,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
         if (
             keccak256(callData) != keccak256(expectedCallData) ||
-            _resolverAddress(account, salt) != resolver
+            _resolverAddress(hca, salt) != resolver
         ) {
             revert PolicyRuleFailed();
         }
@@ -1906,55 +1889,17 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @notice Validates resolver record writes on the owner-authorized resolver.
     /// @dev Allows known resolver setters directly or recursively through supported multicalls.
-    ///      A role call must grant every root role to the HCA owner.
     /// @param callData ABI-encoded resolver call data.
     /// @param owner The owner recorded for the HCA.
-    /// @return grantsOwnerResolverRoles Whether the call grants root resolver control to the owner.
-    function _checkResolverCall(bytes memory callData, address owner)
-        internal
-        pure
-        returns (bool grantsOwnerResolverRoles)
-    {
+    function _checkResolverCall(bytes memory callData, address owner) internal pure {
         bytes4 selector = _selector(callData);
         if (selector == MULTICALL_SELECTOR) {
             bytes[] memory calls = abi.decode(_callArgs(callData), (bytes[]));
-            return _checkResolverCalls(calls, owner);
-        }
-        if (selector == MULTICALL_WITH_NODE_CHECK_SELECTOR) {
-            (, bytes[] memory calls) = abi.decode(_callArgs(callData), (bytes32, bytes[]));
-            return _checkResolverCalls(calls, owner);
-        }
-        if (selector == AUTHORIZE_NAME_ROLES_SELECTOR) {
-            bytes memory expectedCallData =
-                abi.encodeCall(
-                    IHCARegistrationResolver.authorizeNameRoles,
-                    (hex"00", EACBaseRolesLib.ALL_ROLES, owner, true)
-                );
-            if (keccak256(callData) != keccak256(expectedCallData)) {
-                revert PolicyRuleFailed();
+            for (uint256 i; i < calls.length; ++i) {
+                _checkResolverCall(calls[i], owner);
             }
-            return true;
-        }
-        if (_isResolverRecordSelector(selector)) {
-            return false;
-        }
-        revert ActionNotAllowed(address(0), selector);
-    }
-
-    /// @notice Validates nested resolver calls.
-    /// @dev Recursively validates each encoded resolver call.
-    /// @param calls ABI-encoded resolver calls.
-    /// @param owner The owner recorded for the HCA.
-    /// @return grantsOwnerResolverRoles Whether a nested call grants root resolver control.
-    function _checkResolverCalls(bytes[] memory calls, address owner)
-        internal
-        pure
-        returns (bool grantsOwnerResolverRoles)
-    {
-        for (uint256 i; i < calls.length; ++i) {
-            if (_checkResolverCall(calls[i], owner)) {
-                grantsOwnerResolverRoles = true;
-            }
+        } else if (!_isAuthorizedResolverSelector(selector)) {
+            revert ActionNotAllowed(address(0), selector);
         }
     }
 
@@ -1972,20 +1917,18 @@ contract HCAOwnerAndSessionValidator is IValidator {
         resolver = _readAddress(callData, 4 + 128);
     }
 
-    /// @notice Returns whether a selector is a resolver record setter.
-    /// @dev Used by `_checkResolverCall` for direct and multicall resolver writes.
+    /// @dev Returns whether resolver selector is allowed.
     /// @param selector_ The function selector.
     /// @return True when the selector is permitted by the resolver-write policy.
-    function _isResolverRecordSelector(bytes4 selector_) internal pure returns (bool) {
+    function _isAuthorizedResolverSelector(bytes4 selector_) internal pure returns (bool) {
         return
-            selector_ == CLEAR_RECORDS_SELECTOR ||
+            selector_ == LINK_TO_RECORD_SELECTOR ||
+            selector_ == LINK_TO_NODE_SELECTOR ||
             selector_ == SET_ABI_SELECTOR ||
-            selector_ == SET_ADDR_SELECTOR ||
-            selector_ == SET_ADDR_COIN_TYPE_SELECTOR ||
+            selector_ == SET_ADDRESS_SELECTOR ||
             selector_ == SET_CONTENTHASH_SELECTOR ||
             selector_ == SET_DATA_SELECTOR ||
             selector_ == SET_INTERFACE_SELECTOR ||
-            selector_ == SET_PUBKEY_SELECTOR ||
             selector_ == SET_NAME_SELECTOR ||
             selector_ == SET_TEXT_SELECTOR;
     }
