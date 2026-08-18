@@ -121,7 +121,7 @@ export async function testNames(env: DevnetEnvironment) {
   ];
   for (const name of namesWithSubregistries) {
     const canonicalRegistry =
-      await env.v2.UniversalResolver.read.findCanonicalRegistry([
+      await env.v2.UniversalHelper.read.findCanonicalRegistry([
         dnsEncodeName(name),
       ]);
     if (canonicalRegistry === zeroAddress) {
@@ -131,9 +131,7 @@ export async function testNames(env: DevnetEnvironment) {
     }
 
     const canonicalNameBytes =
-      await env.v2.UniversalResolver.read.findCanonicalName([
-        canonicalRegistry,
-      ]);
+      await env.v2.UniversalHelper.read.findCanonicalName([canonicalRegistry]);
     const canonicalName =
       canonicalNameBytes && canonicalNameBytes !== "0x"
         ? dnsDecodeName(canonicalNameBytes)

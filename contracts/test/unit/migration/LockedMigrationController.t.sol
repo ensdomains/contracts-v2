@@ -34,6 +34,7 @@ import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {LibRegistry} from "~src/universalResolver/libraries/LibRegistry.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {IWrapperRegistry} from "~src/registry/interfaces/IWrapperRegistry.sol";
@@ -517,7 +518,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         assertEq(subregistry.getWrappedNode(), node, "getWrappedNode");
         assertEq(subregistry.getWrappedName(), name, "getWrappedName");
-        assertEq(universalResolver.findCanonicalName(subregistry), name, "findCanonicalName");
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, subregistry), name, "findCanonicalName");
     }
 
     function test_migrateBatch(uint8 count) external {
@@ -602,7 +603,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             IPermissionedRegistry(address(ethRegistry.getSubregistry(md.label)));
 
         assertEq(registry.roles(registry.ROOT_RESOURCE(), actor), 0);
-
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,

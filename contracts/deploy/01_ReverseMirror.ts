@@ -1,27 +1,21 @@
-import { artifacts, execute } from "@rocketh";
-import { isAddressEqual, labelhash, zeroAddress } from "viem";
+import { execute } from "@rocketh";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import type { Abi_ENSV1Resolver } from "generated/abis/ENSV1Resolver.js";
+import { zeroAddress, isAddressEqual } from "viem";
+import { idFromLabel } from "../test/utils/utils.js";
 import { DEPLOYMENT_ROLES, MAX_EXPIRY } from "../script/deploy-constants.js";
 
-// TODO: ownership
 export default execute(
-  async ({
-    execute: write,
-    get,
-    read,
-    namedAccounts: { deployer, owner },
-  }) => {
-    const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-
-    const ensV1Resolver =
-      get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
+  async ({ execute: write, get, read, namedAccounts: { deployer, owner } }) => {
+    const rootRegistry = get<Abi_IPermissionedRegistry>("RootRegistry");
+    const ensV1Resolver = get<Abi_ENSV1Resolver>("ENSV1Resolver");
 
     // Phase-tagged scripts re-run on every `deploy-v2 --resume`, and
     // registering an existing name reverts, so only register when the name
     // is absent (same guard as the eth registration in 01_ETHRegistry).
     const currentStatus = await read(rootRegistry, {
       functionName: "getStatus",
-      args: [BigInt(labelhash("reverse"))],
+      args: [idFromLabel("reverse")],
     });
 
     if (currentStatus === 0) {

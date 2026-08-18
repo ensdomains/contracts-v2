@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {
@@ -7,7 +7,6 @@ import {
 } from "@ens/contracts/universalResolver/AbstractUniversalResolver.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
-import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
@@ -66,33 +65,8 @@ contract UniversalResolverV2 is
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc IUniversalResolverV2
-    function findOwner(bytes calldata name) external view returns (address) {
-        return LibRegistry.findOwner(ROOT_REGISTRY, name, 0);
-    }
-
-    /// @inheritdoc IUniversalResolverV2
-    function findCanonicalName(IRegistry registry) external view returns (bytes memory) {
-        return LibRegistry.findCanonicalName(ROOT_REGISTRY, registry);
-    }
-
-    /// @inheritdoc IUniversalResolverV2
-    function findCanonicalRegistry(bytes calldata name) external view returns (IRegistry) {
-        return LibRegistry.findCanonicalRegistry(ROOT_REGISTRY, name);
-    }
-
-    /// @inheritdoc IUniversalResolverV2
-    function findExactRegistry(bytes calldata name) external view returns (IRegistry) {
-        return LibRegistry.findExactRegistry(ROOT_REGISTRY, name, 0);
-    }
-
-    /// @inheritdoc IUniversalResolverV2
-    function findParentRegistry(bytes calldata name) external view returns (IRegistry) {
-        return LibRegistry.findParentRegistry(ROOT_REGISTRY, name, 0);
-    }
-
-    /// @inheritdoc IUniversalResolverV2
-    function findRegistries(bytes calldata name) external view returns (IRegistry[] memory) {
-        return LibRegistry.findRegistries(ROOT_REGISTRY, name, 0);
+    function isENSv2() external pure returns (bool) {
+        return true;
     }
 
     /// @inheritdoc AbstractUniversalResolver
