@@ -116,7 +116,7 @@ export async function deployV2Fixture(
       implAddress: PermissionedResolverImpl.address,
       abi: PermissionedResolverImpl.abi,
       functionName: "initialize",
-      args: [walletClient.account.address, roles, setters],
+      args: [[[walletClient.account.address, roles]], setters],
       salt,
     });
   }

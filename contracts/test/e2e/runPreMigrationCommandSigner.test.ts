@@ -1,12 +1,4 @@
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  mock,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -18,7 +10,13 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { privateKeyToAccount } from "viem/accounts";
-import type { Checkpoint } from "../../script/preMigration.js";
+import {
+  CHECKPOINT_FILE,
+  createFreshCheckpoint,
+  type Checkpoint,
+} from "../../script/preMigration.js";
+
+import { runPreMigrationCommand } from "../../script/migration.js";
 
 // The BatchRegistrar owner that fork/clean-testnet runs impersonate. The env
 // deployer key below does NOT control it.
@@ -35,38 +33,15 @@ let capturedArgs: string[] | null = null;
 // standing in for the real run so the metadata-persistence path can be exercised.
 let checkpointToWrite: Checkpoint | null = null;
 
-const realPreMigration = await import("../../script/preMigration.js");
-// Capture the real export before mocking: mock.module rebinds the live
-// namespace, so realPreMigration.main would otherwise resolve to the stub.
-const realMain = realPreMigration.main;
-
-mock.module("../../script/preMigration.js", () => ({
-  ...realPreMigration,
-  main: async (args: string[]) => {
-    capturedArgs = args;
-    if (checkpointToWrite) {
-      writeFileSync(
-        realPreMigration.CHECKPOINT_FILE,
-        JSON.stringify(checkpointToWrite),
-      );
-    }
-  },
-}));
-
-// bun's mock.module is global and persists past this file, so a later suite
-// that imports preMigration.main would run the stub. Restore the real module
-// once these tests finish.
-afterAll(() => {
-  mock.module("../../script/preMigration.js", () => ({
-    ...realPreMigration,
-    main: realMain,
-  }));
-});
-
-const { runPreMigrationCommand } = await import("../../script/migration.js");
+async function captureArgs(args: string[]) {
+  capturedArgs = args;
+  if (checkpointToWrite) {
+    writeFileSync(CHECKPOINT_FILE, JSON.stringify(checkpointToWrite));
+  }
+}
 
 function makeCheckpoint(overrides: Partial<Checkpoint>): Checkpoint {
-  return { ...realPreMigration.createFreshCheckpoint(), ...overrides };
+  return { ...createFreshCheckpoint(), ...overrides };
 }
 
 function flagValue(args: string[], flag: string): string | undefined {
@@ -109,6 +84,7 @@ describe("runPreMigrationCommand signer resolution", () => {
     await runPreMigrationCommand(
       { ...baseOpts, account: ownerAccount.address },
       false,
+      captureArgs,
     );
     expect(capturedArgs).not.toBeNull();
     expect(flagValue(capturedArgs!, "--account")).toBe(ownerAccount.address);
@@ -119,13 +95,14 @@ describe("runPreMigrationCommand signer resolution", () => {
     await runPreMigrationCommand(
       { ...baseOpts, account: deployerAccount.address },
       false,
+      captureArgs,
     );
     expect(flagValue(capturedArgs!, "--private-key")).toBe(DEPLOYER_KEY);
     expect(flagValue(capturedArgs!, "--account")).toBe(deployerAccount.address);
   });
 
   it("uses the env fallback when no account is supplied", async () => {
-    await runPreMigrationCommand({ ...baseOpts }, false);
+    await runPreMigrationCommand({ ...baseOpts }, false, captureArgs);
     expect(flagValue(capturedArgs!, "--private-key")).toBe(DEPLOYER_KEY);
     expect(capturedArgs).not.toContain("--account");
   });
@@ -134,6 +111,7 @@ describe("runPreMigrationCommand signer resolution", () => {
     await runPreMigrationCommand(
       { ...baseOpts, privateKey: OWNER_KEY, account: ownerAccount.address },
       false,
+      captureArgs,
     );
     expect(flagValue(capturedArgs!, "--private-key")).toBe(OWNER_KEY);
     expect(flagValue(capturedArgs!, "--account")).toBe(ownerAccount.address);
@@ -188,6 +166,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
         metadataLabel: "initial",
       },
       false,
+      captureArgs,
     );
 
     let metadata = readMetadata();
@@ -224,6 +203,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
         metadataLabel: "initial",
       },
       true,
+      captureArgs,
     );
     metadata = readMetadata();
     expect(metadata.runs).toHaveLength(1);
@@ -253,6 +233,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
         metadataLabel: "final-sync",
       },
       false,
+      captureArgs,
     );
     metadata = readMetadata();
     expect(metadata.runs).toHaveLength(2);
@@ -286,6 +267,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
         dryRun: true,
       },
       false,
+      captureArgs,
     );
     expect(existsSync(metadataPath())).toBe(false);
 
@@ -299,6 +281,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
         persistMetadata: false,
       },
       false,
+      captureArgs,
     );
     expect(existsSync(metadataPath())).toBe(false);
   });
@@ -317,6 +300,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
         metadataLabel: "run",
       },
       false,
+      captureArgs,
     );
     expect(
       existsSync(join(deploymentsDir, "does-not-exist", ".premigration.json")),

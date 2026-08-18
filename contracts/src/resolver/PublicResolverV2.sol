@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.25;
 
 import {Multicallable} from "@ens/contracts/resolvers/Multicallable.sol";
 import {ABIResolver} from "@ens/contracts/resolvers/profiles/ABIResolver.sol";

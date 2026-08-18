@@ -51,7 +51,7 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 | Phase | Action | Command(s) | Applies to | Signer |
 | --- | --- | --- | --- | --- |
 | 0 | Deploy fresh v1 contracts | part of `clean-testnet` | clean-testnet only | `deployer` |
-| 1 | Deploy all v2 contracts (registrar deferred) | `phase deploy-v2` | live + clean-testnet | `deployer` / `owner` / `urManager` (+ v1 owner) |
+| 1 | Deploy all v2 contracts, including reverse-registrar adapters and the HCA stack on HCA-enabled networks (registrar deferred) | `phase deploy-v2` | live + clean-testnet | `deployer` / `owner` / `urManager` (+ v1 owner) |
 | 2 | Seed v1 names as reserved on v2 | `premigration run` → `verify` | live + clean-testnet | BatchRegistrar owner |
 | 3 | Freeze v1 registrations | `phase disable-v1-registrars` (+ `verify-*`) | live + clean-testnet | v1 owner |
 | 4 | Keep unmigrated names renewable | `phase authorize-v1-renewer` | live + clean-testnet | v1 owner |
@@ -95,7 +95,12 @@ Phase numbering matches the console output of the `fork full` orchestrator in
     --role v1Owner --file .dev/phase1-v1owner.jsonl
   ```
   Add `--include-testnet-premigration-registrar` on testnet/clean runs to also deploy
-  `TestnetV1PremigrationRegistrar`. Re-run with `--resume` to continue an interrupted deploy.
+  `TestnetV1PremigrationRegistrar`. Re-run with `--resume` to continue an interrupted deploy. Use
+  `--resume --tags hca` to update the shared HCA contracts and their reverse adapters in an existing
+  namespace. This reuses the existing core deployment records, deploys contracts whose bytecode or
+  constructor arguments changed, and prepares replacement-adapter grants followed by revocations of
+  every recorded prior adapter. Replay the deferred owner transactions, then verify that both
+  replacement adapters are controllers and every superseded adapter is not.
 - **Prerequisites:** `bun run compile`; a freshly funded deployer (phase 1 sends many transactions).
 - **Env / args:** `DEPLOYER_KEY` (also the `owner`/`urManager` fallback and the BatchRegistrar owner);
   `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` for the deferred v1-owner replay. `phase deploy-v2` cannot
@@ -104,7 +109,8 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   [phase 6](#phase-6-enable-the-v2-controller) (`BatchRegistrar` holds `REGISTRAR | RENEW` for
   seeding); the URP proxy chain points at the v1 `UniversalResolver`
   (see [universalResolver.md](./universalResolver.md)); the v2 reverse-registrar adapters are deployed
-  and authorized as controllers on the v1 reverse registrars; artifacts written to
+  and authorized as controllers on the v1 reverse registrars; on HCA-enabled networks, the shared HCA
+  contracts are deployed and the standalone implementation is approved by `StandaloneHCAFactory`; artifacts written to
   `deployments/<network>/` (deploys fresh by default — see [Deployment artifacts](#deployment-artifacts)).
 - **Re-deploying fresh:** `deploy-v2` archives the existing `deployments/<network>/` namespace and
   deploys a brand-new v2 set with new addresses (`--resume` is only for continuing an *interrupted*
@@ -114,8 +120,17 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   owner must sign. Every later phase then seeds and wires v1 to this **new** set; the prior set stays
   on-chain but orphaned.
 
-> External deployments on the migration timeline (e.g. an HCA component) live outside this repo and
-> are not driven by `phase deploy-v2`.
+On an HCA-enabled network, phase 1 deploys `HCAOwnerAndSessionValidator`, `StandaloneHCAFactory`,
+`HCAUpgradeSet`, and `StandaloneHCAImplementation`. This deploys only the shared HCA infrastructure;
+individual owner-bound HCAs remain counterfactual and are deployed lazily through
+`StandaloneHCAFactory`. Sepolia defaults to the fixed Rhinestone intent executor and production USDC
+addresses in [`script/deploy-constants.ts`](../script/deploy-constants.ts); local, test, and
+clean-testnet deployments use local mock infrastructure. The `HCA_*` address variables are optional
+explicit overrides.
+
+Phase 1's deferred v1-owner transactions include pointing the v1 `.eth` resolver at `ENSV2Resolver`
+and authorizing the reverse adapters, including `DefaultReverseRegistrarAdapter` when HCA is enabled.
+External infrastructure not implemented by this repository remains outside the migration command.
 
 ### Phase 2: initial pre-migration
 
@@ -332,6 +347,7 @@ bun run compile                                      # forge + hardhat → gener
 export SEPOLIA_RPC_URL=<reliable paid sepolia RPC>   # phase 1 sends many txs
 export DEPLOYER_KEY=0x<fresh funded EOA>             # also owner / urManager / BatchRegistrar owner
 export SEPOLIA_V1_OWNER_KEY=0x<key for 0x0f32…2353>
+# HCA address variables are optional; Sepolia production defaults live in script/deploy-constants.ts.
 
 mkdir -p .dev/sepolia-live
 ```
@@ -352,7 +368,8 @@ prerequisites, and expected outcome:
 
 1. [Phase 1 — deploy fresh v2](#phase-1-deploy-v2-contracts), recording v1-owner txs with
    `--defer-v1-owner-transactions --deferred-v1-owner-transactions-file .dev/sepolia-live/phase1-v1owner.jsonl`
-   and replaying them via `phase execute-owner-txs --role v1Owner`.
+   and replaying the resolver update and reverse-adapter grants via
+   `phase execute-owner-txs --role v1Owner`.
 2. [Phase 2 — initial pre-migration](#phase-2-initial-pre-migration) (`--work-dir .dev/sepolia-live/premig-1`).
 3. [Phase 3 — freeze v1 registrations](#phase-3-disable-v1-registrars) (`--private-key $SEPOLIA_V1_OWNER_KEY`).
 4. [Phase 4 — keep names renewable](#phase-4-authorize-ethrenewerv1). With an EOA v1 owner on Sepolia
@@ -551,7 +568,7 @@ Two commands are **not** on-chain and intentionally omit the network options:
 | `premigration resume` | Resume pre-migration from the checkpoint |
 | `premigration status` | Print the current pre-migration checkpoint JSON (local; `--work-dir` only) |
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 |
-| `phase deploy-v2` | Phase 1: deploy the v2 migration contracts with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy) |
+| `phase deploy-v2` | Phase 1: deploy the v2 migration contracts, reverse-registrar adapters, and enabled HCA infrastructure with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy) |
 | `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the Phase 1 deferred-tx replay on an already-migrated chain) |
 | `phase disable-v1-registrars` | Phase 3: revoke every v1 authorization (BaseRegistrar + reverse registrars) the active deployment did not grant |
 | `phase set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` (v1-owner write) |
@@ -611,6 +628,9 @@ Resolved by [`script/migration.ts`](../script/migration.ts) (the CLI also auto-l
 | `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` | v1 owner (`disable-v1-registrars` †, `set-v1-reverse-default-resolver`, `authorize-v1-renewer`, `activate-v1-*`, `authorize-testnet-v1-premigration-registrar`) |
 | `SEPOLIA_TOP_URP_OWNER_KEY` / `TOP_URP_OWNER_KEY` | Top URP admin (`phase switch-urp-to-managed`, bootstrap networks only) |
 | `OWNER_TX_KEY` | Generic signer for `phase execute-owner-txs` when no role-specific key matches |
+| `HCA_INTENT_EXECUTOR` | Optional intent-executor override; live/forked Sepolia defaults to the fixed Rhinestone address in `script/deploy-constants.ts` |
+| `HCA_ENTRY_POINT` | Optional HCA ERC-4337 EntryPoint override |
+| `HCA_GAS_REFUND_PAYMASTER` | Optional HCA validator gas-refund paymaster override |
 | `<PREFIX>_MNEMONIC`, `<PREFIX>_MNEMONIC_PATH`, `<PREFIX>_MNEMONIC_INDEX`, `<PREFIX>_MNEMONIC_PASSPHRASE` | Mnemonic-backed signer alternatives for `phase execute-owner-txs`; prefixes `OWNER_TX`, `SEPOLIA_V1_OWNER` / `V1_OWNER`, `SEPOLIA_TOP_URP_OWNER` / `TOP_URP_OWNER` |
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
 | `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` |

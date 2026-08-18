@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.24;
+pragma solidity 0.8.25;
 
 import {CCIPReader, OffchainLookup} from "@ens/contracts/ccipRead/CCIPBatcher.sol";
 import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.25;
 
 import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
 import {IABIResolver} from "@ens/contracts/resolvers/profiles/IABIResolver.sol";
@@ -27,6 +27,10 @@ import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAcce
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
 import {IPermissionedResolver} from "./interfaces/IPermissionedResolver.sol";
+import {
+    IPermissionedResolverInitializable,
+    Grant
+} from "./interfaces/IPermissionedResolverInitializable.sol";
 import {PermissionedResolverLib} from "./libraries/PermissionedResolverLib.sol";
 import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib.sol";
 
@@ -86,6 +90,7 @@ import {ResolverProfileRewriterLib} from "./libraries/ResolverProfileRewriterLib
 ///
 contract PermissionedResolver is
     IPermissionedResolver,
+    IPermissionedResolverInitializable,
     UUPSUpgradeable,
     EnhancedAccessControl,
     IERC7996,
@@ -222,6 +227,7 @@ contract PermissionedResolver is
             type(UUPSUpgradeable).interfaceId == interfaceId ||
             type(IProxyAuthorization).interfaceId == interfaceId ||
             type(IContractNamer).interfaceId == interfaceId ||
+            type(IPermissionedResolverInitializable).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -230,14 +236,13 @@ contract PermissionedResolver is
         return ResolverFeatures.RESOLVE_MULTICALL == feature;
     }
 
-    /// @inheritdoc IPermissionedResolver
-    function initialize(address admin, uint256 roleBitmap, bytes[] calldata setters)
-        external
-        initializer
-    {
+    /// @inheritdoc IPermissionedResolverInitializable
+    function initialize(Grant[] calldata grants, bytes[] calldata calls) external initializer {
         __UUPSUpgradeable_init();
-        _grantRoles(ROOT_RESOURCE, roleBitmap, admin, false);
-        multicall(setters);
+        for (uint256 i; i < grants.length; ++i) {
+            _grantRoles(ROOT_RESOURCE, grants[i].roleBitmap, grants[i].account, false);
+        }
+        multicall(calls);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -639,7 +644,7 @@ contract PermissionedResolver is
         return true;
     }
 
-    /// @notice Perform multiple write operations.
+    /// @notice Perform multiple operations.
     /// @dev Reverts with first error.
     /// @param calls The calls to make.
     /// @return results The results of the calls.
