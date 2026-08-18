@@ -17,7 +17,7 @@ import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.so
 import {UniversalHelper} from "~src/universalResolver/UniversalHelper.sol";
 
 /// @dev Reusable testing fixture for ENSv2 with a basic ".eth" deployment.
-contract V2Fixture is Test, ERC1155Holder {
+abstract contract V2Fixture is Test, ERC1155Holder {
     ContractNamer contractNamer;
     VerifiableFactory verifiableFactory;
     LabelStore labelStore;

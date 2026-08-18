@@ -4,9 +4,10 @@ pragma solidity >=0.8.13;
 import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedAccessControl.sol";
 import {IContractNamer} from "../../reverse-registrar/interfaces/IContractNamer.sol";
 
+import {IRegistryURIRenderer} from "./IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0x6be50c69`
+/// @dev Interface selector: `0x54d9b3a0`
 interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -48,6 +49,17 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Change metadata parameters.
+    /// @dev Should emit `URIUpdated`.
+    /// @param uri The new URI.
+    /// @param renderer The new renderer address.
+    function setURI(string calldata uri, IRegistryURIRenderer renderer) external;
+
+    /// @notice Get metadata parameters.
+    /// @return uri The metadata URI.
+    /// @return renderer The metadata renderer address.
+    function getURI() external view returns (string memory uri, IRegistryURIRenderer renderer);
 
     /// @notice Get the latest owner of a token.
     ///         If the token was burned, returns null.

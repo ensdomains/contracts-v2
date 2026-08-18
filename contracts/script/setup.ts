@@ -39,6 +39,11 @@ import { Abi_UniversalResolverV2 } from "generated/abis/UniversalResolverV2.js";
 import { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
 // erc20
 import { Abi_MockERC20 } from "generated/abis/test/mocks/MockERC20.sol/MockERC20.js";
+// hca
+import { Abi_MockRegistrationIntentExecutor } from "generated/abis/MockRegistrationIntentExecutor.js";
+import { Abi_HCAOwnerAndSessionValidator } from "generated/abis/HCAOwnerAndSessionValidator.js";
+import { Abi_StandaloneSingleOwnerHCA } from "generated/abis/StandaloneSingleOwnerHCA.js";
+import { Abi_StandaloneHCAFactory } from "generated/abis/StandaloneHCAFactory.js";
 //
 import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -355,7 +360,7 @@ export async function setupDevnet({
         address: rocketh.get("DefaultReverseResolver").address,
         client,
       }),
-      ETHReverseRegistrar: getContract({
+      ReverseRegistrar: getContract({
         abi: Abi_ReverseRegistrar,
         address: rocketh.get("ReverseRegistrar").address,
         client,
@@ -553,9 +558,37 @@ export async function setupDevnet({
       }),
     };
 
+    const hca = {
+      MockRegistrationIntentExecutor: getContract({
+        abi: Abi_MockRegistrationIntentExecutor,
+        address: rocketh.deployments["MockRegistrationIntentExecutor"].address,
+        client,
+      }),
+      HCAOwnerAndSessionValidator: getContract({
+        abi: Abi_HCAOwnerAndSessionValidator,
+        address: rocketh.deployments["HCAOwnerAndSessionValidator"].address,
+        client,
+      }),
+      StandaloneHCAImplementation: getContract({
+        abi: Abi_StandaloneSingleOwnerHCA,
+        address: rocketh.deployments["StandaloneHCAImplementation"].address,
+        client,
+      }),
+      StandaloneHCAFactory: getContract({
+        abi: Abi_StandaloneHCAFactory,
+        address: rocketh.deployments["StandaloneHCAFactory"].address,
+        client,
+      }),
+      HCAUpgradeSet: getContract({
+        abi: Abi_PermissionedAddressSet,
+        address: rocketh.deployments["HCAUpgradeSet"].address,
+        client,
+      }),
+    };
+
     const verifiableProxyLogic = await v2.VerifiableFactory.read.proxyLogic();
 
-    [shared, v1, v2, erc20]
+    [shared, v1, v2, erc20, hca]
       .flatMap((x) => Object.values(x))
       .forEach(patchContractWrite);
     console.log("Linked contracts");
@@ -596,6 +629,7 @@ export async function setupDevnet({
       v1,
       v2,
       erc20,
+      hca,
       sync,
       waitFor,
       saveState,

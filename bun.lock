@@ -13,12 +13,14 @@
     "contracts": {
       "name": "contracts",
       "dependencies": {
+        "@ensdomains/address-encoder": "^1.1.3",
         "@ensdomains/hardhat-chai-matchers-viem": "^0.1.16",
         "@nomicfoundation/hardhat-keystore": "3.0.5",
         "@nomicfoundation/hardhat-network-helpers": "3.0.0",
         "@nomicfoundation/hardhat-viem": "3.0.0",
         "@rocketh/deploy": "0.19.1",
         "@rocketh/node": "0.19.3",
+        "@rocketh/proxy": "0.19.3",
         "@rocketh/read-execute": "0.19.0",
         "@rocketh/viem": "0.19.0",
         "commander": "^14.0.1",
@@ -31,10 +33,9 @@
         "yoctocolors": "^2.1.2",
       },
       "devDependencies": {
-        "@ensdomains/address-encoder": "^1.1.3",
         "@nomicfoundation/edr": "0.12.0-next.4",
         "@nomicfoundation/hardhat-foundry": "^1.2.0",
-        "@rocketh/proxy": "0.19.3",
+        "@rhinestone/sdk": "1.8.0",
         "@rocketh/verifier": "0.19.3",
         "@types/bun": "^1.3.2",
         "abitype": "^1.2.3",
@@ -51,6 +52,7 @@
   },
   "patchedDependencies": {
     "rocketh@0.19.3": "patches/rocketh@0.19.3.patch",
+    "@rhinestone/sdk@1.8.0": "patches/@rhinestone%2Fsdk@1.8.0.patch",
     "@rocketh/node@0.19.3": "patches/@rocketh-node@0.19.3.patch",
   },
   "overrides": {
@@ -141,9 +143,9 @@
 
     "@noble/ciphers": ["@noble/ciphers@1.2.1", "", {}, "sha512-rONPWMC7PeExE077uLE4oqWrZ1IvAfz3oH9LibVAcVCopJiA9R62uavnbEzdkVmJYI6M6Zgkbeb07+tWjlq2XA=="],
 
-    "@noble/curves": ["@noble/curves@1.9.1", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, "sha512-k11yZxZg+t+gWvBbIswW0yoJlu8cHOC7dhunwOzoWH/mXGBiYyR4YY6hAEK/3EUs4UpB8la1RfdRpeGsFHkWsA=="],
+    "@noble/curves": ["@noble/curves@1.2.0", "", { "dependencies": { "@noble/hashes": "1.3.2" } }, "sha512-oYclrNgRaM9SsBUBVbb8M6DTV7ZHRTKugureoYEncY5c65HOmRzvSiTE3y5CYaPYJA/GVkrhXEoF0M3Ya9PMnw=="],
 
-    "@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
+    "@noble/hashes": ["@noble/hashes@1.3.2", "", {}, "sha512-MVC8EAQp7MvEcm30KWENFjgR+Mkmf+D189XJTkFIlwohU5hcBbn1ZkKq7KVTi2Hme3PMGF390DaL52beVrIihQ=="],
 
     "@nomicfoundation/edr": ["@nomicfoundation/edr@0.12.0-next.4", "", { "optionalDependencies": { "@nomicfoundation/edr-darwin-arm64": "0.12.0-next.4", "@nomicfoundation/edr-darwin-x64": "0.12.0-next.4", "@nomicfoundation/edr-linux-arm64-gnu": "0.12.0-next.4", "@nomicfoundation/edr-linux-arm64-musl": "0.12.0-next.4", "@nomicfoundation/edr-linux-x64-gnu": "0.12.0-next.4", "@nomicfoundation/edr-linux-x64-musl": "0.12.0-next.4", "@nomicfoundation/edr-win32-x64-msvc": "0.12.0-next.4" } }, "sha512-yXMIpISsZcrlCziY5fwd9s8iJ7Rs9AD+UyHKKzSazKevMvJRlLbdCVqoEld9QZRwWo9Pc8AyAUmS9Xix+ZQiRQ=="],
 
@@ -192,6 +194,10 @@
     "@nomicfoundation/solidity-analyzer-linux-x64-musl": ["@nomicfoundation/solidity-analyzer-linux-x64-musl@0.1.2", "", {}, "sha512-GzzVeeJob3lfrSlDKQw2bRJ8rBf6mEYaWY+gW0JnTDHINA0s2gPR4km5RLIj1xeZZOYz4zRw+AEeYgLRqB2NXg=="],
 
     "@nomicfoundation/solidity-analyzer-win32-x64-msvc": ["@nomicfoundation/solidity-analyzer-win32-x64-msvc@0.1.2", "", {}, "sha512-Fdjli4DCcFHb4Zgsz0uEJXZ2K7VEO+w5KVv7HmT7WO10iODdU9csC2az4jrhEsRtiR9Gfd74FlG0NYlw1BMdyA=="],
+
+    "@rhinestone/sdk": ["@rhinestone/sdk@1.8.0", "", { "dependencies": { "@rhinestone/shared-configs": "1.6.10", "solady": "^0.1.26" }, "peerDependencies": { "express": ">=4", "jose": ">=5.0.0", "viem": "^2.38.0" }, "optionalPeers": ["express", "jose"] }, "sha512-Y1YMbHBogNLjfCEI3jhjl4Q1fdEqfiyC13FZSUP/loTHPW2xCmcBBpMT9upefBkCIhRf4Mo04mozqtsqDN4dGQ=="],
+
+    "@rhinestone/shared-configs": ["@rhinestone/shared-configs@1.6.10", "", { "peerDependencies": { "typescript": "^5", "viem": "^2.40.1" } }, "sha512-rUSmn78bzXohGhwohuS39qCiDZlMgVrBpvoDb7ZRNi/fJ0Nb62EwtbdktCyB5ACl2vRaR2Or04TO7y+3tHBO0A=="],
 
     "@rocketh/core": ["@rocketh/core@0.19.0", "", { "dependencies": { "abitype": "^1.2.3", "eip-1193": "^0.6.5", "named-logs": "^0.4.1", "viem": "^2.45.1" } }, "sha512-pCauA7HP/5k0uyTgjOYApJGcNuVx61+o6AuvFUIR3DIaWyKgmSHB3oTmTe1CHZBWWBUurDf9SIYyAFS2qhTWJQ=="],
 
@@ -541,6 +547,8 @@
 
     "sisteransi": ["sisteransi@1.0.5", "", {}, "sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg=="],
 
+    "solady": ["solady@0.1.26", "", {}, "sha512-dhGr/ptJFdea/1KE6xgqgwEdbMhUiSfRc6A+jLeltPe16zyt9qtED3PElIBVRnzEmUO5aZTjKVAr6SlqXBBcIw=="],
+
     "solgrid": ["solgrid@0.0.16", "", { "optionalDependencies": { "@solgrid/cli-darwin-arm64": "0.0.16", "@solgrid/cli-linux-arm64": "0.0.16", "@solgrid/cli-linux-x64": "0.0.16", "@solgrid/cli-win32-x64": "0.0.16" }, "bin": { "solgrid": "bin/solgrid.js" } }, "sha512-dnXHeQ4+wLlYhNQCNeHJ6UYUIKZ2hIPA1oUsyeNsXZyU+l6b7TJSyneJetUMaMf2zhqMyXoldsqaUUEK9kTpSw=="],
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
@@ -605,11 +613,21 @@
 
     "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
+    "@ensdomains/address-encoder/@noble/curves": ["@noble/curves@1.9.1", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, "sha512-k11yZxZg+t+gWvBbIswW0yoJlu8cHOC7dhunwOzoWH/mXGBiYyR4YY6hAEK/3EUs4UpB8la1RfdRpeGsFHkWsA=="],
+
+    "@ensdomains/address-encoder/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
+
     "@nomicfoundation/hardhat-keystore/@noble/hashes": ["@noble/hashes@1.7.1", "", {}, "sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ=="],
 
     "@nomicfoundation/hardhat-network-helpers/@nomicfoundation/hardhat-utils": ["@nomicfoundation/hardhat-utils@3.0.6", "", { "dependencies": { "@streamparser/json-node": "^0.0.22", "debug": "^4.3.2", "env-paths": "^2.2.0", "ethereum-cryptography": "^2.2.1", "fast-equals": "^5.4.0", "json-stream-stringify": "^3.1.6", "rfdc": "^1.3.1", "undici": "^6.16.1" } }, "sha512-AD/LPNdjXNFRrZcaAAewgJpdnHpPppZxo5p+x6wGMm5Hz4B3+oLf/LUzVn8qb4DDy9RE2c24l2F8vmL/w6ZuXg=="],
 
     "@nomicfoundation/hardhat-viem/@nomicfoundation/hardhat-utils": ["@nomicfoundation/hardhat-utils@3.0.6", "", { "dependencies": { "@streamparser/json-node": "^0.0.22", "debug": "^4.3.2", "env-paths": "^2.2.0", "ethereum-cryptography": "^2.2.1", "fast-equals": "^5.4.0", "json-stream-stringify": "^3.1.6", "rfdc": "^1.3.1", "undici": "^6.16.1" } }, "sha512-AD/LPNdjXNFRrZcaAAewgJpdnHpPppZxo5p+x6wGMm5Hz4B3+oLf/LUzVn8qb4DDy9RE2c24l2F8vmL/w6ZuXg=="],
+
+    "@scure/bip32/@noble/curves": ["@noble/curves@1.9.1", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, "sha512-k11yZxZg+t+gWvBbIswW0yoJlu8cHOC7dhunwOzoWH/mXGBiYyR4YY6hAEK/3EUs4UpB8la1RfdRpeGsFHkWsA=="],
+
+    "@scure/bip32/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
+
+    "@scure/bip39/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
 
     "@vitest/snapshot/@vitest/pretty-format": ["@vitest/pretty-format@3.1.3", "", { "dependencies": { "tinyrainbow": "^2.0.0" } }, "sha512-i6FDiBeJUGLDKADw2Gb01UtUNb12yyXAqC/mmRWuYl+m/U9GS7s8us5ONmGkGpUUo7/iAYzI2ePVfOZTYvUifA=="],
 
@@ -627,10 +645,6 @@
 
     "ethereum-cryptography/@scure/bip39": ["@scure/bip39@1.3.0", "", { "dependencies": { "@noble/hashes": "~1.4.0", "@scure/base": "~1.1.6" } }, "sha512-disdg7gHuTDZtY+ZdkmLpPCk7fxZSu3gBiEGuoC1XYxv9cGx3Z6cpTggCgW6odSOOIXCiDjuGejW+aJKCY/pIQ=="],
 
-    "ethers/@noble/curves": ["@noble/curves@1.2.0", "", { "dependencies": { "@noble/hashes": "1.3.2" } }, "sha512-oYclrNgRaM9SsBUBVbb8M6DTV7ZHRTKugureoYEncY5c65HOmRzvSiTE3y5CYaPYJA/GVkrhXEoF0M3Ya9PMnw=="],
-
-    "ethers/@noble/hashes": ["@noble/hashes@1.3.2", "", {}, "sha512-MVC8EAQp7MvEcm30KWENFjgR+Mkmf+D189XJTkFIlwohU5hcBbn1ZkKq7KVTi2Hme3PMGF390DaL52beVrIihQ=="],
-
     "hardhat/@nomicfoundation/edr": ["@nomicfoundation/edr@0.12.0-next.28", "", { "dependencies": { "@nomicfoundation/edr-darwin-arm64": "0.12.0-next.28", "@nomicfoundation/edr-darwin-x64": "0.12.0-next.28", "@nomicfoundation/edr-linux-arm64-gnu": "0.12.0-next.28", "@nomicfoundation/edr-linux-arm64-musl": "0.12.0-next.28", "@nomicfoundation/edr-linux-x64-gnu": "0.12.0-next.28", "@nomicfoundation/edr-linux-x64-musl": "0.12.0-next.28", "@nomicfoundation/edr-win32-x64-msvc": "0.12.0-next.28" } }, "sha512-DOW5VFGIZWpuB6Llx+5ewn9HingN7uV/6nI3ecB3pZ4qc5OnwxnfG/KatYS6Fq3J55SuWMSxgDMHHA0kAVTFHQ=="],
 
     "hardhat/ws": ["ws@8.21.0", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g=="],
@@ -647,7 +661,15 @@
 
     "ox/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, "sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw=="],
 
+    "ox/@noble/curves": ["@noble/curves@1.9.1", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, "sha512-k11yZxZg+t+gWvBbIswW0yoJlu8cHOC7dhunwOzoWH/mXGBiYyR4YY6hAEK/3EUs4UpB8la1RfdRpeGsFHkWsA=="],
+
+    "ox/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
+
     "ox/eventemitter3": ["eventemitter3@5.0.1", "", {}, "sha512-GWkBvjiSZK87ELrYOSESUYeVIc9mvLLf/nXalMOS5dYrgZq9o5OVkbZAVM06CVxYsCwH9BDZFPlQTlPA1j4ahA=="],
+
+    "viem/@noble/curves": ["@noble/curves@1.9.1", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, "sha512-k11yZxZg+t+gWvBbIswW0yoJlu8cHOC7dhunwOzoWH/mXGBiYyR4YY6hAEK/3EUs4UpB8la1RfdRpeGsFHkWsA=="],
+
+    "viem/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
 
     "viem/abitype": ["abitype@1.2.3", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-Ofer5QUnuUdTFsBRwARMoWKOH1ND5ehwYhJ3OJ/BQO+StkwQjHw0XyVh4vDttzHB7QOFhPHa/o413PJ82gU/Tg=="],
 
