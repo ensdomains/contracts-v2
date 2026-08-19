@@ -429,6 +429,45 @@ contract LibRegistryTest is Test, ERC1155Holder {
         assertEq(owner, LibRegistry.findExactOwner(rootRegistry, name, offset), ens);
     }
 
+    function test_findNearestOwner_specific() external {
+        PermissionedRegistry ethRegistry = _createRegistry();
+        PermissionedRegistry testRegistry = _createRegistry();
+
+        _register(rootRegistry, "eth", address(1), ethRegistry, address(0));
+        _register(ethRegistry, "sub", address(2), IRegistry(address(0)), address(0));
+        _register(ethRegistry, "test", address(3), testRegistry, address(0));
+        _register(testRegistry, "sub", address(4), IRegistry(address(0)), address(0));
+
+        {
+            bytes memory name = NameCoder.encode("sub.dne.eth");
+            (address owner, uint256 offset) = LibRegistry.findNearestOwner(rootRegistry, name, 0);
+            assertEq(owner, address(1), "owner@1");
+            assertEq(offset, 8, "offset@1"); // 3sub3dne
+            assertEq(owner, LibRegistry.findExactOwner(rootRegistry, name, offset), "exact@1");
+        }
+        {
+            bytes memory name = NameCoder.encode("dne.sub.sub.eth");
+            (address owner, uint256 offset) = LibRegistry.findNearestOwner(rootRegistry, name, 0);
+            assertEq(owner, address(2), "owner@2");
+            assertEq(offset, 8, "offset@2"); // 3sub3dne
+            assertEq(owner, LibRegistry.findExactOwner(rootRegistry, name, offset), "exact@2");
+        }
+        {
+            bytes memory name = NameCoder.encode("sub.dne.test.eth");
+            (address owner, uint256 offset) = LibRegistry.findNearestOwner(rootRegistry, name, 0);
+            assertEq(owner, address(3), "owner@3");
+            assertEq(offset, 8, "offset@3"); // 3sub3dne
+            assertEq(owner, LibRegistry.findExactOwner(rootRegistry, name, offset), "exact@3");
+        }
+        {
+            bytes memory name = NameCoder.encode("dne.sub.test.eth");
+            (address owner, uint256 offset) = LibRegistry.findNearestOwner(rootRegistry, name, 0);
+            assertEq(owner, address(4), "owner@4");
+            assertEq(offset, 4, "offset@4"); // 3dne
+            assertEq(owner, LibRegistry.findExactOwner(rootRegistry, name, offset), "exact@4");
+        }
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Helpers
     ////////////////////////////////////////////////////////////////////////

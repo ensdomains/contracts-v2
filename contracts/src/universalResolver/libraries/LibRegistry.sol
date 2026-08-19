@@ -135,10 +135,11 @@ library LibRegistry {
             return (rootRegistry, offset);
         }
         (registry, registryOffset) = findNearestRegistry(rootRegistry, name, next);
-        if (registryOffset == next && address(registry) != address(0)) {
-            IRegistry child = registry.getSubregistry(label);
+        // if registry exists and is the parent
+        if (address(registry) != address(0) && registryOffset == next) {
+            IRegistry child = registry.getSubregistry(label); // get child
             if (address(child) != address(0)) {
-                registry = child;
+                registry = child; // remember
                 registryOffset = offset;
             }
         }
@@ -204,10 +205,14 @@ library LibRegistry {
         (parent, owner, ownerOffset) = _findNearestOwner(rootRegistry, name, next);
         if (address(parent) != address(0)) {
             if (ERC165Checker.supportsInterface(address(parent), type(IOwnedRegistry).interfaceId)) {
-                owner = IOwnedRegistry(address(parent)).findOwner(label);
-                ownerOffset = offset;
+                address child = IOwnedRegistry(address(parent)).findOwner(label);
+                // if registry exists and has child owner
+                if (child != address(0)) {
+                    owner = child; // remember
+                    ownerOffset = offset;
+                }
             }
-            parent = parent.getSubregistry(label);
+            parent = parent.getSubregistry(label); // always get child
         }
     }
 
