@@ -54,6 +54,7 @@
     "rocketh@0.19.3": "patches/rocketh@0.19.3.patch",
     "@rhinestone/sdk@1.8.0": "patches/@rhinestone%2Fsdk@1.8.0.patch",
     "@rocketh/node@0.19.3": "patches/@rocketh-node@0.19.3.patch",
+    "hardhat-deploy@2.0.3": "patches/hardhat-deploy@2.0.3.patch",
   },
   "overrides": {
     "esbuild": "0.25.11",

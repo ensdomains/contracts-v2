@@ -213,10 +213,20 @@ const extensions = {
 export { extensions };
 
 function deploymentNameFor(env: Environment, deployment: { address: Address }) {
-  const found = Object.entries(env.deployments).find(
-    ([, candidate]) =>
-      getAddress(candidate.address) === getAddress(deployment.address),
-  );
+  const target = getAddress(deployment.address);
+  const found = Object.entries(env.deployments).find(([name, candidate]) => {
+    // env.deployments can contain address-less entries: rocketh loads the
+    // `.deployment.json` metadata file as a deployment named '.deployment'.
+    // The file only exists once a deploy has completed, so this bites resume
+    // runs — getAddress(undefined) would throw and abort the deploy.
+    if (typeof candidate?.address !== "string") {
+      console.warn(
+        `  - deployment '${name}' has no address; skipping in name lookup`,
+      );
+      return false;
+    }
+    return getAddress(candidate.address) === target;
+  });
   return found?.[0];
 }
 
