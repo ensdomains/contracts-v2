@@ -37,7 +37,6 @@ import { Abi_PermissionedAddressSet } from "generated/abis/PermissionedAddressSe
 import { Abi_UniversalHelper } from "generated/abis/UniversalHelper.js";
 import { Abi_UniversalResolverV2 } from "generated/abis/UniversalResolverV2.js";
 import { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
-import { Abi_SharedResolver } from "generated/abis/SharedResolver.js";
 // erc20
 import { Abi_MockERC20 } from "generated/abis/test/mocks/MockERC20.sol/MockERC20.js";
 // hca
@@ -545,11 +544,6 @@ export async function setupDevnet({
         address: rocketh.get("PublicResolverV2").address,
         client,
       }),
-      SharedResolver: getContract({
-        abi: Abi_SharedResolver,
-        address: rocketh.get("SharedResolver").address,
-        client,
-      }),
     };
 
     const erc20 = {
@@ -996,7 +990,6 @@ export async function setupDevnet({
       await setName("helper", v2.UniversalHelper.address);
       await setName("public.resolver", v2.PublicResolver.address);
       await setName("dns.resolver", v2.DNSTLDResolver.address);
-      await setName("shared.resolver", v2.SharedResolver.address);
 
       await setName("dnsname", v2.DNSTXTResolver.address); // remap v1 ExtendedDNSResolver
       await setName("dnstxt", v2.DNSTXTResolver.address); // TODO: could just use "dnsname"?
