@@ -135,7 +135,7 @@ library LibRegistry {
             return (rootRegistry, offset);
         }
         (registry, registryOffset) = findNearestRegistry(rootRegistry, name, next);
-        if (address(registry) != address(0)) {
+        if (registryOffset == next && address(registry) != address(0)) {
             IRegistry child = registry.getSubregistry(label);
             if (address(child) != address(0)) {
                 registry = child;

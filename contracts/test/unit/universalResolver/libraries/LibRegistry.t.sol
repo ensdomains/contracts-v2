@@ -343,6 +343,53 @@ contract LibRegistryTest is Test, ERC1155Holder {
         );
     }
 
+    function test_findNearestRegistry_specific() external {
+        PermissionedRegistry ethRegistry = _createRegistry();
+        PermissionedRegistry testRegistry = _createRegistry();
+        PermissionedRegistry subRegistry1 = _createRegistry();
+        PermissionedRegistry subRegistry2 = _createRegistry();
+        PermissionedRegistry subRegistry3 = _createRegistry();
+
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        _register(ethRegistry, "sub", address(this), subRegistry1, address(0));
+        _register(ethRegistry, "test", address(this), testRegistry, address(0));
+        _register(testRegistry, "sub", address(this), subRegistry2, address(0));
+        _register(subRegistry1, "sub", address(this), subRegistry3, address(0));
+
+        {
+            (IRegistry registry, uint256 offset) =
+                LibRegistry.findNearestRegistry(
+                    rootRegistry,
+                    NameCoder.encode("sub.dne.test.eth"),
+                    0
+                );
+            assertEq(address(registry), address(testRegistry), "registry@1");
+            assertEq(offset, 8, "offset@1"); // 3sub3dne
+        }
+        {
+            (IRegistry registry, uint256 offset) =
+                LibRegistry.findNearestRegistry(
+                    rootRegistry,
+                    NameCoder.encode("dne.sub.test.eth"),
+                    0
+                );
+            assertEq(address(registry), address(subRegistry2), "registry@2");
+            assertEq(offset, 4, "offset@2"); // 3dne
+        }
+        {
+            (IRegistry registry, uint256 offset) =
+                LibRegistry.findNearestRegistry(rootRegistry, NameCoder.encode("sub.dne.eth"), 0);
+            assertEq(address(registry), address(ethRegistry), "registry@3");
+            assertEq(offset, 8, "offset@3"); // 3sub3dne
+        }
+        {
+            (IRegistry registry, uint256 offset) =
+                LibRegistry.findNearestRegistry(rootRegistry, NameCoder.encode("dne.sub.sub.eth"), 0);
+            assertEq(address(registry), address(subRegistry3), "registry@3");
+            assertEq(offset, 4, "offset@3"); // 3dne
+        }
+    }
+
     function test_findExactOwner() external {
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
