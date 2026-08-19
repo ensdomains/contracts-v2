@@ -72,10 +72,6 @@ contract SharedResolverTest is V2Fixture {
             "ISharedResolver"
         );
         assertTrue(
-            ERC165Checker.supportsInterface(address(resolver), type(IRecordResolver).interfaceId),
-            "IRecordResolver"
-        );
-        assertTrue(
             ERC165Checker.supportsInterface(address(resolver), type(IContractNamer).interfaceId),
             "IContractNamer"
         );

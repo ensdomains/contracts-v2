@@ -12,7 +12,6 @@ import {IInterfaceSetter} from "./setters/IInterfaceSetter.sol";
 import {INameSetter} from "./setters/INameSetter.sol";
 import {ITextSetter} from "./setters/ITextSetter.sol";
 
-/// @dev Interface selector: `0xd3fb9e08`
 interface IRecordResolver is
     IExtendedResolver,
     IMulticallable,

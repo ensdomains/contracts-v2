@@ -72,8 +72,10 @@ contract UniversalHelperTest is V2Fixture {
         (IRegistry registry, uint256 offset) = universalHelper.findNearestRegistry(name);
         assertEq(
             address(registry),
-            universalHelper.findExactRegistry(
-                BytesUtils.substring(name, offset, name.length - offset)
+            address(
+                universalHelper.findExactRegistry(
+                    BytesUtils.substring(name, offset, name.length - offset)
+                )
             )
         );
     }

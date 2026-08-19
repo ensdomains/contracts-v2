@@ -52,7 +52,6 @@ abstract contract AbstractRecordResolver is ERC165, IRecordResolver, IERC7996 {
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(IExtendedResolver).interfaceId ||
-            interfaceId == type(IRecordResolver).interfaceId ||
             interfaceId == type(IERC7996).interfaceId ||
             interfaceId == type(IMulticallable).interfaceId ||
             interfaceId == type(IABISetter).interfaceId ||
