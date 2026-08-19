@@ -40,10 +40,10 @@ contract SharedResolver is ISharedResolver, AbstractRecordResolver, DelegatedCon
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev A mapping from `node` to `RecordPointer`.
+    /// @dev Mapping from `node` to `RecordPointer`.
     mapping(bytes32 node => RecordPointer pointer) internal _pointers;
 
-    /// @dev A mapping from `(owner, operator, node)` to approval state.
+    /// @dev Mapping from `(owner, operator, node)` to approval state.
     mapping(address owner => mapping(address operator => mapping(bytes32 node => bool approved))) internal _approvals;
 
     ////////////////////////////////////////////////////////////////////////
@@ -158,8 +158,8 @@ contract SharedResolver is ISharedResolver, AbstractRecordResolver, DelegatedCon
     }
 
     /// @inheritdoc ISharedResolver
-    function ownerOf(bytes calldata name) public view returns (address) {
-        return LibRegistry.findOwner(ROOT_REGISTRY, name, 0);
+    function ownerOf(bytes calldata name) public view returns (address owner) {
+        (owner, ) = LibRegistry.findNearestOwner(ROOT_REGISTRY, name, 0);
     }
 
     ////////////////////////////////////////////////////////////////////////

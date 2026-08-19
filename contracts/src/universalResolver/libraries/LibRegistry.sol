@@ -47,20 +47,29 @@ library LibRegistry {
     /// @dev Find the owner for `name[offset:]`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
-    /// @return owner The owner address or null if unowned or not found.
-    function findOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)
+    /// @param offset The offset into `name` to begin the search.
+    /// @return The exact owner or null if unowned or not found.
+    function findExactOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)
         internal
         view
-        returns (address owner)
+        returns (address)
     {
-        IRegistry registry = findParentRegistry(rootRegistry, name, offset);
-        if (
-            address(registry) != address(0) &&
-            ERC165Checker.supportsInterface(address(registry), type(IOwnedRegistry).interfaceId)
-        ) {
-            (string memory label, ) = NameCoder.extractLabel(name, offset);
-            owner = IOwnedRegistry(address(registry)).findOwner(label);
-        }
+        (, address owner, uint256 ownerOffset) = _findNearestOwner(rootRegistry, name, offset);
+        return ownerOffset == offset ? owner : address(0);
+    }
+
+    /// @dev Find the nearest owner for `name[offset:]`.
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name to search.
+    /// @param offset The offset into `name` to begin the search.
+    /// @return owner The nearest owner or null if not found.
+    /// @return ownerOffset The offset into `name` such that `findExactOwner(name, ownerOffset) == owner`.
+    function findNearestOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)
+        internal
+        view
+        returns (address owner, uint256 ownerOffset)
+    {
+        (, owner, ownerOffset) = _findNearestOwner(rootRegistry, name, offset);
     }
 
     /// @dev Construct the canonical name for `registry`.
@@ -110,29 +119,51 @@ library LibRegistry {
             : IRegistry(address(0));
     }
 
+    /// @dev Find the nearest registry for `name[offset:]`.
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name to search.
+    /// @param offset The offset into `name` to begin the search.
+    /// @return registry The nearest registry or null if not found.
+    /// @return registryOffset The offset into `name` that corresponds to `registry`.
+    function findNearestRegistry(IRegistry rootRegistry, bytes memory name, uint256 offset)
+        internal
+        view
+        returns (IRegistry registry, uint256 registryOffset)
+    {
+        (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
+        if (bytes(label).length == 0) {
+            return (rootRegistry, offset);
+        }
+        (registry, registryOffset) = findNearestRegistry(rootRegistry, name, next);
+        if (address(registry) != address(0)) {
+            IRegistry child = registry.getSubregistry(label);
+            if (address(child) != address(0)) {
+                registry = child;
+                registryOffset = offset;
+            }
+        }
+    }
+
     /// @dev Find the exact registry for `name[offset:]`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
-    /// @return exactRegistry The exact registry or null if not found.
+    /// @param offset The offset into `name` to begin the search.
+    /// @return exactRegistry The registry corresponding to `name[offset:]` or null if not found.
     function findExactRegistry(IRegistry rootRegistry, bytes memory name, uint256 offset)
         internal
         view
         returns (IRegistry exactRegistry)
     {
-        (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, offset);
-        if (labelHash == bytes32(0)) {
-            return rootRegistry;
-        }
-        IRegistry parent = findExactRegistry(rootRegistry, name, next);
-        if (address(parent) != address(0)) {
-            (string memory label, ) = NameCoder.extractLabel(name, offset);
-            exactRegistry = parent.getSubregistry(label);
+        (IRegistry registry, uint256 next) = findNearestRegistry(rootRegistry, name, offset);
+        if (next == offset) {
+            exactRegistry = registry;
         }
     }
 
     /// @dev Find the parent registry for `name[offset:]`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
+    /// @param offset The offset into `name` to begin the search.
     /// @return parentRegistry The parent registry or null if not found.
     function findParentRegistry(IRegistry rootRegistry, bytes memory name, uint256 offset)
         internal
@@ -158,6 +189,26 @@ library LibRegistry {
         registries = new IRegistry[](1 + NameCoder.countLabels(name, offset));
         registries[registries.length - 1] = rootRegistry;
         _findRegistries(name, offset, registries, 0);
+    }
+
+    /// @dev Recursive function for finding the nearest owner.
+    function _findNearestOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)
+        private
+        view
+        returns (IRegistry parent, address owner, uint256 ownerOffset)
+    {
+        (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
+        if (bytes(label).length == 0) {
+            return (rootRegistry, address(0), offset);
+        }
+        (parent, owner, ownerOffset) = _findNearestOwner(rootRegistry, name, next);
+        if (address(parent) != address(0)) {
+            if (ERC165Checker.supportsInterface(address(parent), type(IOwnedRegistry).interfaceId)) {
+                owner = IOwnedRegistry(address(parent)).findOwner(label);
+                ownerOffset = offset;
+            }
+            parent = parent.getSubregistry(label);
+        }
     }
 
     /// @dev Recursive function for building ancestry.

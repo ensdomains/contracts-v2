@@ -176,7 +176,7 @@ contract PublicResolverV2 is
         if (name.length == 0) {
             return false;
         }
-        address owner = LibRegistry.findOwner(ROOT_REGISTRY, name, 0);
+        address owner = LibRegistry.findExactOwner(ROOT_REGISTRY, name, 0);
         return
             owner == operator ||
             isApprovedForAll(owner, operator) ||
