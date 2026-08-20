@@ -1,13 +1,6 @@
 import type { NetworkConnection } from "hardhat/types/network";
-import {
-  type Account,
-  type Address,
-  getAddress,
-  labelhash,
-  namehash,
-  zeroAddress,
-} from "viem";
-import { splitName } from "../../utils/utils.js";
+import { type Account, type Address, getAddress, zeroAddress } from "viem";
+import { splitName, labelhash, namehash } from "../../utils/utils.js";
 import {
   LOCAL_BATCH_GATEWAY_URL,
   MAX_EXPIRY,
