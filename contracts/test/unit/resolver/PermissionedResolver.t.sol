@@ -69,6 +69,8 @@ contract PermissionedResolverTest is V2Fixture {
     function setUp() external {
         deployV2Fixture();
 
+        vm.expectEmit();
+        emit IRecordResolver.RecordResolverCreated();
         implementation = new PermissionedResolver(address(this));
 
         testName = NameCoder.encode("test.eth");
@@ -80,6 +82,8 @@ contract PermissionedResolverTest is V2Fixture {
         grants[0] = Grant(owner, DEFAULT_ROLES);
         bytes memory initData =
             abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, new bytes[](0)));
+        vm.expectEmit();
+        emit IRecordResolver.RecordResolverCreated();
         resolver = PermissionedResolver(
             verifiableFactory.deployProxy(
                 address(implementation),
@@ -91,10 +95,6 @@ contract PermissionedResolverTest is V2Fixture {
         // set as wildcard resolver
         rootRegistry.setResolver(rootRegistry.findTokenId("eth"), address(resolver));
     }
-
-    ////////////////////////////////////////////////////////////////////////
-    // Init
-    ////////////////////////////////////////////////////////////////////////
 
     function test_initialize() external view {
         assertTrue(resolver.hasRootRoles(DEFAULT_ROLES, owner));

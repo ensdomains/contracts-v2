@@ -27,6 +27,9 @@ interface IRecordResolver is
     // Events
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice A record resolver was created/initialized.
+    event RecordResolverCreated();
+
     /// @notice `name` was associated with a record.
     ///         If `recordId = 0`, the `name` was unassociated.
     /// @param recordId The record ID.
