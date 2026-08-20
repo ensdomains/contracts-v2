@@ -105,7 +105,7 @@ contract PermissionedResolver is
 
     /// @param namer The implementation namer.
     constructor(address namer) {
-        emit RecordResolverCreated();
+        emit ResolverCreated();
         _grantRoles(
             ROOT_RESOURCE,
             PermissionedResolverLib.ROLE_CAN_NAME | PermissionedResolverLib.ROLE_CAN_NAME_ADMIN,
@@ -118,7 +118,7 @@ contract PermissionedResolver is
     /// @inheritdoc IPermissionedResolverInitializable
     function initialize(Grant[] calldata grants, bytes[] calldata calls) external initializer {
         __UUPSUpgradeable_init();
-        emit RecordResolverCreated();
+        emit ResolverCreated();
         for (uint256 i; i < grants.length; ++i) {
             _grantRoles(ROOT_RESOURCE, grants[i].roleBitmap, grants[i].account, false);
         }

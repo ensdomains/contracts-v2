@@ -70,7 +70,7 @@ contract PermissionedResolverTest is V2Fixture {
         deployV2Fixture();
 
         vm.expectEmit();
-        emit IRecordResolver.RecordResolverCreated();
+        emit IRecordResolver.ResolverCreated();
         implementation = new PermissionedResolver(address(this));
 
         testName = NameCoder.encode("test.eth");
@@ -83,7 +83,7 @@ contract PermissionedResolverTest is V2Fixture {
         bytes memory initData =
             abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, new bytes[](0)));
         vm.expectEmit();
-        emit IRecordResolver.RecordResolverCreated();
+        emit IRecordResolver.ResolverCreated();
         resolver = PermissionedResolver(
             verifiableFactory.deployProxy(
                 address(implementation),
