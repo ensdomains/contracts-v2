@@ -25,12 +25,12 @@ interface INormalizedUniversalResolver {
     /// @notice Performs ENS forward resolution for the supplied name and data.
     ///         Caller should enable EIP-3668.
     ///         Reverts `NormalizationChangedName`.
-    /// @param ensName Literal name to resolve, eg. `nick.eth`.
+    /// @param inputName Human-readable name to resolve, eg. `nick.eth`.
     /// @param data The ABI-encoded resolver calldata.
     /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @return result The ABI-encoded response for the calldata.
     /// @return resolver The resolver that was used to resolve the name.
-    function resolveWithENSIP15(string calldata ensName, bytes calldata data, IENSIP15 ensip15)
+    function resolveWithENSIP15(string calldata inputName, bytes calldata data, IENSIP15 ensip15)
         external
         view
         returns (bytes memory result, address resolver);
@@ -50,11 +50,11 @@ interface INormalizedUniversalResolver {
         returns (string memory primary, address resolver, address reverseResolver);
 
     /// @notice Normalize a name according to ENSIP-15.
-    /// @param ensName Literal name to normalize, eg. `nick.eth`.
+    /// @param inputName Human-readable name to normalize, eg. `nick.eth`.
     /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @return wasNormalized `true` if normalized.
     /// @return name Normalized DNS-encoded name, eg. `\x04nick\x03eth\x00` or null if not normalizable.
-    function normalize(string calldata ensName, IENSIP15 ensip15)
+    function normalize(string calldata inputName, IENSIP15 ensip15)
         external
         view
         returns (bool wasNormalized, bytes memory name);

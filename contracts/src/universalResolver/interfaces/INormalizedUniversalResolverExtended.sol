@@ -11,14 +11,14 @@ interface INormalizedUniversalResolverExtended is INormalizedUniversalResolver {
     ///         `bytes32 node` is automatically replaced in calldata.
     /// @dev Caller should enable EIP-3668.
     ///      Reverts `NormalizationChangedName`.
-    /// @param ensName ENS name to resolve, eg. `nick.eth`.
+    /// @param inputName Human-readable name to resolve, eg. `nick.eth`.
     /// @param data The ABI-encoded resolver calldata.
     /// @param gateways The list of batch gateway URLs to use.
     /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @return result The ABI-encoded response for the calldata.
     /// @return resolver The resolver that was used to resolve the name.
     function resolveWithGatewaysAndENSIP15(
-        string calldata ensName,
+        string calldata inputName,
         bytes calldata data,
         string[] calldata gateways,
         IENSIP15 ensip15

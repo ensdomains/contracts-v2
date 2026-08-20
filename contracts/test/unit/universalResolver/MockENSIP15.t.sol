@@ -13,15 +13,15 @@ contract MockENSIP15Test is Test {
         ensip15 = new MockENSIP15();
     }
 
-    function test_is_normalized() external view {
+    function test_isNormalized() external view {
         assertEq(ensip15.normalize("abc"), "abc");
     }
 
-    function test_can_normalize() external view {
+    function test_canNormalize() external view {
         assertEq(ensip15.normalize("ABC"), "abc");
     }
 
-    function test_cannot_normalize() external {
+    function test_cannotNormalize() external {
         vm.expectRevert(abi.encodeWithSelector(IENSIP15.CannotNormalize.selector, " "));
         ensip15.normalize(" ");
     }

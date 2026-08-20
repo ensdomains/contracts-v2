@@ -95,13 +95,18 @@ abstract contract AbstractNormalizedUniversalResolver is
     }
 
     /// @inheritdoc INormalizedUniversalResolver
-    function resolveWithENSIP15(string calldata ensName, bytes calldata data, IENSIP15 ensip15)
+    function resolveWithENSIP15(string calldata inputName, bytes calldata data, IENSIP15 ensip15)
         external
         view
         returns (bytes memory, address)
     {
         return
-            resolveWithGatewaysAndENSIP15(ensName, data, BATCH_GATEWAY_PROVIDER.gateways(), ensip15);
+            resolveWithGatewaysAndENSIP15(
+                inputName,
+                data,
+                BATCH_GATEWAY_PROVIDER.gateways(),
+                ensip15
+            );
     }
 
     /// @notice Same as `BATCH_GATEWAY_PROVIDER()` for backwards-compatability with ENSv1.
@@ -307,12 +312,12 @@ abstract contract AbstractNormalizedUniversalResolver is
         returns (address, bytes32, uint256);
 
     /// @inheritdoc INormalizedUniversalResolver
-    function normalize(string memory ensName, IENSIP15 ensip15)
+    function normalize(string memory inputName, IENSIP15 ensip15)
         public
         view
         returns (bool, bytes memory)
     {
-        return LibENSIP15.normalize(ensName, ensip15);
+        return LibENSIP15.normalize(inputName, ensip15);
     }
 
     /// @inheritdoc IUniversalResolverExtended
@@ -340,7 +345,7 @@ abstract contract AbstractNormalizedUniversalResolver is
 
     /// @inheritdoc INormalizedUniversalResolverExtended
     function resolveWithGatewaysAndENSIP15(
-        string calldata ensName,
+        string calldata inputName,
         bytes calldata data,
         string[] memory gateways,
         IENSIP15 ensip15
@@ -349,7 +354,7 @@ abstract contract AbstractNormalizedUniversalResolver is
         view
         returns (bytes memory, address)
     {
-        (bool wasNorm, bytes memory name) = normalize(ensName, ensip15);
+        (bool wasNorm, bytes memory name) = normalize(inputName, ensip15);
         ResolverInfo memory info = requireResolver(name);
         _callResolver(
             info,
