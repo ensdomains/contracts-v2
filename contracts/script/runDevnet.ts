@@ -99,33 +99,35 @@ if (!quiet) {
     })),
   );
 
-  const tags = ["v2", "shared", "erc20"] as const;
+  const nameKey = "Contract Name";
   console.table(
-    await Promise.all(
-      Object.entries(env.rocketh.deployments).map(
-        async ([name, { address }]) => {
-          // On a mainnet fork, reverse resolution for freshly-deployed
-          // contracts can revert; fall back to no primary name rather than
-          // crashing the whole table.
-          let primary = "";
-          try {
-            const result = await env.v2.UniversalResolver.read.reverse([
-              address,
-              COIN_TYPE_ETH,
-            ]);
-            primary = result[0];
-          } catch {}
-          return {
-            "Contract Name": name,
-            "Contract Address": getAddress(address),
-            "Primary Name":
-              !primary && (name in env.v2 || name in env.shared)
-                ? undefined
-                : primary,
-          };
-        },
-      ),
-    ),
+    (
+      await Promise.all(
+        Object.entries(env.rocketh.deployments).map(
+          async ([name, { address }]) => {
+            // On a mainnet fork, reverse resolution for freshly-deployed
+            // contracts can revert; fall back to no primary name rather than
+            // crashing the whole table.
+            let primary = "";
+            try {
+              const result = await env.v2.UniversalResolver.read.reverse([
+                address,
+                COIN_TYPE_ETH,
+              ]);
+              primary = result[0];
+            } catch {}
+            return {
+              [nameKey]: name,
+              "Contract Address": getAddress(address),
+              "Primary Name":
+                !primary && (name in env.v2 || name in env.shared)
+                  ? undefined
+                  : primary,
+            };
+          },
+        ),
+      )
+    ).sort((a, b) => a[nameKey].localeCompare(b[nameKey])),
   );
 
   console.log({

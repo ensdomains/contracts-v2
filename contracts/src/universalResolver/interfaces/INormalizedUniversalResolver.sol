@@ -4,8 +4,8 @@ pragma solidity >=0.8.13;
 import {IENSIP15} from "./IENSIP15.sol";
 
 /// @notice Interface for ENSv2-specific `UniversalResolver`.
-/// @dev Interface selector: `0x3278ebb9`
-interface IUniversalResolverWithENSIP15 {
+/// @dev Interface selector: `0x4d6513f2`
+interface INormalizedUniversalResolver {
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////

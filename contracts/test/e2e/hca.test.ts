@@ -11,7 +11,6 @@ import {
   encodeFunctionData,
   encodePacked,
   keccak256,
-  namehash,
   parseAbiParameters,
   recoverMessageAddress,
   recoverTypedDataAddress,
@@ -27,7 +26,14 @@ import { privateKeyToAccount } from "viem/accounts";
 import artifacts from "../../script/artifacts.js";
 import { ROLES, STATUS } from "../../script/deploy-constants.js";
 import { expect, expectVar } from "../utils/expectVar.js";
-import { COIN_TYPE_ETH, getReverseName, idFromLabel } from "../utils/utils.js";
+import {
+  COIN_TYPE_ETH,
+  dnsEncodeName,
+  getReverseName,
+  idFromLabel,
+  namehash,
+} from "../utils/utils.js";
+import { bundleCalls, makeResolutions } from "../utils/resolutions.js";
 
 const REGISTRATION_DURATION = 28n * 86400n;
 const BURNER_SESSION_SIGNER_KEY =
@@ -479,8 +485,7 @@ describe("Standalone HCA", () => {
     resolverSalt: bigint;
     price: bigint;
   }): Promise<HCAExecution[]> {
-    const node = namehash(`${label}.eth`);
-    const reverseNode = namehash(getReverseName(owner.address));
+    const name = `${label}.eth`;
     const executions: HCAExecution[] = [];
 
     const resolverCode = await env.client.getCode({ address: resolver });
@@ -497,7 +502,16 @@ describe("Standalone HCA", () => {
             encodeFunctionData({
               abi: artifacts.PermissionedResolver.abi,
               functionName: "initialize",
-              args: [[{ account: hca, roleBitmap: ROLES.ALL }], []],
+              args: [
+                [
+                  { account: hca, roleBitmap: ROLES.ALL },
+                  // Make the owner co-admin of its resolver ("0x00" = DNS-encoded root, i.e. root
+                  // resource) so record management never depends on the disposable HCA. The policy
+                  // only permits this grant when the grantee is the owner.
+                  { account: owner.address, roleBitmap: ROLES.ALL },
+                ],
+                [],
+              ],
             }),
           ],
         }),
@@ -537,8 +551,8 @@ describe("Standalone HCA", () => {
         value: 0n,
         callData: encodeFunctionData({
           abi: artifacts.PermissionedResolver.abi,
-          functionName: "setAddr",
-          args: [node, COIN_TYPE_ETH, owner.address],
+          functionName: "setAddress",
+          args: [dnsEncodeName(name), COIN_TYPE_ETH, owner.address],
         }),
       },
       {
@@ -547,7 +561,7 @@ describe("Standalone HCA", () => {
         callData: encodeFunctionData({
           abi: artifacts.PermissionedResolver.abi,
           functionName: "setText",
-          args: [node, "url", `https://example.com/${label}`],
+          args: [dnsEncodeName(name), "url", `https://example.com/${label}`],
         }),
       },
       {
@@ -556,7 +570,7 @@ describe("Standalone HCA", () => {
         callData: encodeFunctionData({
           abi: artifacts.PermissionedResolver.abi,
           functionName: "setName",
-          args: [reverseNode, `${label}.eth`],
+          args: [dnsEncodeName(getReverseName(owner.address)), name],
         }),
       },
       {
@@ -565,19 +579,7 @@ describe("Standalone HCA", () => {
         callData: encodeFunctionData({
           abi: env.shared.DefaultReverseRegistrarAdapter.abi,
           functionName: "setNameWithHCA",
-          args: [owner.address, `${label}.eth`],
-        }),
-      },
-      // Make the owner co-admin of its resolver ("0x00" = DNS-encoded root, i.e. root
-      // resource) so record management never depends on the disposable HCA. The policy
-      // only permits this grant when the grantee is the owner.
-      {
-        target: resolver,
-        value: 0n,
-        callData: encodeFunctionData({
-          abi: artifacts.PermissionedResolver.abi,
-          functionName: "authorizeNameRoles",
-          args: ["0x00", ROLES.ALL, owner.address, true],
+          args: [owner.address, name],
         }),
       },
     );
@@ -674,11 +676,9 @@ describe("Standalone HCA", () => {
     price: bigint;
     resolver: Address;
   }) {
-    const labelId = idFromLabel(label);
-    const node = namehash(`${label}.eth`);
-    const reverseNode = namehash(getReverseName(owner.address));
+    const name = `${label}.eth`;
 
-    const state = await env.v2.ETHRegistry.read.getState([labelId]);
+    const state = await env.v2.ETHRegistry.read.getState([idFromLabel(label)]);
     expectVar({ status: state.status }).toStrictEqual(STATUS.REGISTERED);
     expectVar({ latestOwner: state.latestOwner }).toEqualAddress(owner.address);
 
@@ -695,46 +695,41 @@ describe("Standalone HCA", () => {
     expectVar({ hcaBalance }).toStrictEqual(0n);
     expectVar({ price }).toBeGreaterThan(0n);
 
-    const ethAddress = await env.client.readContract({
-      address: resolver,
-      abi: artifacts.PermissionedResolver.abi,
-      functionName: "addr",
-      args: [node],
-    });
-    expectVar({ ethAddress }).toEqualAddress(owner.address);
-
-    const url = await env.client.readContract({
-      address: resolver,
-      abi: artifacts.PermissionedResolver.abi,
-      functionName: "text",
-      args: [node, "url"],
-    });
-    expectVar({ url }).toStrictEqual(`https://example.com/${label}`);
+    const bundle = bundleCalls(
+      makeResolutions({
+        name,
+        addresses: [{ coinType: COIN_TYPE_ETH, value: owner.address }],
+        texts: [{ key: "url", value: `https://example.com/${label}` }],
+      }),
+    );
+    const [result] = await env.v2.UniversalResolver.read.resolve([
+      dnsEncodeName(name),
+      bundle.call,
+    ]);
+    bundle.expect(result);
 
     const reverseResolver = await env.v1.ENSRegistry.read.resolver([
-      reverseNode,
+      namehash(getReverseName(owner.address)),
     ]);
     expectVar({ reverseResolver }).toEqualAddress(zeroAddress);
 
-    const primary = await env.client.readContract({
-      address: resolver,
-      abi: artifacts.PermissionedResolver.abi,
-      functionName: "name",
-      args: [reverseNode],
-    });
-    expectVar({ primary }).toStrictEqual(`${label}.eth`);
+    const [primary] = await env.v2.UniversalResolver.read.reverse([
+      owner.address,
+      COIN_TYPE_ETH,
+    ]);
+    expectVar({ primary }).toStrictEqual(name);
 
     const defaultPrimary =
       await env.shared.DefaultReverseRegistrar.read.nameForAddr([
         owner.address,
       ]);
-    expectVar({ defaultPrimary }).toStrictEqual(`${label}.eth`);
+    expectVar({ defaultPrimary }).toStrictEqual(name);
 
     const ownerIsResolverAdmin = await env.client.readContract({
       address: resolver,
       abi: artifacts.PermissionedResolver.abi,
-      functionName: "hasRoles",
-      args: [0n, ROLES.ALL, owner.address],
+      functionName: "hasRootRoles",
+      args: [ROLES.ALL, owner.address],
     });
     expectVar({ ownerIsResolverAdmin }).toStrictEqual(true);
   }
@@ -1169,23 +1164,23 @@ describe("Standalone HCA", () => {
 
     // The in-batch role grant makes the EOA co-admin: a direct owner record write must
     // succeed without any HCA involvement.
-    const node = namehash(`${label}.eth`);
+    const name = `${label}.eth`;
+    const [res] = makeResolutions({
+      name,
+      texts: [{ key: "com.example", value: "owner-direct" }],
+    });
     await env.waitFor(
-      env.client.writeContract({
-        address: resolver,
-        abi: artifacts.PermissionedResolver.abi,
-        functionName: "setText",
-        args: [node, "com.example", "owner-direct"],
+      env.client.sendTransaction({
         account: owner,
+        to: resolver,
+        data: res.writeV2,
       }),
     );
-    const ownerDirectText = await env.client.readContract({
-      address: resolver,
-      abi: artifacts.PermissionedResolver.abi,
-      functionName: "text",
-      args: [node, "com.example"],
-    });
-    expectVar({ ownerDirectText }).toStrictEqual("owner-direct");
+    res.expect(
+      await env.v2.UniversalResolver.read
+        .resolve([dnsEncodeName(name), res.call])
+        .then(([result]) => result),
+    );
 
     const secondLabel = "hcadirectownertwo";
     const second = await prepareRegistration(secondLabel, owner, {
@@ -1244,7 +1239,11 @@ describe("Standalone HCA", () => {
         callData: encodeFunctionData({
           abi: artifacts.PermissionedResolver.abi,
           functionName: "setText",
-          args: [namehash(`${label}.eth`), "url", "https://example.com/nope"],
+          args: [
+            dnsEncodeName(`${label}.eth`),
+            "url",
+            "https://example.com/nope",
+          ],
         }),
       },
     ];
@@ -1272,7 +1271,6 @@ describe("Standalone HCA", () => {
       executions,
     });
     await executeHcaIntent({ hca, nonce: 2n, executions, signature });
-
     await expectRegistered({ label, owner, hca, price, resolver });
 
     const laterName = `later-${label}.eth`;

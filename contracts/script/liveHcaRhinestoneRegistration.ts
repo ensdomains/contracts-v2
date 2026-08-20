@@ -25,7 +25,6 @@ import {
   type Hex,
   http,
   keccak256,
-  namehash,
   parseAbi,
   parseSignature,
   type PublicClient,
@@ -55,14 +54,19 @@ import {
   test_mocks_MockERC20_sol_MockERC20 as MockERC20,
   UniversalResolverV2,
   VerifiableFactory,
-} from "../generated/artifacts/index.ts";
-import { dnsEncodeName } from "../test/utils/utils.ts";
+} from "../generated/artifacts/index.js";
+import {
+  dnsEncodeName,
+  getReverseName,
+  namehash,
+} from "../test/utils/utils.js";
 import {
   RHINESTONE_GAS_REFUND_PAYMASTER,
   RHINESTONE_INTENT_EXECUTOR,
   ROLES,
   SEPOLIA_USDC,
-} from "./deploy-constants.ts";
+} from "./deploy-constants.js";
+import { ADDR_ABI } from "../test/utils/resolver-abis.ts";
 
 const DEPLOYMENT_NETWORK = process.env.DEPLOYMENT_NETWORK ?? "sepolia";
 const HCA_DEPLOYMENT_NETWORK =
@@ -613,10 +617,6 @@ async function ensureFundingSessionValidator() {
   assertAddress("funding-session validator Permit2", permit2, PERMIT2);
   assertAddress("funding-session validator Router", router, RHINESTONE_ROUTER);
   return { address, deploymentTransactionHash };
-}
-
-function ethReverseName(address: Address) {
-  return `${address.slice(2).toLowerCase()}.addr.reverse`;
 }
 
 function ownedResolverSalt(ownerAddress: Address) {
@@ -5006,8 +5006,6 @@ async function registrationCalls({
   };
 }) {
   const name = `${label}.eth`;
-  const node = namehash(name);
-  const reverseNode = namehash(ethReverseName(owner.address));
   const calls: Call[] = [];
   const resolverCode = await publicClient.getCode({ address: resolver });
   if (!resolverCode || resolverCode === "0x") {
@@ -5023,7 +5021,13 @@ async function registrationCalls({
           encodeFunctionData({
             abi: PermissionedResolver.abi,
             functionName: "initialize",
-            args: [[{ account: hca, roleBitmap: ROLES.ALL }], []],
+            args: [
+              [
+                { account: hca, roleBitmap: ROLES.ALL },
+                { account: owner.address, roleBitmap: ROLES.ALL },
+              ],
+              [],
+            ],
           }),
         ],
       }),
@@ -5062,8 +5066,8 @@ async function registrationCalls({
       value: 0n,
       data: encodeFunctionData({
         abi: PermissionedResolver.abi,
-        functionName: "setAddr",
-        args: [node, COIN_TYPE_ETH, owner.address],
+        functionName: "setAddress",
+        args: [dnsEncodeName(name), COIN_TYPE_ETH, owner.address],
       }),
     },
     {
@@ -5072,7 +5076,7 @@ async function registrationCalls({
       data: encodeFunctionData({
         abi: PermissionedResolver.abi,
         functionName: "setText",
-        args: [node, "url", `https://example.com/${label}`],
+        args: [dnsEncodeName(name), "url", `https://example.com/${label}`],
       }),
     },
     {
@@ -5081,7 +5085,7 @@ async function registrationCalls({
       data: encodeFunctionData({
         abi: PermissionedResolver.abi,
         functionName: "setName",
-        args: [reverseNode, name],
+        args: [dnsEncodeName(getReverseName(owner.address)), name],
       }),
     },
     {
@@ -5091,15 +5095,6 @@ async function registrationCalls({
         abi: DefaultReverseRegistrarAdapter.abi,
         functionName: "setNameWithHCA",
         args: [owner.address, name],
-      }),
-    },
-    {
-      to: resolver,
-      value: 0n,
-      data: encodeFunctionData({
-        abi: PermissionedResolver.abi,
-        functionName: "authorizeNameRoles",
-        args: ["0x00", ROLES.ALL, owner.address, true],
       }),
     },
   );
@@ -5122,7 +5117,7 @@ async function verifyRegistration(
 ) {
   const name = `${label}.eth`;
   const node = namehash(name);
-  const reverseNode = namehash(ethReverseName(expectedOwner));
+  const reverseNode = namehash(getReverseName(expectedOwner));
   const state = (await publicClient.readContract({
     address: deployments.ethRegistry,
     abi: PermissionedRegistry.abi,
@@ -5157,8 +5152,8 @@ async function verifyRegistration(
       publicClient.readContract({
         address: resolver,
         abi: PermissionedResolver.abi,
-        functionName: "hasRoles",
-        args: [0n, ROLES.ALL, account],
+        functionName: "hasRootRoles",
+        args: [ROLES.ALL, account],
       }),
     ),
   );
@@ -5168,7 +5163,7 @@ async function verifyRegistration(
 
   const resolvedAddress = (await publicClient.readContract({
     address: resolver,
-    abi: PermissionedResolver.abi,
+    abi: ADDR_ABI,
     functionName: "addr",
     args: [node],
   })) as Address;
@@ -5204,7 +5199,7 @@ async function verifyRegistration(
   })) as [string, Address, Address];
   if (reversePrimary !== name) throw new Error(`UR reverse=${reversePrimary}`);
   const forwardCall = encodeFunctionData({
-    abi: PermissionedResolver.abi,
+    abi: ADDR_ABI,
     functionName: "addr",
     args: [node],
   });
@@ -5215,7 +5210,7 @@ async function verifyRegistration(
     args: [dnsEncodeName(name), forwardCall],
   })) as [Hex, Address];
   const universalAddress = decodeFunctionResult({
-    abi: PermissionedResolver.abi,
+    abi: ADDR_ABI,
     functionName: "addr",
     data: answer,
   }) as Address;

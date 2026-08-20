@@ -37,6 +37,7 @@ import { Abi_PermissionedAddressSet } from "generated/abis/PermissionedAddressSe
 import { Abi_UniversalHelper } from "generated/abis/UniversalHelper.js";
 import { Abi_UniversalResolverV2 } from "generated/abis/UniversalResolverV2.js";
 import { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
+import { Abi_MigrationHelper } from "generated/abis/src/migration/MigrationHelper.sol/MigrationHelper.js";
 // erc20
 import { Abi_MockERC20 } from "generated/abis/test/mocks/MockERC20.sol/MockERC20.js";
 // hca
@@ -82,6 +83,7 @@ import {
   deployVerifiableProxy,
 } from "../test/integration/fixtures/deployVerifiableProxy.js";
 import {
+  COIN_TYPE_ETH,
   dnsEncodeName,
   getReverseName,
   splitName,
@@ -484,6 +486,11 @@ export async function setupDevnet({
       LockedMigrationController: getContract({
         abi: [...Abi_LockedMigrationController, ...Abi_NameCoderErrors],
         address: rocketh.get("LockedMigrationController").address,
+        client,
+      }),
+      MigrationHelper: getContract({
+        abi: Abi_MigrationHelper,
+        address: rocketh.get("MigrationHelper").address,
         client,
       }),
       Graveyard: getContract({
@@ -1010,7 +1017,7 @@ export async function setupDevnet({
       );
       await setName("locked.migration", v2.LockedMigrationController.address);
       await setName("graveyard", v2.Graveyard.address);
-      // MigrationHelper
+      await setName("helper.migration", v2.MigrationHelper.address);
       await setName("upgradeset.registry", v2.RegistryUpgradeSet.address);
       await setName("prset.migration", v2.PublicResolverSet.address);
 
@@ -1031,13 +1038,17 @@ export async function setupDevnet({
             { account: namer },
           );
           await resolver.write.setName([
-            namehash(getReverseName(address)),
+            dnsEncodeName(getReverseName(address)),
             name,
           ]);
         } catch (err) {
           console.log(`Cannot name: ${name}`);
         }
-        await resolver.write.setAddr([namehash(name), 60n, address]);
+        await resolver.write.setAddress([
+          dnsEncodeName(name),
+          COIN_TYPE_ETH,
+          address,
+        ]);
       }
     }
 

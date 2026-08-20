@@ -21,19 +21,19 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {ResolverProfileRewriterLib} from "../resolver/libraries/ResolverProfileRewriterLib.sol";
 
 import {IENSIP15} from "./interfaces/IENSIP15.sol";
-import {IUniversalResolverExtended} from "./interfaces/IUniversalResolverExtended.sol";
-import {IUniversalResolverWithENSIP15} from "./interfaces/IUniversalResolverWithENSIP15.sol";
+import {INormalizedUniversalResolver} from "./interfaces/INormalizedUniversalResolver.sol";
 import {
-    IUniversalResolverWithENSIP15Extended
-} from "./interfaces/IUniversalResolverWithENSIP15Extended.sol";
+    INormalizedUniversalResolverExtended
+} from "./interfaces/INormalizedUniversalResolverExtended.sol";
+import {IUniversalResolverExtended} from "./interfaces/IUniversalResolverExtended.sol";
 import {LibENSIP15} from "./libraries/LibENSIP15.sol";
 
 /// @dev `AbstractUniversalResolver` implementation with ENSIP-15 support.
-abstract contract AbstractUniversalResolverWithENSIP15 is
+abstract contract AbstractNormalizedUniversalResolver is
     IUniversalResolver,
     IUniversalResolverExtended,
-    IUniversalResolverWithENSIP15,
-    IUniversalResolverWithENSIP15Extended,
+    INormalizedUniversalResolver,
+    INormalizedUniversalResolverExtended,
     CCIPBatcher,
     ERC165
 {
@@ -76,8 +76,8 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
         return
             type(IUniversalResolver).interfaceId == interfaceId ||
             type(IUniversalResolverExtended).interfaceId == interfaceId ||
-            type(IUniversalResolverWithENSIP15).interfaceId == interfaceId ||
-            type(IUniversalResolverWithENSIP15Extended).interfaceId == interfaceId ||
+            type(INormalizedUniversalResolver).interfaceId == interfaceId ||
+            type(INormalizedUniversalResolverExtended).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -94,16 +94,17 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
         return resolveWithGateways(name, data, BATCH_GATEWAY_PROVIDER.gateways());
     }
 
-    /// @inheritdoc IUniversalResolverWithENSIP15
+    /// @inheritdoc INormalizedUniversalResolver
     function resolveWithENSIP15(string calldata ensName, bytes calldata data, IENSIP15 ensip15)
         external
         view
         returns (bytes memory, address)
     {
-        return resolveWithGateways(ensName, data, BATCH_GATEWAY_PROVIDER.gateways(), ensip15);
+        return
+            resolveWithGatewaysAndENSIP15(ensName, data, BATCH_GATEWAY_PROVIDER.gateways(), ensip15);
     }
 
-    /// @notice Same as `BATCH_GATEWAY_PROVIDER()`.
+    /// @notice Same as `BATCH_GATEWAY_PROVIDER()` for backwards-compatability with ENSv1.
     function batchGatewayProvider() external view returns (IGatewayProvider) {
         return BATCH_GATEWAY_PROVIDER;
     }
@@ -182,7 +183,7 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
         returns (string memory, address, address)
     {
         return
-            reverseWithGateways(
+            reverseWithGatewaysAndENSIP15(
                 lookupAddress,
                 coinType,
                 BATCH_GATEWAY_PROVIDER.gateways(),
@@ -190,14 +191,19 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
             );
     }
 
-    /// @inheritdoc IUniversalResolverWithENSIP15
+    /// @inheritdoc INormalizedUniversalResolver
     function reverseWithENSIP15(bytes calldata lookupAddress, uint256 coinType, IENSIP15 ensip15)
         external
         view
         returns (string memory, address, address)
     {
         return
-            reverseWithGateways(lookupAddress, coinType, BATCH_GATEWAY_PROVIDER.gateways(), ensip15);
+            reverseWithGatewaysAndENSIP15(
+                lookupAddress,
+                coinType,
+                BATCH_GATEWAY_PROVIDER.gateways(),
+                ensip15
+            );
     }
 
     /// @inheritdoc IUniversalResolverExtended
@@ -210,7 +216,8 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
         view
         returns (string memory, address, address)
     {
-        return reverseWithGateways(lookupAddress, coinType, gateways, IENSIP15(address(0)));
+        return
+            reverseWithGatewaysAndENSIP15(lookupAddress, coinType, gateways, IENSIP15(address(0)));
     }
 
     /// @notice CCIP-Read callback for `reverseWithGateways()`.
@@ -289,7 +296,7 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
         _propagateResolverError(response);
     }
 
-    /// @inheritdoc IUniversalResolverWithENSIP15
+    /// @inheritdoc INormalizedUniversalResolver
     function isENSv2() external pure virtual returns (bool);
 
     /// @inheritdoc IUniversalResolver
@@ -299,7 +306,7 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
         virtual
         returns (address, bytes32, uint256);
 
-    /// @inheritdoc IUniversalResolverWithENSIP15
+    /// @inheritdoc INormalizedUniversalResolver
     function normalize(string memory ensName, IENSIP15 ensip15)
         public
         view
@@ -331,8 +338,8 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
         );
     }
 
-    /// @inheritdoc IUniversalResolverWithENSIP15Extended
-    function resolveWithGateways(
+    /// @inheritdoc INormalizedUniversalResolverExtended
+    function resolveWithGatewaysAndENSIP15(
         string calldata ensName,
         bytes calldata data,
         string[] memory gateways,
@@ -353,8 +360,8 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
         );
     }
 
-    /// @inheritdoc IUniversalResolverWithENSIP15Extended
-    function reverseWithGateways(
+    /// @inheritdoc INormalizedUniversalResolverExtended
+    function reverseWithGatewaysAndENSIP15(
         bytes calldata lookupAddress,
         uint256 coinType,
         string[] memory gateways,
@@ -439,6 +446,7 @@ abstract contract AbstractUniversalResolverWithENSIP15 is
         if (multi) {
             assembly {
                 mstore(add(data, 4), sub(mload(data), 4)) // truncate
+                data := add(data, 4)
             }
             calls = abi.decode(data, (bytes[]));
         } else {

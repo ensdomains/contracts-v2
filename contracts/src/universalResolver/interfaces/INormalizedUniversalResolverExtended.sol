@@ -2,11 +2,11 @@
 pragma solidity >=0.8.13;
 
 import {IENSIP15} from "./IENSIP15.sol";
-import {IUniversalResolverWithENSIP15} from "./IUniversalResolverWithENSIP15.sol";
+import {INormalizedUniversalResolver} from "./INormalizedUniversalResolver.sol";
 
 /// @notice Interface for advanced `UniversalResolver` functionality.
-/// @dev Interface selector: `0xaf36a2ea`
-interface IUniversalResolverWithENSIP15Extended is IUniversalResolverWithENSIP15 {
+/// @dev Interface selector: `0x53f09390`
+interface INormalizedUniversalResolverExtended is INormalizedUniversalResolver {
     /// @notice Performs ENS normalization and forward resolution for the supplied name and data.
     ///         `bytes32 node` is automatically replaced in calldata.
     /// @dev Caller should enable EIP-3668.
@@ -17,7 +17,7 @@ interface IUniversalResolverWithENSIP15Extended is IUniversalResolverWithENSIP15
     /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @return result The ABI-encoded response for the calldata.
     /// @return resolver The resolver that was used to resolve the name.
-    function resolveWithGateways(
+    function resolveWithGatewaysAndENSIP15(
         string calldata ensName,
         bytes calldata data,
         string[] calldata gateways,
@@ -37,7 +37,7 @@ interface IUniversalResolverWithENSIP15Extended is IUniversalResolverWithENSIP15
     /// @return primary The resolved primary name.
     /// @return resolver The resolver address for primary name.
     /// @return reverseResolver The resolver address for the reverse name.
-    function reverseWithGateways(
+    function reverseWithGatewaysAndENSIP15(
         bytes calldata lookupAddress,
         uint256 coinType,
         string[] calldata gateways,

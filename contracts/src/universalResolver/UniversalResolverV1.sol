@@ -6,11 +6,10 @@ import {ENS} from "@ens/contracts/registry/ENS.sol";
 import {ReverseClaimer} from "@ens/contracts/reverseRegistrar/ReverseClaimer.sol";
 import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 
-import {AbstractUniversalResolverWithENSIP15} from "./AbstractUniversalResolverWithENSIP15.sol";
+import {AbstractNormalizedUniversalResolver} from "./AbstractNormalizedUniversalResolver.sol";
 
-/// @notice Universal Resolver that traverses the namechain registry hierarchy to locate
-///         resolvers and registries for any DNS-encoded name.
-contract UniversalResolverV1 is AbstractUniversalResolverWithENSIP15, ReverseClaimer {
+/// @notice Universal Resolver for ENSv1.
+contract UniversalResolverV1 is AbstractNormalizedUniversalResolver, ReverseClaimer {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -26,7 +25,7 @@ contract UniversalResolverV1 is AbstractUniversalResolverWithENSIP15, ReverseCla
     /// @param ens ENSv1 global registry.
     /// @param _batchGatewayProvider Shared batch gateway provider.
     constructor(address namer, ENS ens, IGatewayProvider _batchGatewayProvider)
-        AbstractUniversalResolverWithENSIP15(_batchGatewayProvider)
+        AbstractNormalizedUniversalResolver(_batchGatewayProvider)
         ReverseClaimer(ens, namer)
     {
         REGISTRY_V1 = ens;
@@ -36,12 +35,12 @@ contract UniversalResolverV1 is AbstractUniversalResolverWithENSIP15, ReverseCla
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Same as `REGISTRY_V1()`.
+    /// @notice Same as `REGISTRY_V1()` for backwards-compatability with ENSv1.
     function registry() external view returns (ENS) {
         return REGISTRY_V1;
     }
 
-    /// @inheritdoc AbstractUniversalResolverWithENSIP15
+    /// @inheritdoc AbstractNormalizedUniversalResolver
     function findResolver(bytes memory name)
         public
         view
@@ -52,7 +51,7 @@ contract UniversalResolverV1 is AbstractUniversalResolverWithENSIP15, ReverseCla
         return RegistryUtils.findResolver(REGISTRY_V1, name, 0);
     }
 
-    /// @inheritdoc AbstractUniversalResolverWithENSIP15
+    /// @inheritdoc AbstractNormalizedUniversalResolver
     function isENSv2() public pure override returns (bool) {
         return false;
     }

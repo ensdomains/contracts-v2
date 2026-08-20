@@ -17,11 +17,11 @@ import {
     IUniversalResolverExtended
 } from "~src/universalResolver/interfaces/IUniversalResolverExtended.sol";
 import {
-    IUniversalResolverWithENSIP15
-} from "~src/universalResolver/interfaces/IUniversalResolverWithENSIP15.sol";
+    INormalizedUniversalResolver
+} from "~src/universalResolver/interfaces/INormalizedUniversalResolver.sol";
 import {
-    IUniversalResolverWithENSIP15Extended
-} from "~src/universalResolver/interfaces/IUniversalResolverWithENSIP15Extended.sol";
+    INormalizedUniversalResolverExtended
+} from "~src/universalResolver/interfaces/INormalizedUniversalResolverExtended.sol";
 import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
 import {MockENSIP15} from "~test/mocks/MockENSIP15.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
@@ -30,6 +30,8 @@ contract UniversalResolverV2Test is V2Fixture {
     PermissionedResolver resolver;
     MockENSIP15 ensip15;
 
+    address resolverAddress = makeAddr("resolver");
+
     function setUp() external {
         deployV2Fixture();
         ensip15 = new MockENSIP15();
@@ -37,10 +39,7 @@ contract UniversalResolverV2Test is V2Fixture {
         Grant[] memory grants = new Grant[](1);
         grants[0] = Grant(address(this), EACBaseRolesLib.ALL_ROLES);
         bytes memory initData =
-            abi.encodeCall(
-                IPermissionedResolverInitializable.initialize,
-                (grants, new bytes[](0))
-            );
+            abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, new bytes[](0)));
         resolver = PermissionedResolver(
             verifiableFactory.deployProxy(address(impl), uint256(keccak256(initData)), initData)
         );
@@ -64,30 +63,32 @@ contract UniversalResolverV2Test is V2Fixture {
         assertTrue(
             ERC165Checker.supportsInterface(
                 address(universalResolver),
-                type(IUniversalResolverWithENSIP15).interfaceId
+                type(INormalizedUniversalResolver).interfaceId
             ),
-            "IUniversalResolverWithENSIP15"
+            "INormalizedUniversalResolver"
         );
         assertTrue(
             ERC165Checker.supportsInterface(
                 address(universalResolver),
-                type(IUniversalResolverWithENSIP15Extended).interfaceId
+                type(INormalizedUniversalResolverExtended).interfaceId
             ),
-            "IUniversalResolverWithENSIP15Extended"
+            "INormalizedUniversalResolverExtended"
         );
     }
 
-    function test_findResolver_1LD() external {
-        rootRegistry.register(
-            "test",
-            address(0),
-            IRegistry(address(0)),
-            address(resolver),
-            0,
-            type(uint64).max
-        );
-        (address resolverAddress, , ) = universalResolver.findResolver(NameCoder.encode("test"));
-        assertEq(address(resolver), resolverAddress);
+    function test_isENSv2() external view {
+        assertTrue(universalResolver.isENSv2());
+    }
+
+    function test_findResolver_root() external view {
+        (address r, , ) = universalResolver.findResolver(NameCoder.encode(""));
+        assertEq(r, address(0));
+    }
+
+    function test_findResolver_eth() external {
+        rootRegistry.setResolver(rootRegistry.findTokenId("eth"), address(resolver));
+        (address r, , ) = universalResolver.findResolver(NameCoder.encode("eth"));
+        assertEq(r, address(resolver));
     }
 
     function test_findResolver_test_eth() external {
@@ -99,9 +100,8 @@ contract UniversalResolverV2Test is V2Fixture {
             0,
             type(uint64).max
         );
-        (address resolverAddress, , ) =
-            universalResolver.findResolver(NameCoder.encode("test.eth"));
-        assertEq(address(resolver), resolverAddress);
+        (address r, , ) = universalResolver.findResolver(NameCoder.encode("test.eth"));
+        assertEq(r, address(resolver));
     }
 
     function test_normalize_empty() external view {
@@ -122,6 +122,28 @@ contract UniversalResolverV2Test is V2Fixture {
         assertEq(name, NameCoder.encode("test.eth"));
     }
 
+    function test_resolveWithENSIP15_normalized(bytes32 anyNode) external {
+        bytes memory name = NameCoder.encode("test.eth");
+        ethRegistry.register(
+            NameCoder.firstLabel(name),
+            address(0),
+            IRegistry(address(0)),
+            address(resolver),
+            0,
+            type(uint64).max
+        );
+        address addr = address(this);
+        resolver.setAddress(name, COIN_TYPE_ETH, abi.encodePacked(addr));
+        (bytes memory result, address r) =
+            universalResolver.resolveWithENSIP15(
+                NameCoder.decode(name),
+                abi.encodeCall(IAddrResolver.addr, (bytes32(anyNode))),
+                ensip15
+            );
+        assertEq(result, abi.encode(addr));
+        assertEq(r, address(resolver));
+    }
+
     function test_resolveWithENSIP15_unnormalized() external {
         bytes memory name = NameCoder.encode("test.eth");
         ethRegistry.register(
@@ -133,10 +155,10 @@ contract UniversalResolverV2Test is V2Fixture {
             type(uint64).max
         );
         address addr = address(this);
-        resolver.setAddr(NameCoder.namehash(name, 0), COIN_TYPE_ETH, abi.encodePacked(addr));
+        resolver.setAddress(name, COIN_TYPE_ETH, abi.encodePacked(addr));
         vm.expectRevert(
             abi.encodeWithSelector(
-                IUniversalResolverWithENSIP15.NormalizationChangedName.selector,
+                INormalizedUniversalResolver.NormalizationChangedName.selector,
                 name,
                 abi.encode(addr),
                 resolver
@@ -170,12 +192,8 @@ contract UniversalResolverV2Test is V2Fixture {
         bytes memory encodedAddress = abi.encodePacked(address(this));
         bytes memory reverseName =
             NameCoder.encode(ENSIP19.reverseName(encodedAddress, COIN_TYPE_ETH));
-        resolver.setName(NameCoder.namehash(reverseName, 0), primaryName);
-        resolver.setAddr(
-            NameCoder.namehash(NameCoder.encode(primaryName), 0),
-            COIN_TYPE_ETH,
-            encodedAddress
-        );
+        resolver.setName(reverseName, primaryName);
+        resolver.setAddress(NameCoder.encode(primaryName), COIN_TYPE_ETH, encodedAddress);
         (string memory primary, , ) =
             universalResolver.reverseWithENSIP15(encodedAddress, COIN_TYPE_ETH, ensip15);
         assertEq(primaryName, primary);
@@ -194,10 +212,10 @@ contract UniversalResolverV2Test is V2Fixture {
         bytes memory encodedAddress = abi.encodePacked(address(this));
         bytes memory reverseName =
             NameCoder.encode(ENSIP19.reverseName(encodedAddress, COIN_TYPE_ETH));
-        resolver.setName(NameCoder.namehash(reverseName, 0), primaryName);
+        resolver.setName(reverseName, primaryName);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IUniversalResolverWithENSIP15.PrimaryNameNotNormalized.selector,
+                INormalizedUniversalResolver.PrimaryNameNotNormalized.selector,
                 primaryName
             )
         );
@@ -225,12 +243,8 @@ contract UniversalResolverV2Test is V2Fixture {
         bytes memory encodedAddress = abi.encodePacked(address(this));
         bytes memory reverseName =
             NameCoder.encode(ENSIP19.reverseName(encodedAddress, COIN_TYPE_ETH));
-        resolver.setName(NameCoder.namehash(reverseName, 0), primaryName);
-        resolver.setAddr(
-            NameCoder.namehash(NameCoder.encode(primaryName), 0),
-            COIN_TYPE_ETH,
-            encodedAddress
-        );
+        resolver.setName(reverseName, primaryName);
+        resolver.setAddress(NameCoder.encode(primaryName), COIN_TYPE_ETH, encodedAddress);
         (string memory primary, , ) = universalResolver.reverse(encodedAddress, COIN_TYPE_ETH);
         assertEq(primaryName, primary);
     }

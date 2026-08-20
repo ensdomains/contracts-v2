@@ -7,12 +7,11 @@ import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistr
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
-import {AbstractUniversalResolverWithENSIP15} from "./AbstractUniversalResolverWithENSIP15.sol";
+import {AbstractNormalizedUniversalResolver} from "./AbstractNormalizedUniversalResolver.sol";
 import {LibRegistry} from "./libraries/LibRegistry.sol";
 
-/// @notice Universal Resolver that traverses the namechain registry hierarchy to locate
-///         resolvers and registries for any DNS-encoded name.
-contract UniversalResolverV2 is AbstractUniversalResolverWithENSIP15, DelegatedContractNamer {
+/// @notice Universal Resolver for ENSv2.
+contract UniversalResolverV2 is AbstractNormalizedUniversalResolver, DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -32,18 +31,18 @@ contract UniversalResolverV2 is AbstractUniversalResolverWithENSIP15, DelegatedC
         IGatewayProvider batchGatewayProvider,
         IContractNamer contractNamer
     )
-        AbstractUniversalResolverWithENSIP15(batchGatewayProvider)
+        AbstractNormalizedUniversalResolver(batchGatewayProvider)
         DelegatedContractNamer(contractNamer)
     {
         ROOT_REGISTRY = rootRegistry;
     }
 
-    /// @inheritdoc AbstractUniversalResolverWithENSIP15
+    /// @inheritdoc AbstractNormalizedUniversalResolver
     function supportsInterface(bytes4 interfaceId)
         public
         view
         virtual
-        override(AbstractUniversalResolverWithENSIP15, DelegatedContractNamer)
+        override(AbstractNormalizedUniversalResolver, DelegatedContractNamer)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
@@ -53,7 +52,7 @@ contract UniversalResolverV2 is AbstractUniversalResolverWithENSIP15, DelegatedC
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc AbstractUniversalResolverWithENSIP15
+    /// @inheritdoc AbstractNormalizedUniversalResolver
     function findResolver(bytes memory name)
         public
         view
@@ -63,7 +62,7 @@ contract UniversalResolverV2 is AbstractUniversalResolverWithENSIP15, DelegatedC
         (, resolver, node, offset) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
     }
 
-    /// @inheritdoc AbstractUniversalResolverWithENSIP15
+    /// @inheritdoc AbstractNormalizedUniversalResolver
     function isENSv2() public pure override returns (bool) {
         return true;
     }

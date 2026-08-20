@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
@@ -33,11 +33,23 @@ contract UniversalHelper is DelegatedContractNamer {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Find the owner for `name`.
+    /// @notice Find the exact owner for `name`.
     /// @param name The DNS-encoded name.
     /// @return The owner address or null if unowned or not found.
-    function findOwner(bytes calldata name) external view returns (address) {
-        return LibRegistry.findOwner(ROOT_REGISTRY, name, 0);
+    function findExactOwner(bytes calldata name) external view returns (address) {
+        return LibRegistry.findExactOwner(ROOT_REGISTRY, name, 0);
+    }
+
+    /// @notice Find the nearest owner for `name`.
+    /// @param name The DNS-encoded name.
+    /// @return owner The owner address or null if unowned or not found.
+    /// @return offset The offset into `name` such that `findExactOwner(name[offset:]) == owner`.
+    function findNearestOwner(bytes calldata name)
+        external
+        view
+        returns (address owner, uint256 offset)
+    {
+        return LibRegistry.findNearestOwner(ROOT_REGISTRY, name, 0);
     }
 
     /// @notice Construct the canonical name for `registry`.
@@ -59,6 +71,18 @@ contract UniversalHelper is DelegatedContractNamer {
     /// @return The registry or null if not found.
     function findExactRegistry(bytes calldata name) external view returns (IRegistry) {
         return LibRegistry.findExactRegistry(ROOT_REGISTRY, name, 0);
+    }
+
+    /// @notice Find the nearest registry for `name`.
+    /// @param name The DNS-encoded name.
+    /// @return registry The nearest registry or null if not found.
+    /// @return offset The offset into `name` such that `findExactRegistry(name[offset:]) == registry`.
+    function findNearestRegistry(bytes calldata name)
+        external
+        view
+        returns (IRegistry registry, uint256 offset)
+    {
+        return LibRegistry.findNearestRegistry(ROOT_REGISTRY, name, 0);
     }
 
     /// @notice Find the parent registry for `name`.

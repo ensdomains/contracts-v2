@@ -18,7 +18,9 @@ deployments/
     .migrations.json      # rocketh's record of completed deploy scripts (id → unix-epoch-seconds)
     .deployment.json      # { environment, chainId, deployedAt } — when this set was first deployed
     .premigration.json    # pre-migration counts sidecar (names reserved/renewed/skipped/…), no label strings
-    <Contract>.json       # one file per deployed contract (address, abi, bytecode, receipt, …)
+    <Contract>.json       # one file per deployed contract (address, abi, bytecode, receipt, buildInfoId, …)
+    build-info/
+      <buildInfoId>.json  # exact compiler input shared by every contract from that build
   v1/
     <network>/            # local v1-reference overrides (searched before the bundled set)
       .chainId            # chain id of the referenced v1 set
@@ -31,6 +33,13 @@ dotfiles are metadata; rocketh loads only `.migrations.json` and the
 mistaken for a contract. `.deployment.json` is written once, on the first deploy
 into a namespace, so its `deployedAt` records the original deployment time and
 survives idempotent re-runs.
+
+Compiled deployment artifacts record a `buildInfoId`. The matching file under
+`build-info/` preserves the exact compiler version, settings, remappings, and
+source text used to produce the deployed bytecode. It is copied once per build,
+so contracts compiled together share one file. The much larger compiler output
+is not committed because it can be regenerated from this input. Vendored
+artifacts that were not produced by this Hardhat build may omit `buildInfoId`.
 
 `.premigration.json` is the durable record of the v1→v2 pre-migration run(s) that
 targeted this namespace. It holds counts only — never the reserved label strings
