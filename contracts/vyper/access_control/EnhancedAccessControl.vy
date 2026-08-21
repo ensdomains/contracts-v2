@@ -1,4 +1,4 @@
-# pragma version ~=0.4.3
+# pragma version ==0.5.0a3
 # SPDX-License-Identifier: MIT
 
 from .libraries import EACBaseRolesLib as roles_lib
@@ -95,7 +95,7 @@ def _grant_roles(resource: uint256, role_bitmap: uint256, account: address, exec
         return False
     self._roles[resource][account] = updated_roles
     self._update_role_counts(resource, role_bitmap & ~current_roles, True)
-    log EACRolesChanged(resource, account, current_roles, updated_roles)
+    log EACRolesChanged(resource=resource, account=account, oldRoleBitmap=current_roles, newRoleBitmap=updated_roles)
     if execute_callbacks:
         self._on_roles_granted(resource, account, current_roles, updated_roles, role_bitmap)
     return True
@@ -109,7 +109,7 @@ def _revoke_roles(resource: uint256, role_bitmap: uint256, account: address, exe
         return False
     self._roles[resource][account] = updated_roles
     self._update_role_counts(resource, role_bitmap & current_roles, False)
-    log EACRolesChanged(resource, account, current_roles, updated_roles)
+    log EACRolesChanged(resource=resource, account=account, oldRoleBitmap=current_roles, newRoleBitmap=updated_roles)
     if execute_callbacks:
         self._on_roles_revoked(resource, account, current_roles, updated_roles, role_bitmap)
     return True
