@@ -517,6 +517,27 @@ describe("UniversalResolverV2", () => {
         .toBeRevertedWithCustomErrorFrom(F.ensip15, "CannotNormalize")
         .withArgs([badLabel]);
     });
+
+    it("unnormalized primary", async () => {
+      const F = await loadFixture();
+      const reverseName = getReverseName(F.owner);
+      await F.setupName({ name: reverseName, resolverAddress: F.ss1.address });
+      const badName = testName.toUpperCase(); // wrong
+      const [rev] = makeResolutions({
+        name: reverseName,
+        primary: { value: badName },
+      });
+      await F.ss1.write.setResponse([rev.call, rev.answer]);
+      await expect(
+        F.ur.read.reverseWithNormalization([
+          F.owner,
+          COIN_TYPE_ETH,
+          F.ensip15.address,
+        ]),
+      )
+        .toBeRevertedWithCustomError("PrimaryNameNotNormalized")
+        .withArgs([badName]);
+    });
   });
 
   describe("IUniversalResolverExtended", () => {
@@ -575,14 +596,14 @@ describe("UniversalResolverV2", () => {
       const F = await loadFixture();
       const res = resolutions[0];
       await F.ss1.write.setResponse([res.call, res.answer]);
-      await F.ss1.write.setExtended([true]);
-      await F.setupName({ name: testName, resolverAddress: F.ss1.address });
-      const [answer, resolver] = await F.ur.read.resolve([
-        dnsEncodeName(testName),
-        res.call,
-      ]);
-      expectVar({ resolver }).toEqualAddress(F.ss1.address);
-      res.expect(answer);
+      res.expect(
+        await F.ur.read.resolveWithResolver([
+          F.ss1.address,
+          dnsEncodeName(testName),
+          res.call,
+          [LOCAL_BATCH_GATEWAY_URL],
+        ]),
+      );
     });
 
     describe("requireResolver()", async () => {
