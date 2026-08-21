@@ -1,0 +1,81 @@
+name: Vyper parity model agent
+
+"on":
+  push:
+    branches:
+      - experiment/vyper-a971bd6
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  models: read
+
+concurrency:
+  group: vyper-model-agent-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  registry-tranche:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run-vyper-agent]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Vyper 0.5 alpha
+        run: python -m pip install 'vyper==0.5.0a3'
+
+      - name: Configure commit identity
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+      - name: Run bounded registry parity agent
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VYPER_AGENT_MAX_STEPS: '140'
+          VYPER_AGENT_COMMAND_TIMEOUT: '600'
+        run: python contracts/script/vyperModelAgent.py
+
+      - name: Run copied Vyper tests
+        if: always()
+        timeout-minutes: 25
+        run: |
+          set +e
+          mkdir -p reports/vyper/model-agent
+          cd contracts
+          forge test --match-path 'test/vyper/**/*.t.sol' -vv > ../reports/vyper/model-agent/forge-all.log 2>&1
+          rc=$?
+          cd ..
+          printf 'forge_rc=%s\n' "$rc" > reports/vyper/model-agent/validation.txt
+          exit 0
+
+      - name: Commit and push evidence
+        if: always()
+        run: |
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'experiment(vyper): registry parity agent results [model-agent]'
+            git pull --rebase origin experiment/vyper-a971bd6
+            git push origin HEAD:experiment/vyper-a971bd6
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vyper-model-agent-evidence
+          path: |
+            reports/vyper/model-agent
+            contracts/vyper
+            contracts/test/vyper
+          include-hidden-files: true
+          retention-days: 3
