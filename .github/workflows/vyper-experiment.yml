@@ -7,7 +7,7 @@ name: Vyper experiment
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: vyper-experiment-toolchain-${{ github.ref }}
@@ -15,12 +15,14 @@ concurrency:
 
 jobs:
   toolchain:
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[toolchain-ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: recursive
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup
 
@@ -57,3 +59,13 @@ jobs:
           name: vyper-local-toolchain
           path: /tmp/vyper-toolchain
           retention-days: 1
+
+      - name: Publish artifact run id
+        run: |
+          mkdir -p vyper-results
+          printf '%s\n' '${{ github.run_id }}' > vyper-results/toolchain-run.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- vyper-results/toolchain-run.txt
+          git commit -m 'chore: publish Vyper toolchain run [toolchain-ci]'
+          git push origin HEAD:experiment/vyper-a971bd6
