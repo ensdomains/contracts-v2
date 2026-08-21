@@ -1,0 +1,191 @@
+name: Vyper completion v2
+
+"on":
+  push:
+    branches:
+      - experiment/vyper-a971bd6
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  models: read
+
+concurrency:
+  group: vyper-completion-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run-vyper-completion-v2]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install 'vyper==0.5.0a3'
+      - name: Configure git
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+      - name: Run fast repair loop
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VYPER_FAST_ROUNDS: '5'
+          VYPER_COMPLETION_STEPS: '150'
+          VYPER_COMPLETION_TOOL_TIMEOUT: '900'
+        run: python contracts/script/vyperCompletionAgentFast.py
+      - name: Push repaired source before validation
+        if: always()
+        run: |
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'experiment(vyper): fast repair evidence [completion-v2-repair]'
+          fi
+          git pull --rebase origin experiment/vyper-a971bd6
+          git push origin HEAD:experiment/vyper-a971bd6
+          git rev-parse HEAD > /tmp/repaired-head.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repaired-head
+          path: /tmp/repaired-head.txt
+          retention-days: 2
+
+  validate:
+    needs: repair
+    if: always() && needs.repair.result != 'cancelled'
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [forge-vyper, hardhat, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Check out repaired branch head
+        run: |
+          git fetch origin experiment/vyper-a971bd6
+          git reset --hard origin/experiment/vyper-a971bd6
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install 'vyper==0.5.0a3'
+      - name: Run suite
+        id: suite
+        run: |
+          set +e
+          mkdir -p validation-${{ matrix.suite }}
+          case '${{ matrix.suite }}' in
+            forge-vyper)
+              cd contracts
+              timeout 7200 forge test --match-path 'test/vyper/**/*.t.sol' -vv > ../validation-${{ matrix.suite }}/output.log 2>&1
+              rc=$?
+              ;;
+            hardhat)
+              cd contracts
+              timeout 7200 bun run test:hardhat > ../validation-${{ matrix.suite }}/output.log 2>&1
+              rc=$?
+              ;;
+            e2e)
+              cd contracts
+              timeout 7200 bun run test:e2e > ../validation-${{ matrix.suite }}/output.log 2>&1
+              rc=$?
+              ;;
+          esac
+          cd "$GITHUB_WORKSPACE"
+          printf '%s\n' "$rc" > validation-${{ matrix.suite }}/rc.txt
+          printf '%s\n' "$(git rev-parse HEAD)" > validation-${{ matrix.suite }}/head.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-${{ matrix.suite }}
+          path: validation-${{ matrix.suite }}
+          retention-days: 5
+
+  report:
+    needs: [repair, validate]
+    if: always() && needs.repair.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Check out latest repaired branch head
+        run: |
+          git fetch origin experiment/vyper-a971bd6
+          git reset --hard origin/experiment/vyper-a971bd6
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: validation-*
+          path: /tmp/validation
+          merge-multiple: false
+      - name: Merge validation evidence and determine status
+        run: |
+          set -euo pipefail
+          mkdir -p reports/vyper/completion/full-validation
+          cp -R /tmp/validation/. reports/vyper/completion/full-validation/
+
+          fast=INCOMPLETE
+          [ -f reports/vyper/completion/FAST_STATUS ] && fast=$(tr -d '\r\n' < reports/vyper/completion/FAST_STATUS)
+          forge=$(cat /tmp/validation/validation-forge-vyper/rc.txt 2>/dev/null || echo 999)
+          hardhat=$(cat /tmp/validation/validation-hardhat/rc.txt 2>/dev/null || echo 999)
+          e2e=$(cat /tmp/validation/validation-e2e/rc.txt 2>/dev/null || echo 999)
+
+          complete=false
+          if [ "$fast" = READY_FOR_FULL_VALIDATION ] && [ "$forge" = 0 ] && [ "$hardhat" = 0 ] && [ "$e2e" = 0 ]; then
+            complete=true
+          fi
+
+          python3 - "$fast" "$forge" "$hardhat" "$e2e" "$complete" <<'PY'
+          import json, sys, time
+          from pathlib import Path
+          fast, forge, hardhat, e2e, complete = sys.argv[1:]
+          root = Path('reports/vyper/completion')
+          data = {
+              'timestamp': int(time.time()),
+              'head': Path('/tmp/validation/validation-forge-vyper/head.txt').read_text().strip() if Path('/tmp/validation/validation-forge-vyper/head.txt').exists() else 'unknown',
+              'fast_status': fast,
+              'forge_vyper_rc': int(forge),
+              'hardhat_rc': int(hardhat),
+              'e2e_rc': int(e2e),
+              'complete': complete == 'true',
+          }
+          (root / 'full-validation.json').write_text(json.dumps(data, indent=2) + '\n')
+          lines = [
+              '# Full Vyper validation', '',
+              f"- Head: `{data['head']}`",
+              f"- Fast source gate: `{fast}`",
+              f"- Copied Forge Vyper suite RC: `{forge}`",
+              f"- Hardhat suite RC: `{hardhat}`",
+              f"- E2E suite RC: `{e2e}`",
+              f"- Complete: **{data['complete']}**", '',
+              'Raw logs are under `reports/vyper/completion/full-validation/`.',
+          ]
+          (root / 'full-validation.md').write_text('\n'.join(lines) + '\n')
+          (root / 'FINAL_STATUS').write_text('COMPLETE\n' if data['complete'] else 'INCOMPLETE\n')
+          PY
+      - name: Commit validation report
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add reports/vyper/completion
+          if ! git diff --cached --quiet; then
+            git commit -m 'experiment(vyper): full validation evidence [completion-v2-report]'
+            git pull --rebase origin experiment/vyper-a971bd6
+            git push origin HEAD:experiment/vyper-a971bd6
+          fi
+      - name: Enforce final status
+        run: grep -qx COMPLETE reports/vyper/completion/FINAL_STATUS
