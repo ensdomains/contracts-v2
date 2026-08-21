@@ -1,0 +1,13 @@
+{
+  "Ownable": {
+    "_owner": {"type": "address", "n_slots": 1, "slot": 0},
+    "_initialized": {"type": "bool", "n_slots": 1, "slot": 1}
+  },
+  "UUPS": {
+    "_implementation": {
+      "type": "address",
+      "n_slots": 1,
+      "slot": 24440054405305269366569402256811496959409073762505157381672968839269610695612
+    }
+  }
+}
