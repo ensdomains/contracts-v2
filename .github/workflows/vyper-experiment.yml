@@ -1,12 +1,13 @@
 name: Vyper experiment
 
 "on":
-  pull_request:
+  push:
+    branches:
+      - experiment/vyper-a971bd6
   workflow_dispatch:
 
 jobs:
   bootstrap:
-    if: startsWith(github.head_ref, 'experiment/vyper-') || startsWith(github.ref_name, 'experiment/vyper-')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
