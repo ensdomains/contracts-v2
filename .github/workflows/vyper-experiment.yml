@@ -1,0 +1,32 @@
+name: Vyper experiment
+
+"on":
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    if: startsWith(github.head_ref, 'experiment/vyper-') || startsWith(github.ref_name, 'experiment/vyper-')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Record source baseline
+        run: |
+          git rev-parse HEAD > vyper-baseline.txt
+          find contracts/src -type f \( -name '*.sol' -o -name '*.yul' \) -print0 | sort -z | xargs -0 wc -l > vyper-source-lines.txt
+          find contracts/src -type f -name '*.sol' -print | sort > vyper-source-files.txt
+      - name: Package checkout
+        run: |
+          tar --exclude=.git --exclude='**/.git' -czf /tmp/contracts-v2-a971bd6.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vyper-bootstrap-checkout
+          path: |
+            /tmp/contracts-v2-a971bd6.tgz
+            vyper-baseline.txt
+            vyper-source-lines.txt
+            vyper-source-files.txt
+          retention-days: 1
