@@ -1,0 +1,1 @@
+Run the strict compiler/test/inventory/gas completion loop from the current persisted branch. Repair every failed gate and serialize all source, tests and evidence.
