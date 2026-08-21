@@ -1,0 +1,1 @@
+Final independent escalation pass: resolve every remaining compiler, Forge, Hardhat, E2E, EIP-170 and benchmark gate from committed raw evidence. Do not stop at a checkpoint.
