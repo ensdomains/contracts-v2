@@ -9,10 +9,15 @@ name: Vyper experiment
 permissions:
   contents: write
 
+concurrency:
+  group: vyper-experiment-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   experiment:
     if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[vyper-ci]') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with:
@@ -43,6 +48,7 @@ jobs:
 
       - name: Solidity baseline Forge tests and gas report
         continue-on-error: true
+        timeout-minutes: 10
         run: |
           {
             echo
@@ -53,15 +59,21 @@ jobs:
 
       - name: Compile Vyper experiment sources
         continue-on-error: true
+        timeout-minutes: 5
         run: |
           {
             echo
             echo "===== VYPER COMPILE ====="
             if [ -d contracts/vyper ]; then
-              find contracts/vyper -type f -name '*.vy' -print | sort | while read -r file; do
+              failed=0
+              while IFS= read -r file; do
                 echo "--- $file"
-                vyper --evm-version cancun --optimize gas -p contracts/vyper -f abi,bytecode_runtime "$file" >/dev/null
-              done
+                if ! vyper --evm-version cancun --optimize gas -p contracts/vyper -f abi,bytecode_runtime "$file" >/dev/null; then
+                  failed=1
+                  break
+                fi
+              done < <(find contracts/vyper -type f -name '*.vy' -print | sort)
+              exit "$failed"
             else
               echo "contracts/vyper does not exist yet"
             fi
@@ -69,6 +81,7 @@ jobs:
 
       - name: Run Vyper compatibility tests when present
         continue-on-error: true
+        timeout-minutes: 5
         run: |
           {
             echo
