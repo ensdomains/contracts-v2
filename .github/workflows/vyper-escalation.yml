@@ -1,0 +1,62 @@
+name: Vyper model-diverse escalation
+
+"on":
+  push:
+    branches:
+      - experiment/vyper-a971bd6
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  models: read
+
+concurrency:
+  group: vyper-escalation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  escalate:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run-vyper-escalation]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install 'vyper==0.5.0a3'
+      - name: Configure git
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+      - name: Run serial model-diverse escalation
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VYPER_COMPLETION_STEPS: '105'
+          VYPER_COMPLETION_TOOL_TIMEOUT: '900'
+        run: python contracts/script/vyperEscalationAgent.py
+      - name: Push repairs and request validation
+        if: always()
+        run: |
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'experiment(vyper): escalated repairs [run-vyper-completion-v2]'
+          else
+            printf '%s\n' "$(date -u +%s)" > vyper-escalation-validation-trigger.txt
+            git add vyper-escalation-validation-trigger.txt
+            git commit -m 'experiment(vyper): validate escalated state [run-vyper-completion-v2]'
+          fi
+          git pull --rebase origin experiment/vyper-a971bd6
+          git push origin HEAD:experiment/vyper-a971bd6
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vyper-escalation-evidence
+          path: reports/vyper/completion
+          include-hidden-files: true
+          retention-days: 5
