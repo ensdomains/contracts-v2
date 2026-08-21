@@ -10,33 +10,33 @@ permissions:
   contents: write
 
 concurrency:
-  group: vyper-experiment-solc-${{ github.ref }}
+  group: vyper-experiment-alpha-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  solc-cache:
-    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[toolchain-ci]') }}
+  package-vyper:
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[alpha-ci]') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
         with:
-          submodules: recursive
           fetch-depth: 0
-      - uses: ./.github/actions/setup
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
 
-      - name: Populate required solc versions
+      - name: Package Vyper 0.5.0a3
         run: |
           set -euxo pipefail
-          cd contracts
-          forge build --force >/tmp/forge-build.log 2>&1 || { cat /tmp/forge-build.log; exit 1; }
-          cat /tmp/forge-build.log
-          ls -R "$HOME/.svm" || true
+          rm -rf /tmp/vyper-0.5.0a3
+          python -m pip install --target /tmp/vyper-0.5.0a3 'vyper==0.5.0a3'
+          PYTHONPATH=/tmp/vyper-0.5.0a3 python -m vyper --version
 
       - uses: actions/upload-artifact@v4
         with:
-          name: vyper-local-solc-cache
-          path: ~/.svm
+          name: vyper-0.5.0a3-python
+          path: /tmp/vyper-0.5.0a3
           include-hidden-files: true
           retention-days: 1
 
@@ -47,11 +47,11 @@ jobs:
           {
             echo 'run_id=${{ github.run_id }}'
             echo 'status=${{ job.status }}'
-          } > vyper-results/solc-run.txt
+          } > vyper-results/alpha-run.txt
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -- vyper-results/solc-run.txt
+          git add -- vyper-results/alpha-run.txt
           if ! git diff --cached --quiet; then
-            git commit -m 'chore: publish solc cache run [toolchain-ci]'
+            git commit -m 'chore: publish Vyper alpha run [alpha-ci]'
             git push origin HEAD:experiment/vyper-a971bd6
           fi
