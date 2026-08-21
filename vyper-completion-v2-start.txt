@@ -1,0 +1,1 @@
+Run fast source repair, then validate copied Forge, Hardhat and E2E suites in parallel. Merge raw evidence and retry only failed gates.
