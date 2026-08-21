@@ -5,7 +5,7 @@ import {IENSIP15} from "./IENSIP15.sol";
 import {INormalizedUniversalResolver} from "./INormalizedUniversalResolver.sol";
 
 /// @notice Interface for advanced `UniversalResolver` functionality.
-/// @dev Interface selector: `0x53f09390`
+/// @dev Interface selector: `0xa0c805ea`
 interface INormalizedUniversalResolverExtended is INormalizedUniversalResolver {
     /// @notice Performs ENS normalization and forward resolution for the supplied name and data.
     ///         `bytes32 node` is automatically replaced in calldata.
@@ -17,7 +17,7 @@ interface INormalizedUniversalResolverExtended is INormalizedUniversalResolver {
     /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @return result The ABI-encoded response for the calldata.
     /// @return resolver The resolver that was used to resolve the name.
-    function resolveWithGatewaysAndENSIP15(
+    function resolveWithGatewaysAndNormalization(
         string calldata inputName,
         bytes calldata data,
         string[] calldata gateways,
@@ -27,7 +27,7 @@ interface INormalizedUniversalResolverExtended is INormalizedUniversalResolver {
         view
         returns (bytes memory result, address resolver);
 
-    /// @notice Performs ENS reverse resolution for the supplied address and coin type.
+    /// @notice Performs ENS primary resolution for the supplied address and coin type.
     ///         Reverts `PrimaryNameNotNormalized` if the primary name is not normalized.
     /// @dev Caller should enable EIP-3668.
     /// @param lookupAddress The input address.
@@ -37,7 +37,7 @@ interface INormalizedUniversalResolverExtended is INormalizedUniversalResolver {
     /// @return primary The resolved primary name.
     /// @return resolver The resolver address for primary name.
     /// @return reverseResolver The resolver address for the reverse name.
-    function reverseWithGatewaysAndENSIP15(
+    function reverseWithGatewaysAndNormalization(
         bytes calldata lookupAddress,
         uint256 coinType,
         string[] calldata gateways,

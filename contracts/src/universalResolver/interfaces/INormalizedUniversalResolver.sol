@@ -4,7 +4,7 @@ pragma solidity >=0.8.13;
 import {IENSIP15} from "./IENSIP15.sol";
 
 /// @notice Interface for ENSv2-specific `UniversalResolver`.
-/// @dev Interface selector: `0x4d6513f2`
+/// @dev Interface selector: `0x2146c173`
 interface INormalizedUniversalResolver {
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -30,12 +30,16 @@ interface INormalizedUniversalResolver {
     /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @return result The ABI-encoded response for the calldata.
     /// @return resolver The resolver that was used to resolve the name.
-    function resolveWithENSIP15(string calldata inputName, bytes calldata data, IENSIP15 ensip15)
+    function resolveWithNormalization(
+        string calldata inputName,
+        bytes calldata data,
+        IENSIP15 ensip15
+    )
         external
         view
         returns (bytes memory result, address resolver);
 
-    /// @notice Performs ENS reverse resolution for the supplied address and coin type.
+    /// @notice Performs ENS primary resolution for the supplied address and coin type.
     ///         Caller should enable EIP-3668.
     ///         Reverts `PrimaryNameNotNormalized`.
     /// @param lookupAddress The input address.
@@ -44,7 +48,11 @@ interface INormalizedUniversalResolver {
     /// @return primary The resolved normalized primary name.
     /// @return resolver The resolver address for primary name.
     /// @return reverseResolver The resolver address for the reverse name.
-    function reverseWithENSIP15(bytes calldata lookupAddress, uint256 coinType, IENSIP15 ensip15)
+    function reverseWithNormalization(
+        bytes calldata lookupAddress,
+        uint256 coinType,
+        IENSIP15 ensip15
+    )
         external
         view
         returns (string memory primary, address resolver, address reverseResolver);
@@ -52,8 +60,8 @@ interface INormalizedUniversalResolver {
     /// @notice Normalize a name according to ENSIP-15.
     /// @param inputName Human-readable name to normalize, eg. `nick.eth`.
     /// @param ensip15 ENSIP-15 Normalization implementation.
-    /// @return wasNormalized `true` if normalized.
-    /// @return name Normalized DNS-encoded name, eg. `\x04nick\x03eth\x00` or null if not normalizable.
+    /// @return wasNormalized `true` if `name` was already normalized.
+    /// @return name Normalized DNS-encoded name, eg. `\x04nick\x03eth\x00`.
     function normalize(string calldata inputName, IENSIP15 ensip15)
         external
         view

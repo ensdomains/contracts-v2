@@ -4,13 +4,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   encodeErrorResult,
-  namehash,
+  getAddress,
   parseAbi,
   toBytes,
   toFunctionSelector,
   zeroAddress,
-  getAddress,
 } from "viem";
+import { normalize } from "viem/ens";
 import { createServer } from "node:http";
 
 import { bundleCalls, makeResolutions } from "../utils/resolutions.js";
@@ -20,11 +20,13 @@ import {
   getReverseName,
   getParentName,
   dnsEncodeName,
+  namehash,
   getLabelAt,
 } from "../utils/utils.js";
 import { deployV2Fixture } from "./fixtures/deployV2Fixture.js";
 import { expectVar } from "../utils/expectVar.js";
 import { oldResolverArtifact } from "../../lib/ens-contracts/test/fixtures/OldResolver.js";
+import { LOCAL_BATCH_GATEWAY_URL } from "../../script/deploy-constants.ts";
 
 const network = await hre.network.connect();
 const loadFixture = async () => network.networkHelpers.loadFixture(fixture);
@@ -58,6 +60,7 @@ const resolutions = makeResolutions({
   texts: [{ key: "description", value: "Test" }],
 });
 
+// note: these tests are nearly the same as: https://github.com/ensdomains/ens-contracts/blob/staging/test/universalResolver/TestUniversalResolver.test.ts
 describe("UniversalResolverV2", () => {
   shouldSupportInterfaces({
     contract: () => loadFixture().then((F) => F.ur),
@@ -181,11 +184,7 @@ describe("UniversalResolverV2", () => {
             `http://localhost:${(http.address() as any).port}`,
           ]);
           await expect(
-            F.ur.read.resolveWithGateways([
-              dnsEncodeName(testName),
-              dummyCalldata,
-              ["x-batch-gateway:true"],
-            ]),
+            F.ur.read.resolve([dnsEncodeName(testName), dummyCalldata]),
           )
             .toBeRevertedWithCustomError("HttpError")
             .withArgs([statusCode, "HTTP request failed."]);
@@ -418,7 +417,43 @@ describe("UniversalResolverV2", () => {
     });
   });
 
-  describe("resolveWithENSIP15()", () => {
+  describe("normalize()", () => {
+    for (const name of [
+      "",
+      "a".repeat(256),
+      ".",
+      ".eth",
+      "eth.",
+      " abc",
+      "abc ",
+      "abc.eth ",
+      "eth",
+      "ETH",
+      "Test.eth",
+      "TEST.ETH",
+    ]) {
+      it(`"${name.length > 32 ? name.slice(0, 32) + "..." : name}"`, async () => {
+        const F = await loadFixture();
+        let norm: string | undefined;
+        try {
+          const temp = normalize(name); // must normalize
+          dnsEncodeName(temp); // must encode
+          norm = temp;
+        } catch {}
+        if (typeof norm === "string") {
+          await expect(
+            F.ur.read.normalize([name, F.ensip15.address]),
+          ).resolves.toStrictEqual([name === norm, dnsEncodeName(norm)]);
+        } else {
+          await expect(
+            F.ur.read.normalize([name, F.ensip15.address]),
+          ).rejects.toThrow();
+        }
+      });
+    }
+  });
+
+  describe("resolveWithNormalization()", () => {
     it("is normalized", async () => {
       const F = await loadFixture();
       await F.setupName({
@@ -434,7 +469,7 @@ describe("UniversalResolverV2", () => {
         name: "anything",
         addresses: [{ coinType: COIN_TYPE_ETH, value: anotherAddress }],
       });
-      const [answer, resolver] = await F.ur.read.resolveWithENSIP15([
+      const [answer, resolver] = await F.ur.read.resolveWithNormalization([
         testName,
         res.call,
         F.ensip15.address,
@@ -459,7 +494,7 @@ describe("UniversalResolverV2", () => {
         addresses: [{ coinType: COIN_TYPE_ETH, value: anotherAddress }],
       });
       await expect(
-        F.ur.read.resolveWithENSIP15([
+        F.ur.read.resolveWithNormalization([
           testName.toUpperCase(),
           res.call,
           F.ensip15.address,
@@ -473,7 +508,7 @@ describe("UniversalResolverV2", () => {
       const F = await loadFixture();
       const badLabel = " ";
       await expect(
-        F.ur.read.resolveWithENSIP15([
+        F.ur.read.resolveWithNormalization([
           `test.${badLabel}.eth`,
           dummyCalldata,
           F.ensip15.address,
@@ -484,25 +519,59 @@ describe("UniversalResolverV2", () => {
     });
   });
 
-  describe("resolveWithGateways()", () => {
-    it("should resolve with explicit gateways", async () => {
+  describe("IUniversalResolverExtended", () => {
+    it("resolveWithGateways()", async () => {
       const F = await loadFixture();
+      await F.batchGatewayProvider.write.setGateways([[]]);
       await F.setupName({ name: testName, resolverAddress: F.ss1.address });
       const res = resolutions[0];
       await F.ss1.write.setResponse([res.call, res.answer]);
-      await F.ss1.write.setExtended([true]);
+      await F.ss1.write.setOffchain([true]);
+      await expect(
+        F.ur.read.resolveWithGateways([dnsEncodeName(testName), res.call, []]),
+      ).rejects.toThrow();
       const [answer, resolver] = await F.ur.read.resolveWithGateways([
         dnsEncodeName(testName),
         res.call,
-        [], // No gateways needed for this test
+        [LOCAL_BATCH_GATEWAY_URL],
       ]);
       expectVar({ resolver }).toEqualAddress(F.ss1.address);
       res.expect(answer);
     });
-  });
 
-  describe("resolveWithResolver()", () => {
-    it("should resolve with explicit resolver", async () => {
+    it("reverseWithGateways()", async () => {
+      const F = await loadFixture();
+      await F.batchGatewayProvider.write.setGateways([[]]);
+      const reverseName = getReverseName(F.owner);
+      await F.setupName({ name: testName, resolverAddress: F.ss1.address });
+      await F.setupName({ name: reverseName, resolverAddress: F.ss1.address });
+      const [fwd] = makeResolutions({
+        name: testName,
+        addresses: [{ coinType: COIN_TYPE_ETH, value: F.owner }],
+      });
+      const [rev] = makeResolutions({
+        name: reverseName,
+        primary: { value: testName },
+      });
+      for (const res of [fwd, rev]) {
+        await F.ss1.write.setResponse([res.call, res.answer]);
+      }
+      await F.ss1.write.setOffchain([true]);
+      await expect(
+        F.ur.read.reverseWithGateways([F.owner, COIN_TYPE_ETH, []]),
+      ).rejects.toThrow();
+      const [primary, resolver, reverseResolver] =
+        await F.ur.read.reverseWithGateways([
+          F.owner,
+          COIN_TYPE_ETH,
+          [LOCAL_BATCH_GATEWAY_URL],
+        ]);
+      expectVar({ primary }).toStrictEqual(testName);
+      expectVar({ resolver }).toEqualAddress(F.ss1.address);
+      expectVar({ reverseResolver }).toEqualAddress(F.ss1.address);
+    });
+
+    it("resolveWithResolver()", async () => {
       const F = await loadFixture();
       const res = resolutions[0];
       await F.ss1.write.setResponse([res.call, res.answer]);
@@ -514,6 +583,104 @@ describe("UniversalResolverV2", () => {
       ]);
       expectVar({ resolver }).toEqualAddress(F.ss1.address);
       res.expect(answer);
+    });
+
+    describe("requireResolver()", async () => {
+      it("unset", async () => {
+        const F = await loadFixture();
+        await expect(
+          F.ur.read.requireResolver([dnsEncodeName(testName)]),
+        ).toBeRevertedWithCustomError("ResolverNotFound");
+      });
+
+      it("not a contract", async () => {
+        const F = await loadFixture();
+        await F.setupName({ name: testName, resolverAddress: F.owner });
+        await expect(
+          F.ur.read.requireResolver([dnsEncodeName(testName)]),
+        ).toBeRevertedWithCustomError("ResolverNotContract");
+      });
+
+      it("not extended", async () => {
+        const F = await loadFixture();
+        await F.setupName({
+          name: getParentName(testName),
+          resolverAddress: F.ss1.address,
+        });
+        await expect(
+          F.ur.read.requireResolver([dnsEncodeName(testName)]),
+        ).toBeRevertedWithCustomError("ResolverNotFound");
+      });
+
+      it("valid", async () => {
+        const F = await loadFixture();
+        await F.setupName({ name: testName, resolverAddress: F.ss1.address });
+        const { resolver } = await F.ur.read.requireResolver([
+          dnsEncodeName(testName),
+        ]);
+        expectVar({ resolver }).toEqualAddress(F.ss1.address);
+      });
+    });
+  });
+
+  describe("INormalizedUniversalResolverExtended", () => {
+    it("resolveWithGatewaysAndNormalization", async () => {
+      const F = await loadFixture();
+      await F.batchGatewayProvider.write.setGateways([[]]);
+      await F.setupName({ name: testName, resolverAddress: F.ss1.address });
+      const res = resolutions[0];
+      await F.ss1.write.setResponse([res.call, res.answer]);
+      await F.ss1.write.setOffchain([true]);
+      await expect(
+        F.ur.read.resolveWithGatewaysAndNormalization([
+          testName,
+          res.call,
+          [],
+          F.ensip15.address,
+        ]),
+      ).rejects.toThrow();
+      const [answer, resolver] =
+        await F.ur.read.resolveWithGatewaysAndNormalization([
+          testName,
+          res.call,
+          [LOCAL_BATCH_GATEWAY_URL],
+          F.ensip15.address,
+        ]);
+      expectVar({ resolver }).toEqualAddress(F.ss1.address);
+      res.expect(answer);
+    });
+
+    it("reverseWithGatewaysAndNormalization()", async () => {
+      const F = await loadFixture();
+      await F.batchGatewayProvider.write.setGateways([[]]);
+      const reverseName = getReverseName(F.owner);
+      await F.setupName({ name: testName, resolverAddress: F.ss1.address });
+      await F.setupName({ name: reverseName, resolverAddress: F.ss1.address });
+      const [fwd] = makeResolutions({
+        name: testName,
+        addresses: [{ coinType: COIN_TYPE_ETH, value: F.owner }],
+      });
+      const [rev] = makeResolutions({
+        name: reverseName,
+        primary: { value: testName },
+      });
+      for (const res of [fwd, rev]) {
+        await F.ss1.write.setResponse([res.call, res.answer]);
+      }
+      await F.ss1.write.setOffchain([true]);
+      await expect(
+        F.ur.read.reverseWithGateways([F.owner, COIN_TYPE_ETH, []]),
+      ).rejects.toThrow();
+      const [primary, resolver, reverseResolver] =
+        await F.ur.read.reverseWithGatewaysAndNormalization([
+          F.owner,
+          COIN_TYPE_ETH,
+          [LOCAL_BATCH_GATEWAY_URL],
+          F.ensip15.address,
+        ]);
+      expectVar({ primary }).toStrictEqual(testName);
+      expectVar({ resolver }).toEqualAddress(F.ss1.address);
+      expectVar({ reverseResolver }).toEqualAddress(F.ss1.address);
     });
   });
 

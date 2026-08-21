@@ -59,7 +59,7 @@ interface IUniversalResolverExtended is IUniversalResolver {
         view
         returns (bytes memory result, address resolver);
 
-    /// @notice Performs ENS reverse resolution for the supplied address and coin type.
+    /// @notice Performs ENS primary resolution for the supplied address and coin type.
     ///         Caller should enable EIP-3668.
     /// @param lookupAddress The input address.
     /// @param coinType The coin type.

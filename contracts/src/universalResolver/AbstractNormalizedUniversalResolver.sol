@@ -29,6 +29,7 @@ import {IUniversalResolverExtended} from "./interfaces/IUniversalResolverExtende
 import {LibENSIP15} from "./libraries/LibENSIP15.sol";
 
 /// @dev `AbstractUniversalResolver` implementation with ENSIP-15 support.
+///      see: https://github.com/ensdomains/ens-contracts/blob/staging/contracts/universalResolver/AbstractUniversalResolver.sol
 abstract contract AbstractNormalizedUniversalResolver is
     IUniversalResolver,
     IUniversalResolverExtended,
@@ -95,13 +96,17 @@ abstract contract AbstractNormalizedUniversalResolver is
     }
 
     /// @inheritdoc INormalizedUniversalResolver
-    function resolveWithENSIP15(string calldata inputName, bytes calldata data, IENSIP15 ensip15)
+    function resolveWithNormalization(
+        string calldata inputName,
+        bytes calldata data,
+        IENSIP15 ensip15
+    )
         external
         view
         returns (bytes memory, address)
     {
         return
-            resolveWithGatewaysAndENSIP15(
+            resolveWithGatewaysAndNormalization(
                 inputName,
                 data,
                 BATCH_GATEWAY_PROVIDER.gateways(),
@@ -188,7 +193,7 @@ abstract contract AbstractNormalizedUniversalResolver is
         returns (string memory, address, address)
     {
         return
-            reverseWithGatewaysAndENSIP15(
+            reverseWithGatewaysAndNormalization(
                 lookupAddress,
                 coinType,
                 BATCH_GATEWAY_PROVIDER.gateways(),
@@ -197,13 +202,17 @@ abstract contract AbstractNormalizedUniversalResolver is
     }
 
     /// @inheritdoc INormalizedUniversalResolver
-    function reverseWithENSIP15(bytes calldata lookupAddress, uint256 coinType, IENSIP15 ensip15)
+    function reverseWithNormalization(
+        bytes calldata lookupAddress,
+        uint256 coinType,
+        IENSIP15 ensip15
+    )
         external
         view
         returns (string memory, address, address)
     {
         return
-            reverseWithGatewaysAndENSIP15(
+            reverseWithGatewaysAndNormalization(
                 lookupAddress,
                 coinType,
                 BATCH_GATEWAY_PROVIDER.gateways(),
@@ -222,7 +231,12 @@ abstract contract AbstractNormalizedUniversalResolver is
         returns (string memory, address, address)
     {
         return
-            reverseWithGatewaysAndENSIP15(lookupAddress, coinType, gateways, IENSIP15(address(0)));
+            reverseWithGatewaysAndNormalization(
+                lookupAddress,
+                coinType,
+                gateways,
+                IENSIP15(address(0))
+            );
     }
 
     /// @notice CCIP-Read callback for `reverseWithGateways()`.
@@ -344,7 +358,7 @@ abstract contract AbstractNormalizedUniversalResolver is
     }
 
     /// @inheritdoc INormalizedUniversalResolverExtended
-    function resolveWithGatewaysAndENSIP15(
+    function resolveWithGatewaysAndNormalization(
         string calldata inputName,
         bytes calldata data,
         string[] memory gateways,
@@ -366,7 +380,7 @@ abstract contract AbstractNormalizedUniversalResolver is
     }
 
     /// @inheritdoc INormalizedUniversalResolverExtended
-    function reverseWithGatewaysAndENSIP15(
+    function reverseWithGatewaysAndNormalization(
         bytes calldata lookupAddress,
         uint256 coinType,
         string[] memory gateways,
