@@ -1,0 +1,1 @@
+Run compiler/EVM, architecture/security, and integration/measurement specialists serially against the latest committed failures, then request full validation.
