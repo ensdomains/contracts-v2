@@ -1,4 +1,4 @@
-# pragma version ~=0.4.3
+# pragma version ==0.5.0a3
 # SPDX-License-Identifier: MIT
 
 @internal
@@ -9,4 +9,4 @@ def id(label: String[255]) -> uint256:
 @internal
 @pure
 def with_version(any_id: uint256, version_id: uint32) -> uint256:
-    return any_id ^ (any_id & 0xffffffff) ^ convert(version_id, uint256)
+    return any_id ^ (any_id & 4294967295) ^ convert(version_id, uint256)
