@@ -1,0 +1,46 @@
+name: Vyper completion extended retry controller
+
+"on":
+  push:
+    branches:
+      - experiment/vyper-a971bd6
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vyper-completion-v3-retry-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  retry:
+    if: ${{ contains(github.event.head_commit.message, '[completion-v2-report]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Trigger at most three extended repair passes
+        run: |
+          set -euo pipefail
+          status=INCOMPLETE
+          [ -f reports/vyper/completion/FINAL_STATUS ] && status=$(tr -d '\r\n' < reports/vyper/completion/FINAL_STATUS)
+          if [ "$status" = COMPLETE ]; then
+            exit 0
+          fi
+          attempt=0
+          [ -f reports/vyper/completion/v3-attempt.txt ] && attempt=$(tr -dc '0-9' < reports/vyper/completion/v3-attempt.txt)
+          attempt=${attempt:-0}
+          if [ "$attempt" -ge 3 ]; then
+            exit 0
+          fi
+          attempt=$((attempt + 1))
+          mkdir -p reports/vyper/completion
+          printf '%s\n' "$attempt" > reports/vyper/completion/v3-attempt.txt
+          printf 'Extended pass %s: repair only the failures in the latest committed full-validation logs.\n' "$attempt" > vyper-completion-v3-command.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add reports/vyper/completion/v3-attempt.txt vyper-completion-v3-command.txt
+          git commit -m "experiment: extended Vyper completion pass $attempt [run-vyper-completion-v2]"
+          git push origin HEAD:experiment/vyper-a971bd6
