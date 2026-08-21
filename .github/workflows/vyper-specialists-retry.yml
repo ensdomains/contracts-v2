@@ -1,0 +1,46 @@
+name: Vyper specialist retry controller
+
+"on":
+  push:
+    branches:
+      - experiment/vyper-a971bd6
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vyper-specialists-retry-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  retry:
+    if: ${{ contains(github.event.head_commit.message, '[completion-v2-report]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Trigger at most four specialist cycles
+        run: |
+          set -euo pipefail
+          status=INCOMPLETE
+          [ -f reports/vyper/completion/FINAL_STATUS ] && status=$(tr -d '\r\n' < reports/vyper/completion/FINAL_STATUS)
+          if [ "$status" = COMPLETE ]; then
+            exit 0
+          fi
+          attempt=0
+          [ -f reports/vyper/completion/specialist-attempt.txt ] && attempt=$(tr -dc '0-9' < reports/vyper/completion/specialist-attempt.txt)
+          attempt=${attempt:-0}
+          if [ "$attempt" -ge 4 ]; then
+            exit 0
+          fi
+          attempt=$((attempt + 1))
+          mkdir -p reports/vyper/completion
+          printf '%s\n' "$attempt" > reports/vyper/completion/specialist-attempt.txt
+          printf 'Specialist cycle %s: repair only suites still failing in full-validation.json.\n' "$attempt" > vyper-specialist-retry-command.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add reports/vyper/completion/specialist-attempt.txt vyper-specialist-retry-command.txt
+          git commit -m "experiment: Vyper specialist cycle $attempt [run-vyper-specialists]"
+          git push origin HEAD:experiment/vyper-a971bd6
