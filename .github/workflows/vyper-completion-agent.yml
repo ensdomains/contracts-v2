@@ -1,0 +1,77 @@
+name: Vyper strict completion loop
+
+"on":
+  push:
+    branches:
+      - experiment/vyper-a971bd6
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  models: read
+
+concurrency:
+  group: vyper-completion-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  complete:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run-vyper-completion]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Vyper 0.5 alpha
+        run: python -m pip install 'vyper==0.5.0a3'
+
+      - name: Configure commit identity
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+      - name: Run strict completion loop
+        id: completion
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VYPER_COMPLETION_ROUNDS: '4'
+          VYPER_COMPLETION_STEPS: '150'
+          VYPER_COMPLETION_TOOL_TIMEOUT: '900'
+        run: python contracts/script/vyperCompletionAgent.py
+
+      - name: Persist final branch state
+        if: always()
+        run: |
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'experiment(vyper): strict completion evidence [completion-agent]'
+          fi
+          git pull --rebase origin experiment/vyper-a971bd6
+          git push origin HEAD:experiment/vyper-a971bd6
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vyper-strict-completion-evidence
+          path: |
+            reports/vyper
+            contracts/vyper
+            contracts/test/vyper
+          include-hidden-files: true
+          retention-days: 5
+
+      - name: Enforce completion gate
+        if: always()
+        run: |
+          test -f reports/vyper/completion/FINAL_STATUS
+          grep -qx COMPLETE reports/vyper/completion/FINAL_STATUS
