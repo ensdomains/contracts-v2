@@ -1,0 +1,1 @@
+Read the latest committed full-validation audit and raw logs. Run only the specialists for failing gates, commit focused repairs, then trigger full validation.
