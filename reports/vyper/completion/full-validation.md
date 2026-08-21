@@ -1,6 +1,6 @@
 # Full Vyper validation
 
-- Head: `13d25b940cfa1bb19100483aa7a44ea50dfe6a0c`
+- Head: `55942c10d63350b7a01c5fe2328f84896a3ccb4b`
 - Fast source gate: `INCOMPLETE`
 - Copied Forge Vyper suite RC: `0`
 - Hardhat suite RC: `0`
