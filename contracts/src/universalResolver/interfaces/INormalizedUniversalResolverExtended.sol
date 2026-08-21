@@ -10,7 +10,7 @@ interface INormalizedUniversalResolverExtended is INormalizedUniversalResolver {
     /// @notice Performs ENS normalization and forward resolution for the supplied name and data.
     ///         `bytes32 node` is automatically replaced in calldata.
     /// @dev Caller should enable EIP-3668.
-    ///      Reverts `NormalizationChangedName`.
+    ///      Reverts `NormalizationChangedName` if `inputName` was not normalized.
     /// @param inputName Human-readable name to resolve, eg. `nick.eth`.
     /// @param data The ABI-encoded resolver calldata.
     /// @param gateways The list of batch gateway URLs to use.
