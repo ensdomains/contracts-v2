@@ -6,28 +6,88 @@ name: Vyper experiment
       - experiment/vyper-a971bd6
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  bootstrap:
+  experiment:
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[vyper-ci]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: recursive
           fetch-depth: 0
-      - name: Record source baseline
-        run: |
-          git rev-parse HEAD > vyper-baseline.txt
-          find contracts/src -type f \( -name '*.sol' -o -name '*.yul' \) -print0 | sort -z | xargs -0 wc -l > vyper-source-lines.txt
-          find contracts/src -type f -name '*.sol' -print | sort > vyper-source-files.txt
-      - name: Package checkout
-        run: |
-          tar --exclude=.git --exclude='**/.git' -czf /tmp/contracts-v2-a971bd6.tgz .
-      - uses: actions/upload-artifact@v4
+
+      - uses: ./.github/actions/setup
+
+      - uses: actions/setup-python@v5
         with:
-          name: vyper-bootstrap-checkout
-          path: |
-            /tmp/contracts-v2-a971bd6.tgz
-            vyper-baseline.txt
-            vyper-source-lines.txt
-            vyper-source-files.txt
-          retention-days: 1
+          python-version: '3.13'
+
+      - name: Install Vyper
+        run: pip install 'vyper==0.4.3'
+
+      - name: Record toolchain and source inventory
+        run: |
+          mkdir -p vyper-results
+          {
+            echo "baseline=a971bd6449154045e2b26ff13d0e56027452f407"
+            echo "tested_commit=$(git rev-parse HEAD)"
+            forge --version
+            vyper --version
+            echo
+            echo "Solidity source inventory:"
+            find contracts/src -type f -name '*.sol' -print | sort
+          } > vyper-results/latest.txt
+
+      - name: Solidity baseline Forge tests and gas report
+        continue-on-error: true
+        run: |
+          {
+            echo
+            echo "===== SOLIDITY BASELINE: forge test --gas-report ====="
+            cd contracts
+            forge test --gas-report
+          } >> vyper-results/latest.txt 2>&1
+
+      - name: Compile Vyper experiment sources
+        continue-on-error: true
+        run: |
+          {
+            echo
+            echo "===== VYPER COMPILE ====="
+            if [ -d contracts/vyper ]; then
+              find contracts/vyper -type f -name '*.vy' -print | sort | while read -r file; do
+                echo "--- $file"
+                vyper --evm-version cancun --optimize gas -p contracts/vyper -f abi,bytecode_runtime "$file" >/dev/null
+              done
+            else
+              echo "contracts/vyper does not exist yet"
+            fi
+          } >> vyper-results/latest.txt 2>&1
+
+      - name: Run Vyper compatibility tests when present
+        continue-on-error: true
+        run: |
+          {
+            echo
+            echo "===== VYPER COMPATIBILITY TESTS ====="
+            if [ -f contracts/test/vyper/VyperCompatibility.t.sol ]; then
+              cd contracts
+              forge test --match-path 'test/vyper/**/*.t.sol' --gas-report -vv
+            else
+              echo "No Vyper compatibility harness yet"
+            fi
+          } >> vyper-results/latest.txt 2>&1
+
+      - name: Commit result log
+        if: always()
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- vyper-results/latest.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: update Vyper experiment results [vyper-ci]'
+            git push origin HEAD:experiment/vyper-a971bd6
+          fi
