@@ -1,0 +1,1 @@
+Pass 2: inspect the committed model-agent transcript, status, validation log and current git tree. Repair every remaining registry-core compiler/test/size failure from pass 1. Do not restart the tranche. Once the complete registry cluster is green, continue directly into the resolver stack and commit exact copied-test evidence and paired gas/size measurements.
