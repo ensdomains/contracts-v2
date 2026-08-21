@@ -1,0 +1,48 @@
+name: Vyper completion v2 retry controller
+
+"on":
+  push:
+    branches:
+      - experiment/vyper-a971bd6
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vyper-completion-v2-retry-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  retry:
+    if: ${{ contains(github.event.head_commit.message, '[completion-v2-report]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Trigger next bounded repair pass if needed
+        run: |
+          set -euo pipefail
+          status=INCOMPLETE
+          [ -f reports/vyper/completion/FINAL_STATUS ] && status=$(tr -d '\r\n' < reports/vyper/completion/FINAL_STATUS)
+          if [ "$status" = COMPLETE ]; then
+            echo 'Full validation is complete.'
+            exit 0
+          fi
+          attempt=0
+          [ -f reports/vyper/completion/v2-attempt.txt ] && attempt=$(tr -dc '0-9' < reports/vyper/completion/v2-attempt.txt)
+          attempt=${attempt:-0}
+          if [ "$attempt" -ge 5 ]; then
+            echo 'V2 retry cap reached.'
+            exit 0
+          fi
+          attempt=$((attempt + 1))
+          mkdir -p reports/vyper/completion
+          printf '%s\n' "$attempt" > reports/vyper/completion/v2-attempt.txt
+          printf 'Pass %s: inspect full-validation logs and repair only remaining gates.\n' "$attempt" > vyper-completion-v2-command.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add reports/vyper/completion/v2-attempt.txt vyper-completion-v2-command.txt
+          git commit -m "experiment: Vyper completion v2 pass $attempt [run-vyper-completion-v2]"
+          git push origin HEAD:experiment/vyper-a971bd6
