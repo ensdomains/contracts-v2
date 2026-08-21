@@ -97,19 +97,13 @@ library HCAPermit2Lib {
         returns (bytes32 result)
     {
         bytes32 tokenPermissionsHash =
-            keccak256(
-                abi.encodePacked(
-                    keccak256(
-                        abi.encode(TOKEN_PERMISSIONS_TYPEHASH, claim.sourceToken, claim.sourceAmount)
-                    )
+            _hashElement(
+                keccak256(
+                    abi.encode(TOKEN_PERMISSIONS_TYPEHASH, claim.sourceToken, claim.sourceAmount)
                 )
             );
         bytes32 tokenOutHash =
-            keccak256(
-                abi.encodePacked(
-                    keccak256(abi.encode(TOKEN_TYPEHASH, claim.tokenOut, claim.amountOut))
-                )
-            );
+            _hashElement(keccak256(abi.encode(TOKEN_TYPEHASH, claim.tokenOut, claim.amountOut)));
         bytes32 targetHash =
             keccak256(
                 abi.encode(
@@ -145,5 +139,17 @@ library HCAPermit2Lib {
         bytes32 domainSeparator =
             keccak256(abi.encode(EIP712_DOMAIN_TYPEHASH, PERMIT2_NAME_HASH, sourceChainId, permit2));
         return MessageHashUtils.toTypedDataHash(domainSeparator, permitHash);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Private Functions
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Hashes the packed encoding of a single EIP-712 array element.
+    function _hashElement(bytes32 elementHash) private pure returns (bytes32 result) {
+        assembly ("memory-safe") {
+            mstore(0, elementHash)
+            result := keccak256(0, 0x20)
+        }
     }
 }

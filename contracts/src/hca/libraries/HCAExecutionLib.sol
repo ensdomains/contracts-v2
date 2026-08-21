@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
+import {Bytes} from "@openzeppelin/contracts/utils/Bytes.sol";
+
 /// @title HCA Execution Library
 /// @notice Reads selectors and ABI words from policy-controlled execution calldata.
 /// @dev Preserves one policy-specific error for malformed execution encodings.
@@ -17,9 +19,7 @@ library HCAExecutionLib {
         if (callData.length < 4) {
             revert InvalidOperationEncoding();
         }
-        assembly ("memory-safe") {
-            callSelector := mload(add(callData, 0x20))
-        }
+        return bytes4(callData);
     }
 
     /// @notice Copies function arguments out of encoded call data.
@@ -30,10 +30,7 @@ library HCAExecutionLib {
         if (callData.length < 4) {
             revert InvalidOperationEncoding();
         }
-        args = new bytes(callData.length - 4);
-        for (uint256 i; i < args.length; ++i) {
-            args[i] = callData[i + 4];
-        }
+        return Bytes.slice(callData, 4);
     }
 
     /// @notice Reads an ABI-encoded address argument from call data.

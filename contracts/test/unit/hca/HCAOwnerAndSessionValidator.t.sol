@@ -6,8 +6,15 @@ pragma solidity ^0.8.27;
 import {Test} from "forge-std/Test.sol";
 
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {ERC1271_MAGICVALUE} from "nexus/types/Constants.sol";
+import {Execution} from "nexus/types/DataTypes.sol";
 
 import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {HCAOperationHashLib} from "~src/hca/libraries/HCAOperationHashLib.sol";
+import {HCASmartSessionLib} from "~src/hca/libraries/HCASmartSessionLib.sol";
+import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 
@@ -33,8 +40,21 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         bytes32 qualifierHash;
     }
 
-    bytes4 constant ERC1271_MAGICVALUE = 0x1626ba7e;
-    bytes4 constant COMMIT_SELECTOR = 0xf14fcbc8;
+    struct SessionEnableProofFixture {
+        address sessionKey;
+        uint48 validUntil;
+        uint96 sessionNonce;
+        address resolver;
+        address refundToken;
+        uint96 maxRefundExchangeRate;
+        uint48 maxRefundGasOverhead;
+        uint96 maxRefundAmount;
+        uint8 sessionToEnableIndex;
+        HCASmartSessionLib.HashAndChainId[] hashesAndChainIds;
+        bytes32 ownerR;
+        bytes32 ownerS;
+        uint8 ownerV;
+    }
 
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
@@ -127,58 +147,19 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         validator.checkResolverCallHarness(abi.encodeWithSelector(selector), owner);
     }
 
-    function test_validator_acceptsPermit2SessionForExactDestinationOperation() public {
-        bytes32 permissionId = _enableSession();
-        bytes memory operationData = _withHybridMode(_commitOperation(bytes32("commitment")));
-        (bytes memory claimData, bytes32 digest) =
-            _claim(operationData, address(hca), block.chainid);
-
-        assertEq(
-            hca.validate(
-                validator,
-                digest,
-                _envelope(permissionId, claimData, operationData, digest)
-            ),
-            ERC1271_MAGICVALUE
-        );
-    }
-
-    function test_validator_rejectsOperationThatDiffersFromPermit2Mandate() public {
-        bytes32 permissionId = _enableSession();
-        bytes memory operationData = _commitOperation(bytes32("commitment"));
-        (bytes memory claimData, bytes32 digest) =
-            _claim(operationData, address(hca), block.chainid);
-        bytes memory changedOperation = _commitOperation(bytes32("different"));
-
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
-        hca.validate(validator, digest, _envelope(permissionId, claimData, changedOperation, digest));
-    }
-
-    function test_validator_rejectsPermit2MandateForAnotherDestination() public {
-        bytes32 permissionId = _enableSession();
-        bytes memory operationData = _commitOperation(bytes32("commitment"));
-        (bytes memory claimData, bytes32 digest) =
-            _claim(operationData, makeAddr("another-account"), block.chainid);
-
-        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
-        hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
-    }
-
     function test_validator_acceptsFirstPermit2RouteWithMultiChainSessionAuthorization()
         public
         view
     {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
         bytes memory operationData = _withHybridMode(_initialCommitOperation(permissionId, proof));
         (bytes memory claimData, bytes32 digest) =
             _claim(operationData, address(hca), block.chainid);
-        bytes memory proofData = abi.encode(proof);
+        bytes memory proofData = _packProof(proof);
         bytes memory envelope =
             abi.encodePacked(
                 bytes1(uint8(4)),
                 permissionId,
-                bytes4(uint32(proofData.length)),
                 proofData,
                 SOURCE_CHAIN_ID,
                 claimData,
@@ -216,8 +197,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsInvalidFirstUseProofAndSessionSignature() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
         bytes memory operationData = _initialCommitOperation(permissionId, proof);
         (bytes memory claimData, bytes32 digest) =
             _claim(operationData, address(hca), block.chainid);
@@ -229,7 +209,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
             _initialEnvelope(keccak256("wrong-permission"), proof, claimData, operationData, digest)
         );
 
-        proof.hashesAndChainIds = new HCAOwnerAndSessionValidator.HashAndChainId[](0);
+        proof.hashesAndChainIds = new HCASmartSessionLib.HashAndChainId[](0);
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
         hca.validate(
             validator,
@@ -248,8 +228,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsFirstPermit2RouteWithInvalidOwnerAuthorization() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
         proof.ownerR = bytes32(uint256(proof.ownerR) + 1);
         bytes memory operationData = _initialCommitOperation(permissionId, proof);
         (bytes memory claimData, bytes32 digest) =
@@ -264,8 +243,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsFirstPermit2RouteForAnotherSelectedChain() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
         proof.hashesAndChainIds[proof.sessionToEnableIndex].chainId = uint64(SOURCE_CHAIN_ID);
         bytes memory operationData = _initialCommitOperation(permissionId, proof);
         (bytes memory claimData, bytes32 digest) =
@@ -280,8 +258,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsFirstPermit2RouteWithStaleSessionNonce() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
         hca.setSessionNonce(1);
         bytes memory operationData = _initialCommitOperation(permissionId, proof);
         (bytes memory claimData, bytes32 digest) =
@@ -295,28 +272,11 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         );
     }
 
-    function test_validator_rejectsFirstPermit2RouteWithMismatchedEnableCall() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
-        bytes memory operationData =
-            _initialCommitOperation(permissionId, proof, proof.validUntil - 1);
-        (bytes memory claimData, bytes32 digest) =
-            _claim(operationData, address(hca), block.chainid);
-
-        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
-        hca.validate(
-            validator,
-            digest,
-            _initialEnvelope(permissionId, proof, claimData, operationData, digest)
-        );
-    }
-
     function test_validator_acceptsFirstSameChainRouteWithMultiChainSessionAuthorization()
         public
         view
     {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
             HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
                     proof.maxRefundAmount
@@ -344,8 +304,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsInvalidFirstSameChainDigestAndSignature() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
             HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
                     proof.maxRefundAmount
@@ -372,41 +331,8 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         hca.validate(validator, digest, envelope);
     }
 
-    function test_validator_rejectsInvalidEnabledPermit2Session() public {
-        bytes memory operationData = _commitOperation(bytes32("commitment"));
-        (bytes memory claimData, bytes32 digest) =
-            _claim(operationData, address(hca), block.chainid);
-
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
-        hca.validate(
-            validator,
-            digest,
-            _envelope(keccak256("missing-session"), claimData, operationData, digest)
-        );
-
-        bytes32 permissionId = _enableSession();
-        hca.setSessionNonce(1);
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
-
-        hca.setSessionNonce(0);
-        bytes memory envelope = _envelope(permissionId, claimData, operationData, digest);
-        _replaceSignature(envelope, _signRhinestoneMessage(0xBAD, digest));
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
-        hca.validate(validator, digest, envelope);
-
-        claimData[84] = 0x02;
-        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
-        hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
-
-        vm.warp(block.timestamp + 2 days);
-        vm.expectRevert(HCAOwnerAndSessionValidator.SessionExpired.selector);
-        hca.validate(validator, digest, _envelope(permissionId, claimData, operationData, digest));
-    }
-
     function test_validator_rejectsFirstSameChainRouteAboveAuthorizedRefund() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
             HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
                     proof.maxRefundAmount + 1
@@ -432,8 +358,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingPullToAnotherAccount() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
             HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
                     proof.maxRefundAmount
@@ -460,10 +385,8 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingWithoutTransfer() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            _initialRefundExecutions(permissionId, proof);
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = _initialRefundExecutions(permissionId, proof);
 
         _assertInitialRefundPolicyFailure(
             permissionId,
@@ -474,11 +397,9 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingWhenCallsAreNotAdjacent() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            _initialRefundExecutions(permissionId, proof);
-        HCAOwnerAndSessionValidator.Execution memory transfer = executions[1];
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = _initialRefundExecutions(permissionId, proof);
+        Execution memory transfer = executions[1];
         executions[1] = executions[2];
         executions[2] = transfer;
 
@@ -486,12 +407,10 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingWithMismatchedAmounts() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            _initialRefundExecutions(permissionId, proof);
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = _initialRefundExecutions(permissionId, proof);
         executions[1].callData = abi.encodeWithSelector(
-            validator.TRANSFER_FROM_SELECTOR(),
+            IERC20.transferFrom.selector,
             owner,
             address(hca),
             19_000_000
@@ -501,12 +420,10 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingWithZeroAmount() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            _initialRefundExecutions(permissionId, proof);
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = _initialRefundExecutions(permissionId, proof);
         executions[0].callData = abi.encodeWithSelector(
-            validator.PERMIT_SELECTOR(),
+            IERC20Permit.permit.selector,
             owner,
             address(hca),
             0,
@@ -516,7 +433,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
             bytes32(uint256(2))
         );
         executions[1].callData = abi.encodeWithSelector(
-            validator.TRANSFER_FROM_SELECTOR(),
+            IERC20.transferFrom.selector,
             owner,
             address(hca),
             0
@@ -526,12 +443,9 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingWithDuplicatePermit() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            _initialRefundExecutions(permissionId, proof);
-        HCAOwnerAndSessionValidator.Execution[] memory duplicated =
-            new HCAOwnerAndSessionValidator.Execution[](executions.length + 1);
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = _initialRefundExecutions(permissionId, proof);
+        Execution[] memory duplicated = new Execution[](executions.length + 1);
         duplicated[0] = executions[0];
         for (uint256 i; i < executions.length; ++i) {
             duplicated[i + 1] = executions[i];
@@ -541,12 +455,10 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingFromAnotherOwner() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            _initialRefundExecutions(permissionId, proof);
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = _initialRefundExecutions(permissionId, proof);
         executions[0].callData = abi.encodeWithSelector(
-            validator.PERMIT_SELECTOR(),
+            IERC20Permit.permit.selector,
             makeAddr("another-owner"),
             address(hca),
             20_000_000,
@@ -560,12 +472,10 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function test_validator_rejectsFirstSameChainFundingForAnotherSpender() public {
-        (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId) =
-            _multiChainEnableProof();
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            _initialRefundExecutions(permissionId, proof);
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = _initialRefundExecutions(permissionId, proof);
         executions[0].callData = abi.encodeWithSelector(
-            validator.PERMIT_SELECTOR(),
+            IERC20Permit.permit.selector,
             owner,
             makeAddr("another-spender"),
             20_000_000,
@@ -578,72 +488,28 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         _assertInitialRefundPolicyFailure(permissionId, proof, 80, _encodeExecutions(executions));
     }
 
-    function _enableSession() internal returns (bytes32 permissionId) {
-        permissionId = keccak256("cross-chain registration session");
-        vm.prank(address(hca));
-        validator.enableSession(
-            permissionId,
-            sessionSigner,
-            uint48(block.timestamp + 1 days),
-            address(0)
-        );
-    }
-
     function _commitOperation(bytes32 commitment) internal view returns (bytes memory) {
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
-            COMMIT_SELECTOR,
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+            IETHRegistrar.commit.selector,
             commitment
         )});
-        return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+        return _encodeExecutions(executions);
     }
 
-    function _initialCommitOperation(
-        bytes32 permissionId,
-        HCAOwnerAndSessionValidator.SessionEnableProof memory proof
-    )
+    function _initialCommitOperation(bytes32 permissionId, SessionEnableProofFixture memory proof)
         internal
         view
         returns (bytes memory)
     {
-        return _initialCommitOperation(permissionId, proof, proof.validUntil);
-    }
-
-    function _initialCommitOperation(
-        bytes32 permissionId,
-        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
-        uint48 enabledUntil
-    )
-        internal
-        view
-        returns (bytes memory)
-    {
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](2);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: address(validator), value: 0, callData: abi.encodeCall(
-            validator.enableSessionWithRefund,
-            (
-                permissionId,
-                proof.sessionKey,
-                enabledUntil,
-                proof.resolver,
-                proof.refundToken,
-                proof.maxRefundExchangeRate,
-                proof.maxRefundGasOverhead,
-                proof.maxRefundAmount
-            )
-        )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
-            COMMIT_SELECTOR,
-            bytes32("commitment")
-        )});
-        return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+        permissionId;
+        proof;
+        return _commitOperation(bytes32("commitment"));
     }
 
     function _initialEnvelope(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
+        SessionEnableProofFixture memory proof,
         bytes memory claimData,
         bytes memory operationData,
         bytes32 digest
@@ -652,12 +518,11 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         pure
         returns (bytes memory)
     {
-        bytes memory proofData = abi.encode(proof);
+        bytes memory proofData = _packProof(proof);
         return
             abi.encodePacked(
                 bytes1(uint8(4)),
                 permissionId,
-                bytes4(uint32(proofData.length)),
                 proofData,
                 SOURCE_CHAIN_ID,
                 claimData,
@@ -668,7 +533,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
 
     function _initialRefundCommitOperation(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.SessionEnableProof memory proof
+        SessionEnableProofFixture memory proof
     )
         internal
         view
@@ -679,17 +544,16 @@ contract HCAOwnerAndSessionValidatorTest is Test {
 
     function _initialRefundCommitOperation(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
+        SessionEnableProofFixture memory proof,
         address fundingRecipient
     )
         internal
         view
         returns (bytes memory)
     {
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](5);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: paymentToken, value: 0, callData: abi.encodeWithSelector(
-            validator.PERMIT_SELECTOR(),
+        Execution[] memory executions = new Execution[](4);
+        executions[0] = Execution({target: paymentToken, value: 0, callData: abi.encodeWithSelector(
+            IERC20Permit.permit.selector,
             owner,
             address(hca),
             20_000_000,
@@ -698,40 +562,28 @@ contract HCAOwnerAndSessionValidatorTest is Test {
             bytes32(uint256(1)),
             bytes32(uint256(2))
         )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: paymentToken, value: 0, callData: abi.encodeWithSelector(
-            validator.TRANSFER_FROM_SELECTOR(),
+        executions[1] = Execution({target: paymentToken, value: 0, callData: abi.encodeWithSelector(
+            IERC20.transferFrom.selector,
             owner,
             fundingRecipient,
             20_000_000
         )});
-        executions[2] = HCAOwnerAndSessionValidator.Execution({target: paymentToken, value: 0, callData: abi.encodeWithSelector(
-            validator.APPROVE_SELECTOR(),
+        executions[2] = Execution({target: paymentToken, value: 0, callData: abi.encodeWithSelector(
+            IERC20.approve.selector,
             gasRefundPaymaster,
             proof.maxRefundAmount
         )});
-        executions[3] = HCAOwnerAndSessionValidator.Execution({target: address(validator), value: 0, callData: abi.encodeCall(
-            validator.enableSessionWithRefund,
-            (
-                permissionId,
-                proof.sessionKey,
-                proof.validUntil,
-                proof.resolver,
-                proof.refundToken,
-                proof.maxRefundExchangeRate,
-                proof.maxRefundGasOverhead,
-                proof.maxRefundAmount
-            )
-        )});
-        executions[4] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
-            COMMIT_SELECTOR,
+        executions[3] = Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+            IETHRegistrar.commit.selector,
             bytes32("commitment")
         )});
-        return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+        permissionId;
+        return _encodeExecutions(executions);
     }
 
     function _initialRefundEnvelope(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
+        SessionEnableProofFixture memory proof,
         uint256 nonce,
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund,
         bytes memory operationData,
@@ -741,46 +593,38 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         pure
         returns (bytes memory)
     {
-        bytes memory proofData = abi.encode(proof);
+        bytes memory proofData = _packProof(proof);
         return
             abi.encodePacked(
                 bytes1(uint8(5)),
                 permissionId,
-                bytes4(uint32(proofData.length)),
                 proofData,
                 nonce,
                 gasRefund.token,
-                gasRefund.exchangeRate,
-                gasRefund.overhead,
+                uint96(gasRefund.exchangeRate),
+                uint96(gasRefund.overhead >> 128),
+                uint48(uint128(gasRefund.overhead)),
                 operationData,
                 _signRhinestoneMessage(SESSION_KEY, digest)
             );
     }
 
-    function _initialRefundExecutions(
-        bytes32 permissionId,
-        HCAOwnerAndSessionValidator.SessionEnableProof memory proof
-    )
+    function _initialRefundExecutions(bytes32 permissionId, SessionEnableProofFixture memory proof)
         internal
         view
-        returns (HCAOwnerAndSessionValidator.Execution[] memory)
+        returns (Execution[] memory)
     {
-        return
-            abi.decode(
-                _slice(_initialRefundCommitOperation(permissionId, proof), 32),
-                (HCAOwnerAndSessionValidator.Execution[])
-            );
+        (, Execution[] memory executions) =
+            _decodeOperation(_initialRefundCommitOperation(permissionId, proof));
+        return executions;
     }
 
-    function _withoutExecution(
-        HCAOwnerAndSessionValidator.Execution[] memory executions,
-        uint256 removedIndex
-    )
+    function _withoutExecution(Execution[] memory executions, uint256 removedIndex)
         internal
         pure
-        returns (HCAOwnerAndSessionValidator.Execution[] memory remaining)
+        returns (Execution[] memory remaining)
     {
-        remaining = new HCAOwnerAndSessionValidator.Execution[](executions.length - 1);
+        remaining = new Execution[](executions.length - 1);
         uint256 next;
         for (uint256 i; i < executions.length; ++i) {
             if (i != removedIndex) {
@@ -789,17 +633,31 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         }
     }
 
-    function _encodeExecutions(HCAOwnerAndSessionValidator.Execution[] memory executions)
-        internal
-        view
-        returns (bytes memory)
-    {
-        return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+    function _encodeExecutions(Execution[] memory executions) internal pure returns (bytes memory) {
+        bytes memory packed =
+            abi.encodePacked(
+                bytes2(HCAOperationHashLib.ERC7579_ERC1271_MODE),
+                uint8(executions.length)
+            );
+        for (uint256 i; i < executions.length; ++i) {
+            Execution memory execution = executions[i];
+            assertEq(execution.value, 0);
+            assertLe(execution.callData.length, type(uint24).max);
+            packed = bytes.concat(
+                packed,
+                abi.encodePacked(
+                    execution.target,
+                    uint24(execution.callData.length),
+                    execution.callData
+                )
+            );
+        }
+        return packed;
     }
 
     function _assertInitialRefundPolicyFailure(
         bytes32 permissionId,
-        HCAOwnerAndSessionValidator.SessionEnableProof memory proof,
+        SessionEnableProofFixture memory proof,
         uint256 nonce,
         bytes memory operationData
     )
@@ -835,7 +693,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     function _multiChainEnableProof()
         internal
         view
-        returns (HCAOwnerAndSessionValidator.SessionEnableProof memory proof, bytes32 permissionId)
+        returns (SessionEnableProofFixture memory proof, bytes32 permissionId)
     {
         proof.sessionKey = sessionSigner;
         proof.validUntil = uint48(block.timestamp + 1 days);
@@ -876,17 +734,17 @@ contract HCAOwnerAndSessionValidatorTest is Test {
                     SMART_SESSION_EMISSARY
                 )
             );
-        proof.hashesAndChainIds = new HCAOwnerAndSessionValidator.HashAndChainId[](2);
-        proof.hashesAndChainIds[0] = HCAOwnerAndSessionValidator.HashAndChainId({chainId: uint64(
+        proof.hashesAndChainIds = new HCASmartSessionLib.HashAndChainId[](2);
+        proof.hashesAndChainIds[0] = HCASmartSessionLib.HashAndChainId({chainId: uint64(
             SOURCE_CHAIN_ID
         ), sessionDigest: keccak256("source session")});
-        proof.hashesAndChainIds[1] = HCAOwnerAndSessionValidator.HashAndChainId({chainId: uint64(
+        proof.hashesAndChainIds[1] = HCASmartSessionLib.HashAndChainId({chainId: uint64(
             block.chainid
         ), sessionDigest: destinationSessionDigest});
 
         bytes32[] memory chainSessionHashes = new bytes32[](2);
         for (uint256 i; i < 2; ++i) {
-            HCAOwnerAndSessionValidator.HashAndChainId memory item = proof.hashesAndChainIds[i];
+            HCASmartSessionLib.HashAndChainId memory item = proof.hashesAndChainIds[i];
             chainSessionHashes[i] = keccak256(
                 abi.encode(CHAIN_SESSION_TYPEHASH, item.chainId, item.sessionDigest)
             );
@@ -908,6 +766,30 @@ contract HCAOwnerAndSessionValidatorTest is Test {
             );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
         (proof.ownerV, proof.ownerR, proof.ownerS) = vm.sign(OWNER_KEY, digest);
+    }
+
+    function _packProof(SessionEnableProofFixture memory proof)
+        internal
+        pure
+        returns (bytes memory packed)
+    {
+        packed = abi.encodePacked(
+            proof.sessionKey,
+            proof.validUntil,
+            proof.sessionNonce,
+            proof.resolver,
+            proof.refundToken,
+            proof.maxRefundExchangeRate,
+            proof.maxRefundGasOverhead,
+            proof.maxRefundAmount,
+            proof.sessionToEnableIndex,
+            uint8(proof.hashesAndChainIds.length)
+        );
+        for (uint256 i; i < proof.hashesAndChainIds.length; ++i) {
+            HCASmartSessionLib.HashAndChainId memory item = proof.hashesAndChainIds[i];
+            packed = bytes.concat(packed, abi.encodePacked(item.chainId, item.sessionDigest));
+        }
+        return bytes.concat(packed, abi.encodePacked(proof.ownerR, proof.ownerS, proof.ownerV));
     }
 
     function _claim(bytes memory operationData, address recipient, uint256 targetChainId)
@@ -1005,12 +887,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
     }
 
     function _operationHash(bytes memory operationData) internal pure returns (bytes32) {
-        bytes32 mode;
-        assembly ("memory-safe") {
-            mode := mload(add(operationData, 0x20))
-        }
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            abi.decode(_slice(operationData, 32), (HCAOwnerAndSessionValidator.Execution[]));
+        (bytes32 mode, Execution[] memory executions) = _decodeOperation(operationData);
         bytes32[] memory executionHashes = new bytes32[](executions.length);
         for (uint256 i; i < executions.length; ++i) {
             executionHashes[i] = keccak256(
@@ -1024,6 +901,50 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         }
         return
             keccak256(abi.encode(OP_TYPEHASH, mode, keccak256(abi.encodePacked(executionHashes))));
+    }
+
+    function _decodeOperation(bytes memory operationData)
+        internal
+        pure
+        returns (bytes32 mode, Execution[] memory executions)
+    {
+        if (operationData.length < 3) {
+            revert HCAOperationHashLib.InvalidOperationEncoding();
+        }
+        bytes2 modePrefix;
+        assembly ("memory-safe") {
+            modePrefix := mload(add(operationData, 0x20))
+        }
+        mode = bytes32(modePrefix);
+        uint256 count = uint8(operationData[2]);
+        executions = new Execution[](count);
+        uint256 cursor = 3;
+        for (uint256 i; i < count; ++i) {
+            if (operationData.length < cursor + 23) {
+                revert HCAOperationHashLib.InvalidOperationEncoding();
+            }
+            address target;
+            assembly ("memory-safe") {
+                target := shr(96, mload(add(add(operationData, 0x20), cursor)))
+            }
+            uint256 callDataLength =
+                (uint256(uint8(operationData[cursor + 20])) << 16) |
+                (uint256(uint8(operationData[cursor + 21])) << 8) |
+                uint256(uint8(operationData[cursor + 22]));
+            cursor += 23;
+            if (operationData.length < cursor + callDataLength) {
+                revert HCAOperationHashLib.InvalidOperationEncoding();
+            }
+            executions[i] = Execution({target: target, value: 0, callData: _slice(
+                operationData,
+                cursor,
+                callDataLength
+            )});
+            cursor += callDataLength;
+        }
+        if (cursor != operationData.length) {
+            revert HCAOperationHashLib.InvalidOperationEncoding();
+        }
     }
 
     function _envelope(
@@ -1047,8 +968,12 @@ contract HCAOwnerAndSessionValidatorTest is Test {
             );
     }
 
-    function _slice(bytes memory data, uint256 start) internal pure returns (bytes memory result) {
-        result = new bytes(data.length - start);
+    function _slice(bytes memory data, uint256 start, uint256 length)
+        internal
+        pure
+        returns (bytes memory result)
+    {
+        result = new bytes(length);
         for (uint256 i; i < result.length; ++i) {
             result[i] = data[start + i];
         }
@@ -1107,7 +1032,8 @@ contract HCAOwnerAndSessionValidatorEnableHarness is HCAOwnerAndSessionValidator
         view
         returns (bytes32)
     {
-        return _singleChainDigest(account, nonce, operationData, gasRefund);
+        (, bytes32 operationHash) = _decodeERC1271Operation(operationData);
+        return _singleChainDigest(account, nonce, operationHash, gasRefund);
     }
 
     /// @notice Exposes resolver call policy validation.

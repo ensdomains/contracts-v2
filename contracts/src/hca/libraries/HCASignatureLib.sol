@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 /// @title HCA Signature Library
@@ -14,6 +13,10 @@ library HCASignatureLib {
 
     /// @dev Length of one ECDSA signature.
     uint256 internal constant SIGNATURE_LENGTH = 65;
+
+    /// @dev Highest canonical secp256k1 `s` value accepted by EIP-2.
+    uint256 private constant _HALF_CURVE_ORDER =
+        0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
@@ -46,7 +49,7 @@ library HCASignatureLib {
     }
 
     /// @notice Recovers a signer from separate Rhinestone-compatible signature fields.
-    /// @dev Normalizes compact recovery identifiers and rejects non-canonical signatures.
+    /// @dev Normalizes compact recovery identifiers and rejects non-canonical `s` values.
     /// @param digest The digest represented by the signature.
     /// @param r The ECDSA `r` value.
     /// @param s The ECDSA `s` value.
@@ -66,11 +69,10 @@ library HCASignatureLib {
         if (v != 27 && v != 28) {
             return address(0);
         }
-        ECDSA.RecoverError error;
-        (signer, error, ) = ECDSA.tryRecover(digest, v, r, s);
-        if (error != ECDSA.RecoverError.NoError) {
+        if (uint256(s) > _HALF_CURVE_ORDER) {
             return address(0);
         }
+        return ecrecover(digest, v, r, s);
     }
 
     /// @notice Checks the raw and EIP-191 UserOperation signatures accepted by the Nexus validator.
@@ -106,22 +108,19 @@ library HCASignatureLib {
         if (v != 27 && v != 28) {
             return false;
         }
+        if (uint256(s) > _HALF_CURVE_ORDER) {
+            return false;
+        }
 
         address signer;
-        ECDSA.RecoverError error;
         if (!explicitEthSigned) {
-            (signer, error, ) = ECDSA.tryRecover(digest, v, r, s);
-            if (error == ECDSA.RecoverError.NoError && signer == expectedSigner) {
+            signer = ecrecover(digest, v, r, s);
+            if (signer != address(0) && signer == expectedSigner) {
                 return true;
             }
         }
 
-        (signer, error, ) = ECDSA.tryRecover(
-            MessageHashUtils.toEthSignedMessageHash(digest),
-            v,
-            r,
-            s
-        );
-        return error == ECDSA.RecoverError.NoError && signer == expectedSigner;
+        signer = ecrecover(MessageHashUtils.toEthSignedMessageHash(digest), v, r, s);
+        return signer != address(0) && signer == expectedSigner;
     }
 }
