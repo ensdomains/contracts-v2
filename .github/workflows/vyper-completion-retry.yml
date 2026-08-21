@@ -1,0 +1,55 @@
+name: Vyper completion retry controller
+
+"on":
+  push:
+    branches:
+      - experiment/vyper-a971bd6
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vyper-completion-retry-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  retry:
+    if: ${{ contains(github.event.head_commit.message, '[completion-agent]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Trigger bounded retry when audit is incomplete
+        run: |
+          set -euo pipefail
+          status=INCOMPLETE
+          if [ -f reports/vyper/completion/FINAL_STATUS ]; then
+            status=$(tr -d '\r\n' < reports/vyper/completion/FINAL_STATUS)
+          fi
+          if [ "$status" = COMPLETE ]; then
+            echo 'Strict completion gate passed; no retry.'
+            exit 0
+          fi
+
+          attempt=0
+          if [ -f reports/vyper/completion/retry-attempt.txt ]; then
+            attempt=$(tr -dc '0-9' < reports/vyper/completion/retry-attempt.txt)
+            attempt=${attempt:-0}
+          fi
+          if [ "$attempt" -ge 3 ]; then
+            echo 'Retry cap reached with incomplete audit.'
+            exit 0
+          fi
+
+          attempt=$((attempt + 1))
+          mkdir -p reports/vyper/completion
+          printf '%s\n' "$attempt" > reports/vyper/completion/retry-attempt.txt
+          printf 'Retry %s: continue from committed strict audit failures; do not restart green work.\n' "$attempt" > vyper-completion-retry-command.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add reports/vyper/completion/retry-attempt.txt vyper-completion-retry-command.txt
+          git commit -m "experiment: retry Vyper completion pass $attempt [run-vyper-completion]"
+          git push origin HEAD:experiment/vyper-a971bd6
