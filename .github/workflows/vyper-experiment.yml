@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Build portable toolchain bundle
+      - name: Build portable workspace bundle
         run: |
           set -euxo pipefail
           rm -rf /tmp/vyper-toolchain
@@ -54,10 +54,19 @@ jobs:
             PYTHONPATH=/tmp/vyper-toolchain/python python3 -m vyper --version
           } > /tmp/vyper-toolchain/VERSIONS.txt
 
+          tar \
+            --exclude=.git \
+            --exclude='**/.git' \
+            --exclude='contracts/out' \
+            --exclude='contracts/cache' \
+            -czf /tmp/contracts-v2-prepared.tgz .
+
       - uses: actions/upload-artifact@v4
         with:
-          name: vyper-local-toolchain
-          path: /tmp/vyper-toolchain
+          name: vyper-local-workspace
+          path: |
+            /tmp/vyper-toolchain
+            /tmp/contracts-v2-prepared.tgz
           retention-days: 1
 
       - name: Publish artifact run id
