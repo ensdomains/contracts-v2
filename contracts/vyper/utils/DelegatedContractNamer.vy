@@ -1,4 +1,4 @@
-# pragma version ~=0.4.3
+# pragma version ==0.5.0a3
 # SPDX-License-Identifier: MIT
 
 interface IContractNamer:
@@ -18,7 +18,7 @@ def CONTRACT_NAMER() -> address:
 @external
 @view
 def supportsInterface(interface_id: bytes4) -> bool:
-    return interface_id == method_id("isContractNamer(address)") or interface_id == 0x01ffc9a7
+    return interface_id == convert(method_id("isContractNamer(address)"), bytes4) or interface_id == 0x01ffc9a7
 
 @external
 @view
