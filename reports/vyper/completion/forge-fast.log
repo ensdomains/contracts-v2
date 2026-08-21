@@ -1,11 +1,5 @@
 STDOUT:
-Compiling 122 files with Solc 0.8.35
-Compiling 117 files with Solc 0.8.27
-Compiling 205 files with Solc 0.8.25
-Solc 0.8.35 finished in 480.43ms
-Solc 0.8.27 finished in 2.77s
-Solc 0.8.25 finished in 11.37s
-Compiler run successful!
+No files changed, compilation skipped
 No tests found in project! Forge looks for functions that start with `test`
 
 STDERR:
