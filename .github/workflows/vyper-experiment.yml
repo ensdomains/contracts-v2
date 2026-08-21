@@ -7,22 +7,20 @@ name: Vyper experiment
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: vyper-experiment-${{ github.ref }}
+  group: vyper-experiment-toolchain-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  experiment:
-    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[vyper-ci]') }}
+  toolchain:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: recursive
-          fetch-depth: 0
 
       - uses: ./.github/actions/setup
 
@@ -30,77 +28,32 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install Vyper
-        run: pip install 'vyper==0.4.3'
-
-      - name: Record toolchain and source inventory
+      - name: Build portable toolchain bundle
         run: |
-          mkdir -p vyper-results
+          set -euxo pipefail
+          rm -rf /tmp/vyper-toolchain
+          mkdir -p /tmp/vyper-toolchain/bin /tmp/vyper-toolchain/python
+          cp "$(command -v forge)" /tmp/vyper-toolchain/bin/
+          cp "$(command -v cast)" /tmp/vyper-toolchain/bin/
+          cp "$(command -v anvil)" /tmp/vyper-toolchain/bin/
+          cp "$(command -v chisel)" /tmp/vyper-toolchain/bin/ || true
+          cp "$(command -v bun)" /tmp/vyper-toolchain/bin/
+          python -m pip install --target /tmp/vyper-toolchain/python 'vyper==0.4.3'
+          cat > /tmp/vyper-toolchain/bin/vyper <<'SH'
+          #!/usr/bin/env bash
+          HERE="$(cd "$(dirname "$0")/.." && pwd)"
+          PYTHONPATH="$HERE/python${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m vyper "$@"
+          SH
+          chmod +x /tmp/vyper-toolchain/bin/vyper
           {
-            echo "baseline=a971bd6449154045e2b26ff13d0e56027452f407"
-            echo "tested_commit=$(git rev-parse HEAD)"
+            uname -a
             forge --version
-            vyper --version
-            echo
-            echo "Solidity source inventory:"
-            find contracts/src -type f -name '*.sol' -print | sort
-          } > vyper-results/latest.txt
+            bun --version
+            PYTHONPATH=/tmp/vyper-toolchain/python python3 -m vyper --version
+          } > /tmp/vyper-toolchain/VERSIONS.txt
 
-      - name: Solidity baseline Forge tests and gas report
-        continue-on-error: true
-        timeout-minutes: 10
-        run: |
-          {
-            echo
-            echo "===== SOLIDITY BASELINE: forge test --gas-report ====="
-            cd contracts
-            forge test --gas-report
-          } >> vyper-results/latest.txt 2>&1
-
-      - name: Compile Vyper experiment sources
-        continue-on-error: true
-        timeout-minutes: 5
-        run: |
-          {
-            echo
-            echo "===== VYPER COMPILE ====="
-            if [ -d contracts/vyper ]; then
-              failed=0
-              while IFS= read -r file; do
-                echo "--- $file"
-                if ! vyper --evm-version cancun --optimize gas -p contracts/vyper -f abi,bytecode_runtime "$file" >/dev/null; then
-                  failed=1
-                  break
-                fi
-              done < <(find contracts/vyper -type f -name '*.vy' -print | sort)
-              exit "$failed"
-            else
-              echo "contracts/vyper does not exist yet"
-            fi
-          } >> vyper-results/latest.txt 2>&1
-
-      - name: Run Vyper compatibility tests when present
-        continue-on-error: true
-        timeout-minutes: 5
-        run: |
-          {
-            echo
-            echo "===== VYPER COMPATIBILITY TESTS ====="
-            if [ -f contracts/test/vyper/VyperCompatibility.t.sol ]; then
-              cd contracts
-              forge test --match-path 'test/vyper/**/*.t.sol' --gas-report -vv
-            else
-              echo "No Vyper compatibility harness yet"
-            fi
-          } >> vyper-results/latest.txt 2>&1
-
-      - name: Commit result log
-        if: always()
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -- vyper-results/latest.txt
-          if ! git diff --cached --quiet; then
-            git commit -m 'chore: update Vyper experiment results [vyper-ci]'
-            git push origin HEAD:experiment/vyper-a971bd6
-          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vyper-local-toolchain
+          path: /tmp/vyper-toolchain
+          retention-days: 1
