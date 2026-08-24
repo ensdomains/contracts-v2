@@ -1,0 +1,104 @@
+name: Full Vyper port
+
+"on":
+  push:
+    branches: [experiment/vyper-full-a971bd6]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  models: read
+
+concurrency:
+  group: full-vyper-port-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  port:
+    if: ${{ !contains(github.event.head_commit.message, '[vyper-port-complete]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Import salvageable partial work and agent driver
+        run: |
+          set -euxo pipefail
+          git fetch origin experiment/vyper-a971bd6
+          if [ ! -d contracts/vyper ]; then
+            git checkout origin/experiment/vyper-a971bd6 -- contracts/vyper
+          fi
+          git checkout origin/experiment/vyper-a971bd6 -- \
+            contracts/script/vyperModelAgent.py \
+            contracts/script/vyperCompletionAgent.py \
+            contracts/script/vyperCompletionAgentFast.py \
+            contracts/script/vyperSpecialistAgent.py \
+            contracts/script/vyperEscalationAgent.py
+          find contracts/script -type d -name __pycache__ -prune -exec rm -rf {} +
+          find contracts/script -type f -name '*.pyc' -delete
+
+      - uses: ./.github/actions/setup
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Vyper toolchain
+        run: python -m pip install 'vyper==0.5.0a3' requests
+
+      - name: Run serialized model implementation passes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VYPER_ALPHA_PATH: ${{ github.workspace }}/.venv-vyper
+        run: |
+          set -euo pipefail
+          mkdir -p reports/vyper/full-port
+          for round in 1 2 3; do
+            echo "=== model implementation round $round ===" | tee -a reports/vyper/full-port/agent.log
+            set +e
+            timeout 2100s python contracts/script/vyperModelAgent.py >> reports/vyper/full-port/agent.log 2>&1
+            rc=$?
+            set -e
+            echo "$rc" > "reports/vyper/full-port/model-round-$round.rc"
+            git add -A
+            if ! git diff --cached --quiet; then
+              git config user.name github-actions[bot]
+              git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+              git commit -m "experiment: Vyper model implementation round $round [skip ci]"
+            fi
+          done
+
+      - name: Run completion and strict validation agents
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for script in vyperCompletionAgentFast.py vyperCompletionAgent.py vyperSpecialistAgent.py vyperEscalationAgent.py; do
+            echo "=== $script ===" | tee -a reports/vyper/full-port/agent.log
+            set +e
+            timeout 1800s python "contracts/script/$script" >> reports/vyper/full-port/agent.log 2>&1
+            rc=$?
+            set -e
+            echo "$rc" > "reports/vyper/full-port/${script%.py}.rc"
+          done
+
+      - name: Commit and push current result
+        if: always()
+        run: |
+          set -euxo pipefail
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          find . -type f -name '*.pyc' -delete
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'experiment: serialized full Vyper port pass [skip ci]'
+          fi
+          git push origin HEAD:experiment/vyper-full-a971bd6
