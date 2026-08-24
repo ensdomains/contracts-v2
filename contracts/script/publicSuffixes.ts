@@ -1,6 +1,6 @@
 import { labelhash, zeroAddress, type Abi, type Address } from "viem";
 import { dnsEncodeName } from "../test/utils/utils.js";
-import { MAX_EXPIRY, ROLES } from "./deploy-constants.js";
+import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
 
 export const SUFFIX_BATCH_SIZE = 25;
 
@@ -12,7 +12,7 @@ type DeploymentLike<TAbi extends Abi = Abi> = {
   abi: TAbi;
 };
 
-export async function fetchPublicSuffixes() {
+export async function fetchPublicSuffixes(onlyTLDs = false) {
   const res = await fetch(
     "https://publicsuffix.org/list/public_suffix_list.dat",
     { headers: { Connection: "close" } },
@@ -21,7 +21,7 @@ export async function fetchPublicSuffixes() {
   return (await res.text())
     .split("\n")
     .map((x) => x.trim())
-    .filter((x) => x && !x.startsWith("//"));
+    .filter((x) => x && !x.startsWith("//") && (!onlyTLDs || !x.includes(".")));
 }
 
 // Filters candidates down to the suffixes that are on the v1 public suffix
@@ -52,7 +52,7 @@ export async function filterAvailableSuffixes({
           functionName: "getStatus",
           args: [BigInt(labelhash(suffix))],
         });
-        return status === 0 ? suffix : "";
+        return status === STATUS.AVAILABLE ? suffix : "";
       }),
     );
     suffixes.push(...available.filter(Boolean));

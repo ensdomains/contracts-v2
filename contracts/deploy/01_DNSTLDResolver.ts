@@ -55,18 +55,23 @@ export default execute(
       ],
     });
 
-    const candidates = tags.local
+    if (tags["clean-testnet"]) {
+      console.warn("  - Skipping v1 DNS TLD registration on clean-testnet");
+      return;
+    }
+
+    const tlds = tags.local
       ? ["com", "org", "net", "xyz"]
-      : await fetchPublicSuffixes();
+      : await fetchPublicSuffixes(true);
     const suffixes = await filterAvailableSuffixes({
       read,
       publicSuffixList,
       rootRegistry,
-      candidates,
+      candidates: tlds,
     });
 
-    if (suffixes.length === 0) {
-      console.warn("  - No suffixes found");
+    if (!suffixes.length) {
+      console.warn("  - No DNS suffixes found");
       return;
     }
 
@@ -86,7 +91,7 @@ export default execute(
     });
   },
   {
-    tags: ["DNSTLDResolver", "v2"],
+    tags: ["DNSTLDResolver", "v2", "migration:phase1:deploy-v2"],
     dependencies: [
       "RootRegistry",
       "ENSRegistry",
@@ -96,9 +101,6 @@ export default execute(
       "BatchGatewayProvider",
       "DNSSECGatewayProvider",
       "ContractNamer",
-      // Run the v1 root-TLD mirror first so it claims root TLDs for v1 fallback;
-      // this resolver then registers only the remaining (non-root) public suffixes.
-      "DNSV1MirrorTLDs",
     ],
   },
 );
