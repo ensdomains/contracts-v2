@@ -37,6 +37,7 @@ import { Abi_PermissionedAddressSet } from "generated/abis/PermissionedAddressSe
 import { Abi_UniversalHelper } from "generated/abis/UniversalHelper.js";
 import { Abi_UniversalResolverV2 } from "generated/abis/UniversalResolverV2.js";
 import { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
+import { Abi_SharedResolver } from "generated/abis/SharedResolver.js";
 import { Abi_MigrationHelper } from "generated/abis/src/migration/MigrationHelper.sol/MigrationHelper.js";
 // erc20
 import { Abi_MockERC20 } from "generated/abis/test/mocks/MockERC20.sol/MockERC20.js";
@@ -511,38 +512,38 @@ export async function setupDevnet({
       // universal
       UniversalResolver: getContract({
         abi: Abi_UniversalResolverV2,
-        address: rocketh.deployments["UniversalResolverV2"].address,
+        address: rocketh.get("UniversalResolverV2").address,
         client,
       }),
       UniversalHelper: getContract({
         abi: Abi_UniversalHelper,
-        address: rocketh.deployments["UniversalHelper"].address,
+        address: rocketh.get("UniversalHelper").address,
         client,
       }),
       // resolvers
       DNSTLDResolver: getContract({
         abi: Artifact_DNSTLDResolver.abi,
-        address: rocketh.deployments["DNSTLDResolver"].address,
+        address: rocketh.get("DNSTLDResolver").address,
         client,
       }),
       DNSTXTResolver: getContract({
         abi: Artifact_DNSTXTResolver.abi,
-        address: rocketh.deployments["DNSTXTResolver"].address,
+        address: rocketh.get("DNSTXTResolver").address,
         client,
       }),
       DNSAliasResolver: getContract({
         abi: Artifact_DNSAliasResolver.abi,
-        address: rocketh.deployments["DNSAliasResolver"].address,
+        address: rocketh.get("DNSAliasResolver").address,
         client,
       }),
       ENSV1Resolver: getContract({
         abi: Artifact_ENSV1Resolver.abi,
-        address: rocketh.deployments["ENSV1Resolver"].address,
+        address: rocketh.get("ENSV1Resolver").address,
         client,
       }),
       ENSV2Resolver: getContract({
         abi: Artifact_ENSV2Resolver.abi,
-        address: rocketh.deployments["ENSV2Resolver"].address,
+        address: rocketh.get("ENSV2Resolver").address,
         client,
       }),
       PublicResolver: getContract({
@@ -550,17 +551,22 @@ export async function setupDevnet({
         address: rocketh.get("PublicResolverV2").address,
         client,
       }),
+      SharedResolver: getContract({
+        abi: Abi_SharedResolver,
+        address: rocketh.get("SharedResolver").address,
+        client,
+      }),
     };
 
     const erc20 = {
       MockUSDC: getContract({
         abi: Abi_MockERC20,
-        address: rocketh.deployments["MockUSDC"].address,
+        address: rocketh.get("MockUSDC").address,
         client,
       }),
       MockDAI: getContract({
         abi: Abi_MockERC20,
-        address: rocketh.deployments["MockDAI"].address,
+        address: rocketh.get("MockDAI").address,
         client,
       }),
     };
@@ -568,27 +574,27 @@ export async function setupDevnet({
     const hca = {
       MockRegistrationIntentExecutor: getContract({
         abi: Abi_MockRegistrationIntentExecutor,
-        address: rocketh.deployments["MockRegistrationIntentExecutor"].address,
+        address: rocketh.get("MockRegistrationIntentExecutor").address,
         client,
       }),
       HCAOwnerAndSessionValidator: getContract({
         abi: Abi_HCAOwnerAndSessionValidator,
-        address: rocketh.deployments["HCAOwnerAndSessionValidator"].address,
+        address: rocketh.get("HCAOwnerAndSessionValidator").address,
         client,
       }),
       StandaloneHCAImplementation: getContract({
         abi: Abi_StandaloneSingleOwnerHCA,
-        address: rocketh.deployments["StandaloneHCAImplementation"].address,
+        address: rocketh.get("StandaloneHCAImplementation").address,
         client,
       }),
       StandaloneHCAFactory: getContract({
         abi: Abi_StandaloneHCAFactory,
-        address: rocketh.deployments["StandaloneHCAFactory"].address,
+        address: rocketh.get("StandaloneHCAFactory").address,
         client,
       }),
       HCAUpgradeSet: getContract({
         abi: Abi_PermissionedAddressSet,
-        address: rocketh.deployments["HCAUpgradeSet"].address,
+        address: rocketh.get("HCAUpgradeSet").address,
         client,
       }),
     };
@@ -995,6 +1001,7 @@ export async function setupDevnet({
       await setName("impl.universal", v2.UniversalResolver.address); // devnet doesn't deploy a proxy
       await setName("helper", v2.UniversalHelper.address);
       await setName("public.resolver", v2.PublicResolver.address);
+      await setName("shared.resolver", v2.SharedResolver.address);
       await setName("dns.resolver", v2.DNSTLDResolver.address);
 
       await setName("dnsname", v2.DNSTXTResolver.address); // remap v1 ExtendedDNSResolver
