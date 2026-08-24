@@ -4,3 +4,11 @@ python: can't open file '/home/runner/work/contracts-v2/contracts-v2/contracts/s
 python: can't open file '/home/runner/work/contracts-v2/contracts-v2/contracts/script/vyperModelAgent.py': [Errno 2] No such file or directory
 === model implementation round 3 ===
 python: can't open file '/home/runner/work/contracts-v2/contracts-v2/contracts/script/vyperModelAgent.py': [Errno 2] No such file or directory
+=== vyperCompletionAgentFast.py ===
+python: can't open file '/home/runner/work/contracts-v2/contracts-v2/contracts/script/vyperCompletionAgentFast.py': [Errno 2] No such file or directory
+=== vyperCompletionAgent.py ===
+python: can't open file '/home/runner/work/contracts-v2/contracts-v2/contracts/script/vyperCompletionAgent.py': [Errno 2] No such file or directory
+=== vyperSpecialistAgent.py ===
+python: can't open file '/home/runner/work/contracts-v2/contracts-v2/contracts/script/vyperSpecialistAgent.py': [Errno 2] No such file or directory
+=== vyperEscalationAgent.py ===
+python: can't open file '/home/runner/work/contracts-v2/contracts-v2/contracts/script/vyperEscalationAgent.py': [Errno 2] No such file or directory
