@@ -1,0 +1,62 @@
+name: Final Vyper completion checkpointing
+
+"on":
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/vyper-a971bd6
+    paths:
+      - .github/workflows/vyper-final-completion-checkpoint.yml
+      - contracts/script/vyperFinalAgentCheckpoint.py
+      - vyper-final-agent-checkpoint-trigger.txt
+
+permissions:
+  contents: write
+  models: read
+
+concurrency:
+  group: final-vyper-completion
+  cancel-in-progress: true
+
+jobs:
+  complete:
+    if: ${{ !contains(github.event.head_commit.message, '[vyper-final-agent]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Vyper
+        run: python -m pip install 'vyper==0.5.0a3'
+      - name: Run checkpointing completion agent
+        env:
+          GITHUB_MODELS_TOKEN: ${{ github.token }}
+          VYPER_AGENT_MODEL: openai/gpt-5.6-codex
+        run: python contracts/script/vyperFinalAgentCheckpoint.py
+      - name: Final checkpoint
+        if: always()
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'experiment: final Vyper completion checkpoint [vyper-final-agent]'
+            git push origin HEAD:experiment/vyper-a971bd6
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-vyper-completion-checkpoint-evidence
+          path: |
+            contracts/vyper
+            contracts/test/vyper
+            reports/vyper/final
+            reports/vyper/final-agent
+          include-hidden-files: true
+          retention-days: 7
