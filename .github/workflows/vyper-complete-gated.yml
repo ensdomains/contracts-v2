@@ -1,0 +1,43 @@
+name: Isolated strict-gated Vyper completion
+
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  models: read
+
+concurrency:
+  group: isolated-vyper-complete
+  cancel-in-progress: true
+
+jobs:
+  complete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: experiment/vyper-complete
+          submodules: recursive
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install 'vyper==0.5.0a3'
+      - name: Run strict-gated coding pass
+        env:
+          GITHUB_MODELS_TOKEN: ${{ github.token }}
+        run: python contracts/script/vyperFinalAgentAutoGated.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: isolated-vyper-complete-evidence
+          path: |
+            contracts/vyper
+            contracts/test/vyper
+            reports/vyper/final
+            reports/vyper/final-agent
+          include-hidden-files: true
+          retention-days: 7
