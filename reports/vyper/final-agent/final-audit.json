@@ -1,0 +1,370 @@
+{
+  "baseline": "a971bd6449154045e2b26ff13d0e56027452f407",
+  "implementation_roots": 58,
+  "manifest_entries": 0,
+  "mapped": 0,
+  "missing": [
+    {
+      "source": "access-control/EnhancedAccessControl.sol",
+      "declarations": [
+        "EnhancedAccessControl"
+      ]
+    },
+    {
+      "source": "access-control/libraries/EACBaseRolesLib.sol",
+      "declarations": [
+        "EACBaseRolesLib"
+      ]
+    },
+    {
+      "source": "dns/DNSAliasResolver.sol",
+      "declarations": [
+        "DNSAliasResolver"
+      ]
+    },
+    {
+      "source": "dns/DNSTLDResolver.sol",
+      "declarations": [
+        "DNSTLDResolver"
+      ]
+    },
+    {
+      "source": "dns/DNSTXTResolver.sol",
+      "declarations": [
+        "DNSTXTResolver"
+      ]
+    },
+    {
+      "source": "dns/libraries/DNSTXTParserLib.sol",
+      "declarations": [
+        "DNSTXTParserLib"
+      ]
+    },
+    {
+      "source": "erc1155/ERC1155Singleton.sol",
+      "declarations": [
+        "ERC1155Singleton"
+      ]
+    },
+    {
+      "source": "hca/HCAAuthorizer.sol",
+      "declarations": [
+        "HCAAuthorizer"
+      ]
+    },
+    {
+      "source": "hca/HCAFundingSessionValidator.sol",
+      "declarations": [
+        "HCAFundingSessionValidator"
+      ]
+    },
+    {
+      "source": "hca/HCAOwnerAndSessionValidator.sol",
+      "declarations": [
+        "HCAOwnerAndSessionValidator"
+      ]
+    },
+    {
+      "source": "hca/StandaloneHCAFactory.sol",
+      "declarations": [
+        "StandaloneHCAFactory"
+      ]
+    },
+    {
+      "source": "hca/StandaloneSingleOwnerHCA.sol",
+      "declarations": [
+        "StandaloneSingleOwnerHCA"
+      ]
+    },
+    {
+      "source": "migration/AbstractWrapperReceiver.sol",
+      "declarations": [
+        "AbstractWrapperReceiver"
+      ]
+    },
+    {
+      "source": "migration/Graveyard.sol",
+      "declarations": [
+        "Graveyard"
+      ]
+    },
+    {
+      "source": "migration/LockedMigrationController.sol",
+      "declarations": [
+        "LockedMigrationController"
+      ]
+    },
+    {
+      "source": "migration/LockedWrapperReceiver.sol",
+      "declarations": [
+        "LockedWrapperReceiver"
+      ]
+    },
+    {
+      "source": "migration/MigrationHelper.sol",
+      "declarations": [
+        "MigrationHelper"
+      ]
+    },
+    {
+      "source": "migration/UnlockedMigrationController.sol",
+      "declarations": [
+        "UnlockedMigrationController"
+      ]
+    },
+    {
+      "source": "migration/libraries/LibMigration.sol",
+      "declarations": [
+        "LibMigration"
+      ]
+    },
+    {
+      "source": "registrar/AbstractETHRegistrar.sol",
+      "declarations": [
+        "AbstractETHRegistrar"
+      ]
+    },
+    {
+      "source": "registrar/BatchRegistrar.sol",
+      "declarations": [
+        "BatchRegistrar"
+      ]
+    },
+    {
+      "source": "registrar/ETHRegistrar.sol",
+      "declarations": [
+        "ETHRegistrar"
+      ]
+    },
+    {
+      "source": "registrar/ETHRenewerV1.sol",
+      "declarations": [
+        "ETHRenewerV1"
+      ]
+    },
+    {
+      "source": "registrar/StandardRentPriceOracle.sol",
+      "declarations": [
+        "StandardRentPriceOracle"
+      ]
+    },
+    {
+      "source": "registrar/libraries/LibHalving.sol",
+      "declarations": [
+        "LibHalving"
+      ]
+    },
+    {
+      "source": "registry/PermissionedRegistry.sol",
+      "declarations": [
+        "PermissionedRegistry"
+      ]
+    },
+    {
+      "source": "registry/UserRegistry.sol",
+      "declarations": [
+        "UserRegistry"
+      ]
+    },
+    {
+      "source": "registry/WrapperRegistry.sol",
+      "declarations": [
+        "WrapperRegistry"
+      ]
+    },
+    {
+      "source": "registry/libraries/RegistryRolesLib.sol",
+      "declarations": [
+        "RegistryRolesLib"
+      ]
+    },
+    {
+      "source": "resolver/AbstractMirrorResolver.sol",
+      "declarations": [
+        "AbstractMirrorResolver"
+      ]
+    },
+    {
+      "source": "resolver/AbstractRecordResolver.sol",
+      "declarations": [
+        "AbstractRecordResolver"
+      ]
+    },
+    {
+      "source": "resolver/ENSV1Resolver.sol",
+      "declarations": [
+        "ENSV1Resolver"
+      ]
+    },
+    {
+      "source": "resolver/ENSV2Resolver.sol",
+      "declarations": [
+        "ENSV2Resolver"
+      ]
+    },
+    {
+      "source": "resolver/PermissionedResolver.sol",
+      "declarations": [
+        "PermissionedResolver"
+      ]
+    },
+    {
+      "source": "resolver/PublicResolverV2.sol",
+      "declarations": [
+        "PublicResolverV2"
+      ]
+    },
+    {
+      "source": "resolver/libraries/PermissionedResolverLib.sol",
+      "declarations": [
+        "PermissionedResolverLib"
+      ]
+    },
+    {
+      "source": "resolver/libraries/ResolverProfileRewriterLib.sol",
+      "declarations": [
+        "ResolverProfileRewriterLib"
+      ]
+    },
+    {
+      "source": "reverse-registrar/DefaultReverseRegistrarAdapter.sol",
+      "declarations": [
+        "DefaultReverseRegistrarAdapter"
+      ]
+    },
+    {
+      "source": "reverse-registrar/L2ReverseRegistrar.sol",
+      "declarations": [
+        "L2ReverseRegistrar"
+      ]
+    },
+    {
+      "source": "reverse-registrar/L2ReverseRegistrarWithMigration.sol",
+      "declarations": [
+        "L2ReverseRegistrarWithMigration"
+      ]
+    },
+    {
+      "source": "reverse-registrar/ReverseRegistrarAdapter.sol",
+      "declarations": [
+        "ReverseRegistrarAdapter"
+      ]
+    },
+    {
+      "source": "reverse-registrar/StandaloneReverseRegistrar.sol",
+      "declarations": [
+        "StandaloneReverseRegistrar"
+      ]
+    },
+    {
+      "source": "reverse-registrar/libraries/AccountNamerLib.sol",
+      "declarations": [
+        "AccountNamerLib"
+      ]
+    },
+    {
+      "source": "reverse-registrar/libraries/ChainIdsBuilderLib.sol",
+      "declarations": [
+        "ChainIdsBuilderLib"
+      ]
+    },
+    {
+      "source": "testnet/TestnetV1PremigrationRegistrar.sol",
+      "declarations": [
+        "TestnetV1PremigrationRegistrar"
+      ]
+    },
+    {
+      "source": "universalResolver/UniversalHelper.sol",
+      "declarations": [
+        "UniversalHelper"
+      ]
+    },
+    {
+      "source": "universalResolver/UniversalResolverV2.sol",
+      "declarations": [
+        "UniversalResolverV2"
+      ]
+    },
+    {
+      "source": "universalResolver/UpgradableUniversalResolverProxy.sol",
+      "declarations": [
+        "UpgradableUniversalResolverProxy"
+      ]
+    },
+    {
+      "source": "universalResolver/libraries/LibRegistry.sol",
+      "declarations": [
+        "LibRegistry"
+      ]
+    },
+    {
+      "source": "utils/ContractNamer.sol",
+      "declarations": [
+        "ContractNamer"
+      ]
+    },
+    {
+      "source": "utils/DelegatedContractNamer.sol",
+      "declarations": [
+        "DelegatedContractNamer"
+      ]
+    },
+    {
+      "source": "utils/LabelStore.sol",
+      "declarations": [
+        "LabelStore"
+      ]
+    },
+    {
+      "source": "utils/LibISO8601.sol",
+      "declarations": [
+        "LibISO8601"
+      ]
+    },
+    {
+      "source": "utils/LibLabel.sol",
+      "declarations": [
+        "LibLabel"
+      ]
+    },
+    {
+      "source": "utils/LibMem.sol",
+      "declarations": [
+        "LibMem"
+      ]
+    },
+    {
+      "source": "utils/LibString.sol",
+      "declarations": [
+        "LibString"
+      ]
+    },
+    {
+      "source": "utils/PermissionedAddressSet.sol",
+      "declarations": [
+        "PermissionedAddressSet"
+      ]
+    },
+    {
+      "source": "utils/WrappedErrorLib.sol",
+      "declarations": [
+        "WrappedErrorLib"
+      ]
+    }
+  ],
+  "invalid": [],
+  "manifest_error": null,
+  "vyper_files": 18,
+  "concrete_compile_failures": [],
+  "eip170_failures": [],
+  "vyper_test_files": [],
+  "missing_reports": [
+    "reports/vyper/final/gas.csv",
+    "reports/vyper/final/gas.json",
+    "reports/vyper/final/gas.md",
+    "reports/vyper/final/bytecode-sizes.csv",
+    "reports/vyper/final/bytecode-sizes.md"
+  ],
+  "final_status": "INCOMPLETE"
+}

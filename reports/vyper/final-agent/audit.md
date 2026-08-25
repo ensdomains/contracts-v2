@@ -1,0 +1,73 @@
+# Strict Vyper completion audit
+
+- Implementation roots: **58**
+- Manifest mapped: **0**
+- Missing: **58**
+- Invalid mappings: **0**
+- Concrete compile failures: **0**
+- EIP-170 failures: **0**
+- Vyper-wired Forge files: **0**
+- Missing reports: **5**
+- FINAL_STATUS: **INCOMPLETE**
+
+## Missing roots
+- `access-control/EnhancedAccessControl.sol` (EnhancedAccessControl)
+- `access-control/libraries/EACBaseRolesLib.sol` (EACBaseRolesLib)
+- `dns/DNSAliasResolver.sol` (DNSAliasResolver)
+- `dns/DNSTLDResolver.sol` (DNSTLDResolver)
+- `dns/DNSTXTResolver.sol` (DNSTXTResolver)
+- `dns/libraries/DNSTXTParserLib.sol` (DNSTXTParserLib)
+- `erc1155/ERC1155Singleton.sol` (ERC1155Singleton)
+- `hca/HCAAuthorizer.sol` (HCAAuthorizer)
+- `hca/HCAFundingSessionValidator.sol` (HCAFundingSessionValidator)
+- `hca/HCAOwnerAndSessionValidator.sol` (HCAOwnerAndSessionValidator)
+- `hca/StandaloneHCAFactory.sol` (StandaloneHCAFactory)
+- `hca/StandaloneSingleOwnerHCA.sol` (StandaloneSingleOwnerHCA)
+- `migration/AbstractWrapperReceiver.sol` (AbstractWrapperReceiver)
+- `migration/Graveyard.sol` (Graveyard)
+- `migration/LockedMigrationController.sol` (LockedMigrationController)
+- `migration/LockedWrapperReceiver.sol` (LockedWrapperReceiver)
+- `migration/MigrationHelper.sol` (MigrationHelper)
+- `migration/UnlockedMigrationController.sol` (UnlockedMigrationController)
+- `migration/libraries/LibMigration.sol` (LibMigration)
+- `registrar/AbstractETHRegistrar.sol` (AbstractETHRegistrar)
+- `registrar/BatchRegistrar.sol` (BatchRegistrar)
+- `registrar/ETHRegistrar.sol` (ETHRegistrar)
+- `registrar/ETHRenewerV1.sol` (ETHRenewerV1)
+- `registrar/StandardRentPriceOracle.sol` (StandardRentPriceOracle)
+- `registrar/libraries/LibHalving.sol` (LibHalving)
+- `registry/PermissionedRegistry.sol` (PermissionedRegistry)
+- `registry/UserRegistry.sol` (UserRegistry)
+- `registry/WrapperRegistry.sol` (WrapperRegistry)
+- `registry/libraries/RegistryRolesLib.sol` (RegistryRolesLib)
+- `resolver/AbstractMirrorResolver.sol` (AbstractMirrorResolver)
+- `resolver/AbstractRecordResolver.sol` (AbstractRecordResolver)
+- `resolver/ENSV1Resolver.sol` (ENSV1Resolver)
+- `resolver/ENSV2Resolver.sol` (ENSV2Resolver)
+- `resolver/PermissionedResolver.sol` (PermissionedResolver)
+- `resolver/PublicResolverV2.sol` (PublicResolverV2)
+- `resolver/libraries/PermissionedResolverLib.sol` (PermissionedResolverLib)
+- `resolver/libraries/ResolverProfileRewriterLib.sol` (ResolverProfileRewriterLib)
+- `reverse-registrar/DefaultReverseRegistrarAdapter.sol` (DefaultReverseRegistrarAdapter)
+- `reverse-registrar/L2ReverseRegistrar.sol` (L2ReverseRegistrar)
+- `reverse-registrar/L2ReverseRegistrarWithMigration.sol` (L2ReverseRegistrarWithMigration)
+- `reverse-registrar/ReverseRegistrarAdapter.sol` (ReverseRegistrarAdapter)
+- `reverse-registrar/StandaloneReverseRegistrar.sol` (StandaloneReverseRegistrar)
+- `reverse-registrar/libraries/AccountNamerLib.sol` (AccountNamerLib)
+- `reverse-registrar/libraries/ChainIdsBuilderLib.sol` (ChainIdsBuilderLib)
+- `testnet/TestnetV1PremigrationRegistrar.sol` (TestnetV1PremigrationRegistrar)
+- `universalResolver/UniversalHelper.sol` (UniversalHelper)
+- `universalResolver/UniversalResolverV2.sol` (UniversalResolverV2)
+- `universalResolver/UpgradableUniversalResolverProxy.sol` (UpgradableUniversalResolverProxy)
+- `universalResolver/libraries/LibRegistry.sol` (LibRegistry)
+- `utils/ContractNamer.sol` (ContractNamer)
+- `utils/DelegatedContractNamer.sol` (DelegatedContractNamer)
+- `utils/LabelStore.sol` (LabelStore)
+- `utils/LibISO8601.sol` (LibISO8601)
+- `utils/LibLabel.sol` (LibLabel)
+- `utils/LibMem.sol` (LibMem)
+- `utils/LibString.sol` (LibString)
+- `utils/PermissionedAddressSet.sol` (PermissionedAddressSet)
+- `utils/WrappedErrorLib.sol` (WrappedErrorLib)
+
+## Compile failures
