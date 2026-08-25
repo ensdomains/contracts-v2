@@ -1,0 +1,76 @@
+name: Final Vyper completion retry loop
+
+"on":
+  push:
+    branches:
+      - experiment/vyper-a971bd6
+    paths:
+      - reports/vyper/final-agent/final-audit.json
+
+permissions:
+  contents: write
+  models: read
+
+concurrency:
+  group: final-vyper-completion
+  cancel-in-progress: true
+
+jobs:
+  continue-until-complete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Decide whether another pass is required
+        id: gate
+        run: |
+          status=$(cat reports/vyper/final/FINAL_STATUS 2>/dev/null || echo INCOMPLETE)
+          count=$(cat reports/vyper/final-agent/retry-count.txt 2>/dev/null || echo 0)
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$status" != COMPLETE ] && [ "$count" -lt 8 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: ./.github/actions/setup
+        if: steps.gate.outputs.run == 'true'
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
+        with:
+          python-version: '3.13'
+      - name: Install Vyper
+        if: steps.gate.outputs.run == 'true'
+        run: python -m pip install 'vyper==0.5.0a3'
+      - name: Increment pass counter
+        if: steps.gate.outputs.run == 'true'
+        run: echo $(( ${{ steps.gate.outputs.count }} + 1 )) > reports/vyper/final-agent/retry-count.txt
+      - name: Run next checkpointing completion pass
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GITHUB_MODELS_TOKEN: ${{ github.token }}
+        run: python contracts/script/vyperFinalAgentAuto.py
+      - name: Commit pass
+        if: always() && steps.gate.outputs.run == 'true'
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'experiment: continue Vyper completion pass [vyper-final-agent]'
+            git push origin HEAD:experiment/vyper-a971bd6
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-vyper-retry-${{ github.run_number }}
+          path: |
+            contracts/vyper
+            contracts/test/vyper
+            reports/vyper/final
+            reports/vyper/final-agent
+          include-hidden-files: true
+          retention-days: 7
