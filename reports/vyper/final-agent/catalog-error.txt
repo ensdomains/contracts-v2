@@ -1,0 +1,1 @@
+<HTTPError 410: 'Gone'>
