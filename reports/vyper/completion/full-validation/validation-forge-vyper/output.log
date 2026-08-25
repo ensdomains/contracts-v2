@@ -1,8 +1,8 @@
 Compiling 117 files with Solc 0.8.27
-Compiling 122 files with Solc 0.8.35
 Compiling 205 files with Solc 0.8.25
-Solc 0.8.35 finished in 476.99ms
-Solc 0.8.27 finished in 2.60s
-Solc 0.8.25 finished in 11.61s
+Compiling 122 files with Solc 0.8.35
+Solc 0.8.35 finished in 344.01ms
+Solc 0.8.27 finished in 2.03s
+Solc 0.8.25 finished in 9.01s
 Compiler run successful!
 No tests found in project! Forge looks for functions that start with `test`
