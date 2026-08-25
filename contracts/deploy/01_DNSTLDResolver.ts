@@ -55,11 +55,6 @@ export default execute(
       ],
     });
 
-    if (tags["clean-testnet"]) {
-      console.warn("  - Skipping v1 DNS TLD registration on clean-testnet");
-      return;
-    }
-
     const tlds = tags.local
       ? ["com", "org", "net", "xyz"]
       : await fetchPublicSuffixes(true);
