@@ -12,7 +12,7 @@ type DeploymentLike<TAbi extends Abi = Abi> = {
   abi: TAbi;
 };
 
-export async function fetchPublicSuffixes(onlyTLDs = false) {
+export async function fetchPublicSuffixes() {
   const res = await fetch(
     "https://publicsuffix.org/list/public_suffix_list.dat",
     { headers: { Connection: "close" } },
@@ -21,7 +21,7 @@ export async function fetchPublicSuffixes(onlyTLDs = false) {
   return (await res.text())
     .split("\n")
     .map((x) => x.trim())
-    .filter((x) => x && !x.startsWith("//") && (!onlyTLDs || !x.includes(".")));
+    .filter((x) => x && !x.startsWith("//"));
 }
 
 // Filters candidates down to the suffixes that are on the v1 public suffix

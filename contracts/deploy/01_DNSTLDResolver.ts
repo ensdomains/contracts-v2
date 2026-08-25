@@ -55,18 +55,19 @@ export default execute(
       ],
     });
 
-    const tlds = tags.local
+    const allSuffixes = tags.local
       ? ["com", "org", "net", "xyz"]
-      : await fetchPublicSuffixes(true);
-    const suffixes = await filterAvailableSuffixes({
+      : await fetchPublicSuffixes();
+
+    const publicTLDs = await filterAvailableSuffixes({
       read,
       publicSuffixList,
       rootRegistry,
-      candidates: tlds,
+      candidates: allSuffixes.filter((x) => !x.includes(".")), // only TLDs
     });
 
-    if (!suffixes.length) {
-      console.warn("  - No DNS suffixes found");
+    if (!publicTLDs.length) {
+      console.warn("  - No public DNS TLDs found");
       return;
     }
 
@@ -82,7 +83,7 @@ export default execute(
       rootRegistry,
       batchRegistrar,
       resolver: dnsTLDResolver.address,
-      suffixes,
+      suffixes: publicTLDs,
     });
   },
   {
