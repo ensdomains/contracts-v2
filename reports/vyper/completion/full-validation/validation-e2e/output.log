@@ -1,18 +1,18 @@
 $ bun run compile --quiet && bun test --max-concurrency=1 ./test/e2e/
 $ bun run compile:forge && bun run compile:hardhat --quiet
 $ forge build
-Compiling 168 files with Solc 0.8.27
 Compiling 293 files with Solc 0.8.25
-installing solc version "0.8.27"
 Compiling 187 files with Solc 0.8.35
 installing solc version "0.8.25"
+Compiling 168 files with Solc 0.8.27
+installing solc version "0.8.27"
 installing solc version "0.8.35"
 Successfully installed solc 0.8.35
 Successfully installed solc 0.8.27
 Successfully installed solc 0.8.25
-Solc 0.8.35 finished in 6.59s
-Solc 0.8.27 finished in 12.71s
-Solc 0.8.25 finished in 46.70s
+Solc 0.8.35 finished in 5.27s
+Solc 0.8.27 finished in 6.87s
+Solc 0.8.25 finished in 29.08s
 Compiler run successful with warnings:
 Warning (4591): There are more than 256 warnings. Ignoring the rest.
 $ hardhat compile --quiet
@@ -104,26 +104,26 @@ bun test v1.3.4 (5eb2145b)
 ::group::test/e2e/runPreMigrationCommandSigner.test.ts:
   - No suffixes found
   - WARN: resolver.eth is not owned by the owner address, not setting resolver
-2026-08-25T01:10:36.667Z Ready! <8695ms>
-(pass) runPreMigrationCommand signer resolution > drops the non-matching env fallback when an impersonated account is supplied [8.00ms]
-(pass) runPreMigrationCommand signer resolution > keeps the env fallback when it controls the supplied account [6.00ms]
-(pass) runPreMigrationCommand signer resolution > uses the env fallback when no account is supplied [7.00ms]
-(pass) runPreMigrationCommand signer resolution > an explicit private key always wins over the impersonated account [7.00ms]
-(pass) runPreMigrationCommand metadata persistence > writes a run summary and resolved roll-up, upserting by label [7.00ms]
-(pass) runPreMigrationCommand metadata persistence > skips the write on dry run and when persistMetadata is false [5.00ms]
-(pass) runPreMigrationCommand metadata persistence > does not write when the namespace directory is absent [8.00ms]
+2026-08-25T01:22:57.287Z Ready! <7032ms>
+(pass) runPreMigrationCommand signer resolution > drops the non-matching env fallback when an impersonated account is supplied [4.00ms]
+(pass) runPreMigrationCommand signer resolution > keeps the env fallback when it controls the supplied account [5.00ms]
+(pass) runPreMigrationCommand signer resolution > uses the env fallback when no account is supplied [3.00ms]
+(pass) runPreMigrationCommand signer resolution > an explicit private key always wins over the impersonated account [4.00ms]
+(pass) runPreMigrationCommand metadata persistence > writes a run summary and resolved roll-up, upserting by label [4.00ms]
+(pass) runPreMigrationCommand metadata persistence > skips the write on dry run and when persistMetadata is false [4.00ms]
+(pass) runPreMigrationCommand metadata persistence > does not write when the namespace directory is absent [4.00ms]
 
 ::endgroup::
 
 ::group::test/e2e/hca.test.ts:
-(pass) Standalone HCA > deploys an owner-bound HCA once and reuses it [182.00ms]
-(pass) Standalone HCA > matches the standalone HCA adapter to the deployed account [146.00ms]
-(pass) Standalone HCA > packs refund-aware fixed sessions through the Rhinestone SDK [42.00ms]
-(pass) Standalone HCA > reuses one Nexus Permit2 signature for the destination HCA [21.00ms]
-(pass) Standalone HCA > prepares and signs a fresh standalone HCA UserOperation [22.00ms]
-(pass) Standalone HCA > registers two names through wallet-paid HCA batches without intent signatures [502.01ms]
-(pass) Standalone HCA > reuses one owner-enabled session for registration and a later primary change [394.01ms]
-(pass) Standalone HCA > invalidates a fixed session with the HCA session nonce [295.01ms]
+(pass) Standalone HCA > deploys an owner-bound HCA once and reuses it [201.00ms]
+(pass) Standalone HCA > matches the standalone HCA adapter to the deployed account [126.00ms]
+(pass) Standalone HCA > packs refund-aware fixed sessions through the Rhinestone SDK [24.00ms]
+(pass) Standalone HCA > reuses one Nexus Permit2 signature for the destination HCA [12.00ms]
+(pass) Standalone HCA > prepares and signs a fresh standalone HCA UserOperation [13.00ms]
+(pass) Standalone HCA > registers two names through wallet-paid HCA batches without intent signatures [452.01ms]
+(pass) Standalone HCA > reuses one owner-enabled session for registration and a later primary change [350.01ms]
+(pass) Standalone HCA > invalidates a fixed session with the HCA session nonce [277.00ms]
 
 ::endgroup::
 
@@ -133,11 +133,11 @@ bun test v1.3.4 (5eb2145b)
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -164,11 +164,11 @@ Read 3 names from CSV (0 invalid labels filtered). Starting reservation of 3 val
 
  → Batch reserving 3 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xb9b103fb5e06e5eabfb282ab8ec83e9be5982ae29af2a3ddf91563d90bde4dd8)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x3b53cc0ecac8f4c56b8fb5b6578a3c6398a32199b363e1bbebfbc2bcd7f56649)[22m
 [32m✓ Done: [1mtestname1[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xb9b103fb5e06e5eabfb282ab8ec83e9be5982ae29af2a3ddf91563d90bde4dd8)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x3b53cc0ecac8f4c56b8fb5b6578a3c6398a32199b363e1bbebfbc2bcd7f56649)[22m
 [32m✓ Done: [1mtestname2[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xb9b103fb5e06e5eabfb282ab8ec83e9be5982ae29af2a3ddf91563d90bde4dd8)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x3b53cc0ecac8f4c56b8fb5b6578a3c6398a32199b363e1bbebfbc2bcd7f56649)[22m
 [32m✓ Done: [1mtestname3[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 3 processed (3 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -191,17 +191,17 @@ Batch complete. Total: 3 processed (3 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > reserves names from v1 on v2 [4204.09ms]
+(pass) PreMigration > reserves names from v1 on v2 [4179.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -224,7 +224,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xda58c14629e4499875219d08f89e6be435b9f4f64c13beaf2df17da8e952c163)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x9fd56a6e93da9479ebf34bd80e86d9c4f4fcb1890bff1b208fc79b82056714cd)[22m
 [32m✓ Done: [1mexpiredname[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -247,17 +247,17 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > reserves v1-grace-period names even when v2 expiry would already be in the past [6079.12ms]
+(pass) PreMigration > reserves v1-grace-period names even when v2 expiry would already be in the past [6070.10ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m62
@@ -280,7 +280,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x9239ae0c7ecb6a33e03c21f079da5589fac8537bc5741cd8e5daf15102c0cd67)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x1bc6d6a65dfbc51b1b193bdc68522f628f7da86b7c18a823f09a9b34966e2f00)[22m
 [32m✓ Done: [1mgraceperiodname[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -303,17 +303,17 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > reserves names that are expired but within v1 grace period [6082.12ms]
+(pass) PreMigration > reserves names that are expired but within v1 grace period [6070.10ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -338,9 +338,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x851f36175be8507e6fd03749cd8e4bde98bba41f977ded0b20decfbd774114c7)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x30813db4297dce3a672b521eba94a5b754b1def9b8afe8935015626995d488f9)[22m
 [32m✓ Done: [1malreadyres1[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x851f36175be8507e6fd03749cd8e4bde98bba41f977ded0b20decfbd774114c7)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x30813db4297dce3a672b521eba94a5b754b1def9b8afe8935015626995d488f9)[22m
 [32m✓ Done: [1malreadyres2[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -368,11 +368,11 @@ Pre-migration script completed successfully![39m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -397,9 +397,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Renewed successfully[39m[2m (tx: 0x501c695f86f96d336a730c94784cdf686187eb7fc5b346719ec192d09e794637)[22m
+[32m  → ✓ Renewed successfully[39m[2m (tx: 0xe245266d6ca23edc28310ed827d28d7d8580f963ce52567addc83213aec86c07)[22m
 [36m↻ Done: [1malreadyres1[22m.eth[39m[2m (renewed)[22m
-[32m  → ✓ Renewed successfully[39m[2m (tx: 0x501c695f86f96d336a730c94784cdf686187eb7fc5b346719ec192d09e794637)[22m
+[32m  → ✓ Renewed successfully[39m[2m (tx: 0xe245266d6ca23edc28310ed827d28d7d8580f963ce52567addc83213aec86c07)[22m
 [36m↻ Done: [1malreadyres2[22m.eth[39m[2m (renewed)[22m
 Batch complete. Total: 2 processed (0 reserved, 2 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -422,17 +422,17 @@ Batch complete. Total: 2 processed (0 reserved, 2 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > handles already-reserved names (same expiry) [8145.16ms]
+(pass) PreMigration > handles already-reserved names (same expiry) [8129.13ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -455,7 +455,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x2b8c66045b5f1b288e159e1383417ce5f943a29e9a552cbea71fb79aa74cc1e2)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x438ea3951e1cf99b5a3b7f6d90e5de18e78bbf3253104786b6348313afdc535f)[22m
 [32m✓ Done: [1mrenewtest[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -483,11 +483,11 @@ Pre-migration script completed successfully![39m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -510,7 +510,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Renewed successfully[39m[2m (tx: 0x951b7988e2ecf612d866688e52c317416af6a7836b0bc259252169a57fd9b3aa)[22m
+[32m  → ✓ Renewed successfully[39m[2m (tx: 0xc49a70fdf56332a6ca0ce9fd897591c553c697bf69367770c37f6141204733c9)[22m
 [36m↻ Done: [1mrenewtest[22m.eth[39m[2m (renewed)[22m
 Batch complete. Total: 1 processed (0 reserved, 1 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -533,17 +533,17 @@ Batch complete. Total: 1 processed (0 reserved, 1 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > renews already-reserved names with newer expiry [8146.17ms]
+(pass) PreMigration > renews already-reserved names with newer expiry [8127.13ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -588,17 +588,17 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > dry run does not create on-chain state [70.00ms]
+(pass) PreMigration > dry run does not create on-chain state [69.00ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -623,9 +623,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xe00bbb6b1c44075f3217e0a99e35ced998bfe7d9c75edb4bb5f1c37508987e93)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x53fb511419f029048ef182d8532854ec0245b7ec78fd9f89deb5a06eb5b4aab8)[22m
 [32m✓ Done: [1mlimitname1[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xe00bbb6b1c44075f3217e0a99e35ced998bfe7d9c75edb4bb5f1c37508987e93)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x53fb511419f029048ef182d8532854ec0245b7ec78fd9f89deb5a06eb5b4aab8)[22m
 [32m✓ Done: [1mlimitname2[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -650,17 +650,17 @@ Reached limit of 2 names. Stopping.
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > limit parameter restricts processing [4194.07ms]
+(pass) PreMigration > limit parameter restricts processing [4173.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m90
@@ -683,7 +683,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xa3e76f482bcc59ac476c8f7bf78d6f3dfddfd49d0f7a34ab79f2d2c2b72ac8ed)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xa06acaa37bbbe5fb8173472568d3af1f1bd810f6e168fed87b006673848d21dc)[22m
 [32m✓ Done: [1msoonexpire[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -706,17 +706,17 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > adds expiry buffer to short v1 expiries [4077.08ms]
+(pass) PreMigration > adds expiry buffer to short v1 expiries [4066.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m90
@@ -739,7 +739,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xd174a4f585ae2bfade494df4e48148aa8898699758cf1bd289bc1051e6ab46cf)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xa1e484a8cc9acc119e8fe374306a35e7cd06d8f763f88a0d2172d9eaef830bc4)[22m
 [32m✓ Done: [1mlongexpire[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -762,17 +762,17 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > adds expiry buffer to long v1 expiries [4080.09ms]
+(pass) PreMigration > adds expiry buffer to long v1 expiries [4066.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -795,7 +795,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xcfb383f5dcce31e917173e4ec71c4437b2c9d22d54c59d3d2297b2dc7891543e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x466adb73a7d8829cf0b226ba7313f53b5b6d626790eb7a19526f3444f711215e)[22m
 [32m✓ Done: [1mcheckpoint1[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -825,11 +825,11 @@ Pre-migration script completed successfully![39m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -856,9 +856,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xe4116c4e7e46326cbdd338788c4ba5980ef76a064d289d62ea986bed86e0a12b)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x979d128a062fb5f288f59bd9efd712925cf4b87bfde1014ac00a40aa60f37b93)[22m
 [32m✓ Done: [1mcheckpoint2[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xe4116c4e7e46326cbdd338788c4ba5980ef76a064d289d62ea986bed86e0a12b)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x979d128a062fb5f288f59bd9efd712925cf4b87bfde1014ac00a40aa60f37b93)[22m
 [32m✓ Done: [1mcheckpoint3[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 3 processed (3 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -881,17 +881,17 @@ Batch complete. Total: 3 processed (3 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > handles checkpoint resumption [8205.17ms]
+(pass) PreMigration > handles checkpoint resumption [8184.13ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -917,7 +917,7 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xa1cc8f033c97fdb3e7ee299a8fe030cdbb034a83ddd3c5c42a1c81c35a381eb8)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x30b0ee9c79347c21188eb76ee6adace4866d204a3e4e3c19206e3eb3b65619e2)[22m
 [32m✓ Done: [1mnormalreserve[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -940,17 +940,17 @@ Batch complete. Total: 2 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > handles already-REGISTERED names gracefully [4184.08ms]
+(pass) PreMigration > handles already-REGISTERED names gracefully [4174.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (env)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -973,7 +973,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x0c50d6813d3c93e41a7978c8bbd8c33543eda266f1d1726a4c7dce0f7348b738)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x5d90dca665394b00c77a91c7bf1b31ed7d456c7a9c943c5fdc89cb340154cba1)[22m
 [32m✓ Done: [1menvkeytest[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -996,17 +996,17 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > accepts private key from PREMIGRATION_PRIVATE_KEY env var [4077.08ms]
+(pass) PreMigration > accepts private key from PREMIGRATION_PRIVATE_KEY env var [4069.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1029,7 +1029,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x1b3f69f69c830ced79939fd5a9dd723bad27966d895ad7db59aee82a0ee0709e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xc1548cd0239e6afb0b9a1c37d8e6ae524be8efbd0253c17918453ddd6a769176)[22m
 [32m✓ Done: [1mclioverride[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1052,19 +1052,19 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > CLI --private-key overrides env var [4076.08ms]
+(pass) PreMigration > CLI --private-key overrides env var [4066.07ms]
 Error: signer must be provided via --private-key, PREMIGRATION_PRIVATE_KEY, or --account
-(pass) PreMigration > exits with error when no private key is provided [63.00ms]
+(pass) PreMigration > exits with error when no private key is provided [59.00ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1095,15 +1095,15 @@ Read 5 names from CSV (0 invalid labels filtered). Starting reservation of 5 val
 
  → Batch reserving 5 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x6514594e4d92a723d9a0fe5c55aa7a2488612996de839ab825b916cb54df3de8)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x45c739657015372440bc50dc55eda5bd6233282430f9e946053f98b43afe89d7)[22m
 [32m✓ Done: [1mmulti1[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x6514594e4d92a723d9a0fe5c55aa7a2488612996de839ab825b916cb54df3de8)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x45c739657015372440bc50dc55eda5bd6233282430f9e946053f98b43afe89d7)[22m
 [32m✓ Done: [1mmulti2[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x6514594e4d92a723d9a0fe5c55aa7a2488612996de839ab825b916cb54df3de8)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x45c739657015372440bc50dc55eda5bd6233282430f9e946053f98b43afe89d7)[22m
 [32m✓ Done: [1mmulti3[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x6514594e4d92a723d9a0fe5c55aa7a2488612996de839ab825b916cb54df3de8)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x45c739657015372440bc50dc55eda5bd6233282430f9e946053f98b43afe89d7)[22m
 [32m✓ Done: [1mmulti4[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x6514594e4d92a723d9a0fe5c55aa7a2488612996de839ab825b916cb54df3de8)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x45c739657015372440bc50dc55eda5bd6233282430f9e946053f98b43afe89d7)[22m
 [32m✓ Done: [1mmulti5[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 5 processed (5 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1126,17 +1126,17 @@ Batch complete. Total: 5 processed (5 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > correctly verifies a batch of names via multicall [4315.09ms]
+(pass) PreMigration > correctly verifies a batch of names via multicall [4281.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1164,9 +1164,9 @@ Read 3 names from CSV (0 invalid labels filtered). Starting reservation of 3 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x01945498a10fb499f0daab2832c4674303b92a1ca66c3280d290ecab171af997)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x720de5b9e93c8b1a2aa42e83e05cc1ad82681b6fb262a3f281615f37618c0395)[22m
 [32m✓ Done: [1mmixedvalid[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x01945498a10fb499f0daab2832c4674303b92a1ca66c3280d290ecab171af997)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x720de5b9e93c8b1a2aa42e83e05cc1ad82681b6fb262a3f281615f37618c0395)[22m
 [32m✓ Done: [1mmixedexpired[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 3 processed (2 reserved, 0 renewed, 1 skipped, 0 invalid, 0 failed)
 
@@ -1189,18 +1189,18 @@ Batch complete. Total: 3 processed (2 reserved, 0 renewed, 1 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > handles mixed registered/expired/valid names in single multicall batch [6137.12ms]
-(pass) PreMigration > batchVerifyRegistrations returns correct v1/v2 state for each name [2231.04ms]
+(pass) PreMigration > handles mixed registered/expired/valid names in single multicall batch [6124.10ms]
+(pass) PreMigration > batchVerifyRegistrations returns correct v1/v2 state for each name [2216.04ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m1
 [36mBonus Period Days: [39m0
@@ -1223,7 +1223,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xe513ba8f1f5936d84899dfc52447b9d13e00e84b1a3af93c49c5b36fa64d6340)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x175b78282ae55e1dd192da163044554c939de9133a38f9d9be8b3270eaea7ffc)[22m
 [32m✓ Done: [1mbatch1a[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1233,7 +1233,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4dcf82fec4ec004eb52931f392d6701a4bc72bb46c9db0e679a8b3f8af41b6bf)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xc36f217b501ddbdd633738cdae9e180217630afed604d4c7c046b976c176c884)[22m
 [32m✓ Done: [1mbatch1b[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1243,7 +1243,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xd3cf880dc2629e279135c07fdb1f38bc05f56af9e221623616bcf9325cd4d865)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xbd1ea29aade792d9a395b792762f40a929e219abeb18edb1e330163187fa8daa)[22m
 [32m✓ Done: [1mbatch1c[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 3 processed (3 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1266,17 +1266,17 @@ Batch complete. Total: 3 processed (3 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > processes names across multiple batches with batchSize=1 [12204.25ms]
+(pass) PreMigration > processes names across multiple batches with batchSize=1 [12181.20ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m2
 [36mBonus Period Days: [39m0
@@ -1301,9 +1301,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x8c53edaea0f20a74d7cd8aa543523e5e4318f0fd99bba75d486ef06d181c9595)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x56c5395f6d1e7e2037b88158162e1ff61db9d36d10cef65232c36f5929ce7c58)[22m
 [32m✓ Done: [1mbatch2a[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x8c53edaea0f20a74d7cd8aa543523e5e4318f0fd99bba75d486ef06d181c9595)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x56c5395f6d1e7e2037b88158162e1ff61db9d36d10cef65232c36f5929ce7c58)[22m
 [32m✓ Done: [1mbatch2b[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1315,9 +1315,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x7336be11bd37e0732136dd7f8fec8c81335e8bd716c2b344e2c46cb56e9f2ea7)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xf78fd9333d4b08419f622d02a6bd4fc8b7936aa3c54f85812608e3d176cc1c96)[22m
 [32m✓ Done: [1mbatch2c[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x7336be11bd37e0732136dd7f8fec8c81335e8bd716c2b344e2c46cb56e9f2ea7)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xf78fd9333d4b08419f622d02a6bd4fc8b7936aa3c54f85812608e3d176cc1c96)[22m
 [32m✓ Done: [1mbatch2d[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 4 processed (4 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1327,7 +1327,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x3220318ed044aa4bdce0a33aa7126d6805678a30ead55875fcea4231d788425f)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x344eb9f6b4b99322de50b183990d7a46a1e37f77e65a4878173195893f273fef)[22m
 [32m✓ Done: [1mbatch2e[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 5 processed (5 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1350,17 +1350,17 @@ Batch complete. Total: 5 processed (5 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > processes names across multiple batches with batchSize=2 [12336.25ms]
+(pass) PreMigration > processes names across multiple batches with batchSize=2 [12290.20ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1401,25 +1401,25 @@ Read 10 names from CSV (0 invalid labels filtered). Starting reservation of 10 v
 
  → Batch reserving 10 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x89ffbc93c53a903ea77b565bb2811cf119a3e5556bb6ab3df81712731159883e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4bea1bfe339b504afb04e43e8f29c9d8649b99a2e5a0ba78a30c364596a04437)[22m
 [32m✓ Done: [1mgasest0[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x89ffbc93c53a903ea77b565bb2811cf119a3e5556bb6ab3df81712731159883e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4bea1bfe339b504afb04e43e8f29c9d8649b99a2e5a0ba78a30c364596a04437)[22m
 [32m✓ Done: [1mgasest1[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x89ffbc93c53a903ea77b565bb2811cf119a3e5556bb6ab3df81712731159883e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4bea1bfe339b504afb04e43e8f29c9d8649b99a2e5a0ba78a30c364596a04437)[22m
 [32m✓ Done: [1mgasest2[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x89ffbc93c53a903ea77b565bb2811cf119a3e5556bb6ab3df81712731159883e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4bea1bfe339b504afb04e43e8f29c9d8649b99a2e5a0ba78a30c364596a04437)[22m
 [32m✓ Done: [1mgasest3[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x89ffbc93c53a903ea77b565bb2811cf119a3e5556bb6ab3df81712731159883e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4bea1bfe339b504afb04e43e8f29c9d8649b99a2e5a0ba78a30c364596a04437)[22m
 [32m✓ Done: [1mgasest4[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x89ffbc93c53a903ea77b565bb2811cf119a3e5556bb6ab3df81712731159883e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4bea1bfe339b504afb04e43e8f29c9d8649b99a2e5a0ba78a30c364596a04437)[22m
 [32m✓ Done: [1mgasest5[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x89ffbc93c53a903ea77b565bb2811cf119a3e5556bb6ab3df81712731159883e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4bea1bfe339b504afb04e43e8f29c9d8649b99a2e5a0ba78a30c364596a04437)[22m
 [32m✓ Done: [1mgasest6[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x89ffbc93c53a903ea77b565bb2811cf119a3e5556bb6ab3df81712731159883e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4bea1bfe339b504afb04e43e8f29c9d8649b99a2e5a0ba78a30c364596a04437)[22m
 [32m✓ Done: [1mgasest7[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x89ffbc93c53a903ea77b565bb2811cf119a3e5556bb6ab3df81712731159883e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4bea1bfe339b504afb04e43e8f29c9d8649b99a2e5a0ba78a30c364596a04437)[22m
 [32m✓ Done: [1mgasest8[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x89ffbc93c53a903ea77b565bb2811cf119a3e5556bb6ab3df81712731159883e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4bea1bfe339b504afb04e43e8f29c9d8649b99a2e5a0ba78a30c364596a04437)[22m
 [32m✓ Done: [1mgasest9[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 10 processed (10 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1442,17 +1442,17 @@ Batch complete. Total: 10 processed (10 reserved, 0 renewed, 0 skipped, 0 invali
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > handles a larger batch of 10 names through gas estimation [4592.09ms]
+(pass) PreMigration > handles a larger batch of 10 names through gas estimation [4503.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1479,11 +1479,11 @@ Read 3 names from CSV (0 invalid labels filtered). Starting reservation of 3 val
 
  → Batch reserving 3 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xeacacab70869b55f7d5bcfae70384f7ec6cde36c2d53bbb70080b984cf8140bb)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x1f848d866c4900675b199859850f5fbb4e49c7a76da7012e68a7bcd8c68c220f)[22m
 [32m✓ Done: [1maaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xeacacab70869b55f7d5bcfae70384f7ec6cde36c2d53bbb70080b984cf8140bb)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x1f848d866c4900675b199859850f5fbb4e49c7a76da7012e68a7bcd8c68c220f)[22m
 [32m✓ Done: [1mbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xeacacab70869b55f7d5bcfae70384f7ec6cde36c2d53bbb70080b984cf8140bb)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x1f848d866c4900675b199859850f5fbb4e49c7a76da7012e68a7bcd8c68c220f)[22m
 [32m✓ Done: [1mccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 3 processed (3 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1506,17 +1506,17 @@ Batch complete. Total: 3 processed (3 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > handles batch of names with long labels (higher calldata cost) [4203.09ms]
+(pass) PreMigration > handles batch of names with long labels (higher calldata cost) [4175.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1544,9 +1544,9 @@ Read 3 names from CSV (0 invalid labels filtered). Starting reservation of 3 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x06f3f951d4c8e6f742ee6274089623c34ec697ae2f4980b9f0e9ae6e1eecea07)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xf4084ac3f66bebaef9b68b538b8c8ee39f791bb8fd583b9a24e22968268763a4)[22m
 [32m✓ Done: [1mcptvalid[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x06f3f951d4c8e6f742ee6274089623c34ec697ae2f4980b9f0e9ae6e1eecea07)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xf4084ac3f66bebaef9b68b538b8c8ee39f791bb8fd583b9a24e22968268763a4)[22m
 [32m✓ Done: [1mcptexpired[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 3 processed (2 reserved, 0 renewed, 1 skipped, 0 invalid, 0 failed)
 
@@ -1569,17 +1569,17 @@ Batch complete. Total: 3 processed (2 reserved, 0 renewed, 1 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > checkpoint correctly tracks success, skip, and failure counts [6139.12ms]
+(pass) PreMigration > checkpoint correctly tracks success, skip, and failure counts [6123.10ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1605,7 +1605,7 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x8d82ab3729e64f15e7863a247a38f3d082fe4e9ff0e52f2ac38c4e59605a87bc)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xcdd188a030250249989949f2b48fc80bfcc0a7cc1be58c9f94a3c822c49e5b6d)[22m
 [32m✓ Done: [1mcptregvalid[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1628,17 +1628,17 @@ Batch complete. Total: 2 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > checkpoint tracks already-registered names separately from failures [4187.08ms]
+(pass) PreMigration > checkpoint tracks already-registered names separately from failures [4172.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1661,7 +1661,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xb866c60635a5c94be4013fe202a6789838c86299eabe735c2b690f72d38ada22)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x5d46e9e5db524bc45ff501b2ef22d3b22e96b456d62d630b1875e57fb12d4250)[22m
 [32m✓ Done: [1mcptrenewal[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1689,11 +1689,11 @@ Pre-migration script completed successfully![39m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1716,7 +1716,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Renewed successfully[39m[2m (tx: 0x0a1b161060548ba081fcd53201978ecf539e7cc58e7d7d9ea6b2a62e2412ef16)[22m
+[32m  → ✓ Renewed successfully[39m[2m (tx: 0xd73fe0dbbab869dd53a2d9d04794626140bcfc5e3ffff55d2ce01fe35af05dde)[22m
 [36m↻ Done: [1mcptrenewal[22m.eth[39m[2m (renewed)[22m
 Batch complete. Total: 1 processed (0 reserved, 1 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1739,17 +1739,17 @@ Batch complete. Total: 1 processed (0 reserved, 1 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > checkpoint tracks renewed count separately [8144.16ms]
+(pass) PreMigration > checkpoint tracks renewed count separately [8125.13ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1784,17 +1784,17 @@ CSV file: /tmp/test-premigration.csv
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > fresh run clears a stale checkpoint left by a previous run [11.00ms]
+(pass) PreMigration > fresh run clears a stale checkpoint left by a previous run [7.00ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1821,17 +1821,17 @@ CSV file: /tmp/test-premigration.csv
 CSVFormatError: CSV row at /tmp/test-premigration.csv:3 has empty "labelName". Row: ,,,,,,,,
       at readCSVInBatches (/home/runner/work/contracts-v2/contracts-v2/contracts/script/preMigration.ts:520:13)
 
-(pass) PreMigration > fails fast on empty labelName cell [11.00ms]
+(pass) PreMigration > fails fast on empty labelName cell [6.00ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1854,7 +1854,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x8147f48046db3be89179b8c994a4ab788a3a1b2104ffff211747b8f0f8ddc842)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xc919d81919948864ecc85972541b150a3375367e2a84f342a9ec4c67aa8d273f)[22m
 [32m✓ Done: [1mexporterfmt[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -1877,17 +1877,17 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > accepts the 6-column exporter header (label alias) [4027.08ms]
+(pass) PreMigration > accepts the 6-column exporter header (label alias) [4065.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1914,17 +1914,17 @@ CSV file: /tmp/test-premigration.csv
 CSVFormatError: CSV header at /tmp/test-premigration.csv:1 has no "labelName" or "label" column. Found columns: [node, name, owner]. Expected one of "labelName" or "label" (case-insensitive).
       at readCSVInBatches (/home/runner/work/contracts-v2/contracts-v2/contracts/script/preMigration.ts:458:15)
 
-(pass) PreMigration > fails fast when header has no labelName or label column [11.00ms]
+(pass) PreMigration > fails fast when header has no labelName or label column [7.00ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1951,17 +1951,17 @@ CSV file: /tmp/test-premigration.csv
 CSVFormatError: CSV row at /tmp/test-premigration.csv:3 has 6 columns but header declared 9. Row: ,,,,short,row
       at readCSVInBatches (/home/runner/work/contracts-v2/contracts-v2/contracts/script/preMigration.ts:511:13)
 
-(pass) PreMigration > fails fast when a row's column count differs from the header [12.00ms]
+(pass) PreMigration > fails fast when a row's column count differs from the header [6.00ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -1988,17 +1988,17 @@ CSV file: /tmp/test-premigration.csv
 CSVFormatError: CSV row at /tmp/test-premigration.csv:2 has unbalanced quotes. Row: ,,,,,,"unterminated,,
       at readCSVInBatches (/home/runner/work/contracts-v2/contracts-v2/contracts/script/preMigration.ts:504:13)
 
-(pass) PreMigration > fails fast on unbalanced quotes in a data row [12.00ms]
+(pass) PreMigration > fails fast on unbalanced quotes in a data row [7.00ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2021,7 +2021,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xb4c198c07195e3e27e37eb234dc587bd18552dc923b96d6ddcc7ac2c76db5541)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xc405664ae894fd84da1d10933b7f93898028901841c6a521b59513782321d770)[22m
 [32m✓ Done: [1mtrailblank[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2044,17 +2044,17 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > tolerates a trailing blank line at end of file [4076.08ms]
+(pass) PreMigration > tolerates a trailing blank line at end of file [4065.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2077,7 +2077,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xc08f628e70a55108489c3d26df2779559ac2bc03e39e4b15758b7857f8f43bee)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xdd2fbbde07b786783d85a05c98811699b3451a2b27bc719a503e955170de74e8)[22m
 [32m✓ Done: [1mbomlabel[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2100,17 +2100,17 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > tolerates a UTF-8 BOM on the header line [4078.08ms]
+(pass) PreMigration > tolerates a UTF-8 BOM on the header line [4065.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2133,7 +2133,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xad0a6aa7318a5461646bca2b46678aeb42b15412d1e7524a22b3052ddb86fc86)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x2a5b01d294b645b50f5e9426390fec5170fbfab2608c7ff984f98abd4a589337)[22m
 [32m✓ Done: [1mwinnerlbl[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2156,17 +2156,17 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > prefers labelName over label when both columns are present [4077.08ms]
+(pass) PreMigration > prefers labelName over label when both columns are present [4067.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2193,17 +2193,17 @@ CSV file: /tmp/test-premigration.csv
 CSVFormatError: CSV row at /tmp/test-premigration.csv:3 is blank. Blank lines are only tolerated at end of file.
       at readCSVInBatches (/home/runner/work/contracts-v2/contracts-v2/contracts/script/preMigration.ts:494:13)
 
-(pass) PreMigration > fails fast on a blank line in the middle of the file [11.00ms]
+(pass) PreMigration > fails fast on a blank line in the middle of the file [7.00ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2228,7 +2228,7 @@ Read 3 names from CSV (2 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x4ea587e26def85e2b69cb80dd986eb21f356bc8d4ca6f9bb693ee07ef5d5e9ca)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xcf44f8a7f68290a0b6df1b101b7470706ca9fb4df9d7004e54e35c52e46131c2)[22m
 [32m✓ Done: [1mvalidlabel2[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 3 processed (1 reserved, 0 renewed, 0 skipped, 2 invalid, 0 failed)
 
@@ -2251,17 +2251,17 @@ Batch complete. Total: 3 processed (1 reserved, 0 renewed, 0 skipped, 2 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > skips labels exceeding 255 bytes and encoded labelhashes in CSV [4077.08ms]
+(pass) PreMigration > skips labels exceeding 255 bytes and encoded labelhashes in CSV [4067.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2296,17 +2296,17 @@ CSV file: /tmp/test-premigration.csv
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > handles empty CSV file gracefully [11.00ms]
+(pass) PreMigration > handles empty CSV file gracefully [7.00ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2329,7 +2329,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x75ff9fddebdab810b322b5cf016c01f6a7a92c4ab6de11bdf541968c8961d2bd)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xac5ed4799c126443518428388e457757aee04e7487cd414f89fbb02c8343d6f7)[22m
 [32m✓ Done: [1msinglename[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2352,17 +2352,17 @@ Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > handles single name CSV [4075.08ms]
+(pass) PreMigration > handles single name CSV [4067.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2387,9 +2387,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xcee42f3737665d150461cf0b4550f4c61e6da650363079b99181d0446572f70d)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x6ce440d42dd76ed6e453413cc0eb359fcb68743a4aa26cdc3d28b954cea48d28)[22m
 [32m✓ Done: [1mlc1[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xcee42f3737665d150461cf0b4550f4c61e6da650363079b99181d0446572f70d)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x6ce440d42dd76ed6e453413cc0eb359fcb68743a4aa26cdc3d28b954cea48d28)[22m
 [32m✓ Done: [1mlc2[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2419,11 +2419,11 @@ Pre-migration script completed successfully![39m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2450,9 +2450,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x61bef3054469bae8808dc979798f2ceb171e0e38767fb5f7df45b2e4125716e0)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x3ad7298f138e4d5fef8c514ae823371a269f423129f96450a54f6f8121399991)[22m
 [32m✓ Done: [1mlc3[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x61bef3054469bae8808dc979798f2ceb171e0e38767fb5f7df45b2e4125716e0)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x3ad7298f138e4d5fef8c514ae823371a269f423129f96450a54f6f8121399991)[22m
 [32m✓ Done: [1mlc4[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 4 processed (4 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2482,11 +2482,11 @@ Pre-migration script completed successfully![39m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2511,7 +2511,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x80c64de36ca3ac334ec64d2d5ac14d59b979cb9aa04f35446995b02119ebb4ca)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xfa47812891d3d22910bfb6caea898c57e92c41aa5523f3c69889161f03b57483)[22m
 [32m✓ Done: [1mlc5[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 5 processed (5 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2534,17 +2534,17 @@ Batch complete. Total: 5 processed (5 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > processes names with limit + continue across multiple runs [12325.25ms]
+(pass) PreMigration > processes names with limit + continue across multiple runs [12305.20ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2569,9 +2569,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xc1d542c2573180286fd616ea017d103514d3cae1440d7bd86513f650d44dd53d)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x8b3e8b87d54720d0ea239fa3ef52609b9e5cbf296444cb026b6fcd7bda6a17eb)[22m
 [32m✓ Done: [1mlcap1[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xc1d542c2573180286fd616ea017d103514d3cae1440d7bd86513f650d44dd53d)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x8b3e8b87d54720d0ea239fa3ef52609b9e5cbf296444cb026b6fcd7bda6a17eb)[22m
 [32m✓ Done: [1mlcap2[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2596,17 +2596,17 @@ Reached limit of 2 names. Stopping.
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > --limit N does not validate a wrong-column-count row at position N+1 [4131.08ms]
+(pass) PreMigration > --limit N does not validate a wrong-column-count row at position N+1 [4118.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2631,9 +2631,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x690efa4398924989de07c80812c9958ca83fca182febd699b4b2574268f6407c)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x47c0c8f660581f8bd49fd62f320a7f6e7111c6d87948295d9bd6d7aad92cc8d8)[22m
 [32m✓ Done: [1mlqcap1[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x690efa4398924989de07c80812c9958ca83fca182febd699b4b2574268f6407c)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x47c0c8f660581f8bd49fd62f320a7f6e7111c6d87948295d9bd6d7aad92cc8d8)[22m
 [32m✓ Done: [1mlqcap2[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2658,17 +2658,17 @@ Reached limit of 2 names. Stopping.
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > --limit N does not validate an unbalanced-quotes row at position N+1 [4132.08ms]
+(pass) PreMigration > --limit N does not validate an unbalanced-quotes row at position N+1 [4128.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2719,17 +2719,17 @@ Reached limit of 2 names. Stopping.
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > --dry-run --limit N tolerates malformed rows beyond the cap [124.00ms]
+(pass) PreMigration > --dry-run --limit N tolerates malformed rows beyond the cap [115.00ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2754,7 +2754,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x7e0c4ab0b795fd530b19d81c44c06a1e7cb16802e8ee5e49d7e47d97346c9f53)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xa14ec400ad163700bef291f207e34b212accdab1ecac882d28647a5542419fcb)[22m
 [32m✓ Done: [1mresumecols[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2777,17 +2777,17 @@ Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > --continue does not validate a wrong-column-count row before the resume point [4078.08ms]
+(pass) PreMigration > --continue does not validate a wrong-column-count row before the resume point [4064.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2812,7 +2812,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xd300546a5b313e1a54ad531ddf05e18d05ab46e4ef711637a0a3508ea5eed638)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x7677cd99b41af3bc7650adf63f3724353c0f5b5a4cba58592755101e76af694c)[22m
 [32m✓ Done: [1mresumequotes[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2835,17 +2835,17 @@ Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > --continue does not validate an unbalanced-quotes row before the resume point [4077.08ms]
+(pass) PreMigration > --continue does not validate an unbalanced-quotes row before the resume point [4071.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -2870,7 +2870,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xb3c61306c129a6154c7ac0929a40766918677bbf0d95768b139d27f20afdfecb)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x2957073f575ec94c925186d923f966c133cf8f6bd850194c9af60002bd41d248)[22m
 [32m✓ Done: [1mresumeblank[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -2893,17 +2893,17 @@ Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > --continue tolerates a blank line in the pre-resume range [4076.08ms]
+(pass) PreMigration > --continue tolerates a blank line in the pre-resume range [4065.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m1
 [36mBonus Period Days: [39m0
@@ -2966,17 +2966,17 @@ Batch complete. Total: 3 processed (3 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > dry run with batch size 1 does not create state [181.00ms]
+(pass) PreMigration > dry run with batch size 1 does not create state [166.00ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m2
 [36mBonus Period Days: [39m0
@@ -3001,9 +3001,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xa87f144d292433d7555195e874587f096fbb38da30069e972bd9f9dbae0e7206)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x808db95b82626146d0def6b0e990f9cbeb505648556a6a828edf0b5e668bf416)[22m
 [32m✓ Done: [1mmxs1[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xa87f144d292433d7555195e874587f096fbb38da30069e972bd9f9dbae0e7206)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x808db95b82626146d0def6b0e990f9cbeb505648556a6a828edf0b5e668bf416)[22m
 [32m✓ Done: [1mmxs2[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -3015,9 +3015,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xa2673e745f8f46aa7eacda171d108fd690ade01d63200b50f260a8592bf75959)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xb748d7dab75b767689493b104ca14bf7badbc4c39d8fe955cd562bfc134d997d)[22m
 [32m✓ Done: [1mmxs3[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xa2673e745f8f46aa7eacda171d108fd690ade01d63200b50f260a8592bf75959)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xb748d7dab75b767689493b104ca14bf7badbc4c39d8fe955cd562bfc134d997d)[22m
 [32m✓ Done: [1mmxs4[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 4 processed (4 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -3030,7 +3030,7 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xa086b78f45a8bb12b94dc660f906bc49e54a957241c06b0f3200614c0ceaac05)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xffbec892d979da9d328724bc74ee9ab9328d11f28a1cb0109f572eb4e30e8805)[22m
 [32m✓ Done: [1mmxs5[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 6 processed (5 reserved, 0 renewed, 1 skipped, 0 invalid, 0 failed)
 
@@ -3053,17 +3053,17 @@ Batch complete. Total: 6 processed (5 reserved, 0 renewed, 1 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > mixed batch: some expired, some valid, some never registered — with small batches [14323.29ms]
+(pass) PreMigration > mixed batch: some expired, some valid, some never registered — with small batches [14295.23ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -3092,7 +3092,7 @@ Read 3 names from CSV (0 invalid labels filtered). Starting reservation of 3 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xffbaa9f0aa58609e254919a700fcf23783676060d04e1de62325c37583ed6930)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x2e5dae059135b9acd536b504704b361962f1bb879f009c20fb052e52935ae82c)[22m
 [32m✓ Done: [1mmregvalid[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 3 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -3115,17 +3115,17 @@ Batch complete. Total: 3 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > multiple already-registered names in batch are all counted separately from failures [4291.09ms]
+(pass) PreMigration > multiple already-registered names in batch are all counted separately from failures [4276.07ms]
 
 [1m[36m=== ENS Pre-Migration Script ===[39m[22m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -3150,9 +3150,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x7a2ddf982af928fc0c2286a44164233b2a7ffe11dfcf2aa609bbb3229332097f)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x23318494403033b3b5843bb96cbbd2960521f2ef6266f90d9794e53740417702)[22m
 [32m✓ Done: [1mrerun1[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x7a2ddf982af928fc0c2286a44164233b2a7ffe11dfcf2aa609bbb3229332097f)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x23318494403033b3b5843bb96cbbd2960521f2ef6266f90d9794e53740417702)[22m
 [32m✓ Done: [1mrerun2[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -3180,11 +3180,11 @@ Pre-migration script completed successfully![39m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/test-premigration.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m0
@@ -3209,9 +3209,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Renewed successfully[39m[2m (tx: 0xa6211e5aadd7a6f3dd6f82f0d22860cc0771b9e06677768c7533df8431867230)[22m
+[32m  → ✓ Renewed successfully[39m[2m (tx: 0x1db28be1dd621c2a0404a18b5ba2886e41b8d15c9a7b7d6d8f80b8bc5bed9d8b)[22m
 [36m↻ Done: [1mrerun1[22m.eth[39m[2m (renewed)[22m
-[32m  → ✓ Renewed successfully[39m[2m (tx: 0xa6211e5aadd7a6f3dd6f82f0d22860cc0771b9e06677768c7533df8431867230)[22m
+[32m  → ✓ Renewed successfully[39m[2m (tx: 0x1db28be1dd621c2a0404a18b5ba2886e41b8d15c9a7b7d6d8f80b8bc5bed9d8b)[22m
 [36m↻ Done: [1mrerun2[22m.eth[39m[2m (renewed)[22m
 Batch complete. Total: 2 processed (0 reserved, 2 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -3234,71 +3234,71 @@ Batch complete. Total: 2 processed (0 reserved, 2 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) PreMigration > re-running same batch after successful reservation uses renewal path [8147.17ms]
+(pass) PreMigration > re-running same batch after successful reservation uses renewal path [8127.13ms]
 (skip) PreMigration - Live Mainnet v1 Verification > verifies well-known names are registered on v1 mainnet
 (skip) PreMigration - Live Mainnet v1 Verification > verifies a non-existent name returns not-registered on v1 mainnet
-(pass) PreMigration - Live Mainnet v1 Verification > throws InvalidLabelNameError for empty label [7.00ms]
-(pass) PreMigration - Live Mainnet v1 Verification > throws InvalidLabelNameError for whitespace-only label [6.00ms]
-(pass) PreMigration - Live Mainnet v1 Verification > throws InvalidLabelNameError for label exceeding 255 bytes [8.00ms]
-(pass) PreMigration - Live Mainnet v1 Verification > throws InvalidLabelNameError for encoded labelhash [6.00ms]
+(pass) PreMigration - Live Mainnet v1 Verification > throws InvalidLabelNameError for empty label [4.00ms]
+(pass) PreMigration - Live Mainnet v1 Verification > throws InvalidLabelNameError for whitespace-only label [3.00ms]
+(pass) PreMigration - Live Mainnet v1 Verification > throws InvalidLabelNameError for label exceeding 255 bytes [3.00ms]
+(pass) PreMigration - Live Mainnet v1 Verification > throws InvalidLabelNameError for encoded labelhash [5.00ms]
 
 ::endgroup::
 
 ::group::test/e2e/devnet.test.ts:
-(pass) Devnet > sync [31.00ms]
-(pass) Devnet > warp [11.00ms]
-(pass) Devnet > saveState [67.00ms]
-(pass) Devnet > computeVerifiableProxyAddress [62.00ms]
+(pass) Devnet > sync [8.00ms]
+(pass) Devnet > warp [7.00ms]
+(pass) Devnet > saveState [57.00ms]
+(pass) Devnet > computeVerifiableProxyAddress [8.00ms]
 
 ::endgroup::
 
 ::group::test/e2e/migration.test.ts:
-(pass) Migration > helpers > registerUnwrapped() [115.00ms]
-(pass) Migration > helpers > registerWrapped() [171.00ms]
-(pass) Migration > helpers > createChild() [225.00ms]
-(pass) Migration > helpers > wrapperRegistry [809.02ms]
-(pass) Migration > helpers > ensurePremigration() [117.00ms]
-(pass) Migration > helpers > ensurePremigration() of empty name [64.00ms]
-(pass) Migration > helpers > ensurePremigration() of long name [68.00ms]
-(pass) Migration > premigration > empty name [66.00ms]
-(pass) Migration > premigration > long name [64.00ms]
-(pass) Migration > premigration > not reserved [66.00ms]
-(pass) Migration > postlaunch > renew [657.01ms]
-(pass) Migration > postlaunch > renew in grace [669.01ms]
-(pass) Migration > postlaunch > renew after grace [513.01ms]
-(pass) Migration > postlaunch > syncWrapper [614.01ms]
-(pass) Migration > unwrapped > migrate [303.01ms]
-(pass) Migration > unwrapped > migrate with approval [235.00ms]
-(pass) Migration > unwrapped > new owner [181.00ms]
-(pass) Migration > unwrapped > new resolver [356.01ms]
-(pass) Migration > unwrapped > custom subregistry [182.00ms]
-(pass) Migration > unwrapped > invalid owner [125.00ms]
-(pass) Migration > unwrapped > invalid receiver [126.00ms]
-(pass) Migration > unwrapped > wrong controller [126.00ms]
-(pass) Migration > unwrapped > invalid data [130.00ms]
-(pass) Migration > unwrapped > wrong label [118.00ms]
-(pass) Migration > unlocked > migrate [352.01ms]
-(pass) Migration > unlocked > invalid owner [183.00ms]
-(pass) Migration > unlocked > invalid receiver [125.00ms]
-(pass) Migration > unlocked > wrong controller [174.00ms]
-(pass) Migration > unlocked > invalid data [181.00ms]
-(pass) Migration > unlocked > wrong label [176.00ms]
-(pass) Migration > locked > migrate [349.01ms]
-(pass) Migration > locked > locked resolver [454.01ms]
-(pass) Migration > locked > locked resolver (wrapper-aware) [401.01ms]
-(pass) Migration > locked > locked transfer [179.00ms]
-(pass) Migration > locked > locked fuses [240.00ms]
-(pass) Migration > locked > migrate locked child [470.01ms]
-(pass) Migration > locked > migrate detached child [469.01ms]
-(pass) Migration > locked > unmigrated locked child [296.01ms]
-(pass) Migration > locked > unmigrated detached child [295.01ms]
-(pass) Migration > locked > unmigrated unlocked child [465.01ms]
-(pass) Migration > locked > can extend expiry [357.01ms]
-(pass) Migration > locked > invalid owner [183.00ms]
-(pass) Migration > locked > invalid receiver [182.00ms]
-(pass) Migration > locked > wrong controller [465.01ms]
-(pass) Migration > locked > invalid data [181.00ms]
-(pass) Migration > locked > wrong label [179.00ms]
+(pass) Migration > helpers > registerUnwrapped() [108.00ms]
+(pass) Migration > helpers > registerWrapped() [162.00ms]
+(pass) Migration > helpers > createChild() [215.00ms]
+(pass) Migration > helpers > wrapperRegistry [764.01ms]
+(pass) Migration > helpers > ensurePremigration() [109.00ms]
+(pass) Migration > helpers > ensurePremigration() of empty name [57.00ms]
+(pass) Migration > helpers > ensurePremigration() of long name [58.00ms]
+(pass) Migration > premigration > empty name [59.00ms]
+(pass) Migration > premigration > long name [58.00ms]
+(pass) Migration > premigration > not reserved [59.00ms]
+(pass) Migration > postlaunch > renew [635.01ms]
+(pass) Migration > postlaunch > renew in grace [641.01ms]
+(pass) Migration > postlaunch > renew after grace [485.01ms]
+(pass) Migration > postlaunch > syncWrapper [587.01ms]
+(pass) Migration > unwrapped > migrate [279.00ms]
+(pass) Migration > unwrapped > migrate with approval [219.00ms]
+(pass) Migration > unwrapped > new owner [170.00ms]
+(pass) Migration > unwrapped > new resolver [329.01ms]
+(pass) Migration > unwrapped > custom subregistry [168.00ms]
+(pass) Migration > unwrapped > invalid owner [113.00ms]
+(pass) Migration > unwrapped > invalid receiver [116.00ms]
+(pass) Migration > unwrapped > wrong controller [116.00ms]
+(pass) Migration > unwrapped > invalid data [119.00ms]
+(pass) Migration > unwrapped > wrong label [111.00ms]
+(pass) Migration > unlocked > migrate [279.00ms]
+(pass) Migration > unlocked > invalid owner [168.00ms]
+(pass) Migration > unlocked > invalid receiver [118.00ms]
+(pass) Migration > unlocked > wrong controller [167.00ms]
+(pass) Migration > unlocked > invalid data [164.00ms]
+(pass) Migration > unlocked > wrong label [165.00ms]
+(pass) Migration > locked > migrate [328.01ms]
+(pass) Migration > locked > locked resolver [435.01ms]
+(pass) Migration > locked > locked resolver (wrapper-aware) [375.01ms]
+(pass) Migration > locked > locked transfer [166.00ms]
+(pass) Migration > locked > locked fuses [224.00ms]
+(pass) Migration > locked > migrate locked child [438.01ms]
+(pass) Migration > locked > migrate detached child [441.01ms]
+(pass) Migration > locked > unmigrated locked child [269.00ms]
+(pass) Migration > locked > unmigrated detached child [273.00ms]
+(pass) Migration > locked > unmigrated unlocked child [436.01ms]
+(pass) Migration > locked > can extend expiry [382.01ms]
+(pass) Migration > locked > invalid owner [166.00ms]
+(pass) Migration > locked > invalid receiver [169.00ms]
+(pass) Migration > locked > wrong controller [438.01ms]
+(pass) Migration > locked > invalid data [165.00ms]
+(pass) Migration > locked > wrong label [163.00ms]
 
 ::endgroup::
 
@@ -3339,7 +3339,7 @@ v1 ReverseRegistrar: v1 controller 0x202CCe504e04bEd6fC0521238dDf04Bc9E8E15aB: e
 v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (mainnet) 0xD8a5a9b31c3C0232E196d518E89Fd8bF83AcAd43: enabled (authorized by active deployment)
 v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (mainnet-archived-20260101) 0x00000000000000000000000000000000000aDa02: disabled
 v1 DefaultReverseRegistrar: v1 controller 0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07: enabled (v1-owned, outside migration remit)
-(pass) v1 registrar freeze > revokes a superseded deployment's reverse registrar adapters [28257.57ms]
+(pass) v1 registrar freeze > revokes a superseded deployment's reverse registrar adapters [28217.47ms]
 genesisHash not found in environment 'mainnet-hca-resume' (with chainId: 1), writing .chain with expected one...
   - Granting CAN_NAME to owner
 Deploying ETHRegistry
@@ -3359,7 +3359,7 @@ Wrapper-aware PublicResolvers:
 ├───┼────────────────────────────────────────────┤
 │ 0 │ 0x922d6956c99e12dfeb3224dea977d0939758a1fe │
 └───┴────────────────────────────────────────────┘
-(pass) v1 registrar freeze > preserves HCA adapter revocations across a resume before deferred replay [631.01ms]
+(pass) v1 registrar freeze > preserves HCA adapter revocations across a resume before deferred replay [433.01ms]
 keeping active deployment grant: v1 ReverseRegistrar: ReverseRegistrarAdapter (mainnet) 0xDC11f7E700A4c898AE5CAddB1082cFfa76512aDD
 leaving v1-owned controller: v1 ReverseRegistrar: v1 controller 0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07
 leaving v1-owned controller: v1 ReverseRegistrar: v1 controller 0x202CCe504e04bEd6fC0521238dDf04Bc9E8E15aB
@@ -3372,7 +3372,7 @@ revoked v1 BaseRegistrar: unrecognized controller 0x202CCe504e04bEd6fC0521238dDf
 revoked v1 BaseRegistrar: unrecognized controller 0xe8D2A1E88c91DCd5433208d4152Cc4F399a7e91d
 revoked v1 ReverseRegistrar: ReverseRegistrarAdapter (mainnet-archived-20260101) 0x00000000000000000000000000000000000adA01
 revoked v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (mainnet-archived-20260101) 0x00000000000000000000000000000000000aDa02
-(pass) v1 registrar freeze > revokes registrar controllers while the security controller owns the registrar [28215.56ms]
+(pass) v1 registrar freeze > revokes registrar controllers while the security controller owns the registrar [28191.46ms]
 keeping active deployment grant: v1 ReverseRegistrar: ReverseRegistrarAdapter (mainnet) 0xDC11f7E700A4c898AE5CAddB1082cFfa76512aDD
 leaving v1-owned controller: v1 ReverseRegistrar: v1 controller 0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07
 leaving v1-owned controller: v1 ReverseRegistrar: v1 controller 0x202CCe504e04bEd6fC0521238dDf04Bc9E8E15aB
@@ -3397,7 +3397,7 @@ v1 ReverseRegistrar: v1 controller 0x202CCe504e04bEd6fC0521238dDf04Bc9E8E15aB: e
 v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (mainnet) 0xD8a5a9b31c3C0232E196d518E89Fd8bF83AcAd43: enabled (authorized by active deployment)
 v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (mainnet-archived-20260101) 0x00000000000000000000000000000000000aDa02: disabled
 v1 DefaultReverseRegistrar: v1 controller 0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07: enabled (v1-owned, outside migration remit)
-(pass) v1 registrar freeze > revokes registrar controllers after ownership is reclaimed from the security controller [28279.57ms]
+(pass) v1 registrar freeze > revokes registrar controllers after ownership is reclaimed from the security controller [24248.40ms]
 v1 BaseRegistrar: ETHRenewerV1 (mainnet-archived-20260101) 0x00000000000000000000000000000000000Ada03: disabled
 v1 BaseRegistrar: unrecognized controller 0x82e01223d51Eb87e16A03E24687EDF0F294da6f1: ENABLED
 v1 BaseRegistrar: unrecognized controller 0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07: ENABLED
@@ -3440,7 +3440,7 @@ v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (mainnet) 0xD8a5a9b31
 v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (mainnet-archived-20260101) 0x00000000000000000000000000000000000aDa02: disabled
 v1 DefaultReverseRegistrar: v1 controller 0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07: enabled (v1-owned, outside migration remit)
 v1 DefaultReverseRegistrar: handoff contract (no local artifact) 0x5bf5b11053e734690269C6B9D438F8C9d48F528A: disabled
-(pass) v1 registrar freeze > revokes superseded reverse adapters that no local artifact describes [24294.48ms]
+(pass) v1 registrar freeze > revokes superseded reverse adapters that no local artifact describes [24193.40ms]
 already revoked: v1 BaseRegistrar: ETHRenewerV1 (mainnet-archived-20260101) 0x00000000000000000000000000000000000Ada03
 keeping active deployment grant: v1 ReverseRegistrar: ReverseRegistrarAdapter (mainnet) 0xDC11f7E700A4c898AE5CAddB1082cFfa76512aDD
 already revoked: v1 ReverseRegistrar: ReverseRegistrarAdapter (mainnet-archived-20260101) 0x00000000000000000000000000000000000adA01
@@ -3467,7 +3467,7 @@ v1 ReverseRegistrar: v1 controller 0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e: e
 v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (mainnet) 0xD8a5a9b31c3C0232E196d518E89Fd8bF83AcAd43: enabled (authorized by active deployment)
 v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (mainnet-archived-20260101) 0x00000000000000000000000000000000000aDa02: disabled
 v1 DefaultReverseRegistrar: v1 controller 0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07: enabled (v1-owned, outside migration remit)
-(pass) v1 registrar freeze > leaves v1-owned reverse registrar controllers alone [16101.32ms]
+(pass) v1 registrar freeze > leaves v1-owned reverse registrar controllers alone [16082.26ms]
 keeping active deployment grant: v1 ReverseRegistrar: ReverseRegistrarAdapter (staging) 0xDC11f7E700A4c898AE5CAddB1082cFfa76512aDD
 leaving v1-owned controller: v1 ReverseRegistrar: v1 controller 0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07
 leaving v1-owned controller: v1 ReverseRegistrar: v1 controller 0x202CCe504e04bEd6fC0521238dDf04Bc9E8E15aB
@@ -3492,8 +3492,8 @@ v1 ReverseRegistrar: v1 controller 0x202CCe504e04bEd6fC0521238dDf04Bc9E8E15aB: e
 v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (staging) 0xD8a5a9b31c3C0232E196d518E89Fd8bF83AcAd43: enabled (authorized by active deployment)
 v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (staging-20260101-r1) 0x00000000000000000000000000000000000aDa02: disabled
 v1 DefaultReverseRegistrar: v1 controller 0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07: enabled (v1-owned, outside migration remit)
-(pass) v1 registrar freeze > resolves archives of a deployment namespace not named for the network [28214.56ms]
-(pass) v1 registrar freeze > fails rather than auditing partially when controller history cannot be read [2290.05ms]
+(pass) v1 registrar freeze > resolves archives of a deployment namespace not named for the network [28195.46ms]
+(pass) v1 registrar freeze > fails rather than auditing partially when controller history cannot be read [2280.01ms]
 already revoked: v1 BaseRegistrar: ETHRenewerV1 (mainnet-archived-20260101) 0x00000000000000000000000000000000000Ada03
 keeping active deployment grant: v1 ReverseRegistrar: ReverseRegistrarAdapter (mainnet) 0xDC11f7E700A4c898AE5CAddB1082cFfa76512aDD
 already revoked: v1 ReverseRegistrar: ReverseRegistrarAdapter (mainnet-archived-20260101) 0x00000000000000000000000000000000000adA01
@@ -3522,7 +3522,7 @@ v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (mainnet) 0xD8a5a9b31
 v1 DefaultReverseRegistrar: DefaultReverseRegistrarAdapter (mainnet-archived-20260101) 0x00000000000000000000000000000000000aDa02: disabled
 v1 DefaultReverseRegistrar: v1 controller 0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07: enabled (v1-owned, outside migration remit)
 v1 DefaultReverseRegistrar: handoff contract (no local artifact) 0x5bf5b11053e734690269C6B9D438F8C9d48F528A: disabled
-(pass) v1 registrar freeze > narrows the controller history scan to the span the provider serves [39306.79ms]
+(pass) v1 registrar freeze > narrows the controller history scan to the span the provider serves [35881.53ms]
 
 ::endgroup::
 
@@ -3532,11 +3532,11 @@ v1 DefaultReverseRegistrar: handoff contract (no local artifact) 0x5bf5b11053e73
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/home/runner/work/contracts-v2/contracts-v2/contracts/test-phased-migration.csv
 [36mBatch Size: [39m1
 [36mBonus Period Days: [39m0
@@ -3559,7 +3559,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x0bb9dc1705fe712fffe6a0cb074907aceb5b40609c24dd9ff62c0208eb0f6483)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0xc736370579fbf5e075d0f5d05e3cefb02979a94468d8c0147d6bc6a4b72c5e73)[22m
 [32m✓ Done: [1mphasemigrateone[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -3589,11 +3589,11 @@ Pre-migration script completed successfully![39m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/home/runner/work/contracts-v2/contracts-v2/contracts/test-phased-migration.csv
 [36mBatch Size: [39m1
 [36mBonus Period Days: [39m0
@@ -3618,7 +3618,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x2df3c816a9a09758c1710e5ad184d9f831469bbd568a66bae1ba10c115a5c190)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x80f63e95a57b0cd7c7d4f74ed5c61eef8e26d72129a649b93878e413933641b4)[22m
 [32m✓ Done: [1mphasemigratetwo[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -3641,7 +3641,7 @@ Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid,
 [2m────────────────────────────────────────────────────────────[22m
 [32m✓ 
 Pre-migration script completed successfully![39m
-(pass) Phased migration rehearsal > runs the migration phases on the local devnet snapshot [9172.18ms]
+(pass) Phased migration rehearsal > runs the migration phases on the local devnet snapshot [9079.13ms]
 (skip) Sepolia Anvil fork migration rehearsal > runs the migration phases against a direct Sepolia fork
 
 ::endgroup::
@@ -3656,11 +3656,11 @@ Pre-migration script completed successfully![39m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/devnet-premigrate-1.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m62
@@ -3685,9 +3685,9 @@ Read 2 names from CSV (0 invalid labels filtered). Starting reservation of 2 val
 
  → Batch reserving 2 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x97f32c819fa5b2de175112416c2051e768e6190540661a4abf659063cd99684e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x8107c64418412c7d6e15973c50f64ee160b3d494079c8379c675b7b8f4018561)[22m
 [32m✓ Done: [1mpremigone[22m.eth[39m[2m (reserved)[22m
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0x97f32c819fa5b2de175112416c2051e768e6190540661a4abf659063cd99684e)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x8107c64418412c7d6e15973c50f64ee160b3d494079c8379c675b7b8f4018561)[22m
 [32m✓ Done: [1mpremigtwo[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 2 processed (2 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -3718,7 +3718,7 @@ Pre-migration script completed successfully![39m
 │ 0 │ premigone.eth │ reserved │ —          │
 │ 1 │ premigtwo.eth │ reserved │ —          │
 └───┴───────────────┴──────────┴────────────┘
-(pass) preMigrateDevnetNames > reserves the given names on v2 [4137.08ms]
+(pass) preMigrateDevnetNames > reserves the given names on v2 [4124.07ms]
 
 ========== Pre-migrating 1 names ==========
   • reassignme.eth — override
@@ -3727,11 +3727,11 @@ Pre-migration script completed successfully![39m
 
 [2m────────────────────────────────────────────────────────────[22m
 Configuration:
-[36mRPC URL: [39mhttp://127.0.0.1:42979
+[36mRPC URL: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mBatchRegistrar: [39m0x2b0d36facd61b71cc05ab8f3d2355ec3631c0dd5
 [36mSigner Account: [39mprivate key (CLI)
-[36mMainnet RPC (v1): [39mhttp://127.0.0.1:42979
+[36mMainnet RPC (v1): [39mhttp://127.0.0.1:45137
 [36mCSV File: [39m/tmp/devnet-premigrate-1.csv
 [36mBatch Size: [39m50
 [36mBonus Period Days: [39m62
@@ -3754,7 +3754,7 @@ Read 1 names from CSV (0 invalid labels filtered). Starting reservation of 1 val
 
  → Batch reserving 1 names...
 
-[32m  → ✓ Reserved successfully[39m[2m (tx: 0xa2b494c4b8be242f7277d1c857b2a74b7cd7ee2cdeba67395291d4fe11ace871)[22m
+[32m  → ✓ Reserved successfully[39m[2m (tx: 0x56c8f10e3933b7c464c2289c968e30725da6eab39ace60ee2879c2601e8a7648)[22m
 [32m✓ Done: [1mreassignme[22m.eth[39m[2m (reserved)[22m
 Batch complete. Total: 1 processed (1 reserved, 0 renewed, 0 skipped, 0 invalid, 0 failed)
 
@@ -3786,16 +3786,16 @@ Reassigning v1 ownership to 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC...
 ├───┼────────────────┼──────────┼────────────┤
 │ 0 │ reassignme.eth │ reserved │ unwrapped  │
 └───┴────────────────┴──────────┴────────────┘
-(pass) preMigrateDevnetNames > reassigns v1 ownership of an unwrapped name to a devnet account [4191.08ms]
+(pass) preMigrateDevnetNames > reassigns v1 ownership of an unwrapped name to a devnet account [4177.07ms]
 
 ::endgroup::
 
 ::group::test/e2e/prepareMigration.test.ts:
-(pass) PrepareMigration > devnet starts in pre-prepareMigration state [10.00ms]
+(pass) PrepareMigration > devnet starts in pre-prepareMigration state [7.00ms]
 
 [1m[36m=== Prepare-Migration ===[39m[22m
 
-[36mRPC: [39mhttp://127.0.0.1:42979
+[36mRPC: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mSigner: [39m0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 [36mMode: [39mDRY RUN
@@ -3823,11 +3823,11 @@ Reassigning v1 ownership to 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC...
 [1m[36m=== Dry run complete ===[39m[22m
 
 [33mno transactions broadcast; pass --execute to proceed[39m
-(pass) PrepareMigration > dry run does not mutate on-chain role state [18.00ms]
+(pass) PrepareMigration > dry run does not mutate on-chain role state [12.00ms]
 
 [1m[36m=== Prepare-Migration ===[39m[22m
 
-[36mRPC: [39mhttp://127.0.0.1:42979
+[36mRPC: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mSigner: [39m0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 [36mMode: [39mEXECUTE
@@ -3878,11 +3878,11 @@ Reassigning v1 ownership to 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC...
 [1mLockedMigrationController[22m [2m0x46b142dd1e924fab83ecc3c08e4d46e82f005e0e[22m
 [2m    roles: ROLE_REGISTER_RESERVED[22m
 [32m✓ prepare-migration complete[39m
-(pass) PrepareMigration > execute strips all migration-relevant roles from BatchRegistrar and hands them to the live targets [16035.32ms]
+(pass) PrepareMigration > execute strips all migration-relevant roles from BatchRegistrar and hands them to the live targets [16021.24ms]
 
 [1m[36m=== Prepare-Migration ===[39m[22m
 
-[36mRPC: [39mhttp://127.0.0.1:42979
+[36mRPC: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mSigner: [39m0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 [36mMode: [39mEXECUTE
@@ -3933,11 +3933,11 @@ Reassigning v1 ownership to 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC...
 [1mLockedMigrationController[22m [2m0x46b142dd1e924fab83ecc3c08e4d46e82f005e0e[22m
 [2m    roles: ROLE_REGISTER_RESERVED[22m
 [32m✓ prepare-migration complete[39m
-(pass) PrepareMigration > execute fully decommissions BatchRegistrar (no roles remain) [16035.32ms]
+(pass) PrepareMigration > execute fully decommissions BatchRegistrar (no roles remain) [16025.24ms]
 
 [1m[36m=== Prepare-Migration ===[39m[22m
 
-[36mRPC: [39mhttp://127.0.0.1:42979
+[36mRPC: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mSigner: [39m0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 [36mMode: [39mEXECUTE
@@ -3991,7 +3991,7 @@ Reassigning v1 ownership to 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC...
 
 [1m[36m=== Prepare-Migration ===[39m[22m
 
-[36mRPC: [39mhttp://127.0.0.1:42979
+[36mRPC: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mSigner: [39m0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 [36mMode: [39mEXECUTE
@@ -4042,11 +4042,11 @@ Reassigning v1 ownership to 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC...
 [1mLockedMigrationController[22m [2m0x46b142dd1e924fab83ecc3c08e4d46e82f005e0e[22m
 [2m    roles: ROLE_REGISTER_RESERVED[22m
 [32m✓ prepare-migration complete[39m
-(pass) PrepareMigration > is idempotent on repeated execute [32069.64ms]
+(pass) PrepareMigration > is idempotent on repeated execute [32040.50ms]
 
 [1m[36m=== Prepare-Migration ===[39m[22m
 
-[36mRPC: [39mhttp://127.0.0.1:42979
+[36mRPC: [39mhttp://127.0.0.1:45137
 [36mRegistry: [39m0x36c02da8a0983159322a80ffe9f24b1acff8b570
 [36mSigner: [39m0x70997970C51812dc3A010C7d01b50e0d17dc79C8
 [36mMode: [39mEXECUTE
@@ -4073,18 +4073,18 @@ Reassigning v1 ownership to 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC...
 [31mERROR: signer missing admin bits for ETHRegistrar grant: ROLE_REGISTRAR_ADMIN | ROLE_RENEW_ADMIN[39m
 [31mERROR: signer missing admin bits for UnlockedMigrationController grant: ROLE_REGISTER_RESERVED_ADMIN[39m
 [31mERROR: signer missing admin bits for LockedMigrationController grant: ROLE_REGISTER_RESERVED_ADMIN[39m
-(pass) PrepareMigration > aborts when signer lacks required admin roles [17.00ms]
-(pass) PrepareMigration > rejects --execute without --private-key [11.00ms]
+(pass) PrepareMigration > aborts when signer lacks required admin roles [10.00ms]
+(pass) PrepareMigration > rejects --execute without --private-key [7.00ms]
 
 ::endgroup::
 
 ::group::test/e2e/resolve.test.ts:
-(pass) Resolve > Protocol > reverse [11.00ms]
-(pass) Resolve > Protocol > addr.reverse [10.00ms]
-(pass) Resolve > Protocol > default.reverse [10.00ms]
-(pass) Resolve > Protocol > 8000000a.reverse [11.00ms]
-(pass) Resolve > DNS > dnstxt.ens.eth + addr() => DNSTXTResolver [11.00ms]
-(pass) Resolve > DNS > dnsalias.ens.eth + addr() => DNSAliasResolver [10.00ms]
+(pass) Resolve > Protocol > reverse [6.00ms]
+(pass) Resolve > Protocol > addr.reverse [6.00ms]
+(pass) Resolve > Protocol > default.reverse [6.00ms]
+(pass) Resolve > Protocol > 8000000a.reverse [5.00ms]
+(pass) Resolve > DNS > dnstxt.ens.eth + addr() => DNSTXTResolver [7.00ms]
+(pass) Resolve > DNS > dnsalias.ens.eth + addr() => DNSAliasResolver [5.00ms]
 (skip) Resolve > DNS > onchain txt: taytems.xyz
 (skip) Resolve > DNS > onchain txt: dnstxt.raffy.xyz
 (skip) Resolve > DNS > alias rewrite: dnsalias[.raffy.xyz] => dnsalias[.ens.eth]
@@ -4103,4 +4103,4 @@ Reassigning v1 ownership to 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC...
  6 skip
  0 fail
  593 expect() calls
-Ran 148 tests across 10 files. [516.29s]
+Ran 148 tests across 10 files. [504.36s]

@@ -92,72 +92,42 @@ Compiled 4 Solidity test files with solc 0.8.27 (evm target: cancun)
 
 [1m[46m RUN [49m[22m [36mv3.1.3 [39m[90m/home/runner/work/contracts-v2/contracts-v2/contracts[39m
 
-(node:6545) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(node:6395) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:6544) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(node:6392) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:6543) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(node:6393) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-[90mstdout[2m | test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22m[2mL2ReverseRegistrar[2m > [22m[2mContract interface
-[22m[39mUniversalSigValidator deployed at: 0x164af34fAF9879394370C7f09064127C043A35E9
-
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements setName(string)[32m 5[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements setNameForAddr(address,string)[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements setNameForAddrWithSignature((string,address,uint256[],uint256),bytes)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements setNameForContractWithSignature((string,address,uint256[],uint256),address,bytes)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements syncName(address)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements inceptionOf(address)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 3[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mimplements resolve(bytes,bytes)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mINameResolver[2m > [22mimplements name(bytes32)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mINameResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mINameResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIERC165[2m > [22mimplements supportsInterface(bytes4)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mshould deploy the contract[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mshould have correct CHAIN_ID set[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetName[2m > [22mshould set the name record for the calling account[32m 5[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetName[2m > [22mevent NameChanged is emitted[32m 7[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetName[2m > [22mcan update the name record[32m 5[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetName[2m > [22mcan set the name to an empty string[32m 7[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mshould set the name record for a contract the caller owns[32m 3[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mevent NameChanged is emitted[32m 5[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mcaller can set their own name[32m 3[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mreverts if the caller is not the owner of the target address[32m 11[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mUnix Epoch and Basic Tests[2m > [22m'Unix epoch'[32m 42[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mUnix Epoch and Basic Tests[2m > [22m'Unix epoch'[32m 36[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mUnix Epoch and Basic Tests[2m > [22m'One second after epoch'[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mUnix Epoch and Basic Tests[2m > [22m'One minute after epoch'[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mUnix Epoch and Basic Tests[2m > [22m'One minute after epoch'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mUnix Epoch and Basic Tests[2m > [22m'One hour after epoch'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mUnix Epoch and Basic Tests[2m > [22m'One day after epoch'[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mUnix Epoch and Basic Tests[2m > [22m'One day after epoch'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mTime Component Tests[2m > [22m'Midnight'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mTime Component Tests[2m > [22m'Noon'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mTime Component Tests[2m > [22m'End of day'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mTime Component Tests[2m > [22m'01:23:45'[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mTime Component Tests[2m > [22m'01:23:45'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mTime Component Tests[2m > [22m'09:08:07 - single digit padding'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mTime Component Tests[2m > [22m'10:11:12 - double digits'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mYear Transition Tests[2m > [22m'End of 1970'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mYear Transition Tests[2m > [22m'Start of 1971'[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mYear Transition Tests[2m > [22m'Start of 1971'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mYear Transition Tests[2m > [22m'Y2K'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mYear Transition Tests[2m > [22m'End of 1999'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 29, 2000 - leap year divisible by…'[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 28, 2000'[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 29, 2000 - leap year divisible by…'[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 28, 2000'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Mar 1, 2000 - day after Feb 29 in lea…'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 29, 2004 - leap year divisible by…'[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 29, 2024 - leap year'[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 28, 2001 - non-leap year'[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Mar 1, 2001 - day after Feb 28 in non…'[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 28, 2100 - century year non-leap'[32m 4[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Mar 1, 2100 - day after Feb 28 in non…'[32m 4[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 29, 2004 - leap year divisible by…'[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 29, 2024 - leap year'[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 28, 2001 - non-leap year'[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Mar 1, 2001 - day after Feb 28 in non…'[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Feb 28, 2100 - century year non-leap'[32m 3[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mLeap Year Tests[2m > [22m'Mar 1, 2100 - day after Feb 28 in non…'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mMonth Boundary Tests[2m > [22m'Jan 31 - 31-day month'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mMonth Boundary Tests[2m > [22m'Feb 1'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mMonth Boundary Tests[2m > [22m'Feb 28, 1970 - non-leap year'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mMonth Boundary Tests[2m > [22m'Mar 1, 1970 - after Feb 28 in non-lea…'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mMonth Boundary Tests[2m > [22m'Apr 30 - 30-day month'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mMonth Boundary Tests[2m > [22m'May 1'[32m 3[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mMonth Boundary Tests[2m > [22m'May 1'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mMonth Boundary Tests[2m > [22m'Jun 30 - 30-day month'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mMonth Boundary Tests[2m > [22m'Jul 31 - 31-day month'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mMonth Boundary Tests[2m > [22m'Aug 31 - 31-day month'[32m 1[2mms[22m[39m
@@ -169,178 +139,7 @@ Compiled 4 Solidity test files with solc 0.8.27 (evm target: cancun)
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mPadding Tests[2m > [22m'Month 11 - double digit'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mPadding Tests[2m > [22m'Day 05 padded with zero'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mPadding Tests[2m > [22m'Day 25 - double digit'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mreverts if caller tries to set name for another EOA[32m 10[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mreverts if caller is not owner of the target contract (via Ownable)[32m 3[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows an account to sign a message to allow a relayer to claim the address[32m 14[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mevent NameChanged is emitted[32m 5[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows SCA signatures (ERC1271)[32m 8[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows undeployed SCA signatures (ERC6492)[32m 9[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if signature parameters do not match[32m 5[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if signedAt is in the future[32m 5[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if signedAt is not after inception[32m 9[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows multiple chain IDs in array (must be ascending)[32m 6[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows large chain ID array with approx. linear gas scaling[33m 416[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if chain IDs are not in ascending order[32m 8[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if chain IDs contain duplicates[32m 4[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if current chain ID is not in array[32m 4[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if chain ID array is empty[32m 6[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if the same signature is used twice (replay protection)[32m 15[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows newer signatures with later signedAt for same address[32m 26[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if signed by wrong account[32m 7[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mupdates and returns inception correctly[32m 7[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mallows an EOA to sign a message to claim the address of a contract it owns via Ownable[32m 12[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mallows an SCA to sign a message to claim the address of a contract it owns via Ownable[32m 12[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mimplements supportsInterface(bytes4)[32m 3[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 3[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 3[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mimplements supportsFeature(bytes4)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mimplements resolve(bytes,bytes)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 6[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 3[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mICompositeResolver[2m > [22mimplements getResolver(bytes)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mICompositeResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mICompositeResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIVerifiableResolver[2m > [22mimplements verifierMetadata(bytes)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIVerifiableResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 2[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIVerifiableResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mIERC7996[2m > [22msupports IERC165[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mIERC7996[2m > [22mRESOLVER[2m > [22msupports RESOLVE_MULTICALL[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mparseDNSSECRecord()[2m > [22minvalid[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mparseDNSSECRecord()[2m > [22mvia address[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mparseDNSSECRecord()[2m > [22mvia name[32m 6[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mgetDNSSECRecords()[32m 29[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mverifierMetadata()[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22mimmediate[32m 20[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22mimmediate multicall[32m 28[2mms[22m[39m
-[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
-[22m[39m  Progress: 10,000 / 100,000
-
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22monchain extended[32m 22[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22monchain extended multicall[32m 37[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22moffchain extended[32m 53[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if the owner address is not the owner of the contract[32m 5[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if the target address is not a contract (is an EOA)[32m 4[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if the target address does not implement Ownable[32m 4[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if the signature is invalid[32m 7[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if signedAt is in the future[32m 7[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if signedAt is not after inception[32m 15[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mallows multiple chain IDs in array (must be ascending)[32m 13[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mallows large chain ID array with approx. linear gas scaling[32m 228[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if chain IDs are not in ascending order[32m 4[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if current chain ID is not in array[32m 3[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if chain ID array is empty[32m 3[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if the same signature is used twice (replay protection)[32m 16[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mupdates and returns inception correctly[32m 11[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mname (reading reverse records)[2m > [22mreturns empty string for unset address[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mresolve[2m > [22mcan resolve name for an address via resolve()[32m 9[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22moffchain extended multicall[32m 100[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mimported on V2[32m 27[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mno ENS1[32m 15[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia address[2m > [22monchain immediate[32m 29[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia address[2m > [22monchain immediate multicall[32m 45[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia name[2m > [22monchain immediate[32m 45[2mms[22m[39m
-[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
-[22m[39m  Progress: 20,000 / 100,000
-
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia name[2m > [22monchain immediate multicall[32m 57[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia name[2m > [22moffchain extended[32m 112[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia name[2m > [22moffchain extended multicall[32m 119[2mms[22m[39m
-(node:6649) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
-(Use `node --trace-warnings ...` to show where the warning was created)
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22munsupported[32m 21[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid hex: 0[32m 25[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid hex: 00[32m 22[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid hex: 0x0[32m 22[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid hex: !@#$[32m 37[2mms[22m[39m
-[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
-[22m[39m  Progress: 30,000 / 100,000
-
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid length: address[32m 29[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid length: pubkey[32m 30[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mog: just addr(60)[32m 31[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22maddr()[32m 36[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22maddr() w/fallback[32m 32[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mhasAddr()[32m 40[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mtext()[32m 27[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mtext() w/[-key[32m 20[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mdata()[32m 21[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mcontenthash()[32m 23[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mpubkey()[32m 29[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mmulticall[32m 66[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mimplements supportsInterface(bytes4)[32m 0[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 2[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mimplements supportsFeature(bytes4)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIExtendedDNSResolver[2m > [22mimplements resolve(bytes,bytes,bytes)[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIExtendedDNSResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIExtendedDNSResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mIERC7996[2m > [22msupports IERC165[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mIERC7996[2m > [22mRESOLVER[2m > [22msupports RESOLVE_MULTICALL[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain extended[32m 93[2mms[22m[39m
-[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
-[22m[39m  Progress: 40,000 / 100,000
-
- [32m✓[39m test/integration/HardhatCompilerIsolation.test.ts[2m > [22mHardhat compiler isolation[2m > [22mexact-pins every deployable first-party source to its compiler[32m 56[2mms[22m[39m
- [32m✓[39m test/integration/HardhatCompilerIsolation.test.ts[2m > [22mHardhat compiler isolation[2m > [22mpins every first-party production artifact to its compiler profile[32m 64[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain immediate[32m 75[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain old[32m 60[2mms[22m[39m
- [32m✓[39m test/integration/HardhatCompilerIsolation.test.ts[2m > [22mHardhat compiler isolation[2m > [22mpins externally sourced deployment roots to their compiler profiles[32m 14[2mms[22m[39m
- [32m✓[39m test/integration/HardhatCompilerIsolation.test.ts[2m > [22mHardhat compiler isolation[2m > [22mpins auxiliary deployment roots to their compiler profiles[32m 3[2mms[22m[39m
- [32m✓[39m test/integration/HardhatCompilerIsolation.test.ts[2m > [22mHardhat compiler isolation[2m > [22muses the HCA compiler without exceeding the deployment size limit[32m 5[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22moffchain extended[32m 122[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22moffchain immediate[32m 133[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain extended w/multicall[32m 59[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain immediate w/multicall[32m 53[2mms[22m[39m
-[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
-[22m[39m  Progress: 50,000 / 100,000
-
-(node:6681) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
-(Use `node --trace-warnings ...` to show where the warning was created)
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain old w/multicall[32m 67[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22moffchain extended w/multicall[32m 125[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22moffchain immediate w/multicall[32m 134[2mms[22m[39m
-[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
-[22m[39m  Progress: 60,000 / 100,000
-
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain extended[32m 43[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain immediate[32m 54[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain old[32m 44[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22moffchain extended[32m 106[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22moffchain immediate[32m 110[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain extended w/multicall[32m 46[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain immediate w/multicall[32m 45[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain old w/multicall[32m 55[2mms[22m[39m
-[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
-[22m[39m  Progress: 70,000 / 100,000
-
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22moffchain extended w/multicall[32m 72[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22moffchain immediate w/multicall[32m 116[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain extended[32m 78[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain immediate[32m 48[2mms[22m[39m
-[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
-[22m[39m  Progress: 80,000 / 100,000
-
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain old[32m 63[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22moffchain extended[32m 126[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22moffchain immediate[32m 126[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain extended w/multicall[32m 58[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain immediate w/multicall[32m 58[2mms[22m[39m
-[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
-[22m[39m  Progress: 90,000 / 100,000
-
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain old w/multicall[32m 84[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22moffchain extended w/multicall[32m 93[2mms[22m[39m
- [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22moffchain immediate w/multicall[32m 117[2mms[22m[39m
-[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
-[22m[39m  Progress: 100,000 / 100,000
-
-✓ All 100,000 fuzz tests passed!
-
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mPadding Tests[2m > [22m'Hour 05 padded with zero'[32m 3[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mPadding Tests[2m > [22m'Hour 05 padded with zero'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mPadding Tests[2m > [22m'Minute 07 padded with zero'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mPadding Tests[2m > [22m'Second 03 padded with zero'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mKnown Timestamps from Real-World Events[2m > [22m'Bitcoin genesis block'[32m 1[2mms[22m[39m
@@ -354,16 +153,228 @@ Compiled 4 Solidity test files with solc 0.8.27 (evm target: cancun)
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'January'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'February'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'March'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'April'[32m 4[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'April'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'May'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'June'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'July'[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'July'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'August'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'September'[32m 3[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'September'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'October'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'November'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAll Months of 2023[2m > [22m'December'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mEdge Cases[2m > [22m'All components non-zero'[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mEdge Cases[2m > [22m'All components non-zero'[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mimplements supportsInterface(bytes4)[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mimplements supportsFeature(bytes4)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mimplements resolve(bytes,bytes)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mICompositeResolver[2m > [22mimplements getResolver(bytes)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mICompositeResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mICompositeResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIVerifiableResolver[2m > [22mimplements verifierMetadata(bytes)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIVerifiableResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mContract interface[2m > [22mIVerifiableResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mIERC7996[2m > [22msupports IERC165[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mIERC7996[2m > [22mRESOLVER[2m > [22msupports RESOLVE_MULTICALL[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mparseDNSSECRecord()[2m > [22minvalid[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mparseDNSSECRecord()[2m > [22mvia address[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mparseDNSSECRecord()[2m > [22mvia name[32m 3[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mgetDNSSECRecords()[32m 21[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mverifierMetadata()[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22mimmediate[32m 18[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22mimmediate multicall[32m 25[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22monchain extended[32m 32[2mms[22m[39m
+[90mstdout[2m | test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22m[2mL2ReverseRegistrar[2m > [22m[2mContract interface
+[22m[39mUniversalSigValidator deployed at: 0x164af34fAF9879394370C7f09064127C043A35E9
+
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements setName(string)[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements setNameForAddr(address,string)[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements setNameForAddrWithSignature((string,address,uint256[],uint256),bytes)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements setNameForContractWithSignature((string,address,uint256[],uint256),address,bytes)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements syncName(address)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mimplements inceptionOf(address)[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 4[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22msrc/reverse-registrar/interfaces/IL2ReverseRegistrar.sol:IL2ReverseRegistrar[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 4[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mimplements resolve(bytes,bytes)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mINameResolver[2m > [22mimplements name(bytes32)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mINameResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mINameResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIERC165[2m > [22mimplements supportsInterface(bytes4)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mshould deploy the contract[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mshould have correct CHAIN_ID set[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetName[2m > [22mshould set the name record for the calling account[32m 4[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetName[2m > [22mevent NameChanged is emitted[32m 8[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetName[2m > [22mcan update the name record[32m 7[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetName[2m > [22mcan set the name to an empty string[32m 7[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22monchain extended multicall[32m 40[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22moffchain extended[32m 48[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mstill registered on V1[2m > [22moffchain extended multicall[32m 98[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mshould set the name record for a contract the caller owns[32m 5[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mevent NameChanged is emitted[32m 6[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mcaller can set their own name[32m 7[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mreverts if the caller is not the owner of the target address[32m 16[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mreverts if caller tries to set name for another EOA[32m 4[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddr[2m > [22mreverts if caller is not owner of the target contract (via Ownable)[32m 5[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows an account to sign a message to allow a relayer to claim the address[32m 12[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mevent NameChanged is emitted[32m 7[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows SCA signatures (ERC1271)[32m 8[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows undeployed SCA signatures (ERC6492)[32m 12[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if signature parameters do not match[32m 7[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if signedAt is in the future[32m 8[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if signedAt is not after inception[32m 19[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mimported on V2[32m 20[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mno ENS1[32m 14[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia address[2m > [22monchain immediate[32m 30[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia address[2m > [22monchain immediate multicall[32m 37[2mms[22m[39m
+[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
+[22m[39m  Progress: 10,000 / 100,000
+
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia name[2m > [22monchain immediate[32m 38[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia name[2m > [22monchain immediate multicall[32m 59[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia name[2m > [22moffchain extended[32m 92[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSSEC[2m > [22mvia name[2m > [22moffchain extended multicall[32m 96[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22munsupported[32m 20[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows multiple chain IDs in array (must be ascending)[32m 7[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows large chain ID array with approx. linear gas scaling[33m 397[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid hex: 0[32m 15[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid hex: 00[32m 17[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid hex: 0x0[32m 16[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid hex: !@#$[32m 15[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid length: address[32m 21[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22minvalid length: pubkey[32m 26[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if chain IDs are not in ascending order[32m 8[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if chain IDs contain duplicates[32m 9[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if current chain ID is not in array[32m 4[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if chain ID array is empty[32m 5[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if the same signature is used twice (replay protection)[32m 17[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mallows newer signatures with later signedAt for same address[32m 21[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mreverts if signed by wrong account[32m 5[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForAddrWithSignature[2m > [22mupdates and returns inception correctly[32m 6[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mallows an EOA to sign a message to claim the address of a contract it owns via Ownable[32m 14[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mallows an SCA to sign a message to claim the address of a contract it owns via Ownable[32m 11[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mog: just addr(60)[32m 24[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22maddr()[32m 22[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22maddr() w/fallback[32m 35[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mhasAddr()[32m 47[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mtext()[32m 41[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mtext() w/[-key[32m 36[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mdata()[32m 39[2mms[22m[39m
+[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
+[22m[39m  Progress: 20,000 / 100,000
+
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if the owner address is not the owner of the contract[32m 5[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if the target address is not a contract (is an EOA)[32m 3[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if the target address does not implement Ownable[32m 7[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if the signature is invalid[32m 8[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if signedAt is in the future[32m 12[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if signedAt is not after inception[32m 15[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mallows multiple chain IDs in array (must be ascending)[32m 10[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mallows large chain ID array with approx. linear gas scaling[32m 254[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mcontenthash()[32m 37[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mpubkey()[32m 35[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSTXTResolver[2m > [22mmulticall[32m 86[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if chain IDs are not in ascending order[32m 5[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if current chain ID is not in array[32m 4[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if chain ID array is empty[32m 4[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mreverts if the same signature is used twice (replay protection)[32m 12[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22msetNameForContractWithSignature[2m > [22mupdates and returns inception correctly[32m 6[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mname (reading reverse records)[2m > [22mreturns empty string for unset address[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/l2/L2ReverseRegistrar.test.ts[2m > [22mL2ReverseRegistrar[2m > [22mresolve[2m > [22mcan resolve name for an address via resolve()[32m 3[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mimplements supportsInterface(bytes4)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mimplements supportsFeature(bytes4)[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIExtendedDNSResolver[2m > [22mimplements resolve(bytes,bytes,bytes)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIExtendedDNSResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mContract interface[2m > [22mIExtendedDNSResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mIERC7996[2m > [22msupports IERC165[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mIERC7996[2m > [22mRESOLVER[2m > [22msupports RESOLVE_MULTICALL[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain extended[32m 70[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain immediate[32m 63[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain old[32m 53[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22moffchain extended[32m 154[2mms[22m[39m
+(node:6497) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
+[22m[39m  Progress: 30,000 / 100,000
+
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22moffchain immediate[32m 164[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain extended w/multicall[32m 53[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain immediate w/multicall[32m 63[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22monchain old w/multicall[32m 41[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22moffchain extended w/multicall[32m 80[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mcom => eth[2m > [22moffchain immediate w/multicall[32m 171[2mms[22m[39m
+[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
+[22m[39m  Progress: 40,000 / 100,000
+
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain extended[32m 66[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain immediate[32m 68[2mms[22m[39m
+ [32m✓[39m test/integration/HardhatCompilerIsolation.test.ts[2m > [22mHardhat compiler isolation[2m > [22mexact-pins every deployable first-party source to its compiler[32m 66[2mms[22m[39m
+ [32m✓[39m test/integration/HardhatCompilerIsolation.test.ts[2m > [22mHardhat compiler isolation[2m > [22mpins every first-party production artifact to its compiler profile[32m 52[2mms[22m[39m
+ [32m✓[39m test/integration/HardhatCompilerIsolation.test.ts[2m > [22mHardhat compiler isolation[2m > [22mpins externally sourced deployment roots to their compiler profiles[32m 9[2mms[22m[39m
+ [32m✓[39m test/integration/HardhatCompilerIsolation.test.ts[2m > [22mHardhat compiler isolation[2m > [22mpins auxiliary deployment roots to their compiler profiles[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/HardhatCompilerIsolation.test.ts[2m > [22mHardhat compiler isolation[2m > [22muses the HCA compiler without exceeding the deployment size limit[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain old[32m 64[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22moffchain extended[32m 177[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22moffchain immediate[32m 147[2mms[22m[39m
+(node:6530) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain extended w/multicall[32m 65[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain immediate w/multicall[32m 57[2mms[22m[39m
+[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
+[22m[39m  Progress: 50,000 / 100,000
+
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22monchain old w/multicall[32m 65[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22moffchain extended w/multicall[32m 128[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.com => test.eth[2m > [22moffchain immediate w/multicall[32m 127[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain extended[32m 42[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain immediate[32m 44[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain old[32m 64[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22moffchain extended[32m 143[2mms[22m[39m
+[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
+[22m[39m  Progress: 60,000 / 100,000
+
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22moffchain immediate[32m 167[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain extended w/multicall[32m 84[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain immediate w/multicall[32m 63[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22monchain old w/multicall[32m 78[2mms[22m[39m
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22moffchain extended w/multicall[32m 111[2mms[22m[39m
+[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
+[22m[39m  Progress: 70,000 / 100,000
+
+ [32m✓[39m test/integration/dns/DNSTLDResolver.test.ts[2m > [22mDNSTLDResolver[2m > [22mDNSAliasResolver[2m > [22mtest.eth[2m > [22moffchain immediate w/multicall[32m 148[2mms[22m[39m
+[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
+[22m[39m  Progress: 80,000 / 100,000
+
+(node:6561) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22msetupName()[32m 139[2mms[22m[39m
+[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
+[22m[39m  Progress: 90,000 / 100,000
+
+ [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22msetupName() w/exact[32m 18[2mms[22m[39m
+ [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22mdeployPermissionedResolver[32m 10[2mms[22m[39m
+ [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22msetupName() w/resolver[32m 22[2mms[22m[39m
+ [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22msetupName() matches findRegistries()[32m 28[2mms[22m[39m
+ [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22moverlapping names[32m 65[2mms[22m[39m
+ [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22marbitrary names[32m 29[2mms[22m[39m
+ [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22mlocked resolver[32m 64[2mms[22m[39m
+ [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22mlocked registry[32m 24[2mms[22m[39m
+[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2m100k random timestamps
+[22m[39m  Progress: 100,000 / 100,000
+
+✓ All 100,000 fuzz tests passed!
+
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mEdge Cases[2m > [22m'All single digit time components padd…'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mSequential Days[2m > [22m'Day 1'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mSequential Days[2m > [22m'Day 2'[32m 1[2mms[22m[39m
@@ -391,42 +402,28 @@ Compiled 4 Solidity test files with solc 0.8.27 (evm target: cancun)
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mAdditional Edge Cases[2m > [22m'Last second of Feb 28, 2300'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mBoundary Timestamp Values[2m > [22m'Maximum 4-digit year timestamp'[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mBoundary Timestamp Values[2m > [22m'One second before Y2K'[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mBoundary Timestamp Values[2m > [22m'One second before 2100'[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mOverflow Behavior[2m > [22mshould revert for timestamp of year 10000[32m 18[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mBoundary Timestamp Values[2m > [22m'One second before 2100'[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mOverflow Behavior[2m > [22mshould revert for timestamp of year 10000[32m 12[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mOverflow Behavior[2m > [22mshould revert for timestamp of year 10000 + 1 second[32m 3[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mString Format Verification[2m > [22moutput length is always 20 characters[32m 2[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mString Format Verification[2m > [22mformat structure is correct[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mString Format Verification[2m > [22mall digit positions are numeric[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mFuzz/Bulk Tests[2m > [22m100k random timestamps[33m 4430[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mFuzz/Bulk Tests[2m > [22m100k random timestamps[33m 5606[2mms[22m[39m
 [90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2mdaily exhaustive from 1970-01-01 to 2970-01-01
 [22m[39m
 Testing 365,243 days (1000 years)...
 
-(node:6717) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(node:6595) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
- [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22msetupName()[32m 149[2mms[22m[39m
- [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22msetupName() w/exact[32m 13[2mms[22m[39m
- [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22mdeployPermissionedResolver[32m 10[2mms[22m[39m
- [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22msetupName() w/resolver[32m 15[2mms[22m[39m
- [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22msetupName() matches findRegistries()[32m 34[2mms[22m[39m
- [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22moverlapping names[32m 62[2mms[22m[39m
- [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22marbitrary names[32m 42[2mms[22m[39m
- [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22mlocked resolver[32m 39[2mms[22m[39m
- [32m✓[39m test/integration/fixtures/deployV2Fixture.test.ts[2m > [22mdeployV2Fixture[2m > [22mlocked registry[32m 25[2mms[22m[39m
-(node:6751) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
-(Use `node --trace-warnings ...` to show where the warning was created)
-[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2mdaily exhaustive from 1970-01-01 to 2970-01-01
-[22m[39m  Progress: 50,000 / 365,243 days (13.7%)
-
-(node:6782) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(node:6626) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
  [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mimplements supportsInterface(bytes4)[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 3[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 2[2mms[22m[39m
  [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mimplements supportsFeature(bytes4)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mimplements supportsFeature(bytes4)[32m 0[2mms[22m[39m
  [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mimplements resolve(bytes,bytes)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mimplements resolve(bytes,bytes)[32m 3[2mms[22m[39m
  [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mICompositeResolver[2m > [22mimplements getResolver(bytes)[32m 1[2mms[22m[39m
@@ -437,34 +434,37 @@ Testing 365,243 days (1000 years)...
  [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mContract interface[2m > [22mIContractNamer[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mIERC7996[2m > [22msupports IERC165[32m 2[2mms[22m[39m
  [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mIERC7996[2m > [22mRESOLVER[2m > [22msupports RESOLVE_MULTICALL[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22meth override[32m 12[2mms[22m[39m
- [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mtest.eth[32m 37[2mms[22m[39m
- [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22msub.test.eth[32m 44[2mms[22m[39m
- [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mabc.sub.test.eth[32m 55[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22meth override[32m 9[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mtest.eth[32m 48[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22msub.test.eth[32m 45[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV2Resolver.test.ts[2m > [22mENSV2Resolver[2m > [22mabc.sub.test.eth[32m 53[2mms[22m[39m
 [90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2mdaily exhaustive from 1970-01-01 to 2970-01-01
-[22m[39m  Progress: 100,000 / 365,243 days (27.4%)
+[22m[39m  Progress: 50,000 / 365,243 days (13.7%)
 
- [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mimplements supportsInterface(bytes4)[32m 2[2mms[22m[39m
- [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mimplements supportsInterface(bytes4)[32m 3[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 4[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIERC165[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 2[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mimplements supportsFeature(bytes4)[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIERC7996[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mimplements resolve(bytes,bytes)[32m 0[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mimplements resolve(bytes,bytes)[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIExtendedResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mICompositeResolver[2m > [22mimplements getResolver(bytes)[32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mICompositeResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mICompositeResolver[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIContractNamer[2m > [22mimplements isContractNamer(address)[32m 1[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIContractNamer[2m > [22mimplements isContractNamer(address)[32m 0[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIContractNamer[2m > [22mERC165's supportsInterface(bytes4)[2m > [22muses less than 30k gas [skip-on-coverage][32m 1[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mContract interface[2m > [22mIContractNamer[2m > [22mERC165's supportsInterface(bytes4)[2m > [22mclaims support[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mIERC7996[2m > [22msupports IERC165[32m 2[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mIERC7996[2m > [22msupports IERC165[32m 3[2mms[22m[39m
  [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mIERC7996[2m > [22mRESOLVER[2m > [22msupports RESOLVE_MULTICALL[32m 1[2mms[22m[39m
- [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mtest.eth[32m 22[2mms[22m[39m
- [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22msub.test.eth[32m 25[2mms[22m[39m
- [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mabc.sub.test.eth[32m 38[2mms[22m[39m
- [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mtest.xyz[32m 25[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mtest.eth[32m 26[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22msub.test.eth[32m 28[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mabc.sub.test.eth[32m 37[2mms[22m[39m
+ [32m✓[39m test/integration/ENSV1Resolver.test.ts[2m > [22mENSV1Resolver[2m > [22mtest.xyz[32m 23[2mms[22m[39m
+[90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2mdaily exhaustive from 1970-01-01 to 2970-01-01
+[22m[39m  Progress: 100,000 / 365,243 days (27.4%)
+
 [90mstdout[2m | test/integration/common/LibISO8601.test.ts[2m > [22m[2mLibISO8601[2m > [22m[2mFuzz/Bulk Tests[2m > [22m[2mdaily exhaustive from 1970-01-01 to 2970-01-01
 [22m[39m  Progress: 150,000 / 365,243 days (41.1%)
 
@@ -484,10 +484,10 @@ Testing 365,243 days (1000 years)...
 [22m[39m
 ✓ All 365,244 daily tests passed!
 
- [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mFuzz/Bulk Tests[2m > [22mdaily exhaustive from 1970-01-01 to 2970-01-01[33m 12230[2mms[22m[39m
+ [32m✓[39m test/integration/common/LibISO8601.test.ts[2m > [22mLibISO8601[2m > [22mFuzz/Bulk Tests[2m > [22mdaily exhaustive from 1970-01-01 to 2970-01-01[33m 15980[2mms[22m[39m
 
 [2m Test Files [22m [1m[32m7 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (8)[39m
 [2m      Tests [22m [1m[32m313 passed[39m[22m[90m (313)[39m
-[2m   Start at [22m 01:10:17
-[2m   Duration [22m 19.88s[2m (transform 380ms, setup 5.68s, collect 11.63s, tests 22.96s, environment 2ms, prepare 700ms)[22m
+[2m   Start at [22m 01:23:27
+[2m   Duration [22m 24.37s[2m (transform 353ms, setup 5.14s, collect 10.36s, tests 28.11s, environment 2ms, prepare 696ms)[22m
 
