@@ -438,6 +438,11 @@ contract StandaloneSingleOwnerHCATest is Test {
             bytes4(0xffffffff)
         );
 
+        bytes32 erc7739DetectionHash = bytes32((type(uint256).max / 0xffff) * 0x7739);
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        vm.prank(intentExecutor);
+        account.isValidSignature(erc7739DetectionHash, "");
+
         vm.expectRevert(
             abi.encodeWithSelector(
                 IModuleManagerEventsAndErrors.ValidatorNotInstalled.selector,
@@ -1327,6 +1332,13 @@ contract StandaloneSingleOwnerHCATest is Test {
 
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector);
         validatorHarness.singleChainDigestHarness(address(hca), 0, hex"");
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector);
+        validatorHarness.singleChainDigestHarness(
+            address(hca),
+            0,
+            abi.encodePacked(bytes2(HCAOperationHashLib.ERC7579_ERC1271_MODE), uint8(1))
+        );
     }
 
     function test_validator_moduleSurface() public view {
@@ -1361,6 +1373,14 @@ contract StandaloneSingleOwnerHCATest is Test {
         assertEq(validator.validateUserOp(userOp, userOpHash), 1);
 
         userOp.signature = abi.encodePacked(bytes32(0), bytes32(0), uint8(29));
+        vm.prank(address(hca));
+        assertEq(validator.validateUserOp(userOp, userOpHash), 1);
+
+        userOp.signature = abi.encodePacked(
+            bytes32(uint256(1)),
+            bytes32(type(uint256).max),
+            uint8(27)
+        );
         vm.prank(address(hca));
         assertEq(validator.validateUserOp(userOp, userOpHash), 1);
 

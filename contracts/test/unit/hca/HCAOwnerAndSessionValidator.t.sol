@@ -170,6 +170,30 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         assertEq(hca.validate(validator, digest, envelope), ERC1271_MAGICVALUE);
     }
 
+    function test_validator_rejectsInvalidFirstPermit2Operations() public {
+        _assertFirstPermit2OperationRevert(
+            abi.encodePacked(bytes2(HCAOperationHashLib.ERC7579_ERC1271_MODE), uint8(0)),
+            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
+        );
+
+        bytes memory operationData = _commitOperation(bytes32("commitment"));
+        operationData[1] = bytes1(uint8(4));
+        _assertFirstPermit2OperationRevert(
+            operationData,
+            HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector
+        );
+
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: abi.encodePacked(
+            IETHRegistrar.register.selector,
+            bytes2(0)
+        )});
+        _assertFirstPermit2OperationRevert(
+            _encodeExecutions(executions),
+            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
+        );
+    }
+
     function test_validator_rejectsMalformedFirstUseEnvelopes() public {
         bytes memory envelope = new bytes(130);
         envelope[0] = 0xFF;
@@ -194,6 +218,15 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         envelope[0] = 0x05;
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
         hca.validate(validator, bytes32(0), envelope);
+
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        bytes memory operationData = _initialCommitOperation(permissionId, proof);
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+        envelope = _initialEnvelope(permissionId, proof, claimData, operationData, digest);
+        envelope = _slice(envelope, 0, envelope.length - operationData.length);
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(validator, digest, envelope);
     }
 
     function test_validator_rejectsInvalidFirstUseProofAndSessionSignature() public {
@@ -217,6 +250,16 @@ contract HCAOwnerAndSessionValidatorTest is Test {
             _initialEnvelope(permissionId, proof, claimData, operationData, digest)
         );
 
+        (proof, permissionId) = _multiChainEnableProof();
+        proof.sessionToEnableIndex = uint8(proof.hashesAndChainIds.length);
+        operationData = _initialCommitOperation(permissionId, proof);
+        (claimData, digest) = _claim(operationData, address(hca), block.chainid);
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialEnvelope(permissionId, proof, claimData, operationData, digest)
+        );
         (proof, permissionId) = _multiChainEnableProof();
         operationData = _initialCommitOperation(permissionId, proof);
         (claimData, digest) = _claim(operationData, address(hca), block.chainid);
@@ -488,6 +531,20 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         _assertInitialRefundPolicyFailure(permissionId, proof, 80, _encodeExecutions(executions));
     }
 
+    function _assertFirstPermit2OperationRevert(bytes memory operationData, bytes4 revertSelector)
+        internal
+    {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+
+        vm.expectRevert(revertSelector);
+        hca.validate(
+            validator,
+            digest,
+            _initialEnvelope(permissionId, proof, claimData, operationData, digest)
+        );
+    }
     function _commitOperation(bytes32 commitment) internal view returns (bytes memory) {
         Execution[] memory executions = new Execution[](1);
         executions[0] = Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
