@@ -37,6 +37,7 @@ import {
   readTestCheckpoint,
   writeTestCheckpoint,
 } from "../utils/preMigrationTestUtils.js";
+import { idFromLabel } from "../utils/utils.js";
 
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 
@@ -221,6 +222,47 @@ describe("PreMigration", () => {
     const stateAfter = await verifyV2State(env, label);
     expect(stateAfter.status).toBe(STATUS.RESERVED);
     expect(stateAfter.expiry).toBeGreaterThan(stateBefore.expiry);
+  });
+
+  it("a name with a maximal expiry does not abort the run", async () => {
+    // Real Sepolia data contains names registered to nearly uint64.max. Formatting
+    // one for a log line used to throw and kill the whole pre-migration, taking the
+    // healthy names in the same batch with it.
+    const { user } = env.namedAccounts;
+    const healthy = "healthyname";
+    const extreme = "extremeexpiry";
+
+    await registerV1Name(env, healthy, user.address, ONE_YEAR_SECONDS);
+    await registerV1Name(env, extreme, user.address, ONE_YEAR_SECONDS);
+    // Push it far beyond any representable date, as the real name is.
+    await env.v1.BaseRegistrar.write.renew([idFromLabel(extreme), 2n ** 63n]);
+
+    createCSVFile(csvFilePath, [extreme, healthy]);
+    await main(buildMainArgs(env, csvFilePath));
+
+    // The healthy name in the same batch is still reserved.
+    expect((await verifyV2State(env, healthy)).status).toBe(STATUS.RESERVED);
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.totalProcessed).toBe(2);
+  });
+
+  it("one unprocessable name does not stop the rest of its batch", async () => {
+    // Whatever goes wrong for a single name — an overflow, a malformed record — the
+    // others in the batch must still be reserved.
+    const { user } = env.namedAccounts;
+    const labels = ["batchmate1", "batchmate2", "batchmate3"];
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+    await env.v1.BaseRegistrar.write.renew([idFromLabel(labels[1]), 2n ** 63n]);
+
+    createCSVFile(csvFilePath, labels);
+    await main(buildMainArgs(env, csvFilePath));
+
+    for (const label of [labels[0], labels[2]]) {
+      expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
+    }
   });
 
   it("dry run does not create on-chain state", async () => {
@@ -1262,7 +1304,7 @@ describe("PreMigration", () => {
     expect(checkpoint!.failureCount).toBe(0);
   });
 
-  it("re-running same batch after successful reservation uses renewal path", async () => {
+  it("re-running an unchanged batch reports names as up to date, not renewed", async () => {
     const labels = ["rerun1", "rerun2"];
     const { user } = env.namedAccounts;
 
@@ -1277,17 +1319,63 @@ describe("PreMigration", () => {
     const checkpoint1 = readTestCheckpoint();
     expect(checkpoint1!.successCount).toBe(2);
     expect(checkpoint1!.renewedCount).toBe(0);
+    expect(checkpoint1!.upToDateCount).toBe(0);
 
     deleteTestCheckpoint();
     await main(args);
 
+    // Nothing changed on v1, so the reservations already carry the expiry this run
+    // would set. The registrar would no-op on them, so they are not sent and not
+    // counted as renewals.
     const checkpoint2 = readTestCheckpoint();
     expect(checkpoint2!.successCount).toBe(0);
-    expect(checkpoint2!.renewedCount).toBe(2);
+    expect(checkpoint2!.renewedCount).toBe(0);
+    expect(checkpoint2!.upToDateCount).toBe(2);
 
     for (const label of labels) {
       const state = await verifyV2State(env, label);
       expect(state.status).toBe(STATUS.RESERVED);
+    }
+  });
+
+  it("renews a reservation when the v1 expiry has been extended", async () => {
+    const labels = ["extended1", "extended2"];
+    const { user } = env.namedAccounts;
+
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+
+    createCSVFile(csvFilePath, labels);
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    const before = await Promise.all(
+      labels.map((label) => verifyV2State(env, label)),
+    );
+
+    // Extend on v1, exactly as ETHRenewerV1 would during the migration window.
+    for (const label of labels) {
+      await renewV1Name(env, label, ONE_YEAR_SECONDS);
+    }
+
+    deleteTestCheckpoint();
+    await main(args);
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(0);
+    expect(checkpoint!.renewedCount).toBe(2);
+    expect(checkpoint!.upToDateCount).toBe(0);
+
+    // The v2 reservation actually moved, rather than merely being reported as renewed.
+    const after = await Promise.all(
+      labels.map((label) => verifyV2State(env, label)),
+    );
+    for (let index = 0; index < labels.length; index++) {
+      expect(after[index].status).toBe(STATUS.RESERVED);
+      expect(BigInt(after[index].expiry)).toBeGreaterThan(
+        BigInt(before[index].expiry),
+      );
     }
   });
 });

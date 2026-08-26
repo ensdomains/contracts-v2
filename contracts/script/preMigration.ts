@@ -128,6 +128,9 @@ export interface Checkpoint {
   /// Names skipped because they are already registered (owned) on v2. Tracked
   /// separately from genuine failures.
   alreadyRegisteredCount: number;
+  /// Names already reserved on v2 with an expiry at least as long as the one this
+  /// run would set. Submitting them would be a no-op on-chain, so they are not sent.
+  upToDateCount: number;
   invalidLabelCount: number;
   timestamp: string;
 }
@@ -138,6 +141,12 @@ const ERROR_LOG_FILE = "preMigration-errors.log";
 const INFO_LOG_FILE = "preMigration.log";
 
 const RPC_TIMEOUT_MS = 30000;
+
+// How many batches may fail in a row before the run gives up. One failed batch is
+// usually a transient RPC problem and losing hours of progress to it is worse than
+// carrying on; a run of them means something systemic, and continuing would produce
+// a confidently incomplete reservation set.
+const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
 
 // ENS v1 BaseRegistrar on Ethereum mainnet
 const BASE_REGISTRAR_ADDRESS =
@@ -163,6 +172,7 @@ export function createFreshCheckpoint(): Checkpoint {
     skippedNeverRegisteredCount: 0,
     skippedPastGraceCount: 0,
     alreadyRegisteredCount: 0,
+    upToDateCount: 0,
     invalidLabelCount: 0,
     timestamp: new Date().toISOString(),
   };
@@ -361,6 +371,33 @@ interface V1VerificationResult {
   expiry: bigint;
 }
 
+/// Largest expiry the registry can store, since expiries are `uint64`.
+export const MAX_UINT64 = 2n ** 64n - 1n;
+
+// Renders an expiry as a date for logging. Expiries near the uint64 ceiling are far
+// outside the range `Date` can represent, and letting one of those throw would abort
+// the whole run over a log line, so they are described rather than formatted.
+export function formatExpiry(expiry: bigint): string {
+  const milliseconds = Number(expiry) * 1000;
+  if (!Number.isFinite(milliseconds) || Math.abs(milliseconds) > 8.64e15) {
+    return `${expiry} (beyond representable dates)`;
+  }
+  return new Date(milliseconds).toISOString().split("T")[0];
+}
+
+// Chain time on the v1 side, which is what the grace-period rule is actually about.
+// Wall-clock time only agrees with it on a live network: against a fork pinned to a
+// past block it runs ahead, marking names released that the chain still holds in
+// grace, and against a fork that has time-travelled it runs behind.
+async function readV1Timestamp(v1Client: any): Promise<bigint> {
+  try {
+    const block = await v1Client.getBlock();
+    return BigInt(block.timestamp);
+  } catch {
+    return BigInt(Math.floor(Date.now() / 1000));
+  }
+}
+
 export async function verifyNameOnV1(
   labelName: string,
   client: any,
@@ -379,7 +416,7 @@ export async function verifyNameOnV1(
     args: [tokenId],
   });
 
-  const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
+  const currentTimestamp = await readV1Timestamp(client);
   const isRegistered = expiry > 0n && expiry > currentTimestamp;
 
   return { isRegistered, expiry };
@@ -641,6 +678,7 @@ async function fetchAndReserveInBatches(
   config: PreMigrationConfig,
   checkpoint: Checkpoint,
 ): Promise<void> {
+  let consecutiveBatchFailures = 0;
   const { client, mainnetClient, registry, batchRegistrar, registryAbi } =
     await createMigrationClients(config);
 
@@ -719,9 +757,30 @@ async function fetchAndReserveInBatches(
         break;
       }
     } catch (error) {
-      logger.error(`Failed to process batch: ${error}`);
-      throw error;
+      // A whole batch failing is a different class of problem than one bad name:
+      // usually the RPC rather than the data. Aborting immediately throws away a
+      // long run, so the batch is recorded as failed and the next one is tried —
+      // but a run of consecutive failures means something systemic, and continuing
+      // through that would produce a confidently incomplete result.
+      consecutiveBatchFailures++;
+      logger.error(
+        `Failed to process batch (${consecutiveBatchFailures}/${MAX_CONSECUTIVE_BATCH_FAILURES} consecutive): ${error}`,
+      );
+      if (consecutiveBatchFailures >= MAX_CONSECUTIVE_BATCH_FAILURES) {
+        logger.error(
+          `Giving up after ${consecutiveBatchFailures} consecutive batch failures; re-run with --continue once the cause is fixed.`,
+        );
+        throw error;
+      }
+      checkpoint.failureCount += batch.length;
+      checkpoint.totalProcessed += batch.length;
+      checkpoint.lastProcessedLineNumber =
+        batch[batch.length - 1]?.lineNumber ??
+        checkpoint.lastProcessedLineNumber;
+      if (!config.disableCheckpoint) saveCheckpoint(checkpoint);
+      continue;
     }
+    consecutiveBatchFailures = 0;
   }
 
   printFinalSummary(checkpoint);
@@ -737,6 +796,9 @@ export interface VerificationResult {
   /// separately by adding the configurable `--bonus-period-days`.
   v1IsClaimable: boolean;
   v1Expiry: bigint;
+  /// Current expiry recorded on v2, or 0 when the name has no v2 entry. Used to tell
+  /// a reservation that needs extending from one that is already long enough.
+  v2Expiry: bigint;
   error?: string;
 }
 
@@ -790,7 +852,7 @@ export async function batchVerifyRegistrations(
       ? v1Settled.value
       : buildFallback(v1Settled.reason);
 
-  const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
+  const currentTimestamp = await readV1Timestamp(mainnetClient);
 
   return registrations.map((reg, i) => {
     const v2 = (v2Results as any[])[i];
@@ -803,6 +865,7 @@ export async function batchVerifyRegistrations(
         v2LatestOwner: zeroAddress,
         v1IsClaimable: false,
         v1Expiry: 0n,
+        v2Expiry: 0n,
         error: v2.status === "failure" ? String(v2.error) : String(v1.error),
       };
     }
@@ -812,6 +875,7 @@ export async function batchVerifyRegistrations(
       registration: reg,
       v2Status: (v2.result as any).status,
       v2LatestOwner: (v2.result as any).latestOwner,
+      v2Expiry: BigInt((v2.result as any).expiry ?? 0),
       v1IsClaimable:
         expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > currentTimestamp,
       v1Expiry: expiry,
@@ -994,53 +1058,77 @@ async function processBatch(
       checkpoint.totalExpected,
     );
 
-    if (result.error) {
-      logger.failed(registration.labelName, result.error);
+    // One bad name must never take the whole run down with it. Every failure
+    // mode below is handled explicitly, but an unforeseen one — a value that
+    // overflows a conversion, a malformed record — would otherwise abort a
+    // multi-hour pre-migration partway through. It is recorded and skipped.
+    try {
+      if (result.error) {
+        logger.failed(registration.labelName, result.error);
+        checkpoint.failureCount++;
+        checkpoint.totalProcessed++;
+        logger.finishedName(registration.labelName, "failed");
+        continue;
+      }
+
+      if (result.v2Status === 2) {
+        logger.error(
+          `Name ${registration.labelName}.eth is already registered with owner: ${result.v2LatestOwner}`,
+        );
+        checkpoint.alreadyRegisteredCount++;
+        checkpoint.totalProcessed++;
+        logger.finishedName(registration.labelName, "failed");
+        continue;
+      }
+      if (result.v2Status === 1) {
+        alreadyReservedNames.add(registration.labelName);
+      }
+
+      if (!result.v1IsClaimable) {
+        const neverRegistered = result.v1Expiry === 0n;
+        const reason = neverRegistered
+          ? "never registered on v1"
+          : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
+        logger.v1NotRegistered(registration.labelName, reason);
+        checkpoint.skippedCount++;
+        if (neverRegistered) {
+          checkpoint.skippedNeverRegisteredCount++;
+        } else {
+          checkpoint.skippedPastGraceCount++;
+        }
+        checkpoint.totalProcessed++;
+        logger.finishedName(registration.labelName, "skipped");
+        continue;
+      }
+
+      // Some names carry a deliberately maximal v1 expiry, so adding the bonus period
+      // can run past what a uint64 can hold. The registry stores expiries as uint64,
+      // so the value is capped rather than allowed to wrap — an expiry that far out is
+      // already effectively permanent.
+      const rawExpiry = result.v1Expiry + bonusPeriodSeconds;
+      const effectiveExpiry = rawExpiry > MAX_UINT64 ? MAX_UINT64 : rawExpiry;
+
+      // A reservation is only renewed on-chain when the new expiry is longer than the
+      // stored one; submitting an equal or shorter one does nothing. Leaving such
+      // names out of the batch keeps the counters honest and keeps the final sync from
+      // re-sending the entire CSV when almost nothing has changed.
+      if (result.v2Status === 1 && effectiveExpiry <= result.v2Expiry) {
+        checkpoint.upToDateCount++;
+        checkpoint.totalProcessed++;
+        logger.finishedName(registration.labelName, "skipped");
+        continue;
+      }
+
+      logger.v1Verified(registration.labelName, formatExpiry(effectiveExpiry));
+
+      batchLabels.push(registration.labelName);
+      batchExpires.push(effectiveExpiry);
+    } catch (error) {
+      logger.failed(registration.labelName, String(error));
       checkpoint.failureCount++;
       checkpoint.totalProcessed++;
       logger.finishedName(registration.labelName, "failed");
-      continue;
     }
-
-    if (result.v2Status === 2) {
-      logger.error(
-        `Name ${registration.labelName}.eth is already registered with owner: ${result.v2LatestOwner}`,
-      );
-      checkpoint.alreadyRegisteredCount++;
-      checkpoint.totalProcessed++;
-      logger.finishedName(registration.labelName, "failed");
-      continue;
-    }
-    if (result.v2Status === 1) {
-      alreadyReservedNames.add(registration.labelName);
-    }
-
-    if (!result.v1IsClaimable) {
-      const neverRegistered = result.v1Expiry === 0n;
-      const reason = neverRegistered
-        ? "never registered on v1"
-        : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
-      logger.v1NotRegistered(registration.labelName, reason);
-      checkpoint.skippedCount++;
-      if (neverRegistered) {
-        checkpoint.skippedNeverRegisteredCount++;
-      } else {
-        checkpoint.skippedPastGraceCount++;
-      }
-      checkpoint.totalProcessed++;
-      logger.finishedName(registration.labelName, "skipped");
-      continue;
-    }
-
-    const effectiveExpiry = result.v1Expiry + bonusPeriodSeconds;
-
-    const expiryDateFormatted = new Date(Number(effectiveExpiry) * 1000)
-      .toISOString()
-      .split("T")[0];
-    logger.v1Verified(registration.labelName, expiryDateFormatted);
-
-    batchLabels.push(registration.labelName);
-    batchExpires.push(effectiveExpiry);
   }
 
   if (batchLabels.length > 0 && !config.dryRun) {
@@ -1144,6 +1232,10 @@ function printFinalSummary(checkpoint: Checkpoint): void {
     yellow(checkpoint.alreadyRegisteredCount.toString()),
   );
   logger.config(
+    "Already up to date on v2",
+    yellow(checkpoint.upToDateCount.toString()),
+  );
+  logger.config(
     "Invalid labels",
     yellow(checkpoint.invalidLabelCount.toString()),
   );
@@ -1173,6 +1265,7 @@ function printFinalSummary(checkpoint: Checkpoint): void {
 }
 
 export async function main(argv = process.argv): Promise<void> {
+  let failedNames = 0;
   const program = new Command()
     .name("premigrate")
     .description(
@@ -1314,11 +1407,28 @@ export async function main(argv = process.argv): Promise<void> {
 
     await fetchAndReserveInBatches(config, checkpoint);
 
-    logger.success("\nPre-migration script completed successfully!");
+    // A name that reverted or timed out was never written to v2. Reporting the run
+    // as a success would hand the operator a green result over an incomplete
+    // reservation set, so it is raised instead. Names already registered on v2 are
+    // not failures: nothing was lost, there was simply nothing to do.
+    failedNames = checkpoint.failureCount;
+
+    if (failedNames === 0) {
+      logger.success("\nPre-migration script completed successfully!");
+    }
   } catch (error) {
     logger.error(`Fatal error: ${error}`);
     console.error(error);
     process.exit(1);
+  }
+
+  // Raised outside the catch so an in-process caller — the fork rehearsal runs this
+  // in the same process — receives an error it can handle, rather than having the
+  // whole run terminated by a process exit.
+  if (failedNames > 0) {
+    throw new Error(
+      `pre-migration finished with ${failedNames} failed name(s); see ${ERROR_LOG_FILE}`,
+    );
   }
 }
 

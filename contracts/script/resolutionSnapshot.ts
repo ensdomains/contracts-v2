@@ -1,0 +1,193 @@
+// Captures how names resolve, so the same questions can be asked again after the
+// Universal Resolver cutover and the answers compared.
+//
+// The cutover repoints public resolution at v2. Verifying it by checking that a name
+// resolves to a non-zero address proves almost nothing: a name that resolved to the
+// wrong address, lost its text records, or stopped resolving a coin type it used to
+// support would all pass. What matters is that every answer is the same one the v1
+// resolver gave before the switch, so the check is a diff against a snapshot rather
+// than a liveness probe.
+
+import {
+  decodeFunctionResult,
+  encodeFunctionData,
+  namehash,
+  parseAbi,
+  type Address,
+  type Hex,
+} from "viem";
+
+export const RESOLVER_ABI = parseAbi([
+  "function addr(bytes32 node) view returns (address)",
+  "function addr(bytes32 node, uint256 coinType) view returns (bytes)",
+  "function text(bytes32 node, string key) view returns (string)",
+  "function contenthash(bytes32 node) view returns (bytes)",
+]);
+
+// The records worth comparing. Coin types and text keys are the two places a
+// resolver migration most easily drops data, because each is a separate lookup that
+// a partial implementation can answer with an empty value instead of failing.
+export const DEFAULT_COIN_TYPES = [60n, 0n, 2147483785n] as const;
+export const DEFAULT_TEXT_KEYS = [
+  "avatar",
+  "url",
+  "com.twitter",
+  "description",
+] as const;
+
+export type RecordQuery = {
+  /** Human-readable identity of the record, used when reporting a difference. */
+  label: string;
+  call: Hex;
+};
+
+export type NameSnapshot = {
+  name: string;
+  /** Resolver the name resolved through, or the zero address when it had none. */
+  resolver: Address;
+  /** Record label to the raw returned bytes, or null when the lookup reverted. */
+  records: Record<string, Hex | null>;
+};
+
+export type ResolutionSnapshot = {
+  capturedAt: string;
+  chainId: number;
+  resolverAddress: Address;
+  names: NameSnapshot[];
+};
+
+// Builds the record lookups for one name. `addr(bytes32)` is kept alongside the
+// coin-type form because they are distinct code paths on most resolvers.
+export function recordQueries(
+  name: string,
+  {
+    coinTypes = DEFAULT_COIN_TYPES,
+    textKeys = DEFAULT_TEXT_KEYS,
+  }: {
+    coinTypes?: readonly bigint[];
+    textKeys?: readonly string[];
+  } = {},
+): RecordQuery[] {
+  const node = namehash(name);
+  const queries: RecordQuery[] = [
+    {
+      label: "addr",
+      call: encodeFunctionData({
+        abi: RESOLVER_ABI,
+        functionName: "addr",
+        args: [node],
+      }),
+    },
+    {
+      label: "contenthash",
+      call: encodeFunctionData({
+        abi: RESOLVER_ABI,
+        functionName: "contenthash",
+        args: [node],
+      }),
+    },
+  ];
+  for (const coinType of coinTypes) {
+    queries.push({
+      label: `addr(${coinType})`,
+      call: encodeFunctionData({
+        abi: RESOLVER_ABI,
+        functionName: "addr",
+        args: [node, coinType],
+      }),
+    });
+  }
+  for (const key of textKeys) {
+    queries.push({
+      label: `text(${key})`,
+      call: encodeFunctionData({
+        abi: RESOLVER_ABI,
+        functionName: "text",
+        args: [node, key],
+      }),
+    });
+  }
+  return queries;
+}
+
+export type SnapshotDifference = {
+  name: string;
+  record: string;
+  before: string;
+  after: string;
+};
+
+function render(value: Hex | null): string {
+  return value === null ? "(reverted)" : value;
+}
+
+// Compares two snapshots record by record.
+//
+// A record that reverted before and still reverts is unchanged and not reported: the
+// point is to catch answers that *changed*, not to require every name to have every
+// record. A record that stops resolving, starts resolving, or returns different bytes
+// is a difference in all three directions.
+export function diffResolutionSnapshots(
+  before: ResolutionSnapshot,
+  after: ResolutionSnapshot,
+): SnapshotDifference[] {
+  const differences: SnapshotDifference[] = [];
+  const afterByName = new Map(after.names.map((entry) => [entry.name, entry]));
+
+  for (const beforeName of before.names) {
+    const afterName = afterByName.get(beforeName.name);
+    if (!afterName) {
+      differences.push({
+        name: beforeName.name,
+        record: "(whole name)",
+        before: "present",
+        after: "absent from post-cutover snapshot",
+      });
+      continue;
+    }
+    for (const [record, beforeValue] of Object.entries(beforeName.records)) {
+      const afterValue = afterName.records[record] ?? null;
+      if (render(beforeValue) === render(afterValue)) continue;
+      differences.push({
+        name: beforeName.name,
+        record,
+        before: render(beforeValue),
+        after: render(afterValue),
+      });
+    }
+  }
+  return differences;
+}
+
+export function describeDifference(difference: SnapshotDifference): string {
+  return `${difference.name} ${difference.record}: ${difference.before} -> ${difference.after}`;
+}
+
+// Decodes a raw record answer for display. Falls back to the raw bytes when the
+// value does not decode, so a report is never blank.
+export function decodeRecord(record: string, value: Hex | null): string {
+  if (value === null) return "(reverted)";
+  try {
+    if (record === "addr") {
+      return String(
+        decodeFunctionResult({
+          abi: RESOLVER_ABI,
+          functionName: "addr",
+          data: value,
+        }),
+      );
+    }
+    if (record.startsWith("text(")) {
+      return String(
+        decodeFunctionResult({
+          abi: RESOLVER_ABI,
+          functionName: "text",
+          data: value,
+        }),
+      );
+    }
+  } catch {
+    // fall through to the raw value
+  }
+  return value;
+}

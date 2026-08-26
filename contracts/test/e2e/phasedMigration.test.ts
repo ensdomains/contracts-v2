@@ -385,6 +385,13 @@ describeSepoliaFork("Sepolia Anvil fork migration rehearsal", () => {
         "v2 registrar rejected pre-migrated reserved name after enablement",
       );
       expect(output).toContain("v2 registrar registered");
+
+      // The rehearsal must say what it covered. A pristine fork runs every smoke,
+      // so anything less than full coverage here means the run silently degraded.
+      expect(output).toContain(
+        "pristine chain: v1 registration controllers still authorized",
+      );
+      expect(output).toContain("coverage: all smoke checks ran");
     } finally {
       rmSync(workDir, { recursive: true, force: true });
     }
