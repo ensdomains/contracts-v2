@@ -109,19 +109,19 @@ library HCAOperationHashLib {
                 revert(0, 4)
             }
 
-            let inputLength := operationData.length
-            if lt(inputLength, _PACKED_OPERATION_PREFIX_LENGTH) { fail() }
-            let inputOffset := operationData.offset
-            let firstWord := calldataload(inputOffset)
-            let mode := shl(240, shr(240, firstWord))
-            let count := byte(2, firstWord)
+            if lt(operationData.length, _PACKED_OPERATION_PREFIX_LENGTH) { fail() }
 
-            operation := mload(0x40)
-            mstore(operation, mode)
-            let executions := add(operation, 0x40)
-            mstore(add(operation, 0x20), executions)
-            mstore(executions, count)
-            let executionCursor := add(executions, 0x20)
+            let count
+            {
+                let firstWord := calldataload(operationData.offset)
+                count := byte(2, firstWord)
+                operation := mload(0x40)
+                mstore(operation, shl(240, shr(240, firstWord)))
+            }
+
+            mstore(add(operation, 0x20), add(operation, 0x40))
+            mstore(add(operation, 0x40), count)
+            let executionCursor := add(operation, 0x60)
             let hashes := add(executionCursor, shl(5, count))
             mstore(hashes, count)
             let hashCursor := add(hashes, 0x20)
@@ -129,24 +129,25 @@ library HCAOperationHashLib {
             let cursor := _PACKED_OPERATION_PREFIX_LENGTH
 
             for { let i := 0 } lt(i, count) { i := add(i, 1) } {
-                if gt(add(cursor, _PACKED_EXECUTION_PREFIX_LENGTH), inputLength) { fail() }
-                let target := shr(96, calldataload(add(inputOffset, cursor)))
+                if gt(add(cursor, _PACKED_EXECUTION_PREFIX_LENGTH), operationData.length) {
+                    fail()
+                }
+                let target := shr(96, calldataload(add(operationData.offset, cursor)))
                 let callDataLength :=
-                    shr(232, calldataload(add(add(inputOffset, cursor), 20)))
+                    shr(232, calldataload(add(add(operationData.offset, cursor), 20)))
                 cursor := add(cursor, _PACKED_EXECUTION_PREFIX_LENGTH)
-                let callDataEnd := add(cursor, callDataLength)
-                if gt(callDataEnd, inputLength) { fail() }
+                if gt(add(cursor, callDataLength), operationData.length) { fail() }
 
                 mstore(executionCursor, free)
-                let execution := free
-                free := add(free, 0x60)
-                mstore(execution, target)
-                mstore(add(execution, 0x20), 0)
-                mstore(add(execution, 0x40), free)
-                mstore(free, callDataLength)
-                let callDataPointer := add(free, 0x20)
+                mstore(free, target)
+                mstore(add(free, 0x20), 0)
+                mstore(add(free, 0x40), add(free, 0x60))
+                mstore(add(free, 0x60), callDataLength)
+                let callDataPointer := add(free, 0x80)
                 mstore(add(callDataPointer, callDataLength), 0)
-                calldatacopy(callDataPointer, add(inputOffset, cursor), callDataLength)
+                calldatacopy(
+                    callDataPointer, add(operationData.offset, cursor), callDataLength
+                )
                 free := and(add(add(callDataPointer, callDataLength), 0x1f), not(0x1f))
 
                 mstore(
@@ -160,16 +161,16 @@ library HCAOperationHashLib {
 
                 executionCursor := add(executionCursor, 0x20)
                 hashCursor := add(hashCursor, 0x20)
-                cursor := callDataEnd
+                cursor := add(cursor, callDataLength)
             }
-            if iszero(eq(cursor, inputLength)) { fail() }
+            if iszero(eq(cursor, operationData.length)) { fail() }
 
             let executionArrayHash := keccak256(add(hashes, 0x20), shl(5, count))
             mstore(
                 free,
                 0xdbc520cb50a8aaf3fa06ea43dc3d59d248e52ae638476e3268a1e6e36bffe196
             )
-            mstore(add(free, 0x20), mode)
+            mstore(add(free, 0x20), mload(operation))
             mstore(add(free, 0x40), executionArrayHash)
             operationHash := keccak256(free, 0x60)
             mstore(0x40, add(free, 0x80))

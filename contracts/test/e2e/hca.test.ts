@@ -46,8 +46,7 @@ const HCA_USER_SALT = 0n;
 const ERC7579_ERC1271_MODE = `0x0201${"00".repeat(30)}` as Hex;
 const MOCK_ORCHESTRATOR_URL = "https://hca-orchestrator.invalid";
 const MOCK_BUNDLER_URL = "https://hca-bundler.invalid";
-const SMART_SESSION_EMISSARY =
-  "0xad568B3F825A8d5FFc06DD3253526B64D810Ae89";
+const SMART_SESSION_EMISSARY = "0xad568B3F825A8d5FFc06DD3253526B64D810Ae89";
 
 type HCAExecution = {
   target: Address;
@@ -701,11 +700,7 @@ describe("Standalone HCA", () => {
               callData: encodeFunctionData({
                 abi: artifacts.PermissionedResolver.abi,
                 functionName: "setText",
-                args: [
-                  dnsEncodeName(name),
-                  "avatar",
-                  `https://euc.li/${name}`,
-                ],
+                args: [dnsEncodeName(name), "avatar", `https://euc.li/${name}`],
               }),
             },
           ]
