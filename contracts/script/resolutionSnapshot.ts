@@ -110,6 +110,42 @@ export function recordQueries(
   return queries;
 }
 
+// Rebuilds the exact lookups a snapshot recorded, from the labels it stored.
+//
+// Verification has to ask the same questions the snapshot answered. Falling back to
+// the defaults compares different records: anything captured under custom coin types
+// or text keys is simply absent afterwards and reads as a revert, which looks like a
+// cutover regression and is not one.
+export function queriesFromSnapshot(
+  name: string,
+  records: string[],
+): RecordQuery[] {
+  const coinTypes: bigint[] = [];
+  const textKeys: string[] = [];
+  let wantsAddr = false;
+  let wantsContenthash = false;
+
+  for (const record of records) {
+    if (record === "addr") wantsAddr = true;
+    else if (record === "contenthash") wantsContenthash = true;
+    else {
+      const coin = record.match(/^addr\((\d+)\)$/);
+      if (coin) {
+        coinTypes.push(BigInt(coin[1]));
+        continue;
+      }
+      const text = record.match(/^text\((.*)\)$/s);
+      if (text) textKeys.push(text[1]);
+    }
+  }
+
+  return recordQueries(name, { coinTypes, textKeys }).filter((query) => {
+    if (query.label === "addr") return wantsAddr;
+    if (query.label === "contenthash") return wantsContenthash;
+    return true;
+  });
+}
+
 export type SnapshotDifference = {
   name: string;
   record: string;

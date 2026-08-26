@@ -3,6 +3,7 @@ import type { Hex } from "viem";
 
 import {
   diffResolutionSnapshots,
+  queriesFromSnapshot,
   recordQueries,
   type ResolutionSnapshot,
 } from "../../script/resolutionSnapshot.js";
@@ -52,6 +53,48 @@ describe("recordQueries", () => {
       textKeys: [],
     });
     expect(plain.call).not.toBe(withCoinType.call);
+  });
+});
+
+describe("queriesFromSnapshot", () => {
+  it("rebuilds exactly the records a snapshot captured", () => {
+    const queries = queriesFromSnapshot("vitalik.eth", [
+      "addr",
+      "addr(9999)",
+      "text(custom.key)",
+    ]);
+
+    expect(queries.map((query) => query.label)).toEqual([
+      "addr",
+      "addr(9999)",
+      "text(custom.key)",
+    ]);
+  });
+
+  it("omits records the snapshot did not capture", () => {
+    // Asking the defaults instead would add contenthash here, and its absence from
+    // the snapshot would then read as a revert — a cutover regression that is not one.
+    const queries = queriesFromSnapshot("vitalik.eth", ["addr"]);
+    expect(queries.map((query) => query.label)).toEqual(["addr"]);
+  });
+
+  it("round-trips the labels recordQueries produces", () => {
+    const original = recordQueries("vitalik.eth", {
+      coinTypes: [60n, 501n],
+      textKeys: ["avatar", "com.github"],
+    });
+    const rebuilt = queriesFromSnapshot(
+      "vitalik.eth",
+      original.map((query) => query.label),
+    );
+
+    expect(rebuilt.map((q) => q.label)).toEqual(original.map((q) => q.label));
+    expect(rebuilt.map((q) => q.call)).toEqual(original.map((q) => q.call));
+  });
+
+  it("handles a text key containing parentheses", () => {
+    const queries = queriesFromSnapshot("vitalik.eth", ["text(a(b)c)"]);
+    expect(queries.map((query) => query.label)).toEqual(["text(a(b)c)"]);
   });
 });
 

@@ -142,12 +142,6 @@ const INFO_LOG_FILE = "preMigration.log";
 
 const RPC_TIMEOUT_MS = 30000;
 
-// How many batches may fail in a row before the run gives up. One failed batch is
-// usually a transient RPC problem and losing hours of progress to it is worse than
-// carrying on; a run of them means something systemic, and continuing would produce
-// a confidently incomplete reservation set.
-const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
-
 // ENS v1 BaseRegistrar on Ethereum mainnet
 const BASE_REGISTRAR_ADDRESS =
   "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85" as Address;
@@ -373,6 +367,21 @@ interface V1VerificationResult {
 
 /// Largest expiry the registry can store, since expiries are `uint64`.
 export const MAX_UINT64 = 2n ** 64n - 1n;
+
+/// The v2 expiry a v1 name should end up with: its v1 expiry plus the bonus period,
+/// capped at what the registry can store.
+///
+/// Some names carry a deliberately maximal v1 expiry, so the sum can run past
+/// `uint64`. Pre-migration writes the capped value, so anything checking the result
+/// has to compute it the same way — otherwise those names read as permanent expiry
+/// mismatches and no reconciliation over them can ever pass.
+export function bonusAdjustedExpiry(
+  v1Expiry: bigint,
+  bonusPeriodSeconds: bigint,
+): bigint {
+  const raw = v1Expiry + bonusPeriodSeconds;
+  return raw > MAX_UINT64 ? MAX_UINT64 : raw;
+}
 
 // Renders an expiry as a date for logging. Expiries near the uint64 ceiling are far
 // outside the range `Date` can represent, and letting one of those throw would abort
@@ -678,7 +687,6 @@ async function fetchAndReserveInBatches(
   config: PreMigrationConfig,
   checkpoint: Checkpoint,
 ): Promise<void> {
-  let consecutiveBatchFailures = 0;
   const { client, mainnetClient, registry, batchRegistrar, registryAbi } =
     await createMigrationClients(config);
 
@@ -758,29 +766,15 @@ async function fetchAndReserveInBatches(
       }
     } catch (error) {
       // A whole batch failing is a different class of problem than one bad name:
-      // usually the RPC rather than the data. Aborting immediately throws away a
-      // long run, so the batch is recorded as failed and the next one is tried —
-      // but a run of consecutive failures means something systemic, and continuing
-      // through that would produce a confidently incomplete result.
-      consecutiveBatchFailures++;
+      // usually the RPC rather than the data, and none of its names were written.
+      // The run stops here so the checkpoint still points *before* them — carrying
+      // on would advance the resume cursor past rows that were never reserved, and
+      // `--continue` would then skip them permanently.
       logger.error(
-        `Failed to process batch (${consecutiveBatchFailures}/${MAX_CONSECUTIVE_BATCH_FAILURES} consecutive): ${error}`,
+        `Failed to process batch: ${error}. The checkpoint still points before this batch; re-run with --continue once the cause is fixed.`,
       );
-      if (consecutiveBatchFailures >= MAX_CONSECUTIVE_BATCH_FAILURES) {
-        logger.error(
-          `Giving up after ${consecutiveBatchFailures} consecutive batch failures; re-run with --continue once the cause is fixed.`,
-        );
-        throw error;
-      }
-      checkpoint.failureCount += batch.length;
-      checkpoint.totalProcessed += batch.length;
-      checkpoint.lastProcessedLineNumber =
-        batch[batch.length - 1]?.lineNumber ??
-        checkpoint.lastProcessedLineNumber;
-      if (!config.disableCheckpoint) saveCheckpoint(checkpoint);
-      continue;
+      throw error;
     }
-    consecutiveBatchFailures = 0;
   }
 
   printFinalSummary(checkpoint);
@@ -1101,12 +1095,10 @@ async function processBatch(
         continue;
       }
 
-      // Some names carry a deliberately maximal v1 expiry, so adding the bonus period
-      // can run past what a uint64 can hold. The registry stores expiries as uint64,
-      // so the value is capped rather than allowed to wrap — an expiry that far out is
-      // already effectively permanent.
-      const rawExpiry = result.v1Expiry + bonusPeriodSeconds;
-      const effectiveExpiry = rawExpiry > MAX_UINT64 ? MAX_UINT64 : rawExpiry;
+      const effectiveExpiry = bonusAdjustedExpiry(
+        result.v1Expiry,
+        bonusPeriodSeconds,
+      );
 
       // A reservation is only renewed on-chain when the new expiry is longer than the
       // stored one; submitting an equal or shorter one does nothing. Leaving such

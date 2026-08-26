@@ -86,7 +86,7 @@ async function fetchIndexPage(
   fetchFn: typeof fetch,
 ): Promise<IndexedRegistration[]> {
   const query = `
-    query IndexEthRegistrations($first: Int!, $afterId: String!, $block: Int!) {
+    query IndexEthRegistrations($first: Int!, $afterId: ID!, $block: Int!) {
       registrations(
         first: $first
         where: { id_gt: $afterId }

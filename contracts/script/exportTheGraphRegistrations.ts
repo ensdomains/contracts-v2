@@ -157,7 +157,7 @@ async function fetchRegistrations(
   fetchFn: typeof fetch = fetch,
 ): Promise<ENSRegistration[]> {
   const query = `
-    query GetEthRegistrations($first: Int!, $afterId: String!, $block: Int!) {
+    query GetEthRegistrations($first: Int!, $afterId: ID!, $block: Int!) {
       registrations(
         first: $first
         where: { id_gt: $afterId }

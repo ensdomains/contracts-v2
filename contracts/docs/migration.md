@@ -186,7 +186,10 @@ External infrastructure not implemented by this repository remains outside the m
   owner. **`premigration reconcile` must have passed** for this deployment on this chain — the
   command refuses to run otherwise. Freezing v1 is the irreversible step: a claimable name that
   pre-migration missed can never be picked up afterwards, and the reconciliation is what proves none
-  was. `--skip-preconditions` overrides the gate when you have a reason to. This command takes the key via `--private-key` explicitly — the env fallback applies only
+  was. `--skip-preconditions` overrides the gate when you have a reason to, and
+  `--max-reconcile-age-blocks` controls how stale a pass may be (default ~1 day) — names keep being
+  registered on v1 until the freeze, so an old pass says nothing about now. A reconciliation that
+  *fails* revokes any earlier pass rather than leaving it standing. This command takes the key via `--private-key` explicitly — the env fallback applies only
   when it is run through `phase execute-owner-txs --role v1Owner`.
 - **Env / args:** v1 owner key via `--private-key` (or `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` through
   execute-owner-txs). `--calldata-only` emits calldata for a multisig instead of broadcasting.
@@ -710,7 +713,7 @@ Two commands are **not** on-chain and intentionally omit the network options:
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 (CSV-scoped; superseded as the phase 2/5 gate by `reconcile`) |
 | `premigration build-index` | Build an independent labelhash-keyed index of v1 names from the subgraph (`--resume` continues a partial build) |
 | `premigration index-status` | Print the local v1 name index metadata (local; `--work-dir` only) |
-| `premigration reconcile` | Reconcile the v1 name index against v2 in both directions — the phase 2/5 sign-off (`--check-fuses` also counts names `CANNOT_TRANSFER` makes unclaimable) |
+| `premigration reconcile` | Reconcile the v1 name index against v2 in both directions — the phase 2/5 sign-off (`--check-fuses` also counts names `CANNOT_TRANSFER` makes unclaimable; needs `--csv-file` for the labels) |
 | `phase deploy-v2` | Phase 1: deploy the v2 migration contracts, reverse-registrar adapters, and enabled HCA infrastructure with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy) |
 | `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the Phase 1 deferred-tx replay on an already-migrated chain) |
 | `phase disable-v1-registrars` | Phase 3: revoke every v1 authorization (BaseRegistrar + reverse registrars) the active deployment did not grant |

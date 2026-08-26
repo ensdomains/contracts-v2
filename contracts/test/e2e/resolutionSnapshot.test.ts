@@ -67,6 +67,34 @@ describe("resolution snapshot", () => {
     expect(differences).toEqual([]);
   }, 120_000);
 
+  it("re-asks the snapshot's own records, not the defaults", async () => {
+    const { outFile } = paths();
+
+    // Capture a deliberately non-default record set.
+    const snapshot = await snapshotResolution({
+      ...options(),
+      names: NAME,
+      outFile,
+      coinTypes: "9999",
+      textKeys: "custom.key",
+    });
+    expect(Object.keys(snapshot.names[0].records).sort()).toEqual([
+      "addr",
+      "addr(9999)",
+      "contenthash",
+      "text(custom.key)",
+    ]);
+
+    // Verification must ask these, not the defaults. Falling back would leave the
+    // custom records absent from the post-cutover read, where they would look like
+    // reverts and be reported as regressions that never happened.
+    const differences = await verifyResolution({
+      ...options(),
+      snapshotFile: outFile,
+    });
+    expect(differences).toEqual([]);
+  }, 120_000);
+
   it("fails when a record changes after the snapshot — what a liveness check misses", async () => {
     const { outFile } = paths();
     await snapshotResolution({ ...options(), names: NAME, outFile });

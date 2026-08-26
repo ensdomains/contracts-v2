@@ -4,12 +4,15 @@ setDefaultTimeout(120_000);
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { keccak256, toHex } from "viem";
+import { encodeAbiParameters, keccak256, toHex, zeroAddress } from "viem";
 
 import { reconcilePreMigration } from "../../script/migration.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import { V1_INDEX_META_FILE } from "../../script/premigrationIndex.js";
 import { readVerification } from "../../script/phaseGate.js";
+import { MAX_UINT64 } from "../../script/preMigration.js";
+import { FUSES } from "../../script/deploy-constants.js";
+import { idFromLabel } from "../utils/utils.js";
 import {
   buildMainArgs,
   createCSVFile,
@@ -249,19 +252,79 @@ describe("premigration reconcile", () => {
   });
 
   it("counts names whose CANNOT_TRANSFER fuse blocks the transfer path", async () => {
-    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
     writeIndex(workDir, indexEntries);
 
+    // Wrap `beta` with CANNOT_TRANSFER burned. It stays reservable on v2 but its
+    // owner can never hand the token to a migration controller, so it is counted as
+    // unmigratable. Asserting a non-zero figure is the point: reading the wrong
+    // storage key returns empty records and reports zero however many exist.
+    const { user } = env.namedAccounts;
+    await env.v1.BaseRegistrar.write.safeTransferFrom(
+      [
+        user.address,
+        env.v1.NameWrapper.address,
+        idFromLabel("beta"),
+        encodeAbiParameters(
+          [
+            { name: "label", type: "string" },
+            { name: "owner", type: "address" },
+            { name: "fuses", type: "uint16" },
+            { name: "resolver", type: "address" },
+          ],
+          [
+            "beta",
+            user.address,
+            FUSES.CANNOT_UNWRAP | FUSES.CANNOT_TRANSFER,
+            zeroAddress,
+          ],
+        ),
+      ],
+      { account: user },
+    );
+
     const result = await run(workDir, fromBlock, {
+      csvFile,
       reportOnly: true,
       checkFuses: true,
       v1DeploymentsDir,
       v1DeploymentNetwork: "mainnet",
     });
 
-    // These names can be reserved but never claimed by transferring the token, so
-    // the figure has to be reported rather than left implicit.
-    expect(result.unmigratableCannotTransfer).toBe(0);
+    expect(result.unmigratableCannotTransfer).toBe(1);
+  });
+
+  it("refuses the fuse scan without labels rather than reporting a false zero", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+
+    // NameWrapper is keyed by namehash, which needs the plaintext label. Without a
+    // CSV the scan would read empty records and report zero regardless of reality.
+    await expect(
+      run(workDir, fromBlock, {
+        reportOnly: true,
+        checkFuses: true,
+        v1DeploymentsDir,
+        v1DeploymentNetwork: "mainnet",
+      }),
+    ).rejects.toThrow(/--check-fuses needs --csv-file/);
+  });
+
+  it("reconciles a name whose bonus-adjusted expiry hits the uint64 cap", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+
+    // Pre-migration caps the stored expiry at uint64 max, so reconciliation has to
+    // expect the capped value too — otherwise every such name is a permanent
+    // mismatch and the phase 3 gate can never open.
+    writeIndex(workDir, [{ id: indexEntries[0].id, expiry: MAX_UINT64 - 10n }]);
+
+    const result = await run(workDir, fromBlock, { reportOnly: true });
+    expect(result.expiryMismatched).not.toContain(
+      expect.stringContaining("expected=" + (MAX_UINT64 + 1n).toString()),
+    );
   });
 
   it("leaves the fuse count unset unless asked, since it is a per-name read", async () => {
@@ -299,6 +362,39 @@ describe("premigration reconcile", () => {
     expect(recorded).not.toBeNull();
     expect(recorded?.chainId).toBe(1);
     expect(BigInt(recorded!.blockNumber)).toBeGreaterThan(0n);
+  });
+
+  it("revokes an earlier pass when a later reconciliation fails", async () => {
+    const gateDir = mkdtempSync(join(tmpdir(), "reconcile-gate-revoke-"));
+    mkdirSync(join(gateDir, "mainnet"), { recursive: true });
+
+    // First: a clean reconciliation records a pass.
+    const clean = await seed(["alpha"]);
+    writeIndex(clean.workDir, clean.indexEntries);
+    await run(clean.workDir, clean.fromBlock, {
+      deploymentsDir: gateDir,
+      deploymentNetwork: "mainnet",
+    });
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).not.toBeNull();
+
+    // Then a reconciliation that finds a missing name must revoke it, not merely
+    // decline to renew it — otherwise phase 3 reads the stale success and permits
+    // the irreversible freeze on evidence the latest run contradicts.
+    writeIndex(clean.workDir, [
+      ...clean.indexEntries,
+      { id: labelhash("neverseeded"), expiry: clean.indexEntries[0].expiry },
+    ]);
+    await run(clean.workDir, clean.fromBlock, {
+      deploymentsDir: gateDir,
+      deploymentNetwork: "mainnet",
+      reportOnly: true,
+    });
+
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).toBeNull();
   });
 
   it("records nothing when the reconciliation finds problems", async () => {

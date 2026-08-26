@@ -157,10 +157,10 @@ failure, and skipped, so the rest of its batch is still reserved. Real chain dat
 deliberately maximal expiries (near `uint64` max), which is exactly the kind of value that used to
 abort a whole run from a log line. Bonus-adjusted expiries are capped at `uint64` so they cannot wrap.
 
-A whole batch failing is treated differently, because it usually means the RPC rather than the data:
-the batch is recorded as failed and the next one is attempted, but three consecutive batch failures
-end the run rather than producing a confidently incomplete reservation set. Re-run with `--continue`
-once the cause is fixed.
+A whole batch failing is treated differently, because none of its names were written: the run stops
+there so the checkpoint still points **before** those rows. Carrying on would advance the resume
+cursor past names that were never reserved, and `--continue` would then skip them permanently. Re-run
+with `--continue` once the cause is fixed.
 
 **Gas safety.** Before submitting, the script estimates gas; if it exceeds 80% of the block limit the
 batch is split in half and re-estimated (recursively). If a batch reverts at execution, it is

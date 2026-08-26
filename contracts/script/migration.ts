@@ -76,6 +76,7 @@ import {
   loadCheckpoint,
   main as preMigrationMain,
   parseCSVLine,
+  bonusAdjustedExpiry,
   V1_GRACE_PERIOD_SECONDS,
 } from "./preMigration.js";
 import {
@@ -85,6 +86,7 @@ import {
 } from "./safeCalldata.js";
 import {
   checkPrecondition,
+  clearVerification,
   describePreconditionFailure,
   readVerification,
   recordVerification,
@@ -97,6 +99,7 @@ import {
 import {
   describeDifference,
   diffResolutionSnapshots,
+  queriesFromSnapshot,
   recordQueries,
   type NameSnapshot,
   type ResolutionSnapshot,
@@ -1484,7 +1487,8 @@ async function verifyPreMigration(opts: {
       }
 
       eligible++;
-      const expectedExpiry = expiry + bonusPeriodSeconds;
+      // Same cap pre-migration applies; see bonusAdjustedExpiry.
+      const expectedExpiry = bonusAdjustedExpiry(expiry, bonusPeriodSeconds);
       const state = stateResult.result as unknown as {
         status: number;
         expiry: bigint | number;
@@ -1774,9 +1778,15 @@ export async function reconcilePreMigration(opts: {
         result.missing.push(entry.id);
         continue;
       }
-      if (actualExpiry !== entry.expiry + bonusPeriodSeconds) {
+      // Computed with the same cap pre-migration applies, or every name near the
+      // uint64 ceiling reads as a permanent mismatch and the gate never opens.
+      const expectedExpiry = bonusAdjustedExpiry(
+        entry.expiry,
+        bonusPeriodSeconds,
+      );
+      if (actualExpiry !== expectedExpiry) {
         result.expiryMismatched.push(
-          `${entry.id} v2=${actualExpiry} expected=${entry.expiry + bonusPeriodSeconds}`,
+          `${entry.id} v2=${actualExpiry} expected=${expectedExpiry}`,
         );
         continue;
       }
@@ -1834,14 +1844,40 @@ export async function reconcilePreMigration(opts: {
     const nameWrapper = loadV1Deployment(opts.network, "NameWrapper", opts);
     if (!nameWrapper) {
       console.log("no NameWrapper artifact; skipping CANNOT_TRANSFER scan");
+    } else if (!opts.csvFile || !existsSync(opts.csvFile)) {
+      // NameWrapper keys tokens by namehash, which can only be derived from a
+      // plaintext label. The index holds labelhashes by design, so the labels have
+      // to come from the CSV. Refusing is the honest answer: querying by labelhash
+      // reads empty records and would report zero however many names are affected.
+      throw new Error(
+        "--check-fuses needs --csv-file: NameWrapper is keyed by namehash, which requires the plaintext label",
+      );
     } else {
+      const labelByHash = new Map<string, string>();
+      for (const label of readLabelsFromCsv(opts.csvFile)) {
+        labelByHash.set(
+          toLabelhashHex(canonicalLabelId(toLabelhashHex(labelId(label)))),
+          label,
+        );
+      }
+
+      const resolvable: Array<{ id: string; label: string }> = [];
+      let unmappable = 0;
+      for (const entry of claimable) {
+        const label = labelByHash.get(
+          toLabelhashHex(canonicalLabelId(entry.id)),
+        );
+        if (label === undefined) unmappable++;
+        else resolvable.push({ id: entry.id, label });
+      }
+
       let cannotTransfer = 0;
       for (
         let start = 0;
-        start < claimable.length;
+        start < resolvable.length;
         start += PREMIGRATION_VERIFY_BATCH_SIZE
       ) {
-        const batch = claimable.slice(
+        const batch = resolvable.slice(
           start,
           start + PREMIGRATION_VERIFY_BATCH_SIZE,
         );
@@ -1851,9 +1887,7 @@ export async function reconcilePreMigration(opts: {
             address: nameWrapper.address,
             abi: nameWrapper.abi,
             functionName: "getData",
-            // NameWrapper keys tokens by namehash; the index is keyed by labelhash,
-            // and only a labelled name can be turned into one.
-            args: [BigInt(entry.id)],
+            args: [BigInt(namehash(`${entry.label}.eth`))],
           })),
         });
         for (const outcome of results) {
@@ -1863,7 +1897,17 @@ export async function reconcilePreMigration(opts: {
         }
       }
       result.unmigratableCannotTransfer = cannotTransfer;
-      console.log(`unmigratable (CANNOT_TRANSFER burned): ${cannotTransfer}`);
+      console.log(
+        `unmigratable (CANNOT_TRANSFER burned): ${cannotTransfer} of ${resolvable.length} checked`,
+      );
+      if (unmappable > 0) {
+        // Not silently treated as fuse-free: these are names the CSV has no label
+        // for, so their fuses are simply unknown.
+        result.unmigratableNoLabel = unmappable;
+        console.log(
+          `fuses unknown (no label in the CSV for this labelhash): ${unmappable}`,
+        );
+      }
     }
   }
 
@@ -1878,7 +1922,16 @@ export async function reconcilePreMigration(opts: {
     ...result.expiryMismatched.map((entry) => `expiry: ${entry}`),
     ...result.unexpected.map((entry) => `unexpected: ${entry}`),
   ];
-  if (problems.length === 0) {
+  if (problems.length > 0) {
+    // A failing reconciliation must revoke any earlier pass, not just decline to
+    // record a new one: phase 3 would otherwise read the stale success and permit
+    // the irreversible freeze despite the latest evidence showing incompleteness.
+    clearVerification(
+      resolve(deploymentsDir),
+      deploymentNetwork,
+      PRECONDITION_RECONCILE,
+    );
+  } else {
     // Phase 3 freezes v1. Recording the pass lets it refuse to run when the
     // reconciliation that proves nothing was missed has not been done.
     recordVerification(resolve(deploymentsDir), deploymentNetwork, {
@@ -2666,6 +2719,8 @@ export async function disableV1Registrars(
     // Proceed without the reconciliation gate. Needed for a rehearsal on a chain
     // whose reconciliation cannot run, and as an operator escape hatch.
     skipPreconditions?: boolean;
+    // How old the reconciliation pass may be, in blocks. Roughly a day by default.
+    maxReconcileAgeBlocks?: string;
   },
 ) {
   const chain = migrationChain(opts);
@@ -2687,6 +2742,12 @@ export async function disableV1Registrars(
       ),
       chainId: chain.id,
       currentBlock: await client.getBlockNumber(),
+      // A pass says the chain looked complete at the block it observed. Names keep
+      // being registered on v1 until the freeze, so a pass from long ago says
+      // nothing about now — re-run it rather than freezing on stale evidence.
+      maxAgeBlocks: parseNumber(opts.maxReconcileAgeBlocks, 7200)
+        ? BigInt(parseNumber(opts.maxReconcileAgeBlocks, 7200))
+        : undefined,
     });
     if (failure) {
       throw new Error(
@@ -3292,14 +3353,20 @@ async function captureResolutionSnapshot(opts: {
   names: string[];
   coinTypes?: readonly bigint[];
   textKeys?: readonly string[];
+  // Ask exactly the records a previous snapshot captured, per name, instead of the
+  // configured set. Verification uses this so both halves answer the same questions.
+  recordsByName?: Map<string, string[]>;
 }): Promise<ResolutionSnapshot> {
   const names: NameSnapshot[] = [];
 
   for (const name of opts.names) {
-    const queries = recordQueries(name, {
-      coinTypes: opts.coinTypes,
-      textKeys: opts.textKeys,
-    });
+    const previous = opts.recordsByName?.get(name);
+    const queries = previous
+      ? queriesFromSnapshot(name, previous)
+      : recordQueries(name, {
+          coinTypes: opts.coinTypes,
+          textKeys: opts.textKeys,
+        });
     const records: Record<string, Hex | null> = {};
     let resolver: Address = zeroAddress;
 
@@ -3406,10 +3473,12 @@ export async function verifyResolution(opts: {
       (before.resolverAddress as Address) ??
       DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
     names: before.names.map((entry) => entry.name),
-    // Re-ask exactly the questions the snapshot answered, so the comparison is
-    // like-for-like even if the defaults change later.
-    coinTypes: undefined,
-    textKeys: undefined,
+    // Re-ask exactly the questions the snapshot answered. Falling back to the
+    // defaults would compare a different record set: anything captured under custom
+    // coin types or text keys would be absent here and read as a revert.
+    recordsByName: new Map(
+      before.names.map((entry) => [entry.name, Object.keys(entry.records)]),
+    ),
   });
 
   const differences = diffResolutionSnapshots(before, after);
@@ -8097,6 +8166,11 @@ export async function main(argv = process.argv): Promise<void> {
                 "Freeze v1 without requiring that premigration reconcile has passed (the reconciliation is what proves no claimable name was missed)",
                 false,
               )
+              .option(
+                "--max-reconcile-age-blocks <blocks>",
+                "How old the reconciliation pass may be before it must be re-run (default ~1 day)",
+                "7200",
+              )
               .description(
                 "Disable every v1 registrar controller the active deployment did not authorize",
               ),
@@ -8108,7 +8182,10 @@ export async function main(argv = process.argv): Promise<void> {
         opts: NetworkCliOptions &
           DeploymentCliOptions &
           V1DeploymentCliOptions &
-          V1OwnerWriteCliOptions & { skipPreconditions?: boolean },
+          V1OwnerWriteCliOptions & {
+            skipPreconditions?: boolean;
+            maxReconcileAgeBlocks?: string;
+          },
       ) => {
         const networkOpts = withNetworkRpc(opts);
         await disableV1Registrars({

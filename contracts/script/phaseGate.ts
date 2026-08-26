@@ -55,6 +55,24 @@ export function recordVerification(
   writeFileSync(path, `${JSON.stringify({ records }, null, 2)}\n`, "utf8");
 }
 
+// Removes a check's recorded pass.
+//
+// A verification that later fails must not leave an earlier success standing: the
+// gate would then read a stale pass and permit a step the latest evidence says is
+// unsafe. Failing to verify has to revoke, not merely decline to renew.
+export function clearVerification(
+  deploymentsDir: string,
+  namespace: string,
+  check: string,
+): void {
+  const path = gatePath(deploymentsDir, namespace);
+  if (!existsSync(path)) return;
+  const gate = readGate(path);
+  const records = gate.records.filter((entry) => entry.check !== check);
+  if (records.length === gate.records.length) return;
+  writeFileSync(path, `${JSON.stringify({ records }, null, 2)}\n`, "utf8");
+}
+
 export function readVerification(
   deploymentsDir: string,
   namespace: string,
