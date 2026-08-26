@@ -28,22 +28,27 @@ jobs:
           .venv-vyper/bin/pip install 'vyper==0.5.0a3'
           cd contracts
           forge build
-          bun run compile:hardhat
-      - name: Copy toolchain into workspace
+      - name: Package Vyper environment
         run: |
-          mkdir -p .toolchain/bin .toolchain/home
-          for tool in forge cast anvil chisel bun node npm; do
-            path=$(command -v "$tool" || true)
-            if [ -n "$path" ]; then cp -L "$path" .toolchain/bin/; fi
-          done
-          if [ -d "$HOME/.svm" ]; then cp -a "$HOME/.svm" .toolchain/home/svm; fi
-          if [ -d "$HOME/.foundry" ]; then cp -a "$HOME/.foundry" .toolchain/home/foundry; fi
-      - name: Package prepared checkout
-        run: |
-          tar --exclude=.git --exclude='**/.git' -czf /tmp/contracts-v2-ready.tar.gz .
+          tar -czf /tmp/vyper-env.tar.gz .venv-vyper
       - uses: actions/upload-artifact@v4
         with:
-          name: contracts-v2-ready-${{ github.sha }}
-          path: /tmp/contracts-v2-ready.tar.gz
+          name: vyper-env-${{ github.sha }}
+          path: /tmp/vyper-env.tar.gz
+          compression-level: 0
+          retention-days: 3
+      - name: Package Foundry and Solidity compilers
+        run: |
+          mkdir -p /tmp/local-toolchain/bin /tmp/local-toolchain/home
+          for tool in forge cast anvil chisel bun; do
+            path=$(command -v "$tool" || true)
+            if [ -n "$path" ]; then cp -L "$path" /tmp/local-toolchain/bin/; fi
+          done
+          if [ -d "$HOME/.svm" ]; then cp -a "$HOME/.svm" /tmp/local-toolchain/home/svm; fi
+          tar -C /tmp -czf /tmp/foundry-toolchain.tar.gz local-toolchain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: foundry-toolchain-${{ github.sha }}
+          path: /tmp/foundry-toolchain.tar.gz
           compression-level: 0
           retention-days: 3
