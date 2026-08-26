@@ -1183,6 +1183,38 @@ describe("Standalone HCA", () => {
     expectVar({ recovered }).toEqualAddress(owner.address);
   });
 
+  it("rejects standalone HCA cross-chain session sources", async () => {
+    const owner = env.namedAccounts.user;
+    const account = await createRhinestoneAccount({
+      ...sdkConfig(),
+      ...(await standaloneConfig(owner)),
+      endpointUrl: MOCK_ORCHESTRATOR_URL,
+    });
+    const sessionKey = privateKeyToAccount(BURNER_SESSION_SIGNER_KEY);
+    const session: Session = {
+      chain: env.client.chain,
+      account: account.getAddress(),
+      owners: { type: "ecdsa", accounts: [sessionKey] },
+    };
+    const targetChain = {
+      ...env.client.chain,
+      id: env.client.chain.id + 1,
+    };
+
+    await expect(
+      account.prepareTransaction({
+        sourceChains: [env.client.chain],
+        targetChain,
+        calls: [],
+        signers: {
+          type: "experimental_session",
+          session,
+          verifyExecutions: true,
+        },
+      }),
+    ).rejects.toThrow("Standalone HCA cross-chain sessions are not supported");
+  });
+
   it("prepares and signs a fresh standalone HCA UserOperation", async () => {
     const owner = env.namedAccounts.user;
     const config = await standaloneConfig(owner);
