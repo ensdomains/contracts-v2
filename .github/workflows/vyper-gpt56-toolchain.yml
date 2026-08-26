@@ -1,0 +1,49 @@
+name: Vyper GPT-5.6 completion toolchain
+
+on:
+  push:
+    branches:
+      - experiment/vyper-complete-gpt56
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Vyper and warm compiler caches
+        run: |
+          python -m venv .venv-vyper
+          .venv-vyper/bin/pip install 'vyper==0.5.0a3'
+          cd contracts
+          forge build
+          bun run compile:hardhat
+      - name: Copy toolchain into workspace
+        run: |
+          mkdir -p .toolchain/bin .toolchain/home
+          for tool in forge cast anvil chisel bun node npm; do
+            path=$(command -v "$tool" || true)
+            if [ -n "$path" ]; then cp -L "$path" .toolchain/bin/; fi
+          done
+          if [ -d "$HOME/.svm" ]; then cp -a "$HOME/.svm" .toolchain/home/svm; fi
+          if [ -d "$HOME/.foundry" ]; then cp -a "$HOME/.foundry" .toolchain/home/foundry; fi
+      - name: Package prepared checkout
+        run: |
+          tar --exclude=.git --exclude='**/.git' -czf /tmp/contracts-v2-ready.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: contracts-v2-ready-${{ github.sha }}
+          path: /tmp/contracts-v2-ready.tar.gz
+          compression-level: 0
+          retention-days: 3
