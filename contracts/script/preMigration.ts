@@ -1025,8 +1025,21 @@ async function processBatch(
 ): Promise<Checkpoint> {
   const batchLabels: string[] = [];
   const batchExpires: bigint[] = [];
+  // Submission failures come back keyed by label, but the resume cursor works in
+  // CSV lines, so the two have to be joined back up.
+  const lineByLabel = new Map<string, number>();
   const alreadyReservedNames = new Set<string>();
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
+  // The earliest CSV line whose name failed. The resume cursor stops short of it, so
+  // `--continue` retries that name instead of stepping over it: a failure means
+  // nothing was written to v2, and a skipped retry leaves the name missing with
+  // nothing to report it later.
+  let firstFailedLineNumber: number | null = null;
+  const recordFailedLine = (lineNumber: number) => {
+    if (firstFailedLineNumber === null || lineNumber < firstFailedLineNumber) {
+      firstFailedLineNumber = lineNumber;
+    }
+  };
 
   const bonusPeriodSeconds = BigInt(config.bonusPeriodDays) * 86400n;
 
@@ -1061,6 +1074,7 @@ async function processBatch(
         logger.failed(registration.labelName, result.error);
         checkpoint.failureCount++;
         checkpoint.totalProcessed++;
+        recordFailedLine(registration.lineNumber);
         logger.finishedName(registration.labelName, "failed");
         continue;
       }
@@ -1115,10 +1129,12 @@ async function processBatch(
 
       batchLabels.push(registration.labelName);
       batchExpires.push(effectiveExpiry);
+      lineByLabel.set(registration.labelName, registration.lineNumber);
     } catch (error) {
       logger.failed(registration.labelName, String(error));
       checkpoint.failureCount++;
       checkpoint.totalProcessed++;
+      recordFailedLine(registration.lineNumber);
       logger.finishedName(registration.labelName, "failed");
     }
   }
@@ -1152,6 +1168,8 @@ async function processBatch(
       logger.failed(label, error);
       checkpoint.totalProcessed++;
       checkpoint.failureCount++;
+      const lineNumber = lineByLabel.get(label);
+      if (lineNumber !== undefined) recordFailedLine(lineNumber);
       logger.finishedName(label, "failed");
     }
   } else if (batchLabels.length > 0 && config.dryRun) {
@@ -1170,7 +1188,10 @@ async function processBatch(
     }
   }
 
-  checkpoint.lastProcessedLineNumber = lastLineNumber;
+  // Stop the cursor before the first failure so a resumed run reaches it again.
+  // Names that succeeded after it are re-read and skipped as already up to date.
+  checkpoint.lastProcessedLineNumber =
+    firstFailedLineNumber === null ? lastLineNumber : firstFailedLineNumber - 1;
   checkpoint.timestamp = new Date().toISOString();
 
   if (!config.disableCheckpoint) {

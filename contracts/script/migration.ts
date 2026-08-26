@@ -5285,15 +5285,24 @@ export async function deployV2(opts: DeployV2Options) {
     "StandaloneHCAImplementation",
   ]);
 
-  // Refresh the generated address table for a persisted deploy so the docs
-  // track the namespace just written. Fork/non-persisted rehearsals are skipped.
+  // Refresh the generated address table, but only for a deploy into the network's
+  // canonical namespace. The doc is named after the network while its contents come
+  // from the namespace, so generating it for any other namespace — a `-fork`
+  // rehearsal, a `-clean-` run, a custom `--deployment-network` — overwrites the real
+  // network's published addresses with throwaway ones.
   if (persist) {
-    const docPath = await generateAddressMarkdown({
-      deploymentsDir,
-      namespace: deploymentNetwork,
-      docName: opts.network,
-    });
-    console.log(`address docs: ${docPath}`);
+    if (deploymentNetwork === opts.network) {
+      const docPath = await generateAddressMarkdown({
+        deploymentsDir,
+        namespace: deploymentNetwork,
+        docName: opts.network,
+      });
+      console.log(`address docs: ${docPath}`);
+    } else {
+      console.log(
+        `address docs: skipped (namespace ${deploymentNetwork} is not the canonical ${opts.network} namespace)`,
+      );
+    }
   }
 
   return env;

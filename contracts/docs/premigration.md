@@ -188,6 +188,11 @@ registered / already up to date / invalid / failed / success rate). Individual f
 RPC timeouts at a 30s per-call limit, checkpoint write errors) are counted and logged without aborting
 the batch, so partial progress is preserved.
 
+**A failed name is retried, not stepped over.** The checkpoint stops before the first failure, so
+`--continue` reaches that name again rather than resuming past it. Names that succeeded after it are
+re-read and skipped as already up to date, so the retry is cheap. A whole batch failing stops the run
+for the same reason: none of its names were written, and the cursor must stay before them.
+
 **A run that ends with failures exits non-zero.** A name that reverted was never written to v2, so
 reporting the run as a success would hand back a green result over an incomplete reservation set.
 Re-run with `--continue` after fixing the cause. The "already registered" and "already up to date"

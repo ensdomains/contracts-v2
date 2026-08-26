@@ -265,6 +265,35 @@ describe("PreMigration", () => {
     }
   });
 
+  it("a failed name is retried by --continue, not stepped over", async () => {
+    // A failure means nothing was written to v2. If the resume cursor moved past it,
+    // `--continue` would skip it and the name would stay missing with nothing left
+    // to report it.
+    const { user } = env.namedAccounts;
+    const labels = ["retry1", "retry2", "retry3"];
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+    createCSVFile(csvFilePath, labels);
+
+    // Point at a contract that is not a BatchRegistrar so submission fails.
+    const args = buildMainArgs(env, csvFilePath);
+    args[args.indexOf("--batch-registrar") + 1] = env.v2.ETHRegistry.address;
+
+    await expect(main(args)).rejects.toThrow();
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.failureCount).toBe(3);
+    // The first failure is CSV data line 1, so the cursor must stay below it and a
+    // resumed run reaches every one of them again. Before this fix it advanced to 3.
+    expect(checkpoint!.lastProcessedLineNumber).toBeLessThan(1);
+
+    // None of them reached v2, which is what makes the retry necessary.
+    for (const label of labels) {
+      expect((await verifyV2State(env, label)).status).toBe(STATUS.AVAILABLE);
+    }
+  });
+
   it("dry run does not create on-chain state", async () => {
     const label = "dryruntest";
     const { user } = env.namedAccounts;
