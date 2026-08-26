@@ -90,10 +90,6 @@ contract DNSTXTResolver is DelegatedContractNamer, IERC7996, IExtendedDNSResolve
     /// The operating assumption is that this contract is never called directly,
     /// and instead only invoked by DNSTLDResolver in response to an TXT record.
     ///
-    /// The DNSTLDResolver includes `TEXT_KEY_DNSSEC_CONTEXT`.
-    ///
-    /// Multicalling this contract directly will not include these values.
-    ///
     /// @param {name} Ignored.
     /// @param data The ABI-encoded resolver call (selector + arguments) to answer.
     /// @param context The human-readable context string from the `ENS1` TXT record, parsed by
