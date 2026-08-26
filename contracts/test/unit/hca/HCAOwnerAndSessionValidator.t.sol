@@ -144,7 +144,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
                 selector
             )
         );
-        validator.checkResolverCallHarness(abi.encodeWithSelector(selector), owner);
+        validator.checkResolverCallHarness(abi.encodeWithSelector(selector));
     }
 
     function test_validator_acceptsFirstPermit2RouteWithMultiChainSessionAuthorization()
@@ -1038,8 +1038,7 @@ contract HCAOwnerAndSessionValidatorEnableHarness is HCAOwnerAndSessionValidator
 
     /// @notice Exposes resolver call policy validation.
     /// @param callData ABI-encoded resolver call data.
-    /// @param expectedOwner The account owner expected by resolver setters.
-    function checkResolverCallHarness(bytes calldata callData, address expectedOwner) external pure {
-        _checkResolverCall(callData, expectedOwner);
+    function checkResolverCallHarness(bytes calldata callData) external pure {
+        _checkResolverCall(callData);
     }
 }
