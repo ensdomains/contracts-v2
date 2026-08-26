@@ -30,9 +30,10 @@ library HCAExecutionLib {
         if (callData.length < 4) {
             revert InvalidOperationEncoding();
         }
-        args = new bytes(callData.length - 4);
-        for (uint256 i; i < args.length; ++i) {
-            args[i] = callData[i + 4];
+        uint256 size = callData.length - 4;
+        args = new bytes(size);
+        assembly ("memory-safe") {
+            mcopy(add(args, 0x20), add(callData, 0x24), size)
         }
     }
 
