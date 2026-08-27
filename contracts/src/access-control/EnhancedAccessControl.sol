@@ -192,12 +192,6 @@ abstract contract EnhancedAccessControl is ERC165, IEnhancedAccessControl {
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasAssignees(uint256 resource, uint256 roleBitmap) public view virtual returns (bool) {
-        (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);
-        return counts != 0;
-    }
-
-    /// @inheritdoc IEnhancedAccessControl
     function getAssigneeCount(uint256 resource, uint256 roleBitmap)
         public
         view
@@ -206,6 +200,24 @@ abstract contract EnhancedAccessControl is ERC165, IEnhancedAccessControl {
     {
         mask = _roleBitmapToMask(roleBitmap);
         counts = _roleCount[resource] & mask;
+    }
+
+    /// @inheritdoc IEnhancedAccessControl
+    /// @dev Derived from `getAssigneeCount()`.
+    function hasAssignees(uint256 resource, uint256 roleBitmap) public view returns (bool) {
+        (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);
+        return counts != 0;
+    }
+
+    /// @inheritdoc IEnhancedAccessControl
+    /// @dev Derived from `getAssigneeCount()` and `roles()`.
+    function isOnlyAssignee(uint256 resource, uint256 roleBitmap, address account)
+        public
+        view
+        returns (bool)
+    {
+        (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);
+        return counts == roles(resource, account);
     }
 
     ////////////////////////////////////////////////////////////////////////

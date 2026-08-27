@@ -7,7 +7,7 @@ import {IContractNamer} from "../../reverse-registrar/interfaces/IContractNamer.
 import {IRegistryURIRenderer} from "./IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0x54d9b3a0`
+/// @dev Interface selector: `0xdef0c3b2`
 interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -49,6 +49,12 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Transfer a token with non-owner grants.
+    /// @param tokenId The token ID.
+    /// @param to Address to transfer to.
+    /// @param data Additional calldata passed to receiver hooks.
+    function unsafeTransfer(uint256 tokenId, address to, bytes calldata data) external;
 
     /// @notice Change metadata parameters.
     /// @dev Should emit `URIUpdated`.

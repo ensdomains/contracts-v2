@@ -175,14 +175,23 @@ abstract contract ERC1155Singleton is
     /// @param to Address tokens are moved to. Use `address(0)` for burns.
     /// @param ids Token IDs to update.
     /// @param values Amounts for each token ID.
+    /// @param safe `true` if `safe{Batch}TransferFrom()`.
     /// @dev Reverts with `ERC1155InvalidArrayLength` if `ids.length != values.length`.
     /// @dev Reverts with `ERC1155InsufficientBalance` if `from` is not the current owner or `value > 1`.
     /// @dev This function does not perform ERC-1155 receiver acceptance checks.
     /// @dev Emits `TransferSingle` when one token ID is updated, otherwise emits `TransferBatch`.
-    function _update(address from, address to, uint256[] memory ids, uint256[] memory values)
+    function _update(
+        address from,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory values,
+        bool safe
+    )
         internal
         virtual
     {
+        safe; // unused
+
         if (ids.length != values.length) {
             revert ERC1155InvalidArrayLength(ids.length, values.length);
         }
@@ -216,6 +225,7 @@ abstract contract ERC1155Singleton is
     /// @param to Address tokens are moved to. Use `address(0)` for burns.
     /// @param ids Token IDs to update.
     /// @param values Amounts for each token ID.
+    /// @param safe `true` if `safe{Batch}TransferFrom()`.
     /// @param data Additional calldata passed to receiver hooks.
     /// @param batch `true` if a batch operation.
     /// @dev Calls `_update` before external receiver callbacks.
@@ -226,13 +236,14 @@ abstract contract ERC1155Singleton is
         address to,
         uint256[] memory ids,
         uint256[] memory values,
+        bool safe,
         bytes memory data,
         bool batch
     )
         internal
         virtual
     {
-        _update(from, to, ids, values);
+        _update(from, to, ids, values, safe);
         if (to != address(0)) {
             if (batch) {
                 ERC1155Utils.checkOnERC1155BatchReceived(msg.sender, from, to, ids, values, data);
@@ -270,7 +281,7 @@ abstract contract ERC1155Singleton is
             revert ERC1155InvalidSender(address(0));
         }
         (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(id, value);
-        _updateWithAcceptanceCheck(from, to, ids, values, data, false);
+        _updateWithAcceptanceCheck(from, to, ids, values, true, data, false);
     }
 
     /// @notice Safely transfer multiple token IDs from `from` to `to`.
@@ -299,7 +310,7 @@ abstract contract ERC1155Singleton is
         if (from == address(0)) {
             revert ERC1155InvalidSender(address(0));
         }
-        _updateWithAcceptanceCheck(from, to, ids, values, data, true);
+        _updateWithAcceptanceCheck(from, to, ids, values, true, data, true);
     }
 
     /// @notice Mint `value` tokens of token ID `id` to `to`.
@@ -315,7 +326,7 @@ abstract contract ERC1155Singleton is
             revert ERC1155InvalidReceiver(address(0));
         }
         (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(id, value);
-        _updateWithAcceptanceCheck(address(0), to, ids, values, data, false);
+        _updateWithAcceptanceCheck(address(0), to, ids, values, false, data, false);
     }
 
     /// @notice Burn `value` tokens of token ID `id` from `from`.
@@ -330,7 +341,7 @@ abstract contract ERC1155Singleton is
             revert ERC1155InvalidSender(address(0));
         }
         (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(id, value);
-        _updateWithAcceptanceCheck(from, address(0), ids, values, "", false);
+        _updateWithAcceptanceCheck(from, address(0), ids, values, false, "", false);
     }
 
     /// @notice Set or clear approval for `operator` to manage all tokens owned by `owner`.
@@ -347,12 +358,8 @@ abstract contract ERC1155Singleton is
         emit ApprovalForAll(owner, operator, approved);
     }
 
-    ////////////////////////////////////////////////////////////////////////
-    // Private Functions
-    ////////////////////////////////////////////////////////////////////////
-
     /// @dev Ensure operator is approved.
-    function _checkApproval(address from, address operator) private view {
+    function _checkApproval(address from, address operator) internal view {
         if (from != operator && !isApprovedForAll(from, operator)) {
             revert ERC1155MissingApprovalForAll(operator, from);
         }
@@ -362,7 +369,7 @@ abstract contract ERC1155Singleton is
     ///      default zero-initialization overhead. Used to adapt single-token operations (`_mint`,
     ///      `_burn`, `_safeTransferFrom`) to the array-based `_update` function.
     function _asSingletonArrays(uint256 element1, uint256 element2)
-        private
+        internal
         pure
         returns (uint256[] memory array1, uint256[] memory array2)
     {

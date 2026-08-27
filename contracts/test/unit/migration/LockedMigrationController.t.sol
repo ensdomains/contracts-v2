@@ -662,11 +662,18 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         vm.prank(testOwner);
         registry.grantRootRoles(rootRoles, friend);
-
-        // transfer token
         uint256 tokenId = ethRegistry.findTokenId(md.label);
+
+        // safe transfer token
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, testOwner)
+        );
         vm.prank(testOwner);
         ethRegistry.safeTransferFrom(testOwner, friend, tokenId, 1, "");
+
+        // unsafe transfer token
+        vm.prank(testOwner);
+        ethRegistry.unsafeTransfer(tokenId, friend, "");
 
         // effective roles have "transferred"
         assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "after:owner");

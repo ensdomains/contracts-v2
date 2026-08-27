@@ -1625,7 +1625,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         tokenId = registry.getTokenId(tokenId); // token has regenerated
         // step #2: transfer doesn't fail
         vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+        registry.unsafeTransfer(tokenId, user2, "");
     }
 
     // scenerio:

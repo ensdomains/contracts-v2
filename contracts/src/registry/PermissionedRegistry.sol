@@ -5,6 +5,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
+import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
@@ -173,6 +174,15 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         _parentRegistry = parent;
         _childLabel = label;
         emit ParentUpdated(parent, label, msg.sender);
+    }
+
+    /// @inheritdoc IPermissionedRegistry
+    function unsafeTransfer(uint256 tokenId, address to, bytes calldata data) public virtual {
+        if (to == address(0)) {
+            revert ERC1155InvalidReceiver(address(0));
+        }
+        (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(tokenId, 1);
+        _updateWithAcceptanceCheck(super.ownerOf(tokenId), to, ids, values, false, data, false);
     }
 
     /// @inheritdoc IStandardRegistry
@@ -384,16 +394,6 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasAssignees(uint256 anyId, uint256 roleBitmap)
-        public
-        view
-        override(EnhancedAccessControl, IEnhancedAccessControl)
-        returns (bool)
-    {
-        return super.hasAssignees(getResource(anyId), roleBitmap);
-    }
-
-    /// @inheritdoc IEnhancedAccessControl
     function getAssigneeCount(uint256 anyId, uint256 roleBitmap)
         public
         view
@@ -480,18 +480,27 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @dev Override `ERC1155Singleton._update()` to transfer the roles to the new owner if the token is transferred.
-    function _update(address from, address to, uint256[] memory tokenIds, uint256[] memory amounts)
+    function _update(
+        address from,
+        address to,
+        uint256[] memory tokenIds,
+        uint256[] memory amounts,
+        bool safe
+    )
         internal
         override
     {
-        super._update(from, to, tokenIds, amounts); // ensures amounts[i] is 0 or 1
+        super._update(from, to, tokenIds, amounts, safe); // ensures amounts[i] is 0 or 1
         if (to != address(0) && from != address(0)) {
             // only transfers (skip mint and burn)
             for (uint256 i; i < tokenIds.length; ++i) {
                 uint256 tokenId = tokenIds[i];
                 // only check ROLE_CAN_TRANSFER_ADMIN on original owner (from)
                 // ROLE_CAN_TRANSFER_ADMIN is technically a property of the token
-                if (!hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
+                if (
+                    !hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from) ||
+                    (safe && !_isTransferSafe(tokenId, from))
+                ) {
                     revert TransferDisallowed(tokenId, from);
                 } else if (amounts[i] > 0) {
                     _transferRoles(getResource(tokenId), from, to, false);
@@ -608,6 +617,33 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         returns (bool)
     {
         return hasRootRoles(RegistryRolesLib.ROLE_RENEW, sender);
+    }
+
+    /// @dev Determine if the token can be transferred.
+    function _isTransferSafe(uint256 tokenId, address owner) internal view returns (bool) {
+        if (!isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, owner)) {
+            return false; // non-owner roles
+        }
+        if (
+            roles(tokenId, owner) &
+            (RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN) !=
+            0
+        ) {
+            return true; // subregistry is mutable
+        }
+        address subregistry = address(_entry(tokenId).subregistry);
+        if (subregistry.code.length == 0) {
+            return true; // subregistry is not a contract
+        }
+        try IEnhancedAccessControl(subregistry).isOnlyAssignee(
+            ROOT_RESOURCE,
+            EACBaseRolesLib.ALL_ROLES,
+            owner
+        ) returns (bool only) {
+            return only;
+        } catch {
+            return false; // unsure
+        }
     }
 
     /// @dev Assert token is not expired and caller has necessary roles.
