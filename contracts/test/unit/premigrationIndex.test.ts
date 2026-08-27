@@ -243,8 +243,7 @@ function fakeChain(
       // Reads current expiry, which is what a renewal moves — the registration
       // log's own expiry is deliberately not consulted.
       return ids.map(
-        (id) =>
-          registrations.find((entry) => entry.id === id)?.expiry ?? null,
+        (id) => registrations.find((entry) => entry.id === id)?.expiry ?? null,
       );
     },
   };
@@ -303,7 +302,9 @@ describe("premigrationIndex from chain logs", () => {
     // Eight registrations in one scan window against a provider capping at two
     // results forces the walk to halve until each query fits.
     const { client, calls } = fakeChain(
-      Array.from({ length: 8 }, (_, i) => registered(i + 1, 3_710_000 + i * 100)),
+      Array.from({ length: 8 }, (_, i) =>
+        registered(i + 1, 3_710_000 + i * 100),
+      ),
       { maxLogs: 2 },
     );
 
@@ -320,11 +321,7 @@ describe("premigrationIndex from chain logs", () => {
     const { client } = fakeChain([
       registered(1, 3_710_000),
       registered(2, 3_720_000, NOW - 10n),
-      registered(
-        3,
-        3_730_000,
-        NOW - V1_GRACE_PERIOD_SECONDS - 400n * 86400n,
-      ),
+      registered(3, 3_730_000, NOW - V1_GRACE_PERIOD_SECONDS - 400n * 86400n),
       registered(4, 3_740_000, 0n),
     ]);
 

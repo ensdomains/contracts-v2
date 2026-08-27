@@ -334,7 +334,8 @@ export async function buildV1NameIndexFromRpc(
     );
   }
 
-  const block = existing?.block ?? opts.block ?? (await client.getBlockNumber());
+  const block =
+    existing?.block ?? opts.block ?? (await client.getBlockNumber());
   if (existing && opts.block !== undefined && existing.block !== opts.block) {
     throw new Error(
       `cannot resume index at block ${opts.block}: partial index was built at block ${existing.block}`,
@@ -476,9 +477,9 @@ export function createRpcIndexClient(opts: {
   client: {
     getBlockNumber(): Promise<bigint>;
     request(args: { method: string; params: unknown[] }): Promise<unknown>;
-    multicall(args: unknown): Promise<
-      Array<{ status: "success" | "failure"; result?: unknown }>
-    >;
+    multicall(
+      args: unknown,
+    ): Promise<Array<{ status: "success" | "failure"; result?: unknown }>>;
   };
   baseRegistrar: string;
   multicallAddress?: string;
