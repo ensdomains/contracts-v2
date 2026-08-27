@@ -217,7 +217,7 @@ abstract contract EnhancedAccessControl is ERC165, IEnhancedAccessControl {
         returns (bool)
     {
         (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);
-        return counts == roles(resource, account);
+        return counts == (roles(resource, account) & roleBitmap);
     }
 
     ////////////////////////////////////////////////////////////////////////
