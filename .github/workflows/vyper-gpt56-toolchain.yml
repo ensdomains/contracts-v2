@@ -1,4 +1,4 @@
-name: Vyper GPT-5.6 completion toolchain
+name: Vyper local dependency snapshot
 
 on:
   push:
@@ -10,45 +10,81 @@ permissions:
   contents: read
 
 jobs:
-  package:
+  package-js-dependencies:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
         with:
-          submodules: recursive
           fetch-depth: 1
-      - uses: ./.github/actions/setup
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: '3.13'
-      - name: Install Vyper and warm compiler caches
+          node-version-file: .nvmrc
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Package and split dependency tree
         run: |
-          python -m venv .venv-vyper
-          .venv-vyper/bin/pip install 'vyper==0.5.0a3'
-          cd contracts
-          forge build
-      - name: Package Vyper environment
-        run: |
-          tar -czf /tmp/vyper-env.tar.gz .venv-vyper
+          set -euo pipefail
+          paths=(node_modules)
+          if [ -d contracts/node_modules ]; then paths+=(contracts/node_modules); fi
+          tar -czf /tmp/js-deps.tar.gz "${paths[@]}"
+          split -b 160M -d -a 2 /tmp/js-deps.tar.gz /tmp/js-deps.part-
+          ls -lh /tmp/js-deps.part-*
       - uses: actions/upload-artifact@v4
         with:
-          name: vyper-env-${{ github.sha }}
-          path: /tmp/vyper-env.tar.gz
+          name: js-deps-00-${{ github.sha }}
+          path: /tmp/js-deps.part-00
           compression-level: 0
+          if-no-files-found: error
           retention-days: 3
-      - name: Package Foundry and Solidity compilers
-        run: |
-          mkdir -p /tmp/local-toolchain/bin /tmp/local-toolchain/home
-          for tool in forge cast anvil chisel bun; do
-            path=$(command -v "$tool" || true)
-            if [ -n "$path" ]; then cp -L "$path" /tmp/local-toolchain/bin/; fi
-          done
-          if [ -d "$HOME/.svm" ]; then cp -a "$HOME/.svm" /tmp/local-toolchain/home/svm; fi
-          tar -C /tmp -czf /tmp/foundry-toolchain.tar.gz local-toolchain
       - uses: actions/upload-artifact@v4
         with:
-          name: foundry-toolchain-${{ github.sha }}
-          path: /tmp/foundry-toolchain.tar.gz
+          name: js-deps-01-${{ github.sha }}
+          path: /tmp/js-deps.part-01
           compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: js-deps-02-${{ github.sha }}
+          path: /tmp/js-deps.part-02
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: js-deps-03-${{ github.sha }}
+          path: /tmp/js-deps.part-03
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: js-deps-04-${{ github.sha }}
+          path: /tmp/js-deps.part-04
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: js-deps-05-${{ github.sha }}
+          path: /tmp/js-deps.part-05
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: js-deps-06-${{ github.sha }}
+          path: /tmp/js-deps.part-06
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: js-deps-07-${{ github.sha }}
+          path: /tmp/js-deps.part-07
+          compression-level: 0
+          if-no-files-found: ignore
           retention-days: 3
