@@ -114,6 +114,8 @@ import {
 import {
   assertIndependentSource,
   buildV1NameIndex,
+  buildV1NameIndexFromRpc,
+  createRpcIndexClient,
   loadV1NameIndex,
   readV1NameIndexMeta,
 } from "./premigrationIndex.js";
@@ -1589,6 +1591,15 @@ function readDeploymentBlock(
   const block = record.receipt?.blockNumber;
   if (block === undefined) return undefined;
   return BigInt(block);
+}
+
+// The deploy block recorded on an already-loaded artifact. Bundled v1 artifacts
+// carry it as a hex string, locally deployed ones as a number.
+function deploymentBlockNumber(deployment: JsonDeployment): number | undefined {
+  const block = (deployment as { receipt?: { blockNumber?: string | number } })
+    .receipt?.blockNumber;
+  if (block === undefined) return undefined;
+  return Number(BigInt(block));
 }
 
 const RESERVED_EVENT = parseAbiItem(
@@ -7927,63 +7938,157 @@ export async function main(argv = process.argv): Promise<void> {
   );
 
   premigration.addCommand(
-    new Command("build-index")
-      .description(
-        "Build an independent labelhash-keyed index of v1 names for reconciliation",
-      )
-      .requiredOption("--work-dir <path>", "Directory to hold the index")
-      .option(
-        "--network <network>",
-        "ENS registrations network: mainnet or sepolia",
-        "mainnet",
-      )
-      .option(
-        "--thegraph-api-key <key>",
-        "TheGraph Gateway API key; falls back to THEGRAPH_API_KEY or GRAPH_API_KEY",
-      )
-      .option("--batch-size <number>", "Rows per request", "1000")
-      .option(
-        "--block <number>",
-        "Pin the index to this indexed block; defaults to the subgraph head",
-      )
-      .option(
-        "--resume",
-        "Continue a partial index instead of rebuilding",
-        false,
-      )
-      .action(
-        async (opts: {
+    addV1DeploymentOptions(
+      new Command("build-index")
+        .description(
+          "Build an independent labelhash-keyed index of v1 names for reconciliation",
+        )
+        .requiredOption("--work-dir <path>", "Directory to hold the index")
+        .option(
+          "--network <network>",
+          "ENS registrations network: mainnet or sepolia",
+          "mainnet",
+        )
+        .option(
+          "--source <source>",
+          "Where to read v1 names from: subgraph (TheGraph) or rpc (v1 BaseRegistrar logs)",
+          "subgraph",
+        )
+        .option(
+          "--thegraph-api-key <key>",
+          "TheGraph Gateway API key; falls back to THEGRAPH_API_KEY or GRAPH_API_KEY",
+        )
+        .option("--batch-size <number>", "Rows per request", "1000")
+        .option(
+          "--block <number>",
+          "Pin the index to this block; defaults to the source's head",
+        )
+        .option(
+          "--resume",
+          "Continue a partial index instead of rebuilding",
+          false,
+        )
+        .option("--rpc-url <url>", "Network RPC URL (--source rpc)")
+        .option("--chain-id <id>", "Chain id override (--source rpc)")
+        .option(
+          "--v1-base-registrar <address>",
+          "v1 BaseRegistrar address (--source rpc)",
+        )
+        .option(
+          "--from-block <number>",
+          "First block to scan for registrations; defaults to the v1 BaseRegistrar deploy block (--source rpc)",
+        )
+        .option(
+          "--scan-range <number>",
+          "Blocks per log query before narrowing (--source rpc)",
+          "250000",
+        ),
+    ).action(
+      async (
+        opts: V1DeploymentCliOptions & {
           workDir: string;
           network?: string;
+          source?: string;
           thegraphApiKey?: string;
           batchSize?: string;
           block?: string;
           resume?: boolean;
-        }) => {
-          const thegraphApiKey =
-            opts.thegraphApiKey ??
-            envValue("THEGRAPH_API_KEY", "GRAPH_API_KEY");
-          if (!thegraphApiKey) {
-            throw new Error(
-              "Missing --thegraph-api-key or THEGRAPH_API_KEY/GRAPH_API_KEY",
-            );
-          }
-          const meta = await buildV1NameIndex({
-            thegraphApiKey,
-            network: parseENSRegistrationNetwork(opts.network ?? "mainnet"),
-            workDir: opts.workDir,
-            batchSize: parseNumber(opts.batchSize, 1000),
-            block: opts.block ? Number(opts.block) : undefined,
-            resume: opts.resume,
-            onProgress: (entries, lastId) => {
-              console.log(`indexed ${entries} names (last id ${lastId})`);
-            },
-          });
-          console.log(
-            `index complete: ${meta.entries} names @ block ${meta.block} (${meta.source})`,
-          );
+          rpcUrl?: string;
+          chainId?: string;
+          v1BaseRegistrar?: Address;
+          fromBlock?: string;
+          scanRange?: string;
         },
-      ),
+      ) => {
+        const network = parseENSRegistrationNetwork(opts.network ?? "mainnet");
+        const source = opts.source ?? "subgraph";
+        if (source !== "subgraph" && source !== "rpc") {
+          throw new Error(
+            `unknown --source ${source}: expected "subgraph" or "rpc"`,
+          );
+        }
+
+        const onProgress = (entries: number, cursor: string) => {
+          console.log(`indexed ${entries} names (at ${cursor})`);
+        };
+
+        const meta =
+          source === "rpc"
+            ? await (async () => {
+                const networkOpts = withNetworkRpc({
+                  ...opts,
+                  network,
+                } as NetworkCliOptions);
+                const chain = migrationChain(networkOpts);
+                const client = publicClient(networkOpts.rpcUrl, chain);
+                const baseRegistrar = requireV1Deployment(
+                  networkOpts.network,
+                  V1_BASE_REGISTRAR_NAME,
+                  opts,
+                );
+                // The registrar logged nothing before it existed, so its own
+                // deploy block is the only sensible floor for the scan; without
+                // it the walk starts at genesis and burns queries on empty
+                // ranges.
+                const fromBlock =
+                  opts.fromBlock !== undefined
+                    ? Number(opts.fromBlock)
+                    : deploymentBlockNumber(baseRegistrar);
+                if (fromBlock === undefined) {
+                  throw new Error(
+                    "cannot determine the v1 BaseRegistrar deploy block; pass --from-block",
+                  );
+                }
+                console.log(
+                  `scanning ${V1_BASE_REGISTRAR_NAME} ${baseRegistrar.address} from block ${fromBlock}`,
+                );
+                return buildV1NameIndexFromRpc(
+                  {
+                    network,
+                    workDir: opts.workDir,
+                    fromBlock,
+                    block: opts.block ? Number(opts.block) : undefined,
+                    scanRange: parseNumber(opts.scanRange, 250_000),
+                    batchSize: parseNumber(opts.batchSize, 500),
+                    resume: opts.resume,
+                    onProgress,
+                  },
+                  createRpcIndexClient({
+                    // viem's client satisfies the three calls the adapter makes;
+                    // its overloaded signatures do not line up structurally.
+                    client: client as unknown as Parameters<
+                      typeof createRpcIndexClient
+                    >[0]["client"],
+                    baseRegistrar:
+                      opts.v1BaseRegistrar ?? baseRegistrar.address,
+                  }),
+                );
+              })()
+            : await (async () => {
+                const thegraphApiKey =
+                  opts.thegraphApiKey ??
+                  envValue("THEGRAPH_API_KEY", "GRAPH_API_KEY");
+                if (!thegraphApiKey) {
+                  throw new Error(
+                    "Missing --thegraph-api-key or THEGRAPH_API_KEY/GRAPH_API_KEY",
+                  );
+                }
+                return buildV1NameIndex({
+                  thegraphApiKey,
+                  network,
+                  workDir: opts.workDir,
+                  batchSize: parseNumber(opts.batchSize, 1000),
+                  block: opts.block ? Number(opts.block) : undefined,
+                  resume: opts.resume,
+                  onProgress,
+                });
+              })();
+
+        console.log(
+          `index complete: ${meta.entries} names @ block ${meta.block} (${meta.source})`,
+        );
+      },
+    ),
   );
 
   premigration.addCommand(

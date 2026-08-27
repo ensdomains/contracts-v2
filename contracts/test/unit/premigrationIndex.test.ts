@@ -6,8 +6,11 @@ import { join } from "node:path";
 import {
   assertIndependentSource,
   buildV1NameIndex,
+  buildV1NameIndexFromRpc,
   loadV1NameIndex,
   readV1NameIndexMeta,
+  RangeTooWideError,
+  type RpcIndexClient,
 } from "../../script/premigrationIndex.js";
 import { V1_GRACE_PERIOD_SECONDS } from "../../script/preMigration.js";
 
@@ -202,5 +205,194 @@ describe("premigrationIndex", () => {
     expect(seen).toEqual([2, 4, 6]);
     const written = readFileSync(join(dir, "v1-name-index.ndjson"), "utf8");
     expect(written.trim().split("\n")).toHaveLength(6);
+  });
+});
+
+const FROM_BLOCK = 3_700_000;
+const RPC_HEAD = 3_900_000;
+
+type Registration = { id: string; block: number; expiry: bigint };
+
+// A chain holding `registrations`. `maxLogs` mimics a provider that refuses a query
+// returning too many results, so the range-narrowing walk can be exercised.
+// `failAt` makes the scan throw once the given block is reached.
+function fakeChain(
+  registrations: Registration[],
+  opts: { maxLogs?: number; failAt?: number } = {},
+) {
+  const calls = { logs: 0, expiries: 0 };
+  const client: RpcIndexClient = {
+    async getBlockNumber() {
+      return RPC_HEAD;
+    },
+    async getRegisteredIds(fromBlock, toBlock) {
+      if (opts.failAt !== undefined && toBlock >= opts.failAt) {
+        throw new Error("simulated rpc failure");
+      }
+      calls.logs++;
+      const hits = registrations.filter(
+        (entry) => entry.block >= fromBlock && entry.block <= toBlock,
+      );
+      if (opts.maxLogs !== undefined && hits.length > opts.maxLogs) {
+        throw new RangeTooWideError("query returns too many logs");
+      }
+      return hits.map((entry) => entry.id);
+    },
+    async getExpiries(ids) {
+      calls.expiries++;
+      // Reads current expiry, which is what a renewal moves — the registration
+      // log's own expiry is deliberately not consulted.
+      return ids.map(
+        (id) =>
+          registrations.find((entry) => entry.id === id)?.expiry ?? null,
+      );
+    },
+  };
+  return { client, calls };
+}
+
+function buildFromRpc(
+  dir: string,
+  client: RpcIndexClient,
+  opts: { scanRange?: number; batchSize?: number; resume?: boolean } = {},
+) {
+  return buildV1NameIndexFromRpc(
+    {
+      network: "sepolia",
+      workDir: dir,
+      fromBlock: FROM_BLOCK,
+      scanRange: opts.scanRange ?? 100_000,
+      batchSize: opts.batchSize ?? 2,
+      resume: opts.resume,
+      now: NOW,
+    },
+    client,
+  );
+}
+
+const registered = (
+  index: number,
+  block: number,
+  expiry = NOW + 1_000_000n,
+): Registration => ({ id: labelhash(index), block, expiry });
+
+describe("premigrationIndex from chain logs", () => {
+  it("indexes registrations with the expiry renewals left behind", async () => {
+    const dir = workDir();
+    const { client } = fakeChain([
+      registered(1, 3_710_000),
+      registered(2, 3_800_000),
+      // Registered once, renewed since: the index must carry the later expiry.
+      registered(3, 3_750_000, NOW + 9_000_000n),
+    ]);
+
+    const meta = await buildFromRpc(dir, client);
+
+    expect(meta.complete).toBe(true);
+    expect(meta.source).toBe("rpc");
+    expect(meta.entries).toBe(3);
+    expect(meta.block).toBe(RPC_HEAD);
+
+    const index = loadV1NameIndex(dir);
+    expect(index.expiries.size).toBe(3);
+    expect(index.expiries.get(labelhash(3))).toBe(NOW + 9_000_000n);
+  });
+
+  it("narrows the block range when the provider refuses the span", async () => {
+    const dir = workDir();
+    // Eight registrations in one scan window against a provider capping at two
+    // results forces the walk to halve until each query fits.
+    const { client, calls } = fakeChain(
+      Array.from({ length: 8 }, (_, i) => registered(i + 1, 3_710_000 + i * 100)),
+      { maxLogs: 2 },
+    );
+
+    const meta = await buildFromRpc(dir, client, { scanRange: 200_000 });
+
+    expect(meta.complete).toBe(true);
+    expect(meta.entries).toBe(8);
+    // Narrowing means more queries than windows, which is the point.
+    expect(calls.logs).toBeGreaterThan(2);
+  });
+
+  it("drops names released long ago but keeps names inside grace", async () => {
+    const dir = workDir();
+    const { client } = fakeChain([
+      registered(1, 3_710_000),
+      registered(2, 3_720_000, NOW - 10n),
+      registered(
+        3,
+        3_730_000,
+        NOW - V1_GRACE_PERIOD_SECONDS - 400n * 86400n,
+      ),
+      registered(4, 3_740_000, 0n),
+    ]);
+
+    await buildFromRpc(dir, client);
+
+    const index = loadV1NameIndex(dir);
+    expect([...index.expiries.keys()].sort()).toEqual([
+      labelhash(1),
+      labelhash(2),
+    ]);
+  });
+
+  it("resumes an interrupted scan without losing or repeating entries", async () => {
+    const dir = workDir();
+    const registrations = Array.from({ length: 9 }, (_, i) =>
+      registered(i + 1, 3_710_000 + i * 20_000),
+    );
+
+    await expect(
+      buildFromRpc(dir, fakeChain(registrations, { failAt: 3_900_000 }).client),
+    ).rejects.toThrow("simulated rpc failure");
+
+    const partial = readV1NameIndexMeta(dir);
+    expect(partial?.complete).toBe(false);
+    expect(() => loadV1NameIndex(dir)).toThrow(/incomplete/);
+
+    const meta = await buildFromRpc(dir, fakeChain(registrations).client, {
+      resume: true,
+    });
+
+    expect(meta.complete).toBe(true);
+    expect(meta.entries).toBe(9);
+    // The resumed half stays pinned to the block the first half used.
+    expect(meta.block).toBe(RPC_HEAD);
+
+    const index = loadV1NameIndex(dir);
+    expect(index.expiries.size).toBe(9);
+    expect([...index.expiries.keys()].sort()).toEqual(
+      registrations.map((entry) => entry.id).sort(),
+    );
+  });
+
+  it("refuses to resume a partial index built from another source", async () => {
+    const dir = workDir();
+    await expect(
+      build(dir, [live(1), live(2), live(3)], { failAfter: 1 }),
+    ).rejects.toThrow();
+
+    await expect(
+      buildFromRpc(dir, fakeChain([registered(1, 3_710_000)]).client, {
+        resume: true,
+      }),
+    ).rejects.toThrow(/built from "subgraph"/);
+  });
+
+  it("pairs with a subgraph CSV and refuses one built the same way", async () => {
+    const dir = workDir();
+    const csv = join(dir, "rpc-export.csv");
+    writeFileSync(csv, "label\n", "utf-8");
+    writeFileSync(
+      `${csv}.source.json`,
+      JSON.stringify({ source: "rpc", network: "sepolia" }),
+      "utf-8",
+    );
+
+    expect(() => assertIndependentSource("rpc", csv)).toThrow(
+      /--source subgraph/,
+    );
+    expect(() => assertIndependentSource("subgraph", csv)).not.toThrow();
   });
 });

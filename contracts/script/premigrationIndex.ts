@@ -52,6 +52,11 @@ export type V1IndexMeta = {
   entries: number;
   complete: boolean;
   builtAt: string;
+  /**
+   * Highest block whose registration logs have been read. Only the chain-log
+   * builder sets it, which enumerates by block rather than by cursor id.
+   */
+  lastBlock?: number;
 };
 
 export type V1NameIndex = {
@@ -232,6 +237,308 @@ export async function buildV1NameIndex(
   return writeMeta(true);
 }
 
+// ---------------------------------------------------------------------------
+// Chain-log index
+// ---------------------------------------------------------------------------
+
+// The registrar's own logs, read over plain RPC, are the other independent view of
+// v1. They are what an indexer consumes, so they can confirm a CSV without trusting
+// any indexer, and they stay available when a subgraph is deprecated, lagging, or
+// simply has no gateway key to hand. That matters because this index gates the
+// irreversible freeze.
+//
+// Two reads are needed rather than one. `NameRegistered` enumerates every label ever
+// registered but carries only its expiry at registration time, and renewals move that
+// afterwards. The current expiry therefore comes from `nameExpires` at the pinned
+// block, which also folds in every renewal since.
+
+export const V1_INDEX_IDS_FILE = "v1-name-index.ids.ndjson";
+
+/** `NameRegistered(uint256 indexed id, address indexed owner, uint256 expires)`. */
+export const NAME_REGISTERED_TOPIC =
+  "0xb3d987963d01b2f68493b4bdb130988f157ea43070d4ad840fee0466ed9370d9";
+
+// Kept narrow on purpose: the builder needs three questions answered and nothing
+// else, so a test can supply a fake chain without a node or a viem client.
+export type RpcIndexClient = {
+  /** Current head, used when no block is pinned. */
+  getBlockNumber(): Promise<number>;
+  /**
+   * Registration ids logged in an inclusive block range. Throws
+   * `RangeTooWideError` when the provider refuses the span, which the caller
+   * answers by halving it.
+   */
+  getRegisteredIds(fromBlock: number, toBlock: number): Promise<string[]>;
+  /** Expiry per id at `block`; null where the read failed. */
+  getExpiries(ids: string[], block: number): Promise<Array<bigint | null>>;
+};
+
+// Providers cap a log query by result count, by block span, or by both, and each
+// phrases the refusal differently. Rather than pattern-match every wording, the
+// client raises this and the scan halves the range until the provider is satisfied.
+export class RangeTooWideError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RangeTooWideError";
+  }
+}
+
+function idsPath(workDir: string) {
+  return join(workDir, V1_INDEX_IDS_FILE);
+}
+
+function readScannedIds(workDir: string): string[] {
+  const path = idsPath(workDir);
+  if (!existsSync(path)) return [];
+  const ids = new Set<string>();
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    if (line !== "") ids.add(line);
+  }
+  // Sorted so a resumed expiry pass walks the same order it did before and can
+  // continue from a count rather than having to record every id it wrote.
+  return [...ids].sort();
+}
+
+export type BuildV1NameIndexFromRpcOptions = {
+  network: string;
+  workDir: string;
+  /** First block to scan; the registrar's deploy block. */
+  fromBlock: number;
+  /** Pin to a specific block; defaults to the head. */
+  block?: number;
+  /** Blocks per log query before any narrowing. */
+  scanRange?: number;
+  /** Ids per `nameExpires` batch. */
+  batchSize?: number;
+  resume?: boolean;
+  now?: bigint;
+  onProgress?: (entries: number, cursor: string) => void;
+};
+
+export async function buildV1NameIndexFromRpc(
+  opts: BuildV1NameIndexFromRpcOptions,
+  client: RpcIndexClient,
+): Promise<V1IndexMeta> {
+  const scanRange = opts.scanRange ?? 250_000;
+  const batchSize = opts.batchSize ?? 500;
+  const now = opts.now ?? BigInt(Math.floor(Date.now() / 1000));
+  const cutoff = now - V1_GRACE_PERIOD_SECONDS - BUILD_FILTER_MARGIN_SECONDS;
+
+  mkdirSync(opts.workDir, { recursive: true });
+
+  const existing = opts.resume ? readV1NameIndexMeta(opts.workDir) : null;
+  if (existing && existing.complete) return existing;
+  if (existing && existing.source !== "rpc") {
+    throw new Error(
+      `cannot resume: the partial index in ${opts.workDir} was built from "${existing.source}"`,
+    );
+  }
+
+  const block = existing?.block ?? opts.block ?? (await client.getBlockNumber());
+  if (existing && opts.block !== undefined && existing.block !== opts.block) {
+    throw new Error(
+      `cannot resume index at block ${opts.block}: partial index was built at block ${existing.block}`,
+    );
+  }
+
+  let entries = existing?.entries ?? 0;
+  let cursor = existing?.lastId ?? "";
+  let scannedTo = existing?.lastBlock ?? opts.fromBlock - 1;
+  if (!existing) {
+    writeFileSync(indexPath(opts.workDir), "", "utf-8");
+    writeFileSync(idsPath(opts.workDir), "", "utf-8");
+  }
+
+  const writeMeta = (complete: boolean): V1IndexMeta => {
+    const meta: V1IndexMeta = {
+      source: "rpc",
+      network: opts.network,
+      block,
+      lastId: cursor,
+      entries,
+      complete,
+      builtAt: new Date().toISOString(),
+      lastBlock: scannedTo,
+    };
+    writeFileSync(
+      metaPath(opts.workDir),
+      `${JSON.stringify(meta, null, 2)}\n`,
+      "utf-8",
+    );
+    return meta;
+  };
+
+  // Phase one: enumerate. Ids are appended as they are found and the scanned-to
+  // block recorded beside them, so an interrupted scan resumes at a block boundary
+  // rather than restarting a long walk.
+  const scan = async (from: number, to: number): Promise<void> => {
+    let ids: string[];
+    try {
+      ids = await client.getRegisteredIds(from, to);
+    } catch (error) {
+      if (!(error instanceof RangeTooWideError)) throw error;
+      if (from >= to) throw error;
+      const mid = Math.floor((from + to) / 2);
+      await scan(from, mid);
+      await scan(mid + 1, to);
+      return;
+    }
+    if (ids.length > 0) {
+      appendFileSync(
+        idsPath(opts.workDir),
+        `${ids.map(normalizeLabelhash).join("\n")}\n`,
+        "utf-8",
+      );
+    }
+  };
+
+  while (scannedTo < block) {
+    const from = scannedTo + 1;
+    const to = Math.min(from + scanRange - 1, block);
+    await scan(from, to);
+    scannedTo = to;
+    writeMeta(false);
+    opts.onProgress?.(entries, `block ${scannedTo}`);
+  }
+
+  // Phase two: date the names. The id list is sorted, so a resumed pass picks up at
+  // the first id after the recorded cursor. Resuming by cursor rather than by a
+  // count keeps `entries` meaning what it means for the subgraph build — names
+  // written to the index — even though an expired name consumes an id without
+  // producing a line.
+  const ids = readScannedIds(opts.workDir);
+  const after = cursor === "" ? -1 : ids.findIndex((id) => id > cursor);
+  const resumeAt = cursor === "" ? 0 : after === -1 ? ids.length : after;
+
+  for (let start = resumeAt; start < ids.length; start += batchSize) {
+    const batch = ids.slice(start, start + batchSize);
+    const expiries = await client.getExpiries(batch, block);
+
+    const lines: string[] = [];
+    for (let index = 0; index < batch.length; index++) {
+      const expiry = expiries[index];
+      if (expiry === null || expiry === undefined) {
+        throw new Error(
+          `could not read nameExpires for ${batch[index]} at block ${block}; re-run with --resume`,
+        );
+      }
+      // A name released long ago cannot be claimed by its former owner. Dropping it
+      // here keeps the index proportional to live names rather than to all history.
+      if (expiry === 0n || expiry <= cutoff) continue;
+      lines.push(
+        JSON.stringify({ id: batch[index], expiry: expiry.toString() }),
+      );
+    }
+    if (lines.length > 0) {
+      appendFileSync(indexPath(opts.workDir), `${lines.join("\n")}\n`, "utf-8");
+      entries += lines.length;
+    }
+
+    cursor = batch[batch.length - 1];
+    writeMeta(false);
+    opts.onProgress?.(entries, cursor);
+  }
+
+  // A batch interrupted between its append and its checkpoint is re-read on resume
+  // and appends the same names twice, so the running total can overshoot. The file
+  // is the authority; recount it before declaring the build complete.
+  entries = countIndexedNames(opts.workDir);
+  return writeMeta(true);
+}
+
+function countIndexedNames(workDir: string): number {
+  const path = indexPath(workDir);
+  if (!existsSync(path)) return 0;
+  const ids = new Set<string>();
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    if (line !== "") ids.add((JSON.parse(line) as { id: string }).id);
+  }
+  return ids.size;
+}
+
+// Canonical Multicall3, deployed at the same address on every chain this runs
+// against. Overridable for a chain that placed it elsewhere.
+export const MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11";
+
+const NAME_EXPIRES_ABI = [
+  {
+    type: "function",
+    name: "nameExpires",
+    stateMutability: "view",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+// Adapts a viem public client to the three questions the builder asks. Kept out of
+// `buildV1NameIndexFromRpc` so the builder stays testable without a node.
+export function createRpcIndexClient(opts: {
+  client: {
+    getBlockNumber(): Promise<bigint>;
+    request(args: { method: string; params: unknown[] }): Promise<unknown>;
+    multicall(args: unknown): Promise<
+      Array<{ status: "success" | "failure"; result?: unknown }>
+    >;
+  };
+  baseRegistrar: string;
+  multicallAddress?: string;
+}): RpcIndexClient {
+  return {
+    async getBlockNumber() {
+      return Number(await opts.client.getBlockNumber());
+    },
+
+    async getRegisteredIds(fromBlock, toBlock) {
+      try {
+        const logs = (await opts.client.request({
+          method: "eth_getLogs",
+          params: [
+            {
+              address: opts.baseRegistrar,
+              fromBlock: `0x${fromBlock.toString(16)}`,
+              toBlock: `0x${toBlock.toString(16)}`,
+              topics: [NAME_REGISTERED_TOPIC],
+            },
+          ],
+        })) as Array<{ topics: string[] }>;
+        return logs.map((log) => log.topics[1]);
+      } catch (error) {
+        // Providers phrase the refusal differently — too many results, span too
+        // wide, query timed out — and all of them mean the same thing to the
+        // caller: ask for less. Anything else is a real failure and propagates.
+        const message = String(
+          (error as { details?: string; message?: string })?.details ??
+            (error as { message?: string })?.message ??
+            error,
+        );
+        if (
+          /too many|exceeds|limit|range|timeout|timed out|narrow/i.test(message)
+        ) {
+          throw new RangeTooWideError(message);
+        }
+        throw error;
+      }
+    },
+
+    async getExpiries(ids, block) {
+      const results = await opts.client.multicall({
+        allowFailure: true,
+        blockNumber: BigInt(block),
+        multicallAddress: opts.multicallAddress ?? MULTICALL3_ADDRESS,
+        contracts: ids.map((id) => ({
+          address: opts.baseRegistrar,
+          abi: NAME_EXPIRES_ABI,
+          functionName: "nameExpires",
+          args: [BigInt(id)],
+        })),
+      });
+      return results.map((entry) =>
+        entry.status === "success" ? BigInt(entry.result as bigint) : null,
+      );
+    },
+  };
+}
+
 export function readV1NameIndexMeta(workDir: string): V1IndexMeta | null {
   const path = metaPath(workDir);
   if (!existsSync(path)) return null;
@@ -297,7 +604,7 @@ export function assertIndependentSource(
     throw new Error(
       `refusing to reconcile: ${csvFile} was produced from "${stamp.source}" and the index was built from "${indexSource}". ` +
         `Verifying a CSV against the indexer that produced it cannot detect a name missing from that indexer. ` +
-        `Build the index from a different source (--source), or reconcile a CSV from a different one.`,
+        `Rebuild the index with premigration build-index --source ${indexSource === "rpc" ? "subgraph" : "rpc"}, or reconcile a CSV from a different source.`,
     );
   }
 }

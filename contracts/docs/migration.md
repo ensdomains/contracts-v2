@@ -150,7 +150,8 @@ External infrastructure not implemented by this repository remains outside the m
   verification.
 - **Env / args:** BatchRegistrar owner key (`PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`,
   or `DEPLOYER_KEY`); `--csv-file`, `--work-dir`, `--bonus-period-days` (default 62).
-  `build-index` needs `THEGRAPH_API_KEY`.
+  `build-index` needs `THEGRAPH_API_KEY` for the default subgraph source, or `--source rpc` and an
+  RPC URL to read the v1 `BaseRegistrar` directly.
 - **Expected outcome:** every active or in-grace v1 `.eth` 2LD seeded as a **reserved** entry on v2,
   with v2 expiry = v1 expiry + bonus period. `premigration reconcile` confirms it in both directions.
 
@@ -164,6 +165,44 @@ External infrastructure not implemented by this repository remains outside the m
 > the index is built from the subgraph, so they are independent; the command refuses to run when a
 > CSV's recorded source matches the index's, because verifying a CSV against the indexer that
 > produced it cannot detect anything missing from that indexer. Use `--report-only` for a dry read.
+>
+> **Read the `cross-source:` line first.** Before comparing anything against v2, reconcile prints the
+> CSV's label count beside the index's claimable count. Two independent views of the same chain must
+> agree on how many names are live, and a disagreement there is a CSV problem rather than a
+> pre-migration problem. The line is meaningful even before phase 2 has written anything, so it can be
+> read as a standalone probe of a freshly exported CSV.
+>
+> **The independence refusal is opt-in.** It compares a source stamp written beside the CSV, so it
+> fires only for a CSV that carries one — `fetch-data` writes a stamp, a manual Dune export does not.
+> An unstamped CSV is accepted without the check, which is correct for a Dune export and blind to a
+> subgraph-derived one that lost its sidecar. Keep the stamp file with the CSV it describes.
+>
+> **Two index sources, chosen with `--source`.** `subgraph` (the default) pages TheGraph and needs a
+> gateway key. `rpc` reads the v1 `BaseRegistrar` directly: `NameRegistered` logs enumerate every
+> label ever registered, and `nameExpires` at the pinned block gives each one's expiry with renewals
+> folded in. The chain source needs no gateway key, cannot lag or be deprecated, and is the ground
+> truth the subgraph itself indexes — worth preferring when the subgraph is unavailable, or when its
+> completeness is the thing in question. It is slower, since it walks blocks rather than a cursor.
+>
+> ```bash
+> bun run migration -- premigration build-index --network sepolia --source rpc \
+>   --work-dir .dev/premig-1 --rpc-url $SEPOLIA_RPC_URL
+> ```
+>
+> The scan starts at the registrar's recorded deploy block and narrows its range whenever a provider
+> refuses the span, so a rate-limited endpoint slows the walk rather than failing it. Both phases
+> checkpoint, so `--resume` continues an interrupted build at a block boundary. A partial index built
+> from one source refuses to resume as the other.
+>
+> **`build-index` defaults to `--network mainnet`.** Omitting the flag on a testnet run builds a
+> mainnet index and reconciles it against a testnet registry, which reports every name as missing
+> rather than failing outright. Pass the network explicitly.
+>
+> **Expect the enumeration total to exceed the index by a wide margin**, since most names ever
+> registered have long since been released, and the index in turn to sit a little above the claimable
+> count: the build keeps an extra week beyond the grace period so a name near the boundary can never
+> be dropped at build time and then wanted at reconcile time. Sepolia at block 11,575,263: 68,849
+> labels ever registered, 9,011 unexpired, 9,739 claimable, 9,782 in the index.
 >
 > During phases 2 and 5 the expected status is strictly `RESERVED`. Migration does not open to users
 > until after phase 5, so a `REGISTERED` name in this window is an anomaly rather than a claim, and is
@@ -311,7 +350,7 @@ than only checking that the renewer is an authorized controller.
 - **Prerequisites:** phase 3 freeze done. Export a **fresh** post-freeze registration CSV so names
   registered or renewed since phase 2 are caught up.
 - **Env / args:** same BatchRegistrar owner key as [phase 2](#phase-2-initial-pre-migration);
-  `THEGRAPH_API_KEY` for `build-index`.
+  `THEGRAPH_API_KEY` for `build-index`, or `--source rpc` to index from the chain instead.
 - **Expected outcome:** names whose v1 expiry grew since phase 2 have their reservation extended —
   picking up `ETHRenewerV1` renewals since phase 4 — and newly eligible names are reserved for the
   first time. Names already carrying the right expiry are left alone rather than resubmitted, so this
@@ -711,7 +750,7 @@ Two commands are **not** on-chain and intentionally omit the network options:
 | `premigration resume` | Resume pre-migration from the checkpoint |
 | `premigration status` | Print the current pre-migration checkpoint JSON (local; `--work-dir` only) |
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 (CSV-scoped; superseded as the phase 2/5 gate by `reconcile`) |
-| `premigration build-index` | Build an independent labelhash-keyed index of v1 names from the subgraph (`--resume` continues a partial build) |
+| `premigration build-index` | Build an independent labelhash-keyed index of v1 names, from the subgraph or from v1 `BaseRegistrar` logs (`--source subgraph\|rpc`; `--resume` continues a partial build) |
 | `premigration index-status` | Print the local v1 name index metadata (local; `--work-dir` only) |
 | `premigration reconcile` | Reconcile the v1 name index against v2 in both directions — the phase 2/5 sign-off (`--check-fuses` also counts names `CANNOT_TRANSFER` makes unclaimable; needs `--csv-file` for the labels) |
 | `phase deploy-v2` | Phase 1: deploy the v2 migration contracts, reverse-registrar adapters, and enabled HCA infrastructure with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy) |
@@ -786,7 +825,7 @@ Resolved by [`script/migration.ts`](../script/migration.ts) (the CLI also auto-l
 | `HCA_GAS_REFUND_PAYMASTER` | Optional HCA validator gas-refund paymaster override |
 | `<PREFIX>_MNEMONIC`, `<PREFIX>_MNEMONIC_PATH`, `<PREFIX>_MNEMONIC_INDEX`, `<PREFIX>_MNEMONIC_PASSPHRASE` | Mnemonic-backed signer alternatives for `phase execute-owner-txs`; prefixes `OWNER_TX`, `SEPOLIA_V1_OWNER` / `V1_OWNER`, `SEPOLIA_TOP_URP_OWNER` / `TOP_URP_OWNER` |
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
-| `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` and `premigration build-index` |
+| `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` and `premigration build-index --source subgraph` (unused by `--source rpc`) |
 | `ETHERSCAN_API_KEY` | Etherscan v2 (multichain) API key for source-code verification (`bun run verify:<network>`); not needed for Sourcify |
 
 † `phase disable-v1-registrars` takes the key via `--private-key`; the env fallbacks apply when it is
