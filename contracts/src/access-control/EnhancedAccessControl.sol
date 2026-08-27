@@ -203,21 +203,19 @@ abstract contract EnhancedAccessControl is ERC165, IEnhancedAccessControl {
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    /// @dev Derived from `getAssigneeCount()`.
     function hasAssignees(uint256 resource, uint256 roleBitmap) public view returns (bool) {
         (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);
         return counts != 0;
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    /// @dev Derived from `getAssigneeCount()` and `roles()`.
     function isOnlyAssignee(uint256 resource, uint256 roleBitmap, address account)
         public
         view
         returns (bool)
     {
         (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);
-        return counts == (roles(resource, account) & roleBitmap);
+        return counts != 0 && counts == (roles(resource, account) & roleBitmap);
     }
 
     ////////////////////////////////////////////////////////////////////////

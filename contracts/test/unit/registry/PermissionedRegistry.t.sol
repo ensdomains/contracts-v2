@@ -801,7 +801,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         testOwner = address(this); // mint to account with root
         uint256 tokenId = this._register();
         assertEq(registry.roles(tokenId, address(this)), 0); // no roles
-        registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
+        registry.unsafeTransfer(tokenId, user2, "");
     }
 
     function test_safeBatchTransferFrom() external {
