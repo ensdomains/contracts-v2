@@ -43,7 +43,7 @@ write the executor's optional per-account initialization marker. The source Nexu
 funding validator. The HCA prevents module installation and removal. An approved upgrade can change
 the fixed modules.
 
-The destination validator pins the long-lived `ETHRegistry`, not one registrar deployment. A registration target or payment-token spender is permitted only while that registry grants it the root `ROLE_REGISTRAR`. This supports concurrent registrars and registrar replacement without an HCA implementation upgrade. Revoking the role disables the registrar for existing sessions immediately.
+The destination validator pins the long-lived `ETHRegistry`, not one registrar deployment. Each operation batch selects at most one registrar, which must hold the registry's root `ROLE_REGISTRAR`; registrar calls and payment-token approvals in that batch must use the selected deployment. Different batches can select different authorized registrars, supporting concurrent deployments and registrar replacement without an HCA implementation upgrade. Revoking the role disables the registrar for existing sessions immediately.
 
 The HCA rejects delegatecall execution and the standard ERC-721 and ERC-1155 receiver callbacks. It can hold ETH or supported tokens during an operation. Do not use it for long-term funds.
 
@@ -394,10 +394,11 @@ The validator applies these rules:
 
 - Registration must assign the name to the HCA owner.
 - Registration must use the resolver in the session.
+- Every registrar call and registrar payment-token approval in a batch must use the same registrar.
 - A new resolver must use the approved `PermissionedResolver` implementation, grant root `ROLES.ALL` to exactly the HCA and wallet, and include only supported resolver setters in its initializer multicall.
 - An existing resolver must verify against the approved implementation.
 - Every registration must give root `ROLES.ALL` to the wallet.
-- A registrar approval can name only a current root `ROLE_REGISTRAR` holder as spender.
+- A registrar approval can name only the batch's current root `ROLE_REGISTRAR` holder as spender.
 - An execution-fee approval must match the signed fee and the session limits.
 - A first same-chain action can use one wallet permit followed by the same-value transfer into the HCA.
 

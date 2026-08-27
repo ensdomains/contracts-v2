@@ -57,25 +57,31 @@ library HCARegistrarPolicyLib {
         }
     }
 
-    /// @notice Returns whether every registration in a batch accepts a payment token.
-    /// @dev Reuses the execution array decoded by the calling validator.
+    /// @notice Returns whether a registration batch uses one registrar that accepts a payment token.
+    /// @dev Reuses the execution array decoded by the calling validator and queries the selected
+    ///      registrar's oracle once. Batches without a registration return true.
     /// @param executions The decoded operation batch.
     /// @param token The token delivered to the account by the signed intent.
-    /// @return supported Whether every used registrar accepts the token.
+    /// @return supported Whether the batch uses at most one registrar and it accepts the token.
     function isBatchPaymentToken(Execution[] memory executions, address token)
         internal
         view
         returns (bool supported)
     {
+        address registrar;
+        bool seenRegistration;
         for (uint256 i; i < executions.length; ++i) {
             if (HCAExecutionLib.selector(executions[i].callData) != IETHRegistrar.register.selector) {
                 continue;
             }
-            if (!isPaymentToken(executions[i].target, token)) {
+            if (!seenRegistration) {
+                registrar = executions[i].target;
+                seenRegistration = true;
+            } else if (executions[i].target != registrar) {
                 return false;
             }
         }
-        return true;
+        return !seenRegistration || isPaymentToken(registrar, token);
     }
 
     /// @notice Reads the registrant and resolver from an encoded registration call.

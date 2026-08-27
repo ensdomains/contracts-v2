@@ -830,11 +830,11 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
     }
 
-    function test_validator_acceptsMultipleRegistryAuthorizedRegistrars() public {
+    function test_validator_rejectsMultipleRegistryAuthorizedRegistrars() public {
         address alternateRegistrar = _deployRegistrarWithOracle(_defaultPaymentTokens());
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, alternateRegistrar);
 
-        Execution[] memory executions = new Execution[](3);
+        Execution[] memory executions = new Execution[](2);
         executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
             "alice",
             owner,
@@ -845,12 +845,38 @@ contract StandaloneSingleOwnerHCATest is Test {
             owner,
             resolver
         )});
-        executions[2] = Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                HCAOwnerAndSessionValidator.ActionNotAllowed.selector,
+                alternateRegistrar,
+                REGISTER_SELECTOR
+            )
+        );
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            resolver,
+            _operationData(executions)
+        );
+    }
+
+    function test_validator_rejectsApprovalForAnotherRegistryAuthorizedRegistrar() public {
+        address alternateRegistrar = _deployRegistrarWithOracle(_defaultPaymentTokens());
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, alternateRegistrar);
+
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+            owner,
+            resolver
+        )});
+        executions[1] = Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
             APPROVE_SELECTOR,
             alternateRegistrar,
             1 ether
         )});
 
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
         validatorHarness.checkRegistrationPolicyHarness(
             address(hca),
             owner,
@@ -1048,14 +1074,30 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
     }
 
-    function test_validator_checksIntentTokenAgainstBatchRegistrarOracles() public {
-        bytes memory registerBatch = _registrationOperationData(owner, resolver);
-        assertTrue(validatorHarness.isBatchRegistrarPaymentTokenHarness(registerBatch, usdc));
+    function test_validator_checksIntentTokenAgainstSingleBatchRegistrarOracle() public {
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
+            "alice",
+            owner,
+            resolver
+        )});
+        executions[1] = Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
+            "bob",
+            owner,
+            resolver
+        )});
+        bytes memory registerBatch = _operationData(executions);
+        address rentPriceOracle = address(IRentPriceOracleProvider(ethRegistrar).rentPriceOracle());
         assertFalse(
             validatorHarness.isBatchRegistrarPaymentTokenHarness(
                 registerBatch,
                 makeAddr("junk-token")
             )
+        );
+
+        executions[1].target = _deployRegistrarWithOracle(_defaultPaymentTokens());
+        assertFalse(
+            validatorHarness.isBatchRegistrarPaymentTokenHarness(_operationData(executions), usdc)
         );
 
         bytes memory commitBatch =
@@ -1069,6 +1111,18 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
 
         assertFalse(validatorHarness.isBatchRegistrarPaymentTokenHarness(hex"", usdc));
+
+        vm.expectCall(
+            ethRegistrar,
+            abi.encodeWithSelector(IRentPriceOracleProvider.rentPriceOracle.selector),
+            1
+        );
+        vm.expectCall(
+            rentPriceOracle,
+            abi.encodeWithSelector(IRentPriceOracle.isPaymentToken.selector, usdc),
+            1
+        );
+        assertTrue(validatorHarness.isBatchRegistrarPaymentTokenHarness(registerBatch, usdc));
     }
 
     function test_validator_treatsUnresponsiveRegistrarOracleAsUnsupported() public {

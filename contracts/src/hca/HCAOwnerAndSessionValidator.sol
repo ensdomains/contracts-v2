@@ -815,18 +815,21 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
         }
     }
 
-    /// @dev Returns whether the pinned registry currently authorizes an account to register names.
-    ///      Reuses a successful lookup within the same operation batch.
+    /// @dev Selects the first authorized registrar used by an operation batch and requires every
+    ///      later registrar action to use the same account.
     /// @param account The prospective registrar.
-    /// @param state The policy state caching one authorized registrar.
-    /// @return authorized Whether the account holds the root registrar role.
+    /// @param state The policy state containing the registrar selected by the batch.
+    /// @return authorized Whether the account is the batch's selected registry-authorized registrar.
     function _isAuthorizedRegistrar(address account, RegistrationPolicyState memory state)
         internal
         view
         returns (bool authorized)
     {
-        if (account != address(0) && state.authorizedRegistrar == account) {
-            return true;
+        if (account == address(0)) {
+            return false;
+        }
+        if (state.authorizedRegistrar != address(0)) {
+            return state.authorizedRegistrar == account;
         }
         authorized = HCARegistrarPolicyLib.isAuthorized(ETH_REGISTRY, account);
         if (authorized) {
