@@ -384,16 +384,6 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasAssignees(uint256 anyId, uint256 roleBitmap)
-        public
-        view
-        override(EnhancedAccessControl, IEnhancedAccessControl)
-        returns (bool)
-    {
-        return super.hasAssignees(getResource(anyId), roleBitmap);
-    }
-
-    /// @inheritdoc IEnhancedAccessControl
     function getAssigneeCount(uint256 anyId, uint256 roleBitmap)
         public
         view
