@@ -37,14 +37,7 @@ library HCASignatureLib {
             return address(0);
         }
 
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-        assembly ("memory-safe") {
-            r := calldataload(signature.offset)
-            s := calldataload(add(signature.offset, 0x20))
-            v := byte(0, calldataload(add(signature.offset, 0x40)))
-        }
+        (bytes32 r, bytes32 s, uint8 v) = rsvFromSignature(signature);
         return recover(digest, r, s, v);
     }
 
@@ -90,14 +83,7 @@ library HCASignatureLib {
             return false;
         }
 
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-        assembly ("memory-safe") {
-            r := calldataload(signature.offset)
-            s := calldataload(add(signature.offset, 0x20))
-            v := byte(0, calldataload(add(signature.offset, 0x40)))
-        }
+        (bytes32 r, bytes32 s, uint8 v) = rsvFromSignature(signature);
 
         bool explicitEthSigned = v == 31 || v == 32;
         if (explicitEthSigned) {
@@ -122,5 +108,23 @@ library HCASignatureLib {
 
         signer = ecrecover(MessageHashUtils.toEthSignedMessageHash(digest), v, r, s);
         return signer != address(0) && signer == expectedSigner;
+    }
+
+    /// @notice Reads the ECDSA fields from a complete signature.
+    /// @dev The caller must verify that the signature has the expected length.
+    /// @param signature The ECDSA signature to read.
+    /// @return r The ECDSA r value.
+    /// @return s The ECDSA s value.
+    /// @return v The recovery identifier.
+    function rsvFromSignature(bytes calldata signature)
+        private
+        pure
+        returns (bytes32 r, bytes32 s, uint8 v)
+    {
+        assembly ("memory-safe") {
+            r := calldataload(signature.offset)
+            s := calldataload(add(signature.offset, 0x20))
+            v := byte(0, calldataload(add(signature.offset, 0x40)))
+        }
     }
 }
