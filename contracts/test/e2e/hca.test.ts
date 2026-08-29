@@ -34,6 +34,7 @@ import {
   namehash,
 } from "../utils/utils.js";
 import { bundleCalls, makeResolutions } from "../utils/resolutions.js";
+import { computeOwnedResolverSalt } from "../../script/salts.js";
 
 const REGISTRATION_DURATION = 28n * 86400n;
 const BURNER_SESSION_SIGNER_KEY =
@@ -593,7 +594,7 @@ describe("Standalone HCA", () => {
     { walletPaid = false }: { walletPaid?: boolean } = {},
   ) {
     const hca = computeHcaAddress(owner.address);
-    const resolverSalt = env.computeOwnedResolverSalt(hca);
+    const resolverSalt = computeOwnedResolverSalt(hca);
     const resolver = env.computeVerifiableProxyAddress(hca, resolverSalt);
 
     const [basePrice, premiumPrice] =
@@ -738,7 +739,7 @@ describe("Standalone HCA", () => {
     const owner = env.namedAccounts.user;
     const label = "hcastandalone";
     const hca = computeHcaAddress(owner.address);
-    const resolverSalt = env.computeOwnedResolverSalt(hca);
+    const resolverSalt = computeOwnedResolverSalt(hca);
     const resolver = env.computeVerifiableProxyAddress(hca, resolverSalt);
 
     const first = await deployHCAAndCommit({ label, owner, resolver });
