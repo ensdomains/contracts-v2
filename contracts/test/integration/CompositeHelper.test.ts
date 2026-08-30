@@ -1,6 +1,7 @@
 import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/behaviour";
 import hre from "hardhat";
 import { describe, expect, it } from "vitest";
+import type { Address } from "viem";
 
 import {
   type KnownProfile,
@@ -12,6 +13,7 @@ import { deployV1Fixture } from "./fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "./fixtures/deployV2Fixture.js";
 import { expectVar } from "../utils/expectVar.js";
 import { getAddress } from "viem/utils";
+import { V2_SETTER_ABI } from "../utils/resolver-abis.ts";
 
 const network = await hre.network.connect();
 
@@ -57,13 +59,38 @@ describe("CompositeHelper", () => {
       {
         resolver: getAddress(F.ensV1Resolver.address),
         offchain: false,
-        err: "0x",
       },
       {
         resolver: getAddress(F.v1.publicResolver.address),
         offchain: false,
-        err: "0x",
       },
     ]);
   });
+
+  for (let n = 0; n < 5; n++) {
+    it(`chain of ${n}`, async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      const name = "test.eth";
+      const resolvers: Address[] = [F.v1.publicResolver.address];
+      for (let i = 0; i < n; i++) {
+        const resolver = await network.viem.deployContract(
+          "MockCompositeResolver",
+          [resolvers[0], false],
+        );
+        resolvers.unshift(resolver.address);
+      }
+      await F.v2.setupName({
+        name,
+        resolverAddress: resolvers[0],
+      });
+      await expect(
+        F.helper.read.getResolvers([dnsEncodeName(name)]),
+      ).resolves.toStrictEqual(
+        resolvers.map((x) => ({
+          resolver: getAddress(x),
+          offchain: false,
+        })),
+      );
+    });
+  }
 });
