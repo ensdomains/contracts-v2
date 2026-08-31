@@ -31,15 +31,40 @@ contract LibENSIP15Test is Test {
         assertEq(norm, NameCoder.encode("a.bb.ccc"));
     }
 
-    function test_normalize_canNormalize() external view {
-        (bool wasNorm, bytes memory norm) = normalize("A.Bb.cCc");
-        assertFalse(wasNorm);
-        assertEq(norm, NameCoder.encode("a.bb.ccc"));
+    function test_normalize_canNormalize_empty() external view {
+        (bool wasNorm, bytes memory norm) = normalize("");
+        assertTrue(wasNorm);
+        assertEq(norm, NameCoder.encode(""));
     }
 
-    function test_normalize_cannotNormalize() external {
-        vm.expectRevert(abi.encodeWithSelector(IENSIP15.CannotNormalize.selector, " "));
-        this.normalize(" ");
+    function test_normalize_canNormalize_mixed() external view {
+        (bool wasNorm, bytes memory norm) =
+            normalize(unicode"A'.B\u00ADb.cC\u00ADc.\u00ADdD'Dd.Ee");
+        assertFalse(wasNorm);
+        assertEq(norm, NameCoder.encode(unicode"a\u2019.bb.ccc.dd\u2019dd.ee"));
+    }
+
+    function test_normalize_cannotNormalize_invalid() external {
+        string memory name = " ";
+        vm.expectRevert(abi.encodeWithSelector(IENSIP15.CannotNormalize.selector, name));
+        this.normalize(name);
+    }
+
+    function test_normalize_cannotNormalize_tooLong() external {
+        bytes memory name = new bytes(255);
+        bytes memory norm;
+        for (uint256 i; i < 255; ++i) {
+            name[i] = "'";
+            norm = abi.encodePacked(norm, ensip15.normalize("'"));
+        }
+        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsTooLong.selector, norm));
+        this.normalize(string(abi.encodePacked("sub.", name, ".eth")));
+    }
+
+    function test_normalize_cannotNormalize_empty() external {
+        string memory name = "\u00AD";
+        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector, name));
+        this.normalize(name);
     }
 
     ////////////////////////////////////////////////////////////////////////
