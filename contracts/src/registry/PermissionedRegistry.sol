@@ -499,7 +499,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
                 // ROLE_CAN_TRANSFER_ADMIN is technically a property of the token
                 if (
                     !hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from) ||
-                    (safe && !_isTransferSafe(tokenId, from))
+                    (safe && !_isTransferSafe(tokenId, from, to))
                 ) {
                     revert TransferDisallowed(tokenId, from);
                 } else if (amounts[i] > 0) {
@@ -620,13 +620,22 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @dev Determine if the token can be transferred.
-    function _isTransferSafe(uint256 tokenId, address owner) internal view virtual returns (bool) {
-        if (!isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, owner)) {
+    function _isTransferSafe(uint256 tokenId, address oldOwner, address newOwner)
+        internal
+        view
+        virtual
+        returns (bool)
+    {
+        if (!isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, oldOwner)) {
             return false; // non-owner roles
         }
+        uint256 roleBitmap = roles(tokenId, oldOwner);
+        if ((EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE)) & roleBitmap) != 0) {
+            return false; // root has overlapping roles
+        }
         if (
-            roles(tokenId, owner) &
-            (RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN) !=
+            (roleBitmap &
+                (RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN)) !=
             0
         ) {
             return true; // subregistry is mutable
@@ -640,7 +649,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         try IEnhancedAccessControl(subregistry).isOnlyAssignee(
             ROOT_RESOURCE,
             EACBaseRolesLib.ALL_ROLES,
-            owner
+            newOwner
         ) returns (bool only) {
             return only; // note: can lie
         } catch {

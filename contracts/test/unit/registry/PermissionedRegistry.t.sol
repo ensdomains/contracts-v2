@@ -692,9 +692,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeTransferFrom() external {
+        StrictERC1155Holder r = new StrictERC1155Holder(false);
+        _makeTransferSafe(address(r));
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
-        StrictERC1155Holder r = new StrictERC1155Holder(false);
         vm.expectEmit();
         emit IERC1155.TransferSingle(user1, user1, address(r), tokenId, 1);
         vm.expectEmit();
@@ -706,6 +707,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeTransferFrom_noop() external {
+        _makeTransferSafe(user2);
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
         vm.expectEmit();
@@ -806,6 +808,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom() external {
+        StrictERC1155Holder r = new StrictERC1155Holder(true);
+        _makeTransferSafe(address(r));
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register();
@@ -814,7 +818,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1;
         amounts[1] = 1;
-        StrictERC1155Holder r = new StrictERC1155Holder(true);
         vm.expectEmit();
         emit IERC1155.TransferBatch(user1, user1, address(r), tokenIds, amounts);
         vm.expectEmit();
@@ -830,6 +833,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom_noop() external {
+        _makeTransferSafe(user2);
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register();
@@ -841,6 +845,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom_noopAfterTransfer() external {
+        _makeTransferSafe(user2);
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = tokenIds[1] = this._register();
@@ -854,6 +859,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom_twiceToSelf() external {
+        _makeTransferSafe(user1);
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = tokenIds[1] = this._register();
@@ -1155,7 +1161,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(s1.resource + 1, s2.resource, "resource:12");
     }
 
-    function test_regenerate_safeTransferFrom(uint256) external {
+    function test_regenerate_unsafeTransfer(uint256) external {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | _randomRoleBitmap(true, true);
         uint256 tokenId = this._register();
         IPermissionedRegistry.State memory s0 = registry.getState(tokenId);
@@ -1163,7 +1169,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertTrue(registry.hasRoles(tokenId, testRoles, user1), "before:user1");
         assertFalse(registry.hasRoles(tokenId, testRoles, user2), "before:user2");
         vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+        registry.unsafeTransfer(tokenId, user2, "");
         IPermissionedRegistry.State memory s1 = registry.getState(tokenId);
         assertEq(s1.latestOwner, user2, "after:owner");
         assertFalse(registry.hasRoles(tokenId, testRoles, user1), "after:user1");
@@ -1786,6 +1792,16 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
                 testRoles,
                 testExpiry
             );
+    }
+
+    function _makeTransferSafe(address newOwner) internal {
+        assertTrue(
+            registry.revokeRootRoles(
+                EACBaseRolesLib.ALL_ROLES & ~RegistryRolesLib.ROLE_REGISTRAR,
+                address(this)
+            )
+        );
+        testRegistry = new PermissionedRegistry(labelStore, newOwner, EACBaseRolesLib.ALL_ROLES);
     }
 
     function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {
