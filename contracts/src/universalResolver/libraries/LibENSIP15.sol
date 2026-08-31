@@ -8,7 +8,7 @@ import {IENSIP15} from "../interfaces/IENSIP15.sol";
 /// @dev Library for normalizing human-readable names into normalized DNS-encoded names.
 library LibENSIP15 {
     /// @dev Normalize a name according to ENSIP-15.
-    ///      Reverts `LabelIsEmpty`, `LabelIsTooLong`, and `CannotNormalize`. 
+    ///      Reverts `DNSEncodingFailed`, `LabelIsEmpty`, `LabelIsTooLong`, and `CannotNormalize`.
     /// @param name DNS-encoded name to normalize.
     /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @return wasNormalized `true` if `name` was already normalized.
