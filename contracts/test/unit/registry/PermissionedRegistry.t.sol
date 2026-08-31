@@ -795,6 +795,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
 
+    function test_safeTransferFrom_rootOwnedTokenWhileExpired() external {
+        // even though root has ROLE_CAN_TRANSFER_ADMIN independent of expiry
+        // the transfer is disallowed due to expiry
+        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
+        testOwner = address(this); // mint to account with root
+        uint256 tokenId = this._register();
+        vm.warp(testExpiry);
+        assertEq(registry.ownerOf(tokenId), address(0));
+        vm.expectRevert(
+            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, address(this))
+        );
+        registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
+    }
+
     function test_safeTransferFrom_rootOwnedTokenWithoutRoles() external {
         // as long as the token owner has ROLE_CAN_TRANSFER_ADMIN on root or token, the transfer can occur
         assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
