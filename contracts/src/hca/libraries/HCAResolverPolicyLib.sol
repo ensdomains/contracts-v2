@@ -91,19 +91,21 @@ library HCAResolverPolicyLib {
     /// @notice Validates one direct or nested resolver call.
     /// @dev Recurses through the standard resolver multicall and rejects unknown selectors.
     /// @param callData ABI-encoded resolver call data.
-    /// @param owner The owner recorded for the HCA.
-    function checkCall(bytes memory callData, address owner) internal pure {
+    function checkCall(bytes memory callData) internal pure {
         bytes4 callSelector = HCAExecutionLib.selector(callData);
         if (callSelector == IMulticallable.multicall.selector) {
-            _checkCalls(abi.decode(HCAExecutionLib.callArgs(callData), (bytes[])), owner);
-        } else if (!_isRecordSelector(callSelector)) {
+            _checkCalls(abi.decode(HCAExecutionLib.callArgs(callData), (bytes[])));
+            return;
+        }
+        if (!_isRecordSelector(callSelector)) {
             revert ActionNotAllowed(address(0), callSelector);
         }
     }
 
     /// @notice Validates an exact deployment of the resolver bound to a session.
-    /// @dev Requires full resolver access for both the HCA and its owner at initialization.
-    /// @param account The HCA that calls the factory and receives resolver access.
+    /// @dev Requires full resolver access for both the HCA and its owner at initialization and
+    ///      permits only supported resolver record setters in the initializer multicall.
+    /// @param account The HCA that calls the factory.
     /// @param owner The HCA owner that receives resolver access.
     /// @param resolver The resolver address bound to the session.
     /// @param callData ABI-encoded factory call data.
@@ -122,11 +124,29 @@ library HCAResolverPolicyLib {
         internal
         pure
     {
-        uint256 salt = HCAExecutionLib.readUint(callData, 4 + 32);
-        Grant[] memory grants = new Grant[](2);
-        grants[0] = Grant({account: account, roleBitmap: EACBaseRolesLib.ALL_ROLES});
-        grants[1] = Grant({account: owner, roleBitmap: EACBaseRolesLib.ALL_ROLES});
-        bytes[] memory calls = new bytes[](0);
+        (address callImplementation, uint256 salt, bytes memory initData) =
+            abi.decode(HCAExecutionLib.callArgs(callData), (address, uint256, bytes));
+        if (
+            callImplementation != implementation ||
+            HCAExecutionLib.selector(initData) !=
+            IPermissionedResolverInitializable.initialize.selector
+        ) {
+            revert PolicyRuleFailed();
+        }
+
+        (Grant[] memory grants, bytes[] memory calls) =
+            abi.decode(HCAExecutionLib.callArgs(initData), (Grant[], bytes[]));
+        if (
+            grants.length != 2 ||
+            grants[0].account != account ||
+            grants[0].roleBitmap != EACBaseRolesLib.ALL_ROLES ||
+            grants[1].account != owner ||
+            grants[1].roleBitmap != EACBaseRolesLib.ALL_ROLES
+        ) {
+            revert PolicyRuleFailed();
+        }
+        _checkCalls(calls);
+
         bytes memory expectedInitData =
             abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, calls));
         bytes memory expectedCallData =
@@ -162,9 +182,9 @@ library HCAResolverPolicyLib {
     }
 
     /// @dev Validates nested resolver calls.
-    function _checkCalls(bytes[] memory calls, address owner) private pure {
+    function _checkCalls(bytes[] memory calls) private pure {
         for (uint256 i; i < calls.length; ++i) {
-            checkCall(calls[i], owner);
+            checkCall(calls[i]);
         }
     }
 

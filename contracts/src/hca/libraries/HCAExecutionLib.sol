@@ -17,9 +17,7 @@ library HCAExecutionLib {
         if (callData.length < 4) {
             revert InvalidOperationEncoding();
         }
-        assembly ("memory-safe") {
-            callSelector := mload(add(callData, 0x20))
-        }
+        return bytes4(callData);
     }
 
     /// @notice Copies function arguments out of encoded call data.

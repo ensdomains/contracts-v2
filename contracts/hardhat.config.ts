@@ -43,6 +43,17 @@ const hcaCompiler = {
     outputSelection,
   },
 } as const;
+const hcaHotRuntimeCompiler = {
+  version: hcaVersion,
+  settings: {
+    optimizer: {
+      enabled: true,
+      runs: 23_000,
+    },
+    evmVersion: "cancun",
+    outputSelection,
+  },
+} as const;
 const tenderlySepoliaRpcUrl =
   process.env.TENDERLY_SEPOLIA_RPC_URL ??
   configVariable("TENDERLY_SEPOLIA_RPC_URL");
@@ -62,8 +73,9 @@ const config = {
   solidity: {
     compilers: [protocolCompiler],
     overrides: {
+      "src/hca/HCAValidatorBase.sol": hcaCompiler,
       "src/hca/HCAFundingSessionValidator.sol": hcaCompiler,
-      "src/hca/HCAOwnerAndSessionValidator.sol": hcaCompiler,
+      "src/hca/HCAOwnerAndSessionValidator.sol": hcaHotRuntimeCompiler,
       "src/hca/StandaloneHCAFactory.sol": hcaCompiler,
       "src/hca/StandaloneSingleOwnerHCA.sol": hcaCompiler,
       "src/hca/libraries/HCAExecutionLib.sol": hcaCompiler,
