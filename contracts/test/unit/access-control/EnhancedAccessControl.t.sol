@@ -1357,10 +1357,23 @@ contract EnhancedAccessControlTest is Test {
         );
         assertTrue(
             access.isOnlyAssignee(RESOURCE_1, EACBaseRolesLib.ALL_ROLES, user1),
-            "1:ALL:user1"
+            "1:ALL:user1(2)"
         );
         assertTrue(access.isOnlyAssignee(RESOURCE_1, ROLE_A, user1), "1:A:user1");
         assertFalse(access.isOnlyAssignee(RESOURCE_1, ROLE_B, user1), "1:B:user1");
+    }
+
+    function test_isOnlyAssignee_explicit() external {
+        assertFalse(access.isOnlyAssignee(RESOURCE_1, ROLE_A, user1), "1");
+        _grant(RESOURCE_1, ROLE_A, user1);
+        assertTrue(access.isOnlyAssignee(RESOURCE_1, ROLE_A, user1), "2");
+        _grant(RESOURCE_1, ADMIN_ROLE_A, user2);
+        // admin implies regular but isn't set
+        assertTrue(access.isOnlyAssignee(RESOURCE_1, ROLE_A, user1), "3");
+        assertTrue(access.isOnlyAssignee(RESOURCE_1, ADMIN_ROLE_A, user2), "4");
+        // must query explicitly
+        assertFalse(access.isOnlyAssignee(RESOURCE_1, ROLE_A | ADMIN_ROLE_A, user1), "5");
+        assertFalse(access.isOnlyAssignee(RESOURCE_1, ROLE_A | ADMIN_ROLE_A, user2), "6");
     }
 
     // Tests for getAssigneeCount() method
