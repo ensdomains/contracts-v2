@@ -5,7 +5,7 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IENSIP15} from "../interfaces/IENSIP15.sol";
 
-/// @dev Library for normalizing human-readable names into normalized DNS-encoded names.
+/// @dev Library for normalizing DNS-encoded names into normalized DNS-encoded names.
 library LibENSIP15 {
     /// @dev Normalize a name according to ENSIP-15.
     ///      Reverts `DNSEncodingFailed`, `LabelIsEmpty`, `LabelIsTooLong`, and `CannotNormalize`.
