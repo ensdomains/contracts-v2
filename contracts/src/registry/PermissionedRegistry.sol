@@ -481,7 +481,10 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
                 uint256 tokenId = tokenIds[i];
                 // only check ROLE_CAN_TRANSFER_ADMIN on original owner (from)
                 // ROLE_CAN_TRANSFER_ADMIN is technically a property of the token
-                if (_isExpired(_entry(tokenId).expiry) || !hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
+                if (
+                    _isExpired(_entry(tokenId).expiry) ||
+                    !hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)
+                ) {
                     revert TransferDisallowed(tokenId, from);
                 } else if (amounts[i] > 0) {
                     _transferRoles(getResource(tokenId), from, to, false);

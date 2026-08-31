@@ -804,7 +804,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         vm.warp(testExpiry);
         assertEq(registry.ownerOf(tokenId), address(0));
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, address(this))
+            abi.encodeWithSelector(
+                IStandardRegistry.TransferDisallowed.selector,
+                tokenId,
+                address(this)
+            )
         );
         registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
     }
