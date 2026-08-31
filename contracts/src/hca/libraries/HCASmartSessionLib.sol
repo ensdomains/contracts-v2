@@ -3,13 +3,38 @@ pragma solidity 0.8.27;
 
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
+import {HCASignatureLib} from "./HCASignatureLib.sol";
+
 /// @title HCA Smart Session Library
 /// @notice Reconstructs the authorization hashes used by Rhinestone Smart Sessions.
-/// @dev Shares the Smart Session hashing rules used by the HCA validators.
+/// @dev Shares proof validation between the destination and source HCA session validators.
 library HCASmartSessionLib {
+    ////////////////////////////////////////////////////////////////////////
+    // Types
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Result of validating one multi-chain owner authorization.
+    enum AuthorizationStatus {
+        InvalidSelection,
+        InvalidSigner,
+        Valid
+    }
+
+    /// @notice One chain and session digest from a multi-chain authorization.
+    struct HashAndChainId {
+        uint64 chainId;
+        bytes32 sessionDigest;
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Size of the mode and permission ID preceding a packed authorization proof.
+    uint256 internal constant ENABLE_PREFIX_LENGTH = 33;
+
+    /// @dev Size of one packed chain identifier and session digest.
+    uint256 internal constant AUTHORIZATION_ENTRY_LENGTH = 40;
 
     /// @dev Canonical Smart Session emissary.
     address private constant SMART_SESSION_EMISSARY = 0xad568B3F825A8d5FFc06DD3253526B64D810Ae89;
@@ -17,17 +42,9 @@ library HCASmartSessionLib {
     /// @dev Canonical one-of-one session validator.
     address private constant OWNABLE_SESSION_VALIDATOR = 0x000000000013fdB5234E4E3162a810F54d9f7E98;
 
-    /// @dev Smart Session EIP-712 domain type hash.
-    bytes32 private constant SMART_SESSION_DOMAIN_TYPEHASH =
-        0xb03948446334eb9b2196d5eb166f69b9d49403eb4a12f36de8d3f9f3cb8e15c3;
-
-    /// @dev Smart Session EIP-712 name hash.
-    bytes32 private constant SMART_SESSION_NAME_HASH =
-        0x909aaff4c04d02fd420ef163a6d750c002b0a00dc41a031ba039e3fdb4732133;
-
-    /// @dev Smart Session EIP-712 version hash.
-    bytes32 private constant SMART_SESSION_VERSION_HASH =
-        0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6;
+    /// @dev Smart Session EIP-712 domain separator.
+    bytes32 private constant SMART_SESSION_DOMAIN_SEPARATOR =
+        0xe4b7e03cf1e8e7a6af0eec6f72a68d532e03fdaad0b8326461731cb31803a084;
 
     /// @dev Signed-session type hash.
     bytes32 private constant SIGNED_SESSION_TYPEHASH =
@@ -49,6 +66,57 @@ library HCASmartSessionLib {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
+    /// @notice Validates the selected chain session and its multi-chain owner signature.
+    /// @dev Reconstructs the Smart Session digest before recovering the authorizing signer.
+    /// @param expectedOwner The owner that authorized the session set.
+    /// @param expectedSessionDigest The session digest authorized for the current chain.
+    /// @param selectedIndex The current chain's index in `hashesAndChainIds`.
+    /// @param packedSessions Packed chain identifiers and session digests covered by the signature.
+    /// @param ownerSignature The owner's ECDSA signature over the multi-chain authorization.
+    /// @return status Whether selection and signer validation succeeded.
+    function validateMultiChainAuthorization(
+        address expectedOwner,
+        bytes32 expectedSessionDigest,
+        uint256 selectedIndex,
+        bytes calldata packedSessions,
+        bytes calldata ownerSignature
+    )
+        internal
+        view
+        returns (AuthorizationStatus status)
+    {
+        uint256 packedLength = packedSessions.length;
+        uint256 count = packedLength / AUTHORIZATION_ENTRY_LENGTH;
+        if (
+            count == 0 ||
+            packedLength != count * AUTHORIZATION_ENTRY_LENGTH ||
+            selectedIndex >= count
+        ) {
+            return AuthorizationStatus.InvalidSelection;
+        }
+
+        uint256 selectedOffset = selectedIndex * AUTHORIZATION_ENTRY_LENGTH;
+        uint64 selectedChainId = uint64(bytes8(packedSessions[selectedOffset:selectedOffset + 8]));
+        bytes32 selectedSessionDigest =
+            bytes32(packedSessions[selectedOffset + 8:selectedOffset + AUTHORIZATION_ENTRY_LENGTH]);
+        if (selectedChainId != block.chainid || selectedSessionDigest != expectedSessionDigest) {
+            return AuthorizationStatus.InvalidSelection;
+        }
+
+        bytes32[] memory chainSessionHashes = new bytes32[](count);
+        for (uint256 i; i < count; ++i) {
+            uint256 offset = i * AUTHORIZATION_ENTRY_LENGTH;
+            chainSessionHashes[i] = chainSessionHash(
+                uint64(bytes8(packedSessions[offset:offset + 8])),
+                bytes32(packedSessions[offset + 8:offset + AUTHORIZATION_ENTRY_LENGTH])
+            );
+        }
+        address signer =
+            HCASignatureLib.recover(multiChainDigest(chainSessionHashes), ownerSignature);
+        return
+            signer == expectedOwner ? AuthorizationStatus.Valid : AuthorizationStatus.InvalidSigner;
+    }
+
     /// @notice Derives the hashes that bind a one-of-one key to an account and policy.
     /// @dev Matches the permission and session hashing used by Rhinestone Smart Sessions.
     /// @param account The account authorized on the selected chain.
@@ -61,21 +129,36 @@ library HCASmartSessionLib {
         pure
         returns (bytes32 permissionId, bytes32 sessionDigest)
     {
-        bytes memory validatorInitData = _validatorInitData(sessionKey);
-        permissionId = keccak256(abi.encode(OWNABLE_SESSION_VALIDATOR, validatorInitData, salt));
-        sessionDigest = keccak256(
-            abi.encode(
-                SIGNED_SESSION_TYPEHASH,
-                account,
-                type(uint256).max,
-                uint256(0),
-                DEFAULT_SIGNED_PERMISSIONS_HASH,
-                salt,
-                OWNABLE_SESSION_VALIDATOR,
-                keccak256(validatorInitData),
-                SMART_SESSION_EMISSARY
-            )
-        );
+        bytes32 validatorInitDataHash;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+
+            // Hash the canonical ABI encoding of the validator, its dynamic init data, and salt.
+            mstore(ptr, OWNABLE_SESSION_VALIDATOR)
+            mstore(add(ptr, 0x20), 0x60)
+            mstore(add(ptr, 0x40), salt)
+            mstore(add(ptr, 0x60), 0x80)
+            mstore(add(ptr, 0x80), 1)
+            mstore(add(ptr, 0xa0), 0x40)
+            mstore(add(ptr, 0xc0), 1)
+            mstore(add(ptr, 0xe0), sessionKey)
+            validatorInitDataHash := keccak256(add(ptr, 0x80), 0x80)
+            permissionId := keccak256(ptr, 0x100)
+
+            // Reuse the buffer for the fixed-width signed-session struct.
+            mstore(ptr, SIGNED_SESSION_TYPEHASH)
+            mstore(add(ptr, 0x20), account)
+            mstore(add(ptr, 0x40), not(0))
+            mstore(add(ptr, 0x60), 0)
+            mstore(add(ptr, 0x80), DEFAULT_SIGNED_PERMISSIONS_HASH)
+            mstore(add(ptr, 0xa0), salt)
+            mstore(add(ptr, 0xc0), OWNABLE_SESSION_VALIDATOR)
+            mstore(add(ptr, 0xe0), validatorInitDataHash)
+            mstore(add(ptr, 0x100), SMART_SESSION_EMISSARY)
+            sessionDigest := keccak256(ptr, 0x120)
+
+            mstore(0x40, add(ptr, 0x120))
+        }
     }
 
     /// @notice Hashes a chain identifier and its signed-session digest.
@@ -100,28 +183,12 @@ library HCASmartSessionLib {
         pure
         returns (bytes32 result)
     {
-        bytes32 structHash =
-            keccak256(
-                abi.encode(
-                    MULTI_CHAIN_SESSION_TYPEHASH,
-                    keccak256(abi.encodePacked(chainSessionHashes))
-                )
-            );
-        bytes32 domainSeparator =
-            keccak256(
-                abi.encode(
-                    SMART_SESSION_DOMAIN_TYPEHASH,
-                    SMART_SESSION_NAME_HASH,
-                    SMART_SESSION_VERSION_HASH
-                )
-            );
-        return MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
-    }
-
-    /// @dev Returns the standard one-of-one Ownable validator initialization data.
-    function _validatorInitData(address sessionKey) private pure returns (bytes memory) {
-        address[] memory owners = new address[](1);
-        owners[0] = sessionKey;
-        return abi.encode(uint256(1), owners);
+        bytes32 chainSessionsHash;
+        assembly ("memory-safe") {
+            chainSessionsHash :=
+                keccak256(add(chainSessionHashes, 0x20), shl(5, mload(chainSessionHashes)))
+        }
+        bytes32 structHash = keccak256(abi.encode(MULTI_CHAIN_SESSION_TYPEHASH, chainSessionsHash));
+        return MessageHashUtils.toTypedDataHash(SMART_SESSION_DOMAIN_SEPARATOR, structHash);
     }
 }
