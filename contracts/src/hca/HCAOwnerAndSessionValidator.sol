@@ -2,27 +2,22 @@
 pragma solidity 0.8.27;
 
 import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
-import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
-
-import {Grant} from "../access-control/interfaces/IEACGrantInitializable.sol";
-import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
-import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
-import {IRentPriceOracle} from "../registrar/interfaces/IRentPriceOracle.sol";
-import {IRentPriceOracleProvider} from "../registrar/interfaces/IRentPriceOracleProvider.sol";
-import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
-import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
-import {IPermissionedResolver} from "../resolver/interfaces/IPermissionedResolver.sol";
 import {
-    IPermissionedResolverInitializable
-} from "../resolver/interfaces/IPermissionedResolverInitializable.sol";
+    ERC1271_MAGICVALUE,
+    MODULE_TYPE_VALIDATOR,
+    VALIDATION_FAILED,
+    VALIDATION_SUCCESS
+} from "nexus/types/Constants.sol";
+
+import {IETHRegistrar} from "../registrar/interfaces/IETHRegistrar.sol";
+import {IPermissionedResolver} from "../resolver/interfaces/IPermissionedResolver.sol";
 import {IABISetter} from "../resolver/interfaces/setters/IABISetter.sol";
 import {IAddressSetter} from "../resolver/interfaces/setters/IAddressSetter.sol";
 import {IContenthashSetter} from "../resolver/interfaces/setters/IContenthashSetter.sol";
@@ -38,6 +33,13 @@ import {
 } from "../reverse-registrar/interfaces/IReverseRegistrarAdapter.sol";
 
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
+import {HCAExecutionLib} from "./libraries/HCAExecutionLib.sol";
+import {HCAOperationHashLib} from "./libraries/HCAOperationHashLib.sol";
+import {HCAPermit2Lib} from "./libraries/HCAPermit2Lib.sol";
+import {HCARegistrarPolicyLib} from "./libraries/HCARegistrarPolicyLib.sol";
+import {HCAResolverPolicyLib} from "./libraries/HCAResolverPolicyLib.sol";
+import {HCASignatureLib} from "./libraries/HCASignatureLib.sol";
+import {HCASmartSessionLib} from "./libraries/HCASmartSessionLib.sol";
 
 /// @title HCA Owner and Session Validator
 /// @notice Fixed validator for standalone HCA owner authorization and scoped ENS sessions.
@@ -66,20 +68,6 @@ contract HCAOwnerAndSessionValidator is IValidator {
         address token;
         uint256 exchangeRate;
         uint256 overhead;
-    }
-
-    /// @dev Permit2 fields carried by the cross-chain fixed-session envelope.
-    struct Permit2Fields {
-        address spender;
-        uint256 nonce;
-        uint256 deadline;
-        address sourceToken;
-        uint256 sourceAmount;
-        address recipient;
-        uint256 targetChainId;
-        uint256 fillExpiry;
-        address tokenOut;
-        uint256 amountOut;
     }
 
     /// @notice Compact configuration for one pre-enabled registration session.
@@ -127,23 +115,6 @@ contract HCAOwnerAndSessionValidator is IValidator {
     // Constants & Immutables
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Standard ERC-1271 success return value.
-    /// @dev Returned by ERC-1271 validators for valid signatures.
-    bytes4 internal constant ERC1271_MAGICVALUE = 0x1626ba7e;
-
-    /// @notice ERC-7579 validator module type id.
-    /// @dev Module type ID for validator modules.
-    uint256 internal constant MODULE_TYPE_VALIDATOR = 1;
-
-    /// @dev ERC-4337 validation success value.
-    uint256 internal constant VALIDATION_SUCCESS = 0;
-
-    /// @dev ERC-4337 validation failure value.
-    uint256 internal constant VALIDATION_FAILED = 1;
-
-    /// @dev Length of one ECDSA signature.
-    uint256 internal constant ECDSA_SIGNATURE_LENGTH = 65;
-
     /// @dev Fixed-session discriminator inside the validator signature.
     bytes1 internal constant FIXED_SESSION_MODE = 0x01;
 
@@ -168,12 +139,9 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @dev Fields after a first-use proof and before its single-chain operation.
     uint256 internal constant FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH = 116;
 
-    /// @dev Fixed Permit2 claim fields produced by the Rhinestone SDK.
-    uint256 internal constant PERMIT2_CLAIM_DATA_LENGTH = 410;
-
     /// @dev Mode, permission ID, origin chain ID, and fixed Permit2 claim fields.
     uint256 internal constant FIXED_SESSION_PERMIT2_OPERATION_OFFSET =
-        65 + PERMIT2_CLAIM_DATA_LENGTH;
+        65 + HCAPermit2Lib.CLAIM_DATA_LENGTH;
 
     /// @dev Mode, permission ID, and four-byte enable-proof length.
     uint256 internal constant FIXED_SESSION_ENABLE_PREFIX_LENGTH = 37;
@@ -181,7 +149,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @dev Minimum envelope size before the first same-chain operation.
     uint256 internal constant FIXED_SESSION_REFUND_ENABLE_MIN_LENGTH =
         FIXED_SESSION_ENABLE_PREFIX_LENGTH +
-        FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH + ECDSA_SIGNATURE_LENGTH;
+        FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH + HCASignatureLib.SIGNATURE_LENGTH;
 
     /// @dev Smart Session payload mode for an already-enabled permission.
     bytes1 internal constant SMART_SESSION_MODE_USE = 0x00;
@@ -215,14 +183,6 @@ contract HCAOwnerAndSessionValidator is IValidator {
     bytes32 internal constant SINGLE_CHAIN_OPS_TYPEHASH =
         0xbae11135c33effc421d699bbb53d9926a005ed0f2f5eb672c62cbfa943807291;
 
-    /// @dev EIP-712 type hash for the operation wrapper.
-    bytes32 internal constant OP_TYPEHASH =
-        0xdbc520cb50a8aaf3fa06ea43dc3d59d248e52ae638476e3268a1e6e36bffe196;
-
-    /// @dev EIP-712 type hash for one ERC-7579 execution.
-    bytes32 internal constant EXECUTION_TYPEHASH =
-        0x09b0a32e9842b65559835c235891737e06927d59e48a6f0e0512e136a513a9e4;
-
     /// @dev EIP-712 type hash for executor reimbursement.
     bytes32 internal constant GAS_REFUND_TYPEHASH =
         0x0bf04d9dcc5e703a75ba16d19c00f9d87fa30b9a815627102c15624d338eb094;
@@ -233,72 +193,6 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @dev Canonical Permit2 deployment used by Rhinestone intents.
     address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-
-    /// @dev Canonical Smart Session emissary.
-    address internal constant SMART_SESSION_EMISSARY = 0xad568B3F825A8d5FFc06DD3253526B64D810Ae89;
-
-    /// @dev Canonical one-of-one session validator.
-    address internal constant OWNABLE_SESSION_VALIDATOR = 0x000000000013fdB5234E4E3162a810F54d9f7E98;
-
-    /// @dev Smart Session EIP-712 domain type hash.
-    bytes32 internal constant SMART_SESSION_DOMAIN_TYPEHASH =
-        0xb03948446334eb9b2196d5eb166f69b9d49403eb4a12f36de8d3f9f3cb8e15c3;
-
-    /// @dev Smart Session EIP-712 name hash.
-    bytes32 internal constant SMART_SESSION_NAME_HASH =
-        0x909aaff4c04d02fd420ef163a6d750c002b0a00dc41a031ba039e3fdb4732133;
-
-    /// @dev Smart Session EIP-712 version hash.
-    bytes32 internal constant SMART_SESSION_VERSION_HASH =
-        0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6;
-
-    /// @dev Signed-session type hash.
-    bytes32 internal constant SIGNED_SESSION_TYPEHASH =
-        0x984917e689987af96289e12c5f5e934fcdf1df4186108f69ff7e8c3df950ce33;
-
-    /// @dev Chain-session type hash.
-    bytes32 internal constant CHAIN_SESSION_TYPEHASH =
-        0xabc350ff4773ba356e85e2d2ee58d7d7511767acdb108b59058f5b4a5afc074b;
-
-    /// @dev Multi-chain session type hash.
-    bytes32 internal constant MULTI_CHAIN_SESSION_TYPEHASH =
-        0xb4323194e4ca3723804b96dc7a0960bde1afff2b080b8b288fdc264c82e21357;
-
-    /// @dev Hash of the default empty Smart Session permissions.
-    bytes32 internal constant DEFAULT_SIGNED_PERMISSIONS_HASH =
-        0x242b79d1322c5e6b12b617584cc2d5766cf18be6feb6acfa469ccf289e11e504;
-
-    /// @dev Permit2 EIP-712 domain type hash.
-    bytes32 internal constant PERMIT2_DOMAIN_TYPEHASH =
-        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
-
-    /// @dev Permit2 EIP-712 name hash.
-    bytes32 internal constant PERMIT2_NAME_HASH = keccak256("Permit2");
-
-    /// @dev Permit2 token-permissions type hash.
-    bytes32 internal constant TOKEN_PERMISSIONS_TYPEHASH =
-        keccak256("TokenPermissions(address token,uint256 amount)");
-
-    /// @dev Permit2 destination-token type hash.
-    bytes32 internal constant TOKEN_TYPEHASH = keccak256("Token(address token,uint256 amount)");
-
-    /// @dev Permit2 destination target type hash.
-    bytes32 internal constant TARGET_TYPEHASH =
-        keccak256(
-            "Target(address recipient,Token[] tokenOut,uint256 targetChain,uint256 fillExpiry)Token(address token,uint256 amount)"
-        );
-
-    /// @dev Permit2 route mandate type hash.
-    bytes32 internal constant MANDATE_TYPEHASH =
-        keccak256(
-            "Mandate(Target target,uint128 minGas,Op originOps,Op destOps,bytes32 q)Op(bytes32 vt,Ops[] ops)Ops(address to,uint256 value,bytes data)Target(address recipient,Token[] tokenOut,uint256 targetChain,uint256 fillExpiry)Token(address token,uint256 amount)"
-        );
-
-    /// @dev Permit2 batch witness type hash.
-    bytes32 internal constant PERMIT_TYPEHASH =
-        keccak256(
-            "PermitBatchWitnessTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline,Mandate mandate)Mandate(Target target,uint128 minGas,Op originOps,Op destOps,bytes32 q)Op(bytes32 vt,Ops[] ops)Ops(address to,uint256 value,bytes data)Target(address recipient,Token[] tokenOut,uint256 targetChain,uint256 fillExpiry)Token(address token,uint256 amount)TokenPermissions(address token,uint256 amount)"
-        );
 
     /// @notice Selector for ETHRegistrar.commit(bytes32).
     bytes4 public constant COMMIT_SELECTOR = IETHRegistrar.commit.selector;
@@ -574,9 +468,9 @@ contract HCAOwnerAndSessionValidator is IValidator {
         if (sender != INTENT_EXECUTOR) {
             revert CallerNotIntentExecutor();
         }
-        if (data.length == ECDSA_SIGNATURE_LENGTH) {
+        if (data.length == HCASignatureLib.SIGNATURE_LENGTH) {
             (address expectedOwner, ) = _ownerAndSessionNonce(msg.sender);
-            if (_recover(hash, data) != expectedOwner) {
+            if (HCASignatureLib.recover(hash, data) != expectedOwner) {
                 revert InvalidSigner();
             }
         } else {
@@ -646,7 +540,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         if (sessionNonce != config.sessionNonce) {
             revert InvalidSigner();
         }
-        if (_recover(digest, data[33:]) != config.sessionKey) {
+        if (HCASignatureLib.recover(digest, data[33:]) != config.sessionKey) {
             revert InvalidSigner();
         }
 
@@ -670,7 +564,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         }
         (address expectedOwner, ) = _ownerAndSessionNonce(msg.sender);
         return
-            _isValidUserOpSignature(expectedOwner, userOpHash, userOp.signature)
+            HCASignatureLib.isValidUserOpSignature(expectedOwner, userOpHash, userOp.signature)
                 ? VALIDATION_SUCCESS
                 : VALIDATION_FAILED;
     }
@@ -780,7 +674,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @dev Validates an ERC-1271 session envelope and binds its operation copy to `hash`.
     function _validateFixedSession(bytes32 hash, bytes calldata data) internal view {
-        if (data.length < FIXED_SESSION_PREFIX_LENGTH + ECDSA_SIGNATURE_LENGTH) {
+        if (data.length < FIXED_SESSION_PREFIX_LENGTH + HCASignatureLib.SIGNATURE_LENGTH) {
             revert InvalidSessionData();
         }
 
@@ -807,7 +701,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
             return;
         }
         if (mode == FIXED_SESSION_REFUND_MODE) {
-            if (data.length < FIXED_SESSION_REFUND_PREFIX_LENGTH + ECDSA_SIGNATURE_LENGTH) {
+            if (data.length < FIXED_SESSION_REFUND_PREFIX_LENGTH + HCASignatureLib.SIGNATURE_LENGTH) {
                 revert InvalidSessionData();
             }
             _validateFixedSessionPayload(
@@ -825,15 +719,18 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
     /// @dev Validates the first Permit2 route and its reusable multi-chain session authorization.
     function _validateFixedPermit2SessionEnable(bytes32 hash, bytes calldata data) internal view {
-        if (data.length <= FIXED_SESSION_ENABLE_PREFIX_LENGTH + 32 + PERMIT2_CLAIM_DATA_LENGTH + 65) {
+        if (
+            data.length <=
+            FIXED_SESSION_ENABLE_PREFIX_LENGTH + 32 + HCAPermit2Lib.CLAIM_DATA_LENGTH + 65
+        ) {
             revert InvalidSessionData();
         }
 
         bytes32 permissionId = bytes32(data[1:33]);
         uint256 proofLength = uint32(bytes4(data[33:37]));
         uint256 proofEnd = FIXED_SESSION_ENABLE_PREFIX_LENGTH + proofLength;
-        uint256 operationOffset = proofEnd + 32 + PERMIT2_CLAIM_DATA_LENGTH;
-        uint256 signatureOffset = data.length - ECDSA_SIGNATURE_LENGTH;
+        uint256 operationOffset = proofEnd + 32 + HCAPermit2Lib.CLAIM_DATA_LENGTH;
+        uint256 signatureOffset = data.length - HCASignatureLib.SIGNATURE_LENGTH;
         if (proofLength == 0 || operationOffset >= signatureOffset) {
             revert InvalidSessionData();
         }
@@ -864,14 +761,12 @@ contract HCAOwnerAndSessionValidator is IValidator {
         }
 
         bytes32 salt = _sessionAuthorizationSalt(proof);
-        bytes memory validatorInitData = _sessionValidatorInitData(proof.sessionKey);
-        if (
-            permissionId !=
-            keccak256(abi.encode(OWNABLE_SESSION_VALIDATOR, validatorInitData, salt))
-        ) {
+        (bytes32 expectedPermissionId, bytes32 sessionDigest) =
+            HCASmartSessionLib.authorizationHashes(msg.sender, proof.sessionKey, salt);
+        if (permissionId != expectedPermissionId) {
             revert InvalidSessionData();
         }
-        _validateMultiChainSessionAuthorization(owner_, salt, validatorInitData, proof);
+        _validateMultiChainSessionAuthorization(owner_, sessionDigest, proof);
         return owner_;
     }
 
@@ -887,10 +782,10 @@ contract HCAOwnerAndSessionValidator is IValidator {
         internal
         view
     {
-        uint256 operationOffset = proofEnd + 32 + PERMIT2_CLAIM_DATA_LENGTH;
-        uint256 signatureOffset = data.length - ECDSA_SIGNATURE_LENGTH;
+        uint256 operationOffset = proofEnd + 32 + HCAPermit2Lib.CLAIM_DATA_LENGTH;
+        uint256 signatureOffset = data.length - HCASignatureLib.SIGNATURE_LENGTH;
         bytes calldata operationData = data[operationOffset:signatureOffset];
-        if (_recover(hash, data[signatureOffset:]) != proof.sessionKey) {
+        if (HCASignatureLib.recover(hash, data[signatureOffset:]) != proof.sessionKey) {
             revert InvalidSigner();
         }
         _validatePermit2Destination(
@@ -921,7 +816,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         if (
             proofLength == 0 ||
             proofEnd + FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH >=
-            data.length - ECDSA_SIGNATURE_LENGTH
+            data.length - HCASignatureLib.SIGNATURE_LENGTH
         ) {
             revert InvalidSessionData();
         }
@@ -953,7 +848,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         returns (bytes calldata operationData, GasRefund memory gasRefund)
     {
         uint256 operationOffset = proofEnd + FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH;
-        uint256 signatureOffset = data.length - ECDSA_SIGNATURE_LENGTH;
+        uint256 signatureOffset = data.length - HCASignatureLib.SIGNATURE_LENGTH;
         gasRefund = GasRefund({token: address(bytes20(data[proofEnd + 32:proofEnd + 52])), exchangeRate: uint256(
             bytes32(data[proofEnd + 52:proofEnd + 84])
         ), overhead: uint256(bytes32(data[proofEnd + 84:operationOffset]))});
@@ -966,7 +861,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         if (_singleChainDigest(msg.sender, nonce, operationData, gasRefund) != hash) {
             revert InvalidSessionData();
         }
-        if (_recover(hash, data[signatureOffset:]) != proof.sessionKey) {
+        if (HCASignatureLib.recover(hash, data[signatureOffset:]) != proof.sessionKey) {
             revert InvalidSigner();
         }
     }
@@ -974,8 +869,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @dev Validates the standard Rhinestone multi-chain session signature once for this HCA.
     function _validateMultiChainSessionAuthorization(
         address owner_,
-        bytes32 salt,
-        bytes memory validatorInitData,
+        bytes32 expectedSessionDigest,
         SessionEnableProof memory proof
     )
         internal
@@ -987,56 +881,30 @@ contract HCAOwnerAndSessionValidator is IValidator {
             revert InvalidSessionData();
         }
 
-        bytes32 signedSessionHash =
-            keccak256(
-                abi.encode(
-                    SIGNED_SESSION_TYPEHASH,
-                    msg.sender,
-                    type(uint256).max,
-                    uint256(0),
-                    DEFAULT_SIGNED_PERMISSIONS_HASH,
-                    salt,
-                    OWNABLE_SESSION_VALIDATOR,
-                    keccak256(validatorInitData),
-                    SMART_SESSION_EMISSARY
-                )
-            );
         HashAndChainId memory selected = proof.hashesAndChainIds[selectedIndex];
-        if (selected.chainId != block.chainid || selected.sessionDigest != signedSessionHash) {
+        if (selected.chainId != block.chainid || selected.sessionDigest != expectedSessionDigest) {
             revert InvalidSessionData();
         }
 
         bytes32[] memory chainSessionHashes = new bytes32[](count);
         for (uint256 i; i < count; ++i) {
             HashAndChainId memory item = proof.hashesAndChainIds[i];
-            chainSessionHashes[i] = keccak256(
-                abi.encode(CHAIN_SESSION_TYPEHASH, item.chainId, item.sessionDigest)
+            chainSessionHashes[i] = HCASmartSessionLib.chainSessionHash(
+                item.chainId,
+                item.sessionDigest
             );
         }
-        bytes32 structHash =
-            keccak256(
-                abi.encode(
-                    MULTI_CHAIN_SESSION_TYPEHASH,
-                    keccak256(abi.encodePacked(chainSessionHashes))
-                )
-            );
-        bytes32 domainSeparator =
-            keccak256(
-                abi.encode(
-                    SMART_SESSION_DOMAIN_TYPEHASH,
-                    SMART_SESSION_NAME_HASH,
-                    SMART_SESSION_VERSION_HASH
-                )
-            );
-        bytes32 digest = MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
-        if (_recoverParts(digest, proof.ownerR, proof.ownerS, proof.ownerV) != owner_) {
+        bytes32 digest = HCASmartSessionLib.multiChainDigest(chainSessionHashes);
+        if (HCASignatureLib.recover(digest, proof.ownerR, proof.ownerS, proof.ownerV) != owner_) {
             revert InvalidSigner();
         }
     }
 
     /// @dev Validates a cross-chain Permit2 intent and its destination operation preimage.
     function _validateFixedPermit2Session(bytes32 hash, bytes calldata data) internal view {
-        if (data.length <= FIXED_SESSION_PERMIT2_OPERATION_OFFSET + ECDSA_SIGNATURE_LENGTH) {
+        if (
+            data.length <= FIXED_SESSION_PERMIT2_OPERATION_OFFSET + HCASignatureLib.SIGNATURE_LENGTH
+        ) {
             revert InvalidSessionData();
         }
 
@@ -1055,9 +923,9 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
         uint256 sourceChainId = uint256(bytes32(data[33:65]));
         bytes calldata claimData = data[65:FIXED_SESSION_PERMIT2_OPERATION_OFFSET];
-        uint256 signatureOffset = data.length - ECDSA_SIGNATURE_LENGTH;
+        uint256 signatureOffset = data.length - HCASignatureLib.SIGNATURE_LENGTH;
         bytes calldata operationData = data[FIXED_SESSION_PERMIT2_OPERATION_OFFSET:signatureOffset];
-        if (_recover(hash, data[signatureOffset:]) != config.sessionKey) {
+        if (HCASignatureLib.recover(hash, data[signatureOffset:]) != config.sessionKey) {
             revert InvalidSigner();
         }
         _validatePermit2Destination(hash, sourceChainId, claimData, operationData);
@@ -1084,7 +952,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     {
         if (
             sourceChainId == 0 ||
-            claimData.length != PERMIT2_CLAIM_DATA_LENGTH ||
+            claimData.length != HCAPermit2Lib.CLAIM_DATA_LENGTH ||
             address(bytes20(claimData[0:20])) == address(0) ||
             uint8(claimData[84]) != 1 ||
             uint8(claimData[233]) != 1
@@ -1092,7 +960,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
             revert PolicyRuleFailed();
         }
 
-        Permit2Fields memory claim = _decodePermit2Fields(claimData);
+        HCAPermit2Lib.Claim memory claim = HCAPermit2Lib.decode(claimData);
         if (
             claim.deadline < block.timestamp ||
             claim.recipient != msg.sender ||
@@ -1106,7 +974,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         }
         if (
             _operationHash(operationData) != bytes32(claimData[346:378]) ||
-            _permit2Digest(claimData, sourceChainId) != expectedDigest
+            HCAPermit2Lib.digest(claimData, claim, sourceChainId, PERMIT2) != expectedDigest
         ) {
             revert InvalidSessionData();
         }
@@ -1153,13 +1021,13 @@ contract HCAOwnerAndSessionValidator is IValidator {
         view
         returns (bytes calldata operationData)
     {
-        uint256 signatureOffset = data.length - ECDSA_SIGNATURE_LENGTH;
+        uint256 signatureOffset = data.length - HCASignatureLib.SIGNATURE_LENGTH;
         operationData = data[operationOffset:signatureOffset];
         uint256 nonce = uint256(bytes32(data[33:65]));
         if (_singleChainDigest(msg.sender, nonce, operationData, gasRefund) != hash) {
             revert InvalidSessionData();
         }
-        if (_recover(hash, data[signatureOffset:]) != sessionKey) {
+        if (HCASignatureLib.recover(hash, data[signatureOffset:]) != sessionKey) {
             revert InvalidSigner();
         }
     }
@@ -1252,11 +1120,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
             revert InvalidOperationEncoding();
         }
         bytes32 operationMode = bytes32(operationData[:32]);
-        if (
-            operationMode != ERC7579_EMISSARY_EXECUTION_MODE &&
-            operationMode != ERC7579_ERC1271_MODE &&
-            operationMode != ERC7579_ERC1271_EMISSARY_EXECUTION_MODE
-        ) {
+        if (!HCAOperationHashLib.isSupportedMode(operationMode)) {
             revert InvalidOperationEncoding();
         }
 
@@ -1276,7 +1140,10 @@ contract HCAOwnerAndSessionValidator is IValidator {
         internal
         view
     {
-        if (operationData.length < 32 || !_isERC1271OperationMode(bytes32(operationData[:32]))) {
+        if (
+            operationData.length < 32 ||
+            !HCAOperationHashLib.isERC1271Mode(bytes32(operationData[:32]))
+        ) {
             revert InvalidOperationEncoding();
         }
         Execution[] memory executions = abi.decode(operationData[32:], (Execution[]));
@@ -1349,14 +1216,14 @@ contract HCAOwnerAndSessionValidator is IValidator {
 
             bytes4 selector = _selector(execution.callData);
 
-            if (selector == COMMIT_SELECTOR) {
+            if (selector == IETHRegistrar.commit.selector) {
                 if (!_isAuthorizedRegistrar(execution.target)) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
                 continue;
             }
 
-            if (selector == REGISTER_SELECTOR) {
+            if (selector == IETHRegistrar.register.selector) {
                 // The preceding registration scan verifies the target's live registrar role.
                 state.usesResolver = true;
                 if (policyResolver.code.length == 0 && !state.deploysResolver) {
@@ -1375,7 +1242,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
             }
 
             if (execution.target == DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER) {
-                if (selector != SET_NAME_WITH_HCA_SELECTOR) {
+                if (selector != IDefaultReverseRegistrarAdapter.setNameWithHCA.selector) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
                 if (policyResolver == address(0)) {
@@ -1389,7 +1256,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
             }
 
             if (execution.target == REVERSE_REGISTRAR_HCA_ADAPTER) {
-                if (selector != CLAIM_WITH_HCA_SELECTOR) {
+                if (selector != IReverseRegistrarAdapter.claimWithHCA.selector) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
                 address claimedAccount = _readAddress(execution.callData, 4);
@@ -1407,7 +1274,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
             }
 
             if (execution.target == VERIFIABLE_FACTORY) {
-                if (selector != DEPLOY_PROXY_SELECTOR) {
+                if (selector != IVerifiableFactory.deployProxy.selector) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
                 if (state.deploysResolver) {
@@ -1419,7 +1286,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 continue;
             }
 
-            if (selector == APPROVE_SELECTOR) {
+            if (selector == IERC20.approve.selector) {
                 _checkPaymentTokenApproval(execution.target, execution.callData, gasRefund);
                 continue;
             }
@@ -1446,11 +1313,11 @@ contract HCAOwnerAndSessionValidator is IValidator {
     {
         for (uint256 i; i < executions.length; ++i) {
             Execution memory execution = executions[i];
-            if (_selector(execution.callData) != REGISTER_SELECTOR) {
+            if (_selector(execution.callData) != IETHRegistrar.register.selector) {
                 continue;
             }
             if (!_isAuthorizedRegistrar(execution.target)) {
-                revert ActionNotAllowed(execution.target, REGISTER_SELECTOR);
+                revert ActionNotAllowed(execution.target, IETHRegistrar.register.selector);
             }
 
             (address registrant, address resolver) = _registerFields(execution.callData);
@@ -1488,25 +1355,15 @@ contract HCAOwnerAndSessionValidator is IValidator {
         internal
         view
     {
-        uint256 salt = _readUint(callData, 4 + 32);
-        Grant[] memory grants = new Grant[](2);
-        grants[0] = Grant({account: hca, roleBitmap: EACBaseRolesLib.ALL_ROLES});
-        grants[1] = Grant({account: owner, roleBitmap: EACBaseRolesLib.ALL_ROLES});
-        bytes[] memory calls = new bytes[](0);
-        bytes memory expectedInitData =
-            abi.encodeCall(IPermissionedResolverInitializable.initialize, (grants, calls));
-        bytes memory expectedCallData =
-            abi.encodeCall(
-                IVerifiableFactory.deployProxy,
-                (PERMITTED_RESOLVER_IMPL, salt, expectedInitData)
-            );
-
-        if (
-            keccak256(callData) != keccak256(expectedCallData) ||
-            _resolverAddress(hca, salt) != resolver
-        ) {
-            revert PolicyRuleFailed();
-        }
+        HCAResolverPolicyLib.checkDeployment(
+            hca,
+            owner,
+            resolver,
+            callData,
+            PERMITTED_RESOLVER_IMPL,
+            VERIFIABLE_FACTORY,
+            VERIFIABLE_PROXY_LOGIC
+        );
     }
 
     /// @dev Requires a used resolver to be an exact pending deployment or a verified proxy.
@@ -1516,49 +1373,13 @@ contract HCAOwnerAndSessionValidator is IValidator {
         internal
         view
     {
-        if (!state.usesResolver) {
-            return;
-        }
-        if (resolver == address(0)) {
-            revert PolicyRuleFailed();
-        }
-        if (resolver.code.length == 0) {
-            if (!state.deploysResolver) {
-                revert PolicyRuleFailed();
-            }
-            return;
-        }
-        if (state.deploysResolver) {
-            revert PolicyRuleFailed();
-        }
-
-        try IVerifiableFactory(VERIFIABLE_FACTORY).verifyContract(resolver) returns (
-            address implementation
-        ) {
-            if (implementation != PERMITTED_RESOLVER_IMPL) {
-                revert PolicyRuleFailed();
-            }
-        } catch {
-            revert PolicyRuleFailed();
-        }
-    }
-
-    /// @dev Computes the resolver proxy address for an HCA and user salt.
-    /// @param account The HCA that deploys the resolver proxy.
-    /// @param salt The user salt supplied to the VerifiableFactory.
-    /// @return resolver The counterfactual resolver address.
-    function _resolverAddress(address account, uint256 salt)
-        internal
-        view
-        returns (address resolver)
-    {
-        bytes32 outerSalt = keccak256(abi.encode(account, salt));
-        return
-            Create2.computeAddress(
-                outerSalt,
-                keccak256(CloneProxyBytecode.creationCode(VERIFIABLE_PROXY_LOGIC, outerSalt)),
-                VERIFIABLE_FACTORY
-            );
+        HCAResolverPolicyLib.checkBinding(
+            resolver,
+            state.usesResolver,
+            state.deploysResolver,
+            PERMITTED_RESOLVER_IMPL,
+            VERIFIABLE_FACTORY
+        );
     }
 
     /// @dev Allows payment approvals to registry-authorized registrars whose rent price oracle
@@ -1588,11 +1409,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @param account The prospective registrar.
     /// @return authorized Whether the account holds the root registrar role.
     function _isAuthorizedRegistrar(address account) internal view returns (bool authorized) {
-        return
-            IPermissionedRegistry(ETH_REGISTRY).hasRootRoles(
-                RegistryRolesLib.ROLE_REGISTRAR,
-                account
-            );
+        return HCARegistrarPolicyLib.isAuthorized(ETH_REGISTRY, account);
     }
 
     /// @dev Returns whether a registrar's current rent price oracle accepts a payment token.
@@ -1605,21 +1422,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         view
         returns (bool supported)
     {
-        if (registrar.code.length == 0) {
-            return false;
-        }
-        try IRentPriceOracleProvider(registrar).rentPriceOracle() returns (IRentPriceOracle oracle) {
-            if (address(oracle).code.length == 0) {
-                return false;
-            }
-            try oracle.isPaymentToken(IERC20(token)) returns (bool isSupported) {
-                return isSupported;
-            } catch {
-                return false;
-            }
-        } catch {
-            return false;
-        }
+        return HCARegistrarPolicyLib.isPaymentToken(registrar, token);
     }
 
     /// @dev Returns whether every registration in a batch uses a registrar whose oracle accepts
@@ -1632,19 +1435,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         view
         returns (bool supported)
     {
-        if (operationData.length < 32) {
-            return false;
-        }
-        Execution[] memory executions = abi.decode(operationData[32:], (Execution[]));
-        for (uint256 i; i < executions.length; ++i) {
-            if (_selector(executions[i].callData) != REGISTER_SELECTOR) {
-                continue;
-            }
-            if (!_isRegistrarPaymentToken(executions[i].target, token)) {
-                return false;
-            }
-        }
-        return true;
+        return HCARegistrarPolicyLib.isBatchPaymentToken(operationData, token);
     }
 
     /// @dev Finds and checks an optional EIP-2612 funding pull into the HCA.
@@ -1671,7 +1462,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 continue;
             }
             bytes4 selector = _selector(execution.callData);
-            if (selector == PERMIT_SELECTOR) {
+            if (selector == IERC20Permit.permit.selector) {
                 if (
                     permitIndex != type(uint256).max ||
                     execution.value != 0 ||
@@ -1683,7 +1474,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
                 _requireArgAddress(execution.callData, 4 + 32, account);
                 permittedAmount = _readUint(execution.callData, 4 + 2 * 32);
                 permitIndex = i;
-            } else if (selector == TRANSFER_FROM_SELECTOR) {
+            } else if (selector == IERC20.transferFrom.selector) {
                 if (
                     transferIndex != type(uint256).max ||
                     execution.value != 0 ||
@@ -1711,83 +1502,6 @@ contract HCAOwnerAndSessionValidator is IValidator {
         }
     }
 
-    /// @dev Reconstructs the Permit2 witness digest from the compact claim fields.
-    function _permit2Digest(bytes calldata data, uint256 sourceChainId)
-        internal
-        pure
-        returns (bytes32)
-    {
-        Permit2Fields memory claim = _decodePermit2Fields(data);
-
-        bytes32 tokenPermissionsHash =
-            keccak256(
-                abi.encodePacked(
-                    keccak256(
-                        abi.encode(TOKEN_PERMISSIONS_TYPEHASH, claim.sourceToken, claim.sourceAmount)
-                    )
-                )
-            );
-        bytes32 tokenOutHash =
-            keccak256(
-                abi.encodePacked(
-                    keccak256(abi.encode(TOKEN_TYPEHASH, claim.tokenOut, claim.amountOut))
-                )
-            );
-        bytes32 targetHash =
-            keccak256(
-                abi.encode(
-                    TARGET_TYPEHASH,
-                    claim.recipient,
-                    tokenOutHash,
-                    claim.targetChainId,
-                    claim.fillExpiry
-                )
-            );
-        bytes32 mandateHash =
-            keccak256(
-                abi.encode(
-                    MANDATE_TYPEHASH,
-                    targetHash,
-                    uint128(bytes16(data[298:314])),
-                    bytes32(data[314:346]),
-                    bytes32(data[346:378]),
-                    bytes32(data[378:410])
-                )
-            );
-        bytes32 permitHash =
-            keccak256(
-                abi.encode(
-                    PERMIT_TYPEHASH,
-                    tokenPermissionsHash,
-                    claim.spender,
-                    claim.nonce,
-                    claim.deadline,
-                    mandateHash
-                )
-            );
-        bytes32 domainSeparator =
-            keccak256(abi.encode(PERMIT2_DOMAIN_TYPEHASH, PERMIT2_NAME_HASH, sourceChainId, PERMIT2));
-        return MessageHashUtils.toTypedDataHash(domainSeparator, permitHash);
-    }
-
-    /// @dev Decodes the compact fields used by the Permit2 destination policy.
-    function _decodePermit2Fields(bytes calldata data)
-        internal
-        pure
-        returns (Permit2Fields memory claim)
-    {
-        claim.spender = address(bytes20(data[0:20]));
-        claim.nonce = uint256(bytes32(data[20:52]));
-        claim.deadline = uint256(bytes32(data[52:84]));
-        claim.sourceToken = address(uint160(uint256(bytes32(data[85:117]))));
-        claim.sourceAmount = uint256(bytes32(data[117:149]));
-        claim.recipient = address(bytes20(data[149:169]));
-        claim.targetChainId = uint256(bytes32(data[169:201]));
-        claim.fillExpiry = uint256(bytes32(data[201:233]));
-        claim.tokenOut = address(uint160(uint256(bytes32(data[234:266]))));
-        claim.amountOut = uint256(bytes32(data[266:298]));
-    }
-
     /// @dev Hashes the fixed HCA fields stored in the standard Smart Session salt.
     function _sessionAuthorizationSalt(SessionEnableProof memory proof)
         internal
@@ -1806,13 +1520,6 @@ contract HCAOwnerAndSessionValidator is IValidator {
                     proof.maxRefundAmount
                 )
             );
-    }
-
-    /// @dev Returns the standard one-of-one Ownable session-validator initialization data.
-    function _sessionValidatorInitData(address sessionKey) internal pure returns (bytes memory) {
-        address[] memory owners = new address[](1);
-        owners[0] = sessionKey;
-        return abi.encode(uint256(1), owners);
     }
 
     /// @dev Checks an executor reimbursement against the limits approved for a session.
@@ -1844,34 +1551,11 @@ contract HCAOwnerAndSessionValidator is IValidator {
         }
 
         bytes32 operationMode = bytes32(operationData[:32]);
-        if (!_isERC1271OperationMode(operationMode)) {
+        if (!HCAOperationHashLib.isERC1271Mode(operationMode)) {
             revert InvalidOperationEncoding();
         }
 
-        Execution[] memory executions = abi.decode(operationData[32:], (Execution[]));
-        bytes32[] memory executionHashes = new bytes32[](executions.length);
-        for (uint256 i; i < executions.length; ++i) {
-            Execution memory execution = executions[i];
-            executionHashes[i] = keccak256(
-                abi.encode(
-                    EXECUTION_TYPEHASH,
-                    execution.target,
-                    execution.value,
-                    keccak256(execution.callData)
-                )
-            );
-        }
-        return
-            keccak256(
-                abi.encode(OP_TYPEHASH, operationMode, keccak256(abi.encodePacked(executionHashes)))
-            );
-    }
-
-    /// @dev Returns true for an ERC-1271 operation mode that this validator supports.
-    function _isERC1271OperationMode(bytes32 operationMode) internal pure returns (bool) {
-        return
-            operationMode == ERC7579_ERC1271_MODE ||
-            operationMode == ERC7579_ERC1271_EMISSARY_EXECUTION_MODE;
+        return HCAOperationHashLib.hash(operationData);
     }
 
     /// @notice Reads a function selector from calldata.
@@ -1879,12 +1563,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @param callData ABI-encoded call data.
     /// @return selector_ The function selector.
     function _selector(bytes memory callData) internal pure returns (bytes4 selector_) {
-        if (callData.length < 4) {
-            revert InvalidOperationEncoding();
-        }
-        assembly ("memory-safe") {
-            selector_ := mload(add(callData, 0x20))
-        }
+        return HCAExecutionLib.selector(callData);
     }
 
     /// @notice Validates resolver record writes on the owner-authorized resolver.
@@ -1892,15 +1571,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @param callData ABI-encoded resolver call data.
     /// @param owner The owner recorded for the HCA.
     function _checkResolverCall(bytes memory callData, address owner) internal pure {
-        bytes4 selector = _selector(callData);
-        if (selector == MULTICALL_SELECTOR) {
-            bytes[] memory calls = abi.decode(_callArgs(callData), (bytes[]));
-            for (uint256 i; i < calls.length; ++i) {
-                _checkResolverCall(calls[i], owner);
-            }
-        } else if (!_isAuthorizedResolverSelector(selector)) {
-            revert ActionNotAllowed(address(0), selector);
-        }
+        HCAResolverPolicyLib.checkCall(callData, owner);
     }
 
     /// @notice Reads the fields relevant to the registration policy from a register call.
@@ -1913,24 +1584,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         pure
         returns (address registrant, address resolver)
     {
-        registrant = _readAddress(callData, 4 + 32);
-        resolver = _readAddress(callData, 4 + 128);
-    }
-
-    /// @dev Returns whether resolver selector is allowed.
-    /// @param selector_ The function selector.
-    /// @return True when the selector is permitted by the resolver-write policy.
-    function _isAuthorizedResolverSelector(bytes4 selector_) internal pure returns (bool) {
-        return
-            selector_ == LINK_TO_RECORD_SELECTOR ||
-            selector_ == LINK_TO_NODE_SELECTOR ||
-            selector_ == SET_ABI_SELECTOR ||
-            selector_ == SET_ADDRESS_SELECTOR ||
-            selector_ == SET_CONTENTHASH_SELECTOR ||
-            selector_ == SET_DATA_SELECTOR ||
-            selector_ == SET_INTERFACE_SELECTOR ||
-            selector_ == SET_NAME_SELECTOR ||
-            selector_ == SET_TEXT_SELECTOR;
+        return HCARegistrarPolicyLib.registrationFields(callData);
     }
 
     /// @notice Copies function arguments out of ABI calldata bytes.
@@ -1938,13 +1592,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
     /// @param callData ABI-encoded call data with a function selector prefix.
     /// @return args ABI-encoded function arguments.
     function _callArgs(bytes memory callData) internal pure returns (bytes memory args) {
-        if (callData.length < 4) {
-            revert InvalidOperationEncoding();
-        }
-        args = new bytes(callData.length - 4);
-        for (uint256 i; i < args.length; ++i) {
-            args[i] = callData[i + 4];
-        }
+        return HCAExecutionLib.callArgs(callData);
     }
 
     /// @notice Reads an ABI-encoded address argument from calldata.
@@ -1957,12 +1605,7 @@ contract HCAOwnerAndSessionValidator is IValidator {
         pure
         returns (address result)
     {
-        if (callData.length < offset + 32) {
-            revert InvalidOperationEncoding();
-        }
-        assembly ("memory-safe") {
-            result := and(mload(add(add(callData, 0x20), offset)), 0xffffffffffffffffffffffffffffffffffffffff)
-        }
+        return HCAExecutionLib.readAddress(callData, offset);
     }
 
     /// @notice Requires an ABI address argument to match the policy-expected address.
@@ -1989,106 +1632,18 @@ contract HCAOwnerAndSessionValidator is IValidator {
         pure
         returns (uint256 result)
     {
-        if (callData.length < offset + 32) {
-            revert InvalidOperationEncoding();
-        }
-        assembly ("memory-safe") {
-            result := mload(add(add(callData, 0x20), offset))
-        }
+        return HCAExecutionLib.readUint(callData, offset);
     }
 
-    /// @notice Recovers the signer of an existing Rhinestone 65-byte ECDSA signature.
-    /// @dev Values 31/32 select EIP-191 wrapping, matching Rhinestone's Ownable/ENS format.
-    ///      Values 0/1 and 27/28 recover the supplied digest directly.
-    /// @param digest The signed digest.
-    /// @param signature The ECDSA signature.
-    /// @return signer The recovered signer.
+    /// @dev Recovers a Rhinestone signature and maps malformed signatures to `InvalidSigner`.
     function _recover(bytes32 digest, bytes calldata signature)
         internal
         pure
         returns (address signer)
     {
-        if (signature.length != 65) {
+        signer = HCASignatureLib.recover(digest, signature);
+        if (signer == address(0)) {
             revert InvalidSigner();
         }
-
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-        assembly ("memory-safe") {
-            r := calldataload(signature.offset)
-            s := calldataload(add(signature.offset, 0x20))
-            v := byte(0, calldataload(add(signature.offset, 0x40)))
-        }
-        return _recoverParts(digest, r, s, v);
-    }
-
-    /// @dev Recovers a Rhinestone ECDSA signature supplied as separate fields.
-    function _recoverParts(bytes32 digest, bytes32 r, bytes32 s, uint8 v)
-        internal
-        pure
-        returns (address signer)
-    {
-        if (v == 31 || v == 32) {
-            digest = MessageHashUtils.toEthSignedMessageHash(digest);
-            v -= 4;
-        } else if (v < 27) {
-            v += 27;
-        }
-        if (v != 27 && v != 28) {
-            revert InvalidSigner();
-        }
-        ECDSA.RecoverError error;
-        (signer, error, ) = ECDSA.tryRecover(digest, v, r, s);
-        if (error != ECDSA.RecoverError.NoError) {
-            revert InvalidSigner();
-        }
-    }
-
-    /// @dev Checks raw and EIP-191 UserOperation signatures without reverting on invalid input.
-    function _isValidUserOpSignature(address expectedOwner, bytes32 digest, bytes calldata signature)
-        internal
-        pure
-        returns (bool)
-    {
-        if (signature.length != ECDSA_SIGNATURE_LENGTH) {
-            return false;
-        }
-
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-        assembly ("memory-safe") {
-            r := calldataload(signature.offset)
-            s := calldataload(add(signature.offset, 0x20))
-            v := byte(0, calldataload(add(signature.offset, 0x40)))
-        }
-
-        bool explicitEthSigned = v == 31 || v == 32;
-        if (explicitEthSigned) {
-            v -= 4;
-        } else if (v < 27) {
-            v += 27;
-        }
-        if (v != 27 && v != 28) {
-            return false;
-        }
-
-        address signer;
-        ECDSA.RecoverError error;
-        if (!explicitEthSigned) {
-            (signer, error, ) = ECDSA.tryRecover(digest, v, r, s);
-            if (error == ECDSA.RecoverError.NoError && signer == expectedOwner) {
-                return true;
-            }
-        }
-
-        (signer, error, ) = ECDSA.tryRecover(
-            MessageHashUtils.toEthSignedMessageHash(digest),
-            v,
-            r,
-            s
-        );
-        return error == ECDSA.RecoverError.NoError && signer == expectedOwner;
     }
 }

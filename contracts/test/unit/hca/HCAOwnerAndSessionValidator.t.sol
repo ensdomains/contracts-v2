@@ -114,6 +114,19 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         );
     }
 
+    function test_validator_rejectsUnsupportedResolverCall() public {
+        bytes4 selector = bytes4(keccak256("unsupported()"));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                HCAOwnerAndSessionValidator.ActionNotAllowed.selector,
+                address(0),
+                selector
+            )
+        );
+        validator.checkResolverCallHarness(abi.encodeWithSelector(selector), owner);
+    }
+
     function test_validator_acceptsPermit2SessionForExactDestinationOperation() public {
         bytes32 permissionId = _enableSession();
         bytes memory operationData = _withHybridMode(_commitOperation(bytes32("commitment")));
@@ -1095,5 +1108,12 @@ contract HCAOwnerAndSessionValidatorEnableHarness is HCAOwnerAndSessionValidator
         returns (bytes32)
     {
         return _singleChainDigest(account, nonce, operationData, gasRefund);
+    }
+
+    /// @notice Exposes resolver call policy validation.
+    /// @param callData ABI-encoded resolver call data.
+    /// @param expectedOwner The account owner expected by resolver setters.
+    function checkResolverCallHarness(bytes calldata callData, address expectedOwner) external pure {
+        _checkResolverCall(callData, expectedOwner);
     }
 }
