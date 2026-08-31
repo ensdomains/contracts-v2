@@ -41,7 +41,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     uint256 testRoles = 0;
     address testResolver = makeAddr("resolver");
     uint64 testExpiry = uint64(block.timestamp + 1000);
-    IRegistry testRegistry = IRegistry(makeAddr("registry"));
+    IRegistry testRegistry;
 
     function setUp() external {
         labelStore = new LabelStore(IContractNamer(address(0)));
@@ -49,6 +49,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
         registry = new MockPermissionedRegistry(labelStore, address(this), DEFAULT_ROLE_BITMAP);
+        testRegistry = new PermissionedRegistry(labelStore, testOwner, EACBaseRolesLib.ALL_ROLES);
     }
 
     function test_initForProxyImplementation() external {

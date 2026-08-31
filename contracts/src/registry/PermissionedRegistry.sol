@@ -620,7 +620,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @dev Determine if the token can be transferred.
-    function _isTransferSafe(uint256 tokenId, address owner) internal view returns (bool) {
+    function _isTransferSafe(uint256 tokenId, address owner) internal view virtual returns (bool) {
         if (!isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, owner)) {
             return false; // non-owner roles
         }
@@ -632,17 +632,19 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             return true; // subregistry is mutable
         }
         address subregistry = address(_entry(tokenId).subregistry);
-        if (subregistry.code.length == 0) {
-            return true; // subregistry is not a contract
+        if (subregistry == address(0)) {
+            return true; // subregistry is unset
+        } else if (subregistry.code.length == 0) {
+            return false; // subregistry is not a contract
         }
         try IEnhancedAccessControl(subregistry).isOnlyAssignee(
             ROOT_RESOURCE,
             EACBaseRolesLib.ALL_ROLES,
             owner
         ) returns (bool only) {
-            return only;
+            return only; // note: can lie
         } catch {
-            return false; // unsure
+            return false; // unable to confirm
         }
     }
 
