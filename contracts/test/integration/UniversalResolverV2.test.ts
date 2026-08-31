@@ -420,10 +420,10 @@ describe("UniversalResolverV2", () => {
   describe("normalize()", () => {
     for (const name of [
       "",
-      "a".repeat(256),
-      ".",
-      ".eth",
-      "eth.",
+      // "a".repeat(256), \
+      // ".",             | does not
+      // ".eth",          |  encode
+      // "eth.",          /
       " abc",
       "abc ",
       "abc.eth ",
@@ -442,11 +442,11 @@ describe("UniversalResolverV2", () => {
         } catch {}
         if (typeof norm === "string") {
           await expect(
-            F.ur.read.normalize([name, F.ensip15.address]),
+            F.ur.read.normalize([dnsEncodeName(name), F.ensip15.address]),
           ).resolves.toStrictEqual([name === norm, dnsEncodeName(norm)]);
         } else {
           await expect(
-            F.ur.read.normalize([name, F.ensip15.address]),
+            F.ur.read.normalize([dnsEncodeName(name), F.ensip15.address]),
           ).rejects.toThrow();
         }
       });
@@ -470,7 +470,7 @@ describe("UniversalResolverV2", () => {
         addresses: [{ coinType: COIN_TYPE_ETH, value: anotherAddress }],
       });
       const [answer, resolver] = await F.ur.read.resolveWithNormalization([
-        testName,
+        dnsEncodeName(testName),
         res.call,
         F.ensip15.address,
       ]);
@@ -495,7 +495,7 @@ describe("UniversalResolverV2", () => {
       });
       await expect(
         F.ur.read.resolveWithNormalization([
-          testName.toUpperCase(),
+          dnsEncodeName(testName.toUpperCase()),
           res.call,
           F.ensip15.address,
         ]),
@@ -509,7 +509,7 @@ describe("UniversalResolverV2", () => {
       const badLabel = " ";
       await expect(
         F.ur.read.resolveWithNormalization([
-          `test.${badLabel}.eth`,
+          dnsEncodeName(`test.${badLabel}.eth`),
           dummyCalldata,
           F.ensip15.address,
         ]),
@@ -654,7 +654,7 @@ describe("UniversalResolverV2", () => {
       await F.ss1.write.setOffchain([true]);
       await expect(
         F.ur.read.resolveWithGatewaysAndNormalization([
-          testName,
+          dnsEncodeName(testName),
           res.call,
           [],
           F.ensip15.address,
@@ -662,7 +662,7 @@ describe("UniversalResolverV2", () => {
       ).rejects.toThrow();
       const [answer, resolver] =
         await F.ur.read.resolveWithGatewaysAndNormalization([
-          testName,
+          dnsEncodeName(testName),
           res.call,
           [LOCAL_BATCH_GATEWAY_URL],
           F.ensip15.address,

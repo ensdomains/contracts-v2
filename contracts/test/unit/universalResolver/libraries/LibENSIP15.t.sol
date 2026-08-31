@@ -22,63 +22,31 @@ contract LibENSIP15Test is Test {
     }
 
     function _callWithNullImpl() external view {
-        LibENSIP15.normalize("A", MockENSIP15(address(0)));
-    }
-
-    function test_normalize_empty() external view {
-        (bool wasNorm, bytes memory name) = norm("");
-        assertTrue(wasNorm);
-        assertEq(name, NameCoder.encode(""));
-    }
-
-    function test_normalize_dot() external {
-        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector));
-        this.norm(".");
-    }
-
-    function test_normalize_leadingEmpty() external {
-        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector));
-        this.norm(".eth");
-    }
-
-    function test_normalize_containsEmpty() external {
-        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector));
-        this.norm("test..eth");
-    }
-
-    function test_normalize_trailingEmpty() external {
-        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector));
-        this.norm("eth.");
-    }
-
-    function test_normalize_tooLong() external {
-        string memory name = new string(256);
-        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsTooLong.selector, name));
-        this.norm(name);
+        LibENSIP15.normalize(NameCoder.encode("A"), MockENSIP15(address(0)));
     }
 
     function test_normalize_isNormalized() external view {
-        (bool wasNorm, bytes memory name) = norm("a.bb.ccc");
+        (bool wasNorm, bytes memory norm) = normalize("a.bb.ccc");
         assertTrue(wasNorm);
-        assertEq(name, NameCoder.encode("a.bb.ccc"));
+        assertEq(norm, NameCoder.encode("a.bb.ccc"));
     }
 
     function test_normalize_canNormalize() external view {
-        (bool wasNorm, bytes memory name) = norm("A.Bb.cCc");
+        (bool wasNorm, bytes memory norm) = normalize("A.Bb.cCc");
         assertFalse(wasNorm);
-        assertEq(name, NameCoder.encode("a.bb.ccc"));
+        assertEq(norm, NameCoder.encode("a.bb.ccc"));
     }
 
     function test_normalize_cannotNormalize() external {
         vm.expectRevert(abi.encodeWithSelector(IENSIP15.CannotNormalize.selector, " "));
-        this.norm(" ");
+        this.normalize(" ");
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Helpers
     ////////////////////////////////////////////////////////////////////////
 
-    function norm(string memory name) public view returns (bool, bytes memory) {
-        return LibENSIP15.normalize(name, ensip15);
+    function normalize(string memory inputName) public view returns (bool, bytes memory) {
+        return LibENSIP15.normalize(NameCoder.encode(inputName), ensip15);
     }
 }
