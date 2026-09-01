@@ -177,12 +177,11 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IPermissionedRegistry
-    function unsafeTransfer(uint256 tokenId, address to, bytes calldata data) public virtual {
-        if (to == address(0)) {
-            revert ERC1155InvalidReceiver(address(0));
-        }
-        (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(tokenId, 1);
-        _updateWithAcceptanceCheck(super.ownerOf(tokenId), to, ids, values, false, data, false);
+    function permissionedTransfer(address to, uint256 anyId, bytes calldata data) public virtual {
+        address owner = getOwner(anyId);
+        _checkApproval(owner, msg.sender);
+        _checkReceiver(to);
+        _updateOneWithAcceptanceCheck(owner, to, getTokenId(anyId), 1, false, data);
     }
 
     /// @inheritdoc IStandardRegistry
@@ -620,27 +619,27 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @dev Determine if the token can be transferred.
-    function _isTransferSafe(uint256 tokenId, address oldOwner, address newOwner)
+    function _isTransferSafe(uint256 anyId, address oldOwner, address newOwner)
         internal
         view
         virtual
         returns (bool)
     {
-        if (!isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, oldOwner)) {
+        if (!isOnlyAssignee(anyId, EACBaseRolesLib.ALL_ROLES, oldOwner)) {
             return false; // non-owner roles
         }
-        uint256 roleBitmap = roles(tokenId, oldOwner);
-        if ((EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE)) & roleBitmap) != 0) {
-            return false; // root has overlapping roles
-        }
+        uint256 roleBitmap = EACBaseRolesLib.toRegular(roles(anyId, oldOwner));
         if (
-            (roleBitmap &
-                (RegistryRolesLib.ROLE_SET_SUBREGISTRY | RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN)) !=
+            (EACBaseRolesLib.toRegular(EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) &
+                roleBitmap) !=
             0
         ) {
+            return false; // root has overlapping capabilities
+        }
+        if ((roleBitmap & RegistryRolesLib.ROLE_SET_SUBREGISTRY) != 0) {
             return true; // subregistry is mutable
         }
-        address subregistry = address(_entry(tokenId).subregistry);
+        address subregistry = address(_entry(anyId).subregistry);
         if (subregistry == address(0)) {
             return true; // subregistry is unset
         } else if (subregistry.code.length == 0) {

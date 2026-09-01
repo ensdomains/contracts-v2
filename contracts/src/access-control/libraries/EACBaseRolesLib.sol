@@ -33,8 +33,14 @@ library EACBaseRolesLib {
         return (roleBitmap << 128) | roleBitmap;
     }
 
+    /// @dev Merge admin and regular roles and return only regular roles.
+    function toRegular(uint256 roleBitmap) internal pure returns (uint128) {
+        return uint128(roleBitmap | (roleBitmap >> 128));
+    }
+
     /// @dev Derive roles bitmap from assignee counts.
     /// @param counts Packed role counts (0-15) as `uint4x64`.
+    /// @return Roles bitmap corresponding to role counts > 0.
     function fromCounts(uint256 counts) internal pure returns (uint256) {
         return (counts | (counts >> 1) | (counts >> 2) | (counts >> 3)) & ALL_ROLES;
     }

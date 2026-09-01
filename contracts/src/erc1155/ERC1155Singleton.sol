@@ -220,6 +220,21 @@ abstract contract ERC1155Singleton is
         }
     }
 
+    /// @dev Convenience function for `_asSingletonArrays()` + `_updateWithAcceptanceCheck()`.
+    function _updateOneWithAcceptanceCheck(
+        address from,
+        address to,
+        uint256 id,
+        uint256 value,
+        bool safe,
+        bytes memory data
+    )
+        internal
+    {
+        (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(id, value);
+        _updateWithAcceptanceCheck(from, to, ids, values, safe, data, false);
+    }
+
     /// @notice Apply token updates and run ERC-1155 receiver acceptance checks.
     /// @param from Address tokens are moved from. Use `address(0)` for mints.
     /// @param to Address tokens are moved to. Use `address(0)` for burns.
@@ -274,14 +289,9 @@ abstract contract ERC1155Singleton is
     )
         internal
     {
-        if (to == address(0)) {
-            revert ERC1155InvalidReceiver(address(0));
-        }
-        if (from == address(0)) {
-            revert ERC1155InvalidSender(address(0));
-        }
-        (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(id, value);
-        _updateWithAcceptanceCheck(from, to, ids, values, true, data, false);
+        _checkReceiver(to);
+        _checkSender(from);
+        _updateOneWithAcceptanceCheck(from, to, id, value, true, data);
     }
 
     /// @notice Safely transfer multiple token IDs from `from` to `to`.
@@ -304,12 +314,8 @@ abstract contract ERC1155Singleton is
     )
         internal
     {
-        if (to == address(0)) {
-            revert ERC1155InvalidReceiver(address(0));
-        }
-        if (from == address(0)) {
-            revert ERC1155InvalidSender(address(0));
-        }
+        _checkReceiver(to);
+        _checkSender(from);
         _updateWithAcceptanceCheck(from, to, ids, values, true, data, true);
     }
 
@@ -322,11 +328,8 @@ abstract contract ERC1155Singleton is
     /// @dev If `to` is a contract, it must return the ERC-1155 acceptance magic value.
     /// @dev Emits `TransferSingle`.
     function _mint(address to, uint256 id, uint256 value, bytes memory data) internal {
-        if (to == address(0)) {
-            revert ERC1155InvalidReceiver(address(0));
-        }
-        (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(id, value);
-        _updateWithAcceptanceCheck(address(0), to, ids, values, false, data, false);
+        _checkReceiver(to);
+        _updateOneWithAcceptanceCheck(address(0), to, id, value, false, data);
     }
 
     /// @notice Burn `value` tokens of token ID `id` from `from`.
@@ -337,11 +340,8 @@ abstract contract ERC1155Singleton is
     /// @dev Reverts with `ERC1155InsufficientBalance` if `from` is not current owner or `value > 1`.
     /// @dev Emits `TransferSingle`.
     function _burn(address from, uint256 id, uint256 value) internal {
-        if (from == address(0)) {
-            revert ERC1155InvalidSender(address(0));
-        }
-        (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(id, value);
-        _updateWithAcceptanceCheck(from, address(0), ids, values, false, "", false);
+        _checkSender(from);
+        _updateOneWithAcceptanceCheck(from, address(0), id, value, false, "");
     }
 
     /// @notice Set or clear approval for `operator` to manage all tokens owned by `owner`.
@@ -362,6 +362,20 @@ abstract contract ERC1155Singleton is
     function _checkApproval(address from, address operator) internal view {
         if (from != operator && !isApprovedForAll(from, operator)) {
             revert ERC1155MissingApprovalForAll(operator, from);
+        }
+    }
+
+    /// @dev Ensure receiver is valid.
+    function _checkReceiver(address to) internal pure {
+        if (to == address(0)) {
+            revert ERC1155InvalidReceiver(address(0));
+        }
+    }
+
+    /// @dev Ensure sender is valid.
+    function _checkSender(address from) internal pure {
+        if (from == address(0)) {
+            revert ERC1155InvalidSender(address(0));
         }
     }
 

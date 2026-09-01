@@ -52,10 +52,6 @@ library RegistryRolesLib {
     /// @dev Nybble 41: authorizes setting `ROLE_SET_URI`.
     uint256 internal constant ROLE_SET_URI_ADMIN = ROLE_SET_URI << 128;
 
-    /// @dev Nybble 42: if present, transfer requires `max(roleCount()) == 1`.  Root or token.
-    ///      This role is only checked on the token owner, not the operator.
-    uint256 internal constant ROLE_TRANSFER_REQUIRES_ONLY_OWNER_ROLES = (1 << 40) << 128;
-
     /// @dev Nybble 30: authorizes contract naming. Root-only.
     uint256 internal constant ROLE_CAN_NAME = 1 << 120;
     /// @dev Nybble 62: authorizes setting ROLE_CAN_NAME.

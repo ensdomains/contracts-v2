@@ -678,7 +678,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         // unsafe transfer is required
         vm.prank(testOwner);
-        ethRegistry.unsafeTransfer(tokenId, friend, "");
+        ethRegistry.permissionedTransfer(friend, tokenId, "");
 
         // effective roles have "transferred"
         assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "after:owner");
