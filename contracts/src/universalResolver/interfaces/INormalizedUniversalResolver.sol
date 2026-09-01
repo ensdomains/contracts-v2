@@ -4,7 +4,7 @@ pragma solidity >=0.8.13;
 import {IENSIP15} from "./IENSIP15.sol";
 
 /// @notice Interface for ENSv2-specific `UniversalResolver`.
-/// @dev Interface selector: `0x2146c173`
+/// @dev Interface selector: `0xfe0badd6`
 interface INormalizedUniversalResolver {
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -25,16 +25,12 @@ interface INormalizedUniversalResolver {
     /// @notice Performs ENS forward resolution for the supplied name and data.
     ///         Caller should enable EIP-3668.
     ///         Reverts `NormalizationChangedName`.
-    /// @param inputName Human-readable name to resolve, eg. `nick.eth`.
+    /// @param name DNS-encoded name to resolve.
     /// @param data The ABI-encoded resolver calldata.
     /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @return result The ABI-encoded response for the calldata.
     /// @return resolver The resolver that was used to resolve the name.
-    function resolveWithNormalization(
-        string calldata inputName,
-        bytes calldata data,
-        IENSIP15 ensip15
-    )
+    function resolveWithNormalization(bytes calldata name, bytes calldata data, IENSIP15 ensip15)
         external
         view
         returns (bytes memory result, address resolver);
@@ -58,14 +54,14 @@ interface INormalizedUniversalResolver {
         returns (string memory primary, address resolver, address reverseResolver);
 
     /// @notice Normalize a name according to ENSIP-15.
-    /// @param inputName Human-readable name to normalize, eg. `nick.eth`.
+    /// @param name DNS-encoded name to normalize.
     /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @return wasNormalized `true` if `name` was already normalized.
-    /// @return name Normalized DNS-encoded name, eg. `\x04nick\x03eth\x00`.
-    function normalize(string calldata inputName, IENSIP15 ensip15)
+    /// @return normalizedName Normalized DNS-encoded name.
+    function normalize(bytes calldata name, IENSIP15 ensip15)
         external
         view
-        returns (bool wasNormalized, bytes memory name);
+        returns (bool wasNormalized, bytes memory normalizedName);
 
     /// @notice Return `true` if ENSv2 otherwise ENSv1.
     function isENSv2() external view returns (bool);

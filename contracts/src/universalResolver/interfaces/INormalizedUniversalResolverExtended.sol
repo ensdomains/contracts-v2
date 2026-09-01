@@ -5,20 +5,20 @@ import {IENSIP15} from "./IENSIP15.sol";
 import {INormalizedUniversalResolver} from "./INormalizedUniversalResolver.sol";
 
 /// @notice Interface for advanced `UniversalResolver` functionality.
-/// @dev Interface selector: `0xa0c805ea`
+/// @dev Interface selector: `0x17cd12d9`
 interface INormalizedUniversalResolverExtended is INormalizedUniversalResolver {
     /// @notice Performs ENS normalization and forward resolution for the supplied name and data.
     ///         `bytes32 node` is automatically replaced in calldata.
     /// @dev Caller should enable EIP-3668.
     ///      Reverts `NormalizationChangedName` if `inputName` was not normalized.
-    /// @param inputName Human-readable name to resolve, eg. `nick.eth`.
+    /// @param name DNS-encoded name to resolve.
     /// @param data The ABI-encoded resolver calldata.
     /// @param gateways The list of batch gateway URLs to use.
     /// @param ensip15 ENSIP-15 Normalization implementation.
     /// @return result The ABI-encoded response for the calldata.
     /// @return resolver The resolver that was used to resolve the name.
     function resolveWithGatewaysAndNormalization(
-        string calldata inputName,
+        bytes calldata name,
         bytes calldata data,
         string[] calldata gateways,
         IENSIP15 ensip15

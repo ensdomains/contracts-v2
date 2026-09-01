@@ -96,18 +96,14 @@ abstract contract AbstractNormalizedUniversalResolver is
     }
 
     /// @inheritdoc INormalizedUniversalResolver
-    function resolveWithNormalization(
-        string calldata inputName,
-        bytes calldata data,
-        IENSIP15 ensip15
-    )
+    function resolveWithNormalization(bytes calldata name, bytes calldata data, IENSIP15 ensip15)
         external
         view
         returns (bytes memory, address)
     {
         return
             resolveWithGatewaysAndNormalization(
-                inputName,
+                name,
                 data,
                 BATCH_GATEWAY_PROVIDER.gateways(),
                 ensip15
@@ -251,15 +247,13 @@ abstract contract AbstractNormalizedUniversalResolver is
         if (bytes(primary).length == 0) {
             return ("", address(0), args.resolver);
         }
-        bytes memory name;
+        bytes memory name = NameCoder.encode(primary);
         if (address(args.ensip15) != address(0)) {
             bool wasNorm;
-            (wasNorm, name) = normalize(primary, args.ensip15);
+            (wasNorm, name) = normalize(name, args.ensip15);
             if (!wasNorm) {
                 revert PrimaryNameNotNormalized(primary);
             }
-        } else {
-            name = NameCoder.encode(primary);
         }
         ResolverInfo memory info = requireResolver(name);
         _callResolver(
@@ -326,12 +320,12 @@ abstract contract AbstractNormalizedUniversalResolver is
         returns (address, bytes32, uint256);
 
     /// @inheritdoc INormalizedUniversalResolver
-    function normalize(string memory inputName, IENSIP15 ensip15)
+    function normalize(bytes memory name, IENSIP15 ensip15)
         public
         view
         returns (bool, bytes memory)
     {
-        return LibENSIP15.normalize(inputName, ensip15);
+        return LibENSIP15.normalize(name, ensip15);
     }
 
     /// @inheritdoc IUniversalResolverExtended
@@ -359,7 +353,7 @@ abstract contract AbstractNormalizedUniversalResolver is
 
     /// @inheritdoc INormalizedUniversalResolverExtended
     function resolveWithGatewaysAndNormalization(
-        string calldata inputName,
+        bytes calldata name,
         bytes calldata data,
         string[] memory gateways,
         IENSIP15 ensip15
@@ -368,14 +362,14 @@ abstract contract AbstractNormalizedUniversalResolver is
         view
         returns (bytes memory, address)
     {
-        (bool wasNorm, bytes memory name) = normalize(inputName, ensip15);
-        ResolverInfo memory info = requireResolver(name);
+        (bool wasNorm, bytes memory norm) = normalize(name, ensip15);
+        ResolverInfo memory info = requireResolver(norm);
         _callResolver(
             info,
             ResolverProfileRewriterLib.replaceNode(data, info.node),
             gateways,
             this.resolveCallback.selector, // ==> step 2
-            abi.encode(info.resolver, wasNorm ? bytes("") : name)
+            abi.encode(info.resolver, wasNorm ? bytes("") : norm)
         );
     }
 
