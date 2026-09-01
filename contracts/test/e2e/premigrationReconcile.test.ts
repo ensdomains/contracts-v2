@@ -34,7 +34,12 @@ function labelhash(label: string): string {
 function writeIndex(
   workDir: string,
   entries: Array<{ id: string; expiry: bigint }>,
-  overrides: { source?: string; complete?: boolean } = {},
+  overrides: {
+    source?: string;
+    complete?: boolean;
+    /** The chain time the build filter was measured against. */
+    filterTime?: bigint;
+  } = {},
 ) {
   writeFileSync(
     join(workDir, "v1-name-index.ndjson"),
@@ -55,6 +60,11 @@ function writeIndex(
       entries: entries.length,
       complete: overrides.complete ?? true,
       builtAt: new Date().toISOString(),
+      // The devnet runs at roughly wall-clock time, so a build measured against it
+      // covers what the reconciliation asks for.
+      filterTime: (
+        overrides.filterTime ?? BigInt(Math.floor(Date.now() / 1000))
+      ).toString(),
     }),
     "utf-8",
   );

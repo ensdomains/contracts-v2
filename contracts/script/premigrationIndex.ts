@@ -57,6 +57,13 @@ export type V1IndexMeta = {
    * builder sets it, which enumerates by block rather than by cursor id.
    */
   lastBlock?: number;
+  /**
+   * The "now" the build-time grace filter was measured against. A reconciliation
+   * judges claimability against chain time, and if that is far enough behind this,
+   * the build dropped names the reconciliation would still want — so it has to be
+   * able to see what basis was used rather than assume the two agree.
+   */
+  filterTime: string;
 };
 
 export type V1NameIndex = {
@@ -192,6 +199,7 @@ export async function buildV1NameIndex(
       entries,
       complete,
       builtAt: new Date().toISOString(),
+      filterTime: now.toString(),
     };
     writeFileSync(
       metaPath(opts.workDir),
@@ -271,6 +279,12 @@ export type RpcIndexClient = {
   getRegisteredIds(fromBlock: number, toBlock: number): Promise<string[]>;
   /** Expiry per id at `block`; null where the read failed. */
   getExpiries(ids: string[], block: number): Promise<Array<bigint | null>>;
+  /**
+   * Timestamp of a block. Optional: without it the filter falls back to wall-clock
+   * time, which is right for a build against a live head and wrong for one pinned
+   * to the past.
+   */
+  getBlockTimestamp?(block: number): Promise<bigint>;
 };
 
 // Providers cap a log query by result count, by block span, or by both, and each
@@ -321,8 +335,6 @@ export async function buildV1NameIndexFromRpc(
 ): Promise<V1IndexMeta> {
   const scanRange = opts.scanRange ?? 250_000;
   const batchSize = opts.batchSize ?? 500;
-  const now = opts.now ?? BigInt(Math.floor(Date.now() / 1000));
-  const cutoff = now - V1_GRACE_PERIOD_SECONDS - BUILD_FILTER_MARGIN_SECONDS;
 
   mkdirSync(opts.workDir, { recursive: true });
 
@@ -342,6 +354,16 @@ export async function buildV1NameIndexFromRpc(
     );
   }
 
+  // The filter asks whether a name was still claimable, which is a question about
+  // chain time at the pinned block — not about the clock on the machine running the
+  // build. They agree when pinned to the head and disagree by months when pinned to
+  // a past block or to a fork.
+  const now =
+    opts.now ??
+    (await client.getBlockTimestamp?.(block)) ??
+    BigInt(Math.floor(Date.now() / 1000));
+  const cutoff = now - V1_GRACE_PERIOD_SECONDS - BUILD_FILTER_MARGIN_SECONDS;
+
   let entries = existing?.entries ?? 0;
   let cursor = existing?.lastId ?? "";
   let scannedTo = existing?.lastBlock ?? opts.fromBlock - 1;
@@ -360,6 +382,7 @@ export async function buildV1NameIndexFromRpc(
       complete,
       builtAt: new Date().toISOString(),
       lastBlock: scannedTo,
+      filterTime: now.toString(),
     };
     writeFileSync(
       metaPath(opts.workDir),
@@ -476,6 +499,7 @@ const NAME_EXPIRES_ABI = [
 export function createRpcIndexClient(opts: {
   client: {
     getBlockNumber(): Promise<bigint>;
+    getBlock(args: { blockNumber: bigint }): Promise<{ timestamp: bigint }>;
     request(args: { method: string; params: unknown[] }): Promise<unknown>;
     multicall(
       args: unknown,
@@ -487,6 +511,13 @@ export function createRpcIndexClient(opts: {
   return {
     async getBlockNumber() {
       return Number(await opts.client.getBlockNumber());
+    },
+
+    async getBlockTimestamp(block) {
+      const { timestamp } = await opts.client.getBlock({
+        blockNumber: BigInt(block),
+      });
+      return BigInt(timestamp);
     },
 
     async getRegisteredIds(fromBlock, toBlock) {
@@ -538,6 +569,35 @@ export function createRpcIndexClient(opts: {
       );
     },
   };
+}
+
+// Whether the index's build filter can be trusted for a reconciliation judging
+// claimability at `chainNow`.
+//
+// The build drops names expired before `filterTime - GRACE - MARGIN`; the
+// reconciliation wants every name expired after `chainNow - GRACE`. So a name is
+// dropped that the reconciliation still wants exactly when `filterTime` runs more
+// than MARGIN ahead of `chainNow` — a build against wall-clock time reconciled
+// against a fork pinned to the past, say. The names are simply absent by then, so the
+// completeness check would pass without ever having looked at them. Refusing is the
+// only honest answer.
+export function assertIndexCoversChainTime(
+  meta: V1IndexMeta,
+  chainNow: bigint,
+): void {
+  if (meta.filterTime === undefined) {
+    throw new Error(
+      `the index in this work dir predates the build-filter timestamp record, so it cannot be shown to cover chain time ${chainNow}. Rebuild it with premigration build-index.`,
+    );
+  }
+  const filterTime = BigInt(meta.filterTime);
+  if (filterTime > chainNow + BUILD_FILTER_MARGIN_SECONDS) {
+    throw new Error(
+      `refusing to reconcile: the index filtered expired names against ${filterTime} but the chain is at ${chainNow}, ` +
+        `more than the ${BUILD_FILTER_MARGIN_SECONDS}s build margin behind it. Names still claimable at this block were dropped from the index, ` +
+        `so a pass would prove nothing about them. Rebuild the index against this chain.`,
+    );
+  }
 }
 
 export function readV1NameIndexMeta(workDir: string): V1IndexMeta | null {

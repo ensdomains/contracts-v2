@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import {
   assertCompleteCsv,
+  assertIndexCoversChainTime,
   assertIndependentSource,
   buildV1NameIndex,
   buildV1NameIndexFromRpc,
@@ -429,5 +430,57 @@ describe("premigrationIndex from chain logs", () => {
       /--source subgraph/,
     );
     expect(() => assertIndependentSource("subgraph", csv)).not.toThrow();
+  });
+});
+
+describe("assertIndexCoversChainTime", () => {
+  const meta = (filterTime: bigint) =>
+    ({
+      source: "rpc",
+      network: "mainnet",
+      block: 1,
+      lastId: "",
+      entries: 0,
+      complete: true,
+      builtAt: "2026-01-01T00:00:00.000Z",
+      filterTime: filterTime.toString(),
+    }) as const;
+
+  const MARGIN = 7n * 24n * 60n * 60n;
+
+  it("accepts a build measured against the same chain time", () => {
+    expect(() => assertIndexCoversChainTime(meta(NOW), NOW)).not.toThrow();
+  });
+
+  it("accepts a build behind the chain, which drops nothing the reconcile wants", () => {
+    // The build kept MORE than it needed to. Harmless.
+    expect(() =>
+      assertIndexCoversChainTime(meta(NOW - 400n * 24n * 60n * 60n), NOW),
+    ).not.toThrow();
+  });
+
+  it("accepts skew inside the build margin", () => {
+    expect(() =>
+      assertIndexCoversChainTime(meta(NOW + MARGIN), NOW),
+    ).not.toThrow();
+  });
+
+  it("refuses a build whose filter ran ahead of the chain being judged", () => {
+    // Wall-clock build reconciled against a fork pinned to the past: names still
+    // claimable at that block were dropped, so a pass would prove nothing.
+    expect(() =>
+      assertIndexCoversChainTime(meta(NOW + MARGIN + 1n), NOW),
+    ).toThrow(/refusing to reconcile/);
+  });
+
+  it("refuses an index built before the filter basis was recorded", () => {
+    const stale = { ...meta(NOW) } as Record<string, unknown>;
+    delete stale.filterTime;
+    expect(() =>
+      assertIndexCoversChainTime(
+        stale as unknown as Parameters<typeof assertIndexCoversChainTime>[0],
+        NOW,
+      ),
+    ).toThrow(/predates/);
   });
 });

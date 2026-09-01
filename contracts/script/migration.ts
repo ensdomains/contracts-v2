@@ -59,6 +59,7 @@ import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
   DEPLOYMENT_ROLES,
   FUSES,
+  MAINNET_DAI,
   MAINNET_USDC,
   ROLES,
   SEC_PER_DAY,
@@ -116,6 +117,7 @@ import {
 import {
   assertCompleteCsv,
   assertIndependentSource,
+  assertIndexCoversChainTime,
   buildV1NameIndex,
   buildV1NameIndexFromRpc,
   createRpcIndexClient,
@@ -449,6 +451,60 @@ function parseResumeFromPhase(value: string | undefined): 2 | undefined {
 // Locate the label column case-insensitively (matching the premigration run
 // parser), accepting either a `labelName` or `label` header. Returns -1 when
 // neither is present so callers can fail loudly instead of guessing a column.
+// How many CSV rows name a v1 registration that is still claimable at `chainNow`.
+//
+// The exporter's query has no expiry filter, so a CSV holds every registration the
+// subgraph ever indexed. Comparing that raw total against an index of claimable names
+// puts two correct sources millions of rows apart and calls it a discrepancy. Where
+// the CSV carries expiries the rows are filtered to match; where it does not — a
+// hand-made export — the count is reported as unfiltered rather than as comparable.
+function countClaimableCsvRows(
+  csvFile: string,
+  chainNow: bigint,
+): { count: number; filtered: boolean; unknownExpiry: number } {
+  const lines = readFileSync(csvFile, "utf-8").trim().split(/\r?\n/);
+  if (lines.length === 0 || !lines[0]) {
+    return { count: 0, filtered: false, unknownExpiry: 0 };
+  }
+  const fieldsOfHeader = parseCSVLine(lines[0]);
+  const labelIndex = csvLabelColumnIndex(fieldsOfHeader);
+  const expiryIndex = fieldsOfHeader
+    .map((field) => field.trim().toLowerCase())
+    .indexOf("expirydate");
+  if (labelIndex < 0) {
+    throw new Error(`CSV must contain a labelName or label column: ${csvFile}`);
+  }
+
+  let labelled = 0;
+  let expired = 0;
+  let dated = 0;
+  for (const line of lines.slice(1)) {
+    const fields = parseCSVLine(line);
+    if (!fields[labelIndex]?.trim()) continue;
+    labelled++;
+    if (expiryIndex < 0) continue;
+    const raw = fields[expiryIndex]?.trim();
+    if (!raw) continue;
+    let expiry: bigint;
+    try {
+      expiry = BigInt(raw);
+    } catch {
+      continue;
+    }
+    dated++;
+    if (expiry + V1_GRACE_PERIOD_SECONDS <= chainNow) expired++;
+  }
+
+  // A row whose expiry the CSV does not carry is of unknown claimability, not
+  // expired, so it stays in the count. And a column that is present but empty on
+  // every row carries no expiry data at all, whatever the header says.
+  return {
+    count: labelled - expired,
+    filtered: dated > 0,
+    unknownExpiry: labelled - dated,
+  };
+}
+
 function csvLabelColumnIndex(header: string[]): number {
   const normalized = header.map((field) => field.trim().toLowerCase());
   const labelNameIndex = normalized.indexOf("labelname");
@@ -1637,6 +1693,16 @@ function readDeploymentBlock(
 
 // The deploy block recorded on an already-loaded artifact. Bundled v1 artifacts
 // carry it as a hex string, locally deployed ones as a number.
+// The address that sent a deployment's own transaction. The deploy scripts grant the
+// constructor roles to whoever deployed, so this is what the role audit has to compare
+// against — the configured owner is a different address on any live deployment, and on
+// mainnet it is the DAO.
+function deploymentOrigin(deployment: JsonDeployment): Address | undefined {
+  const origin = (deployment as { transaction?: { origin?: string } })
+    .transaction?.origin;
+  return origin ? getAddress(origin) : undefined;
+}
+
 function deploymentBlockNumber(deployment: JsonDeployment): number | undefined {
   const block = (deployment as { receipt?: { blockNumber?: string | number } })
     .receipt?.blockNumber;
@@ -1757,6 +1823,9 @@ export async function reconcilePreMigration(opts: {
   // to a past block the two disagree, and a wall-clock "now" would mark names
   // eligible that the chain considers long released.
   const v1Now = BigInt((await v1Client.getBlock()).timestamp);
+  // The index's own filter has to reach at least as far back as this reconciliation
+  // does, or names it dropped are absent here and pass unexamined.
+  assertIndexCoversChainTime(index.meta, v1Now);
   const bonusPeriodSeconds =
     BigInt(parseNumber(opts.bonusPeriodDays, 62)) * SEC_PER_DAY;
   const expectedStatus = opts.expectedStatus ?? "reserved";
@@ -1783,10 +1852,12 @@ export async function reconcilePreMigration(opts: {
   // live. A disagreement means one of them is wrong, and it is far cheaper to learn
   // that here than after the freeze.
   if (opts.csvFile && existsSync(opts.csvFile)) {
-    const csvLabels = readLabelsFromCsv(opts.csvFile);
-    result.crossSource = { csv: csvLabels.length, index: claimable.length };
+    const csv = countClaimableCsvRows(opts.csvFile, v1Now);
+    result.crossSource = { csv: csv.count, index: claimable.length };
     console.log(
-      `cross-source: CSV carries ${csvLabels.length} label(s), the index has ${claimable.length} claimable name(s)`,
+      csv.filtered
+        ? `cross-source: CSV holds ${csv.count} claimable label(s)${csv.unknownExpiry > 0 ? ` (${csv.unknownExpiry} of them with no expiry recorded, counted as claimable)` : ""}, the index has ${claimable.length} claimable name(s)`
+        : `cross-source: CSV holds ${csv.count} label(s) and records no expiries, so this is every row it carries and not a claimable count; the index has ${claimable.length} claimable name(s)`,
     );
   }
 
@@ -1882,11 +1953,34 @@ export async function reconcilePreMigration(opts: {
   const claimableIds = new Set(
     claimable.map((entry) => toLabelhashHex(canonicalLabelId(entry.id))),
   );
+  // An entry whose v1 name has passed grace since it was seeded is expected — it was
+  // claimable at the time. But "v1 once knew this labelhash" is not enough on its own:
+  // a seed written after the name became unclaimable, or written with the wrong
+  // expiry, would be waved through on the strength of the labelhash alone. A
+  // legitimate seed carries the bonus-adjusted v1 expiry whether or not the name has
+  // since lapsed, so that is what distinguishes the two.
+  const staleSeeds = [...seeded.keys()].filter(
+    (labelhash) =>
+      !claimableIds.has(toLabelhashHex(canonicalLabelId(labelhash))) &&
+      index.expiries.has(labelhash),
+  );
+  const staleStates = await readV2StatesInBatches(
+    client,
+    registryAddress,
+    staleSeeds,
+  );
   for (const [labelhash, label] of seeded) {
     if (claimableIds.has(toLabelhashHex(canonicalLabelId(labelhash)))) continue;
-    // An entry whose v1 name has since passed grace is expected: it was claimable
-    // when it was seeded. Only flag entries v1 never knew about at all.
-    if (index.expiries.has(labelhash)) continue;
+    const known = index.expiries.get(labelhash);
+    if (known !== undefined) {
+      const expected = bonusAdjustedExpiry(known, bonusPeriodSeconds);
+      const actual = staleStates.get(labelhash);
+      if (actual === expected) continue;
+      result.unexpected.push(
+        `${labelhash}${label ? ` (${label}.eth)` : ""} is on v2 with expiry ${actual ?? "unreadable"}, but its v1 name lapsed carrying ${expected}`,
+      );
+      continue;
+    }
     result.unexpected.push(
       `${labelhash}${label ? ` (${label}.eth)` : ""} is on v2 but not a v1 name`,
     );
@@ -1928,6 +2022,7 @@ export async function reconcilePreMigration(opts: {
       }
 
       let cannotTransfer = 0;
+      let unreadable = 0;
       for (
         let start = 0;
         start < resolvable.length;
@@ -1937,7 +2032,11 @@ export async function reconcilePreMigration(opts: {
           start,
           start + PREMIGRATION_VERIFY_BATCH_SIZE,
         );
-        const results = await client.multicall({
+        // Through the v1 client: NameWrapper is a v1 contract, and every other
+        // eligibility read here uses that endpoint. Asking the v2 endpoint for it
+        // fails on every entry where the two differ, and the failures were being
+        // skipped — which reports zero burned fuses rather than an error.
+        const results = await v1Client.multicall({
           allowFailure: true,
           contracts: batch.map((entry) => ({
             address: nameWrapper.address,
@@ -1947,10 +2046,20 @@ export async function reconcilePreMigration(opts: {
           })),
         });
         for (const outcome of results) {
-          if (outcome.status === "failure") continue;
+          if (outcome.status === "failure") {
+            unreadable++;
+            continue;
+          }
           const [, fuses] = outcome.result as [Address, number, bigint];
           if ((Number(fuses) & FUSES.CANNOT_TRANSFER) !== 0) cannotTransfer++;
         }
+      }
+      // A scan that could not read the wrapper has not established that no fuse is
+      // burned; reporting zero would be the same vacuous pass the labelhash bug gave.
+      if (unreadable > 0) {
+        throw new Error(
+          `could not read NameWrapper ${nameWrapper.address} for ${unreadable} of ${resolvable.length} name(s); the CANNOT_TRANSFER count would be meaningless. Check --mainnet-rpc-url points at the chain the wrapper is on.`,
+        );
       }
       result.unmigratableCannotTransfer = cannotTransfer;
       console.log(
@@ -2024,6 +2133,44 @@ export async function reconcilePreMigration(opts: {
     }
   }
   return result;
+}
+
+// Current v2 expiry per labelhash, batched. Used by the reverse pass, which has to
+// judge a seed by what it carries rather than by the fact that it exists.
+async function readV2StatesInBatches(
+  client: ReturnType<typeof publicClient>,
+  registryAddress: Address,
+  labelhashes: string[],
+): Promise<Map<string, bigint>> {
+  const expiries = new Map<string, bigint>();
+  for (
+    let start = 0;
+    start < labelhashes.length;
+    start += PREMIGRATION_VERIFY_BATCH_SIZE
+  ) {
+    const batch = labelhashes.slice(
+      start,
+      start + PREMIGRATION_VERIFY_BATCH_SIZE,
+    );
+    const states = await client.multicall({
+      allowFailure: true,
+      contracts: batch.map((labelhash) => ({
+        address: registryAddress,
+        abi: Artifact_PermissionedRegistry.abi,
+        functionName: "getState",
+        args: [BigInt(labelhash)],
+      })),
+    });
+    for (const [index, labelhash] of batch.entries()) {
+      const state = states[index];
+      if (state.status === "failure") continue;
+      expiries.set(
+        labelhash,
+        BigInt((state.result as unknown as { expiry: bigint | number }).expiry),
+      );
+    }
+  }
+  return expiries;
 }
 
 type ContractRef = { address: Address; abi: readonly any[] };
@@ -3746,8 +3893,24 @@ export async function verifyV2Roles(opts: {
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
 
-  const deployer = opts.deployer ?? NETWORKS[opts.network].defaultOwner;
   const owner = opts.owner ?? NETWORKS[opts.network].defaultOwner;
+  // Falling back to the owner here made the audit compare every constructor grant
+  // against the wrong address: on a live deployment the deployer and the owner
+  // differ, so the real deployer was reported as unexpected and the owner as missing
+  // the roles it never had. The deploy transaction recorded in the namespace names
+  // the deployer; where no record carries one, say so rather than guess.
+  const deployer =
+    opts.deployer ??
+    AUDITED_REGISTRIES.map((name) =>
+      maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, name),
+    )
+      .map((record) => record && deploymentOrigin(record))
+      .find((address): address is Address => address !== undefined);
+  if (!deployer) {
+    throw new Error(
+      `cannot determine the deployer for ${deploymentNetwork}: no deployment record carries its deploy transaction. Pass --deployer.`,
+    );
+  }
 
   console.log(
     `auditing the ${opts.preHandoff ? "pre-handoff" : "post-handoff"} role matrix (pass --pre-handoff to audit before phase 6)`,
@@ -4061,7 +4224,11 @@ export async function verifyRegistrarEconomics(opts: {
             ?.address,
           maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, "MockDAI")
             ?.address,
-          opts.network === "mainnet" ? MAINNET_USDC : undefined,
+          // The free-mint mocks are testnet-only (00_MockTokens returns early where
+          // the DAO owns the deployment), so on mainnet the real tokens the oracle is
+          // configured with are the whole list. Both of them: checking only one
+          // leaves the other able to be unaccepted or unpriceable and still pass.
+          ...(opts.network === "mainnet" ? [MAINNET_USDC, MAINNET_DAI] : []),
         ]
   ).filter((token): token is string => Boolean(token));
 
@@ -6223,11 +6390,19 @@ export async function renewViaEthRenewerV1({
   // A wrapper expiry of zero means the name is not wrapped, and `NameWrapper.renew`
   // deliberately returns early for those — there is nothing to sync. Only a wrapped
   // name carries the third copy of the expiry, and only then must it move.
+  //
+  // The wrapper stores the registrar expiry plus the grace period, not the registrar
+  // expiry itself (`NameWrapper.renew`), so the synced value is checked against that
+  // exact figure. Asserting merely that it increased would accept a sync that left
+  // the wrapper a second past where it started and still report it as synchronised.
   const wrapped = before.wrapper !== null && before.wrapper > 0n;
-  if (wrapped && after.wrapper !== null && after.wrapper <= before.wrapper!) {
-    throw new Error(
-      `renewal did not sync the NameWrapper expiry: ${before.wrapper} -> ${after.wrapper}`,
-    );
+  if (wrapped && after.wrapper !== null) {
+    const expected = after.v1 + V1_GRACE_PERIOD_SECONDS;
+    if (after.wrapper !== expected) {
+      throw new Error(
+        `renewal did not sync the NameWrapper expiry to the v1 expiry plus the grace period: wrapper ${before.wrapper} -> ${after.wrapper}, expected ${expected} (v1 ${after.v1})`,
+      );
+    }
   }
 
   const state = (await client.readContract({
@@ -7781,6 +7956,9 @@ interface PreMigrationRunSummary {
   skippedExpiredPastGrace: number;
   invalidLabels: number;
   alreadyOnV2: number;
+  /// Reservations already carrying an expiry at least as long as this run would set,
+  /// so nothing was submitted for them. They are pre-migrated all the same.
+  upToDate: number;
   failed: number;
 }
 
@@ -7795,6 +7973,7 @@ interface PreMigrationMetadata {
     namesPreMigrated: number;
     newReservations: number;
     expiryResyncs: number;
+    alreadyCurrent: number;
     skippedNeverRegistered: number;
     skippedExpiredPastGrace: number;
     invalidLabels: number;
@@ -7819,14 +7998,18 @@ function checkpointToRunSummary(
     skippedExpiredPastGrace: checkpoint.skippedPastGraceCount,
     invalidLabels: checkpoint.invalidLabelCount,
     alreadyOnV2: checkpoint.alreadyRegisteredCount,
+    upToDate: checkpoint.upToDateCount,
     failed: checkpoint.failedLines.length,
   };
 }
 
 // The resolved roll-up reflects the run that finished most recently, which in
 // the phased flow is the final-sync pass that re-scans the whole corpus and so
-// represents the end state. `namesPreMigrated` = names currently reserved on v2
-// (newly reserved this run + already-reserved names whose expiry was re-synced).
+// represents the end state. `namesPreMigrated` = names currently reserved on v2:
+// newly reserved this run, already-reserved names whose expiry was re-synced, and
+// already-reserved names that needed no change. The last group is most of the corpus
+// by the final sync, and leaving it out made the published figure describe only what
+// the last run happened to touch rather than what is on v2.
 function resolveFromRuns(
   runs: PreMigrationRunSummary[],
 ): PreMigrationMetadata["resolved"] {
@@ -7834,9 +8017,10 @@ function resolveFromRuns(
   return {
     finishedAt: latest.finishedAt,
     totalNames: latest.totalExpected,
-    namesPreMigrated: latest.reserved + latest.renewed,
+    namesPreMigrated: latest.reserved + latest.renewed + latest.upToDate,
     newReservations: latest.reserved,
     expiryResyncs: latest.renewed,
+    alreadyCurrent: latest.upToDate,
     skippedNeverRegistered: latest.skippedNeverRegistered,
     skippedExpiredPastGrace: latest.skippedExpiredPastGrace,
     invalidLabels: latest.invalidLabels,
