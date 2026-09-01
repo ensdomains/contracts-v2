@@ -58,6 +58,7 @@ import {
   STATUS,
 } from "./deploy-constants.js";
 import { main as exportRegistrationsMain } from "./exportTheGraphRegistrations.js";
+import { addFixtureSubcommands } from "./migrationFixture.js";
 import {
   CHECKPOINT_FILE,
   type Checkpoint,
@@ -5898,6 +5899,16 @@ export async function main(argv = process.argv): Promise<void> {
     }),
   );
   program.addCommand(premigration);
+
+  // Test-only ENSv1 fixture corpus. Seeded before phase 3 and reserved on v2 by
+  // the pre-migration phases from the CSV it emits; see docs/migration.md.
+  program.addCommand(
+    addFixtureSubcommands(
+      new Command("fixture").description(
+        "Seed the weighted ENSv1 migration fixture corpus and carry it through pre-migration.",
+      ),
+    ),
+  );
 
   const phase = new Command("phase").description(
     "Run or verify individual live/fork migration phases.",

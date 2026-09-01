@@ -51,12 +51,15 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 | Phase | Action | Command(s) | Applies to | Signer |
 | --- | --- | --- | --- | --- |
 | 0 | Deploy fresh v1 contracts | part of `clean-testnet` | clean-testnet only | `deployer` |
+| F0 | *(optional)* Seed the ENSv1 test fixture corpus | `fixture seed-v1` | live + clean-testnet | fixture operator + v1 owner |
 | 1 | Deploy all v2 contracts, including reverse-registrar adapters and the HCA stack on HCA-enabled networks (registrar deferred) | `phase deploy-v2` | live + clean-testnet | `deployer` / `owner` / `urManager` (+ v1 owner) |
+| F1 | *(optional)* Approve `MigrationHelper` for fixture actors | `fixture prepare` | live + clean-testnet | fixture actors |
 | 2 | Seed v1 names as reserved on v2 | `premigration run` → `verify` | live + clean-testnet | BatchRegistrar owner |
 | 3 | Freeze v1 registrations | `phase disable-v1-registrars` (+ `verify-*`) | live + clean-testnet | v1 owner |
 | 4 | Keep unmigrated names renewable | `phase authorize-v1-renewer` | live + clean-testnet | v1 owner |
 | 5 | Final pre-migration sync | `premigration run` → `verify` | live + clean-testnet | BatchRegistrar owner |
 | 6 | Enable the v2 controller | `disable-batch-registrar` → `activate-v1-handoff-controllers` → `activate-v1-renewer` → `enable-v2-registrar` (+ `verify-*`) | live + clean-testnet | registry root-role admin + v1 owner |
+| F6 | *(optional)* Migrate the fixture corpus | `fixture migrate` | live + clean-testnet | fixture actors |
 | 7 | Switch Universal Resolver to v2 (cutover) | `phase upgrade-managed-urp` (+ `switch-urp-to-managed` on bootstrap) (+ `verify-urp`) | live + clean-testnet (bootstrap step mainnet/fresh only) | `urManager` (+ top URP owner on bootstrap) |
 
 > **Re-deploying fresh onto an already-migrated network.** "Re-deploying fresh" means deploying a
@@ -366,11 +369,15 @@ sample, not a real export.
 Run the phases in order; each links to its entry in [Phases](#phases) for the exact command,
 prerequisites, and expected outcome:
 
+0. *(optional)* [Seed the ENSv1 test fixture corpus](#ensv1-test-fixture-corpus) with
+   `fixture seed-v1`. **This must happen before phase 3**, which freezes v1 registration.
 1. [Phase 1 — deploy fresh v2](#phase-1-deploy-v2-contracts), recording v1-owner txs with
    `--defer-v1-owner-transactions --deferred-v1-owner-transactions-file .dev/sepolia-live/phase1-v1owner.jsonl`
    and replaying the resolver update and reverse-adapter grants via
    `phase execute-owner-txs --role v1Owner`.
+   Then, if seeding fixtures, run `fixture prepare` to approve `MigrationHelper`.
 2. [Phase 2 — initial pre-migration](#phase-2-initial-pre-migration) (`--work-dir .dev/sepolia-live/premig-1`).
+   Pass the fixture label CSV alongside the real export if the corpus was seeded.
 3. [Phase 3 — freeze v1 registrations](#phase-3-disable-v1-registrars) (`--private-key $SEPOLIA_V1_OWNER_KEY`).
 4. [Phase 4 — keep names renewable](#phase-4-authorize-ethrenewerv1). With an EOA v1 owner on Sepolia
    you can run phases 3 and 4 back-to-back, so the renewal gap is small.
@@ -379,6 +386,8 @@ prerequisites, and expected outcome:
 6. [Phase 6 — enable the v2 controller](#phase-6-enable-the-v2-controller).
 7. [Phase 7 — resolution cutover](#phase-7-switch-the-universal-resolver-to-v2): sepolia is a reuse
    network, so only `upgrade-managed-urp` + `verify-urp` run.
+8. *(optional)* `fixture migrate` — after phase 6, which is where the migration controllers
+   become authorised.
 
 > **Re-deploying onto an already-migrated Sepolia?** This runbook assumes a first migration. On a
 > repeat deploy the order is unchanged, but read each phase's **Re-deploying fresh** note first: run
@@ -416,6 +425,109 @@ It is idempotent and re-runnable: contracts already verified on a backend are de
 verifier rebuilds the solc standard-JSON input from each artifact's metadata, backfilling source
 content from disk for forge-compiled artifacts, so a contract verifies regardless of which compiler
 produced it. Flags after `--` pass through (e.g. `bun run verify -- --network sepolia --etherscan-only`).
+
+## ENSv1 test fixture corpus
+
+An optional corpus of ENSv1 names, registered so the migration phases run against realistic v1
+state instead of only the names that happen to exist. Each name is shaped into a specific
+pre-migration state — wrapped or unwrapped, particular fuses burned, particular resolver and
+record history, reverse claims, parent/child hierarchies — and the labels are reserved on v2 by
+the ordinary pre-migration phases.
+
+This is test scaffolding. It never runs on mainnet, and nothing in the canonical phases depends
+on it.
+
+### Input data
+
+The corpus is operator-supplied input, like the registration CSV. Put the bundle under
+`csv-data/` (gitignored) laid out as:
+
+```
+csv-data/migration-fixture/
+  fixture/weighted-scenarios.jsonl    # one scenario per line
+  fixture/premigration-labels.csv     # labelName,fixtureId,…
+```
+
+### Choosing a cohort
+
+The bundle carries far more scenarios than a run needs, weighted by how common each migration
+shape is. Selection flags compose:
+
+| Flag | Effect |
+| --- | --- |
+| `--profiles live_now` | Only scenarios a public testnet can express. `fork_only` needs Anvil/Tenderly time and reorg control. |
+| `--replicas-per-vector <n>` | Keep at most *n* copies of each distinct scenario. |
+| `--tiers <list>` | Restrict to popularity tiers. Concentrates volume on common shapes at the cost of behavioural coverage. |
+| `--fixture-ids <list>` | An explicit set, for reproducing one case. |
+
+`--profiles live_now --replicas-per-vector 4` is the recommended default: it covers every
+scenario the public network can express, several times over, without the long tail of replicas
+that adds registration cost but no new behaviour.
+
+Always dry-run the selection first. `verify` is offline — it parses the corpus, checks the
+replica contract, and plans every scenario's calls, so an unsupported action or an unresolvable
+reference surfaces before anything touches a chain:
+
+```bash
+bun run migration -- fixture verify --network sepolia \
+  --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
+  --profiles live_now --replicas-per-vector 4
+```
+
+### Seeding
+
+Requires a funded operator key and a dedicated actor mnemonic
+(`MIGRATION_FIXTURE_ACTOR_MNEMONIC`) — never a mnemonic used for anything else. Fixture names are
+distributed across five named actors, which need funding because a large share of the state
+shaping must be signed by the holder rather than batched.
+
+```bash
+export MIGRATION_FIXTURE_ACTOR_MNEMONIC="<dedicated fixture mnemonic>"
+
+bun run migration -- fixture fund-actors --network sepolia \
+  --fixture-root csv-data/migration-fixture --work-dir .dev/fixture
+
+bun run migration -- fixture seed-v1 --network sepolia \
+  --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
+  --profiles live_now --replicas-per-vector 4
+```
+
+`seed-v1` deploys a batching helper and the corpus's counterparty contracts, registers each name
+through the official v1 commit/reveal controller at the duration its scenario asks for, shapes
+the v1 state, and writes `<work-dir>/fixture-premigration.csv`. It is resumable: a name already
+registered to a fixture actor is skipped, and one registered to anyone else aborts the run rather
+than shaping state against a name we do not control.
+
+> **Ordering.** Seeding must complete **before [phase 3](#phase-3-disable-v1-registrars)**, which
+> freezes v1 registration. After the freeze the corpus cannot be created at all without reopening
+> v1 registration, which is a network-wide change well outside this fixture's remit.
+
+### Reserving the fixture labels on v2
+
+`fixture-premigration.csv` leads with a `labelName` column, which is the column
+[`premigration`](./premigration.md#csv-input) locates by name, so it is fed to the ordinary phases
+with no transformation:
+
+```bash
+bun run migration -- premigration run --network sepolia \
+  --csv-file .dev/fixture/fixture-premigration.csv \
+  --work-dir .dev/sepolia-live/premig-fixture
+```
+
+Run it in addition to the real registration export, at [phase 2](#phase-2-initial-pre-migration)
+and again at [phase 5](#phase-5-final-pre-migration-sync). At that point the fixture names are
+registered on v1 and reserved on v2 — the state the rest of the migration expects.
+
+### Migrating the corpus
+
+`fixture prepare` grants `MigrationHelper` operator approval to every actor holding a
+helper-routed name. Run it after phase 1.
+
+`fixture migrate` executes the migrations and belongs **after
+[phase 6](#phase-6-enable-the-v2-controller)** — phase 6's `activate-v1-handoff-controllers` is
+what authorises the migration controllers. Scenarios expecting a revert are recorded as such; a
+migration that succeeds but leaves the wrong v2 state is quarantined rather than counted as a
+pass.
 
 ## Rehearsals
 
@@ -568,6 +680,12 @@ Two commands are **not** on-chain and intentionally omit the network options:
 | `premigration resume` | Resume pre-migration from the checkpoint |
 | `premigration status` | Print the current pre-migration checkpoint JSON (local; `--work-dir` only) |
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 |
+| `fixture verify` | Offline: validate a fixture selection and plan every scenario's calls |
+| `fixture fund-actors` | Top up the fixture actor accounts from the operator key |
+| `fixture deploy-fixtures` | Deploy the fixture batcher and the corpus counterparty contracts |
+| `fixture seed-v1` | Register the ENSv1 fixture corpus and shape each name's pre-migration state (before phase 3) |
+| `fixture prepare` | Approve `MigrationHelper` for the actors holding helper-routed fixture names (after phase 1) |
+| `fixture migrate` | Migrate the fixture corpus (after phase 6) |
 | `phase deploy-v2` | Phase 1: deploy the v2 migration contracts, reverse-registrar adapters, and enabled HCA infrastructure with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy) |
 | `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the Phase 1 deferred-tx replay on an already-migrated chain) |
 | `phase disable-v1-registrars` | Phase 3: revoke every v1 authorization (BaseRegistrar + reverse registrars) the active deployment did not grant |
@@ -633,6 +751,10 @@ Resolved by [`script/migration.ts`](../script/migration.ts) (the CLI also auto-l
 | `HCA_GAS_REFUND_PAYMASTER` | Optional HCA validator gas-refund paymaster override |
 | `<PREFIX>_MNEMONIC`, `<PREFIX>_MNEMONIC_PATH`, `<PREFIX>_MNEMONIC_INDEX`, `<PREFIX>_MNEMONIC_PASSPHRASE` | Mnemonic-backed signer alternatives for `phase execute-owner-txs`; prefixes `OWNER_TX`, `SEPOLIA_V1_OWNER` / `V1_OWNER`, `SEPOLIA_TOP_URP_OWNER` / `TOP_URP_OWNER` |
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
+| `MIGRATION_FIXTURE_ACTOR_MNEMONIC` | Dedicated mnemonic for the five `fixture` actor accounts — never reuse a mnemonic held elsewhere |
+| `MIGRATION_FIXTURE_PRIVATE_KEY` | Fixture operator key (`fixture` commands) when `--private-key` is omitted |
+| `MIGRATION_FIXTURE_V1_OWNER` | v1 owner address used only when `fixture seed-v1` finds v1 registration already frozen |
+| `MIGRATION_FIXTURE_COMMIT_BATCH_SIZE`, `MIGRATION_FIXTURE_REGISTER_BATCH_SIZE` | Fixture registration batch sizes (default 80 and 12) |
 | `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` |
 | `ETHERSCAN_API_KEY` | Etherscan v2 (multichain) API key for source-code verification (`bun run verify:<network>`); not needed for Sourcify |
 
@@ -652,3 +774,5 @@ role-specific variables are tried in order.
   phase 6 supersedes.
 - [deployments/README.md](../deployments/README.md) — deployment artifact layout, namespace naming,
   and the idempotency rule for fresh re-deploys.
+- [ENSv1 test fixture corpus](#ensv1-test-fixture-corpus) — optional v1 fixture names seeded before
+  phase 3 and reserved on v2 by the ordinary pre-migration phases.

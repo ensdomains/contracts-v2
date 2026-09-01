@@ -63,6 +63,7 @@
     "clean": "forge clean && hardhat clean && rm -rf coverage/",
     "devnet": "bun run compile && bun ./script/runDevnet.ts",
     "migration": "bun ./script/migration.ts",
+    "migration:fixture": "bun ./script/migrationFixture.ts",
     "docs:addresses": "bun ./script/generateAddressDocs.ts",
     "aakit": "bun ./script/deployAAkit.ts",
     "verify": "bun ./script/verify.ts",
