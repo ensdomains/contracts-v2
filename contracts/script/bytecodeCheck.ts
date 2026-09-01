@@ -45,6 +45,69 @@ export function maskImmutables(
   return bytes.join("");
 }
 
+export type ImmutableValue = {
+  /** AST id of the immutable, as the compiler records it. */
+  astId: string;
+  /** Byte offsets in the runtime code the value was written to. */
+  offsets: number[];
+  length: number;
+  /** The bytes found there, hex without a 0x prefix. */
+  value: string;
+  /** True when the copies disagree, which no correctly constructed code produces. */
+  inconsistent: boolean;
+};
+
+// Reads back what construction wrote into the runtime code.
+//
+// `compareDeployedBytecode` blanks these ranges, because the compiler's output cannot
+// carry them — which means the constructor-set addresses that wire a deployment
+// together are exactly the bytes the comparison does not look at. Reading them out is
+// what lets those references be audited separately.
+export function extractImmutableValues(
+  bytecode: string,
+  immutableReferences: ImmutableReferences | undefined,
+): ImmutableValue[] {
+  const hex = strip0x(bytecode).toLowerCase();
+  if (!immutableReferences) return [];
+
+  const values: ImmutableValue[] = [];
+  for (const [astId, ranges] of Object.entries(immutableReferences)) {
+    if (ranges.length === 0) continue;
+    const copies: string[] = [];
+    const offsets: number[] = [];
+    for (const { start, length } of ranges) {
+      // Offsets and lengths are in bytes; the string holds two characters per byte.
+      const slice = hex.slice(start * 2, (start + length) * 2);
+      if (slice.length !== length * 2) continue;
+      copies.push(slice);
+      offsets.push(start);
+    }
+    if (copies.length === 0) continue;
+    values.push({
+      astId,
+      offsets,
+      length: ranges[0].length,
+      value: copies[0],
+      inconsistent: copies.some((copy) => copy !== copies[0]),
+    });
+  }
+  return values;
+}
+
+// The low 20 bytes of an immutable, read as an address.
+//
+// Shape cannot separate an address from a scalar — both are left-padded 32-byte
+// words, and ENS's own registry is a vanity address with eleven leading zeros — so
+// this only reports what the bytes could be. Whether they are an address is settled
+// by looking the value up among the addresses actually deployed, not by guessing
+// from its magnitude.
+export function immutableAsAddress(value: ImmutableValue): string | null {
+  if (value.length !== 32) return null;
+  if (!/^0{24}[0-9a-f]{40}$/.test(value.value)) return null;
+  const address = value.value.slice(24);
+  return /^0+$/.test(address) ? null : `0x${address}`;
+}
+
 export function compareDeployedBytecode(opts: {
   onChain: string | null | undefined;
   artifact: string | undefined;

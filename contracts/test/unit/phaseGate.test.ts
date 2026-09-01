@@ -19,6 +19,8 @@ function namespaceDir(): string {
   return dir;
 }
 
+const CANONICAL_HASH = `0x${"ab".repeat(32)}`;
+
 function record(
   overrides: Partial<VerificationRecord> = {},
 ): VerificationRecord {
@@ -26,10 +28,14 @@ function record(
     check: "premigration-reconcile",
     chainId: 1,
     blockNumber: "100",
+    blockHash: CANONICAL_HASH,
     verifiedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
 }
+
+// A chain that agrees with the record, so only the property under test differs.
+const canonicalBlockHash = async () => CANONICAL_HASH;
 
 describe("verification records", () => {
   it("round-trips a recorded pass", () => {
@@ -73,38 +79,100 @@ describe("verification records", () => {
 });
 
 describe("checkPrecondition", () => {
-  it("passes when the check ran on this chain", () => {
+  it("passes when the check ran on this chain", async () => {
     expect(
-      checkPrecondition({
+      await checkPrecondition({
         record: record(),
         chainId: 1,
         currentBlock: 150n,
+        canonicalBlockHash,
       }),
     ).toBeNull();
   });
 
-  it("fails when the check never ran", () => {
+  it("fails when the check never ran", async () => {
     expect(
-      checkPrecondition({ record: null, chainId: 1, currentBlock: 150n }),
+      await checkPrecondition({
+        record: null,
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash,
+      }),
     ).toEqual({ kind: "missing" });
   });
 
-  it("fails when the check ran against a different chain", () => {
-    // A pass recorded on a fork must not authorise a mainnet freeze.
+  it("fails when the check ran against a different chain", async () => {
     expect(
-      checkPrecondition({
+      await checkPrecondition({
         record: record({ chainId: 11155111 }),
         chainId: 1,
         currentBlock: 150n,
+        canonicalBlockHash,
       }),
     ).toEqual({ kind: "wrong-chain", recordedChainId: 11155111 });
   });
 
-  it("fails when the pass is older than the allowed window", () => {
-    const failure = checkPrecondition({
+  it("fails a pass recorded on a fork of this same chain", async () => {
+    // The fork reports chain 1 and a plausible height, so chain id and block number
+    // both agree. Only the block hash tells the two apart, and this gate authorises
+    // an irreversible freeze.
+    const forkHash = `0x${"cd".repeat(32)}`;
+    expect(
+      await checkPrecondition({
+        record: record({ blockHash: forkHash }),
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash,
+      }),
+    ).toEqual({
+      kind: "not-canonical",
+      verifiedBlock: 100n,
+      recordedHash: forkHash,
+      canonicalHash: CANONICAL_HASH,
+    });
+  });
+
+  it("fails when the connected chain has no such block", async () => {
+    const failure = await checkPrecondition({
+      record: record(),
+      chainId: 1,
+      currentBlock: 150n,
+      canonicalBlockHash: async () => null,
+    });
+    expect(failure?.kind).toBe("not-canonical");
+  });
+
+  it("fails a record from a fork advanced past the live head", async () => {
+    // No one-sided age comparison catches this: the recorded block is in the
+    // chain's future, so it reads as arbitrarily fresh forever.
+    expect(
+      await checkPrecondition({
+        record: record({ blockNumber: "900" }),
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash,
+        maxAgeBlocks: 100n,
+      }),
+    ).toEqual({ kind: "ahead", verifiedBlock: 900n, currentBlock: 150n });
+  });
+
+  it("fails a record written before the block hash was bound", async () => {
+    expect(
+      await checkPrecondition({
+        record: { ...record(), blockHash: "" },
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash,
+      }),
+    ).toEqual({ kind: "unbound" });
+  });
+
+  it("fails when the pass is older than the allowed window", async () => {
+    const failure = await checkPrecondition({
       record: record({ blockNumber: "100" }),
       chainId: 1,
       currentBlock: 500n,
+      canonicalBlockHash,
       maxAgeBlocks: 100n,
     });
     expect(failure).toEqual({
@@ -114,12 +182,13 @@ describe("checkPrecondition", () => {
     });
   });
 
-  it("accepts a pass inside the allowed window", () => {
+  it("accepts a pass inside the allowed window", async () => {
     expect(
-      checkPrecondition({
+      await checkPrecondition({
         record: record({ blockNumber: "100" }),
         chainId: 1,
         currentBlock: 150n,
+        canonicalBlockHash,
         maxAgeBlocks: 100n,
       }),
     ).toBeNull();
@@ -128,7 +197,15 @@ describe("checkPrecondition", () => {
   it("explains every failure in terms of what to do next", () => {
     for (const failure of [
       { kind: "missing" } as const,
+      { kind: "unbound" } as const,
       { kind: "wrong-chain", recordedChainId: 5 } as const,
+      { kind: "ahead", verifiedBlock: 9n, currentBlock: 2n } as const,
+      {
+        kind: "not-canonical",
+        verifiedBlock: 1n,
+        recordedHash: "0xaa",
+        canonicalHash: "0xbb",
+      } as const,
       { kind: "stale", verifiedBlock: 1n, currentBlock: 2n } as const,
     ]) {
       const described = describePreconditionFailure("some-check", failure);

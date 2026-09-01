@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  assertCompleteCsv,
   assertIndependentSource,
   buildV1NameIndex,
   buildV1NameIndexFromRpc,
@@ -183,6 +184,43 @@ describe("premigrationIndex", () => {
     writeFileSync(csv, "label\n", "utf-8");
 
     expect(() => assertIndependentSource("subgraph", csv)).not.toThrow();
+  });
+
+  it("refuses a CSV whose export never finished", () => {
+    // A partial export holds a suffix of the registration set. Seeding from it
+    // leaves the earlier names missing with nothing to report them.
+    const dir = workDir();
+    const csv = join(dir, "partial.csv");
+    writeFileSync(csv, "label\n", "utf-8");
+    const stamp = (complete: boolean) =>
+      writeFileSync(
+        `${csv}.source.json`,
+        JSON.stringify({
+          source: "subgraph",
+          network: "mainnet",
+          lastId: labelhash(4),
+          complete,
+        }),
+        "utf-8",
+      );
+
+    stamp(false);
+    expect(() => assertCompleteCsv(csv)).toThrow(/never completed/);
+    stamp(true);
+    expect(() => assertCompleteCsv(csv)).not.toThrow();
+  });
+
+  it("allows a CSV whose stamp predates the completion flag", () => {
+    const dir = workDir();
+    const csv = join(dir, "old.csv");
+    writeFileSync(csv, "label\n", "utf-8");
+    writeFileSync(
+      `${csv}.source.json`,
+      JSON.stringify({ source: "subgraph", network: "mainnet" }),
+      "utf-8",
+    );
+
+    expect(() => assertCompleteCsv(csv)).not.toThrow();
   });
 
   it("records progress so a partial build is inspectable", async () => {

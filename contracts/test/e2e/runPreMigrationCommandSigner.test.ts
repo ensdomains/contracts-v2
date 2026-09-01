@@ -154,7 +154,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
       skippedPastGraceCount: 1,
       alreadyRegisteredCount: 0,
       invalidLabelCount: 1,
-      failureCount: 0,
+      failedLines: [],
       timestamp: "2026-01-01T00:00:00.000Z",
     });
     await runPreMigrationCommand(
@@ -221,7 +221,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
       skippedPastGraceCount: 1,
       alreadyRegisteredCount: 1,
       invalidLabelCount: 1,
-      failureCount: 0,
+      failedLines: [],
       timestamp: "2026-01-02T00:00:00.000Z",
     });
     await runPreMigrationCommand(

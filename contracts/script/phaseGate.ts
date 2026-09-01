@@ -17,6 +17,12 @@ export type VerificationRecord = {
   chainId: number;
   /** Block the verification observed, so a stale pass can be recognised. */
   blockNumber: string;
+  /**
+   * Hash of that block. Chain id alone cannot tell a fork from the chain it forked
+   * from — both answer 1 on a mainnet fork — so the record carries something only
+   * the real chain can confirm.
+   */
+  blockHash: string;
   verifiedAt: string;
   details?: Record<string, unknown>;
 };
@@ -84,33 +90,64 @@ export function readVerification(
 
 export type PreconditionFailure =
   | { kind: "missing" }
+  | { kind: "unbound" }
   | { kind: "wrong-chain"; recordedChainId: number }
+  | { kind: "ahead"; verifiedBlock: bigint; currentBlock: bigint }
+  | {
+      kind: "not-canonical";
+      verifiedBlock: bigint;
+      recordedHash: string;
+      canonicalHash: string | null;
+    }
   | { kind: "stale"; verifiedBlock: bigint; currentBlock: bigint };
 
 // Whether a check's recorded pass still stands for the chain and block in question.
 //
-// A verification is tied to the block it observed. Chain state moves, so a pass from
-// far enough back says nothing about now — `maxAgeBlocks` is what makes "verified"
-// mean "verified recently" rather than "verified once, ever".
-export function checkPrecondition(opts: {
+// A verification is tied to the block it observed, and three things can be wrong with
+// that. The block may not belong to this chain at all — a pass recorded on a fork
+// reports the same chain id as the chain it forked from, and this gate authorises an
+// irreversible step, so the recorded block hash is looked up on the connected chain
+// rather than taken on trust. The block may be ahead of the head, which a fork
+// advanced past live time produces and which no height comparison alone rejects. And
+// chain state moves, so a pass from far enough back says nothing about now —
+// `maxAgeBlocks` is what makes "verified" mean "verified recently" rather than
+// "verified once, ever".
+export async function checkPrecondition(opts: {
   record: VerificationRecord | null;
   chainId: number;
   currentBlock: bigint;
+  canonicalBlockHash: (blockNumber: bigint) => Promise<string | null>;
   maxAgeBlocks?: bigint;
-}): PreconditionFailure | null {
+}): Promise<PreconditionFailure | null> {
   if (!opts.record) return { kind: "missing" };
   if (opts.record.chainId !== opts.chainId) {
     return { kind: "wrong-chain", recordedChainId: opts.record.chainId };
   }
-  if (opts.maxAgeBlocks !== undefined) {
-    const verifiedBlock = BigInt(opts.record.blockNumber);
-    if (opts.currentBlock > verifiedBlock + opts.maxAgeBlocks) {
-      return {
-        kind: "stale",
-        verifiedBlock,
-        currentBlock: opts.currentBlock,
-      };
-    }
+  if (!opts.record.blockHash) return { kind: "unbound" };
+
+  const verifiedBlock = BigInt(opts.record.blockNumber);
+  if (verifiedBlock > opts.currentBlock) {
+    return { kind: "ahead", verifiedBlock, currentBlock: opts.currentBlock };
+  }
+
+  const canonicalHash = await opts.canonicalBlockHash(verifiedBlock);
+  if (
+    canonicalHash === null ||
+    canonicalHash.toLowerCase() !== opts.record.blockHash.toLowerCase()
+  ) {
+    return {
+      kind: "not-canonical",
+      verifiedBlock,
+      recordedHash: opts.record.blockHash,
+      canonicalHash,
+    };
+  }
+
+  if (
+    opts.maxAgeBlocks !== undefined &&
+    opts.currentBlock > verifiedBlock + opts.maxAgeBlocks
+  ) {
+    return { kind: "stale", verifiedBlock, currentBlock: opts.currentBlock };
   }
   return null;
 }
@@ -122,8 +159,14 @@ export function describePreconditionFailure(
   switch (failure.kind) {
     case "missing":
       return `${check} has not passed for this deployment; run it first, or pass --skip-preconditions to proceed anyway`;
+    case "unbound":
+      return `${check} was recorded without a block hash, so it cannot be tied to this chain; re-run it here`;
     case "wrong-chain":
       return `${check} was verified against chain ${failure.recordedChainId}, not this one; re-run it here`;
+    case "ahead":
+      return `${check} claims block ${failure.verifiedBlock}, ahead of this chain's head ${failure.currentBlock}; it was recorded against a fork, so re-run it here`;
+    case "not-canonical":
+      return `${check} recorded block ${failure.verifiedBlock} as ${failure.recordedHash}, but this chain has ${failure.canonicalHash ?? "no such block"}; it was recorded against a fork or a reorged branch, so re-run it here`;
     case "stale":
       return `${check} last passed at block ${failure.verifiedBlock} and the chain is now at ${failure.currentBlock}; re-run it`;
   }

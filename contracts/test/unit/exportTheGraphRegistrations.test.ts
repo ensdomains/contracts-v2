@@ -63,10 +63,17 @@ function fakeSubgraph(rows: Registration[]) {
 
 function runExport(
   rows: Registration[],
-  overrides: { batchSize?: number; limit?: number | null } = {},
+  overrides: {
+    batchSize?: number;
+    limit?: number | null;
+    outputFile?: string;
+    startId?: string;
+    network?: "mainnet" | "sepolia";
+    block?: number | null;
+  } = {},
 ) {
   const dir = mkdtempSync(join(tmpdir(), "ens-export-"));
-  const outputFile = join(dir, "registrations.csv");
+  const outputFile = overrides.outputFile ?? join(dir, "registrations.csv");
   const { fetchFn, requests } = fakeSubgraph(rows);
   return {
     outputFile,
@@ -75,16 +82,20 @@ function runExport(
       exportRegistrations(
         {
           thegraphApiKey: "key",
-          network: "mainnet",
+          network: overrides.network ?? "mainnet",
           batchSize: overrides.batchSize ?? 2,
-          startId: "",
+          startId: overrides.startId ?? "",
           limit: overrides.limit ?? null,
           outputFile,
-          block: null,
+          block: overrides.block ?? null,
         },
         fetchFn,
       ),
   };
+}
+
+function stampOf(outputFile: string) {
+  return JSON.parse(readFileSync(sourceStampPath(outputFile), "utf8"));
 }
 
 function dataRows(path: string): string[] {
@@ -178,6 +189,116 @@ describe("exportTheGraphRegistrations", () => {
     expect(stamp.totalRegistrations).toBe(2);
     expect(stamp.labelledRegistrations).toBe(1);
     expect(stamp.unlabelledRegistrations).toBe(1);
+  });
+
+  it("keeps earlier pages when an export is resumed", async () => {
+    // A resume that truncated the file would leave only the rows after the cursor,
+    // and the completed stamp would present that suffix as the whole set.
+    const rows = Array.from({ length: 6 }, (_, index) =>
+      registration(labelhash(index + 1), `name${index + 1}`),
+    );
+    const first = runExport(rows.slice(0, 3), { batchSize: 3 });
+    await first.run();
+    expect(dataRows(first.outputFile)).toHaveLength(3);
+
+    const resumed = runExport(rows, {
+      outputFile: first.outputFile,
+      batchSize: 3,
+      startId: labelhash(3),
+      block: HEAD_BLOCK,
+    });
+    await resumed.run();
+
+    const exported = dataRows(resumed.outputFile).map(
+      (row) => row.split(",")[2],
+    );
+    expect(exported).toEqual(rows.map((row) => row.id));
+    expect(stampOf(resumed.outputFile).totalRegistrations).toBe(6);
+    expect(stampOf(resumed.outputFile).complete).toBe(true);
+  });
+
+  it("marks an interrupted export incomplete, with the cursor to resume from", async () => {
+    // An export that stopped partway holds a suffix of the registration set. The
+    // stamp has to say so, or the partial file reads as a finished one.
+    const rows = Array.from({ length: 4 }, (_, index) =>
+      registration(labelhash(index + 1), `name${index + 1}`),
+    );
+    const dir = mkdtempSync(join(tmpdir(), "ens-export-"));
+    const outputFile = join(dir, "registrations.csv");
+    const { fetchFn } = fakeSubgraph(rows);
+
+    let pages = 0;
+    const failingFetch = (async (url: string, init: { body: string }) => {
+      const body = JSON.parse(init.body);
+      if (body.variables && pages++ === 1) throw new Error("gateway went away");
+      return fetchFn(url as never, init as never);
+    }) as unknown as typeof fetch;
+
+    await expect(
+      exportRegistrations(
+        {
+          thegraphApiKey: "key",
+          network: "mainnet",
+          batchSize: 2,
+          startId: "",
+          limit: null,
+          outputFile,
+          block: null,
+        },
+        failingFetch,
+      ),
+    ).rejects.toThrow(/gateway went away/);
+
+    const stamp = stampOf(outputFile);
+    expect(stamp.complete).toBe(false);
+    expect(stamp.lastId).toBe(labelhash(2));
+    expect(dataRows(outputFile)).toHaveLength(2);
+
+    // And the recorded cursor is enough to finish it.
+    const resumed = runExport(rows, {
+      outputFile,
+      batchSize: 2,
+      startId: stamp.lastId,
+      block: stamp.block,
+    });
+    await resumed.run();
+    expect(dataRows(outputFile)).toHaveLength(4);
+    expect(stampOf(outputFile).complete).toBe(true);
+  });
+
+  it("refuses a resume the existing file cannot support", async () => {
+    const rows = [registration(labelhash(1), "alpha")];
+    const missing = runExport(rows, {
+      outputFile: join(
+        mkdtempSync(join(tmpdir(), "ens-export-")),
+        "absent.csv",
+      ),
+      startId: labelhash(1),
+    });
+    await expect(missing.run()).rejects.toThrow(/cannot resume/);
+
+    const first = runExport(rows, { batchSize: 1 });
+    await first.run();
+
+    const wrongCursor = runExport(rows, {
+      outputFile: first.outputFile,
+      startId: labelhash(9),
+    });
+    await expect(wrongCursor.run()).rejects.toThrow(/stopped at/);
+
+    const wrongNetwork = runExport(rows, {
+      outputFile: first.outputFile,
+      startId: labelhash(1),
+      network: "sepolia",
+    });
+    await expect(wrongNetwork.run()).rejects.toThrow(/exported from mainnet/);
+
+    const wrongBlock = runExport(rows, {
+      outputFile: first.outputFile,
+      startId: labelhash(1),
+      block: HEAD_BLOCK - 1,
+    });
+    await expect(wrongBlock.run()).rejects.toThrow(/cannot resume at block/);
   });
 
   it("stops at the requested limit", async () => {

@@ -94,6 +94,8 @@ import {
 import {
   compareDeployedBytecode,
   describeComparison,
+  extractImmutableValues,
+  immutableAsAddress,
   type ImmutableReferences,
 } from "./bytecodeCheck.js";
 import {
@@ -112,6 +114,7 @@ import {
   type RoleHolder,
 } from "./roleAudit.js";
 import {
+  assertCompleteCsv,
   assertIndependentSource,
   buildV1NameIndex,
   buildV1NameIndexFromRpc,
@@ -1083,15 +1086,39 @@ type OwnerTransactionJournal = Record<
     label: string;
     hash: string;
     // Recorded so a journal left over from a fork rehearsal cannot suppress the same
-    // transaction on a different chain.
+    // transaction on a different chain. Chain id alone does not settle it — a
+    // mainnet fork answers 1 — so the block the transaction landed in is recorded
+    // too, and re-checked against the connected chain before anything is skipped.
     chainId: number;
     blockNumber: string;
+    blockHash: string;
     executedAt: string;
   }
 >;
 
 function ownerTransactionJournalPath(file: string, explicit?: string): string {
   return explicit ?? `${file}.executed.json`;
+}
+
+// Whether a journalled transaction is still where the journal says it is. An absent
+// receipt means it never landed here; a reverted one means it landed and did nothing;
+// a different block hash means the branch it was in is no longer canonical.
+async function journalledTransactionStillLanded(
+  client: ReturnType<typeof publicClient>,
+  entry: OwnerTransactionJournal[string],
+): Promise<boolean> {
+  if (!entry.blockHash) return false;
+  try {
+    const receipt = await client.getTransactionReceipt({
+      hash: entry.hash as `0x${string}`,
+    });
+    return (
+      receipt.status === "success" &&
+      receipt.blockHash.toLowerCase() === entry.blockHash.toLowerCase()
+    );
+  } catch {
+    return false;
+  }
 }
 
 function readOwnerTransactionJournal(path: string): OwnerTransactionJournal {
@@ -1147,7 +1174,18 @@ export async function executePreparedOwnerTransactions(opts: {
     const id = preparedOwnerTransactionId(tx);
     const previous = journal[id];
 
-    const alreadyExecuted = previous?.chainId === chain.id;
+    // A journal entry is only evidence if the transaction it names is still on this
+    // chain. A rehearsal on a mainnet fork writes entries claiming chain 1, and a
+    // reorg can take a real one back out; skipping on either would leave an
+    // owner-gated write unsent while the run reports it as already done.
+    const alreadyExecuted =
+      previous?.chainId === chain.id &&
+      (await journalledTransactionStillLanded(client, previous));
+    if (previous && !alreadyExecuted && !opts.dryRun) {
+      console.log(
+        `journalled ${role}: ${label} (tx ${previous.hash}) is not on this chain — re-sending`,
+      );
+    }
     if (alreadyExecuted && !opts.force && !opts.dryRun) {
       skipped++;
       console.log(
@@ -1187,6 +1225,7 @@ export async function executePreparedOwnerTransactions(opts: {
       hash,
       chainId: chain.id,
       blockNumber: receipt.blockNumber.toString(),
+      blockHash: receipt.blockHash,
       executedAt: new Date().toISOString(),
     };
     writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`, "utf8");
@@ -1264,6 +1303,9 @@ export async function runPreMigrationCommand(
   const network = opts.network ?? "mainnet";
   const deploymentNetwork = opts.deploymentNetwork ?? network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  // Seeding from a suffix of the registration set leaves the missing names with
+  // nothing to report them, so a partial export is refused before any of it is read.
+  assertCompleteCsv(opts.csvFile);
   const registry = resolveDeploymentAddress(
     opts.registry,
     deploymentsDir,
@@ -1699,7 +1741,10 @@ export async function reconcilePreMigration(opts: {
   const v1Client = publicClient(opts.mainnetRpcUrl ?? opts.rpcUrl, chain);
 
   const index = loadV1NameIndex(opts.workDir);
-  if (opts.csvFile) assertIndependentSource(index.meta.source, opts.csvFile);
+  if (opts.csvFile) {
+    assertCompleteCsv(opts.csvFile);
+    assertIndependentSource(index.meta.source, opts.csvFile);
+  }
 
   const registry = resolveRegistry({
     registry: opts.registry,
@@ -1945,15 +1990,27 @@ export async function reconcilePreMigration(opts: {
   } else {
     // Phase 3 freezes v1. Recording the pass lets it refuse to run when the
     // reconciliation that proves nothing was missed has not been done.
+    //
+    // The block recorded is the index's, not the chain head: names registered after
+    // the index was built were never examined, so the index is what limits how much
+    // of the chain this pass actually covers. Recording the head instead would let a
+    // week-old index be read as a brand-new pass, and the freshness bound the freeze
+    // applies would have nothing to bite on.
+    const indexBlock = BigInt(index.meta.block);
+    const indexBlockHash = (
+      await v1Client.getBlock({ blockNumber: indexBlock })
+    ).hash;
     recordVerification(resolve(deploymentsDir), deploymentNetwork, {
       check: PRECONDITION_RECONCILE,
       chainId,
-      blockNumber: (await client.getBlockNumber()).toString(),
+      blockNumber: indexBlock.toString(),
+      blockHash: indexBlockHash,
       verifiedAt: new Date().toISOString(),
       details: {
         claimable: result.claimable,
         reserved: result.reserved,
         registered: result.registered,
+        rpcHead: (await client.getBlockNumber()).toString(),
       },
     });
   }
@@ -2745,7 +2802,7 @@ export async function disableV1Registrars(
       opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
     );
     const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
-    const failure = checkPrecondition({
+    const failure = await checkPrecondition({
       record: readVerification(
         deploymentsDir,
         deploymentNetwork,
@@ -2753,6 +2810,16 @@ export async function disableV1Registrars(
       ),
       chainId: chain.id,
       currentBlock: await client.getBlockNumber(),
+      // Proves the recorded block belongs to the chain about to be frozen. A
+      // reconciliation run on a fork reports this chain's id, and the freeze cannot
+      // be undone, so the record has to name a block this chain actually has.
+      canonicalBlockHash: async (blockNumber) => {
+        try {
+          return (await client.getBlock({ blockNumber })).hash;
+        } catch {
+          return null;
+        }
+      },
       // A pass says the chain looked complete at the block it observed. Names keep
       // being registered on v1 until the freeze, so a pass from long ago says
       // nothing about now — re-run it rather than freezing on stale evidence.
@@ -3979,9 +4046,71 @@ export async function verifyDeployment(opts: {
     ownAddresses.set(getAddress(record.address).toLowerCase(), name);
   }
 
+  // Addresses recorded by the *other* namespaces under the same deployments
+  // directory — archived deployments, and rehearsal namespaces. An immutable
+  // pointing into one of these is the leak this check exists to find.
+  const foreignAddresses = new Map<string, string>();
+  for (const entry of readdirSync(deploymentsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === deploymentNetwork) continue;
+    const dir = join(deploymentsDir, entry.name);
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith(".json") || file.startsWith(".")) continue;
+      let foreign: { address?: Address };
+      try {
+        foreign = JSON.parse(readFileSync(join(dir, file), "utf8"));
+      } catch {
+        continue;
+      }
+      if (!foreign.address) continue;
+      const key = getAddress(foreign.address).toLowerCase();
+      if (ownAddresses.has(key) || foreignAddresses.has(key)) continue;
+      foreignAddresses.set(
+        key,
+        `${entry.name}/${file.slice(0, -".json".length)}`,
+      );
+    }
+  }
+
   const problems: string[] = [];
   let matched = 0;
   let skipped = 0;
+  let immutablesChecked = 0;
+
+  // The bytecode comparison blanks the immutable ranges, so a record leaking a
+  // contract of the same type from an archived namespace matches on every byte it
+  // looks at. The constructor-set addresses are read back out of the deployed code
+  // and checked against the namespaces on disk, which is the only place the leak
+  // shows.
+  const auditImmutables = (
+    name: string,
+    address: Address,
+    onChain: string,
+    immutableReferences: ImmutableReferences | undefined,
+  ) => {
+    for (const immutable of extractImmutableValues(
+      onChain,
+      immutableReferences,
+    )) {
+      if (immutable.inconsistent) {
+        problems.push(
+          `${name} ${address}: immutable ${immutable.astId} differs between its copies in the deployed code`,
+        );
+        continue;
+      }
+      const referenced = immutableAsAddress(immutable);
+      if (!referenced) continue;
+      immutablesChecked++;
+      // Set membership is what decides whether these bytes are a wiring at all: a
+      // scalar immutable has the same shape as an address and will never collide
+      // with a deployed one, so anything the namespaces do not know is left alone.
+      const foreign = foreignAddresses.get(referenced.toLowerCase());
+      if (foreign) {
+        problems.push(
+          `${name} ${address}: immutable at byte ${immutable.offsets[0]} points at ${referenced}, recorded in namespace ${foreign} rather than ${deploymentNetwork}`,
+        );
+      }
+    }
+  };
 
   for (const { name, record } of records) {
     const address = getAddress(record.address as Address);
@@ -4010,13 +4139,22 @@ export async function verifyDeployment(opts: {
     });
     if (comparison.kind === "match") {
       matched++;
+      auditImmutables(
+        name,
+        address,
+        onChain ?? "",
+        expected.immutableReferences,
+      );
       continue;
     }
     problems.push(describeComparison(name, address, comparison));
   }
 
   console.log(
-    `deployment integrity: ${matched} verified, ${skipped} without comparable bytecode, ${problems.length} mismatched`,
+    `deployment integrity: ${matched} verified, ${skipped} without comparable bytecode, ${problems.length} problem(s)`,
+  );
+  console.log(
+    `immutable wiring: ${immutablesChecked} constructor-set value(s) checked against ${foreignAddresses.size} address(es) recorded outside ${deploymentNetwork}`,
   );
   for (const problem of problems) console.error(problem);
 
@@ -7555,7 +7693,7 @@ function checkpointToRunSummary(
     skippedExpiredPastGrace: checkpoint.skippedPastGraceCount,
     invalidLabels: checkpoint.invalidLabelCount,
     alreadyOnV2: checkpoint.alreadyRegisteredCount,
-    failed: checkpoint.failureCount,
+    failed: checkpoint.failedLines.length,
   };
 }
 

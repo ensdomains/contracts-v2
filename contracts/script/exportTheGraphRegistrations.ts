@@ -1,7 +1,12 @@
 #!/usr/bin/env bun
 
 import { Command } from "commander";
-import { appendFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { bold, cyan, dim, Logger } from "./logger.js";
 
 // Types
@@ -239,6 +244,61 @@ export function sourceStampPath(outputFile: string): string {
   return `${outputFile}.source.json`;
 }
 
+export type CsvSourceStamp = {
+  source: "subgraph";
+  network: ENSRegistrationNetwork;
+  subgraphId: string;
+  block: number;
+  /** Last registration id written; a resumed export continues after it. */
+  lastId: string;
+  /** False while rows are still being appended, so a partial file cannot be used. */
+  complete: boolean;
+  totalRegistrations: number;
+  labelledRegistrations: number;
+  unlabelledRegistrations: number;
+};
+
+function readSourceStamp(outputFile: string): CsvSourceStamp | null {
+  const path = sourceStampPath(outputFile);
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as CsvSourceStamp;
+  } catch {
+    return null;
+  }
+}
+
+// Written after every page rather than only at the end, so an interrupted export
+// leaves behind the cursor a resume needs and a `complete: false` that stops the
+// partial file being read as a finished one.
+function writeSourceStamp(
+  config: ExportConfig,
+  state: {
+    block: number;
+    cursor: string;
+    totalCount: number;
+    skippedNoLabel: number;
+    complete: boolean;
+  },
+): void {
+  const stamp: CsvSourceStamp = {
+    source: "subgraph",
+    network: config.network,
+    subgraphId: SUBGRAPH_IDS[config.network],
+    block: state.block,
+    lastId: state.cursor,
+    complete: state.complete,
+    totalRegistrations: state.totalCount,
+    labelledRegistrations: state.totalCount - state.skippedNoLabel,
+    unlabelledRegistrations: state.skippedNoLabel,
+  };
+  writeFileSync(
+    sourceStampPath(config.outputFile),
+    `${JSON.stringify(stamp, null, 2)}\n`,
+    "utf-8",
+  );
+}
+
 export async function exportRegistrations(
   config: ExportConfig,
   fetchFn: typeof fetch = fetch,
@@ -248,21 +308,70 @@ export async function exportRegistrations(
   let totalCount = 0;
   let skippedNoLabel = 0;
 
-  const block = config.block ?? (await fetchIndexedBlock(config, fetchFn));
+  // A resume continues an existing file rather than starting one. Truncating here
+  // would leave only the rows after the cursor, and the completed stamp written at
+  // the end would present that suffix as the whole registration set.
+  const resuming = config.startId !== "";
+  const previous = resuming ? readSourceStamp(config.outputFile) : null;
+  if (resuming) {
+    if (!existsSync(config.outputFile) || !previous) {
+      throw new Error(
+        `cannot resume: ${config.outputFile} and its ${sourceStampPath(config.outputFile)} must both exist. Run the export without --start-id to begin one.`,
+      );
+    }
+    if (previous.network !== config.network) {
+      throw new Error(
+        `cannot resume: ${config.outputFile} was exported from ${previous.network}, not ${config.network}`,
+      );
+    }
+    if (previous.lastId !== config.startId) {
+      throw new Error(
+        `cannot resume at ${config.startId}: ${config.outputFile} stopped at ${previous.lastId}. Pass that id, or re-export from the start.`,
+      );
+    }
+    if (config.block !== null && config.block !== previous.block) {
+      throw new Error(
+        `cannot resume at block ${config.block}: ${config.outputFile} was exported at block ${previous.block}`,
+      );
+    }
+    totalCount = previous.totalRegistrations;
+    skippedNoLabel = previous.unlabelledRegistrations;
+  }
+
+  // A resumed export stays pinned to the block the earlier pages were read at, or
+  // the two halves of the file describe different chain states.
+  const block =
+    previous?.block ??
+    config.block ??
+    (await fetchIndexedBlock(config, fetchFn));
   logger.config("Pinned Block", block);
 
-  const csvHeader =
-    "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate\n";
-  writeFileSync(config.outputFile, csvHeader, "utf-8");
-
   const unlabelledFile = unlabelledFilePath(config.outputFile);
-  writeFileSync(
-    unlabelledFile,
-    "labelHash,registrationDate,expiryDate\n",
-    "utf-8",
-  );
+  if (!resuming) {
+    writeFileSync(
+      config.outputFile,
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate\n",
+      "utf-8",
+    );
+    writeFileSync(
+      unlabelledFile,
+      "labelHash,registrationDate,expiryDate\n",
+      "utf-8",
+    );
+  }
+  writeSourceStamp(config, {
+    block,
+    cursor,
+    totalCount,
+    skippedNoLabel,
+    complete: false,
+  });
 
-  logger.info(`CSV file created: ${cyan(config.outputFile)}`);
+  logger.info(
+    resuming
+      ? `Resuming ${cyan(config.outputFile)} after id ${cursor} (${totalCount} row(s) already written)`
+      : `CSV file created: ${cyan(config.outputFile)}`,
+  );
   logger.info(`Fetching registrations from TheGraph Gateway...\n`);
 
   while (hasMore) {
@@ -323,6 +432,13 @@ export async function exportRegistrations(
       // Results are ordered by id, so the last row of a page is the cursor for the
       // next one. Advancing by a count instead would reintroduce offset paging.
       cursor = registrations[registrations.length - 1].id;
+      writeSourceStamp(config, {
+        block,
+        cursor,
+        totalCount,
+        skippedNoLabel,
+        complete: false,
+      });
 
       logger.info(
         cyan(`Fetched and wrote ${registrations.length} registrations`) +
@@ -343,24 +459,13 @@ export async function exportRegistrations(
     }
   }
 
-  writeFileSync(
-    sourceStampPath(config.outputFile),
-    `${JSON.stringify(
-      {
-        source: "subgraph",
-        network: config.network,
-        subgraphId: SUBGRAPH_IDS[config.network],
-        block,
-        lastId: cursor,
-        totalRegistrations: totalCount,
-        labelledRegistrations: totalCount - skippedNoLabel,
-        unlabelledRegistrations: skippedNoLabel,
-      },
-      null,
-      2,
-    )}\n`,
-    "utf-8",
-  );
+  writeSourceStamp(config, {
+    block,
+    cursor,
+    totalCount,
+    skippedNoLabel,
+    complete: true,
+  });
 
   logger.info(
     `\nTotal registrations exported: ${bold((totalCount - skippedNoLabel).toString())}`,

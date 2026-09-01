@@ -580,9 +580,13 @@ export function loadV1NameIndex(workDir: string): V1NameIndex {
 
 // How a CSV was produced, when the exporter recorded it. Absent for a CSV that
 // arrived out of band, which is the normal case for a manually-run Dune export.
-export function readCsvSourceStamp(
-  csvFile: string,
-): { source?: string; network?: string; block?: number } | null {
+export function readCsvSourceStamp(csvFile: string): {
+  source?: string;
+  network?: string;
+  block?: number;
+  lastId?: string;
+  complete?: boolean;
+} | null {
   const path = `${csvFile}.source.json`;
   if (!existsSync(path)) return null;
   try {
@@ -590,6 +594,19 @@ export function readCsvSourceStamp(
   } catch {
     return null;
   }
+}
+
+// An export that stopped partway holds a suffix of the registration set, and reading
+// it as the whole set is how a name goes missing before the irreversible freeze. A
+// CSV with no stamp arrived out of band — the normal case for a manual Dune export —
+// and is left to the operator to vouch for.
+export function assertCompleteCsv(csvFile: string): void {
+  const stamp = readCsvSourceStamp(csvFile);
+  if (!stamp || stamp.complete !== false) return;
+  throw new Error(
+    `refusing to use ${csvFile}: its export stopped at ${stamp.lastId ?? "an unrecorded id"} and never completed. ` +
+      `Resume it with export-registrations --start-id ${stamp.lastId ?? "<id>"}, or re-export from the start.`,
+  );
 }
 
 // The reconciliation is only meaningful when its index and the CSV came from

@@ -118,7 +118,10 @@ export interface Checkpoint {
   totalExpected: number;
   successCount: number;
   renewedCount: number;
-  failureCount: number;
+  /// CSV line numbers whose name has failed and has not since succeeded. Held as
+  /// lines rather than as a count so a resumed run can retry exactly those rows,
+  /// and so a row that later succeeds stops being reported as a failure.
+  failedLines: number[];
   /// Aggregate of the two skip sub-counters below (names not claimable on v1).
   skippedCount: number;
   /// Names skipped because they were never registered on v1.
@@ -161,7 +164,7 @@ export function createFreshCheckpoint(): Checkpoint {
     totalExpected: 0,
     successCount: 0,
     renewedCount: 0,
-    failureCount: 0,
+    failedLines: [],
     skippedCount: 0,
     skippedNeverRegisteredCount: 0,
     skippedPastGraceCount: 0,
@@ -453,11 +456,17 @@ function previewCSVLine(line: string): string {
     : `${line.slice(0, CSV_ROW_PREVIEW_LIMIT)}...`;
 }
 
+// `onlyLines` restricts the walk to specific data-line numbers, which is how a
+// resumed run retries just the rows that failed. The file is still streamed, but no
+// row outside the set is parsed or verified — a retry must not re-read the chain for
+// every name that already succeeded, and must not trip over a malformed row it was
+// never asked about.
 async function* readCSVInBatches(
   csvFilePath: string,
   batchSize: number,
   startLineNumber: number = -1,
   limit: number | null = null,
+  onlyLines: ReadonlySet<number> | null = null,
 ): AsyncGenerator<ENSRegistration[]> {
   const readline = await import("node:readline");
 
@@ -514,6 +523,13 @@ async function* readCSVInBatches(
     }
 
     if (dataLineNumber <= startLineNumber) {
+      if (line !== "") {
+        dataLineNumber++;
+      }
+      continue;
+    }
+
+    if (onlyLines !== null && !onlyLines.has(dataLineNumber)) {
       if (line !== "") {
         dataLineNumber++;
       }
@@ -697,85 +713,129 @@ async function fetchAndReserveInBatches(
   logger.config("Block Gas Limit", block.gasLimit.toString());
   logger.config("Max Gas Per Batch", maxGas.toString());
 
+  // The retry pass and the main scan differ only in which rows they read. A retried
+  // row was already counted and already capped by an earlier run, so only the main
+  // scan grows the expected total or answers to --limit.
+  const walk = async (
+    batches: AsyncGenerator<ENSRegistration[]>,
+    mainPass: boolean,
+  ): Promise<void> => {
+    for await (const batch of batches) {
+      try {
+        if (mainPass) checkpoint.totalExpected += batch.length;
+
+        let invalidLabelsInBatch = 0;
+        let lastInvalidLineNumber = checkpoint.lastProcessedLineNumber;
+        const validBatch = batch.filter((reg) => {
+          if (!isValidLabel(reg.labelName)) {
+            logger.skippingInvalidName(reg.labelName || "unknown");
+            invalidLabelsInBatch++;
+            checkpoint.invalidLabelCount++;
+            checkpoint.totalProcessed++;
+            // A row that can never be reserved is not an outstanding failure, so a
+            // retry of it leaves the queue rather than sitting in it forever.
+            checkpoint.failedLines = checkpoint.failedLines.filter(
+              (line) => line !== reg.lineNumber,
+            );
+            lastInvalidLineNumber = Math.max(
+              lastInvalidLineNumber,
+              reg.lineNumber,
+            );
+            return false;
+          }
+          return true;
+        });
+
+        if (invalidLabelsInBatch > 0) {
+          checkpoint.lastProcessedLineNumber = lastInvalidLineNumber;
+          if (!config.disableCheckpoint) {
+            saveCheckpoint(checkpoint);
+          }
+        }
+
+        logger.info(
+          `\nRead ${batch.length} names from CSV (${invalidLabelsInBatch} invalid labels filtered). ` +
+            `Starting reservation of ${validBatch.length} valid names...`,
+        );
+
+        if (validBatch.length > 0) {
+          checkpoint = await processBatch(
+            config,
+            validBatch,
+            client,
+            mainnetClient,
+            registry,
+            batchRegistrar,
+            checkpoint,
+            registryAbi,
+            maxGas,
+          );
+        }
+
+        logger.info(
+          `Batch complete. Total: ${checkpoint.totalProcessed} processed ` +
+            `(${checkpoint.successCount} reserved, ${checkpoint.renewedCount} renewed, ` +
+            `${checkpoint.skippedCount} skipped, ${checkpoint.invalidLabelCount} invalid, ` +
+            `${checkpoint.failedLines.length} failed)`,
+        );
+
+        if (
+          mainPass &&
+          config.limit &&
+          checkpoint.totalProcessed >= config.limit
+        ) {
+          logger.info(`\nReached limit of ${config.limit} names. Stopping.`);
+          break;
+        }
+      } catch (error) {
+        // A whole batch failing is a different class of problem than one bad name:
+        // usually the RPC rather than the data, and none of its names were written.
+        // The run stops here so the checkpoint still points *before* them — carrying
+        // on would advance the resume cursor past rows that were never reserved, and
+        // `--continue` would then skip them permanently.
+        logger.error(
+          `Failed to process batch: ${error}. The checkpoint still points before this batch; re-run with --continue once the cause is fixed.`,
+        );
+        throw error;
+      }
+    }
+  };
+
+  // Rows a previous run failed on are retried before the scan continues. They sit
+  // behind the resume cursor, so nothing else would reach them, and a retry that
+  // succeeds takes them out of the queue rather than leaving the run reporting a
+  // failure it has since fixed.
+  const retryLines = new Set(checkpoint.failedLines);
+  if (retryLines.size > 0) {
+    logger.info(
+      `\nRetrying ${retryLines.size} name(s) that failed in an earlier run...`,
+    );
+    await walk(
+      readCSVInBatches(
+        config.csvFilePath,
+        config.batchSize,
+        -1,
+        null,
+        retryLines,
+      ),
+      false,
+    );
+  }
+
   logger.info(
     `\nReading CSV file and reserving in batches of ${config.batchSize}...`,
   );
   logger.info(`CSV file: ${config.csvFilePath}`);
 
-  const batchGenerator = readCSVInBatches(
-    config.csvFilePath,
-    config.batchSize,
-    config.startIndex,
-    config.limit,
+  await walk(
+    readCSVInBatches(
+      config.csvFilePath,
+      config.batchSize,
+      config.startIndex,
+      config.limit,
+    ),
+    true,
   );
-
-  for await (const batch of batchGenerator) {
-    try {
-      checkpoint.totalExpected += batch.length;
-
-      let invalidLabelsInBatch = 0;
-      let lastInvalidLineNumber = checkpoint.lastProcessedLineNumber;
-      const validBatch = batch.filter((reg) => {
-        if (!isValidLabel(reg.labelName)) {
-          logger.skippingInvalidName(reg.labelName || "unknown");
-          invalidLabelsInBatch++;
-          checkpoint!.invalidLabelCount++;
-          checkpoint!.totalProcessed++;
-          lastInvalidLineNumber = reg.lineNumber;
-          return false;
-        }
-        return true;
-      });
-
-      if (invalidLabelsInBatch > 0) {
-        checkpoint.lastProcessedLineNumber = lastInvalidLineNumber;
-        if (!config.disableCheckpoint) {
-          saveCheckpoint(checkpoint);
-        }
-      }
-
-      logger.info(
-        `\nRead ${batch.length} names from CSV (${invalidLabelsInBatch} invalid labels filtered). ` +
-          `Starting reservation of ${validBatch.length} valid names...`,
-      );
-
-      if (validBatch.length > 0) {
-        checkpoint = await processBatch(
-          config,
-          validBatch,
-          client,
-          mainnetClient,
-          registry,
-          batchRegistrar,
-          checkpoint,
-          registryAbi,
-          maxGas,
-        );
-      }
-
-      logger.info(
-        `Batch complete. Total: ${checkpoint.totalProcessed} processed ` +
-          `(${checkpoint.successCount} reserved, ${checkpoint.renewedCount} renewed, ` +
-          `${checkpoint.skippedCount} skipped, ${checkpoint.invalidLabelCount} invalid, ` +
-          `${checkpoint.failureCount} failed)`,
-      );
-
-      if (config.limit && checkpoint.totalProcessed >= config.limit) {
-        logger.info(`\nReached limit of ${config.limit} names. Stopping.`);
-        break;
-      }
-    } catch (error) {
-      // A whole batch failing is a different class of problem than one bad name:
-      // usually the RPC rather than the data, and none of its names were written.
-      // The run stops here so the checkpoint still points *before* them — carrying
-      // on would advance the resume cursor past rows that were never reserved, and
-      // `--continue` would then skip them permanently.
-      logger.error(
-        `Failed to process batch: ${error}. The checkpoint still points before this batch; re-run with --continue once the cause is fixed.`,
-      );
-      throw error;
-    }
-  }
 
   printFinalSummary(checkpoint);
 }
@@ -1025,20 +1085,22 @@ async function processBatch(
 ): Promise<Checkpoint> {
   const batchLabels: string[] = [];
   const batchExpires: bigint[] = [];
-  // Submission failures come back keyed by label, but the resume cursor works in
-  // CSV lines, so the two have to be joined back up.
+  // Submission failures come back keyed by label, but the retry queue works in CSV
+  // lines, so the two have to be joined back up.
   const lineByLabel = new Map<string, number>();
   const alreadyReservedNames = new Set<string>();
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
-  // The earliest CSV line whose name failed. The resume cursor stops short of it, so
-  // `--continue` retries that name instead of stepping over it: a failure means
-  // nothing was written to v2, and a skipped retry leaves the name missing with
-  // nothing to report it later.
-  let firstFailedLineNumber: number | null = null;
+  // A failure means nothing was written to v2, so the line is queued for retry: a
+  // resumed run reaches it again instead of stepping over it and leaving the name
+  // missing with nothing to report it later.
+  const failedLines = new Set(checkpoint.failedLines);
   const recordFailedLine = (lineNumber: number) => {
-    if (firstFailedLineNumber === null || lineNumber < firstFailedLineNumber) {
-      firstFailedLineNumber = lineNumber;
-    }
+    failedLines.add(lineNumber);
+  };
+  // A row that succeeds, is skipped, or turns out to need nothing done stops being a
+  // failure, so a retry that works clears the entry the earlier run left behind.
+  const clearFailedLine = (lineNumber: number) => {
+    failedLines.delete(lineNumber);
   };
 
   const bonusPeriodSeconds = BigInt(config.bonusPeriodDays) * 86400n;
@@ -1072,7 +1134,6 @@ async function processBatch(
     try {
       if (result.error) {
         logger.failed(registration.labelName, result.error);
-        checkpoint.failureCount++;
         checkpoint.totalProcessed++;
         recordFailedLine(registration.lineNumber);
         logger.finishedName(registration.labelName, "failed");
@@ -1085,6 +1146,7 @@ async function processBatch(
         );
         checkpoint.alreadyRegisteredCount++;
         checkpoint.totalProcessed++;
+        clearFailedLine(registration.lineNumber);
         logger.finishedName(registration.labelName, "failed");
         continue;
       }
@@ -1105,6 +1167,7 @@ async function processBatch(
           checkpoint.skippedPastGraceCount++;
         }
         checkpoint.totalProcessed++;
+        clearFailedLine(registration.lineNumber);
         logger.finishedName(registration.labelName, "skipped");
         continue;
       }
@@ -1121,6 +1184,7 @@ async function processBatch(
       if (result.v2Status === 1 && effectiveExpiry <= result.v2Expiry) {
         checkpoint.upToDateCount++;
         checkpoint.totalProcessed++;
+        clearFailedLine(registration.lineNumber);
         logger.finishedName(registration.labelName, "skipped");
         continue;
       }
@@ -1132,7 +1196,6 @@ async function processBatch(
       lineByLabel.set(registration.labelName, registration.lineNumber);
     } catch (error) {
       logger.failed(registration.labelName, String(error));
-      checkpoint.failureCount++;
       checkpoint.totalProcessed++;
       recordFailedLine(registration.lineNumber);
       logger.finishedName(registration.labelName, "failed");
@@ -1153,6 +1216,8 @@ async function processBatch(
 
     for (const { label, txHash } of result.succeeded) {
       checkpoint.totalProcessed++;
+      const succeededLine = lineByLabel.get(label);
+      if (succeededLine !== undefined) clearFailedLine(succeededLine);
       if (alreadyReservedNames.has(label)) {
         checkpoint.renewedCount++;
         logger.renewed(txHash);
@@ -1167,7 +1232,6 @@ async function processBatch(
     for (const { label, error } of result.failed) {
       logger.failed(label, error);
       checkpoint.totalProcessed++;
-      checkpoint.failureCount++;
       const lineNumber = lineByLabel.get(label);
       if (lineNumber !== undefined) recordFailedLine(lineNumber);
       logger.finishedName(label, "failed");
@@ -1178,6 +1242,8 @@ async function processBatch(
     for (const label of batchLabels) {
       logger.dryRun();
       checkpoint.totalProcessed++;
+      const plannedLine = lineByLabel.get(label);
+      if (plannedLine !== undefined) clearFailedLine(plannedLine);
       if (alreadyReservedNames.has(label)) {
         checkpoint.renewedCount++;
         logger.finishedName(label, "renewed");
@@ -1188,10 +1254,14 @@ async function processBatch(
     }
   }
 
-  // Stop the cursor before the first failure so a resumed run reaches it again.
-  // Names that succeeded after it are re-read and skipped as already up to date.
-  checkpoint.lastProcessedLineNumber =
-    firstFailedLineNumber === null ? lastLineNumber : firstFailedLineNumber - 1;
+  // The cursor is a plain high-water mark. Failed rows are not held behind it —
+  // they are carried in the retry queue instead, which survives the batches that
+  // follow them and so cannot be overwritten by a later clean batch.
+  checkpoint.lastProcessedLineNumber = Math.max(
+    checkpoint.lastProcessedLineNumber,
+    lastLineNumber,
+  );
+  checkpoint.failedLines = [...failedLines].sort((a, b) => a - b);
   checkpoint.timestamp = new Date().toISOString();
 
   if (!config.disableCheckpoint) {
@@ -1211,8 +1281,9 @@ function calculateSuccessRate(
 }
 
 function printFinalSummary(checkpoint: Checkpoint): void {
+  const failureCount = checkpoint.failedLines.length;
   const actualRegistrations =
-    checkpoint.successCount + checkpoint.renewedCount + checkpoint.failureCount;
+    checkpoint.successCount + checkpoint.renewedCount + failureCount;
 
   logger.info("");
   logger.divider();
@@ -1254,9 +1325,7 @@ function printFinalSummary(checkpoint: Checkpoint): void {
   );
   logger.config(
     "Failed (other errors)",
-    checkpoint.failureCount > 0
-      ? red(checkpoint.failureCount.toString())
-      : checkpoint.failureCount,
+    failureCount > 0 ? red(failureCount.toString()) : failureCount,
   );
   logger.config("Actual reservations/renewals attempted", actualRegistrations);
 
@@ -1270,7 +1339,7 @@ function printFinalSummary(checkpoint: Checkpoint): void {
 
   logger.divider();
 
-  if (checkpoint.failureCount > 0) {
+  if (failureCount > 0) {
     logger.warning(
       `\nSome registrations failed. Check ${ERROR_LOG_FILE} for details.`,
     );
@@ -1409,7 +1478,7 @@ export async function main(argv = process.argv): Promise<void> {
         config.startIndex = cp.lastProcessedLineNumber;
         logger.config(
           "Checkpoint Found",
-          `${cp.totalProcessed} processed (${cp.successCount} reserved, ${cp.renewedCount} renewed, ${cp.skippedCount} skipped, ${cp.invalidLabelCount} invalid, ${cp.failureCount} failed) (last line: ${cp.lastProcessedLineNumber})`,
+          `${cp.totalProcessed} processed (${cp.successCount} reserved, ${cp.renewedCount} renewed, ${cp.skippedCount} skipped, ${cp.invalidLabelCount} invalid, ${cp.failedLines.length} failed) (last line: ${cp.lastProcessedLineNumber})`,
         );
         logger.info(`Resuming from CSV line ${config.startIndex}`);
       }
@@ -1424,7 +1493,7 @@ export async function main(argv = process.argv): Promise<void> {
     // as a success would hand the operator a green result over an incomplete
     // reservation set, so it is raised instead. Names already registered on v2 are
     // not failures: nothing was lost, there was simply nothing to do.
-    failedNames = checkpoint.failureCount;
+    failedNames = checkpoint.failedLines.length;
 
     if (failedNames === 0) {
       logger.success("\nPre-migration script completed successfully!");
