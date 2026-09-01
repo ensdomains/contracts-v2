@@ -301,7 +301,10 @@ describe("exportTheGraphRegistrations", () => {
     await expect(wrongBlock.run()).rejects.toThrow(/cannot resume at block/);
   });
 
-  it("stops at the requested limit", async () => {
+  it("stops at the requested limit, and does not call the result complete", async () => {
+    // --limit leaves a prefix of the registration set. Stamping it complete would
+    // let pre-migration seed from it and report the missing names as never
+    // registered on v1.
     const rows = Array.from({ length: 10 }, (_, index) =>
       registration(labelhash(index + 1), `name${index + 1}`),
     );
@@ -310,5 +313,33 @@ describe("exportTheGraphRegistrations", () => {
     await run();
 
     expect(dataRows(outputFile)).toHaveLength(5);
+    expect(stampOf(outputFile).complete).toBe(false);
+  });
+
+  it("calls a limit larger than the result set complete", async () => {
+    // The cap never bit: the source ran out first, so the file is the whole set.
+    const rows = Array.from({ length: 3 }, (_, index) =>
+      registration(labelhash(index + 1), `name${index + 1}`),
+    );
+    const { outputFile, run } = runExport(rows, { batchSize: 2, limit: 50 });
+
+    await run();
+
+    expect(dataRows(outputFile)).toHaveLength(3);
+    expect(stampOf(outputFile).complete).toBe(true);
+  });
+
+  it("calls a limit that exactly consumes the result set complete", async () => {
+    // The final page came back short, which proves exhaustion even though the
+    // limit was also reached on the same page.
+    const rows = Array.from({ length: 3 }, (_, index) =>
+      registration(labelhash(index + 1), `name${index + 1}`),
+    );
+    const { outputFile, run } = runExport(rows, { batchSize: 2, limit: 3 });
+
+    await run();
+
+    expect(dataRows(outputFile)).toHaveLength(3);
+    expect(stampOf(outputFile).complete).toBe(true);
   });
 });

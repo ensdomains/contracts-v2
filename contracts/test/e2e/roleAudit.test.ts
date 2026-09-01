@@ -6,6 +6,7 @@ import { getAddress, type Address } from "viem";
 
 import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
 import { verifyV2Roles } from "../../script/migration.js";
+import { idFromLabel } from "../utils/utils.js";
 
 const TEST_TIMEOUT_MS = 120_000;
 const NETWORK = "mainnet";
@@ -130,6 +131,80 @@ describe("v2 role audit", () => {
           getAddress(candidate.holder.account as Address) === stranger,
       );
       expect(finding).toBeDefined();
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "audits the token-scoped grants the deployment makes, not just the root",
+    async () => {
+      writeDeploymentArtifacts();
+
+      // `register` grants its bitmap at the token's resource, so the `.eth` and
+      // `.reverse` grants are invisible to a root-only sweep.
+      const findings = await audit({ reportOnly: true });
+      for (const scope of ["eth", "reverse"]) {
+        expect(
+          findings.some(
+            (finding) =>
+              finding.kind === "missing" && finding.expectation.scope === scope,
+          ),
+        ).toBe(false);
+      }
+
+      // Revoking the .eth grant is now visible. Before the scoped sweep the audit
+      // read only resource 0 and reported success over exactly this state.
+      const ethResource = await env.v2.RootRegistry.read.getResource([
+        idFromLabel("eth"),
+      ]);
+      await env.v2.RootRegistry.write.revokeRoles(
+        [
+          ethResource,
+          DEPLOYMENT_ROLES.ETH_TOKEN,
+          env.namedAccounts.deployer.address,
+        ],
+        { account: env.namedAccounts.deployer },
+      );
+
+      const after = await audit({ reportOnly: true });
+      const missing = after.find(
+        (finding) =>
+          finding.kind === "missing" && finding.expectation.scope === "eth",
+      );
+      expect(missing).toBeDefined();
+      expect(missing && "absent" in missing ? missing.absent : 0n).toBe(
+        DEPLOYMENT_ROLES.ETH_TOKEN,
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "catches a stray grant scoped to a token rather than the root",
+    async () => {
+      writeDeploymentArtifacts();
+      const stranger = getAddress(
+        "0x000000000000000000000000000000000000cafe",
+      ) as Address;
+
+      const reverseResource = await env.v2.RootRegistry.read.getResource([
+        idFromLabel("reverse"),
+      ]);
+      await env.v2.RootRegistry.write.grantRoles(
+        [reverseResource, ROLES.REGISTRY.SET_RESOLVER, stranger],
+        { account: env.namedAccounts.owner },
+      );
+
+      const findings = await audit({ reportOnly: true });
+      const finding = findings.find(
+        (candidate) =>
+          candidate.kind === "unexpected" &&
+          getAddress(candidate.holder.account as Address) === stranger,
+      );
+      expect(finding).toBeDefined();
+      expect(finding && "holder" in finding ? finding.holder.scope : "").toBe(
+        "reverse",
+      );
     },
     TEST_TIMEOUT_MS,
   );

@@ -307,6 +307,10 @@ export async function exportRegistrations(
   let hasMore = true;
   let totalCount = 0;
   let skippedNoLabel = 0;
+  // Only an empty or short page proves the source had nothing left. Stopping because
+  // of --limit proves the opposite, and a file cut off there must not be stamped as
+  // the whole registration set.
+  let exhausted = false;
 
   // A resume continues an existing file rather than starting one. Truncating here
   // would leave only the rows after the cursor, and the completed stamp written at
@@ -383,6 +387,10 @@ export async function exportRegistrations(
         block,
         fetchFn,
       );
+
+      // Recorded before --limit trims the page, or a trimmed page would look like
+      // the end of the result set.
+      if (registrations.length < config.batchSize) exhausted = true;
 
       if (registrations.length === 0) {
         hasMore = false;
@@ -464,7 +472,7 @@ export async function exportRegistrations(
     cursor,
     totalCount,
     skippedNoLabel,
-    complete: true,
+    complete: exhausted,
   });
 
   logger.info(
@@ -474,6 +482,13 @@ export async function exportRegistrations(
     logger.info(
       `Recorded ${bold(skippedNoLabel.toString())} registration(s) with no decodable labelName in ${cyan(unlabelledFile)}`,
     );
+  }
+  if (!exhausted) {
+    logger.warning(
+      `Stopped at the --limit of ${config.limit}, so this is a prefix of the registration set, not all of it. ` +
+        `It is stamped incomplete and pre-migration will refuse it; continue with --start-id ${cursor}.`,
+    );
+    return;
   }
   logger.success(`Successfully exported to ${config.outputFile}`);
 }

@@ -3652,14 +3652,49 @@ const EXPECTED_ROOT_ROLES: Record<
   ],
 };
 
-// Every account that has ever been granted a role on a registry. Used only to decide
-// who to ask about — what they actually hold is read live, because expiry and
-// re-registration change effective authority without emitting anything.
-async function discoverRoleAccounts(
+// Token-scoped grants the deploy scripts make, keyed by the registry they land on.
+// `register` grants its role bitmap to the new owner at the *token's* resource, not
+// at the root, so none of these appear in a root-only audit.
+//
+// Only RootRegistry is audited this way. Its token set is the TLDs the deployment
+// creates, so an unexpected scoped grant there means something. ETHRegistry's token
+// set is the whole namespace — every registered name grants its owner roles at its
+// own resource — so the same sweep would report the entire namespace as unexpected.
+const EXPECTED_TOKEN_ROLES: Record<
+  (typeof AUDITED_REGISTRIES)[number],
+  Array<{ label: string; deployment: string; roles: bigint }>
+> = {
+  RootRegistry: [
+    // 01_ETHRegistry.ts registers `eth` to the deployer.
+    {
+      label: "eth",
+      deployment: "@deployer",
+      roles: DEPLOYMENT_ROLES.ETH_TOKEN,
+    },
+    // 01_ReverseMirror.ts registers `reverse` to the owner.
+    {
+      label: "reverse",
+      deployment: "@owner",
+      roles: DEPLOYMENT_ROLES.REVERSE_REGISTRY_ROOT,
+    },
+  ],
+  ETHRegistry: [],
+};
+
+const AUDIT_TOKEN_SCOPES: Record<(typeof AUDITED_REGISTRIES)[number], boolean> =
+  { RootRegistry: true, ETHRegistry: false };
+
+// Every (resource, account) a role has ever been granted at on a registry. Used only
+// to decide who to ask about — what they actually hold is read live, because expiry
+// and re-registration change effective authority without emitting anything.
+//
+// The resource is kept rather than discarded: a grant scoped to a token is invisible
+// at the root, so dropping it here is what let a scoped privilege go unexamined.
+async function discoverRoleGrants(
   client: ReturnType<typeof publicClient>,
   registry: Address,
   fromBlock: bigint,
-): Promise<Address[]> {
+): Promise<Array<{ resource: bigint; account: Address }>> {
   const toBlock = await client.getBlockNumber();
   const logs = await readEventLogs(client, {
     address: registry,
@@ -3667,12 +3702,28 @@ async function discoverRoleAccounts(
     fromBlock,
     toBlock,
   });
-  const accounts = new Set<Address>();
+  const grants = new Map<string, { resource: bigint; account: Address }>();
   for (const log of logs) {
-    const account = (log.args as { account?: Address }).account;
-    if (account) accounts.add(getAddress(account));
+    const args = log.args as { resource?: bigint; account?: Address };
+    if (!args.account || args.resource === undefined) continue;
+    const account = getAddress(args.account);
+    grants.set(`${args.resource}|${account.toLowerCase()}`, {
+      resource: args.resource,
+      account,
+    });
   }
-  return [...accounts];
+  return [...grants.values()];
+}
+
+// How a resource is named in the audit output. The root is the root; a token scope is
+// named by its label where the deployment defines one, and by its resource id where
+// it does not.
+function describeScope(
+  resource: bigint,
+  labelByResource: Map<string, string>,
+): string {
+  if (resource === 0n) return "root";
+  return labelByResource.get(resource.toString()) ?? `resource ${resource}`;
 }
 
 export async function verifyV2Roles(opts: {
@@ -3713,20 +3764,21 @@ export async function verifyV2Roles(opts: {
     );
     if (!registry) continue;
 
+    const resolveAccount = (deployment: string): Address | undefined => {
+      if (deployment === "@deployer") return deployer;
+      if (deployment === "@owner") return owner;
+      return maybeLoadV2Deployment(
+        deploymentsDir,
+        deploymentNetwork,
+        deployment,
+      )?.address;
+    };
+
     for (const entry of EXPECTED_ROOT_ROLES[registryName]) {
       // A pre-handoff-only grant must be absent once phase 6 has run, so after the
       // handoff it is expected to hold nothing rather than simply not being checked.
       if (entry.onlyBeforeHandoff && !opts.preHandoff) continue;
-      const address =
-        entry.deployment === "@deployer"
-          ? deployer
-          : entry.deployment === "@owner"
-            ? owner
-            : maybeLoadV2Deployment(
-                deploymentsDir,
-                deploymentNetwork,
-                entry.deployment,
-              )?.address;
+      const address = resolveAccount(entry.deployment);
       // A contract this deployment does not include simply has no expectation; the
       // discovery pass below still reports it if it somehow holds roles.
       if (!address) continue;
@@ -3738,6 +3790,33 @@ export async function verifyV2Roles(opts: {
       });
     }
 
+    // The resource a token's grants live at moves when the name expires or is
+    // re-registered, so it is resolved live rather than taken from the grant event.
+    const labelByResource = new Map<string, string>();
+    const wanted = new Map<string, { resource: bigint; account: Address }>();
+    const want = (resource: bigint, account: Address) => {
+      wanted.set(`${resource}|${account.toLowerCase()}`, { resource, account });
+    };
+
+    for (const entry of EXPECTED_TOKEN_ROLES[registryName]) {
+      const address = resolveAccount(entry.deployment);
+      if (!address) continue;
+      const resource = (await client.readContract({
+        address: registry.address,
+        abi: Artifact_PermissionedRegistry.abi,
+        functionName: "getResource",
+        args: [labelId(entry.label)],
+      })) as bigint;
+      labelByResource.set(resource.toString(), entry.label);
+      expectations.push({
+        contract: registryName,
+        scope: entry.label,
+        account: getAddress(address),
+        roles: entry.roles,
+      });
+      want(resource, getAddress(address));
+    }
+
     const fromBlock =
       opts.fromBlock !== undefined
         ? BigInt(opts.fromBlock)
@@ -3746,31 +3825,78 @@ export async function verifyV2Roles(opts: {
             deploymentNetwork,
             registryName,
           ) ?? 0n);
-    const accounts = new Set<Address>([
-      ...(await discoverRoleAccounts(client, registry.address, fromBlock)),
+    const discovered = await discoverRoleGrants(
+      client,
+      registry.address,
+      fromBlock,
+    );
+
+    // Everyone ever granted anything here is asked about the root, whichever scope
+    // they were discovered at: a token grantee may hold root roles too.
+    const rootAccounts = new Set<Address>([
+      ...discovered.map((grant) => grant.account),
       ...expectations
         .filter((expectation) => expectation.contract === registryName)
         .map((expectation) => getAddress(expectation.account as Address)),
     ]);
+    for (const account of rootAccounts) want(0n, account);
 
-    // Root scope is resource 0. Reading it live is what makes the audit sound: a
-    // replay of the discovery events would report grants that expiry or a version
-    // bump has since made unreachable.
+    // A scoped grant survives in storage after the name it belongs to is expired or
+    // re-registered, but the resource it sits at is no longer the one the registry
+    // consults, so the roles cannot be exercised. Reporting those would be noise;
+    // the current resource is the only one that carries authority.
+    if (AUDIT_TOKEN_SCOPES[registryName]) {
+      const scoped = discovered.filter((grant) => grant.resource !== 0n);
+      const resources = [...new Set(scoped.map((grant) => grant.resource))];
+      const current = await client.multicall({
+        allowFailure: true,
+        contracts: resources.map((resource) => ({
+          address: registry.address,
+          abi: Artifact_PermissionedRegistry.abi,
+          functionName: "getResource",
+          args: [resource],
+        })),
+      });
+      const live = new Set<string>();
+      let orphaned = 0;
+      for (const [index, resource] of resources.entries()) {
+        const result = current[index];
+        if (result.status === "failure") continue;
+        if ((result.result as bigint) === resource)
+          live.add(resource.toString());
+        else orphaned++;
+      }
+      for (const grant of scoped) {
+        if (live.has(grant.resource.toString())) {
+          want(grant.resource, grant.account);
+        }
+      }
+      if (orphaned > 0) {
+        console.log(
+          `${registryName}: ${orphaned} scoped grant resource(s) superseded by a re-registration, so no longer reachable`,
+        );
+      }
+    }
+
+    // Reading live is what makes the audit sound: a replay of the discovery events
+    // would report grants that expiry or a version bump has since made unreachable.
+    const pairs = [...wanted.values()];
     const results = await client.multicall({
       allowFailure: true,
-      contracts: [...accounts].map((account) => ({
+      contracts: pairs.map((pair) => ({
         address: registry.address,
         abi: Artifact_PermissionedRegistry.abi,
         functionName: "roles",
-        args: [0n, account],
+        args: [pair.resource, pair.account],
       })),
     });
 
-    for (const [index, account] of [...accounts].entries()) {
+    for (const [index, pair] of pairs.entries()) {
       const result = results[index];
+      const scope = describeScope(pair.resource, labelByResource);
       if (result.status === "failure") {
         throw new Error(
-          `${registryName}: roles(root, ${account}) failed: ${result.error}`,
+          `${registryName}: roles(${scope}, ${pair.account}) failed: ${result.error}`,
         );
       }
       const roles = result.result as bigint;
@@ -3778,8 +3904,8 @@ export async function verifyV2Roles(opts: {
       holders.push({
         contract: registryName,
         address: registry.address,
-        scope: "root",
-        account,
+        scope,
+        account: pair.account,
         roles,
       });
     }
