@@ -6622,14 +6622,16 @@ export async function runForkFull(opts: RunForkFullOptions) {
   // proxies whose admin is a real account — so deploying into it makes phase 1 try
   // to adopt and upgrade them, which fails on a fork with an opaque proxy-ownership
   // error. `-fork` namespaces are already gitignored for exactly this purpose.
-  const usingForkNamespace = opts.deploymentNetwork === undefined;
   const deploymentNetwork =
     opts.deploymentNetwork ?? `${network.environment}-fork`;
   // Phase 3's controller audit reads the active deployment's handoff contracts off
   // disk to tell them apart from a superseded deployment's, so a rehearsal has to
-  // persist them. Writing into the throwaway `-fork` namespace costs nothing: it is
-  // gitignored and re-created by the next run.
-  const saveDeployments = opts.saveDeployments || usingForkNamespace;
+  // persist them — whichever namespace it deployed into. Gating this on the
+  // automatic `-fork` namespace meant a run given `--deployment-network` wrote no
+  // artifacts and then threw in phase 3 for want of them. Writing into the
+  // throwaway `-fork` namespace costs nothing either: it is gitignored and
+  // re-created by the next run.
+  const saveDeployments = true;
   const v1Deployments = {
     v1DeploymentsDir: opts.v1DeploymentsDir,
     v1DeploymentNetwork: opts.v1DeploymentNetwork,
@@ -6989,19 +6991,21 @@ export async function runForkFull(opts: RunForkFullOptions) {
     const smokeLabels =
       resumeFromPhase === 2
         ? (() => {
-            const [migrate, reservedOnly] = readPremigrationLabels(
-              transformedCsv,
-              2,
-            );
+            // All three names the interrupted run registered on v1 and seeded onto
+            // v2 are in the CSV. Reading only two and minting a fresh wrapped label
+            // produced one that v1 never knew, so the wrapped migration reverted and
+            // the resumed rehearsal could not finish.
+            const [migrate, reservedOnly, migrateWrapped] =
+              readPremigrationLabels(transformedCsv, 3);
             console.log(
-              `resumed smoke labels: ${migrate}.eth, ${reservedOnly}.eth`,
+              `resumed smoke labels: ${migrate}.eth, ${reservedOnly}.eth, ${migrateWrapped}.eth`,
             );
             return {
               v1BeforeDisable: `${smokePrefix}pre`,
               migrate,
               reservedOnly,
               v1AfterDisable: `${smokePrefix}block`,
-              migrateWrapped: `${smokePrefix}wrap`,
+              migrateWrapped,
               v2BeforeEnable: `${smokePrefix}v2block`,
               v2AfterEnable: `${smokePrefix}v2ok`,
             };
