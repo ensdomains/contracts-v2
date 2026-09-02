@@ -3,18 +3,12 @@ pragma solidity >=0.8.13;
 
 import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedAccessControl.sol";
 import {IContractNamer} from "../../reverse-registrar/interfaces/IContractNamer.sol";
-import {IControllableOnlyBy} from "../../utils/IControllableOnlyBy.sol";
 
 import {IRegistryURIRenderer} from "./IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0x5ca2b430`
-interface IPermissionedRegistry is
-    IStandardRegistry,
-    IEnhancedAccessControl,
-    IControllableOnlyBy,
-    IContractNamer
-{
+/// @dev Interface selector: `0xc9f0d2c5`
+interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -51,6 +45,18 @@ interface IPermissionedRegistry is
     /// @notice Label cannot be reserved again.
     /// @dev Error selector: `0xf60759e0`
     error LabelAlreadyReserved(string label);
+
+    /// @notice Safe transfer is not allowed due to missing `CAN_TRANSFER_ADMIN` role.
+    /// @dev Error selector: `0xe58f6d5a`
+    error TransferDisallowed(uint256 tokenId, address from);
+
+    /// @notice Safe transfer is not allowed because the registry is not emancipated.
+    /// @dev Error selector: `0x54838f98`
+    error TransferUnsafeUntilRegistryIsEmancipated();
+
+    /// @notice Safe transfer is not allowed because the token has non-owner roles.
+    /// @dev Error selector: `0x677f1c18`
+    error TransferUnsafeWithMultipleAssignees(uint256 tokenId, address from);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
@@ -103,4 +109,7 @@ interface IPermissionedRegistry is
     /// @param anyId The labelhash, token ID, or resource.
     /// @return owner The token owner.
     function getOwner(uint256 anyId) external view returns (address owner);
+
+    /// @notice Return `true` if the tokens cannot be controlled by root.
+    function isEmancipated() external view returns (bool);
 }

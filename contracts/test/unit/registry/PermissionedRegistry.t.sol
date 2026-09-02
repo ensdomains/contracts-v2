@@ -24,7 +24,6 @@ import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegis
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
-import {IControllableOnlyBy} from "~src/utils/IControllableOnlyBy.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 
 uint256 constant DEFAULT_ROLE_BITMAP = EACBaseRolesLib.ALL_ROLES;
@@ -83,10 +82,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertTrue(
             registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
             "IPermissionedRegistry"
-        );
-        assertTrue(
-            registry.supportsInterface(type(IControllableOnlyBy).interfaceId),
-            "IControllableOnlyBy"
         );
         assertTrue(registry.supportsInterface(type(IContractNamer).interfaceId), "IContractNamer");
     }
@@ -697,10 +692,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeTransferFrom() external {
-        StrictERC1155Holder r = new StrictERC1155Holder(false);
-        _makeTransferSafe(address(r));
+        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
+        StrictERC1155Holder r = new StrictERC1155Holder(false);
         vm.expectEmit();
         emit IERC1155.TransferSingle(user1, user1, address(r), tokenId, 1);
         vm.expectEmit();
@@ -712,7 +707,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeTransferFrom_noop() external {
-        _makeTransferSafe(user2);
+        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
         vm.expectEmit();
@@ -778,9 +773,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_transfer_notAuthorized(bool permissioned) external {
+        _makeEmancipated();
         uint256 tokenId = this._register();
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+            abi.encodeWithSelector(IPermissionedRegistry.TransferDisallowed.selector, tokenId, user1)
         );
         vm.prank(user1);
         if (permissioned) {
@@ -791,11 +787,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_transfer_notAuthorized_setApprovalForAll(bool permissioned) external {
+        _makeEmancipated();
         uint256 tokenId = this._register();
         vm.prank(user1);
         registry.setApprovalForAll(user2, true);
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+            abi.encodeWithSelector(IPermissionedRegistry.TransferDisallowed.selector, tokenId, user1)
         );
         vm.prank(user2);
         if (permissioned) {
@@ -814,7 +811,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         vm.prank(user1);
         registry.setApprovalForAll(address(this), true);
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+            abi.encodeWithSelector(IPermissionedRegistry.TransferDisallowed.selector, tokenId, user1)
         );
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
@@ -829,8 +826,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom() external {
-        StrictERC1155Holder r = new StrictERC1155Holder(true);
-        _makeTransferSafe(address(r));
+        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register();
@@ -839,6 +835,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1;
         amounts[1] = 1;
+        StrictERC1155Holder r = new StrictERC1155Holder(true);
         vm.expectEmit();
         emit IERC1155.TransferBatch(user1, user1, address(r), tokenIds, amounts);
         vm.expectEmit();
@@ -854,7 +851,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom_noop() external {
-        _makeTransferSafe(user2);
+        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register();
@@ -866,21 +863,25 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom_noopAfterTransfer() external {
-        _makeTransferSafe(user2);
+        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = tokenIds[1] = this._register();
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1;
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenIds[1], user1)
+            abi.encodeWithSelector(
+                IPermissionedRegistry.TransferDisallowed.selector,
+                tokenIds[1],
+                user1
+            )
         );
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
     }
 
     function test_safeBatchTransferFrom_twiceToSelf() external {
-        _makeTransferSafe(user1);
+        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = tokenIds[1] = this._register();
@@ -891,6 +892,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom_oneError() external {
+        _makeEmancipated();
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register(); // no transfer role
         testLabel = string.concat(testLabel, testLabel);
@@ -900,7 +902,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         amounts[0] = 1;
         amounts[1] = 1;
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenIds[0], user1)
+            abi.encodeWithSelector(
+                IPermissionedRegistry.TransferDisallowed.selector,
+                tokenIds[0],
+                user1
+            )
         );
         vm.prank(user1);
         registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
@@ -1597,26 +1603,17 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Transfer Restrictions
+    // Safe Transfer Restrictions
     ////////////////////////////////////////////////////////////////////////
 
-    function test_makeTransferSafe() external {
-        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
-        uint256 tokenId = this._register();
-        // transfer is blocked
-        vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
-        );
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-        // tranfer is allowed
-        _makeTransferSafe(user1);
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user1, tokenId, 1, "");
+    function test_makeEmancipated() external {
+        assertFalse(registry.isEmancipated());
+        _makeEmancipated();
+        assertTrue(registry.isEmancipated());
     }
 
     function test_transferWithoutOnlyAssignee() external {
-        _makeTransferSafe(user2);
+        _makeEmancipated();
         testRoles =
             RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
         uint256 tokenId = this._register();
@@ -1626,9 +1623,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.grantRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user2);
         tokenId = registry.getTokenId(tokenId); // token has regenerated
         assertFalse(registry.isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, user1));
+        assertTrue(registry.isEmancipated());
         // safe transfer is blocked
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+            abi.encodeWithSelector(
+                IPermissionedRegistry.TransferUnsafeWithMultipleAssignees.selector,
+                tokenId,
+                user1
+            )
         );
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
@@ -1637,8 +1639,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.unsafeTransfer(user2, tokenId, "");
     }
 
-    function test_transferWithRegistryRootOverlap_tokenRegular_rootRegular() external {
-        _makeTransferSafe(user2);
+    function test_transferWhileNotEmancipated_tokenRegular_rootRegular() external {
+        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER;
         uint256 tokenId = this._register();
         // apply *any* overlapping root grant
@@ -1647,9 +1649,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             RegistryRolesLib.ROLE_SET_RESOLVER,
             address(this)
         );
+        assertFalse(registry.isEmancipated());
         // safe transfer is blocked
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+            abi.encodeWithSelector(IPermissionedRegistry.TransferUnsafeUntilRegistryIsEmancipated.selector)
         );
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
@@ -1658,8 +1661,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.unsafeTransfer(user2, tokenId, "");
     }
 
-    function test_transferWithRegistryRootOverlap_tokenAdmin_rootRegular() external {
-        _makeTransferSafe(user2);
+    function test_transferWhileNotEmancipated_tokenAdmin_rootRegular() external {
+        _makeEmancipated();
         testRoles =
             RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
         uint256 tokenId = this._register();
@@ -1669,9 +1672,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             RegistryRolesLib.ROLE_SET_RESOLVER,
             address(this)
         );
+        assertFalse(registry.isEmancipated());
         // safe transfer is blocked
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+            abi.encodeWithSelector(IPermissionedRegistry.TransferUnsafeUntilRegistryIsEmancipated.selector)
         );
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
@@ -1680,8 +1684,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.unsafeTransfer(user2, tokenId, "");
     }
 
-    function test_transferWithRegistryRootOverlap_tokenRegular_rootAdmin() external {
-        _makeTransferSafe(user2);
+    function test_transferWhileNotEmancipated_tokenRegular_rootAdmin() external {
+        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER;
         uint256 tokenId = this._register();
         // apply *any* overlapping root grant
@@ -1690,123 +1694,16 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN,
             address(this)
         );
+        assertFalse(registry.isEmancipated());
         // safe transfer is blocked
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+            abi.encodeWithSelector(IPermissionedRegistry.TransferUnsafeUntilRegistryIsEmancipated.selector)
         );
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
         // must use unsafe transfer
         vm.prank(user1);
         registry.unsafeTransfer(user2, tokenId, "");
-    }
-
-    function test_transferWithMutableSubregistry() external {
-        _makeTransferSafe(user1);
-        testRoles =
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN;
-        uint256 tokenId = this._register();
-        // any *any* non-owner root grants to subregistry
-        vm.prank(user1);
-        testRegistry.grantRootRoles(EACBaseRolesLib.ALL_ROLES, user2);
-        // safeTransfer is allowed
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user1, tokenId, 1, "");
-        tokenId = registry.getTokenId(tokenId); // token has regenerated
-        // remove mutability
-        vm.prank(user1);
-        registry.revokeRoles(tokenId, RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN, user1);
-        tokenId = registry.getTokenId(tokenId); // token has regenerated
-        // safe transfer is blocked
-        vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
-        );
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-        // must use unsafe transfer
-        vm.prank(user1);
-        registry.unsafeTransfer(user2, tokenId, "");
-    }
-
-    function test_transferWithLockedubregistry_null() external {
-        _makeRegistryOnlyRegistrar();
-        delete testRegistry;
-        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
-        uint256 tokenId = this._register();
-        // safeTransfer is allowed
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-    }
-
-    function test_transferWithLockedSubregistry_noCode() external {
-        _makeRegistryOnlyRegistrar();
-        testRegistry = PermissionedRegistry(user1); // eoa
-        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
-        uint256 tokenId = this._register();
-        // safe transfer is blocked
-        vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
-        );
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-        // must use unsafe transfer
-        vm.prank(user1);
-        registry.unsafeTransfer(user2, tokenId, "");
-    }
-
-    function test_transferWithLockedSubregistry_isOnlyAssigneeNotImplemented() external {
-        _makeRegistryOnlyRegistrar();
-        testRegistry = PermissionedRegistry(address(labelStore)); // no isOnlyAssignee()
-        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
-        uint256 tokenId = this._register();
-        // safe transfer is blocked
-        vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
-        );
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-        // must use unsafe transfer
-        vm.prank(user1);
-        registry.unsafeTransfer(user2, tokenId, "");
-    }
-
-    function test_transferWithLockedSubregistry_twoAssignees() external {
-        _makeTransferSafe(user2);
-        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
-        uint256 tokenId = this._register();
-        // any *any* non-owner root grants to subregistry
-        vm.prank(user2);
-        testRegistry.grantRootRoles(EACBaseRolesLib.ALL_ROLES, user1);
-        assertEq(
-            testRegistry.roleCount(testRegistry.ROOT_RESOURCE()) &
-            RegistryRolesLib.ROLE_REGISTRAR * 15,
-            2
-        );
-        // safe transfer is blocked
-        vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
-        );
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-        // remove grant
-        vm.prank(user2);
-        testRegistry.revokeRootRoles(EACBaseRolesLib.ALL_ROLES, user1);
-        // safeTransfer is allowed
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-    }
-
-    function test_transferWithLockedSubregistry_noAssignees() external {
-        _makeTransferSafe(user2);
-        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
-        uint256 tokenId = this._register();
-        // remove all roles
-        vm.prank(user2);
-        testRegistry.revokeRootRoles(EACBaseRolesLib.ALL_ROLES, user2);
-        assertEq(testRegistry.roleCount(testRegistry.ROOT_RESOURCE()), 0);
-        // safeTransfer is allowed
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1888,7 +1785,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         vm.warp(testExpiry);
         // step #2: transfer while expired
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
+            abi.encodeWithSelector(IPermissionedRegistry.TransferDisallowed.selector, tokenId, user1)
         );
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
@@ -2037,21 +1934,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             );
     }
 
-    function _makeRegistryOnlyRegistrar() internal {
-        uint256 reducedRoleBitmap = RegistryRolesLib.ROLE_REGISTRAR;
-        if (registry.roles(registry.ROOT_RESOURCE(), address(this)) != reducedRoleBitmap) {
-            assertTrue(
-                registry.revokeRootRoles(
-                    EACBaseRolesLib.ALL_ROLES & ~reducedRoleBitmap,
-                    address(this)
-                )
-            );
-        }
-    }
-
-    function _makeTransferSafe(address newOwner) internal {
-        _makeRegistryOnlyRegistrar();
-        testRegistry = new PermissionedRegistry(labelStore, newOwner, EACBaseRolesLib.ALL_ROLES);
+    function _makeEmancipated() internal {
+        assertTrue(
+            registry.isEmancipated() ||
+            registry.revokeRootRoles(RegistryRolesLib.EMANCIPATED_ROLE_BITMAP, address(this))
+        );
     }
 
     function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {

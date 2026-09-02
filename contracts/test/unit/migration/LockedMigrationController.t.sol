@@ -626,7 +626,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         registry.register(testLabel, actor, testRegistry, testResolver, 0, _soon());
     }
 
-    function test_migrate_transferRegistryControl_withGrants() external {
+    function test_migrate_transferRegistryControl() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         bytes32 node = NameCoder.namehash(name, 0);
         LibMigration.Data memory md = _lockedData(name);
@@ -671,7 +671,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         // safe transfer rejected because of outstanding grants
         vm.expectRevert(
-            abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, testOwner)
+            abi.encodeWithSelector(
+                IPermissionedRegistry.TransferUnsafeWithMultipleAssignees.selector,
+                tokenId,
+                testOwner
+            )
         );
         vm.prank(testOwner);
         ethRegistry.safeTransferFrom(testOwner, friend, tokenId, 1, "");
@@ -684,41 +688,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "after:owner");
         assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), rootRoles, "after:friend");
         assertEq(registry.roles(registry.ROOT_RESOURCE(), actor), 0, "after:actor");
-
-        // underlying virtual owner roles are unchanged
-        assertEq(registry.roles(registry.ROOT_RESOURCE(), virtualOwner), rootRoles, "virtual");
-    }
-
-    function test_migrate_transferRegistryControl_noGrants() external {
-        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        bytes32 node = NameCoder.namehash(name, 0);
-        LibMigration.Data memory md = _lockedData(name);
-
-        vm.prank(testOwner);
-        nameWrapper.safeTransferFrom(
-            testOwner,
-            address(migrationController),
-            uint256(node),
-            1,
-            abi.encode(md)
-        );
-
-        IWrapperRegistry registry = IWrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
-        address virtualOwner = address(ethRegistry);
-
-        uint256 rootRoles = registry.roles(registry.ROOT_RESOURCE(), virtualOwner);
-        assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), rootRoles, "before:owner");
-        assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), 0, "before:friend");
-
-        uint256 tokenId = ethRegistry.findTokenId(md.label);
-
-        // safe transfer is allowed because no outstanding grants
-        vm.prank(testOwner);
-        ethRegistry.safeTransferFrom(testOwner, friend, tokenId, 1, "");
-
-        // effective roles have "transferred"
-        assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "after:owner");
-        assertEq(registry.roles(registry.ROOT_RESOURCE(), friend), rootRoles, "after:friend");
 
         // underlying virtual owner roles are unchanged
         assertEq(registry.roles(registry.ROOT_RESOURCE(), virtualOwner), rootRoles, "virtual");

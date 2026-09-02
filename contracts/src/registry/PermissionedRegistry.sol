@@ -9,7 +9,6 @@ import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
-import {IControllableOnlyBy} from "../utils/IControllableOnlyBy.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
@@ -129,7 +128,6 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             interfaceId == type(IRegistry).interfaceId ||
             interfaceId == type(IPermissionedRegistry).interfaceId ||
             interfaceId == type(IStandardRegistry).interfaceId ||
-            interfaceId == type(IControllableOnlyBy).interfaceId ||
             interfaceId == type(IContractNamer).interfaceId ||
             interfaceId == type(ITokenizedRegistry).interfaceId ||
             interfaceId == type(ITemporalRegistry).interfaceId ||
@@ -404,11 +402,12 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         return super.getAssigneeCount(getResource(anyId), roleBitmap);
     }
 
-    /// @inheritdoc IControllableOnlyBy
-    function isControllableOnlyBy(address account) public view returns (bool) {
+    /// @inheritdoc IPermissionedRegistry
+    function isEmancipated() public view returns (bool) {
         return
-            isOnlyAssignee(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, account) ||
-            roleCount(ROOT_RESOURCE) == 0;
+            (RegistryRolesLib.EMANCIPATED_ROLE_BITMAP &
+                EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) ==
+            0;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -500,16 +499,18 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     {
         super._update(from, to, tokenIds, amounts, safe); // ensures amounts[i] is 0 or 1
         if (to != address(0) && from != address(0)) {
+            if (safe && !isEmancipated()) {
+                revert TransferUnsafeUntilRegistryIsEmancipated();
+            }
             // only transfers (skip mint and burn)
             for (uint256 i; i < tokenIds.length; ++i) {
                 uint256 tokenId = tokenIds[i];
                 // only check ROLE_CAN_TRANSFER_ADMIN on original owner (from)
                 // ROLE_CAN_TRANSFER_ADMIN is technically a property of the token
-                if (
-                    !hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from) ||
-                    (safe && !_isTransferSafe(tokenId, from, to))
-                ) {
+                if (!hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
                     revert TransferDisallowed(tokenId, from);
+                } else if (safe && !isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, from)) {
+                    revert TransferUnsafeWithMultipleAssignees(tokenId, from);
                 } else if (amounts[i] > 0) {
                     _transferRoles(getResource(tokenId), from, to, false);
                 }
@@ -589,10 +590,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc EnhancedAccessControl
-    /// @dev Override for token-dependent logic:
-    ///
-    /// * if caller is approved by token owner, combine the caller's roles with the owner's roles
-    ///
+    /// @dev If caller is approved by token owner, combine the caller's roles with the owner's roles.
     function _getRoles(uint256 resource, address account)
         internal
         view
@@ -625,41 +623,6 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         returns (bool)
     {
         return hasRootRoles(RegistryRolesLib.ROLE_RENEW, sender);
-    }
-
-    /// @dev Determine if the token can be transferred.
-    function _isTransferSafe(uint256 anyId, address oldOwner, address newOwner)
-        internal
-        view
-        virtual
-        returns (bool)
-    {
-        if (!isOnlyAssignee(anyId, EACBaseRolesLib.ALL_ROLES, oldOwner)) {
-            return false; // non-owner roles
-        }
-        uint256 tokenBitmap = EACBaseRolesLib.toRegular(roles(anyId, oldOwner));
-        uint256 rootBitmap =
-            EACBaseRolesLib.toRegular(
-                RegistryRolesLib.CONFLICTING_ROLE_BITMAP &
-                EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))
-            );
-        if ((rootBitmap & tokenBitmap) != 0) {
-            return false; // root has overlapping roles
-        }
-        if ((tokenBitmap & RegistryRolesLib.ROLE_SET_SUBREGISTRY) != 0) {
-            return true; // subregistry is mutable
-        }
-        address subregistry = address(_entry(anyId).subregistry);
-        if (subregistry == address(0)) {
-            return true; // subregistry is unset
-        } else if (subregistry.code.length == 0) {
-            return false; // subregistry is not a contract
-        }
-        try IControllableOnlyBy(subregistry).isControllableOnlyBy(newOwner) returns (bool only) {
-            return only; // note: can lie
-        } catch {
-            return false; // unable to confirm
-        }
     }
 
     /// @dev Assert token is not expired and caller has necessary roles.
