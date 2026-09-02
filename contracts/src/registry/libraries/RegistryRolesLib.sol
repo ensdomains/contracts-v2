@@ -61,4 +61,13 @@ library RegistryRolesLib {
     uint256 internal constant ROLE_UPGRADE = 1 << 124;
     /// @dev Nybble 63: authorizes setting `ROLE_UPGRADE`.
     uint256 internal constant ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
+
+    /// @dev Roles which overlap with root and token. 
+    uint256 internal constant CONFLICTING_ROLE_BITMAP =
+        ROLE_SET_SUBREGISTRY |
+        ROLE_SET_SUBREGISTRY_ADMIN |
+        ROLE_SET_RESOLVER |
+        ROLE_SET_RESOLVER_ADMIN |
+        ROLE_UNREGISTER |
+        ROLE_UNREGISTER_ADMIN;
 }

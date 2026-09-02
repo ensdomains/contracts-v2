@@ -9,6 +9,7 @@ import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {IControllableOnlyBy} from "../utils/IControllableOnlyBy.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
@@ -125,13 +126,14 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         returns (bool)
     {
         return
+            interfaceId == type(IRegistry).interfaceId ||
             interfaceId == type(IPermissionedRegistry).interfaceId ||
             interfaceId == type(IStandardRegistry).interfaceId ||
+            interfaceId == type(IControllableOnlyBy).interfaceId ||
+            interfaceId == type(IContractNamer).interfaceId ||
             interfaceId == type(ITokenizedRegistry).interfaceId ||
             interfaceId == type(ITemporalRegistry).interfaceId ||
             interfaceId == type(IOwnedRegistry).interfaceId ||
-            interfaceId == type(IRegistry).interfaceId ||
-            interfaceId == type(IContractNamer).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -177,7 +179,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IPermissionedRegistry
-    function permissionedTransfer(address to, uint256 anyId, bytes calldata data) public virtual {
+    function unsafeTransfer(address to, uint256 anyId, bytes calldata data) public virtual {
         address owner = getOwner(anyId);
         _checkApproval(owner, msg.sender);
         _checkReceiver(to);
@@ -400,6 +402,11 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         returns (uint256 counts, uint256 mask)
     {
         return super.getAssigneeCount(getResource(anyId), roleBitmap);
+    }
+
+    /// @inheritdoc IControllableOnlyBy
+    function isControllableOnlyBy(address account) public view returns (bool) {
+        return isOnlyAssignee(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, account);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -628,15 +635,16 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         if (!isOnlyAssignee(anyId, EACBaseRolesLib.ALL_ROLES, oldOwner)) {
             return false; // non-owner roles
         }
-        uint256 roleBitmap = EACBaseRolesLib.toRegular(roles(anyId, oldOwner));
-        if (
-            (EACBaseRolesLib.toRegular(EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) &
-                roleBitmap) !=
-            0
-        ) {
-            return false; // root has overlapping capabilities
+        uint256 tokenBitmap = EACBaseRolesLib.toRegular(roles(anyId, oldOwner));
+        uint256 rootBitmap =
+            EACBaseRolesLib.toRegular(
+                RegistryRolesLib.CONFLICTING_ROLE_BITMAP &
+                EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))
+            );
+        if ((rootBitmap & tokenBitmap) != 0) {
+            return false; // root has overlapping roles
         }
-        if ((roleBitmap & RegistryRolesLib.ROLE_SET_SUBREGISTRY) != 0) {
+        if ((tokenBitmap & RegistryRolesLib.ROLE_SET_SUBREGISTRY) != 0) {
             return true; // subregistry is mutable
         }
         address subregistry = address(_entry(anyId).subregistry);
@@ -645,11 +653,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         } else if (subregistry.code.length == 0) {
             return false; // subregistry is not a contract
         }
-        try IEnhancedAccessControl(subregistry).isOnlyAssignee(
-            ROOT_RESOURCE,
-            EACBaseRolesLib.ALL_ROLES,
-            newOwner
-        ) returns (bool only) {
+        try IControllableOnlyBy(subregistry).isControllableOnlyBy(newOwner) returns (bool only) {
             return only; // note: can lie
         } catch {
             return false; // unable to confirm

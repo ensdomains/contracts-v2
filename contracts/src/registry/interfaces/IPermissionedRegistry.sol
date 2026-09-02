@@ -3,12 +3,18 @@ pragma solidity >=0.8.13;
 
 import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedAccessControl.sol";
 import {IContractNamer} from "../../reverse-registrar/interfaces/IContractNamer.sol";
+import {IControllableOnlyBy} from "../../utils/IControllableOnlyBy.sol";
 
 import {IRegistryURIRenderer} from "./IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0x406738d4`
-interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IContractNamer {
+/// @dev Interface selector: `0x5ca2b430`
+interface IPermissionedRegistry is
+    IStandardRegistry,
+    IEnhancedAccessControl,
+    IControllableOnlyBy,
+    IContractNamer
+{
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -50,11 +56,11 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Transfer a token without permission checks on the token, root, and locked subregistry root.
+    /// @notice Transfer a token without safety checks on the token, root, and locked subregistry root.
     /// @param to Address to transfer to.
     /// @param anyId The labelhash, token ID, or resource.
     /// @param data Additional calldata passed to receiver hooks.
-    function permissionedTransfer(address to, uint256 anyId, bytes calldata data) external;
+    function unsafeTransfer(address to, uint256 anyId, bytes calldata data) external;
 
     /// @notice Change metadata parameters.
     /// @dev Should emit `URIUpdated`.
