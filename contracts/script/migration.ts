@@ -7710,7 +7710,20 @@ export async function runForkFull(opts: RunForkFullOptions) {
       resolutionBefore,
       resolutionAfter,
     );
-    if (resolutionDifferences.length === 0) {
+    // A record that reverted on both sides counts as unchanged, so a sample whose
+    // every record reverted throughout compares nothing and still reports success.
+    // Say that rather than letting a vacuous pass read like a verified cutover.
+    const resolvedAnything = [resolutionBefore, resolutionAfter].some(
+      (snapshot) =>
+        snapshot.names.some((entry) =>
+          Object.values(entry.records).some((value) => value !== null),
+        ),
+    );
+    if (!resolvedAnything) {
+      console.log(
+        `resolution across the cutover was not verified: none of ${resolutionNames.length} sampled name(s) resolved any record before or after, so there was nothing to compare — pass --resolution-names with a name that has records`,
+      );
+    } else if (resolutionDifferences.length === 0) {
       console.log(
         `resolution unchanged across the cutover for ${resolutionNames.length} name(s)`,
       );
