@@ -51,9 +51,8 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 | Phase | Action | Command(s) | Applies to | Signer |
 | --- | --- | --- | --- | --- |
 | 0 | Deploy fresh v1 contracts | part of `clean-testnet` | clean-testnet only | `deployer` |
-| F0 | *(optional)* Seed the ENSv1 test fixture corpus | `fixture seed-v1` | live + clean-testnet | fixture operator + v1 owner |
 | 1 | Deploy all v2 contracts, including reverse-registrar adapters and the HCA stack on HCA-enabled networks (registrar deferred) | `phase deploy-v2` | live + clean-testnet | `deployer` / `owner` / `urManager` (+ v1 owner) |
-| F1 | *(optional)* Approve `MigrationHelper` for fixture actors | `fixture prepare` | live + clean-testnet | fixture actors |
+| F1 | *(optional)* Seed the ENSv1 test fixture corpus, then check the shaped v1 state | `fixture seed-v1` → `prepare` → `verify-v1` | live + clean-testnet | fixture operator + actors (+ v1 owner) |
 | 2 | Seed v1 names as reserved on v2 | `premigration run` → `verify` | live + clean-testnet | BatchRegistrar owner |
 | 3 | Freeze v1 registrations | `phase disable-v1-registrars` (+ `verify-*`) | live + clean-testnet | v1 owner |
 | 4 | Keep unmigrated names renewable | `phase authorize-v1-renewer` | live + clean-testnet | v1 owner |
@@ -369,13 +368,14 @@ sample, not a real export.
 Run the phases in order; each links to its entry in [Phases](#phases) for the exact command,
 prerequisites, and expected outcome:
 
-0. *(optional)* [Seed the ENSv1 test fixture corpus](#ensv1-test-fixture-corpus) with
-   `fixture seed-v1`. **This must happen before phase 3**, which freezes v1 registration.
 1. [Phase 1 — deploy fresh v2](#phase-1-deploy-v2-contracts), recording v1-owner txs with
    `--defer-v1-owner-transactions --deferred-v1-owner-transactions-file .dev/sepolia-live/phase1-v1owner.jsonl`
    and replaying the resolver update and reverse-adapter grants via
    `phase execute-owner-txs --role v1Owner`.
-   Then, if seeding fixtures, run `fixture prepare` to approve `MigrationHelper`.
+   Then, *(optional)* [seed the ENSv1 test fixture corpus](#ensv1-test-fixture-corpus):
+   `fixture seed-v1` → `fixture prepare` → `fixture verify-v1`. **This must sit after phase 1**,
+   which deploys the `MigrationHelper` the corpus approves, **and before phase 3**, which freezes
+   v1 registration.
 2. [Phase 2 — initial pre-migration](#phase-2-initial-pre-migration) (`--work-dir .dev/sepolia-live/premig-1`).
    Pass the fixture label CSV alongside the real export if the corpus was seeded.
 3. [Phase 3 — freeze v1 registrations](#phase-3-disable-v1-registrars) (`--private-key $SEPOLIA_V1_OWNER_KEY`).
@@ -439,14 +439,27 @@ on it.
 
 ### Input data
 
-The corpus is operator-supplied input, like the registration CSV. Put the bundle under
-`csv-data/` (gitignored) laid out as:
+The corpus ships with the repo as `contracts/fixtures/migration-fixture.tgz`. It expands to about
+54MB, so the archive is tracked and the working copy is not: `postinstall` unpacks it alongside the
+other CSV input, which is gitignored.
 
 ```
 csv-data/migration-fixture/
-  fixture/weighted-scenarios.jsonl    # one scenario per line
-  fixture/premigration-labels.csv     # labelName,fixtureId,…
+  weighted-scenarios.jsonl    # one scenario per line, ~54MB
 ```
+
+`bun install` does this. To unpack it by hand — after replacing the archive, or if a fresh checkout
+skipped lifecycle scripts — run `bun run fixtures:extract` from the repo root. It re-extracts only
+when the archive is newer than what was unpacked, so it is cheap to run repeatedly. Should the
+corpus ever change, repack it with:
+
+```bash
+cd contracts/csv-data && tar czf ../fixtures/migration-fixture.tgz migration-fixture
+```
+
+The scenario file is the whole corpus: the label list pre-migration reserves is derived from it
+rather than shipped beside it, since every column restates a field of the scenario and a second file
+could only fall out of step with the first.
 
 ### Choosing a cohort
 
@@ -494,13 +507,53 @@ bun run migration -- fixture seed-v1 --network sepolia \
 
 `seed-v1` deploys a batching helper and the corpus's counterparty contracts, registers each name
 through the official v1 commit/reveal controller at the duration its scenario asks for, shapes
-the v1 state, and writes `<work-dir>/fixture-premigration.csv`. It is resumable: a name already
+the v1 state, and writes `<work-dir>/fixture-premigration.csv`.
+
+Each scenario describes two points in time: the resolver and records the name was registered with,
+and the `target_current_*` state it carries by the time migration runs — which is what
+`expected_pre_migration` restates. Seeding replays the registration state, then the setup steps that
+model the history in between, then closes on the target state, so a name whose history clears records
+it is still expected to hold ends up holding them. A child name's own writes are deferred until the
+step that creates it, since until then the node has no owner to authorise them. It is resumable: a name already
 registered to a fixture actor is skipped, and one registered to anyone else aborts the run rather
 than shaping state against a name we do not control.
 
-> **Ordering.** Seeding must complete **before [phase 3](#phase-3-disable-v1-registrars)**, which
-> freezes v1 registration. After the freeze the corpus cannot be created at all without reopening
-> v1 registration, which is a network-wide change well outside this fixture's remit.
+> **Ordering.** Seeding sits **after [phase 1](#phase-1-deploy-v2-contracts) and before
+> [phase 3](#phase-3-disable-v1-registrars)**. It cannot precede phase 1: a large part of the corpus
+> approves `MigrationHelper` as an operator while shaping its v1 state, and that is a v2 contract
+> phase 1 is what deploys — planning those names without it fails with a missing deployment. It
+> cannot follow phase 3 either, since that freezes v1 registration, and reopening it is a
+> network-wide change well outside this fixture's remit.
+
+### Checking the shaped state
+
+Seeding is only useful if each name really ended up in the state its scenario describes, so
+`verify-v1` reads the state back and compares it:
+
+```bash
+bun run migration -- fixture verify-v1 --network sepolia \
+  --fixture-root csv-data/migration-fixture --work-dir .dev/fixture
+```
+
+For every seeded name it checks the registry owner, resolver and TTL, the `BaseRegistrar` token
+owner (the parent's, for a child name), the `NameWrapper` owner, the burned fuses, and every
+record the scenario declares. The fuse check is what proves the limitations the corpus exists to
+cover — a locked name must have `CANNOT_UNWRAP` burned, an unlocked one must not, an emancipated
+child must carry `PARENT_CANNOT_CONTROL`, and an unwrapped name must have no wrapper entry at
+all. Reads are batched through multicall, so a large cohort costs a few round trips.
+
+`NameWrapper` burns `PARENT_CANNOT_CONTROL | IS_DOT_ETH` itself on every wrapped `.eth` 2LD; the
+corpus does not restate those, and the check allows for them.
+
+It exits non-zero listing every mismatch, and writes the full set to
+`<work-dir>/fixture-v1-verification.json`. Run it before pre-migration, while a name whose state
+did not take can still be reshaped.
+
+> **A declared state can be unreachable.** Scenarios that ask for `CAN_EXTEND_EXPIRY` on a `.eth`
+> 2LD cannot be satisfied: it is a parent-controlled fuse, `wrapETH2LD` burns only
+> `PARENT_CANNOT_CONTROL | IS_DOT_ETH`, `setFuses` takes owner-controlled fuses alone, and
+> `setChildFuses` would need whoever holds the `.eth` parent in the wrapper — nobody does. The
+> verifier reports these rather than hiding them; they are a fault in the corpus, not the seeding.
 
 ### Reserving the fixture labels on v2
 
@@ -518,6 +571,32 @@ Run it in addition to the real registration export, at [phase 2](#phase-2-initia
 and again at [phase 5](#phase-5-final-pre-migration-sync). At that point the fixture names are
 registered on v1 and reserved on v2 — the state the rest of the migration expects.
 
+### In a rehearsal
+
+`fork full` and `clean-testnet` run the whole corpus stage themselves when given `--fixture-root`,
+placing each part where the ordering above requires: seeding, helper approval and the state check
+after phase 1, the fixture labels folded into the pre-migration CSV so phases 2 and 5 reserve them,
+and the migration after phase 6.
+
+```bash
+bun run migration -- fork full --network sepolia \
+  --csv-file ./csv-data/ens-registrations-sepolia.csv \
+  --work-dir .dev/forkfull --fixture-root ./csv-data/migration-fixture \
+  --fixture-profiles live_now --fixture-replicas-per-vector 1 --fixture-limit 40
+```
+
+The selection flags mirror the standalone ones (`--fixture-profiles`, `--fixture-tiers`,
+`--fixture-ids`, `--fixture-limit`, `--fixture-replicas-per-vector`). Keep a rehearsal cohort small:
+every name is a real commit/reveal registration plus its state-shaping calls, so the whole corpus
+costs far more wall-clock than the rest of the rehearsal put together.
+
+Against a state-controlled RPC (a local fork or a Tenderly virtual testnet) the operator key and the
+actor mnemonic are generated per run and funded directly, so no funded keys are needed; both are
+written under `<work-dir>/fixture/` so a resumed run addresses the same accounts. Generating them
+also avoids the EIP-7702 delegations that the well-known test accounts carry on live chains, which
+would otherwise make ERC-1155 receipt fail. On an RPC without state controls, pass
+`--fixture-private-key` and `--fixture-actor-mnemonic` (or their environment equivalents).
+
 ### Migrating the corpus
 
 `fixture prepare` grants `MigrationHelper` operator approval to every actor holding a
@@ -528,6 +607,16 @@ helper-routed name. Run it after phase 1.
 what authorises the migration controllers. Scenarios expecting a revert are recorded as such; a
 migration that succeeds but leaves the wrong v2 state is quarantined rather than counted as a
 pass.
+
+It performs the four routes that hand a v1 token to a v2 destination: `unlocked_controller`,
+`locked_controller`, `wrapper_registry_receiver` and `migration_helper`. Two gaps are recorded as
+`skipped` in the run summary rather than counted as migrated, and neither stops the run:
+
+- `graveyard` and `eth_renewer_v1` retire a name or renew one that stays on v1 rather than migrating
+  it, and have no implementation here.
+- A `wrapper_registry_receiver` child is delivered to the registry its migrated parent deployed, but
+  the corpus describes that parent only as `parent_fixture` metadata — it is not a fixture in its own
+  right, so nothing migrates it and the child has nowhere to go.
 
 ## Rehearsals
 
@@ -683,7 +772,8 @@ Two commands are **not** on-chain and intentionally omit the network options:
 | `fixture verify` | Offline: validate a fixture selection and plan every scenario's calls |
 | `fixture fund-actors` | Top up the fixture actor accounts from the operator key |
 | `fixture deploy-fixtures` | Deploy the fixture batcher and the corpus counterparty contracts |
-| `fixture seed-v1` | Register the ENSv1 fixture corpus and shape each name's pre-migration state (before phase 3) |
+| `fixture seed-v1` | Register the ENSv1 fixture corpus and shape each name's pre-migration state (after phase 1, before phase 3) |
+| `fixture verify-v1` | Read the shaped v1 state back and check it against each scenario (after `seed-v1`) |
 | `fixture prepare` | Approve `MigrationHelper` for the actors holding helper-routed fixture names (after phase 1) |
 | `fixture migrate` | Migrate the fixture corpus (after phase 6) |
 | `phase deploy-v2` | Phase 1: deploy the v2 migration contracts, reverse-registrar adapters, and enabled HCA infrastructure with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy) |

@@ -62,6 +62,8 @@ export type RecordSpec = {
   coin_type?: number;
   key?: string;
   value?: string;
+  /// Contenthash records carry their bytes here rather than in `value`.
+  value_hex?: string;
   value_actor?: string;
 };
 

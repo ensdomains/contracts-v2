@@ -79,7 +79,8 @@ export function resolveOptionalRef(
 
 export function executionProfile(scenario: Scenario): ExecutionProfile {
   const profile = scenario.execution?.profile;
-  if (!profile) throw new Error(`${scenario.scenario_id}: missing execution.profile`);
+  if (!profile)
+    throw new Error(`${scenario.scenario_id}: missing execution.profile`);
   return profile;
 }
 
@@ -99,7 +100,9 @@ export function expectedResult(scenario: Scenario): ExpectedResult {
 export function migrationRoute(scenario: Scenario): Route {
   const route = scenario.migration?.route;
   if (!route || !ROUTES.includes(route)) {
-    throw new Error(`${scenario.scenario_id}: unknown migration.route (${route})`);
+    throw new Error(
+      `${scenario.scenario_id}: unknown migration.route (${route})`,
+    );
   }
   return route;
 }
@@ -194,7 +197,9 @@ export function preMigrationOwnerAlias(scenario: Scenario): string {
     scenario.actors?.initial_owner ??
     scenario.v1?.registration?.owner_actor;
   if (!alias) {
-    throw new Error(`${scenario.scenario_id}: cannot determine pre-migration owner`);
+    throw new Error(
+      `${scenario.scenario_id}: cannot determine pre-migration owner`,
+    );
   }
   return stripActorPrefix(alias);
 }

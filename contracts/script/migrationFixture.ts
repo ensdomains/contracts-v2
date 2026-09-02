@@ -34,6 +34,7 @@ import { Artifact_CustomSubregistry } from "generated/artifacts/CustomSubregistr
 
 import {
   accounts,
+  bufferedGas,
   clients,
   fixtureDigest,
   loadDotEnv,
@@ -41,14 +42,15 @@ import {
   networkChain,
   optionalV1Deployment,
   parseNumber,
-  premigrationCsvFile,
   readJson,
   receipt,
   rpc,
   runStatePath,
   v1Deployment,
   v2Deployment,
+  withPriceBuffer,
 } from "./migrationFixture/config.js";
+import { verifySeededV1State } from "./migrationFixture/verifyV1.js";
 import {
   executionProfile,
   expectedResult,
@@ -79,25 +81,65 @@ import {
 import {
   MIGRATION_DATA_COMPONENTS,
   type CommonOptions,
+  type FixtureEnvelope,
   type FixtureRunName,
   type FixtureRunState,
 } from "./migrationFixture/types.js";
 
 /// Corpus fixture contracts, in the order the run state records them.
+/// The corpus's counterparty contracts. `v1Args` names the v1 deployments each
+/// constructor takes, in order.
+/// Routes `migrate` performs. The corpus also carries `graveyard` and
+/// `eth_renewer_v1`, which are not migrations into a v2 controller and have no
+/// implementation here yet.
+/// A child whose parent 2LD has not been migrated has nowhere to go. The corpus
+/// describes such a parent only as `parent_fixture` metadata rather than as a
+/// fixture of its own, so nothing migrates it and the child cannot be delivered.
+class ParentNotMigratedError extends Error {}
+
+/// `MigrationHelper.ParentNotMigrated(bytes)`. The helper route reaches the same
+/// condition on-chain that the receiver route detects from the registry.
+const PARENT_NOT_MIGRATED_SELECTOR = "0x83d435f1";
+
+function isParentNotMigrated(error: unknown): boolean {
+  if (error instanceof ParentNotMigratedError) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes(PARENT_NOT_MIGRATED_SELECTOR) ||
+    message.includes("ParentNotMigrated")
+  );
+}
+
+const EXECUTED_ROUTES = new Set([
+  "migration_helper",
+  "locked_controller",
+  "unlocked_controller",
+  "wrapper_registry_receiver",
+]);
+
 const FIXTURE_ARTIFACTS = [
-  { name: "CustomResolver", artifact: Artifact_CustomResolver, needsRegistry: true },
-  { name: "UnsupportedResolver", artifact: Artifact_UnsupportedResolver, needsRegistry: false },
-  { name: "ERC1155ReceiverOwner", artifact: Artifact_ERC1155ReceiverOwner, needsRegistry: false },
-  { name: "NonReceiverOwner", artifact: Artifact_NonReceiverOwner, needsRegistry: false },
-  { name: "CustomSubregistry", artifact: Artifact_CustomSubregistry, needsRegistry: false },
+  {
+    name: "CustomResolver",
+    artifact: Artifact_CustomResolver,
+    v1Args: ["ENSRegistry", "NameWrapper"],
+  },
+  {
+    name: "UnsupportedResolver",
+    artifact: Artifact_UnsupportedResolver,
+    v1Args: [],
+  },
+  {
+    name: "ERC1155ReceiverOwner",
+    artifact: Artifact_ERC1155ReceiverOwner,
+    v1Args: [],
+  },
+  { name: "NonReceiverOwner", artifact: Artifact_NonReceiverOwner, v1Args: [] },
+  {
+    name: "CustomSubregistry",
+    artifact: Artifact_CustomSubregistry,
+    v1Args: [],
+  },
 ] as const;
-
-/// Price is quoted before the transaction lands, so a buffer absorbs movement
-/// between quote and execution. Without it one underfunded name reverts the
-/// whole registration batch it travels in.
-const PRICE_BUFFER_BPS = 1_000n;
-
-const withBuffer = (price: bigint) => price + (price * PRICE_BUFFER_BPS) / 10_000n;
 
 function v1Addresses(opts: CommonOptions) {
   return {
@@ -146,7 +188,13 @@ function planContext(
 }
 
 const PRIOR_RENEWER_ABI = [
-  { type: "function", name: "owner", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  {
+    type: "function",
+    name: "owner",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "address" }],
+  },
   {
     type: "function",
     name: "transferRegistrarOwnership",
@@ -158,20 +206,38 @@ const PRIOR_RENEWER_ABI = [
 
 async function ownerWallet(opts: CommonOptions, owner: Address) {
   const chain = networkChain(opts.network, opts.rpcUrl, opts.chainId);
+  // Re-enabling the v1 controller can need more than one signer: the registrar
+  // owner, and — on an already-migrated chain — whoever owns the contract now
+  // holding registrar ownership. A configured key is used only for the account
+  // it actually controls, so a mismatch falls through to impersonation rather
+  // than failing a run that never needed the key.
   const key =
     opts.v1OwnerKey ??
     (process.env.SEPOLIA_V1_OWNER_KEY as Hex | undefined) ??
     (process.env.V1_OWNER_KEY as Hex | undefined);
   if (key) {
     const account = privateKeyToAccount(key);
-    if (getAddress(account.address) !== getAddress(owner)) {
-      throw new Error(`V1 owner key controls ${account.address}, expected ${owner}`);
+    if (getAddress(account.address) === getAddress(owner)) {
+      return createWalletClient({
+        chain,
+        account,
+        transport: http(opts.rpcUrl),
+      });
     }
-    return createWalletClient({ chain, account, transport: http(opts.rpcUrl) });
+    if (!opts.rpcStateControls) {
+      throw new Error(
+        `V1 owner key controls ${account.address}, but ${owner} must sign`,
+      );
+    }
   }
-  if (!opts.rpcStateControls) throw new Error(`missing V1 owner key for ${owner}`);
+  if (!opts.rpcStateControls)
+    throw new Error(`missing V1 owner key for ${owner}`);
   await fundAndImpersonate(opts, owner);
-  return createWalletClient({ chain, account: owner, transport: http(opts.rpcUrl) });
+  return createWalletClient({
+    chain,
+    account: owner,
+    transport: http(opts.rpcUrl),
+  });
 }
 
 /// Ensures the official v1 controller can register.
@@ -193,7 +259,8 @@ async function ensureV1ControllerEnabled(opts: CommonOptions): Promise<void> {
   if (enabled) return;
 
   const configured =
-    opts.v1Owner ?? (process.env.MIGRATION_FIXTURE_V1_OWNER as Address | undefined);
+    opts.v1Owner ??
+    (process.env.MIGRATION_FIXTURE_V1_OWNER as Address | undefined);
   if (!configured) {
     throw new Error(
       "v1 ETHRegistrarController is not authorised and no --v1-owner was supplied; " +
@@ -259,7 +326,8 @@ async function deployBatcher(opts: CommonOptions): Promise<Address> {
     args: [controller.address, account.address],
   });
   const r = await receipt(client, hash, "deploy MigrationFixtureBatcher");
-  if (!r.contractAddress) throw new Error("batcher deployment had no contract address");
+  if (!r.contractAddress)
+    throw new Error("batcher deployment had no contract address");
   return getAddress(r.contractAddress);
 }
 
@@ -268,17 +336,17 @@ async function deployFixtureContracts(
   existing: Record<string, Address>,
 ): Promise<Record<string, Address>> {
   const { client, wallet } = clients(opts);
-  const registry = v1Deployment(opts, "ENSRegistry");
   const out: Record<string, Address> = { ...existing };
-  for (const { name, artifact, needsRegistry } of FIXTURE_ARTIFACTS) {
+  for (const { name, artifact, v1Args } of FIXTURE_ARTIFACTS) {
     if (out[name]) continue;
     const hash = await wallet.deployContract({
       abi: artifact.abi,
       bytecode: artifact.bytecode,
-      args: (needsRegistry ? [registry.address] : []) as never,
+      args: v1Args.map((n) => v1Deployment(opts, n).address) as never,
     });
     const r = await receipt(client, hash, `deploy ${name}`);
-    if (!r.contractAddress) throw new Error(`${name} deployment had no address`);
+    if (!r.contractAddress)
+      throw new Error(`${name} deployment had no address`);
     out[name] = getAddress(r.contractAddress);
     console.log(`  ${name}: ${out[name]}`);
   }
@@ -290,11 +358,15 @@ const deterministicSecret = (fixtureId: string): Hex =>
 
 function chunk<T>(values: T[], size: number): T[][] {
   const out: T[][] = [];
-  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
+  for (let i = 0; i < values.length; i += size)
+    out.push(values.slice(i, i + size));
   return out;
 }
 
-async function waitCommitmentAge(opts: CommonOptions, seconds: bigint): Promise<void> {
+async function waitCommitmentAge(
+  opts: CommonOptions,
+  seconds: bigint,
+): Promise<void> {
   if (seconds <= 0n) return;
   if (opts.rpcStateControls) {
     await rpc(opts, "evm_increaseTime", [Number(seconds)]);
@@ -302,7 +374,8 @@ async function waitCommitmentAge(opts: CommonOptions, seconds: bigint): Promise<
     return;
   }
   const deadline = Date.now() + Number(seconds + 1n) * 1000;
-  while (Date.now() < deadline) await sleep(Math.min(5000, deadline - Date.now()));
+  while (Date.now() < deadline)
+    await sleep(Math.min(5000, deadline - Date.now()));
 }
 
 function loadRunState(opts: CommonOptions): FixtureRunState | null {
@@ -318,14 +391,38 @@ function saveRunState(opts: CommonOptions, state: FixtureRunState): void {
 /// Emits the label list for the pre-migration CLI. The source CSV already leads
 /// with a `labelName` column, which is the column preMigration.ts locates by
 /// name, so the filtered file needs no transformation downstream.
-function writePremigrationCsv(opts: CommonOptions, state: FixtureRunState): string {
-  const source = premigrationCsvFile(opts);
-  if (!existsSync(source)) throw new Error(`missing premigration CSV: ${source}`);
-  const selected = new Set(state.names.map((n) => n.fixtureId));
-  const lines = readFileSync(source, "utf8").trimEnd().split(/\r?\n/);
-  const output = [lines[0]];
-  for (const line of lines.slice(1)) {
-    if (selected.has(line.split(",")[1])) output.push(line);
+const PREMIGRATION_CSV_HEADER =
+  "labelName,fixtureId,reservationProfile,sourceScenarioId,replicaIndex,popularityTier";
+
+/// Writes the label list the pre-migration phases reserve on v2.
+///
+/// Derived from the corpus rather than shipped beside it: every column restates
+/// a field of the envelope, so a separate file is one more thing that can fall
+/// out of step with the scenarios it describes. Only names whose v2
+/// pre-migration profile is `present` are listed — the rest model names that are
+/// deliberately absent, already registered, or expired on v2, and reserving them
+/// would defeat the case they exist to cover.
+function writePremigrationCsv(
+  opts: CommonOptions,
+  rows: FixtureEnvelope[],
+  state: FixtureRunState,
+): string {
+  const seeded = new Set(state.names.map((n) => n.fixtureId));
+  const output = [PREMIGRATION_CSV_HEADER];
+  for (const row of rows) {
+    if (!seeded.has(row.fixture_id)) continue;
+    const profile = row.scenario.v2_premigration?.profile;
+    if (profile !== "present") continue;
+    output.push(
+      [
+        row.label,
+        row.fixture_id,
+        profile,
+        row.source_scenario_id,
+        row.replica_index,
+        row.popularity_tier,
+      ].join(","),
+    );
   }
   const destination = join(resolve(opts.workDir), "fixture-premigration.csv");
   writeFileSync(destination, `${output.join("\n")}\n`);
@@ -358,18 +455,26 @@ async function verify(opts: CommonOptions): Promise<void> {
   const labels = new Set<string>();
   const perVector = new Map<string, number>();
   for (const row of rows) {
-    if (ids.has(row.fixture_id)) throw new Error(`duplicate fixture ID ${row.fixture_id}`);
-    if (labels.has(row.label)) throw new Error(`duplicate fixture label ${row.label}`);
+    if (ids.has(row.fixture_id))
+      throw new Error(`duplicate fixture ID ${row.fixture_id}`);
+    if (labels.has(row.label))
+      throw new Error(`duplicate fixture label ${row.label}`);
     ids.add(row.fixture_id);
     labels.add(row.label);
-    perVector.set(row.source_scenario_id, (perVector.get(row.source_scenario_id) ?? 0) + 1);
+    perVector.set(
+      row.source_scenario_id,
+      (perVector.get(row.source_scenario_id) ?? 0) + 1,
+    );
   }
 
   // Placeholder addresses are enough to prove every action resolves, and keep
   // the check runnable without deployments or an RPC.
-  const placeholder = (n: number) => `0x${n.toString(16).padStart(40, "0")}` as Address;
+  const placeholder = (n: number) =>
+    `0x${n.toString(16).padStart(40, "0")}` as Address;
   const ctx: PlanContext = {
-    actors: new Map(accounts(opts).map((a, i) => [a.alias, placeholder(0x1000 + i)])),
+    actors: new Map(
+      accounts(opts).map((a, i) => [a.alias, placeholder(0x1000 + i)]),
+    ),
     fixtureContracts: Object.fromEntries(
       FIXTURE_ARTIFACTS.map((f, i) => [f.name, placeholder(0x2000 + i)]),
     ),
@@ -427,7 +532,11 @@ async function verify(opts: CommonOptions): Promise<void> {
         executionProfiles: Object.fromEntries(profiles),
         migrationRoutes: Object.fromEntries(routes),
         setupCalls: { batcher: batcherCalls, actor: actorCalls },
-        migration: { batches: batches.length, wrappedGroups, singles: singles.length },
+        migration: {
+          batches: batches.length,
+          wrappedGroups,
+          singles: singles.length,
+        },
         helperApprovalActors: [...actorsNeedingHelperApproval(targets)].sort(),
         digest: fixtureDigest(rows),
       },
@@ -466,7 +575,7 @@ async function deployFixtures(opts: CommonOptions): Promise<void> {
   console.log(`run state: ${runStatePath(opts)}`);
 }
 
-async function seedV1(opts: CommonOptions): Promise<void> {
+export async function seedV1(opts: CommonOptions): Promise<void> {
   mkdirSync(resolve(opts.workDir), { recursive: true });
   const rows = loadFixture(opts);
   if (!rows.length) throw new Error("fixture selection is empty");
@@ -481,6 +590,28 @@ async function seedV1(opts: CommonOptions): Promise<void> {
     opts,
     existing?.fixtureContracts ?? {},
   );
+
+  // Record the deployed batcher and counterparty contracts before registering
+  // anything. Seeding registers each name to the batcher first, so a run that
+  // fails partway leaves names owned by it; without this the next run would
+  // deploy a second batcher, fail to recognise the first as its own, and refuse
+  // to continue against names it had itself created.
+  const startedAt = new Date().toISOString();
+  const seeded: FixtureRunState = existing ?? {
+    version: 1,
+    chainId: chain.id,
+    fixtureRoot: resolve(opts.fixtureRoot),
+    fixtureDigest: "0x" as Hex,
+    createdAt: startedAt,
+    updatedAt: startedAt,
+    batcher,
+    fixtureContracts,
+    actorAddresses: {},
+    names: [],
+  };
+  seeded.batcher = batcher;
+  seeded.fixtureContracts = fixtureContracts;
+  saveRunState(opts, seeded);
 
   const v1 = v1Addresses(opts);
   const ctx = planContext(opts, fixtureContracts, batcher);
@@ -497,7 +628,8 @@ async function seedV1(opts: CommonOptions): Promise<void> {
     const state = wrapperState(row.scenario);
     const ownerAlias = preMigrationOwnerAlias(row.scenario);
     const actor = actors.find((a) => a.alias === ownerAlias);
-    if (!actor) throw new Error(`unknown actor "${ownerAlias}" for ${row.fixture_id}`);
+    if (!actor)
+      throw new Error(`unknown actor "${ownerAlias}" for ${row.fixture_id}`);
     return {
       fixtureId: row.fixture_id,
       sourceScenarioId: row.source_scenario_id,
@@ -549,9 +681,11 @@ async function seedV1(opts: CommonOptions): Promise<void> {
         })) as Address,
       );
       const ours = new Set(
-        [batcher, v1.wrapper.address, ...actors.map((a) => a.account.address)].map((a) =>
-          getAddress(a),
-        ),
+        [
+          batcher,
+          v1.wrapper.address,
+          ...actors.map((a) => a.account.address),
+        ].map((a) => getAddress(a)),
       );
       if (!ours.has(owner)) {
         throw new Error(
@@ -592,11 +726,19 @@ async function seedV1(opts: CommonOptions): Promise<void> {
   );
 
   for (const batch of chunk(registrations, commitBatchSize)) {
+    const commitments = batch.map((x) => x.commitment);
     const hash = await wallet.writeContract({
       address: batcher,
       abi: Artifact_MigrationFixtureBatcher.abi,
       functionName: "commitBatch",
-      args: [batch.map((x) => x.commitment)],
+      args: [commitments],
+      gas: await bufferedGas(client, {
+        address: batcher,
+        abi: Artifact_MigrationFixtureBatcher.abi,
+        functionName: "commitBatch",
+        args: [commitments],
+        account: wallet.account,
+      }),
     });
     await receipt(client, hash, `commit batch (${batch.length})`);
     for (const x of batch) x.run.seedTransactions.push(hash);
@@ -620,14 +762,24 @@ async function seedV1(opts: CommonOptions): Promise<void> {
         functionName: "rentPrice",
         args: [x.run.label, x.registration.duration],
       })) as { base: bigint; premium: bigint };
-      values.push(withBuffer(price.base + price.premium));
+      values.push(withPriceBuffer(price.base + price.premium));
     }
+    const args = [batch.map((x) => x.registration), values] as const;
+    const value = values.reduce((a, b) => a + b, 0n);
     const hash = await wallet.writeContract({
       address: batcher,
       abi: Artifact_MigrationFixtureBatcher.abi,
       functionName: "registerBatch",
-      args: [batch.map((x) => x.registration), values],
-      value: values.reduce((a, b) => a + b, 0n),
+      args,
+      value,
+      gas: await bufferedGas(client, {
+        address: batcher,
+        abi: Artifact_MigrationFixtureBatcher.abi,
+        functionName: "registerBatch",
+        args,
+        value,
+        account: wallet.account,
+      }),
     });
     await receipt(client, hash, `register batch (${batch.length})`);
     for (const x of batch) x.run.seedTransactions.push(hash);
@@ -635,7 +787,10 @@ async function seedV1(opts: CommonOptions): Promise<void> {
 
   const perName = new Map<string, PlannedCall[]>();
   for (const run of pending) {
-    perName.set(run.fixtureId, planSetupSteps(rowById.get(run.fixtureId)!, ctx));
+    perName.set(
+      run.fixtureId,
+      planSetupSteps(rowById.get(run.fixtureId)!, ctx),
+    );
   }
   const byId = new Map(pending.map((r) => [r.fixtureId, r]));
   await executePlannedCalls(executor, perName, (fixtureId, hash) => {
@@ -652,15 +807,18 @@ async function seedV1(opts: CommonOptions): Promise<void> {
     updatedAt: now,
     batcher,
     fixtureContracts,
-    actorAddresses: Object.fromEntries(actors.map((a) => [a.alias, a.account.address])),
+    actorAddresses: Object.fromEntries(
+      actors.map((a) => [a.alias, a.account.address]),
+    ),
     names: [
-      ...(existing?.names.filter((n) => !runNames.some((x) => x.fixtureId === n.fixtureId)) ??
-        []),
+      ...(existing?.names.filter(
+        (n) => !runNames.some((x) => x.fixtureId === n.fixtureId),
+      ) ?? []),
       ...runNames,
     ],
   };
   saveRunState(opts, state);
-  const csv = writePremigrationCsv(opts, state);
+  const csv = writePremigrationCsv(opts, rows, state);
 
   console.log(`seeded ${state.names.length} fixture names on v1`);
   console.log(`batcher: ${batcher}`);
@@ -673,12 +831,15 @@ async function seedV1(opts: CommonOptions): Promise<void> {
 /// takes a helper route. `migrate` runs as one sender and the helper checks
 /// approval for each token's own owner, so the set is the union of the batch
 /// members' v1 owners — not only actors whose route names the helper.
-async function prepare(opts: CommonOptions): Promise<void> {
+export async function prepare(opts: CommonOptions): Promise<void> {
   const state = loadRunState(opts);
-  if (!state) throw new Error(`no run state at ${runStatePath(opts)}; run seed-v1 first`);
+  if (!state)
+    throw new Error(`no run state at ${runStatePath(opts)}; run seed-v1 first`);
   const rows = loadFixture(opts);
   const ctx = refContext(opts, state.fixtureContracts);
-  const aliases = actorsNeedingHelperApproval(rows.map((r) => migrationTarget(r, ctx)));
+  const aliases = actorsNeedingHelperApproval(
+    rows.map((r) => migrationTarget(r, ctx)),
+  );
 
   const { chain, client } = clients(opts);
   const helper = v2Deployment(opts, "MigrationHelper");
@@ -688,7 +849,8 @@ async function prepare(opts: CommonOptions): Promise<void> {
   for (const alias of aliases) {
     const actor = actors.find((a) => a.alias === alias);
     if (!actor) throw new Error(`unknown actor "${alias}"`);
-    if (opts.rpcStateControls) await fundAndImpersonate(opts, actor.account.address);
+    if (opts.rpcStateControls)
+      await fundAndImpersonate(opts, actor.account.address);
     const wallet = createWalletClient({
       chain,
       account: actor.account,
@@ -716,9 +878,10 @@ async function prepare(opts: CommonOptions): Promise<void> {
   );
 }
 
-async function migrate(opts: CommonOptions): Promise<void> {
+export async function migrate(opts: CommonOptions): Promise<void> {
   const state = loadRunState(opts);
-  if (!state) throw new Error(`no run state at ${runStatePath(opts)}; run seed-v1 first`);
+  if (!state)
+    throw new Error(`no run state at ${runStatePath(opts)}; run seed-v1 first`);
   const rows = loadFixture(opts);
   const ctx = refContext(opts, state.fixtureContracts);
   const { chain, client } = clients(opts);
@@ -739,7 +902,8 @@ async function migrate(opts: CommonOptions): Promise<void> {
   const walletFor = async (alias: string) => {
     const actor = actors.find((a) => a.alias === alias);
     if (!actor) throw new Error(`unknown actor "${alias}"`);
-    if (opts.rpcStateControls) await fundAndImpersonate(opts, actor.account.address);
+    if (opts.rpcStateControls)
+      await fundAndImpersonate(opts, actor.account.address);
     return createWalletClient({
       chain,
       account: actor.account,
@@ -748,9 +912,10 @@ async function migrate(opts: CommonOptions): Promise<void> {
   };
 
   const encodePayload = (t: MigrationTarget) =>
-    encodeAbiParameters([{ type: "tuple", components: MIGRATION_DATA_COMPONENTS }], [
-      t.data,
-    ]);
+    encodeAbiParameters(
+      [{ type: "tuple", components: MIGRATION_DATA_COMPONENTS }],
+      [t.data],
+    );
 
   const helperArgsFor = (members: MigrationTarget[]) => {
     const args = buildHelperArgs(members);
@@ -773,7 +938,9 @@ async function migrate(opts: CommonOptions): Promise<void> {
       args: [BigInt(keccak256(stringToHex(t.label)))],
     })) as { status: number; latestOwner: Address };
     if (Number(v2State.status) !== 2) {
-      throw new Error(`${t.fixtureId}: expected REGISTERED, got status ${v2State.status}`);
+      throw new Error(
+        `${t.fixtureId}: expected REGISTERED, got status ${v2State.status}`,
+      );
     }
     if (getAddress(v2State.latestOwner) !== getAddress(t.data.owner)) {
       throw new Error(
@@ -792,7 +959,11 @@ async function migrate(opts: CommonOptions): Promise<void> {
         functionName: "migrate",
         args: helperArgsFor(members),
       });
-      const r = await receipt(client, hash, `batch ${batchId} (${members.length})`);
+      const r = await receipt(
+        client,
+        hash,
+        `batch ${batchId} (${members.length})`,
+      );
       for (const m of members) {
         const run = byId.get(m.fixtureId)!;
         run.migrationTransaction = hash;
@@ -801,12 +972,25 @@ async function migrate(opts: CommonOptions): Promise<void> {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A batch carrying a child whose parent was never migrated fails for a
+      // reason outside the scenarios in it, so it is skipped rather than
+      // recorded as every member reverting.
+      const parentGap = isParentNotMigrated(error);
       for (const m of members) {
         const run = byId.get(m.fixtureId)!;
-        run.actualResult = "revert";
+        run.actualResult = parentGap ? "skipped" : "revert";
         run.error = message;
       }
-      if (members.some((m) => byId.get(m.fixtureId)!.expectedResult !== "revert")) {
+      if (parentGap) {
+        console.log(
+          `  skipped batch ${batchId} (${members.length}): parent not migrated`,
+        );
+        saveRunState(opts, state);
+        continue;
+      }
+      if (
+        members.some((m) => byId.get(m.fixtureId)!.expectedResult !== "revert")
+      ) {
         saveRunState(opts, state);
         throw error;
       }
@@ -824,6 +1008,20 @@ async function migrate(opts: CommonOptions): Promise<void> {
   for (const t of ordered) {
     const run = byId.get(t.fixtureId)!;
     if (run.actualResult) continue;
+    // `graveyard` and `eth_renewer_v1` are not token hand-offs into a migration
+    // controller — they retire a name or renew one that stays on v1 — so the
+    // transfer-shaped routes below cannot express them. Record them as skipped
+    // and keep going, rather than failing a whole rehearsal over a route this
+    // command does not implement. They are never counted as migrated.
+    if (!EXECUTED_ROUTES.has(t.route)) {
+      run.actualResult = "skipped";
+      run.error = `route "${t.route}" is not executed by this command`;
+      console.log(
+        `  skipped ${t.fixtureId}: route "${t.route}" not implemented`,
+      );
+      saveRunState(opts, state);
+      continue;
+    }
     const wallet = await walletFor(t.callerAlias);
     const owner = (ctx.actors.get(t.v1OwnerAlias) ?? t.data.owner) as Address;
     const payload = encodePayload(t);
@@ -842,7 +1040,13 @@ async function migrate(opts: CommonOptions): Promise<void> {
             address: v1.wrapper.address,
             abi: v1.wrapper.abi,
             functionName: "safeTransferFrom",
-            args: [owner, locked.address, BigInt(namehash(t.name)), 1n, payload],
+            args: [
+              owner,
+              locked.address,
+              BigInt(namehash(t.name)),
+              1n,
+              payload,
+            ],
           });
         case "unlocked_controller":
           return t.form === "unwrapped"
@@ -856,12 +1060,22 @@ async function migrate(opts: CommonOptions): Promise<void> {
                 address: v1.wrapper.address,
                 abi: v1.wrapper.abi,
                 functionName: "safeTransferFrom",
-                args: [owner, unlocked.address, BigInt(namehash(t.name)), 1n, payload],
+                args: [
+                  owner,
+                  unlocked.address,
+                  BigInt(namehash(t.name)),
+                  1n,
+                  payload,
+                ],
               });
         // A child is delivered to the registry its migrated parent deployed, so
         // the destination is read from v2 rather than being a fixed address.
         case "wrapper_registry_receiver": {
-          const parentLabel = t.name.split(".").slice(1).join(".").replace(/\.eth$/, "");
+          const parentLabel = t.name
+            .split(".")
+            .slice(1)
+            .join(".")
+            .replace(/\.eth$/, "");
           const parentRegistry = (await client.readContract({
             address: ethRegistry.address,
             abi: ethRegistry.abi,
@@ -869,13 +1083,21 @@ async function migrate(opts: CommonOptions): Promise<void> {
             args: [parentLabel],
           })) as Address;
           if (getAddress(parentRegistry) === zeroAddress) {
-            throw new Error(`${t.fixtureId}: parent ${parentLabel}.eth is not migrated`);
+            throw new ParentNotMigratedError(
+              `${t.fixtureId}: parent ${parentLabel}.eth is not migrated`,
+            );
           }
           return wallet.writeContract({
             address: v1.wrapper.address,
             abi: v1.wrapper.abi,
             functionName: "safeTransferFrom",
-            args: [owner, parentRegistry, BigInt(namehash(t.name)), 1n, payload],
+            args: [
+              owner,
+              parentRegistry,
+              BigInt(namehash(t.name)),
+              1n,
+              payload,
+            ],
           });
         }
         default:
@@ -892,7 +1114,9 @@ async function migrate(opts: CommonOptions): Promise<void> {
       const hash = await send();
       const r = await receipt(client, hash, `migrate ${t.name}`);
       if (run.expectedResult === "revert") {
-        throw new Error(`${t.fixtureId}: expected revert but migration succeeded`);
+        throw new Error(
+          `${t.fixtureId}: expected revert but migration succeeded`,
+        );
       }
       run.migrationTransaction = hash;
       run.migrationBlock = String(r.blockNumber);
@@ -910,6 +1134,14 @@ async function migrate(opts: CommonOptions): Promise<void> {
     } catch (error) {
       if (quarantined) throw error;
       run.error = error instanceof Error ? error.message : String(error);
+      // An unmigrated parent is a gap in what this command covers, not the
+      // scenario failing, so it is skipped rather than recorded as a revert.
+      if (isParentNotMigrated(error)) {
+        run.actualResult = "skipped";
+        console.log(`  skipped ${t.fixtureId}: ${run.error}`);
+        saveRunState(opts, state);
+        continue;
+      }
       run.actualResult = "revert";
       if (run.expectedResult !== "revert") {
         saveRunState(opts, state);
@@ -927,7 +1159,103 @@ async function migrate(opts: CommonOptions): Promise<void> {
   console.log(`migration summary: ${JSON.stringify(summary)}`);
 }
 
-async function fundActorAccounts(opts: CommonOptions, floor: string): Promise<void> {
+/// Reads the shaped V1 state back off-chain and compares every seeded name with
+/// the pre-migration state its scenario declares — wrapper form, burned fuses,
+/// ownership across the three V1 registries, resolver, TTL and records. Run it
+/// after `seed-v1` and before pre-migration, so a name whose limitations were
+/// not applied is caught while it can still be reshaped.
+export async function verifyV1(opts: CommonOptions): Promise<void> {
+  const state = loadRunState(opts);
+  if (!state) {
+    throw new Error(
+      `no fixture run state at ${runStatePath(opts)}; run "fixture seed-v1" first`,
+    );
+  }
+  const { client } = clients(opts);
+  const seeded = new Set(state.names.map((n) => n.fixtureId));
+  const rows = loadFixture(opts).filter((r) => seeded.has(r.fixture_id));
+  if (!rows.length) {
+    throw new Error(
+      "no seeded names in this selection; widen the selection or seed it first",
+    );
+  }
+
+  const v1 = v1Addresses(opts);
+  const result = await verifySeededV1State(
+    client,
+    rows,
+    refContext(opts, state.fixtureContracts),
+    {
+      registry: v1.registry.address,
+      baseRegistrar: v1.base.address,
+      nameWrapper: v1.wrapper.address,
+    },
+  );
+
+  const byForm: Record<string, { names: number; failing: number }> = {};
+  const failingIds = new Set(result.issues.map((i) => i.fixtureId));
+  for (const row of rows) {
+    const form =
+      state.names.find((n) => n.fixtureId === row.fixture_id)?.form ?? "?";
+    const entry = (byForm[form] ??= { names: 0, failing: 0 });
+    entry.names += 1;
+    if (failingIds.has(row.fixture_id)) entry.failing += 1;
+  }
+
+  const reportPath = join(
+    resolve(opts.workDir),
+    "fixture-v1-verification.json",
+  );
+  writeFileSync(
+    reportPath,
+    JSON.stringify(
+      {
+        names: result.names,
+        checks: result.checks,
+        byForm,
+        issues: result.issues,
+      },
+      null,
+      2,
+    ),
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        names: result.names,
+        checks: result.checks,
+        failingNames: failingIds.size,
+        issues: result.issues.length,
+        byField: result.byField,
+        byForm,
+        report: reportPath,
+      },
+      null,
+      2,
+    ),
+  );
+
+  for (const issue of result.issues.slice(0, 25)) {
+    console.log(
+      `  ${issue.fixtureId} (${issue.form}) ${issue.field}: expected ${issue.expected}, got ${issue.actual}`,
+    );
+  }
+  if (result.issues.length > 25) {
+    console.log(`  ... ${result.issues.length - 25} more in ${reportPath}`);
+  }
+  if (result.issues.length) {
+    throw new Error(
+      `${failingIds.size}/${result.names} seeded names do not match their declared pre-migration state`,
+    );
+  }
+  console.log("all seeded names match their declared pre-migration state");
+}
+
+async function fundActorAccounts(
+  opts: CommonOptions,
+  floor: string,
+): Promise<void> {
   const { chain, client, wallet } = clients(opts);
   const actors = accounts(opts);
   await fundActors(
@@ -947,6 +1275,40 @@ async function fundActorAccounts(opts: CommonOptions, floor: string): Promise<vo
   }
 }
 
+/// Seeds the corpus and proves the shaped state, as one step for the rehearsal
+/// orchestrators.
+///
+/// Ordering: this must run **after phase 1**, not before it. A third of the
+/// corpus approves `MigrationHelper` as an operator while shaping its V1 state,
+/// so planning those names resolves a V2 deployment that phase 1 is what
+/// creates. Seeding still has to finish before phase 3 closes V1 registration.
+export async function runFixtureSeedStage(
+  opts: CommonOptions,
+): Promise<{ labels: string[]; premigrationCsv: string }> {
+  console.log("fixture: seeding the ENSv1 corpus");
+  await seedV1(opts);
+  await prepare(opts);
+  console.log("fixture: verifying the shaped V1 state");
+  await verifyV1(opts);
+
+  const state = loadRunState(opts);
+  if (!state) throw new Error(`no fixture run state at ${runStatePath(opts)}`);
+  const premigrationCsv = join(
+    resolve(opts.workDir),
+    "fixture-premigration.csv",
+  );
+  return { labels: state.names.map((n) => n.label), premigrationCsv };
+}
+
+/// Migrates the seeded corpus. Belongs after phase 6, which is what authorises
+/// the migration controllers.
+export async function runFixtureMigrateStage(
+  opts: CommonOptions,
+): Promise<void> {
+  console.log("fixture: migrating the corpus");
+  await migrate(opts);
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -964,17 +1326,27 @@ function addCommon(command: Command): Command {
     .option("--v1-deployment-network <name>", "V1 deployment namespace")
     .option("--private-key <key>", "Fixture operator private key")
     .option("--v1-owner <address>", "Canonical V1 owner address")
-    .option("--v1-owner-key <key>", "V1 owner / prior renewer owner private key")
+    .option(
+      "--v1-owner-key <key>",
+      "V1 owner / prior renewer owner private key",
+    )
     .option("--actor-mnemonic <mnemonic>", "Dedicated fixture actor mnemonic")
     .option("--limit <count>", "Limit selected fixture instances")
     .option("--tiers <tiers>", "Comma-separated popularity tiers")
-    .option("--profiles <profiles>", "Comma-separated execution profiles, e.g. live_now")
+    .option(
+      "--profiles <profiles>",
+      "Comma-separated execution profiles, e.g. live_now",
+    )
     .option("--fixture-ids <ids>", "Comma-separated fixture IDs")
     .option(
       "--replicas-per-vector <count>",
       "Keep at most N replicas of each source scenario",
     )
-    .option("--rpc-state-controls", "Enable impersonation/time control RPC methods", false);
+    .option(
+      "--rpc-state-controls",
+      "Enable impersonation/time control RPC methods",
+      false,
+    );
 }
 
 function normalizeOptions(raw: any): CommonOptions {
@@ -985,7 +1357,8 @@ function normalizeOptions(raw: any): CommonOptions {
   const rpcUrl =
     raw.rpcUrl ??
     process.env[network === "sepolia" ? "SEPOLIA_RPC_URL" : "MAINNET_RPC_URL"];
-  if (!rpcUrl) throw new Error("missing --rpc-url or network RPC environment variable");
+  if (!rpcUrl)
+    throw new Error("missing --rpc-url or network RPC environment variable");
   return { ...raw, network, rpcUrl } as CommonOptions;
 }
 
@@ -1001,7 +1374,11 @@ export function addFixtureSubcommands(program: Command): Command {
     ).action((raw) => verify(normalizeOptions(raw))),
   );
   program.addCommand(
-    addCommon(new Command("fund-actors").description("Top up the fixture actor accounts"))
+    addCommon(
+      new Command("fund-actors").description(
+        "Top up the fixture actor accounts",
+      ),
+    )
       .option("--floor <eth>", "Minimum balance per actor", "0.5")
       .action((raw) => fundActorAccounts(normalizeOptions(raw), raw.floor)),
   );
@@ -1021,6 +1398,13 @@ export function addFixtureSubcommands(program: Command): Command {
   );
   program.addCommand(
     addCommon(
+      new Command("verify-v1").description(
+        "After seed-v1: read the shaped V1 state back and check it against each scenario",
+      ),
+    ).action((raw) => verifyV1(normalizeOptions(raw))),
+  );
+  program.addCommand(
+    addCommon(
       new Command("prepare").description(
         "After phase 1: approve MigrationHelper for every actor holding helper-routed names",
       ),
@@ -1028,7 +1412,9 @@ export function addFixtureSubcommands(program: Command): Command {
   );
   program.addCommand(
     addCommon(
-      new Command("migrate").description("After phase 6: execute the fixture migrations"),
+      new Command("migrate").description(
+        "After phase 6: execute the fixture migrations",
+      ),
     ).action((raw) => migrate(normalizeOptions(raw))),
   );
 

@@ -10,7 +10,13 @@ import {
 
 import { Artifact_MigrationFixtureBatcher } from "generated/artifacts/MigrationFixtureBatcher.js";
 
-import { receipt, rpc } from "./config.js";
+import {
+  bufferedGas,
+  receipt,
+  rpc,
+  v1Deployment,
+  withPriceBuffer,
+} from "./config.js";
 import type { PlannedCall, Signer } from "./plan.js";
 import type { CommonOptions, FixtureActor } from "./types.js";
 
@@ -116,26 +122,85 @@ export async function executePlannedCalls(
   }
 }
 
-export async function executeBatcherCalls(
+const RENT_PRICE_ABI = [
+  {
+    type: "function",
+    name: "rentPrice",
+    stateMutability: "view",
+    inputs: [
+      { name: "name", type: "string" },
+      { name: "duration", type: "uint256" },
+    ],
+    outputs: [
+      {
+        type: "tuple",
+        components: [
+          { name: "base", type: "uint256" },
+          { name: "premium", type: "uint256" },
+        ],
+      },
+    ],
+  },
+] as const;
+
+/// Resolves any quoted price into the value the call must carry.
+async function resolveCallValue(
+  ex: Executor,
+  call: PlannedCall,
+): Promise<bigint> {
+  if (!call.quote) return call.value;
+  const controller = v1Deployment(ex.opts, "ETHRegistrarController");
+  const price = (await ex.client.readContract({
+    address: controller.address,
+    abi: RENT_PRICE_ABI,
+    functionName: "rentPrice",
+    args: [call.quote.label, call.quote.duration],
+  })) as { base: bigint; premium: bigint };
+  return withPriceBuffer(price.base + price.premium);
+}
+
+async function pricedCalls(
   ex: Executor,
   calls: PlannedCall[],
+): Promise<PlannedCall[]> {
+  if (!calls.some((c) => c.quote)) return calls;
+  return Promise.all(
+    calls.map(async (c) =>
+      c.quote ? { ...c, value: await resolveCallValue(ex, c) } : c,
+    ),
+  );
+}
+
+export async function executeBatcherCalls(
+  ex: Executor,
+  rawCalls: PlannedCall[],
   label: string,
 ): Promise<Hex | undefined> {
-  if (!calls.length) return undefined;
+  if (!rawCalls.length) return undefined;
+  const calls = await pricedCalls(ex, rawCalls);
   const value = calls.reduce((sum, c) => sum + c.value, 0n);
+  const args = [
+    calls.map((c) => ({
+      target: c.target,
+      value: c.value,
+      data: c.data,
+      allowFailure: c.allowFailure,
+    })),
+  ] as const;
   const hash = await ex.wallet.writeContract({
     address: ex.batcher,
     abi: Artifact_MigrationFixtureBatcher.abi,
     functionName: "executeBatch",
-    args: [
-      calls.map((c) => ({
-        target: c.target,
-        value: c.value,
-        data: c.data,
-        allowFailure: c.allowFailure,
-      })),
-    ],
+    args,
     value,
+    gas: await bufferedGas(ex.client, {
+      address: ex.batcher,
+      abi: Artifact_MigrationFixtureBatcher.abi,
+      functionName: "executeBatch",
+      args,
+      value,
+      account: ex.wallet.account,
+    }),
   });
   await receipt(ex.client, hash, label);
   return hash;
@@ -164,7 +229,7 @@ async function executeAsActor(
     const hash = await wallet.sendTransaction({
       to: call.target,
       data: call.data,
-      value: call.value,
+      value: await resolveCallValue(ex, call),
     });
     await receipt(ex.client, hash, `${alias}: ${call.label}`);
     return hash;
@@ -179,9 +244,11 @@ export async function fundAndImpersonate(
   address: Address,
 ): Promise<void> {
   if (!opts.rpcStateControls) return;
-  await rpc(opts, "anvil_setBalance", [address, "0x8ac7230489e80000"]).catch(async () => {
-    await rpc(opts, "hardhat_setBalance", [address, "0x8ac7230489e80000"]);
-  });
+  await rpc(opts, "anvil_setBalance", [address, "0x8ac7230489e80000"]).catch(
+    async () => {
+      await rpc(opts, "hardhat_setBalance", [address, "0x8ac7230489e80000"]);
+    },
+  );
   await rpc(opts, "anvil_impersonateAccount", [address]).catch(async () => {
     await rpc(opts, "hardhat_impersonateAccount", [address]);
   });

@@ -49,10 +49,14 @@ export function loadDotEnv(path: string): void {
   }
 }
 
-export function parseNumber(value: string | undefined, fallback: number): number {
+export function parseNumber(
+  value: string | undefined,
+  fallback: number,
+): number {
   if (!value) return fallback;
   const n = Number(value);
-  if (!Number.isSafeInteger(n) || n < 0) throw new Error(`invalid number: ${value}`);
+  if (!Number.isSafeInteger(n) || n < 0)
+    throw new Error(`invalid number: ${value}`);
   return n;
 }
 
@@ -94,7 +98,10 @@ export function optionalDeployment(
   return existsSync(path) ? readJson<JsonDeployment>(path) : null;
 }
 
-export function v1Deployment(opts: CommonOptions, name: string): JsonDeployment {
+export function v1Deployment(
+  opts: CommonOptions,
+  name: string,
+): JsonDeployment {
   const roots = opts.v1DeploymentsDir
     ? [resolve(opts.v1DeploymentsDir)]
     : [resolve("./deployments/v1"), resolve("./lib/ens-contracts/deployments")];
@@ -117,7 +124,10 @@ export function optionalV1Deployment(
   }
 }
 
-export function v2Deployment(opts: CommonOptions, name: string): JsonDeployment {
+export function v2Deployment(
+  opts: CommonOptions,
+  name: string,
+): JsonDeployment {
   return deployment(
     opts.deploymentsDir,
     opts.deploymentNetwork ?? opts.network,
@@ -126,11 +136,7 @@ export function v2Deployment(opts: CommonOptions, name: string): JsonDeployment 
 }
 
 export function fixtureFile(opts: CommonOptions): string {
-  return join(resolve(opts.fixtureRoot), "fixture", "weighted-scenarios.jsonl");
-}
-
-export function premigrationCsvFile(opts: CommonOptions): string {
-  return join(resolve(opts.fixtureRoot), "fixture", "premigration-labels.csv");
+  return join(resolve(opts.fixtureRoot), "weighted-scenarios.jsonl");
 }
 
 export function runStatePath(opts: CommonOptions): string {
@@ -220,8 +226,10 @@ export function accounts(opts: CommonOptions): FixtureActor[] {
 
 export function requirePrivateKey(opts: CommonOptions): Hex {
   const key =
-    opts.privateKey ?? (process.env.MIGRATION_FIXTURE_PRIVATE_KEY as Hex | undefined);
-  if (!key) throw new Error("missing --private-key or MIGRATION_FIXTURE_PRIVATE_KEY");
+    opts.privateKey ??
+    (process.env.MIGRATION_FIXTURE_PRIVATE_KEY as Hex | undefined);
+  if (!key)
+    throw new Error("missing --private-key or MIGRATION_FIXTURE_PRIVATE_KEY");
   return key;
 }
 
@@ -229,9 +237,39 @@ export function clients(opts: CommonOptions) {
   const chain = networkChain(opts.network, opts.rpcUrl, opts.chainId);
   const client = createPublicClient({ chain, transport: http(opts.rpcUrl) });
   const account = privateKeyToAccount(requirePrivateKey(opts));
-  const wallet = createWalletClient({ chain, account, transport: http(opts.rpcUrl) });
+  const wallet = createWalletClient({
+    chain,
+    account,
+    transport: http(opts.rpcUrl),
+  });
   return { chain, client, wallet, account };
 }
+
+/// Margin added over an estimated gas limit for batched writes.
+///
+/// A batch fans out into many nested calls, and a gas estimator that searches
+/// for the lowest passing limit can settle on one where the outermost frame
+/// keeps just enough for itself but a later inner call runs out. The estimate is
+/// then returned as valid and the transaction reverts out of gas. The margin is
+/// free on a rehearsal chain and harmless on a live one, where unused gas is not
+/// charged.
+const GAS_BUFFER_BPS = 3_000n;
+
+export async function bufferedGas(
+  client: any,
+  request: Record<string, unknown>,
+): Promise<bigint> {
+  const estimate = (await client.estimateContractGas(request)) as bigint;
+  return estimate + (estimate * GAS_BUFFER_BPS) / 10_000n;
+}
+
+/// Price is quoted before the transaction lands, so a buffer absorbs movement
+/// between quote and execution. Without it one underfunded name reverts the
+/// whole batch it travels in. Any excess is refunded by the batcher.
+export const PRICE_BUFFER_BPS = 1_000n;
+
+export const withPriceBuffer = (price: bigint): bigint =>
+  price + (price * PRICE_BUFFER_BPS) / 10_000n;
 
 export async function receipt(client: any, hash: Hex, label: string) {
   const r = await client.waitForTransactionReceipt({ hash });

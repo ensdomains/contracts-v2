@@ -123,10 +123,12 @@ export function buildHelperArgs(targets: MigrationTarget[]): HelperArgs {
     unwrapped,
     unlockedGroups: groupByOwner(unlocked),
     lockedGroups: groupByOwner(locked),
-    lockedChildren: [...childrenByParent.entries()].map(([parentName, members]) => ({
-      parentName,
-      groups: groupByOwner(members),
-    })),
+    lockedChildren: [...childrenByParent.entries()].map(
+      ([parentName, members]) => ({
+        parentName,
+        groups: groupByOwner(members),
+      }),
+    ),
   };
 }
 

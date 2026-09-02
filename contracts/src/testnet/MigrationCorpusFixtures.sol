@@ -8,6 +8,22 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 
+/// @notice The NameWrapper reads `CustomResolver` needs to resolve a wrapped
+///         name's real owner.
+/// @dev Interface selector: `0x8ad7c8db`
+interface IFixtureNameWrapper {
+    /// @notice The holder of a wrapped name's token.
+    /// @param id The token id, which is the namehash of the name.
+    /// @return The token holder.
+    function ownerOf(uint256 id) external view returns (address);
+
+    /// @notice Whether an operator may act for an owner's wrapped names.
+    /// @param owner The token holder.
+    /// @param operator The operator to test.
+    /// @return True when the operator is approved.
+    function isApprovedForAll(address owner, address operator) external view returns (bool);
+}
+
 /// @title CustomResolver
 /// @notice Test-only v1-style resolver holding the record subset the weighted
 ///         migration corpus writes, referenced by scenarios as
@@ -31,6 +47,9 @@ contract CustomResolver is IERC165 {
 
     /// @notice The v1 ENS registry consulted for write authorisation.
     ENS public immutable ENS_REGISTRY;
+
+    /// @notice The v1 NameWrapper, used to resolve the owner of a wrapped name.
+    IFixtureNameWrapper public immutable NAME_WRAPPER;
 
     mapping(bytes32 => mapping(uint256 => bytes)) private _addresses;
     mapping(bytes32 => mapping(string => string)) private _texts;
@@ -78,8 +97,10 @@ contract CustomResolver is IERC165 {
     ////////////////////////////////////////////////////////////////////////
 
     /// @param ensRegistry The v1 ENS registry to consult for authorisation.
-    constructor(ENS ensRegistry) {
+    /// @param nameWrapper The v1 NameWrapper holding wrapped names.
+    constructor(ENS ensRegistry, IFixtureNameWrapper nameWrapper) {
         ENS_REGISTRY = ensRegistry;
+        NAME_WRAPPER = nameWrapper;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -174,8 +195,20 @@ contract CustomResolver is IERC165 {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Reverts unless the caller owns the node or is an approved operator.
+    ///      A name held by the NameWrapper is owned by whoever holds its token,
+    ///      so ownership resolves through the wrapper before the check.
     function _requireAuthorised(bytes32 node) internal view {
         address owner = ENS_REGISTRY.owner(node);
+        if (owner == address(NAME_WRAPPER)) {
+            address tokenOwner = NAME_WRAPPER.ownerOf(uint256(node));
+            if (
+                tokenOwner == msg.sender ||
+                NAME_WRAPPER.isApprovedForAll(tokenOwner, msg.sender)
+            ) {
+                return;
+            }
+            revert NotAuthorised(node, msg.sender);
+        }
         if (owner != msg.sender && !ENS_REGISTRY.isApprovedForAll(owner, msg.sender)) {
             revert NotAuthorised(node, msg.sender);
         }

@@ -37,6 +37,8 @@ import {
   type Chain,
 } from "viem";
 import {
+  english as englishWordlist,
+  generateMnemonic,
   generatePrivateKey,
   mnemonicToAccount,
   privateKeyToAccount,
@@ -53,12 +55,18 @@ import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environ
 import { generateAddressMarkdown } from "./addressDocs.js";
 import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+  LOCAL_BATCH_GATEWAY_URL,
   ROLES,
   SEC_PER_DAY,
   STATUS,
 } from "./deploy-constants.js";
 import { main as exportRegistrationsMain } from "./exportTheGraphRegistrations.js";
-import { addFixtureSubcommands } from "./migrationFixture.js";
+import {
+  addFixtureSubcommands,
+  runFixtureMigrateStage,
+  runFixtureSeedStage,
+} from "./migrationFixture.js";
+import { ACTOR_ALIASES } from "./migrationFixture/config.js";
 import {
   CHECKPOINT_FILE,
   type Checkpoint,
@@ -3702,6 +3710,10 @@ function logDeployedAddresses(
 async function deployV1(opts: DeployV1Options) {
   const network = NETWORKS[opts.network];
   const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
+  // The v1 deploy scripts refuse to deploy the batch gateway provider without a
+  // gateway list. A throwaway v1 stack resolves through the local batch gateway,
+  // the same one the devnet setup uses; an operator value still wins.
+  process.env.BATCH_GATEWAY_URLS ??= JSON.stringify([LOCAL_BATCH_GATEWAY_URL]);
   const { provider, chainId, chain } =
     await resolveDeployProviderAndChain(opts);
   const env = await loadAndExecuteDeploymentsFromFilesWithConfig(
@@ -3821,8 +3833,10 @@ export async function deployV2(opts: DeployV2Options) {
   ]);
 
   // Refresh the generated address table for a persisted deploy so the docs
-  // track the namespace just written. Fork/non-persisted rehearsals are skipped.
-  if (persist) {
+  // track the namespace just written. The table describes the canonical
+  // deployment tree, so a run pointed at another one — every fork rehearsal —
+  // leaves it alone rather than rewriting it with throwaway addresses.
+  if (persist && deploymentsDir === resolve(DEFAULT_DEPLOYMENTS_DIR)) {
     const docPath = await generateAddressMarkdown({
       deploymentsDir,
       namespace: deploymentNetwork,
@@ -4425,6 +4439,111 @@ async function disableAndVerifyBatchRegistrar(opts: {
   await verifyBatchRegistrarDisabled(opts);
 }
 
+// Options selecting an optional ENSv1 fixture cohort for a rehearsal. Absent
+// `fixtureRoot`, the whole stage is skipped and the rehearsal is unchanged.
+export type FixtureRehearsalOptions = {
+  fixtureRoot?: string;
+  fixtureProfiles?: string;
+  fixtureTiers?: string;
+  fixtureIds?: string;
+  fixtureLimit?: string;
+  fixtureReplicasPerVector?: string;
+  fixtureActorMnemonic?: string;
+  fixturePrivateKey?: string;
+};
+
+// The corpus needs an operator account and a set of actor accounts. On a
+// state-controlled RPC both are generated per run and funded directly, which
+// keeps a rehearsal from depending on funded keys and from inheriting the
+// EIP-7702 delegations that the well-known test accounts carry on live chains.
+// The generated mnemonic is written beside the run state so a resumed rehearsal
+// addresses the same actors.
+async function fixtureRunOptions(
+  opts: RunForkFullOptions & FixtureRehearsalOptions,
+  base: {
+    rpcUrl: string;
+    chainId: number;
+    client: ReturnType<typeof publicClient>;
+    deploymentsDir: string;
+    deploymentNetwork: string;
+    v1DeploymentsDir?: string;
+    v1DeploymentNetwork?: string;
+    workDir: string;
+    useRpcStateControls: boolean;
+    v1Owner: Address;
+  },
+): Promise<any | null> {
+  if (!opts.fixtureRoot) return null;
+  const fixtureWorkDir = join(base.workDir, "fixture");
+  mkdirSync(fixtureWorkDir, { recursive: true });
+
+  const mnemonicFile = join(fixtureWorkDir, "actor-mnemonic.txt");
+  let actorMnemonic =
+    opts.fixtureActorMnemonic ?? process.env.MIGRATION_FIXTURE_ACTOR_MNEMONIC;
+  if (!actorMnemonic && existsSync(mnemonicFile)) {
+    actorMnemonic = readFileSync(mnemonicFile, "utf8").trim();
+  }
+  if (!actorMnemonic) {
+    if (!base.useRpcStateControls) {
+      throw new Error(
+        "--fixture-root on a live RPC requires --fixture-actor-mnemonic or MIGRATION_FIXTURE_ACTOR_MNEMONIC",
+      );
+    }
+    actorMnemonic = generateMnemonic(englishWordlist);
+    writeFileSync(mnemonicFile, `${actorMnemonic}\n`);
+  }
+
+  const keyFile = join(fixtureWorkDir, "operator-key.txt");
+  let privateKey =
+    opts.fixturePrivateKey ?? process.env.MIGRATION_FIXTURE_PRIVATE_KEY;
+  if (!privateKey && existsSync(keyFile)) {
+    privateKey = readFileSync(keyFile, "utf8").trim();
+  }
+  if (!privateKey) {
+    if (!base.useRpcStateControls) {
+      throw new Error(
+        "--fixture-root on a live RPC requires --fixture-private-key or MIGRATION_FIXTURE_PRIVATE_KEY",
+      );
+    }
+    privateKey = generatePrivateKey();
+    writeFileSync(keyFile, `${privateKey}\n`);
+  }
+
+  if (base.useRpcStateControls) {
+    const operator = privateKeyToAccount(privateKey as `0x${string}`);
+    await setBalance(base.client, operator.address);
+    for (let index = 0; index < ACTOR_ALIASES.length; index += 1) {
+      const actor = mnemonicToAccount(actorMnemonic, { accountIndex: index });
+      await setBalance(base.client, actor.address);
+    }
+  }
+
+  return {
+    network: opts.network,
+    rpcUrl: base.rpcUrl,
+    chainId: String(base.chainId),
+    fixtureRoot: resolve(opts.fixtureRoot),
+    workDir: fixtureWorkDir,
+    deploymentsDir: base.deploymentsDir,
+    deploymentNetwork: base.deploymentNetwork,
+    v1DeploymentsDir: base.v1DeploymentsDir,
+    v1DeploymentNetwork: base.v1DeploymentNetwork,
+    privateKey,
+    actorMnemonic,
+    // Seeding registers through the v1 controller. On a chain a previous
+    // migration already froze, the corpus cannot be created until that
+    // controller is re-authorised, which only the v1 owner can do.
+    v1Owner: base.v1Owner,
+    v1OwnerKey: opts.v1OwnerPrivateKey,
+    limit: opts.fixtureLimit,
+    tiers: opts.fixtureTiers,
+    profiles: opts.fixtureProfiles,
+    fixtureIds: opts.fixtureIds,
+    replicasPerVector: opts.fixtureReplicasPerVector,
+    rpcStateControls: base.useRpcStateControls,
+  };
+}
+
 export async function runForkFull(opts: RunForkFullOptions) {
   if (opts.direct || opts.debugRpc)
     installRpcCompatibility(Boolean(opts.debugRpc));
@@ -4825,6 +4944,29 @@ export async function runForkFull(opts: RunForkFullOptions) {
       );
     }
 
+    // The corpus is seeded here rather than before phase 1: a third of it
+    // approves MigrationHelper while shaping its V1 state, which needs the V2
+    // deployment phase 1 produces. It still lands before phase 3 closes V1
+    // registration, and before pre-migration, which reserves its labels on V2.
+    const fixtureOptions = await fixtureRunOptions(opts, {
+      rpcUrl,
+      chainId,
+      client,
+      deploymentsDir,
+      deploymentNetwork,
+      ...v1Deployments,
+      workDir,
+      useRpcStateControls,
+      v1Owner,
+    });
+    if (fixtureOptions && resumeFromPhase !== 2) {
+      const { labels } = await runFixtureSeedStage(fixtureOptions);
+      prependCsvLabels(transformedCsv, labels);
+      console.log(
+        `fixture: added ${labels.length} labels to the pre-migration CSV`,
+      );
+    }
+
     console.log("phase 2: initial pre-migration");
     await runPreMigrationCommand(
       {
@@ -4832,6 +4974,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         rpcUrl,
         mainnetRpcUrl: rpcUrl,
         ...v1Deployments,
+        deploymentsDir,
         deploymentNetwork,
         registry: ethRegistry.address,
         batchRegistrar: batchRegistrar.address,
@@ -4936,6 +5079,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         rpcUrl,
         mainnetRpcUrl: rpcUrl,
         ...v1Deployments,
+        deploymentsDir,
         deploymentNetwork,
         registry: ethRegistry.address,
         batchRegistrar: batchRegistrar.address,
@@ -5146,6 +5290,10 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         "v2 registrar enabled (paid-registration smoke skipped: no mintable payment token on this network)",
       );
+    }
+
+    if (fixtureOptions) {
+      await runFixtureMigrateStage(fixtureOptions);
     }
 
     console.log(
@@ -6595,6 +6743,35 @@ export async function main(argv = process.argv): Promise<void> {
               false,
             )
             .option(
+              "--fixture-root <path>",
+              "Seed the ENSv1 fixture corpus from this bundle as part of the rehearsal",
+            )
+            .option(
+              "--fixture-profiles <list>",
+              "Fixture execution profiles to include, e.g. live_now",
+            )
+            .option(
+              "--fixture-tiers <list>",
+              "Fixture popularity tiers to include",
+            )
+            .option("--fixture-ids <list>", "Explicit fixture IDs to include")
+            .option(
+              "--fixture-limit <count>",
+              "Cap the number of fixture names",
+            )
+            .option(
+              "--fixture-replicas-per-vector <count>",
+              "Keep at most N replicas of each fixture scenario",
+            )
+            .option(
+              "--fixture-actor-mnemonic <mnemonic>",
+              "Dedicated fixture actor mnemonic (generated per run on a fork)",
+            )
+            .option(
+              "--fixture-private-key <key>",
+              "Fixture operator key (generated per run on a fork)",
+            )
+            .option(
               "--snapshot-file <path>",
               "Optional file to write a pre-rehearsal snapshot id",
             )
@@ -6665,6 +6842,35 @@ export async function main(argv = process.argv): Promise<void> {
             .option(
               "--work-dir <path>",
               "Directory for clean deploy logs, checkpoints, and generated CSV",
+            )
+            .option(
+              "--fixture-root <path>",
+              "Seed the ENSv1 fixture corpus from this bundle as part of the run",
+            )
+            .option(
+              "--fixture-profiles <list>",
+              "Fixture execution profiles to include, e.g. live_now",
+            )
+            .option(
+              "--fixture-tiers <list>",
+              "Fixture popularity tiers to include",
+            )
+            .option("--fixture-ids <list>", "Explicit fixture IDs to include")
+            .option(
+              "--fixture-limit <count>",
+              "Cap the number of fixture names",
+            )
+            .option(
+              "--fixture-replicas-per-vector <count>",
+              "Keep at most N replicas of each fixture scenario",
+            )
+            .option(
+              "--fixture-actor-mnemonic <mnemonic>",
+              "Dedicated fixture actor mnemonic (generated per run when impersonating)",
+            )
+            .option(
+              "--fixture-private-key <key>",
+              "Fixture operator key (generated per run when impersonating)",
             )
             .option(
               "--snapshot-file <path>",

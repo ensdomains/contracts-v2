@@ -21,7 +21,12 @@ import {
   v1Form,
   type RefContext,
 } from "./scenario.js";
-import { FUSES, type FixtureEnvelope, type RecordSpec, type SetupStep } from "./types.js";
+import {
+  FUSES,
+  type FixtureEnvelope,
+  type RecordSpec,
+  type SetupStep,
+} from "./types.js";
 
 /// Minimal explicit ABIs. The deployed PublicResolver exposes overloaded
 /// `setAddr`, which viem cannot disambiguate from a full artifact ABI, so the
@@ -241,6 +246,12 @@ const CONTROLLER_RENEW_ABI = [
 /// because the action's authority or its emitted provenance depends on caller.
 export type Signer = { kind: "batcher" } | { kind: "actor"; alias: string };
 
+/// A price the planner cannot know. Planning is offline and pure — it runs
+/// against placeholder addresses in `fixture verify` — so a call whose value
+/// comes from a live contract quote carries the query instead of the amount,
+/// and the executor resolves it just before sending.
+export type CallQuote = { kind: "renew"; label: string; duration: bigint };
+
 export type PlannedCall = {
   signer: Signer;
   target: Address;
@@ -248,6 +259,7 @@ export type PlannedCall = {
   data: Hex;
   allowFailure: boolean;
   label: string;
+  quote?: CallQuote;
 };
 
 export type PlanContext = RefContext & {
@@ -345,7 +357,7 @@ function recordCalls(
         data: encodeFunctionData({
           abi: RESOLVER_ABI,
           functionName: "setContenthash",
-          args: [node, (record.value ?? "0x") as Hex],
+          args: [node, (record.value_hex ?? record.value ?? "0x") as Hex],
         }),
       });
     } else {
@@ -362,6 +374,65 @@ function recordCalls(
 /// whose effect is derived from `msg.sender` — reverse claims — or which grant
 /// authority on behalf of the holder — operator and token approvals — are
 /// planned against the actor that must sign them.
+/// Steps that address the scenario's own node. For a child scenario that node
+/// only exists once the child has been created.
+const NODE_SCOPED_ACTIONS = new Set([
+  "set_ttl",
+  "set_resolver",
+  "write_records",
+  "set_text",
+  "clear_records",
+  "approve_wrapper_token_before_burning_cannot_approve",
+]);
+
+/// Orders a child scenario's setup so the child exists before anything writes to
+/// it.
+///
+/// Several scenarios list a record history ahead of the step that creates the
+/// child, which cannot be carried out in that order — the node has no owner yet,
+/// so the resolver rejects the write. Only the creation step moves, and only as
+/// far as the first step that needs it, so steps that must precede it (renewing
+/// the 2LD before it is wrapped, for instance) keep their place, and the history
+/// keeps its own sequence on the child.
+function orderedSetupSteps(steps: SetupStep[], child: boolean): SetupStep[] {
+  if (!child) return steps;
+  const create = steps.findIndex(
+    (s) => s.action === "ensure_wrapped_parent_and_child",
+  );
+  const firstNodeScoped = steps.findIndex((s) =>
+    NODE_SCOPED_ACTIONS.has(s.action),
+  );
+  if (create < 0 || firstNodeScoped < 0 || create < firstNodeScoped) {
+    return steps;
+  }
+  const rest = steps.filter((_, i) => i !== create);
+  return [
+    ...rest.slice(0, firstNodeScoped),
+    steps[create],
+    ...rest.slice(firstNodeScoped),
+  ];
+}
+
+/// Identity of a record slot, so a later write can be recognised as replacing
+/// an earlier one.
+function recordKey(record: RecordSpec): string {
+  if (record.kind === "addr") return `addr/${record.coin_type ?? 60}`;
+  if (record.kind === "text") return `text/${record.key ?? ""}`;
+  return record.kind;
+}
+
+/// The value a record write lands, resolved the same way the call encoder does.
+function recordValue(record: RecordSpec, ctx: RefContext): string {
+  if (record.kind === "addr") {
+    return record.value_actor
+      ? resolveRef(record.value_actor, ctx)
+      : String(resolveOptionalRef(record.value, ctx));
+  }
+  if (record.kind === "contenthash")
+    return record.value_hex ?? record.value ?? "0x";
+  return record.value ?? "";
+}
+
 export function planSetupSteps(
   row: FixtureEnvelope,
   ctx: PlanContext,
@@ -384,44 +455,78 @@ export function planSetupSteps(
   // While the batcher still holds the ERC-721, node-scoped writes are cheapest
   // and are authorised by the registry controller it already is.
   let heldByBatcher = true;
-  const nodeSigner = (): Signer => (heldByBatcher ? BATCHER : actorSigner(cursor.alias));
+  const nodeSigner = (): Signer =>
+    heldByBatcher ? BATCHER : actorSigner(cursor.alias);
 
   const registrationResolver = resolveOptionalRef(
     scenario.v1.registration.resolver_ref,
     ctx,
   );
 
-  // Baseline resolver and records from the registration block, applied before
-  // any step that may burn CANNOT_SET_RESOLVER.
-  if (registrationResolver !== zeroAddress && !wrapped) {
+  // Whether the name is wrapped at this point in the plan. A wrapped name is
+  // owned in the registry by the NameWrapper, so resolver writes have to go
+  // through the wrapper instead; the scenario's final form is not enough to
+  // decide, because wrapping happens partway through.
+  let wrappedNow = false;
+
+  // The resolver and record values the plan has already put on the node, so the
+  // closing reconciliation only writes what actually differs.
+  let currentResolver = registrationResolver;
+  const pushSetResolver = (resolver: Address, callLabel: string) => {
     calls.push({
       signer: nodeSigner(),
-      target: ctx.addresses.registry,
+      target: wrappedNow ? ctx.addresses.wrapper : ctx.addresses.registry,
       value: 0n,
       allowFailure: false,
-      label: `${row.fixture_id} registration setResolver`,
+      label: callLabel,
       data: encodeFunctionData({
-        abi: REGISTRY_ABI,
+        abi: wrappedNow ? WRAPPER_ABI : REGISTRY_ABI,
         functionName: "setResolver",
-        args: [node, registrationResolver],
+        args: [node, resolver],
       }),
     });
-  }
-  const registrationRecords = scenario.v1.registration.records ?? [];
-  if (registrationRecords.length && registrationResolver !== zeroAddress) {
-    calls.push(
-      ...recordCalls(
-        registrationResolver,
-        node,
-        registrationRecords,
-        ctx,
-        nodeSigner(),
-        `${row.fixture_id} registration`,
-      ),
-    );
-  }
+    currentResolver = resolver;
+  };
+  const writtenRecords = new Map<string, string>();
+  const noteRecords = (records: RecordSpec[]) => {
+    for (const record of records) {
+      writtenRecords.set(recordKey(record), recordValue(record, ctx));
+    }
+  };
 
-  for (const [index, step] of (scenario.v1.setup_steps ?? []).entries()) {
+  // Baseline resolver and records from the registration block. These describe
+  // the name as first registered; later steps mutate it. For a child scenario
+  // the node does not exist until the step that creates it, so the baseline is
+  // deferred until then rather than written against an unowned node.
+  const registrationRecords = scenario.v1.registration.records ?? [];
+  const emitRegistrationState = () => {
+    if (registrationResolver === zeroAddress) return;
+    // A name that gets wrapped later takes its resolver from the wrap call, so
+    // only names that are already in their resolver-bearing form set it here.
+    if (!wrapped || wrappedNow) {
+      pushSetResolver(
+        registrationResolver,
+        `${row.fixture_id} registration setResolver`,
+      );
+    }
+    if (registrationRecords.length) {
+      calls.push(
+        ...recordCalls(
+          registrationResolver,
+          node,
+          registrationRecords,
+          ctx,
+          nodeSigner(),
+          `${row.fixture_id} registration`,
+        ),
+      );
+      noteRecords(registrationRecords);
+    }
+  };
+  if (!child) emitRegistrationState();
+
+  const setupSteps = orderedSetupSteps(scenario.v1.setup_steps ?? [], child);
+  for (const [index, step] of setupSteps.entries()) {
     const tag = `${row.fixture_id}#${index} ${step.action}`;
     switch (step.action) {
       case "set_ttl": {
@@ -442,31 +547,34 @@ export function planSetupSteps(
       }
 
       case "set_resolver": {
-        const resolver = resolveRef(step.resolver_ref, ctx);
-        calls.push({
-          signer: nodeSigner(),
-          target: wrapped ? ctx.addresses.wrapper : ctx.addresses.registry,
-          value: 0n,
-          allowFailure: false,
-          label: tag,
-          data: encodeFunctionData({
-            abi: wrapped ? WRAPPER_ABI : REGISTRY_ABI,
-            functionName: "setResolver",
-            args: [node, resolver],
-          }),
-        });
+        pushSetResolver(resolveRef(step.resolver_ref, ctx), tag);
         break;
       }
 
       case "write_records": {
         const resolver = resolveRef(step.resolver_ref, ctx);
         calls.push(
-          ...recordCalls(resolver, node, step.records ?? [], ctx, nodeSigner(), tag),
+          ...recordCalls(
+            resolver,
+            node,
+            step.records ?? [],
+            ctx,
+            nodeSigner(),
+            tag,
+          ),
         );
+        if (resolver === currentResolver) noteRecords(step.records ?? []);
         break;
       }
 
       case "set_text": {
+        noteRecords([
+          {
+            kind: "text",
+            key: String(step.key ?? ""),
+            value: String(step.value ?? ""),
+          },
+        ]);
         calls.push({
           signer: nodeSigner(),
           target: ctx.addresses.publicResolver,
@@ -485,7 +593,8 @@ export function planSetupSteps(
       // Deletion is an explicit write of an empty value so the operation stays
       // in resolver history rather than merely being forgotten locally.
       case "clear_records": {
-        const known = (scenario.v1.expected_pre_migration?.record_operation_history ??
+        const known = (scenario.v1.expected_pre_migration
+          ?.record_operation_history ??
           scenario.v1.registration.records ??
           []) as RecordSpec[];
         const cleared = known.map((r) =>
@@ -503,6 +612,7 @@ export function planSetupSteps(
             tag,
           ),
         );
+        noteRecords(cleared);
         break;
       }
 
@@ -544,17 +654,20 @@ export function planSetupSteps(
       }
 
       case "renew_v1": {
-        // Price is attached at execution time from the live controller quote.
+        const duration = BigInt(step.duration_seconds ?? 0);
+        // Renewal is priced by the controller, so the amount is resolved from a
+        // live quote at execution time rather than planned.
         calls.push({
           signer: BATCHER,
           target: ctx.addresses.controller,
           value: 0n,
+          quote: { kind: "renew", label, duration },
           allowFailure: false,
           label: `${tag}:renew:${label}:${step.duration_seconds}`,
           data: encodeFunctionData({
             abi: CONTROLLER_RENEW_ABI,
             functionName: "renew",
-            args: [label, BigInt(step.duration_seconds ?? 0), `0x${"00".repeat(32)}` as Hex],
+            args: [label, duration, `0x${"00".repeat(32)}` as Hex],
           }),
         });
         break;
@@ -594,6 +707,8 @@ export function planSetupSteps(
             args: [label, resolveRef(owner, ctx), fuses, resolver],
           }),
         });
+        if (resolver !== zeroAddress) currentResolver = resolver;
+        wrappedNow = true;
         heldByBatcher = false;
         cursor.set(owner);
         break;
@@ -613,19 +728,34 @@ export function planSetupSteps(
             args: [labelhashOf(label), to, to],
           }),
         });
+        wrappedNow = false;
         break;
       }
 
       // Parent is wrapped to the batcher so it can mint the child with the
       // exact fuse/expiry shape, then both tokens are handed to the actor.
       case "ensure_wrapped_parent_and_child": {
-        const owner = stripActorPrefix(step.wrapped_owner_actor ?? cursor.alias);
+        const owner = stripActorPrefix(
+          step.wrapped_owner_actor ?? cursor.alias,
+        );
         const ownerAddress = resolveRef(owner, ctx);
-        const childFuses = resolveFuses(step);
+        // NameWrapper refuses to burn an owner-controlled fuse on a subname
+        // unless the name is emancipated in the same breath, so a scenario that
+        // names only the owner-controlled bits still has to burn
+        // PARENT_CANNOT_CONTROL. Emancipation is implied by locking rather than
+        // a change of intent; scenarios that ask only for parent-controlled
+        // fuses are left exactly as declared. The 2LD path needs no equivalent:
+        // wrapping a `.eth` name emancipates it anyway.
+        const declaredChildFuses = resolveFuses(step);
+        const childFuses = ownerControlledFuses(declaredChildFuses)
+          ? declaredChildFuses | FUSES.PARENT_CANNOT_CONTROL
+          : declaredChildFuses;
         const resolver = resolveOptionalRef(step.resolver_ref, ctx);
         const childLabel = scenario.child_label;
         if (!childLabel) {
-          throw new Error(`${row.fixture_id}: child scenario without child_label`);
+          throw new Error(
+            `${row.fixture_id}: child scenario without child_label`,
+          );
         }
         calls.push({
           signer: BATCHER,
@@ -673,8 +803,12 @@ export function planSetupSteps(
             ],
           }),
         });
+        if (resolver !== zeroAddress) currentResolver = resolver;
+        wrappedNow = true;
         heldByBatcher = false;
         cursor.set(owner);
+        // The child exists now, so its registration baseline can be written.
+        emitRegistrationState();
         break;
       }
 
@@ -745,6 +879,43 @@ export function planSetupSteps(
         throw new Error(
           `${row.fixture_id}: unsupported V1 setup action "${step.action}"`,
         );
+    }
+  }
+
+  // Bring the name to the state the corpus says it is in when migration runs.
+  //
+  // A scenario describes two points in time: how the name was registered, and
+  // the resolver and records it carries by migration time — `target_current_*`,
+  // which is what `expected_pre_migration` restates. The setup steps model the
+  // history in between (writes, clears, rewrites) but do not always end on the
+  // target, so the target is applied here as the closing state. Names already
+  // sitting on it get no extra calls, and one whose target is empty keeps its
+  // cleared records.
+  const targetResolver = resolveOptionalRef(
+    scenario.v1.registration.target_current_resolver_ref,
+    ctx,
+  );
+  const targetRecords: RecordSpec[] =
+    scenario.v1.registration.target_current_records ?? [];
+  if (targetResolver !== zeroAddress) {
+    if (targetResolver !== currentResolver) {
+      pushSetResolver(targetResolver, `${row.fixture_id} target setResolver`);
+    }
+    const missing = targetRecords.filter(
+      (record) =>
+        writtenRecords.get(recordKey(record)) !== recordValue(record, ctx),
+    );
+    if (missing.length) {
+      calls.push(
+        ...recordCalls(
+          targetResolver,
+          node,
+          missing,
+          ctx,
+          nodeSigner(),
+          `${row.fixture_id} target`,
+        ),
+      );
     }
   }
 
