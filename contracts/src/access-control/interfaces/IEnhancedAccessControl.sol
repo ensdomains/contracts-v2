@@ -129,14 +129,14 @@ interface IEnhancedAccessControl {
         returns (uint256 counts, uint256 mask);
 
     /// @notice Checks if any of the roles in the given role bitmap has assignees.
-    /// @dev Derivable from `getAssigneCount()`.
+    /// @dev Derivable from `getAssigneeCount()`.
     /// @param resource The resource to check.
     /// @param roleBitmap The roles bitmap to check.
     /// @return `true` if any of the roles in the given role bitmap has assignees, `false` otherwise.
     function hasAssignees(uint256 resource, uint256 roleBitmap) external view returns (bool);
 
     /// @notice Checks if account is the only assignee.
-    /// @dev Derivable from `getAssigneCount()` and `roles()`.
+    /// @dev Derivable from `getAssigneeCount()` and `roles()`.
     /// @param resource The resource to check.
     /// @param roleBitmap The roles bitmap to check.
     /// @param account The account to check.
