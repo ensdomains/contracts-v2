@@ -656,6 +656,44 @@ async function setBalance(client: RpcProvider, address: Address) {
   ]);
 }
 
+// An EIP-7702 delegation designator makes an EOA run its delegate's code on every
+// call. The delegates found on widely-known public test keys do not return the
+// ERC-1155 acceptance value, so any token mint or safe transfer to such an account
+// reverts. A fork of a live chain inherits whatever delegations exist there, which
+// silently breaks the registry writes that hand a migration signer its root names
+// and roles. Clearing the code restores a plain EOA, which skips the acceptance
+// callback entirely. Reading the designator rather than matching known addresses
+// keeps this working as delegates are rotated.
+const EIP7702_DESIGNATOR_PREFIX = "0xef0100";
+
+async function clearAccountDelegations(
+  client: ReturnType<typeof publicClient>,
+  accounts: Array<{ address: Address; label: string }>,
+) {
+  const seen = new Set<string>();
+  for (const { address, label } of accounts) {
+    const key = getAddress(address);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const code = await client.getCode({ address });
+    if (!code || !code.toLowerCase().startsWith(EIP7702_DESIGNATOR_PREFIX))
+      continue;
+    try {
+      await requestAny(client, [
+        { method: "anvil_setCode", params: [address, "0x"] },
+        { method: "hardhat_setCode", params: [address, "0x"] },
+        { method: "tenderly_setCode", params: [address, "0x"] },
+      ]);
+    } catch (error) {
+      console.log(
+        `warning: ${label} ${address} carries an EIP-7702 delegation that could not be cleared (${errorMessageChain(error)[0]}); token mints to it will revert`,
+      );
+      continue;
+    }
+    console.log(`cleared EIP-7702 delegation on ${label} ${address}`);
+  }
+}
+
 async function impersonate(client: RpcProvider, address: Address) {
   await requestAny(client, [
     { method: "anvil_impersonateAccount", params: [address] },
@@ -5537,7 +5575,10 @@ function buildDeployV1RockethConfig(
       ...(baseConfig.environments ?? {}),
       [deploymentNetwork]: {
         chain: chainId,
-        scripts: ["lib/ens-contracts/deploy"],
+        // Our own v1 steps come first so they can seed a deployment the bundled
+        // scripts then skip, which is how a bundled step is corrected without
+        // modifying the submodule.
+        scripts: ["deploy-v1", "lib/ens-contracts/deploy"],
         overrides: { tags },
       },
     },
@@ -6731,6 +6772,12 @@ export async function runForkFull(opts: RunForkFullOptions) {
       await setBalance(client, owner);
       await setBalance(client, v1Owner);
       await setBalance(client, urManager);
+      await clearAccountDelegations(client, [
+        { address: DEFAULT_ANVIL_DEPLOYER, label: "default deployer" },
+        { address: deployer, label: "deployer" },
+        { address: owner, label: "owner" },
+        { address: v1Owner, label: "v1 owner" },
+      ]);
     }
     const generatedSmokePrivateKey = useRpcStateControls
       ? generatePrivateKey()
@@ -6832,6 +6879,24 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         `pristine chain: v1 registration controllers still authorized (${enabledV1Controllers.join(", ")})`,
       );
+    }
+
+    // Re-running against an already-migrated chain leaves the v1 BaseRegistrar
+    // owned by the prior deployment's ETHRenewerV1, so every v1-owner-signed
+    // write to it reverts. Reclaim ownership before the first such write, which
+    // is phase 1's repointing of the v1 `.eth` resolver at ENSV2Resolver — not
+    // the phase 3 freeze. (No-op on a pristine chain. Live re-migrations use the
+    // standalone `phase reclaim-v1-registrar-ownership` command beforehand.)
+    if (useRpcStateControls) {
+      await reclaimV1RegistrarOwnership({
+        network: opts.network,
+        rpcUrl,
+        chainId: String(chainId),
+        provider,
+        ...v1Deployments,
+        v1Owner,
+        impersonateOwner: true,
+      });
     }
 
     let v2Deployments: V2MigrationDeployments;
@@ -7108,23 +7173,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
         status: STATUS.RESERVED,
       });
       console.log(`smoke pre-migration reserved ${smokeLabels.migrate}.eth`);
-    }
-
-    // Re-running against an already-migrated chain leaves the v1 BaseRegistrar
-    // owned by the prior deployment's ETHRenewerV1; reclaim it to the v1 owner
-    // before any owner-signed controller change below, the earliest of which is
-    // the phase 3 freeze. (No-op on a pristine chain. Live re-migrations use the
-    // standalone `phase reclaim-v1-registrar-ownership` command beforehand.)
-    if (useRpcStateControls) {
-      await reclaimV1RegistrarOwnership({
-        network: opts.network,
-        rpcUrl,
-        chainId: String(chainId),
-        provider,
-        ...v1Deployments,
-        v1Owner,
-        impersonateOwner: true,
-      });
     }
 
     console.log("phase 3: disable v1 registrars");
@@ -7444,9 +7492,12 @@ export async function runForkFull(opts: RunForkFullOptions) {
             preFunded: paymentTokenPreFunded,
           }),
           `v2 registrar rejected pre-migrated reserved name after enablement: ${smokeLabels.reservedOnly}.eth`,
-          // The name is RESERVED from pre-migration; assert that exact reason rather
-          // than any revert, which a payment or nonce problem would also satisfy.
-          /LabelAlreadyReserved/i,
+          // Pin the rejection to an availability failure rather than accepting any
+          // revert, which a payment or nonce problem would also satisfy. The
+          // registrar rejects a pre-migrated name in its own availability check, so
+          // the registry's reservation error is never reached; that the name is
+          // RESERVED rather than merely taken is asserted separately above.
+          /NameNotAvailable/i,
         );
       }
       await registerViaV2Registrar({
@@ -7538,10 +7589,14 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // Capture how the sampled names resolve *before* the cutover. Phase 7 otherwise
     // proves only that the proxy points somewhere new — nothing about whether names
     // still resolve, or resolve to the same answers.
+    // The bare `eth` TLD is deliberately registered in the v2 root with no
+    // resolver, so it stops resolving at the cutover while every name under it
+    // is unaffected. Sampling it would report that accepted difference on every
+    // run, which trains readers to ignore an output whose whole purpose is to
+    // surface real regressions. Names are what the cutover has to preserve.
     const resolutionNames = [
       ...new Set(
         [
-          "eth",
           smokeLabels.migrate && `${smokeLabels.migrate}.eth`,
           smokeLabels.v2AfterEnable && `${smokeLabels.v2AfterEnable}.eth`,
           ...(opts.resolutionNames?.split(",").map((name) => name.trim()) ??
@@ -7766,6 +7821,11 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
     await setBalance(client, owner);
     await setBalance(client, v1Owner);
     await setBalance(client, urManager);
+    await clearAccountDelegations(client, [
+      { address: deployer, label: "deployer" },
+      { address: owner, label: "owner" },
+      { address: v1Owner, label: "v1 owner" },
+    ]);
     await impersonate(client, deployer);
     await impersonate(client, owner);
     await impersonate(client, v1Owner);
