@@ -505,14 +505,15 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             // only transfers (skip mint and burn)
             for (uint256 i; i < tokenIds.length; ++i) {
                 uint256 tokenId = tokenIds[i];
+                uint256 resource = getResource(tokenId);
                 // only check ROLE_CAN_TRANSFER_ADMIN on original owner (from)
                 // ROLE_CAN_TRANSFER_ADMIN is technically a property of the token
-                if (!hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
+                if ((_getRoles(resource, from) & RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN) == 0) {
                     revert TransferDisallowed(tokenId, from);
                 } else if (safe && !isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, from)) {
                     revert TransferUnsafeWithMultipleAssignees(tokenId, from);
                 } else if (amounts[i] > 0) {
-                    _transferRoles(getResource(tokenId), from, to, false);
+                    _transferRoles(resource, from, to, false);
                 }
             }
         }
