@@ -70,5 +70,7 @@ library RegistryRolesLib {
         ROLE_SET_RESOLVER |
         ROLE_SET_RESOLVER_ADMIN |
         ROLE_UNREGISTER |
-        ROLE_UNREGISTER_ADMIN;
+        ROLE_UNREGISTER_ADMIN |
+        ROLE_UPGRADE |
+        ROLE_UPGRADE_ADMIN;
 }

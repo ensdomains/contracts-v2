@@ -403,7 +403,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IPermissionedRegistry
-    function isEmancipated() public view returns (bool) {
+    function isEmancipated() public view virtual returns (bool) {
         return
             (RegistryRolesLib.EMANCIPATED_ROLE_BITMAP &
                 EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) ==
