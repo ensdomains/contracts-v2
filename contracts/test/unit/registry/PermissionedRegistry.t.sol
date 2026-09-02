@@ -781,9 +781,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
 
-    function test_safeTransferFrom_rootAuthorizationIgnored() external {
-        // even though root has ROLE_CAN_TRANSFER_ADMIN and has approval for transfer,
-        // the transfer role check is only applied to the token owner
+    function test_safeTransferFrom_rootAuthorizedTokenWithoutRoles() external {
+        // ROLE_CAN_TRANSFER_ADMIN must be on the token for the transfer to occur
         assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
         uint256 tokenId = this._register();
         assertEq(registry.ownerOf(tokenId), user1);
@@ -795,14 +794,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
 
-    function test_safeTransferFrom_rootOwnedTokenWhileExpired() external {
-        // even though root has ROLE_CAN_TRANSFER_ADMIN independent of expiry
-        // the transfer is disallowed due to expiry
+    function test_safeTransferFrom_rootOwnedTokenWithoutRoles() external {
+        // ROLE_CAN_TRANSFER_ADMIN must be on the token for the transfer to occur
         assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
         testOwner = address(this); // mint to account with root
         uint256 tokenId = this._register();
-        vm.warp(testExpiry);
-        assertEq(registry.ownerOf(tokenId), address(0));
+        assertEq(registry.roles(tokenId, address(this)), 0); // no token roles
         vm.expectRevert(
             abi.encodeWithSelector(
                 IStandardRegistry.TransferDisallowed.selector,
@@ -813,12 +810,13 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
     }
 
-    function test_safeTransferFrom_rootOwnedTokenWithoutRoles() external {
+    function test_safeTransferFrom_rootOwnedTokenWhileExpired() external {
         // ROLE_CAN_TRANSFER_ADMIN must be on the token for the transfer to occur
         assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
         testOwner = address(this); // mint to account with root
         uint256 tokenId = this._register();
-        assertEq(registry.roles(tokenId, address(this)), 0); // no roles
+        vm.warp(testExpiry);
+        assertEq(registry.ownerOf(tokenId), address(0)); // expired
         vm.expectRevert(
             abi.encodeWithSelector(
                 IStandardRegistry.TransferDisallowed.selector,
