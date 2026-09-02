@@ -406,7 +406,9 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
 
     /// @inheritdoc IControllableOnlyBy
     function isControllableOnlyBy(address account) public view returns (bool) {
-        return isOnlyAssignee(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, account);
+        return
+            isOnlyAssignee(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, account) ||
+            roleCount(ROOT_RESOURCE) == 0;
     }
 
     ////////////////////////////////////////////////////////////////////////

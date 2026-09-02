@@ -1770,13 +1770,18 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.unsafeTransfer(user2, tokenId, "");
     }
 
-    function test_transferWithLockedSubregistry_withoutOnlyAssignee() external {
+    function test_transferWithLockedSubregistry_twoAssignees() external {
         _makeTransferSafe(user2);
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
         // any *any* non-owner root grants to subregistry
         vm.prank(user2);
         testRegistry.grantRootRoles(EACBaseRolesLib.ALL_ROLES, user1);
+        assertEq(
+            testRegistry.roleCount(testRegistry.ROOT_RESOURCE()) &
+            RegistryRolesLib.ROLE_REGISTRAR * 15,
+            2
+        );
         // safe transfer is blocked
         vm.expectRevert(
             abi.encodeWithSelector(IStandardRegistry.TransferDisallowed.selector, tokenId, user1)
@@ -1786,6 +1791,19 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         // remove grant
         vm.prank(user2);
         testRegistry.revokeRootRoles(EACBaseRolesLib.ALL_ROLES, user1);
+        // safeTransfer is allowed
+        vm.prank(user1);
+        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+    }
+
+    function test_transferWithLockedSubregistry_noAssignees() external {
+        _makeTransferSafe(user2);
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256 tokenId = this._register();
+        // remove all roles
+        vm.prank(user2);
+        testRegistry.revokeRootRoles(EACBaseRolesLib.ALL_ROLES, user2);
+        assertEq(testRegistry.roleCount(testRegistry.ROOT_RESOURCE()), 0);
         // safeTransfer is allowed
         vm.prank(user1);
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
