@@ -468,6 +468,22 @@ contract LibRegistryTest is Test, ERC1155Holder {
         }
     }
 
+    function test_findCanonicalName_circularParents_doesNotReturn() external {
+        PermissionedRegistry a = _createRegistry();
+        PermissionedRegistry b = _createRegistry();
+        uint64 expiry = uint64(block.timestamp + 1000);
+        b.register("a", address(this), a, address(0), EACBaseRolesLib.ALL_ROLES, expiry);
+        a.register("b", address(this), b, address(0), EACBaseRolesLib.ALL_ROLES, expiry);
+        a.setParent(b, "a");
+        b.setParent(a, "b");
+        (bool ok, ) = address(this).call{gas: 500_000}(abi.encodeCall(this.canonicalNameOf, (a)));
+        assertFalse(ok, "circular parent+subregistry must not successfully name a registry");
+    }
+
+    function canonicalNameOf(PermissionedRegistry registry) external view returns (bytes memory) {
+        return LibRegistry.findCanonicalName(rootRegistry, registry);
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Helpers
     ////////////////////////////////////////////////////////////////////////

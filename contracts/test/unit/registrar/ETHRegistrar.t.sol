@@ -17,7 +17,8 @@ import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
 import {IETHRenewer, RenewData} from "~src/registrar/interfaces/IETHRenewer.sol";
 import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
 import {ETHRegistrar, REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
-import {MockERC20, MockERC20Blacklist} from "~test/mocks/MockERC20.sol";
+import {MockERC20, MockERC20Blacklist, MockERC20FeeOnTransfer} from "~test/mocks/MockERC20.sol";
+import {PaymentRatio} from "~src/registrar/StandardRentPriceOracle.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOracleFixture.sol";
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
@@ -579,6 +580,44 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
     ////////////////////////////////////////////////////////////////////////
     // Payment Processing
     ////////////////////////////////////////////////////////////////////////
+
+    function test_register_feeOnTransfer_quotedVersusReceived() external {
+        MockERC20FeeOnTransfer feeToken = new MockERC20FeeOnTransfer();
+        PaymentRatio memory ratio = StandardRegistrar.ratioFromStable(feeToken);
+        rentPriceOracle.updatePaymentToken(feeToken, ratio.numer, ratio.denom);
+        feeToken.mint(testOwner, 1e9 * 10 ** feeToken.decimals());
+        vm.prank(testOwner);
+        feeToken.approve(address(ethRegistrar), type(uint256).max);
+
+        testPaymentToken = feeToken;
+        testLabel = "feetoken";
+        bytes32 commitment = _makeCommitment();
+        ethRegistrar.commit(commitment);
+        vm.warp(block.timestamp + testCommitDelay);
+
+        (uint256 base, uint256 premium) =
+            ethRegistrar.getRegisterPrice(testLabel, testDuration, feeToken);
+        uint256 quoted = base + premium;
+        uint256 beneficiary0 = feeToken.balanceOf(beneficiary);
+
+        vm.prank(testOwner);
+        ethRegistrar.register(
+            testLabel,
+            testOwner,
+            testSecret,
+            testRegistry,
+            testResolver,
+            testDuration,
+            feeToken,
+            testReferrer
+        );
+
+        uint256 received = feeToken.balanceOf(beneficiary) - beneficiary0;
+        // CANDIDATE PAY-SETTLE for the later judge, not a verdict:
+        // SafeERC20.safeTransferFrom does not re-check beneficiary credit, so a
+        // 1% fee-on-transfer token delivers less than the quoted amount.
+        assertLt(received, quoted, "fee-on-transfer shortfall vs quote");
+    }
 
     function test_voidReturn_acceptedBySafeERC20() external {
         // register

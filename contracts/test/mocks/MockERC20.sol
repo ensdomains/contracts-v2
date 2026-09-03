@@ -98,6 +98,19 @@ contract MockERC20VoidReturn is MockERC20 {
 }
 
 
+/// @dev Takes a 1% fee from each `transferFrom`, so the recipient receives less than `amount`.
+contract MockERC20FeeOnTransfer is MockERC20 {
+    constructor() MockERC20("FEE", 6) {}
+
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        uint256 fee = amount / 100;
+        super.transferFrom(from, to, amount - fee);
+        _burn(from, fee);
+        return true;
+    }
+}
+
+
 contract MockERC20FalseReturn is MockERC20 {
     ////////////////////////////////////////////////////////////////////////
     // Initialization

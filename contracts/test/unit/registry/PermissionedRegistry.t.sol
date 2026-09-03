@@ -827,6 +827,25 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
     }
 
+    function test_safeBatchTransferFrom_whileExpired() external {
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        testOwner = address(this);
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = this._register();
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
+        vm.warp(testExpiry);
+        assertEq(registry.ownerOf(tokenIds[0]), address(0), "expired");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IStandardRegistry.TransferDisallowed.selector,
+                tokenIds[0],
+                address(this)
+            )
+        );
+        registry.safeBatchTransferFrom(address(this), user2, tokenIds, amounts, "");
+    }
+
     function test_safeBatchTransferFrom() external {
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
