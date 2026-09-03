@@ -312,9 +312,7 @@ function recordCalls(
   for (const record of records) {
     if (record.kind === "addr") {
       const coinType = record.coin_type ?? 60;
-      const value = record.value_actor
-        ? resolveRef(record.value_actor, ctx)
-        : ((record.value ?? zeroAddress) as Address);
+      const value = recordValue(record, ctx);
       calls.push({
         signer,
         target: resolver,
@@ -326,12 +324,12 @@ function recordCalls(
             ? encodeFunctionData({
                 abi: RESOLVER_ABI,
                 functionName: "setAddr",
-                args: [node, value],
+                args: [node, value as Address],
               })
             : encodeFunctionData({
                 abi: RESOLVER_MULTICOIN_ABI,
                 functionName: "setAddr",
-                args: [node, BigInt(coinType), value],
+                args: [node, BigInt(coinType), value as Hex],
               }),
       });
     } else if (record.kind === "text") {
@@ -344,7 +342,7 @@ function recordCalls(
         data: encodeFunctionData({
           abi: RESOLVER_ABI,
           functionName: "setText",
-          args: [node, record.key ?? "", record.value ?? ""],
+          args: [node, record.key ?? "", recordValue(record, ctx)],
         }),
       });
     } else if (record.kind === "contenthash") {
@@ -357,7 +355,7 @@ function recordCalls(
         data: encodeFunctionData({
           abi: RESOLVER_ABI,
           functionName: "setContenthash",
-          args: [node, (record.value_hex ?? record.value ?? "0x") as Hex],
+          args: [node, recordValue(record, ctx) as Hex],
         }),
       });
     } else {
@@ -454,16 +452,44 @@ function recordKey(record: RecordSpec): string {
   return record.kind;
 }
 
-/// The value a record write lands, resolved the same way the call encoder does.
-function recordValue(record: RecordSpec, ctx: RefContext): string {
+/// The value a record write lands.
+///
+/// The call encoder and the bookkeeping that reconciles the final state both
+/// read this, so neither can resolve a record differently from the other.
+///
+/// A multicoin address is `bytes`, not an `address`: the corpus carries the
+/// target chain's own encoding in the hex field, and substituting a 20-byte
+/// Ethereum address for it seeds the coin type with a value the scenario never
+/// declared — which reads back as present, so nothing notices.
+export function recordValue(record: RecordSpec, ctx: RefContext): string {
   if (record.kind === "addr") {
-    return record.value_actor
-      ? resolveRef(record.value_actor, ctx)
-      : String(resolveOptionalRef(record.value, ctx));
+    const declared = record.value_actor ?? record.value;
+    if ((record.coin_type ?? 60) === 60)
+      return resolveOptionalRef(declared, ctx);
+    return record.value_hex ?? (declared ? resolveRef(declared, ctx) : "0x");
   }
   if (record.kind === "contenthash")
     return record.value_hex ?? record.value ?? "0x";
   return record.value ?? "";
+}
+
+/// The empty write that clears a record slot.
+///
+/// A record is cleared by writing the empty value its setter accepts, so every
+/// value the corpus declared for the slot has to be dropped. Carrying a
+/// contenthash's raw bytes through would make the clear re-write exactly what it
+/// exists to remove, and an all-zero address is a present value for a multicoin
+/// slot rather than an absent one.
+function clearedRecord(record: RecordSpec): RecordSpec {
+  const slot = {
+    kind: record.kind,
+    coin_type: record.coin_type,
+    key: record.key,
+  };
+  if (record.kind === "text") return { ...slot, value: "" };
+  if (record.kind === "addr" && (record.coin_type ?? 60) === 60)
+    return { ...slot, value: zeroAddress };
+  return { ...slot, value_hex: "0x" };
 }
 
 export function planSetupSteps(
@@ -646,11 +672,7 @@ export function planSetupSteps(
           ?.record_operation_history ??
           scenario.v1.registration.records ??
           []) as RecordSpec[];
-        const cleared = known.map((r) =>
-          r.kind === "addr"
-            ? { ...r, value_actor: undefined, value: zeroAddress }
-            : { ...r, value: "" },
-        );
+        const cleared = known.map(clearedRecord);
         calls.push(
           ...recordCalls(
             ctx.addresses.publicResolver,

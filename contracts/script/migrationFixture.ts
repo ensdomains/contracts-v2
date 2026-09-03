@@ -51,6 +51,7 @@ import {
   withPriceBuffer,
 } from "./migrationFixture/config.js";
 import { verifySeededV1State } from "./migrationFixture/verifyV1.js";
+import { resolveRegistrarControlRoute } from "./registrarControl.js";
 import {
   executionScenario,
   expectedResult,
@@ -74,7 +75,8 @@ import {
 import {
   executePlannedCalls,
   fundActors,
-  fundAndImpersonate,
+  assertStateControls,
+  impersonateAccount,
   type Executor,
 } from "./migrationFixture/execute.js";
 import {
@@ -202,7 +204,7 @@ async function ownerWallet(opts: CommonOptions, owner: Address) {
   }
   if (!opts.rpcStateControls)
     throw new Error(`missing V1 owner key for ${owner}`);
-  await fundAndImpersonate(opts, owner);
+  await impersonateAccount(opts, owner);
   return createWalletClient({
     chain,
     account: owner,
@@ -268,20 +270,29 @@ async function ensureV1ControllerEnabled(opts: CommonOptions): Promise<void> {
     currentOwner = v1Owner;
   }
 
-  const security = optionalV1Deployment(opts, "RegistrarSecurityController");
-  const target = security ?? base;
-  const targetOwner = getAddress(
+  // The security controller only works while it still owns the registrar, so the
+  // route follows the registrar's live owner rather than the artifact's presence.
+  const route = await resolveRegistrarControlRoute({
+    client,
+    baseRegistrar: base,
+    registrarSecurityController: optionalV1Deployment(
+      opts,
+      "RegistrarSecurityController",
+    ),
+    owner: currentOwner,
+  });
+  const routeOwner = getAddress(
     (await client.readContract({
-      address: target.address,
-      abi: target.abi,
+      address: route.target.address,
+      abi: route.target.abi,
       functionName: "owner",
     })) as Address,
   );
-  const wallet = await ownerWallet(opts, targetOwner);
+  const wallet = await ownerWallet(opts, routeOwner);
   const hash = await wallet.writeContract({
-    address: target.address,
-    abi: target.abi,
-    functionName: security ? "addRegistrarController" : "addController",
+    address: route.target.address,
+    abi: route.target.abi,
+    functionName: route.addFunctionName,
     args: [controller.address],
   });
   await receipt(client, hash, "enable v1 registrar controller");
@@ -508,6 +519,7 @@ async function verify(opts: CommonOptions): Promise<void> {
 }
 
 async function deployFixtures(opts: CommonOptions): Promise<void> {
+  await requireWriteableChain(opts);
   mkdirSync(resolve(opts.workDir), { recursive: true });
   const { chain } = clients(opts);
   const existing = loadRunState(opts);
@@ -542,6 +554,7 @@ async function deployFixtures(opts: CommonOptions): Promise<void> {
 export async function seedV1(
   opts: CommonOptions,
 ): Promise<{ path: string; labels: string[] }> {
+  await requireWriteableChain(opts);
   mkdirSync(resolve(opts.workDir), { recursive: true });
   const rows = loadFixture(opts);
   if (!rows.length) throw new Error("fixture selection is empty");
@@ -895,6 +908,7 @@ async function fundActorAccounts(
   opts: CommonOptions,
   floor: string,
 ): Promise<void> {
+  await requireWriteableChain(opts);
   const { chain, client, wallet } = clients(opts);
   const actors = accounts(opts);
   await fundActors(
@@ -930,7 +944,6 @@ async function fundActorAccounts(
 export async function runFixtureSeedStage(
   opts: CommonOptions,
 ): Promise<{ labels: string[]; premigrationCsv: string }> {
-  requireNonLiveMainnet(opts);
   console.log("fixture: seeding the ENSv1 corpus");
   const { path: premigrationCsv, labels } = await seedV1(opts);
   console.log("fixture: verifying the shaped V1 state");
@@ -979,16 +992,25 @@ function addCommon(command: Command): Command {
     );
 }
 
+/// Gate every fixture action that writes to the chain.
+///
 /// The corpus is test scaffolding: it registers names and shapes their state
 /// with real transactions, so it must never touch live mainnet. A mainnet
-/// *fork* is fine, and is what a full dress rehearsal uses, so the guard turns
-/// on the absence of RPC state controls rather than on the network alone.
-function requireNonLiveMainnet(opts: CommonOptions): void {
+/// *fork* is fine, and is what a full dress rehearsal uses, so the network check
+/// turns on the absence of RPC state controls rather than on the network alone.
+/// That flag is caller-asserted, so it is then proved against the endpoint
+/// before the first transaction rather than trusted.
+///
+/// Read-only actions do not call this: refusing them would only push operators
+/// into passing the state-control flag to run a dry run, which is the very
+/// assertion this exists to distrust.
+async function requireWriteableChain(opts: CommonOptions): Promise<void> {
   if (opts.network === "mainnet" && !opts.rpcStateControls) {
     throw new Error(
       "refusing to run the fixture corpus against live mainnet; use a fork or Tenderly virtual testnet (--rpc-state-controls)",
     );
   }
+  await assertStateControls(opts);
 }
 
 function normalizeOptions(raw: any): CommonOptions {
@@ -1001,9 +1023,7 @@ function normalizeOptions(raw: any): CommonOptions {
     process.env[network === "sepolia" ? "SEPOLIA_RPC_URL" : "MAINNET_RPC_URL"];
   if (!rpcUrl)
     throw new Error("missing --rpc-url or network RPC environment variable");
-  const options = { ...raw, network, rpcUrl } as CommonOptions;
-  requireNonLiveMainnet(options);
-  return options;
+  return { ...raw, network, rpcUrl } as CommonOptions;
 }
 
 /// Adds the fixture subcommands to a parent command. Shared by this script's

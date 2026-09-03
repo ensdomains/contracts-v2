@@ -13,7 +13,7 @@ import { Artifact_MigrationFixtureBatcher } from "generated/artifacts/MigrationF
 import {
   bufferedGas,
   receipt,
-  rpc,
+  rpcAny,
   v1Deployment,
   withPriceBuffer,
 } from "./config.js";
@@ -209,9 +209,9 @@ export async function executeBatcherCalls(
 export async function actorWallet(ex: Executor, alias: string) {
   const actor = ex.actors.get(alias);
   if (!actor) throw new Error(`unknown actor alias "${alias}"`);
-  if (ex.opts.rpcStateControls) {
-    await fundAndImpersonate(ex.opts, actor.account.address);
-  }
+  // Actors are local HD accounts that sign their own transactions, so they only
+  // need a balance — unlocking them at the node would do nothing.
+  await fundAccount(ex.opts, actor.account.address);
   return createWalletClient({
     chain: ex.chain,
     account: actor.account,
@@ -239,19 +239,63 @@ async function executeAsActor(
   }
 }
 
-export async function fundAndImpersonate(
+/// Balance a state-controlled endpoint hands an account that needs gas.
+const STATE_CONTROL_BALANCE = "0x8ac7230489e80000";
+
+/// Tops an account up through whichever state-control method the endpoint has.
+export async function fundAccount(
   opts: CommonOptions,
   address: Address,
 ): Promise<void> {
   if (!opts.rpcStateControls) return;
-  await rpc(opts, "anvil_setBalance", [address, "0x8ac7230489e80000"]).catch(
-    async () => {
-      await rpc(opts, "hardhat_setBalance", [address, "0x8ac7230489e80000"]);
+  await rpcAny(opts, [
+    { method: "anvil_setBalance", params: [address, STATE_CONTROL_BALANCE] },
+    { method: "hardhat_setBalance", params: [address, STATE_CONTROL_BALANCE] },
+    { method: "tenderly_setBalance", params: [address, STATE_CONTROL_BALANCE] },
+    {
+      method: "tenderly_setBalance",
+      params: [[address], STATE_CONTROL_BALANCE],
     },
-  );
-  await rpc(opts, "anvil_impersonateAccount", [address]).catch(async () => {
-    await rpc(opts, "hardhat_impersonateAccount", [address]);
-  });
+  ]);
+}
+
+/// Unlocks an account the run has no key for, and funds it so it can pay gas.
+/// Only accounts signed for by the node need this; locally signed accounts just
+/// need the balance.
+export async function impersonateAccount(
+  opts: CommonOptions,
+  address: Address,
+): Promise<void> {
+  if (!opts.rpcStateControls) return;
+  await rpcAny(opts, [
+    { method: "anvil_impersonateAccount", params: [address] },
+    { method: "hardhat_impersonateAccount", params: [address] },
+    { method: "tenderly_impersonateAccount", params: [address] },
+    { method: "tenderly_impersonateAccount", params: [[address]] },
+  ]);
+  await fundAccount(opts, address);
+}
+
+/// Address used only to prove the endpoint honours state-control calls. Nothing
+/// signs from it, so overwriting its balance cannot disturb a run.
+const STATE_CONTROL_PROBE =
+  "0x000000000000000000000000000000000000dEaD" as Address;
+
+/// Confirms the endpoint really offers state controls before a caller spends on
+/// the strength of that claim. The flag is caller-asserted and nothing else
+/// checks it, so a mistyped target would otherwise spend real funds before the
+/// first state-control call revealed the mistake.
+export async function assertStateControls(opts: CommonOptions): Promise<void> {
+  if (!opts.rpcStateControls) return;
+  try {
+    await fundAccount(opts, STATE_CONTROL_PROBE);
+  } catch (error) {
+    throw new Error(
+      `--rpc-state-controls was set but ${opts.rpcUrl} rejected every state-control method; ` +
+        "point at a fork or a Tenderly virtual testnet",
+      { cause: error },
+    );
+  }
 }
 
 /// Tops every fixture actor up to a floor balance from the operator key. Actor

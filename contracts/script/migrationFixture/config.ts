@@ -277,6 +277,27 @@ export async function receipt(client: any, hash: Hex, label: string) {
   return r;
 }
 
+/// Issues the first spelling of a state-control call the endpoint accepts.
+///
+/// Node families name these differently — Anvil, Hardhat and Tenderly each have
+/// their own, and Tenderly's take either a bare address or a one-element array —
+/// so a caller lists the equivalents and the first that succeeds wins. The last
+/// failure surfaces when the endpoint supports none of them.
+export async function rpcAny(
+  opts: CommonOptions,
+  requests: { method: string; params: unknown[] }[],
+): Promise<unknown> {
+  let lastError: unknown;
+  for (const request of requests) {
+    try {
+      return await rpc(opts, request.method, request.params);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
 export async function rpc(
   opts: CommonOptions,
   method: string,

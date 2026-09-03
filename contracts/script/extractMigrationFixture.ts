@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { existsSync, statSync, utimesSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, utimesSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -31,6 +31,10 @@ if (!existsSync(archive)) {
 }
 
 if (isCurrent()) process.exit(0);
+
+// The extraction root is gitignored, so a fresh checkout does not have it and
+// `tar` refuses to change into a directory it will not create itself.
+mkdirSync(destination, { recursive: true });
 
 const result = spawnSync("tar", ["xzf", archive, "-C", destination], {
   stdio: ["ignore", "inherit", "inherit"],

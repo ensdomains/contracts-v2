@@ -16,7 +16,7 @@ import {
   v1Form,
   type RefContext,
 } from "./scenario.js";
-import { labelhashOf, tokenIdOf } from "./plan.js";
+import { labelhashOf, recordValue, tokenIdOf } from "./plan.js";
 import {
   FUSES,
   OWNER_CONTROLLED_MASK,
@@ -162,6 +162,12 @@ type Check = {
 const addrEq = (a: unknown, b: Address) =>
   typeof a === "string" && getAddress(a as Address) === getAddress(b);
 
+/// Byte strings are compared by value. Accepting anything non-empty would pass a
+/// slot seeded with the wrong bytes, and would fail a slot a scenario cleared on
+/// purpose — both of which are states the corpus is meant to distinguish.
+const bytesEq = (a: unknown, b: string) =>
+  typeof a === "string" && a.toLowerCase() === b.toLowerCase();
+
 /// The fuse bits that end up burned on-chain without the corpus restating them.
 ///
 /// Wrapping a `.eth` 2LD emancipates it and flags it as a `.eth` name, so both
@@ -202,9 +208,7 @@ function recordChecks(
       form: meta.form,
     };
     if (record.kind === "addr" && (record.coin_type ?? 60) === 60) {
-      const expected = record.value_actor
-        ? resolveRef(record.value_actor, ctx)
-        : resolveOptionalRef(record.value, ctx);
+      const expected = recordValue(record, ctx) as Address;
       checks.push({
         ...base,
         field: "record addr(60)",
@@ -220,6 +224,7 @@ function recordChecks(
             : { expected, actual: ok ? String(result) : "read reverted" },
       });
     } else if (record.kind === "addr") {
+      const expected = recordValue(record, ctx);
       checks.push({
         ...base,
         field: `record addr(${record.coin_type})`,
@@ -230,15 +235,12 @@ function recordChecks(
           args: [node, BigInt(record.coin_type as number)],
         },
         assert: (ok, result) =>
-          ok && typeof result === "string" && result !== "0x"
+          ok && bytesEq(result, expected)
             ? null
-            : {
-                expected: "non-empty",
-                actual: ok ? String(result) : "read reverted",
-              },
+            : { expected, actual: ok ? String(result) : "read reverted" },
       });
     } else if (record.kind === "text") {
-      const expected = record.value ?? "";
+      const expected = recordValue(record, ctx);
       checks.push({
         ...base,
         field: `record text(${record.key})`,
@@ -254,6 +256,7 @@ function recordChecks(
             : { expected, actual: ok ? String(result) : "read reverted" },
       });
     } else if (record.kind === "contenthash") {
+      const expected = recordValue(record, ctx);
       checks.push({
         ...base,
         field: "record contenthash",
@@ -264,12 +267,9 @@ function recordChecks(
           args: [node],
         },
         assert: (ok, result) =>
-          ok && typeof result === "string" && result !== "0x"
+          ok && bytesEq(result, expected)
             ? null
-            : {
-                expected: "non-empty",
-                actual: ok ? String(result) : "read reverted",
-              },
+            : { expected, actual: ok ? String(result) : "read reverted" },
       });
     }
   }
