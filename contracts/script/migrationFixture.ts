@@ -67,11 +67,9 @@ import {
 } from "./migrationFixture/plan.js";
 import {
   actorsNeedingHelperApproval,
-  actorsNeedingSenderApproval,
   buildHelperArgs,
   migrationTarget,
   partitionMigration,
-  type MigrationTarget,
 } from "./migrationFixture/migrate.js";
 import {
   executePlannedCalls,
@@ -80,43 +78,14 @@ import {
   type Executor,
 } from "./migrationFixture/execute.js";
 import {
-  MIGRATION_DATA_COMPONENTS,
   type CommonOptions,
   type FixtureEnvelope,
   type FixtureRunName,
   type FixtureRunState,
 } from "./migrationFixture/types.js";
 
-/// Corpus fixture contracts, in the order the run state records them.
 /// The corpus's counterparty contracts. `v1Args` names the v1 deployments each
 /// constructor takes, in order.
-/// Routes `migrate` performs. The corpus also carries `graveyard` and
-/// `eth_renewer_v1`, which are not migrations into a v2 controller and have no
-/// implementation here yet.
-/// A child whose parent 2LD has not been migrated has nowhere to go. The corpus
-/// describes such a parent only as `parent_fixture` metadata rather than as a
-/// fixture of its own, so nothing migrates it and the child cannot be delivered.
-class ParentNotMigratedError extends Error {}
-
-/// `MigrationHelper.ParentNotMigrated(bytes)`. The helper route reaches the same
-/// condition on-chain that the receiver route detects from the registry.
-const PARENT_NOT_MIGRATED_SELECTOR = "0x83d435f1";
-
-function isParentNotMigrated(error: unknown): boolean {
-  if (error instanceof ParentNotMigratedError) return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    message.includes(PARENT_NOT_MIGRATED_SELECTOR) ||
-    message.includes("ParentNotMigrated")
-  );
-}
-
-const EXECUTED_ROUTES = new Set([
-  "migration_helper",
-  "locked_controller",
-  "unlocked_controller",
-  "wrapper_registry_receiver",
-]);
 
 const FIXTURE_ARTIFACTS = [
   {
@@ -430,17 +399,6 @@ function writePremigrationCsv(
   const path = join(resolve(opts.workDir), "fixture-premigration.csv");
   writeFileSync(path, `${output.join("\n")}\n`);
   return { path, labels };
-}
-
-/// DNS wire encoding for MigrationHelper's `parentName`.
-function dnsEncode(name: string): Hex {
-  let out = "0x";
-  for (const part of name.split(".").filter(Boolean)) {
-    const bytes = new TextEncoder().encode(part);
-    out += bytes.length.toString(16).padStart(2, "0");
-    out += [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-  }
-  return `${out}00` as Hex;
 }
 
 // ---------------------------------------------------------------------------
@@ -840,362 +798,6 @@ export async function seedV1(
   return csv;
 }
 
-/// Grants MigrationHelper operator approval to every actor holding a name that
-/// takes a helper route. `migrate` runs as one sender and the helper checks
-/// approval for each token's own owner, so the set is the union of the batch
-/// members' v1 owners — not only actors whose route names the helper.
-export async function prepare(opts: CommonOptions): Promise<void> {
-  const state = loadRunState(opts);
-  if (!state)
-    throw new Error(`no run state at ${runStatePath(opts)}; run seed-v1 first`);
-  const rows = loadFixture(opts);
-  const ctx = refContext(opts, state.fixtureContracts);
-  const targets = rows.map((r) => migrationTarget(r, ctx));
-  const aliases = actorsNeedingHelperApproval(targets);
-  const senderApprovals = actorsNeedingSenderApproval(
-    partitionMigration(targets).batches,
-  );
-
-  const { chain, client } = clients(opts);
-  const helper = v2Deployment(opts, "MigrationHelper");
-  const v1 = v1Addresses(opts);
-  const actors = accounts(opts);
-
-  // Each owner approves the helper, which performs the transfer, and every
-  // actor that submits a batch containing one of its names, which the helper
-  // gates on.
-  const operatorsByOwner = new Map<string, Map<Address, string>>();
-  const addOperator = (owner: string, address: Address, label: string) => {
-    const operators = operatorsByOwner.get(owner) ?? new Map<Address, string>();
-    operators.set(getAddress(address), label);
-    operatorsByOwner.set(owner, operators);
-  };
-  for (const alias of aliases) addOperator(alias, helper.address, "helper");
-  for (const [owner, senders] of senderApprovals) {
-    for (const sender of senders) {
-      const actor = actors.find((a) => a.alias === sender);
-      if (!actor) throw new Error(`unknown actor "${sender}"`);
-      addOperator(owner, actor.account.address, `sender ${sender}`);
-    }
-  }
-
-  let granted = 0;
-  for (const [alias, operators] of operatorsByOwner) {
-    const actor = actors.find((a) => a.alias === alias);
-    if (!actor) throw new Error(`unknown actor "${alias}"`);
-    if (opts.rpcStateControls)
-      await fundAndImpersonate(opts, actor.account.address);
-    const wallet = createWalletClient({
-      chain,
-      account: actor.account,
-      transport: http(opts.rpcUrl),
-    });
-    for (const [operator, label] of operators) {
-      for (const token of [v1.base, v1.wrapper]) {
-        const approved = (await client.readContract({
-          address: token.address,
-          abi: token.abi,
-          functionName: "isApprovedForAll",
-          args: [actor.account.address, operator],
-        })) as boolean;
-        if (approved) continue;
-        const hash = await wallet.writeContract({
-          address: token.address,
-          abi: token.abi,
-          functionName: "setApprovalForAll",
-          args: [operator, true],
-        });
-        await receipt(client, hash, `${alias} approve ${label}`);
-        granted += 1;
-      }
-    }
-  }
-  console.log(
-    `approved ${granted} operator grants across ${operatorsByOwner.size} actors: ${[...operatorsByOwner.keys()].sort().join(", ")}`,
-  );
-}
-
-export async function migrate(opts: CommonOptions): Promise<void> {
-  const state = loadRunState(opts);
-  if (!state)
-    throw new Error(`no run state at ${runStatePath(opts)}; run seed-v1 first`);
-  const rows = loadFixture(opts);
-  const ctx = refContext(opts, state.fixtureContracts);
-  const { chain, client } = clients(opts);
-  const actors = accounts(opts);
-
-  const helper = v2Deployment(opts, "MigrationHelper");
-  const unlocked = v2Deployment(opts, "UnlockedMigrationController");
-  const locked = v2Deployment(opts, "LockedMigrationController");
-  const ethRegistry = v2Deployment(opts, "ETHRegistry");
-  const v1 = v1Addresses(opts);
-
-  const byId = new Map(state.names.map((n) => [n.fixtureId, n]));
-  const targets = rows
-    .filter((r) => byId.has(r.fixture_id))
-    .map((r) => migrationTarget(r, ctx));
-  const { batches, singles } = partitionMigration(targets);
-
-  const walletFor = async (alias: string) => {
-    const actor = actors.find((a) => a.alias === alias);
-    if (!actor) throw new Error(`unknown actor "${alias}"`);
-    if (opts.rpcStateControls)
-      await fundAndImpersonate(opts, actor.account.address);
-    return createWalletClient({
-      chain,
-      account: actor.account,
-      transport: http(opts.rpcUrl),
-    });
-  };
-
-  const encodePayload = (t: MigrationTarget) =>
-    encodeAbiParameters(
-      [{ type: "tuple", components: MIGRATION_DATA_COMPONENTS }],
-      [t.data],
-    );
-
-  const helperArgsFor = (members: MigrationTarget[]) => {
-    const args = buildHelperArgs(members);
-    return [
-      args.unwrapped,
-      args.unlockedGroups,
-      args.lockedGroups,
-      args.lockedChildren.map((c) => ({
-        parentName: dnsEncode(c.parentName),
-        groups: c.groups,
-      })),
-    ] as const;
-  };
-
-  const assertV2Registered = async (t: MigrationTarget) => {
-    const v2State = (await client.readContract({
-      address: ethRegistry.address,
-      abi: ethRegistry.abi,
-      functionName: "getState",
-      args: [BigInt(keccak256(stringToHex(t.label)))],
-    })) as { status: number; latestOwner: Address };
-    if (Number(v2State.status) !== 2) {
-      throw new Error(
-        `${t.fixtureId}: expected REGISTERED, got status ${v2State.status}`,
-      );
-    }
-    if (getAddress(v2State.latestOwner) !== getAddress(t.data.owner)) {
-      throw new Error(
-        `${t.fixtureId}: v2 owner ${v2State.latestOwner}, expected ${t.data.owner}`,
-      );
-    }
-  };
-
-  for (const { batchId, members } of batches) {
-    if (members.every((m) => byId.get(m.fixtureId)?.actualResult)) continue;
-    const wallet = await walletFor(members[0].callerAlias);
-    try {
-      const hash = await wallet.writeContract({
-        address: helper.address,
-        abi: helper.abi,
-        functionName: "migrate",
-        args: helperArgsFor(members),
-      });
-      const r = await receipt(
-        client,
-        hash,
-        `batch ${batchId} (${members.length})`,
-      );
-      for (const m of members) {
-        const run = byId.get(m.fixtureId)!;
-        run.migrationTransaction = hash;
-        run.migrationBlock = String(r.blockNumber);
-        run.actualResult = "success";
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      // A batch carrying a child whose parent was never migrated fails for a
-      // reason outside the scenarios in it, so it is skipped rather than
-      // recorded as every member reverting.
-      const parentGap = isParentNotMigrated(error);
-      for (const m of members) {
-        const run = byId.get(m.fixtureId)!;
-        run.actualResult = parentGap ? "skipped" : "revert";
-        run.error = message;
-      }
-      if (parentGap) {
-        console.log(
-          `  skipped batch ${batchId} (${members.length}): parent not migrated`,
-        );
-        saveRunState(opts, state);
-        continue;
-      }
-      if (
-        members.some((m) => byId.get(m.fixtureId)!.expectedResult !== "revert")
-      ) {
-        saveRunState(opts, state);
-        throw error;
-      }
-    }
-    saveRunState(opts, state);
-  }
-
-  // Parents before children, so a child's destination registry exists.
-  const ordered = [...singles].sort(
-    (a, b) =>
-      a.name.split(".").length - b.name.split(".").length ||
-      a.fixtureId.localeCompare(b.fixtureId),
-  );
-
-  for (const t of ordered) {
-    const run = byId.get(t.fixtureId)!;
-    if (run.actualResult) continue;
-    // `graveyard` and `eth_renewer_v1` are not token hand-offs into a migration
-    // controller — they retire a name or renew one that stays on v1 — so the
-    // transfer-shaped routes below cannot express them. Record them as skipped
-    // and keep going, rather than failing a whole rehearsal over a route this
-    // command does not implement. They are never counted as migrated.
-    if (!EXECUTED_ROUTES.has(t.route)) {
-      run.actualResult = "skipped";
-      run.error = `route "${t.route}" is not executed by this command`;
-      console.log(
-        `  skipped ${t.fixtureId}: route "${t.route}" not implemented`,
-      );
-      saveRunState(opts, state);
-      continue;
-    }
-    const wallet = await walletFor(t.callerAlias);
-    const owner = (ctx.actors.get(t.v1OwnerAlias) ?? t.data.owner) as Address;
-    const payload = encodePayload(t);
-
-    const send = async (): Promise<Hex> => {
-      switch (t.route) {
-        case "migration_helper":
-          return wallet.writeContract({
-            address: helper.address,
-            abi: helper.abi,
-            functionName: "migrate",
-            args: helperArgsFor([t]),
-          });
-        case "locked_controller":
-          return wallet.writeContract({
-            address: v1.wrapper.address,
-            abi: v1.wrapper.abi,
-            functionName: "safeTransferFrom",
-            args: [
-              owner,
-              locked.address,
-              BigInt(namehash(t.name)),
-              1n,
-              payload,
-            ],
-          });
-        case "unlocked_controller":
-          return t.form === "unwrapped"
-            ? wallet.writeContract({
-                address: v1.base.address,
-                abi: v1.base.abi,
-                functionName: "safeTransferFrom",
-                args: [owner, unlocked.address, tokenIdOf(t.label), payload],
-              })
-            : wallet.writeContract({
-                address: v1.wrapper.address,
-                abi: v1.wrapper.abi,
-                functionName: "safeTransferFrom",
-                args: [
-                  owner,
-                  unlocked.address,
-                  BigInt(namehash(t.name)),
-                  1n,
-                  payload,
-                ],
-              });
-        // A child is delivered to the registry its migrated parent deployed, so
-        // the destination is read from v2 rather than being a fixed address.
-        case "wrapper_registry_receiver": {
-          const parentLabel = t.name
-            .split(".")
-            .slice(1)
-            .join(".")
-            .replace(/\.eth$/, "");
-          const parentRegistry = (await client.readContract({
-            address: ethRegistry.address,
-            abi: ethRegistry.abi,
-            functionName: "getSubregistry",
-            args: [parentLabel],
-          })) as Address;
-          if (getAddress(parentRegistry) === zeroAddress) {
-            throw new ParentNotMigratedError(
-              `${t.fixtureId}: parent ${parentLabel}.eth is not migrated`,
-            );
-          }
-          return wallet.writeContract({
-            address: v1.wrapper.address,
-            abi: v1.wrapper.abi,
-            functionName: "safeTransferFrom",
-            args: [
-              owner,
-              parentRegistry,
-              BigInt(namehash(t.name)),
-              1n,
-              payload,
-            ],
-          });
-        }
-        default:
-          throw new Error(
-            `${t.fixtureId}: route "${t.route}" is not executed by this command`,
-          );
-      }
-    };
-
-    // A wrong terminal state is a distinct failure from a revert, so the two
-    // are tracked separately rather than collapsed into one catch.
-    let quarantined = false;
-    try {
-      const hash = await send();
-      const r = await receipt(client, hash, `migrate ${t.name}`);
-      if (run.expectedResult === "revert") {
-        throw new Error(
-          `${t.fixtureId}: expected revert but migration succeeded`,
-        );
-      }
-      run.migrationTransaction = hash;
-      run.migrationBlock = String(r.blockNumber);
-      run.actualResult = "success";
-      try {
-        await assertV2Registered(t);
-      } catch (stateError) {
-        quarantined = true;
-        run.actualResult = "quarantined";
-        run.error =
-          stateError instanceof Error ? stateError.message : String(stateError);
-        saveRunState(opts, state);
-        throw stateError;
-      }
-    } catch (error) {
-      if (quarantined) throw error;
-      run.error = error instanceof Error ? error.message : String(error);
-      // An unmigrated parent is a gap in what this command covers, not the
-      // scenario failing, so it is skipped rather than recorded as a revert.
-      if (isParentNotMigrated(error)) {
-        run.actualResult = "skipped";
-        console.log(`  skipped ${t.fixtureId}: ${run.error}`);
-        saveRunState(opts, state);
-        continue;
-      }
-      run.actualResult = "revert";
-      if (run.expectedResult !== "revert") {
-        saveRunState(opts, state);
-        throw error;
-      }
-    }
-    saveRunState(opts, state);
-  }
-
-  const summary = state.names.reduce<Record<string, number>>((acc, n) => {
-    const key = n.actualResult ?? "pending";
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {});
-  console.log(`migration summary: ${JSON.stringify(summary)}`);
-}
-
 /// Reads the shaped V1 state back off-chain and compares every seeded name with
 /// the pre-migration state its scenario declares — wrapper form, burned fuses,
 /// ownership across the three V1 registries, resolver, TTL and records. Run it
@@ -1328,22 +930,13 @@ async function fundActorAccounts(
 export async function runFixtureSeedStage(
   opts: CommonOptions,
 ): Promise<{ labels: string[]; premigrationCsv: string }> {
+  requireNonLiveMainnet(opts);
   console.log("fixture: seeding the ENSv1 corpus");
   const { path: premigrationCsv, labels } = await seedV1(opts);
-  await prepare(opts);
   console.log("fixture: verifying the shaped V1 state");
   await verifyV1(opts);
 
   return { labels, premigrationCsv };
-}
-
-/// Migrates the seeded corpus. Belongs after phase 6, which is what authorises
-/// the migration controllers.
-export async function runFixtureMigrateStage(
-  opts: CommonOptions,
-): Promise<void> {
-  console.log("fixture: migrating the corpus");
-  await migrate(opts);
 }
 
 // ---------------------------------------------------------------------------
@@ -1386,6 +979,18 @@ function addCommon(command: Command): Command {
     );
 }
 
+/// The corpus is test scaffolding: it registers names and shapes their state
+/// with real transactions, so it must never touch live mainnet. A mainnet
+/// *fork* is fine, and is what a full dress rehearsal uses, so the guard turns
+/// on the absence of RPC state controls rather than on the network alone.
+function requireNonLiveMainnet(opts: CommonOptions): void {
+  if (opts.network === "mainnet" && !opts.rpcStateControls) {
+    throw new Error(
+      "refusing to run the fixture corpus against live mainnet; use a fork or Tenderly virtual testnet (--rpc-state-controls)",
+    );
+  }
+}
+
 function normalizeOptions(raw: any): CommonOptions {
   const network = raw.network as "sepolia" | "mainnet";
   if (network !== "sepolia" && network !== "mainnet") {
@@ -1396,7 +1001,9 @@ function normalizeOptions(raw: any): CommonOptions {
     process.env[network === "sepolia" ? "SEPOLIA_RPC_URL" : "MAINNET_RPC_URL"];
   if (!rpcUrl)
     throw new Error("missing --rpc-url or network RPC environment variable");
-  return { ...raw, network, rpcUrl } as CommonOptions;
+  const options = { ...raw, network, rpcUrl } as CommonOptions;
+  requireNonLiveMainnet(options);
+  return options;
 }
 
 /// Adds the fixture subcommands to a parent command. Shared by this script's
@@ -1442,21 +1049,6 @@ export function addFixtureSubcommands(program: Command): Command {
       ),
     ).action((raw) => verifyV1(normalizeOptions(raw))),
   );
-  program.addCommand(
-    addCommon(
-      new Command("prepare").description(
-        "After phase 1: approve MigrationHelper for every actor holding helper-routed names",
-      ),
-    ).action((raw) => prepare(normalizeOptions(raw))),
-  );
-  program.addCommand(
-    addCommon(
-      new Command("migrate").description(
-        "After phase 6: execute the fixture migrations",
-      ),
-    ).action((raw) => migrate(normalizeOptions(raw))),
-  );
-
   return program;
 }
 

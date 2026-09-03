@@ -52,13 +52,12 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 | --- | --- | --- | --- | --- |
 | 0 | Deploy fresh v1 contracts | part of `clean-testnet` | clean-testnet only | `deployer` |
 | 1 | Deploy all v2 contracts, including reverse-registrar adapters and the HCA stack on HCA-enabled networks (registrar deferred) | `phase deploy-v2` | live + clean-testnet | `deployer` / `owner` / `urManager` (+ v1 owner) |
-| F1 | *(optional)* Seed the ENSv1 test fixture corpus, then check the shaped v1 state | `fixture seed-v1` → `prepare` → `verify-v1` | live + clean-testnet | fixture operator + actors (+ v1 owner) |
+| F1 | *(optional)* Seed the ENSv1 test fixture corpus, then check the shaped v1 state | `fixture seed-v1` → `verify-v1` | live + clean-testnet | fixture operator + actors (+ v1 owner) |
 | 2 | Seed v1 names as reserved on v2 | `premigration run` → `verify` | live + clean-testnet | BatchRegistrar owner |
 | 3 | Freeze v1 registrations | `phase disable-v1-registrars` (+ `verify-*`) | live + clean-testnet | v1 owner |
 | 4 | Keep unmigrated names renewable | `phase authorize-v1-renewer` | live + clean-testnet | v1 owner |
 | 5 | Final pre-migration sync | `premigration run` → `verify` | live + clean-testnet | BatchRegistrar owner |
 | 6 | Enable the v2 controller | `disable-batch-registrar` → `activate-v1-handoff-controllers` → `activate-v1-renewer` → `enable-v2-registrar` (+ `verify-*`) | live + clean-testnet | registry root-role admin + v1 owner |
-| F6 | *(optional)* Migrate the fixture corpus | `fixture migrate` | live + clean-testnet | fixture actors |
 | 7 | Switch Universal Resolver to v2 (cutover) | `phase upgrade-managed-urp` (+ `switch-urp-to-managed` on bootstrap) (+ `verify-urp`) | live + clean-testnet (bootstrap step mainnet/fresh only) | `urManager` (+ top URP owner on bootstrap) |
 
 > **Re-deploying fresh onto an already-migrated network.** "Re-deploying fresh" means deploying a
@@ -377,7 +376,7 @@ prerequisites, and expected outcome:
    and replaying the resolver update and reverse-adapter grants via
    `phase execute-owner-txs --role v1Owner`.
    Then, *(optional)* [seed the ENSv1 test fixture corpus](#ensv1-test-fixture-corpus):
-   `fixture seed-v1` → `fixture prepare` → `fixture verify-v1`. **This must sit after phase 1**,
+   `fixture seed-v1` → `fixture verify-v1`. **This must sit after phase 1**,
    which deploys the `MigrationHelper` the corpus approves, **and before phase 3**, which freezes
    v1 registration.
 2. [Phase 2 — initial pre-migration](#phase-2-initial-pre-migration) (`--work-dir .dev/sepolia-live/premig-1`).
@@ -390,9 +389,6 @@ prerequisites, and expected outcome:
 6. [Phase 6 — enable the v2 controller](#phase-6-enable-the-v2-controller).
 7. [Phase 7 — resolution cutover](#phase-7-switch-the-universal-resolver-to-v2): sepolia is a reuse
    network, so only `upgrade-managed-urp` + `verify-urp` run.
-8. *(optional)* `fixture migrate` — after phase 6, which is where the migration controllers
-   become authorised.
-
 > **Re-deploying onto an already-migrated Sepolia?** This runbook assumes a first migration. On a
 > repeat deploy the order is unchanged, but read each phase's **Re-deploying fresh** note first: run
 > [`phase reclaim-v1-registrar-ownership`](#cli-commands) before phase 1, run phase 3 (it removes the
@@ -440,8 +436,14 @@ reserved on v2 by the ordinary pre-migration phases. Which ones is
 [a per-scenario decision](#reserving-the-fixture-labels-on-v2), not the whole cohort: part of the
 corpus exists to cover names that reach migration *un*reserved.
 
-This is test scaffolding. It never runs on mainnet, and nothing in the canonical phases depends
-on it.
+The corpus stops there. It seeds v1 state and gets labels reserved — it does **not** migrate
+names. Migrating a name from v1 to v2 is a manual action its owner takes whenever they choose,
+for names in and out of the corpus alike, and no phase performs it. Migration correctness is
+asserted directly in `test/unit/migration/` and `test/e2e/migration.test.ts` rather than inferred
+from a rehearsal.
+
+This is test scaffolding. It is refused against live mainnet, and nothing in the canonical phases
+depends on it.
 
 ### Input data
 
@@ -678,34 +680,6 @@ also avoids the EIP-7702 delegations that the well-known test accounts carry on 
 would otherwise make ERC-1155 receipt fail. On an RPC without state controls, pass
 `--fixture-private-key` and `--fixture-actor-mnemonic` (or their environment equivalents).
 
-### Migrating the corpus
-
-`fixture prepare` grants `MigrationHelper` operator approval to every actor holding a
-helper-routed name. Run it after phase 1.
-
-`fixture migrate` executes the migrations and belongs **after
-[phase 6](#phase-6-enable-the-v2-controller)** — phase 6's `activate-v1-handoff-controllers` is
-what authorises the migration controllers. Scenarios expecting a revert are recorded as such; a
-migration that succeeds but leaves the wrong v2 state is quarantined rather than counted as a
-pass.
-
-It performs the four routes that hand a v1 token to a v2 destination: `unlocked_controller`,
-`locked_controller`, `wrapper_registry_receiver` and `migration_helper`. Two gaps are recorded as
-`skipped` in the run summary rather than counted as migrated, and neither stops the run:
-
-- `graveyard` and `eth_renewer_v1` retire a name or renew one that stays on v1 rather than migrating
-  it, and have no implementation here.
-- A `wrapper_registry_receiver` child is delivered to the registry its migrated parent deployed, but
-  the corpus describes that parent only as `parent_fixture` metadata — it is not a fixture in its own
-  right, so nothing migrates it and the child has nowhere to go.
-
-A third gap is recorded as a *passing* migration rather than a skip. The `BAT-*` scenarios expect the
-helper to reject a malformed batch — mismatched name data, a group spanning several wrapped owners,
-mismatched array lengths, a missing token approval. `migrate` builds its helper arguments from the
-scenario's own data, so it always submits a well-formed call and those names migrate successfully
-instead of reverting. Reproducing them needs the executor to synthesise a deliberately malformed
-payload, which it cannot yet do; until then a run reports them as `expected=revert, actual=success`.
-
 ## Rehearsals
 
 ### `fork full`
@@ -869,8 +843,6 @@ Two commands are **not** on-chain and intentionally omit the network options:
 | `fixture deploy-fixtures` | Deploy the fixture batcher and the corpus counterparty contracts |
 | `fixture seed-v1` | Register the ENSv1 fixture corpus, shape each name's pre-migration state, and emit the label subset pre-migration reserves (after phase 1, before phase 3) |
 | `fixture verify-v1` | Read the shaped v1 state back and check it against each scenario (after `seed-v1`) |
-| `fixture prepare` | Approve `MigrationHelper` for the actors holding helper-routed fixture names (after phase 1) |
-| `fixture migrate` | Migrate the fixture corpus (after phase 6) |
 | `phase deploy-v2` | Phase 1: deploy the v2 migration contracts, reverse-registrar adapters, and enabled HCA infrastructure with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy) |
 | `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the Phase 1 deferred-tx replay on an already-migrated chain) |
 | `phase disable-v1-registrars` | Phase 3: revoke every v1 authorization (BaseRegistrar + reverse registrars) the active deployment did not grant |

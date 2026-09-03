@@ -63,7 +63,6 @@ import {
 import { main as exportRegistrationsMain } from "./exportTheGraphRegistrations.js";
 import {
   addFixtureSubcommands,
-  runFixtureMigrateStage,
   runFixtureSeedStage,
 } from "./migrationFixture.js";
 import { ACTOR_ALIASES } from "./migrationFixture/config.js";
@@ -5287,10 +5286,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         "v2 registrar enabled (paid-registration smoke skipped: no mintable payment token on this network)",
       );
-    }
-
-    if (fixtureOptions) {
-      await runFixtureMigrateStage(fixtureOptions);
     }
 
     console.log(

@@ -23,13 +23,6 @@ export type FuseName = keyof typeof FUSES;
 /// parent-controlled bits live in the upper half of the bitmap.
 export const OWNER_CONTROLLED_MASK = 0xffff;
 
-export const MIGRATION_DATA_COMPONENTS = [
-  { name: "label", type: "string" },
-  { name: "owner", type: "address" },
-  { name: "subregistry", type: "address" },
-  { name: "resolver", type: "address" },
-] as const;
-
 /// The V1 forms the corpus tags each scenario with.
 export const V1_FORMS = [
   "unwrapped",
@@ -140,10 +133,6 @@ export type FixtureRunName = {
   batchId: string | null;
   expectedResult: ExpectedResult;
   seedTransactions: Hex[];
-  migrationTransaction?: Hex;
-  migrationBlock?: string;
-  actualResult?: "success" | "revert" | "skipped" | "quarantined";
-  error?: string;
 };
 
 export type FixtureRunState = {
