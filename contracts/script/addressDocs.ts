@@ -104,6 +104,18 @@ export interface GenerateAddressMarkdownOptions {
   /// Line telling a reader how the file is produced. Defaults to the canonical
   /// docs command; a deploy that writes its own table names itself instead.
   generatedBy?: string;
+  /// Further namespaces to tabulate under their own headings, after the main
+  /// one. A clean testnet deploys its own v1 stack into a separate tree, and
+  /// those addresses are as much a part of the deployment as the v2 ones — a
+  /// reader given only the v2 table cannot reach the registry the names live in.
+  extraSections?: {
+    /// Heading for the section.
+    title: string;
+    /// Root deployments directory holding `namespace`. Defaults to the main one.
+    deploymentsDir?: string;
+    /// Namespace subdirectory to read.
+    namespace: string;
+  }[];
 }
 
 /// Generate a markdown address table for a deployment namespace and write it to
@@ -141,6 +153,30 @@ export async function generateAddressMarkdown(
       : null,
   ].filter(Boolean) as string[];
 
+  const sections: string[] = [formatTable(contracts, chainId)];
+  for (const extra of opts.extraSections ?? []) {
+    const extraDir = resolve(extra.deploymentsDir ?? opts.deploymentsDir);
+    const loaded = await loadDeploymentsFromFiles(
+      extraDir,
+      extra.namespace,
+      false,
+    ).catch(() => null);
+    const extraContracts = loaded
+      ? loadContractEntries(loaded.deployments)
+      : [];
+    // A namespace that was never written is reported rather than omitted, so a
+    // missing section reads as a fact about the deployment instead of looking
+    // like the table simply forgot it.
+    sections.push(
+      "",
+      `## ${extra.title}`,
+      "",
+      extraContracts.length
+        ? formatTable(extraContracts, chainId)
+        : `_No deployments found under \`${extra.namespace}\`._`,
+    );
+  }
+
   const body = [
     title,
     "",
@@ -148,7 +184,7 @@ export async function generateAddressMarkdown(
     "",
     ...meta,
     "",
-    formatTable(contracts, chainId),
+    ...sections,
     "",
   ].join("\n");
 

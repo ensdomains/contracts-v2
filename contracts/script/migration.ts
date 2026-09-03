@@ -3888,6 +3888,22 @@ export async function deployV2(opts: DeployV2Options) {
   // artifacts. A throwaway namespace never reaches the canonical docs above, so
   // without this its addresses would live only in the individual artifact JSON.
   if (persist) {
+    // A clean testnet deploys its own v1 stack into a separate tree, and those
+    // addresses belong in the same table: given only the v2 half, a reader
+    // cannot reach the registry the migrated names actually live in. A run
+    // against an existing v1 has nothing extra to record.
+    const v1Namespace =
+      opts.v1DeploymentNetwork ??
+      (opts.deploymentNetwork ? network.environment : undefined);
+    const v1Root = opts.v1DeploymentsDir
+      ? resolve(opts.v1DeploymentsDir)
+      : join(deploymentsDir, "v1");
+    // Keyed on the run having deployed v1 itself, not on the two namespaces
+    // coinciding: a canonical deploy given an explicit `--deployment-network`
+    // also matches, and its v1 is the network's real one, not this run's.
+    const includesFreshV1 =
+      Boolean(opts.cleanTestnet) && v1Namespace !== undefined;
+
     const namespacePath = await generateAddressMarkdown({
       deploymentsDir,
       namespace: deploymentNetwork,
@@ -3895,6 +3911,15 @@ export async function deployV2(opts: DeployV2Options) {
       outDir: join(deploymentsDir, deploymentNetwork),
       fileName: "addresses",
       generatedBy: "the deploy that wrote this namespace",
+      extraSections: includesFreshV1
+        ? [
+            {
+              title: "ENSv1 contracts (deployed by this testnet)",
+              deploymentsDir: v1Root,
+              namespace: v1Namespace,
+            },
+          ]
+        : undefined,
     });
     console.log(`deployment address table: ${namespacePath}`);
   }

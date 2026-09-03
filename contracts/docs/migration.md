@@ -730,6 +730,12 @@ only the generated smoke labels are seeded. Against an RPC without state control
 a local node or a Tenderly virtual testnet) a configured deployer key is required — prefer the Hardhat
 `migration clean-testnet` task, which signs with the configured Hardhat account.
 
+Every persisted deploy writes `deployments/<namespace>/addresses.md` beside its artifacts — the same
+table as [`docs/addresses/<network>.md`](./addresses), which only tracks a network's canonical
+deployment. A `clean-testnet` namespace also gets a second section listing the ENSv1 contracts it
+deployed, since the v1 stack lives in `deployments/v1/<namespace>` and a reader given only the v2
+half cannot reach the registry the migrated names are in.
+
 > **"Fresh v1" does not mean a fresh chain.** Only the ENS stack is deployed from scratch; the run
 > still reads Sepolia contracts it does not deploy. `deploy/01_StandardRentPriceOracle.ts` reads
 > `symbol()` and `decimals()` off the real Sepolia USDC, so on an empty local node that call returns
