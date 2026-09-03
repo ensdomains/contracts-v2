@@ -153,6 +153,8 @@ External infrastructure not implemented by this repository remains outside the m
 - **Re-deploying fresh:** the new v2 registry is empty, so this seeds it from scratch exactly like a
   first run. Reservations from the prior deployment lived on the now-archived registry and do **not**
   carry over. Use a fresh `--work-dir` so no stale `preMigration-checkpoint.json` is picked up.
+- **Fixture corpus:** if you seeded one, run this a second time against its own CSV and work-dir —
+  see [Reserving the fixture labels on v2](#reserving-the-fixture-labels-on-v2).
 
 ### Phase 3: disable v1 registrars
 
@@ -253,6 +255,8 @@ External infrastructure not implemented by this repository remains outside the m
   names are reserved for the first time.
 - **Re-deploying fresh:** same as [phase 2](#phase-2-initial-pre-migration) — re-seeds the new
   registry against a fresh post-freeze CSV and a fresh `--work-dir`.
+- **Fixture corpus:** re-run against the same `fixture-premigration.csv` as at phase 2. The corpus
+  is frozen by then, so the file does not need regenerating — only a fresh `--work-dir`.
 
 ### Phase 6: enable the v2 controller
 
@@ -431,8 +435,10 @@ produced it. Flags after `--` pass through (e.g. `bun run verify -- --network se
 An optional corpus of ENSv1 names, registered so the migration phases run against realistic v1
 state instead of only the names that happen to exist. Each name is shaped into a specific
 pre-migration state — wrapped or unwrapped, particular fuses burned, particular resolver and
-record history, reverse claims, parent/child hierarchies — and the labels are reserved on v2 by
-the ordinary pre-migration phases.
+record history, reverse claims, parent/child hierarchies — and most of the labels are then
+reserved on v2 by the ordinary pre-migration phases. Which ones is
+[a per-scenario decision](#reserving-the-fixture-labels-on-v2), not the whole cohort: part of the
+corpus exists to cover names that reach migration *un*reserved.
 
 This is test scaffolding. It never runs on mainnet, and nothing in the canonical phases depends
 on it.
@@ -468,24 +474,37 @@ shape is. Selection flags compose:
 
 | Flag | Effect |
 | --- | --- |
-| `--profiles live_now` | Only scenarios a public testnet can express. `fork_only` needs Anvil/Tenderly time and reorg control. |
+| `--scenarios live_now` | Only scenarios a public testnet can express. `fork_only` needs Anvil/Tenderly time and reorg control. |
 | `--replicas-per-vector <n>` | Keep at most *n* copies of each distinct scenario. |
 | `--tiers <list>` | Restrict to popularity tiers. Concentrates volume on common shapes at the cost of behavioural coverage. |
 | `--fixture-ids <list>` | An explicit set, for reproducing one case. |
+| `--limit <n>` | Cap the cohort at *n* names, applied after the filters above. |
 
-`--profiles live_now --replicas-per-vector 4` is the recommended default: it covers every
+`--scenarios live_now --replicas-per-vector 4` is the recommended default: it covers every
 scenario the public network can express, several times over, without the long tail of replicas
 that adds registration cost but no new behaviour.
 
-Always dry-run the selection first. `verify` is offline — it parses the corpus, checks the
+`--scenarios` filters on each scenario's `execution.scenario` — whether it can run on a public
+network at all. That is a separate axis from the v2 state a scenario declares, which is what decides
+[whether its label gets reserved](#reserving-the-fixture-labels-on-v2); neither filters the other, so
+a `live_now` cohort still contains names meant to stay unreserved.
+
+Always dry-run the selection first. `verify` sends nothing — it parses the corpus, checks the
 replica contract, and plans every scenario's calls, so an unsupported action or an unresolvable
-reference surfaces before anything touches a chain:
+reference surfaces before anything touches a chain. It still derives the actor addresses the plan
+refers to, so it needs the actor mnemonic and a network RPC variable set, even though it calls
+neither:
 
 ```bash
+export MIGRATION_FIXTURE_ACTOR_MNEMONIC="<dedicated fixture mnemonic>"
+
 bun run migration -- fixture verify --network sepolia \
   --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
-  --profiles live_now --replicas-per-vector 4
+  --scenarios live_now --replicas-per-vector 4
 ```
+
+Planning is not a state check. It confirms every call can be *built*; whether the resulting state is
+reachable on-chain is what [`verify-v1`](#checking-the-shaped-state) answers, after seeding.
 
 ### Seeding
 
@@ -502,8 +521,13 @@ bun run migration -- fixture fund-actors --network sepolia \
 
 bun run migration -- fixture seed-v1 --network sepolia \
   --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
-  --profiles live_now --replicas-per-vector 4
+  --scenarios live_now --replicas-per-vector 4
 ```
+
+Recompile first (`bun run compile`). `seed-v1` deploys the corpus's counterparty contracts from
+`generated/artifacts/`, which is gitignored, so a tree compiled before those contracts last changed
+fails at the first deployment with viem's `AbiEncodingLengthMismatchError` — a constructor-arity
+mismatch between the stale ABI and the current source, not a fault in the corpus or the chain.
 
 `seed-v1` deploys a batching helper and the corpus's counterparty contracts, registers each name
 through the official v1 commit/reveal controller at the duration its scenario asks for, shapes
@@ -549,17 +573,52 @@ It exits non-zero listing every mismatch, and writes the full set to
 `<work-dir>/fixture-v1-verification.json`. Run it before pre-migration, while a name whose state
 did not take can still be reshaped.
 
-> **A declared state can be unreachable.** Scenarios that ask for `CAN_EXTEND_EXPIRY` on a `.eth`
-> 2LD cannot be satisfied: it is a parent-controlled fuse, `wrapETH2LD` burns only
-> `PARENT_CANNOT_CONTROL | IS_DOT_ETH`, `setFuses` takes owner-controlled fuses alone, and
-> `setChildFuses` would need whoever holds the `.eth` parent in the wrapper — nobody does. The
+> **A declared state can be unreachable.** Scenarios asking for `CAN_EXTEND_EXPIRY` on a `.eth` 2LD
+> cannot be satisfied, and the fuse would mean nothing there if they could. `CAN_EXTEND_EXPIRY`
+> governs one thing: whether the holder of a **subname** may call `NameWrapper.extendExpiry` to push
+> that subname's wrapper expiry up to its parent's without the parent acting. A 2LD has no
+> independent wrapper expiry to push — `wrapETH2LD` derives it as
+> `registrar.nameExpires(tokenId) + GRACE_PERIOD` — so extending a 2LD is renewal on the
+> `BaseRegistrar`, which `NameWrapper.renew` performs with no fuse check at all. Mechanically the
+> fuse is also unreachable: it is parent-controlled, so neither `wrapETH2LD` nor `setFuses` can carry
+> it (both take `uint16`, and the bit is 1 << 18), and `setChildFuses` demands authority over the
+> `.eth` parent in the wrapper, which nobody holds — and would revert anyway, since `wrapETH2LD`
+> always burns `PARENT_CANNOT_CONTROL` and changing fuses after that is `OperationProhibited`. The
 > verifier reports these rather than hiding them; they are a fault in the corpus, not the seeding.
+> They are not rare, and they are not tucked away at the end: 38 of the 761 distinct `live_now`
+> vectors declare that fuse on a 2LD, their ids carry the `3W-`, `FE-` and `PW-` prefixes, and
+> `--replicas-per-vector` sorts the cohort by scenario id — so `--limit` takes an alphabetical prefix
+> that starts on an affected vector. Ten of the first forty are affected. Fuses are compared exactly,
+> so such a cohort fails the check. Planning does not catch it either: `fixture verify` passes the
+> whole `live_now` selection, because the fuses are unreachable only on-chain. Standalone the failure
+> is a report you can read past; [in a rehearsal it ends the run](#in-a-rehearsal).
 
 ### Reserving the fixture labels on v2
 
+**Seeding registers the whole cohort on v1; pre-migration reserves only part of it.** Every
+scenario declares the v2 state it expects to meet at migration time, and only those expecting
+`RESERVED` belong in pre-migration. `seed-v1` applies that split when it writes
+`fixture-premigration.csv`, so the file is already the correct subset — there is no flag, and no
+filtering to do downstream:
+
+| Declared v2 state | Whole corpus | Of a `live_now` cohort | In `fixture-premigration.csv` |
+| --- | --- | --- | --- |
+| `present` — reserved on v2, the ordinary migration case | ~86% | ~94% | yes |
+| `missing` — must still be available, never pre-migrated | ~6% | ~6% | no |
+| `already_registered` — already fully owned on v2 | ~6% | — | no |
+| `expired` — available or past its v2 expiry | ~2% | — | no |
+
+Reserving one of the last three would destroy the precondition its scenario exists to test, so the
+non-`present` names are seeded on v1 and deliberately left unreserved. Every `already_registered` and
+`expired` scenario is `fork_only`, so a `live_now` cohort meets only the first two — but it does meet
+`missing`, and that is enough for the distinction to matter on a public testnet.
+
+The emitted CSV records each row's declared state in its `reservationState` column, so the file also
+serves as the record of which fixture names pre-migration was expected to touch.
+
 `fixture-premigration.csv` leads with a `labelName` column, which is the column
 [`premigration`](./premigration.md#csv-input) locates by name, so it is fed to the ordinary phases
-with no transformation:
+with no transformation (the remaining columns are diagnostic and ignored):
 
 ```bash
 bun run migration -- premigration run --network sepolia \
@@ -568,27 +627,49 @@ bun run migration -- premigration run --network sepolia \
 ```
 
 Run it in addition to the real registration export, at [phase 2](#phase-2-initial-pre-migration)
-and again at [phase 5](#phase-5-final-pre-migration-sync). At that point the fixture names are
-registered on v1 and reserved on v2 — the state the rest of the migration expects.
+and again at [phase 5](#phase-5-final-pre-migration-sync), with its own `--work-dir` so the two
+runs keep separate checkpoints. At that point the whole cohort is registered on v1 and its
+`present` names are reserved on v2 — the state the rest of the migration expects.
 
 ### In a rehearsal
 
 `fork full` and `clean-testnet` run the whole corpus stage themselves when given `--fixture-root`,
 placing each part where the ordering above requires: seeding, helper approval and the state check
-after phase 1, the fixture labels folded into the pre-migration CSV so phases 2 and 5 reserve them,
-and the migration after phase 6.
+after phase 1, the reservable fixture labels folded into the pre-migration CSV so phases 2 and 5
+reserve them, and the migration after phase 6.
+
+A rehearsal prepends those labels to its own transformed CSV rather than passing
+`fixture-premigration.csv` to a second pre-migration run, but it reserves the same set: the labels
+it folds in are the ones that file lists, so the
+[`present`-only rule](#reserving-the-fixture-labels-on-v2) applies identically. The written file is
+still there for inspection under `<work-dir>/fixture/`. Because both phases read that one CSV, a
+`--resume-from-phase 2` run skips reseeding and keeps the labels the earlier run already prepended.
 
 ```bash
 bun run migration -- fork full --network sepolia \
   --csv-file ./csv-data/ens-registrations-sepolia.csv \
   --work-dir .dev/forkfull --fixture-root ./csv-data/migration-fixture \
-  --fixture-profiles live_now --fixture-replicas-per-vector 1 --fixture-limit 40
+  --fixture-scenarios live_now --fixture-replicas-per-vector 1 --fixture-limit 40
 ```
 
-The selection flags mirror the standalone ones (`--fixture-profiles`, `--fixture-tiers`,
+The selection flags mirror the standalone ones (`--fixture-scenarios`, `--fixture-tiers`,
 `--fixture-ids`, `--fixture-limit`, `--fixture-replicas-per-vector`). Keep a rehearsal cohort small:
 every name is a real commit/reveal registration plus its state-shaping calls, so the whole corpus
 costs far more wall-clock than the rest of the rehearsal put together.
+
+> **The state check is fatal here, and the cohort above trips it.** Standalone, `verify-v1` reports
+> mismatches and exits non-zero, leaving you to decide. In a rehearsal it runs inside the seed stage,
+> so one mismatch throws and takes the whole run down before phase 2 — including a mismatch that is
+> [a fault in the corpus rather than the seeding](#checking-the-shaped-state). Ten of the forty names
+> selected above are such a case, so that command does **not** currently complete. Until those
+> scenarios are fixed in the corpus, pin the cohort with `--fixture-ids`, leaving out the `3W-`,
+> `FE-` and `PW-` vectors that declare `CAN_EXTEND_EXPIRY` on a 2LD. A 60-vector cohort built that
+> way has been run end-to-end: `verify-v1` passes, phases 2 and 5 reserve the labels, and the corpus
+> migrates after phase 6 with every scenario matching its declared outcome:
+>
+> ```bash
+> --fixture-ids 3W-FUSE-OWNER-RESOLVER-002-R01,3W-FUSE-OWNER-RESOLVER-003-R01,...
+> ```
 
 Against a state-controlled RPC (a local fork or a Tenderly virtual testnet) the operator key and the
 actor mnemonic are generated per run and funded directly, so no funded keys are needed; both are
@@ -617,6 +698,13 @@ It performs the four routes that hand a v1 token to a v2 destination: `unlocked_
 - A `wrapper_registry_receiver` child is delivered to the registry its migrated parent deployed, but
   the corpus describes that parent only as `parent_fixture` metadata — it is not a fixture in its own
   right, so nothing migrates it and the child has nowhere to go.
+
+A third gap is recorded as a *passing* migration rather than a skip. The `BAT-*` scenarios expect the
+helper to reject a malformed batch — mismatched name data, a group spanning several wrapped owners,
+mismatched array lengths, a missing token approval. `migrate` builds its helper arguments from the
+scenario's own data, so it always submits a well-formed call and those names migrate successfully
+instead of reverting. Reproducing them needs the executor to synthesise a deliberately malformed
+payload, which it cannot yet do; until then a run reports them as `expected=revert, actual=success`.
 
 ## Rehearsals
 
@@ -667,6 +755,13 @@ namespace defaults to `sepolia-clean-<timestamp>`; the command refuses to reuse 
 only the generated smoke labels are seeded. Against an RPC without state controls (anything other than
 a local node or a Tenderly virtual testnet) a configured deployer key is required — prefer the Hardhat
 `migration clean-testnet` task, which signs with the configured Hardhat account.
+
+> **"Fresh v1" does not mean a fresh chain.** Only the ENS stack is deployed from scratch; the run
+> still reads Sepolia contracts it does not deploy. `deploy/01_StandardRentPriceOracle.ts` reads
+> `symbol()` and `decimals()` off the real Sepolia USDC, so on an empty local node that call returns
+> `0x` and phase 1 dies in `decodeAbiParameters` with `AbiDecodingZeroDataError`. Point the command at
+> real Sepolia, a Tenderly virtual testnet, or a **local Anvil forking Sepolia** — never a bare
+> `anvil --chain-id 11155111`.
 
 ### Tenderly virtual testnets
 
@@ -772,7 +867,7 @@ Two commands are **not** on-chain and intentionally omit the network options:
 | `fixture verify` | Offline: validate a fixture selection and plan every scenario's calls |
 | `fixture fund-actors` | Top up the fixture actor accounts from the operator key |
 | `fixture deploy-fixtures` | Deploy the fixture batcher and the corpus counterparty contracts |
-| `fixture seed-v1` | Register the ENSv1 fixture corpus and shape each name's pre-migration state (after phase 1, before phase 3) |
+| `fixture seed-v1` | Register the ENSv1 fixture corpus, shape each name's pre-migration state, and emit the label subset pre-migration reserves (after phase 1, before phase 3) |
 | `fixture verify-v1` | Read the shaped v1 state back and check it against each scenario (after `seed-v1`) |
 | `fixture prepare` | Approve `MigrationHelper` for the actors holding helper-routed fixture names (after phase 1) |
 | `fixture migrate` | Migrate the fixture corpus (after phase 6) |
@@ -864,5 +959,5 @@ role-specific variables are tried in order.
   phase 6 supersedes.
 - [deployments/README.md](../deployments/README.md) — deployment artifact layout, namespace naming,
   and the idempotency rule for fresh re-deploys.
-- [ENSv1 test fixture corpus](#ensv1-test-fixture-corpus) — optional v1 fixture names seeded before
-  phase 3 and reserved on v2 by the ordinary pre-migration phases.
+- [ENSv1 test fixture corpus](#ensv1-test-fixture-corpus) — optional v1 fixture names seeded between
+  phases 1 and 3, most of which the ordinary pre-migration phases then reserve on v2.

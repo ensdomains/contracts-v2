@@ -51,9 +51,16 @@ contract CustomResolver is IERC165 {
     /// @notice The v1 NameWrapper, used to resolve the owner of a wrapped name.
     IFixtureNameWrapper public immutable NAME_WRAPPER;
 
-    mapping(bytes32 => mapping(uint256 => bytes)) private _addresses;
-    mapping(bytes32 => mapping(string => string)) private _texts;
-    mapping(bytes32 => bytes) private _contenthashes;
+    ////////////////////////////////////////////////////////////////////////
+    // Storage
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Recorded addresses, keyed by name and SLIP-44 coin type.
+    mapping(bytes32 node => mapping(uint256 coinType => bytes addr)) private _addresses;
+    /// @dev Recorded text records, keyed by name and record key.
+    mapping(bytes32 node => mapping(string key => string value)) private _texts;
+    /// @dev Recorded contenthashes, keyed by name.
+    mapping(bytes32 node => bytes contenthash) private _contenthashes;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -101,6 +108,18 @@ contract CustomResolver is IERC165 {
     constructor(ENS ensRegistry, IFixtureNameWrapper nameWrapper) {
         ENS_REGISTRY = ensRegistry;
         NAME_WRAPPER = nameWrapper;
+    }
+
+    /// @notice Report the resolver profiles this contract implements.
+    /// @param interfaceId The interface id to probe.
+    /// @return True when the profile is supported.
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return
+            interfaceId == type(IERC165).interfaceId ||
+            interfaceId == _ADDR_INTERFACE_ID ||
+            interfaceId == _ADDR_COIN_INTERFACE_ID ||
+            interfaceId == _TEXT_INTERFACE_ID ||
+            interfaceId == _CONTENTHASH_INTERFACE_ID;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -178,18 +197,6 @@ contract CustomResolver is IERC165 {
         return _contenthashes[node];
     }
 
-    /// @notice Report the resolver profiles this contract implements.
-    /// @param interfaceId The interface id to probe.
-    /// @return True when the profile is supported.
-    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-        return
-            interfaceId == type(IERC165).interfaceId ||
-            interfaceId == _ADDR_INTERFACE_ID ||
-            interfaceId == _ADDR_COIN_INTERFACE_ID ||
-            interfaceId == _TEXT_INTERFACE_ID ||
-            interfaceId == _CONTENTHASH_INTERFACE_ID;
-    }
-
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
@@ -223,10 +230,11 @@ contract CustomResolver is IERC165 {
 ///      succeed; only interface detection fails.
 contract UnsupportedResolver {
     ////////////////////////////////////////////////////////////////////////
-    // Constants & Immutables
+    // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    mapping(bytes32 => address) private _addresses;
+    /// @dev Recorded addresses, keyed by name.
+    mapping(bytes32 node => address addr) private _addresses;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -236,6 +244,18 @@ contract UnsupportedResolver {
     /// @param node The namehash of the name.
     /// @param a The new address.
     event AddrChanged(bytes32 indexed node, address a);
+
+    ////////////////////////////////////////////////////////////////////////
+    // Initialization
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Always reports no support, including for ERC-165 itself.
+    /// @param interfaceId The interface id to probe; ignored.
+    /// @return False, for every interface id.
+    /// @dev Deliberate: this is the property the fixture exists to provide.
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return false;
+    }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
@@ -255,13 +275,6 @@ contract UnsupportedResolver {
     function addr(bytes32 node) external view returns (address) {
         return _addresses[node];
     }
-
-    /// @notice Always reports no support, including for ERC-165 itself.
-    /// @return False, for every interface id.
-    /// @dev Deliberate: this is the property the fixture exists to provide.
-    function supportsInterface(bytes4) external pure returns (bool) {
-        return false;
-    }
 }
 
 
@@ -270,44 +283,8 @@ contract UnsupportedResolver {
 ///         referenced by scenarios as `fixture.ERC1155ReceiverOwner`.
 contract ERC1155ReceiverOwner is IERC721Receiver, IERC1155Receiver {
     ////////////////////////////////////////////////////////////////////////
-    // Implementation
+    // Initialization
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Accept an ERC-721 token.
-    /// @return The ERC-721 receiver magic value.
-    function onERC721Received(address, address, uint256, bytes calldata)
-        external
-        pure
-        returns (bytes4)
-    {
-        return IERC721Receiver.onERC721Received.selector;
-    }
-
-    /// @notice Accept a single ERC-1155 token.
-    /// @return The ERC-1155 receiver magic value.
-    function onERC1155Received(address, address, uint256, uint256, bytes calldata)
-        external
-        pure
-        returns (bytes4)
-    {
-        return IERC1155Receiver.onERC1155Received.selector;
-    }
-
-    /// @notice Accept a batch of ERC-1155 tokens.
-    /// @return The ERC-1155 batch receiver magic value.
-    function onERC1155BatchReceived(
-        address,
-        address,
-        uint256[] calldata,
-        uint256[] calldata,
-        bytes calldata
-    )
-        external
-        pure
-        returns (bytes4)
-    {
-        return IERC1155Receiver.onERC1155BatchReceived.selector;
-    }
 
     /// @notice Report the receiver interfaces this contract implements.
     /// @param interfaceId The interface id to probe.
@@ -318,6 +295,67 @@ contract ERC1155ReceiverOwner is IERC721Receiver, IERC1155Receiver {
             interfaceId == type(IERC721Receiver).interfaceId ||
             interfaceId == type(IERC1155Receiver).interfaceId;
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Accept an ERC-721 token.
+    /// @param operator The address that initiated the transfer; ignored.
+    /// @param from The previous token holder; ignored.
+    /// @param tokenId The token being transferred; ignored.
+    /// @param data Extra data supplied by the sender; ignored.
+    /// @return The ERC-721 receiver magic value.
+    function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata data)
+        external
+        pure
+        returns (bytes4)
+    {
+        return IERC721Receiver.onERC721Received.selector;
+    }
+
+    /// @notice Accept a single ERC-1155 token.
+    /// @param operator The address that initiated the transfer; ignored.
+    /// @param from The previous token holder; ignored.
+    /// @param id The token being transferred; ignored.
+    /// @param value The amount transferred; ignored.
+    /// @param data Extra data supplied by the sender; ignored.
+    /// @return The ERC-1155 receiver magic value.
+    function onERC1155Received(
+        address operator,
+        address from,
+        uint256 id,
+        uint256 value,
+        bytes calldata data
+    )
+        external
+        pure
+        returns (bytes4)
+    {
+        return IERC1155Receiver.onERC1155Received.selector;
+    }
+
+    /// @notice Accept a batch of ERC-1155 tokens.
+    /// @param operator The address that initiated the transfer; ignored.
+    /// @param from The previous token holder; ignored.
+    /// @param ids The tokens being transferred; ignored.
+    /// @param values The amounts transferred; ignored.
+    /// @param data Extra data supplied by the sender; ignored.
+    /// @return The ERC-1155 batch receiver magic value.
+    function onERC1155BatchReceived(
+        address operator,
+        address from,
+        uint256[] calldata ids,
+        uint256[] calldata values,
+        bytes calldata data
+    )
+        external
+        pure
+        returns (bytes4)
+    {
+        return IERC1155Receiver.onERC1155BatchReceived.selector;
+    }
+
 }
 
 
@@ -332,7 +370,6 @@ contract NonReceiverOwner {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Exists only so the address has code.
-    /// @return Always true.
     function ping() external pure returns (bool) {
         return true;
     }
@@ -368,22 +405,25 @@ contract CustomSubregistry is IRegistry {
         parentLabel = label_;
     }
 
-    /// @notice Always reports no subregistry.
-    /// @return The zero registry.
-    function getSubregistry(string calldata) external pure returns (IRegistry) {
-        return IRegistry(address(0));
-    }
-
-    /// @notice Always reports no resolver.
-    /// @return The zero address.
-    function getResolver(string calldata) external pure returns (address) {
-        return address(0);
-    }
-
     /// @notice Report the configured parent location.
     /// @return parent The parent registry.
     /// @return label The label under that parent.
     function getParent() external view returns (IRegistry parent, string memory label) {
         return (parentRegistry, parentLabel);
     }
+
+    /// @notice Always reports no subregistry.
+    /// @param label The label to look up; ignored.
+    /// @return The zero registry.
+    function getSubregistry(string calldata label) external pure returns (IRegistry) {
+        return IRegistry(address(0));
+    }
+
+    /// @notice Always reports no resolver.
+    /// @param label The label to look up; ignored.
+    /// @return The zero address.
+    function getResolver(string calldata label) external pure returns (address) {
+        return address(0);
+    }
+
 }

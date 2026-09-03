@@ -77,6 +77,10 @@ import {
   parseCSVLine,
   V1_GRACE_PERIOD_SECONDS,
 } from "./preMigration.js";
+import {
+  PREMIGRATION_CSV_HEADER,
+  premigrationCsvRow,
+} from "./preMigrationUtils.js";
 
 const DEFAULT_ANVIL_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
@@ -411,12 +415,6 @@ function csvLabelColumnIndex(header: string[]): number {
   return normalized.indexOf("label");
 }
 
-// Quote a CSV field when it contains a delimiter, quote, or newline so labels
-// with such characters survive a round-trip through the premigration reader.
-function escapeCsvField(value: string): string {
-  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-}
-
 function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
   const lines = readFileSync(csvFile, "utf-8").trim().split(/\r?\n/);
   if (lines.length === 0 || !lines[0]) return [];
@@ -449,13 +447,11 @@ function transformCsvForPreMigration(
     );
   }
 
-  const output = [
-    "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
-  ];
+  const output = [PREMIGRATION_CSV_HEADER];
   for (const line of lines.slice(1)) {
     const columns = parseCSVLine(line);
     const label = columns[labelIndex]?.trim();
-    if (label) output.push(`,,,,,,${escapeCsvField(label)},,`);
+    if (label) output.push(premigrationCsvRow(label));
   }
   writeFileSync(targetPath, `${output.join("\n")}\n`);
   return output.length - 1;
@@ -464,8 +460,8 @@ function transformCsvForPreMigration(
 function prependCsvLabels(csvFile: string, labels: string[]): void {
   const lines = readFileSync(csvFile, "utf-8").trimEnd().split(/\r?\n/);
   const [header, ...rows] = lines;
-  const smokeRows = labels.map((label) => `,,,,,,${label},,`);
-  writeFileSync(csvFile, `${[header, ...smokeRows, ...rows].join("\n")}\n`);
+  const added = labels.map(premigrationCsvRow);
+  writeFileSync(csvFile, `${[header, ...added, ...rows].join("\n")}\n`);
 }
 
 function readPremigrationLabels(csvFile: string, count: number): string[] {
@@ -4443,7 +4439,7 @@ async function disableAndVerifyBatchRegistrar(opts: {
 // `fixtureRoot`, the whole stage is skipped and the rehearsal is unchanged.
 export type FixtureRehearsalOptions = {
   fixtureRoot?: string;
-  fixtureProfiles?: string;
+  fixtureScenarios?: string;
   fixtureTiers?: string;
   fixtureIds?: string;
   fixtureLimit?: string;
@@ -4537,7 +4533,7 @@ async function fixtureRunOptions(
     v1OwnerKey: opts.v1OwnerPrivateKey,
     limit: opts.fixtureLimit,
     tiers: opts.fixtureTiers,
-    profiles: opts.fixtureProfiles,
+    scenarios: opts.fixtureScenarios,
     fixtureIds: opts.fixtureIds,
     replicasPerVector: opts.fixtureReplicasPerVector,
     rpcStateControls: base.useRpcStateControls,
@@ -4947,7 +4943,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // The corpus is seeded here rather than before phase 1: a third of it
     // approves MigrationHelper while shaping its V1 state, which needs the V2
     // deployment phase 1 produces. It still lands before phase 3 closes V1
-    // registration, and before pre-migration, which reserves its labels on V2.
+    // registration, and before pre-migration, which reserves the subset of its
+    // labels that model a name already reserved on V2.
     const fixtureOptions = await fixtureRunOptions(opts, {
       rpcUrl,
       chainId,
@@ -6048,8 +6045,9 @@ export async function main(argv = process.argv): Promise<void> {
   );
   program.addCommand(premigration);
 
-  // Test-only ENSv1 fixture corpus. Seeded before phase 3 and reserved on v2 by
-  // the pre-migration phases from the CSV it emits; see docs/migration.md.
+  // Test-only ENSv1 fixture corpus. Seeded between phases 1 and 3; the subset of
+  // it that models a name already reserved on v2 is then reserved by the
+  // pre-migration phases from the CSV it emits. See docs/migration.md.
   program.addCommand(
     addFixtureSubcommands(
       new Command("fixture").description(
@@ -6747,8 +6745,8 @@ export async function main(argv = process.argv): Promise<void> {
               "Seed the ENSv1 fixture corpus from this bundle as part of the rehearsal",
             )
             .option(
-              "--fixture-profiles <list>",
-              "Fixture execution profiles to include, e.g. live_now",
+              "--fixture-scenarios <list>",
+              "Fixture execution scenarios to include, e.g. live_now",
             )
             .option(
               "--fixture-tiers <list>",
@@ -6848,8 +6846,8 @@ export async function main(argv = process.argv): Promise<void> {
               "Seed the ENSv1 fixture corpus from this bundle as part of the run",
             )
             .option(
-              "--fixture-profiles <list>",
-              "Fixture execution profiles to include, e.g. live_now",
+              "--fixture-scenarios <list>",
+              "Fixture execution scenarios to include, e.g. live_now",
             )
             .option(
               "--fixture-tiers <list>",

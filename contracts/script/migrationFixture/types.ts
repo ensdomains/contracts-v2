@@ -52,7 +52,7 @@ export const ROUTES = [
 ] as const;
 export type Route = (typeof ROUTES)[number];
 
-export type ExecutionProfile = "live_now" | "fork_only" | "live_delayed";
+export type ExecutionScenario = "live_now" | "fork_only" | "live_delayed";
 export type ExpectedResult = "success" | "revert";
 
 export type JsonDeployment = { address: Address; abi: readonly any[] };
@@ -77,7 +77,7 @@ export type Scenario = {
   child_label: string | null;
   tags: string[];
   execution: {
-    profile: ExecutionProfile;
+    scenario: ExecutionScenario;
     expected_result: ExpectedResult;
     expected_error: string | null;
     safe_on_public_sepolia: boolean;
@@ -178,7 +178,7 @@ export type CommonOptions = {
   tiers?: string;
   fixtureIds?: string;
   replicasPerVector?: string;
-  profiles?: string;
+  scenarios?: string;
   rpcStateControls?: boolean;
 };
 

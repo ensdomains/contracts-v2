@@ -411,9 +411,16 @@ export function buildV1Checks(
         return { expected: fuseNames(expectedFuses), actual: "read reverted" };
       const actual = Number((result as any[])[1]);
       if (!wrapped) {
-        return actual === 0
+        // `ERC1155Fuse._burn` keeps fuses and expiry and clears only the owner,
+        // so a name that was wrapped earlier in its history still reads back
+        // the parent-controlled bits after being unwrapped. Only an
+        // owner-controlled fuse proves the name is still wrapped.
+        return (actual & OWNER_CONTROLLED_MASK) === 0
           ? null
-          : { expected: "unwrapped (no fuses)", actual: fuseNames(actual) };
+          : {
+              expected: "unwrapped (no owner-controlled fuses)",
+              actual: fuseNames(actual),
+            };
       }
       // Locked and emancipated forms are the point of the corpus, so the bits
       // that define them are asserted exactly rather than as a subset.

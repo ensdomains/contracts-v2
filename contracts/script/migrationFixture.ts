@@ -52,7 +52,7 @@ import {
 } from "./migrationFixture/config.js";
 import { verifySeededV1State } from "./migrationFixture/verifyV1.js";
 import {
-  executionProfile,
+  executionScenario,
   expectedResult,
   migrationRoute,
   preMigrationOwnerAlias,
@@ -67,6 +67,7 @@ import {
 } from "./migrationFixture/plan.js";
 import {
   actorsNeedingHelperApproval,
+  actorsNeedingSenderApproval,
   buildHelperArgs,
   migrationTarget,
   partitionMigration,
@@ -388,11 +389,11 @@ function saveRunState(opts: CommonOptions, state: FixtureRunState): void {
   writeFileSync(runStatePath(opts), `${JSON.stringify(state, null, 2)}\n`);
 }
 
-/// Emits the label list for the pre-migration CLI. The source CSV already leads
-/// with a `labelName` column, which is the column preMigration.ts locates by
-/// name, so the filtered file needs no transformation downstream.
-const PREMIGRATION_CSV_HEADER =
-  "labelName,fixtureId,reservationProfile,sourceScenarioId,replicaIndex,popularityTier";
+/// Columns of the emitted label list. It leads with `labelName`, the column
+/// preMigration.ts locates by name, so the file feeds the pre-migration CLI
+/// with no transformation; the rest are diagnostic and ignored downstream.
+const FIXTURE_CSV_HEADER =
+  "labelName,fixtureId,reservationState,sourceScenarioId,replicaIndex,popularityTier";
 
 /// Writes the label list the pre-migration phases reserve on v2.
 ///
@@ -406,13 +407,15 @@ function writePremigrationCsv(
   opts: CommonOptions,
   rows: FixtureEnvelope[],
   state: FixtureRunState,
-): string {
+): { path: string; labels: string[] } {
   const seeded = new Set(state.names.map((n) => n.fixtureId));
-  const output = [PREMIGRATION_CSV_HEADER];
+  const labels: string[] = [];
+  const output = [FIXTURE_CSV_HEADER];
   for (const row of rows) {
     if (!seeded.has(row.fixture_id)) continue;
     const profile = row.scenario.v2_premigration?.profile;
     if (profile !== "present") continue;
+    labels.push(row.label);
     output.push(
       [
         row.label,
@@ -424,9 +427,9 @@ function writePremigrationCsv(
       ].join(","),
     );
   }
-  const destination = join(resolve(opts.workDir), "fixture-premigration.csv");
-  writeFileSync(destination, `${output.join("\n")}\n`);
-  return destination;
+  const path = join(resolve(opts.workDir), "fixture-premigration.csv");
+  writeFileSync(path, `${output.join("\n")}\n`);
+  return { path, labels };
 }
 
 /// DNS wire encoding for MigrationHelper's `parentName`.
@@ -494,15 +497,15 @@ async function verify(opts: CommonOptions): Promise<void> {
 
   let batcherCalls = 0;
   let actorCalls = 0;
-  const profiles = new Map<string, number>();
+  const scenarios = new Map<string, number>();
   const routes = new Map<string, number>();
   for (const row of rows) {
     expectedResult(row.scenario);
     wrapperState(row.scenario);
     const route = migrationRoute(row.scenario);
     routes.set(route, (routes.get(route) ?? 0) + 1);
-    const profile = executionProfile(row.scenario);
-    profiles.set(profile, (profiles.get(profile) ?? 0) + 1);
+    const scenario = executionScenario(row.scenario);
+    scenarios.set(scenario, (scenarios.get(scenario) ?? 0) + 1);
     for (const call of planSetupSteps(row, ctx)) {
       if (call.signer.kind === "batcher") batcherCalls += 1;
       else actorCalls += 1;
@@ -529,7 +532,7 @@ async function verify(opts: CommonOptions): Promise<void> {
           min: Math.min(...perVector.values()),
           max: Math.max(...perVector.values()),
         },
-        executionProfiles: Object.fromEntries(profiles),
+        executionScenarios: Object.fromEntries(scenarios),
         migrationRoutes: Object.fromEntries(routes),
         setupCalls: { batcher: batcherCalls, actor: actorCalls },
         migration: {
@@ -575,7 +578,12 @@ async function deployFixtures(opts: CommonOptions): Promise<void> {
   console.log(`run state: ${runStatePath(opts)}`);
 }
 
-export async function seedV1(opts: CommonOptions): Promise<void> {
+/// Registers the selected corpus on V1 and shapes each name's state. Returns
+/// the label list the pre-migration phases reserve on V2, which is a subset of
+/// what was seeded: see `writePremigrationCsv`.
+export async function seedV1(
+  opts: CommonOptions,
+): Promise<{ path: string; labels: string[] }> {
   mkdirSync(resolve(opts.workDir), { recursive: true });
   const rows = loadFixture(opts);
   if (!rows.length) throw new Error("fixture selection is empty");
@@ -823,8 +831,13 @@ export async function seedV1(opts: CommonOptions): Promise<void> {
   console.log(`seeded ${state.names.length} fixture names on v1`);
   console.log(`batcher: ${batcher}`);
   console.log(`run state: ${runStatePath(opts)}`);
-  console.log(`premigration CSV: ${csv}`);
-  console.log(`next: bun run migration -- premigration run --csv-file ${csv}`);
+  console.log(
+    `premigration CSV: ${csv.path} (${csv.labels.length} of ${state.names.length} names reserved on v2)`,
+  );
+  console.log(
+    `next: bun run migration -- premigration run --csv-file ${csv.path}`,
+  );
+  return csv;
 }
 
 /// Grants MigrationHelper operator approval to every actor holding a name that
@@ -837,8 +850,10 @@ export async function prepare(opts: CommonOptions): Promise<void> {
     throw new Error(`no run state at ${runStatePath(opts)}; run seed-v1 first`);
   const rows = loadFixture(opts);
   const ctx = refContext(opts, state.fixtureContracts);
-  const aliases = actorsNeedingHelperApproval(
-    rows.map((r) => migrationTarget(r, ctx)),
+  const targets = rows.map((r) => migrationTarget(r, ctx));
+  const aliases = actorsNeedingHelperApproval(targets);
+  const senderApprovals = actorsNeedingSenderApproval(
+    partitionMigration(targets).batches,
   );
 
   const { chain, client } = clients(opts);
@@ -846,7 +861,26 @@ export async function prepare(opts: CommonOptions): Promise<void> {
   const v1 = v1Addresses(opts);
   const actors = accounts(opts);
 
-  for (const alias of aliases) {
+  // Each owner approves the helper, which performs the transfer, and every
+  // actor that submits a batch containing one of its names, which the helper
+  // gates on.
+  const operatorsByOwner = new Map<string, Map<Address, string>>();
+  const addOperator = (owner: string, address: Address, label: string) => {
+    const operators = operatorsByOwner.get(owner) ?? new Map<Address, string>();
+    operators.set(getAddress(address), label);
+    operatorsByOwner.set(owner, operators);
+  };
+  for (const alias of aliases) addOperator(alias, helper.address, "helper");
+  for (const [owner, senders] of senderApprovals) {
+    for (const sender of senders) {
+      const actor = actors.find((a) => a.alias === sender);
+      if (!actor) throw new Error(`unknown actor "${sender}"`);
+      addOperator(owner, actor.account.address, `sender ${sender}`);
+    }
+  }
+
+  let granted = 0;
+  for (const [alias, operators] of operatorsByOwner) {
     const actor = actors.find((a) => a.alias === alias);
     if (!actor) throw new Error(`unknown actor "${alias}"`);
     if (opts.rpcStateControls)
@@ -856,25 +890,28 @@ export async function prepare(opts: CommonOptions): Promise<void> {
       account: actor.account,
       transport: http(opts.rpcUrl),
     });
-    for (const token of [v1.base, v1.wrapper]) {
-      const approved = (await client.readContract({
-        address: token.address,
-        abi: token.abi,
-        functionName: "isApprovedForAll",
-        args: [actor.account.address, helper.address],
-      })) as boolean;
-      if (approved) continue;
-      const hash = await wallet.writeContract({
-        address: token.address,
-        abi: token.abi,
-        functionName: "setApprovalForAll",
-        args: [helper.address, true],
-      });
-      await receipt(client, hash, `${alias} approve MigrationHelper`);
+    for (const [operator, label] of operators) {
+      for (const token of [v1.base, v1.wrapper]) {
+        const approved = (await client.readContract({
+          address: token.address,
+          abi: token.abi,
+          functionName: "isApprovedForAll",
+          args: [actor.account.address, operator],
+        })) as boolean;
+        if (approved) continue;
+        const hash = await wallet.writeContract({
+          address: token.address,
+          abi: token.abi,
+          functionName: "setApprovalForAll",
+          args: [operator, true],
+        });
+        await receipt(client, hash, `${alias} approve ${label}`);
+        granted += 1;
+      }
     }
   }
   console.log(
-    `approved MigrationHelper for ${aliases.size} actors: ${[...aliases].sort().join(", ")}`,
+    `approved ${granted} operator grants across ${operatorsByOwner.size} actors: ${[...operatorsByOwner.keys()].sort().join(", ")}`,
   );
 }
 
@@ -1282,22 +1319,22 @@ async function fundActorAccounts(
 /// corpus approves `MigrationHelper` as an operator while shaping its V1 state,
 /// so planning those names resolves a V2 deployment that phase 1 is what
 /// creates. Seeding still has to finish before phase 3 closes V1 registration.
+///
+/// The labels returned are the ones pre-migration reserves, not everything
+/// seeded. A rehearsal folds them into its own CSV rather than reading the
+/// emitted one, so taking them from the same filter is what keeps a rehearsal
+/// reserving the same set as a standalone run: seeded names that model a v2
+/// state other than `RESERVED` stay unreserved, as their scenarios require.
 export async function runFixtureSeedStage(
   opts: CommonOptions,
 ): Promise<{ labels: string[]; premigrationCsv: string }> {
   console.log("fixture: seeding the ENSv1 corpus");
-  await seedV1(opts);
+  const { path: premigrationCsv, labels } = await seedV1(opts);
   await prepare(opts);
   console.log("fixture: verifying the shaped V1 state");
   await verifyV1(opts);
 
-  const state = loadRunState(opts);
-  if (!state) throw new Error(`no fixture run state at ${runStatePath(opts)}`);
-  const premigrationCsv = join(
-    resolve(opts.workDir),
-    "fixture-premigration.csv",
-  );
-  return { labels: state.names.map((n) => n.label), premigrationCsv };
+  return { labels, premigrationCsv };
 }
 
 /// Migrates the seeded corpus. Belongs after phase 6, which is what authorises
@@ -1334,8 +1371,8 @@ function addCommon(command: Command): Command {
     .option("--limit <count>", "Limit selected fixture instances")
     .option("--tiers <tiers>", "Comma-separated popularity tiers")
     .option(
-      "--profiles <profiles>",
-      "Comma-separated execution profiles, e.g. live_now",
+      "--scenarios <scenarios>",
+      "Comma-separated execution scenarios, e.g. live_now",
     )
     .option("--fixture-ids <ids>", "Comma-separated fixture IDs")
     .option(
@@ -1394,7 +1431,9 @@ export function addFixtureSubcommands(program: Command): Command {
       new Command("seed-v1").description(
         "Register the corpus on v1 and shape each name's pre-migration state (before phase 3)",
       ),
-    ).action((raw) => seedV1(normalizeOptions(raw))),
+    ).action(async (raw) => {
+      await seedV1(normalizeOptions(raw));
+    }),
   );
   program.addCommand(
     addCommon(

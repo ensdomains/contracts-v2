@@ -148,6 +148,31 @@ export function actorsNeedingHelperApproval(
   return aliases;
 }
 
+/// The sending actor each V1 owner must additionally approve, keyed by owner.
+///
+/// `MigrationHelper` gates on `isApprovedForAll(owner, msg.sender)` for every
+/// token in the call and only then transfers as itself, so approving the helper
+/// alone is not enough: a batch spanning several owners is submitted by one
+/// actor, and every other owner in it must have approved that actor too. A
+/// batch whose members share one owner needs nothing here, since the guard
+/// short-circuits when owner and sender are the same account.
+export function actorsNeedingSenderApproval(
+  batches: { batchId: string; members: MigrationTarget[] }[],
+): Map<string, Set<string>> {
+  const byOwner = new Map<string, Set<string>>();
+  for (const batch of batches) {
+    const sender = batch.members[0]?.callerAlias;
+    if (!sender) continue;
+    for (const member of batch.members) {
+      if (member.v1OwnerAlias === sender) continue;
+      const senders = byOwner.get(member.v1OwnerAlias) ?? new Set<string>();
+      senders.add(sender);
+      byOwner.set(member.v1OwnerAlias, senders);
+    }
+  }
+  return byOwner;
+}
+
 /// Splits the selected rows into helper batches and individually-routed names.
 export function partitionMigration(targets: MigrationTarget[]): {
   batches: { batchId: string; members: MigrationTarget[] }[];

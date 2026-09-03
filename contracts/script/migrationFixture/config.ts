@@ -160,7 +160,7 @@ export function loadFixture(opts: CommonOptions): FixtureEnvelope[] {
 
   const tiers = splitList(opts.tiers);
   const ids = splitList(opts.fixtureIds);
-  const profiles = splitList(opts.profiles);
+  const scenarios = splitList(opts.scenarios);
 
   let rows = readFileSync(file, "utf8")
     .split(/\r?\n/)
@@ -169,8 +169,8 @@ export function loadFixture(opts: CommonOptions): FixtureEnvelope[] {
 
   if (tiers.size) rows = rows.filter((r) => tiers.has(r.popularity_tier));
   if (ids.size) rows = rows.filter((r) => ids.has(r.fixture_id));
-  if (profiles.size) {
-    rows = rows.filter((r) => profiles.has(r.scenario.execution.profile));
+  if (scenarios.size) {
+    rows = rows.filter((r) => scenarios.has(r.scenario.execution.scenario));
   }
 
   const perVector = parseNumber(opts.replicasPerVector, 0);

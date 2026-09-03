@@ -385,6 +385,16 @@ const NODE_SCOPED_ACTIONS = new Set([
   "approve_wrapper_token_before_burning_cannot_approve",
 ]);
 
+const APPROVE_BEFORE_BURN =
+  "approve_wrapper_token_before_burning_cannot_approve";
+
+/// Steps that leave the name wrapped, so the wrapper token exists afterwards.
+const WRAPPING_ACTIONS = new Set([
+  "wrap_2ld",
+  "ensure_wrapped_2ld",
+  "ensure_wrapped_parent_and_child",
+]);
+
 /// Orders a child scenario's setup so the child exists before anything writes to
 /// it.
 ///
@@ -395,7 +405,11 @@ const NODE_SCOPED_ACTIONS = new Set([
 /// the 2LD before it is wrapped, for instance) keep their place, and the history
 /// keeps its own sequence on the child.
 function orderedSetupSteps(steps: SetupStep[], child: boolean): SetupStep[] {
-  if (!child) return steps;
+  const ordered = child ? orderedChildSteps(steps) : steps;
+  return orderedApproveSteps(ordered);
+}
+
+function orderedChildSteps(steps: SetupStep[]): SetupStep[] {
   const create = steps.findIndex(
     (s) => s.action === "ensure_wrapped_parent_and_child",
   );
@@ -410,6 +424,25 @@ function orderedSetupSteps(steps: SetupStep[], child: boolean): SetupStep[] {
     ...rest.slice(0, firstNodeScoped),
     steps[create],
     ...rest.slice(firstNodeScoped),
+  ];
+}
+
+/// Moves an approval of the wrapper token to just after the step that creates
+/// it. The wrapper token does not exist until the name is wrapped, so a
+/// scenario listing the approval first cannot be carried out in that order.
+/// The wrap step withholds `CANNOT_APPROVE` when this step follows it, so the
+/// approval still lands before the fuse that would forbid it.
+function orderedApproveSteps(steps: SetupStep[]): SetupStep[] {
+  const approve = steps.findIndex((s) => s.action === APPROVE_BEFORE_BURN);
+  if (approve < 0) return steps;
+  const wrap = steps.findIndex((s) => WRAPPING_ACTIONS.has(s.action));
+  if (wrap < 0 || approve > wrap) return steps;
+  const rest = steps.filter((_, i) => i !== approve);
+  const wrapAfter = rest.findIndex((s) => WRAPPING_ACTIONS.has(s.action));
+  return [
+    ...rest.slice(0, wrapAfter + 1),
+    steps[approve],
+    ...rest.slice(wrapAfter + 1),
   ];
 }
 
@@ -485,6 +518,10 @@ export function planSetupSteps(
         args: [node, resolver],
       }),
     });
+    // Records live on the resolver contract, so anything written to the old one
+    // is no longer readable through the name. Forgetting them makes the closing
+    // reconciliation re-write whatever the target state still expects.
+    if (resolver !== currentResolver) writtenRecords.clear();
     currentResolver = resolver;
   };
   const writtenRecords = new Map<string, string>();
@@ -526,6 +563,13 @@ export function planSetupSteps(
   if (!child) emitRegistrationState();
 
   const setupSteps = orderedSetupSteps(scenario.v1.setup_steps ?? [], child);
+  // A scenario that approves the wrapper token must do so while approval is
+  // still permitted, so the wrap withholds CANNOT_APPROVE and the approval step
+  // burns it once the approval is in place.
+  const approvesBeforeBurn = setupSteps.some(
+    (s) => s.action === APPROVE_BEFORE_BURN,
+  );
+  let deferredFuses = 0;
   for (const [index, step] of setupSteps.entries()) {
     const tag = `${row.fixture_id}#${index} ${step.action}`;
     switch (step.action) {
@@ -533,12 +577,12 @@ export function planSetupSteps(
         const ttl = BigInt(step.ttl ?? 0);
         calls.push({
           signer: nodeSigner(),
-          target: wrapped ? ctx.addresses.wrapper : ctx.addresses.registry,
+          target: wrappedNow ? ctx.addresses.wrapper : ctx.addresses.registry,
           value: 0n,
           allowFailure: false,
           label: tag,
           data: encodeFunctionData({
-            abi: wrapped ? WRAPPER_ABI : REGISTRY_ABI,
+            abi: wrappedNow ? WRAPPER_ABI : REGISTRY_ABI,
             functionName: "setTTL",
             args: [node, ttl],
           }),
@@ -547,7 +591,12 @@ export function planSetupSteps(
       }
 
       case "set_resolver": {
-        pushSetResolver(resolveRef(step.resolver_ref, ctx), tag);
+        // Reordering a child's creation ahead of its history can leave this
+        // step asking for the resolver the creating step already set. Rewriting
+        // it is not merely redundant: the same step may burn
+        // CANNOT_SET_RESOLVER, which forbids the write.
+        const resolver = resolveRef(step.resolver_ref, ctx);
+        if (resolver !== currentResolver) pushSetResolver(resolver, tag);
         break;
       }
 
@@ -678,7 +727,15 @@ export function planSetupSteps(
         const owner = stripActorPrefix(
           step.wrapped_owner_actor ?? cursor.alias,
         );
-        const fuses = ownerControlledFuses(resolveFuses(step));
+        const declared = ownerControlledFuses(resolveFuses(step));
+        // Burning CANNOT_APPROVE here would forbid the approval this scenario
+        // still has to make, so it is held back until the approval lands.
+        const withheld =
+          approvesBeforeBurn && declared & FUSES.CANNOT_APPROVE
+            ? FUSES.CANNOT_APPROVE
+            : 0;
+        const fuses = declared & ~withheld;
+        deferredFuses |= withheld;
         const resolver = resolveOptionalRef(step.resolver_ref, ctx);
         // The batcher holds the ERC-721 and must approve the wrapper before it
         // can wrap. Owner, fuses and resolver are all set by this single call,
@@ -847,6 +904,21 @@ export function planSetupSteps(
             args: [approved, BigInt(node)],
           }),
         });
+        if (deferredFuses) {
+          calls.push({
+            signer: actorSigner(cursor.alias),
+            target: ctx.addresses.wrapper,
+            value: 0n,
+            allowFailure: false,
+            label: `${tag} burn withheld fuses`,
+            data: encodeFunctionData({
+              abi: WRAPPER_ABI,
+              functionName: "setFuses",
+              args: [node, deferredFuses],
+            }),
+          });
+          deferredFuses = 0;
+        }
         break;
       }
 

@@ -5,7 +5,7 @@ import {
   OWNER_CONTROLLED_MASK,
   ROUTES,
   V1_FORMS,
-  type ExecutionProfile,
+  type ExecutionScenario,
   type ExpectedResult,
   type FuseName,
   type Route,
@@ -77,11 +77,11 @@ export function resolveOptionalRef(
   return ref ? resolveRef(ref, ctx) : zeroAddress;
 }
 
-export function executionProfile(scenario: Scenario): ExecutionProfile {
-  const profile = scenario.execution?.profile;
-  if (!profile)
-    throw new Error(`${scenario.scenario_id}: missing execution.profile`);
-  return profile;
+export function executionScenario(scenario: Scenario): ExecutionScenario {
+  const value = scenario.execution?.scenario;
+  if (!value)
+    throw new Error(`${scenario.scenario_id}: missing execution.scenario`);
+  return value;
 }
 
 /// Reads the declared outcome. The previous implementation only honoured an
