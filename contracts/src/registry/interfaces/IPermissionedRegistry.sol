@@ -7,7 +7,7 @@ import {IContractNamer} from "../../reverse-registrar/interfaces/IContractNamer.
 import {IRegistryURIRenderer} from "./IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0xc9f0d2c5`
+/// @dev Interface selector: `0xd56c39e3`
 interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -51,8 +51,8 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     error TransferDisallowed(uint256 tokenId, address from);
 
     /// @notice Safe transfer is not allowed because the registry is not emancipated.
-    /// @dev Error selector: `0x54838f98`
-    error TransferUnsafeUntilRegistryIsEmancipated();
+    /// @dev Error selector: `0x5140dd5f`
+    error TransferUnsafeWhileTokensNotEmancipated();
 
     /// @notice Safe transfer is not allowed because the token has non-owner roles.
     /// @dev Error selector: `0x677f1c18`
@@ -64,9 +64,9 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
 
     /// @notice Transfer a token without safety checks on the token, root, and locked subregistry root.
     /// @param to Address to transfer to.
-    /// @param anyId The labelhash, token ID, or resource.
+    /// @param tokenId The token ID.
     /// @param data Additional calldata passed to receiver hooks.
-    function unsafeTransfer(address to, uint256 anyId, bytes calldata data) external;
+    function unsafeTransfer(address to, uint256 tokenId, bytes calldata data) external;
 
     /// @notice Change metadata parameters.
     /// @dev Should emit `URIUpdated`.
@@ -111,5 +111,5 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     function getOwner(uint256 anyId) external view returns (address owner);
 
     /// @notice Return `true` if the tokens cannot be controlled by root.
-    function isEmancipated() external view returns (bool);
+    function allTokensEmancipated() external view returns (bool);
 }

@@ -177,11 +177,11 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IPermissionedRegistry
-    function unsafeTransfer(address to, uint256 anyId, bytes calldata data) public virtual {
-        address owner = getOwner(anyId);
+    function unsafeTransfer(address to, uint256 tokenId, bytes calldata data) public virtual {
+        address owner = ownerOf(tokenId);
         _checkApproval(owner, msg.sender);
         _checkReceiver(to);
-        _updateOneWithAcceptanceCheck(owner, to, getTokenId(anyId), 1, false, data);
+        _updateOneWithAcceptanceCheck(owner, to, tokenId, 1, false, data);
     }
 
     /// @inheritdoc IStandardRegistry
@@ -403,7 +403,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IPermissionedRegistry
-    function isEmancipated() public view virtual returns (bool) {
+    function allTokensEmancipated() public view virtual returns (bool) {
         return
             (RegistryRolesLib.EMANCIPATED_ROLE_BITMAP &
                 EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) ==
@@ -499,8 +499,8 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     {
         super._update(from, to, tokenIds, amounts, safe); // ensures amounts[i] is 0 or 1
         if (to != address(0) && from != address(0)) {
-            if (safe && !isEmancipated()) {
-                revert TransferUnsafeUntilRegistryIsEmancipated();
+            if (safe && !allTokensEmancipated()) {
+                revert TransferUnsafeWhileTokensNotEmancipated();
             }
             // only transfers (skip mint and burn)
             for (uint256 i; i < tokenIds.length; ++i) {
