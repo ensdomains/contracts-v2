@@ -71,6 +71,9 @@ export type Scenario = {
   tags: string[];
   execution: {
     scenario: ExecutionScenario;
+    /// How the scenario expects time to be reached: `none` for a state any
+    /// chain already offers, otherwise a controlled or awaited clock.
+    clock?: string;
     expected_result: ExpectedResult;
     expected_error: string | null;
     safe_on_public_sepolia: boolean;
@@ -133,10 +136,14 @@ export type FixtureRunName = {
   batchId: string | null;
   expectedResult: ExpectedResult;
   seedTransactions: Hex[];
+  /// Whether every setup call for this name landed. A name is recorded as soon
+  /// as it is registered, so an interrupted run can tell a finished name from
+  /// one whose state is only part-shaped.
+  setupComplete: boolean;
 };
 
 export type FixtureRunState = {
-  version: 1;
+  version: 2;
   chainId: number;
   fixtureRoot: string;
   fixtureDigest: Hex;

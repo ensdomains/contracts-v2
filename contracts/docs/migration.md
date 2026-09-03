@@ -458,6 +458,16 @@ is. Selection flags compose:
 | `--fixture-ids <list>` | An explicit set, for reproducing one case. |
 | `--limit <n>` | Cap the cohort at *n* names, applied after the filters above. |
 
+Seeding refuses a selection whose scenarios it cannot establish, naming them: an expiry that needs a
+controlled clock, a v2 state that needs the name already registered there, or a lease below the v1
+controller's minimum. `fixture verify` applies the same check offline, so a cohort can be tested
+before a run starts. Every `live_now` scenario passes it.
+
+> **Reverse records are shared.** A reverse node derives from the account that claims it, and each
+> actor alias is one account, so scenarios claiming from the same alias all write the same node and
+> only the last survives. Seeding reports the overlap. Nothing else the corpus shapes or checks
+> depends on it, and no migration route reads a reverse record.
+
 `--scenarios live_now --replicas-per-vector 4` is the recommended default: it covers every scenario
 the public network can express, several times over, without the long tail of replicas that adds
 registration cost but no new behaviour.
@@ -507,8 +517,10 @@ state, and writes `<work-dir>/fixture-premigration.csv`. It replays each scenari
 state, then the setup steps modelling the history in between, then closes on the target state — so a
 name whose history clears records it is still expected to hold ends up holding them.
 
-It is resumable: a name already registered to a fixture actor is skipped, and one registered to anyone
-else aborts the run rather than shaping state against a name we do not control.
+It is resumable per name: a name whose setup finished is skipped, and one registered to anyone but a
+fixture actor aborts the run rather than shaping state against a name we do not control. A name whose
+registration landed but whose setup did not also aborts, naming the name — its state is part-shaped,
+and replaying setup over it would write against a name that has already moved on.
 
 > **Recompile first.** `seed-v1` deploys the corpus's counterparty contracts from
 > `generated/artifacts/`, which is gitignored. A tree compiled before those contracts last changed
@@ -588,9 +600,8 @@ separate checkpoints.
 ### In a rehearsal
 
 `fork full` and `clean-testnet` run the whole corpus stage themselves when given `--fixture-root`,
-placing each part where the ordering above requires: seeding, helper approval and the state check
-after phase 1, the reservable fixture labels folded into the pre-migration CSV so phases 2 and 5
-reserve them, and the migration after phase 6.
+placing each part where the ordering above requires: seeding and the state check after phase 1, and
+the reservable fixture labels folded into the pre-migration CSV so phases 2 and 5 reserve them.
 
 ```bash
 bun run migration -- fork full --network sepolia \
@@ -621,7 +632,7 @@ and `--fixture-actor-mnemonic` (or their environment equivalents).
 > takes the whole run down before phase 2 — including a
 > [known-bad vector](#checking-the-shaped-state). The `--fixture-limit 40` cohort above trips it. Pin
 > the cohort with `--fixture-ids` instead; a 60-vector cohort built that way runs end-to-end, with
-> `verify-v1` passing, phases 2 and 5 reserving the labels, and the corpus migrating after phase 6.
+> `verify-v1` passing and phases 2 and 5 reserving the labels.
 
 ## Rehearsals
 

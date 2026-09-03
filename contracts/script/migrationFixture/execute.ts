@@ -64,6 +64,7 @@ export async function executePlannedCalls(
   ex: Executor,
   perName: Map<string, PlannedCall[]>,
   onTransaction?: (fixtureId: string, hash: Hex) => void,
+  onNameComplete?: (fixtureId: string) => Promise<void> | void,
   batchSize = DEFAULT_BATCH_SIZE,
 ): Promise<void> {
   const queues = new Map<string, PlannedCall[][]>();
@@ -77,13 +78,19 @@ export async function executePlannedCalls(
     const batcherWork: { id: string; calls: PlannedCall[] }[] = [];
     const actorWork = new Map<string, { id: string; calls: PlannedCall[] }[]>();
 
+    // A name whose last run is dispatched this round is finished once the round
+    // executes, which is when its checkpoint can be written.
+    const finishing: string[] = [];
     for (const [id, runs] of [...queues]) {
       const run = runs.shift();
       if (!run) {
         queues.delete(id);
         continue;
       }
-      if (!runs.length) queues.delete(id);
+      if (!runs.length) {
+        queues.delete(id);
+        finishing.push(id);
+      }
       if (run[0].signer.kind === "batcher") {
         batcherWork.push({ id, calls: run });
       } else {
@@ -118,6 +125,10 @@ export async function executePlannedCalls(
           if (hash && onTransaction) onTransaction(id, hash);
         }
       }
+    }
+
+    if (onNameComplete) {
+      for (const id of finishing) await onNameComplete(id);
     }
   }
 }

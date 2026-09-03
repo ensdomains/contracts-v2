@@ -419,9 +419,108 @@ function writePremigrationCsv(
 /// Offline validation: parses the corpus, checks the replica contract, and
 /// plans every scenario's setup calls so an unsupported action or unresolvable
 /// reference surfaces before anything touches a chain.
+/// Shortest lease the v1 registration controller accepts.
+const MIN_REGISTRATION_SECONDS = 28 * 24 * 60 * 60;
+
+/// Scenario features seeding knows how to establish.
+///
+/// The corpus describes more states than the seeder builds. Every scenario the
+/// public-testnet cohort selects sits inside these, and the rest — expiries that
+/// need a controlled clock, v2 states that need a name already registered there,
+/// leases below the controller's minimum — would otherwise be registered fresh
+/// and then verified against assertions that never mention what is missing. That
+/// reads as a pass, so the selection is refused instead.
+const SEEDABLE_CLOCKS = new Set(["none"]);
+const SEEDABLE_EXPIRY_COHORTS = new Set(["long", "minimum"]);
+const SEEDABLE_V2_PROFILES = new Set(["present", "missing"]);
+
+/// Rejects a selection whose scenarios ask for state seeding cannot build.
+function assertSeedable(rows: FixtureEnvelope[]): void {
+  const unsupported = new Map<string, string[]>();
+  const note = (reason: string, fixtureId: string) => {
+    const ids = unsupported.get(reason);
+    if (ids) ids.push(fixtureId);
+    else unsupported.set(reason, [fixtureId]);
+  };
+
+  for (const row of rows) {
+    const scenario = row.scenario;
+    const clock = scenario.execution?.clock ?? "none";
+    if (!SEEDABLE_CLOCKS.has(clock))
+      note(
+        `execution.clock "${clock}" needs a controlled clock`,
+        row.fixture_id,
+      );
+
+    const cohort = scenario.v1.expected_pre_migration?.expiry_cohort;
+    if (cohort && !SEEDABLE_EXPIRY_COHORTS.has(cohort))
+      note(
+        `expiry cohort "${cohort}" is not established by seeding`,
+        row.fixture_id,
+      );
+
+    const profile = scenario.v2_premigration?.profile;
+    if (profile && !SEEDABLE_V2_PROFILES.has(profile))
+      note(
+        `v2 pre-migration profile "${profile}" is not established by seeding`,
+        row.fixture_id,
+      );
+
+    const duration = Number(scenario.v1.registration.duration_seconds);
+    if (duration < MIN_REGISTRATION_SECONDS)
+      note(
+        `lease of ${duration}s is below the v1 controller minimum`,
+        row.fixture_id,
+      );
+  }
+
+  if (!unsupported.size) return;
+  const detail = [...unsupported.entries()]
+    .map(([reason, ids]) => {
+      const shown = ids.slice(0, 4).join(", ");
+      const rest = ids.length > 4 ? `, +${ids.length - 4} more` : "";
+      return `  ${ids.length}x ${reason}: ${shown}${rest}`;
+    })
+    .join("\n");
+  throw new Error(
+    `fixture selection contains scenarios seeding cannot establish:\n${detail}\n` +
+      "restrict the selection (--scenarios live_now) or implement the missing state",
+  );
+}
+
+/// Reports the reverse claims a selection cannot all express.
+///
+/// A reverse node derives from the claimant, and each actor alias is one
+/// account, so every scenario claiming from the same alias writes the same node
+/// and only the last survives. Nothing reads a reverse record back, so this
+/// would otherwise be invisible; it is reported rather than refused because the
+/// overlap is inherent to a fixed actor pool and touches no other state the
+/// corpus shapes or checks.
+function reportReverseClaimOverlap(rows: FixtureEnvelope[]): void {
+  const byClaimant = new Map<string, number>();
+  for (const row of rows) {
+    for (const step of row.scenario.v1.setup_steps) {
+      if (step.action !== "set_reverse_claim") continue;
+      const claimant = String(step.address_actor ?? "").replace("actor.", "");
+      byClaimant.set(claimant, (byClaimant.get(claimant) ?? 0) + 1);
+    }
+  }
+  const overlapping = [...byClaimant.entries()].filter(([, n]) => n > 1);
+  if (!overlapping.length) return;
+  const detail = overlapping
+    .map(([claimant, n]) => `${claimant} (${n})`)
+    .join(", ");
+  console.warn(
+    `warning: ${overlapping.reduce((a, [, n]) => a + n, 0)} reverse claims share ${overlapping.length} ` +
+      `actor accounts, so only the last claim per account survives: ${detail}`,
+  );
+}
+
 async function verify(opts: CommonOptions): Promise<void> {
   const rows = loadFixture(opts);
   if (!rows.length) throw new Error("fixture selection is empty");
+  assertSeedable(rows);
+  reportReverseClaimOverlap(rows);
 
   const ids = new Set<string>();
   const labels = new Set<string>();
@@ -530,7 +629,7 @@ async function deployFixtures(opts: CommonOptions): Promise<void> {
   const batcher = existing?.batcher ?? (await deployBatcher(opts));
   const now = new Date().toISOString();
   const state: FixtureRunState = existing ?? {
-    version: 1,
+    version: 2,
     chainId: chain.id,
     fixtureRoot: resolve(opts.fixtureRoot),
     fixtureDigest: "0x" as Hex,
@@ -558,6 +657,8 @@ export async function seedV1(
   mkdirSync(resolve(opts.workDir), { recursive: true });
   const rows = loadFixture(opts);
   if (!rows.length) throw new Error("fixture selection is empty");
+  assertSeedable(rows);
+  reportReverseClaimOverlap(rows);
 
   const actors = accounts(opts);
   const { chain, client, wallet } = clients(opts);
@@ -577,7 +678,7 @@ export async function seedV1(
   // to continue against names it had itself created.
   const startedAt = new Date().toISOString();
   const seeded: FixtureRunState = existing ?? {
-    version: 1,
+    version: 2,
     chainId: chain.id,
     fixtureRoot: resolve(opts.fixtureRoot),
     fixtureDigest: "0x" as Hex,
@@ -624,10 +725,16 @@ export async function seedV1(
       batchId: row.scenario.migration.batch?.batch_id ?? null,
       expectedResult: expectedResult(row.scenario),
       seedTransactions: [],
+      setupComplete: false,
     };
   });
 
-  const alreadySeeded = new Set(existing?.names.map((n) => n.fixtureId) ?? []);
+  // A name is skipped only once every setup call for it landed. One whose
+  // registration landed but whose setup did not is part-shaped, and replanning
+  // it would replay steps from an assumed initial state the name has left.
+  const alreadySeeded = new Set(
+    seeded.names.filter((n) => n.setupComplete).map((n) => n.fixtureId),
+  );
   const pending = runNames.filter((n) => !alreadySeeded.has(n.fixtureId));
   const rowById = new Map(rows.map((r) => [r.fixture_id, r]));
 
@@ -671,7 +778,10 @@ export async function seedV1(
           `${run.fixtureId}: ${run.name} is already registered to ${owner}, which is not a fixture actor`,
         );
       }
-      continue;
+      throw new Error(
+        `${run.fixtureId}: ${run.name} is registered but its setup did not finish, so its state is ` +
+          "part-shaped; seed it into a fresh work directory rather than replaying setup over it",
+      );
     }
 
     const registration = {
@@ -772,30 +882,39 @@ export async function seedV1(
     );
   }
   const byId = new Map(pending.map((r) => [r.fixtureId, r]));
-  await executePlannedCalls(executor, perName, (fixtureId, hash) => {
-    byId.get(fixtureId)?.seedTransactions.push(hash);
-  });
+  // A name the corpus asks nothing further of is shaped by its registration
+  // alone, and never reaches the executor to report itself finished.
+  for (const run of pending) {
+    if (!perName.get(run.fixtureId)?.length) run.setupComplete = true;
+  }
 
-  const now = new Date().toISOString();
-  const state: FixtureRunState = {
-    version: 1,
-    chainId: chain.id,
-    fixtureRoot: resolve(opts.fixtureRoot),
-    fixtureDigest: fixtureDigest(rows),
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
-    batcher,
-    fixtureContracts,
-    actorAddresses: Object.fromEntries(
-      actors.map((a) => [a.alias, a.account.address]),
-    ),
-    names: [
-      ...(existing?.names.filter(
-        (n) => !runNames.some((x) => x.fixtureId === n.fixtureId),
-      ) ?? []),
-      ...runNames,
-    ],
-  };
+  // The registrations have landed, so record them before shaping any state. An
+  // interrupted run then knows which names it created, and which of those it
+  // had not finished with.
+  seeded.names = [
+    ...seeded.names.filter((n) => !byId.has(n.fixtureId)),
+    ...pending,
+  ];
+  saveRunState(opts, seeded);
+
+  await executePlannedCalls(
+    executor,
+    perName,
+    (fixtureId, hash) => {
+      byId.get(fixtureId)?.seedTransactions.push(hash);
+    },
+    (fixtureId) => {
+      const run = byId.get(fixtureId);
+      if (run) run.setupComplete = true;
+      saveRunState(opts, seeded);
+    },
+  );
+
+  const state = seeded;
+  state.fixtureDigest = fixtureDigest(rows);
+  state.actorAddresses = Object.fromEntries(
+    actors.map((a) => [a.alias, a.account.address]),
+  );
   saveRunState(opts, state);
   const csv = writePremigrationCsv(opts, rows, state);
 

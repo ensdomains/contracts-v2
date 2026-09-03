@@ -469,20 +469,20 @@ function prependCsvLabels(csvFile: string, labels: string[]): void {
   writeFileSync(csvFile, `${[header, ...added, ...rows].join("\n")}\n`);
 }
 
-function readPremigrationLabels(csvFile: string, count: number): string[] {
-  const lines = readFileSync(csvFile, "utf-8").trimEnd().split(/\r?\n/);
-  const [header, ...rows] = lines;
-  const labelIndex = parseCSVLine(header).indexOf("labelName");
-  if (labelIndex < 0) {
-    throw new Error(`CSV must contain a labelName column: ${csvFile}`);
+/// The smoke names phase 2 reserves, which later phases migrate and re-register.
+type ReservedSmokeLabels = { migrate: string; reservedOnly: string };
+
+/// Reads back the reserved smoke names an earlier run chose.
+///
+/// They cannot be recovered from the CSV: its leading rows belong to whatever
+/// was prepended last, which is the fixture corpus whenever one seeds.
+function readReservedSmokeLabels(path: string): ReservedSmokeLabels {
+  if (!existsSync(path)) {
+    throw new Error(
+      `cannot resume phase 2 without the smoke labels the earlier run recorded: ${path}`,
+    );
   }
-  const labels = rows
-    .map((row) => parseCSVLine(row)[labelIndex]?.trim())
-    .filter((label): label is string => Boolean(label));
-  if (labels.length < count) {
-    throw new Error(`CSV must contain at least ${count} labels: ${csvFile}`);
-  }
-  return labels.slice(0, count);
+  return JSON.parse(readFileSync(path, "utf-8")) as ReservedSmokeLabels;
 }
 
 function labelId(label: string): bigint {
@@ -798,28 +798,66 @@ export function saveRpcSnapshotFile(
   );
 }
 
+/// Reads outside the `eth_get*` family that a dropped connection can re-issue.
+const RETRYABLE_RPC_METHODS = new Set([
+  "eth_accounts",
+  "eth_blockNumber",
+  "eth_call",
+  "eth_chainId",
+  "eth_estimateGas",
+  "eth_feeHistory",
+  "eth_gasPrice",
+  "eth_maxPriorityFeePerGas",
+  "eth_protocolVersion",
+  "eth_syncing",
+  "net_listening",
+  "net_version",
+  "web3_clientVersion",
+]);
+
+/// Whether re-issuing a request cannot change the chain.
+///
+/// Reads are recognised explicitly so a method nobody has classified is left
+/// alone rather than replayed on a guess. Transaction submission is the case
+/// this exists to exclude: a node-signed send carries no client nonce, so a
+/// replay lands a second, distinct transaction rather than being rejected as a
+/// duplicate. The state controls are equally unsafe — replaying a clock
+/// increment advances it twice — and a batch is an array whose members cannot be
+/// judged from the envelope.
+function isRetryableRpcRequest(request: any): boolean {
+  if (!request || Array.isArray(request)) return false;
+  const method = request.method;
+  return (
+    typeof method === "string" &&
+    (method.startsWith("eth_get") || RETRYABLE_RPC_METHODS.has(method))
+  );
+}
+
 /// Retries a fetch that never produced a response.
 ///
 /// A long deploy issues thousands of RPC calls, and a single dropped connection
 /// would otherwise abort it partway through — leaving a half-deployed namespace
 /// that cannot be resumed. Only transport failures are retried: an HTTP response
 /// of any status is returned untouched, so JSON-RPC errors keep their existing
-/// handling. Retrying is safe for sends as well as reads, because a signed
-/// transaction replayed after a dropped connection carries the same nonce and
-/// hash, so a node that already saw it rejects the duplicate rather than
-/// submitting it twice.
+/// handling.
+///
+/// Only idempotent requests are retried. Replaying a send would be unsafe, and
+/// would not help either: a node that accepted the first submission rejects the
+/// second as already known, so the run aborts whether or not it is retried.
 async function fetchWithTransportRetry(
   originalFetch: typeof globalThis.fetch,
   input: any,
   init: any,
+  request: any,
 ): Promise<Response> {
+  const attempts = isRetryableRpcRequest(request) ? RPC_TRANSPORT_RETRIES : 0;
   let lastError: unknown;
-  for (let attempt = 0; attempt <= RPC_TRANSPORT_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= attempts; attempt++) {
     try {
       return await originalFetch(input, init);
     } catch (error) {
       lastError = error;
-      if (attempt === RPC_TRANSPORT_RETRIES) break;
+      if (attempt === attempts) break;
       const backoff = RPC_TRANSPORT_BACKOFF_MS * 2 ** attempt;
       await sleep(backoff + Math.floor(Math.random() * backoff));
     }
@@ -846,7 +884,12 @@ function installRpcCompatibility(debugRpc: boolean): void {
         return null;
       }
     })();
-    const response = await fetchWithTransportRetry(originalFetch, input, init);
+    const response = await fetchWithTransportRetry(
+      originalFetch,
+      input,
+      init,
+      request,
+    );
     try {
       const payload = await response.clone().json();
       if (
@@ -4903,33 +4946,31 @@ export async function runForkFull(opts: RunForkFullOptions) {
     });
 
     const smokePrefix = `${opts.network === "mainnet" ? "mf" : "sf"}${Date.now().toString(36)}`;
-    const smokeLabels =
+    // Only the two reserved names have to survive a resume. The rest are chosen
+    // fresh each run because their assertions need names the chain has never
+    // seen, which a replayed run would no longer offer.
+    const reservedSmokeFile = join(workDir, "smoke-labels.json");
+    const reservedSmoke =
       resumeFromPhase === 2
-        ? (() => {
-            const [migrate, reservedOnly] = readPremigrationLabels(
-              transformedCsv,
-              2,
-            );
-            console.log(
-              `resumed smoke labels: ${migrate}.eth, ${reservedOnly}.eth`,
-            );
-            return {
-              v1BeforeDisable: `${smokePrefix}pre`,
-              migrate,
-              reservedOnly,
-              v1AfterDisable: `${smokePrefix}block`,
-              v2BeforeEnable: `${smokePrefix}v2block`,
-              v2AfterEnable: `${smokePrefix}v2ok`,
-            };
-          })()
-        : {
-            v1BeforeDisable: `${smokePrefix}pre`,
-            migrate: `${smokePrefix}mig`,
-            reservedOnly: `${smokePrefix}res`,
-            v1AfterDisable: `${smokePrefix}block`,
-            v2BeforeEnable: `${smokePrefix}v2block`,
-            v2AfterEnable: `${smokePrefix}v2ok`,
-          };
+        ? readReservedSmokeLabels(reservedSmokeFile)
+        : { migrate: `${smokePrefix}mig`, reservedOnly: `${smokePrefix}res` };
+    if (resumeFromPhase === 2) {
+      console.log(
+        `resumed smoke labels: ${reservedSmoke.migrate}.eth, ${reservedSmoke.reservedOnly}.eth`,
+      );
+    } else {
+      writeFileSync(
+        reservedSmokeFile,
+        `${JSON.stringify(reservedSmoke, null, 2)}\n`,
+      );
+    }
+    const smokeLabels = {
+      v1BeforeDisable: `${smokePrefix}pre`,
+      v1AfterDisable: `${smokePrefix}block`,
+      v2BeforeEnable: `${smokePrefix}v2block`,
+      v2AfterEnable: `${smokePrefix}v2ok`,
+      ...reservedSmoke,
+    };
 
     let smokeMigrationOwner = smokeAccount.address;
     let smokeMigrationPrivateKey: `0x${string}` | undefined = smokePrivateKey;
