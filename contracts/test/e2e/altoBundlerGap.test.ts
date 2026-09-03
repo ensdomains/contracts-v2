@@ -169,7 +169,7 @@ function toRpcUserOperation(op: UnpackedUserOperation) {
   };
 }
 
-type PaymasterFields = {
+type SponsorshipFields = Partial<UnpackedUserOperation> & {
   paymaster: Address;
   paymasterData: Hex;
   paymasterVerificationGasLimit: bigint;
@@ -177,37 +177,93 @@ type PaymasterFields = {
 };
 
 /**
- * ERC-7677 (`pm_getPaymasterData`) with a fallback to pimlico's older
- * `pm_sponsorUserOperation`; the mock verifying paymaster has shipped both.
+ * ERC-7677 (`pm_getPaymasterStubData` then `pm_getPaymasterData`) with a
+ * fallback to pimlico's older `pm_sponsorUserOperation`; the mock verifying
+ * paymaster has shipped both.
+ *
+ * `VerifyingPaymaster.getHash()` covers the paymaster gas limits, so the stub
+ * call has to settle them and they have to ride on the operation handed to
+ * `pm_getPaymasterData` — otherwise the returned signature is over different
+ * limits than the ones submitted and the EntryPoint rejects with AA34.
  */
 async function sponsor(
   op: UnpackedUserOperation,
   chainId: number,
-): Promise<PaymasterFields> {
-  const rpcOp = toRpcUserOperation(op);
-  let result: Record<string, Hex>;
+): Promise<SponsorshipFields> {
+  const toGas = (value: Hex | undefined, fallback: bigint) =>
+    value ? BigInt(value) : fallback;
   try {
-    result = await jsonRpc<Record<string, Hex>>(
+    const stub = await jsonRpc<Record<string, Hex>>(
+      MOCK_PAYMASTER_URL,
+      "pm_getPaymasterStubData",
+      [toRpcUserOperation(op), entryPoint07Address, numberToHex(chainId), {}],
+    );
+    const stubbed: UnpackedUserOperation = {
+      ...op,
+      paymaster: getAddress(stub.paymaster),
+      paymasterData: stub.paymasterData,
+      paymasterVerificationGasLimit: toGas(
+        stub.paymasterVerificationGasLimit,
+        DEFAULT_PAYMASTER_GAS,
+      ),
+      paymasterPostOpGasLimit: toGas(
+        stub.paymasterPostOpGasLimit,
+        DEFAULT_PAYMASTER_GAS,
+      ),
+    };
+    const final = await jsonRpc<Record<string, Hex>>(
       MOCK_PAYMASTER_URL,
       "pm_getPaymasterData",
-      [rpcOp, entryPoint07Address, numberToHex(chainId), {}],
+      [
+        toRpcUserOperation(stubbed),
+        entryPoint07Address,
+        numberToHex(chainId),
+        {},
+      ],
     );
+    return {
+      paymaster: getAddress(final.paymaster),
+      paymasterData: final.paymasterData,
+      paymasterVerificationGasLimit: toGas(
+        final.paymasterVerificationGasLimit,
+        stubbed.paymasterVerificationGasLimit!,
+      ),
+      paymasterPostOpGasLimit: toGas(
+        final.paymasterPostOpGasLimit,
+        stubbed.paymasterPostOpGasLimit!,
+      ),
+    };
   } catch (error) {
     if (!(error instanceof JsonRpcError)) throw error;
-    result = await jsonRpc<Record<string, Hex>>(
+    // the older API signs over the account gas limits it returns as well, so
+    // every field it hands back has to be adopted.
+    const result = await jsonRpc<Record<string, Hex>>(
       MOCK_PAYMASTER_URL,
       "pm_sponsorUserOperation",
-      [rpcOp, entryPoint07Address],
+      [toRpcUserOperation(op), entryPoint07Address],
     );
+    return {
+      paymaster: getAddress(result.paymaster),
+      paymasterData: result.paymasterData,
+      paymasterVerificationGasLimit: toGas(
+        result.paymasterVerificationGasLimit,
+        DEFAULT_PAYMASTER_GAS,
+      ),
+      paymasterPostOpGasLimit: toGas(
+        result.paymasterPostOpGasLimit,
+        DEFAULT_PAYMASTER_GAS,
+      ),
+      callGasLimit: toGas(result.callGasLimit, op.callGasLimit),
+      verificationGasLimit: toGas(
+        result.verificationGasLimit,
+        op.verificationGasLimit,
+      ),
+      preVerificationGas: toGas(
+        result.preVerificationGas,
+        op.preVerificationGas,
+      ),
+    };
   }
-  const toGas = (value: Hex | undefined) =>
-    value ? BigInt(value) : DEFAULT_PAYMASTER_GAS;
-  return {
-    paymaster: getAddress(result.paymaster),
-    paymasterData: result.paymasterData,
-    paymasterVerificationGasLimit: toGas(result.paymasterVerificationGasLimit),
-    paymasterPostOpGasLimit: toGas(result.paymasterPostOpGasLimit),
-  };
 }
 
 // ---------------------------------------------------------------------------
