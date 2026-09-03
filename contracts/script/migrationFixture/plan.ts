@@ -480,7 +480,7 @@ export function recordValue(record: RecordSpec, ctx: RefContext): string {
 /// contenthash's raw bytes through would make the clear re-write exactly what it
 /// exists to remove, and an all-zero address is a present value for a multicoin
 /// slot rather than an absent one.
-function clearedRecord(record: RecordSpec): RecordSpec {
+export function clearedRecord(record: RecordSpec): RecordSpec {
   const slot = {
     kind: record.kind,
     coin_type: record.coin_type,
@@ -550,10 +550,10 @@ export function planSetupSteps(
     if (resolver !== currentResolver) writtenRecords.clear();
     currentResolver = resolver;
   };
-  const writtenRecords = new Map<string, string>();
+  const writtenRecords = new Map<string, RecordSpec>();
   const noteRecords = (records: RecordSpec[]) => {
     for (const record of records) {
-      writtenRecords.set(recordKey(record), recordValue(record, ctx));
+      writtenRecords.set(recordKey(record), record);
     }
   };
 
@@ -668,11 +668,11 @@ export function planSetupSteps(
       // Deletion is an explicit write of an empty value so the operation stays
       // in resolver history rather than merely being forgotten locally.
       case "clear_records": {
-        const known = (scenario.v1.expected_pre_migration
-          ?.record_operation_history ??
-          scenario.v1.registration.records ??
-          []) as RecordSpec[];
-        const cleared = known.map(clearedRecord);
+        // Cleared from what the plan has written so far, not from the corpus's
+        // static record list: earlier steps add slots the static list never
+        // mentions, and those would survive a clear that is meant to empty the
+        // resolver.
+        const cleared = [...writtenRecords.values()].map(clearedRecord);
         calls.push(
           ...recordCalls(
             ctx.addresses.publicResolver,
@@ -995,10 +995,10 @@ export function planSetupSteps(
     if (targetResolver !== currentResolver) {
       pushSetResolver(targetResolver, `${row.fixture_id} target setResolver`);
     }
-    const missing = targetRecords.filter(
-      (record) =>
-        writtenRecords.get(recordKey(record)) !== recordValue(record, ctx),
-    );
+    const missing = targetRecords.filter((record) => {
+      const written = writtenRecords.get(recordKey(record));
+      return !written || recordValue(written, ctx) !== recordValue(record, ctx);
+    });
     if (missing.length) {
       calls.push(
         ...recordCalls(

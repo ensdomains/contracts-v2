@@ -824,7 +824,7 @@ const RETRYABLE_RPC_METHODS = new Set([
 /// duplicate. The state controls are equally unsafe — replaying a clock
 /// increment advances it twice — and a batch is an array whose members cannot be
 /// judged from the envelope.
-function isRetryableRpcRequest(request: any): boolean {
+export function isRetryableRpcRequest(request: any): boolean {
   if (!request || Array.isArray(request)) return false;
   const method = request.method;
   return (

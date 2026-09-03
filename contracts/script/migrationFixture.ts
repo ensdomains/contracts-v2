@@ -84,6 +84,7 @@ import {
   type FixtureEnvelope,
   type FixtureRunName,
   type FixtureRunState,
+  type FixtureActor,
 } from "./migrationFixture/types.js";
 
 /// The corpus's counterparty contracts. `v1Args` names the v1 deployments each
@@ -364,6 +365,44 @@ function loadRunState(opts: CommonOptions): FixtureRunState | null {
   return existsSync(path) ? readJson<FixtureRunState>(path) : null;
 }
 
+/// Rejects run state that describes a different run.
+///
+/// The state carries a batcher, deployed counterparty contracts and the set of
+/// names already seeded. Reusing a work directory across chains, corpora or
+/// actor mnemonics would spend against addresses from the other run and treat
+/// names it never registered as already done, so the mismatch is refused before
+/// any write rather than surfacing as a failed check much later.
+///
+/// The recorded digest is not compared: it describes the last selection, and
+/// seeding a wider selection into a work directory is how a run grows.
+function assertRunStateCompatible(
+  opts: CommonOptions,
+  state: FixtureRunState,
+  chainId: number,
+  actors: FixtureActor[],
+): void {
+  const mismatches: string[] = [];
+  if (state.version !== 2)
+    mismatches.push(`run state version ${state.version}, expected 2`);
+  if (state.chainId !== chainId)
+    mismatches.push(`chain ${state.chainId}, now ${chainId}`);
+  const fixtureRoot = resolve(opts.fixtureRoot);
+  if (state.fixtureRoot !== fixtureRoot)
+    mismatches.push(`corpus ${state.fixtureRoot}, now ${fixtureRoot}`);
+  for (const actor of actors) {
+    const recorded = state.actorAddresses[actor.alias];
+    if (recorded && getAddress(recorded) !== getAddress(actor.account.address))
+      mismatches.push(
+        `actor ${actor.alias} ${recorded}, now ${actor.account.address}`,
+      );
+  }
+  if (!mismatches.length) return;
+  throw new Error(
+    `${runStatePath(opts)} belongs to a different run: ${mismatches.join("; ")}; ` +
+      "use a fresh --work-dir",
+  );
+}
+
 function saveRunState(opts: CommonOptions, state: FixtureRunState): void {
   state.updatedAt = new Date().toISOString();
   writeFileSync(runStatePath(opts), `${JSON.stringify(state, null, 2)}\n`);
@@ -435,7 +474,7 @@ const SEEDABLE_EXPIRY_COHORTS = new Set(["long", "minimum"]);
 const SEEDABLE_V2_PROFILES = new Set(["present", "missing"]);
 
 /// Rejects a selection whose scenarios ask for state seeding cannot build.
-function assertSeedable(rows: FixtureEnvelope[]): void {
+export function assertSeedable(rows: FixtureEnvelope[]): void {
   const unsupported = new Map<string, string[]>();
   const note = (reason: string, fixtureId: string) => {
     const ids = unsupported.get(reason);
@@ -622,6 +661,8 @@ async function deployFixtures(opts: CommonOptions): Promise<void> {
   mkdirSync(resolve(opts.workDir), { recursive: true });
   const { chain } = clients(opts);
   const existing = loadRunState(opts);
+  if (existing)
+    assertRunStateCompatible(opts, existing, chain.id, accounts(opts));
   const fixtureContracts = await deployFixtureContracts(
     opts,
     existing?.fixtureContracts ?? {},
@@ -662,9 +703,12 @@ export async function seedV1(
 
   const actors = accounts(opts);
   const { chain, client, wallet } = clients(opts);
-  await ensureV1ControllerEnabled(opts);
 
+  // Checked before the controller re-enable, which is the run's first write.
   const existing = loadRunState(opts);
+  if (existing) assertRunStateCompatible(opts, existing, chain.id, actors);
+
+  await ensureV1ControllerEnabled(opts);
   const batcher = existing?.batcher ?? (await deployBatcher(opts));
   const fixtureContracts = await deployFixtureContracts(
     opts,
