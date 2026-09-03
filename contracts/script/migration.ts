@@ -12,6 +12,10 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
+  AbiDecodingZeroDataError,
+  BaseError,
+  ContractFunctionRevertedError,
+  ContractFunctionZeroDataError,
   createPublicClient,
   createWalletClient,
   custom,
@@ -23,10 +27,12 @@ import {
   http,
   keccak256,
   namehash,
+  parseAbiItem,
   parseEther,
   stringToHex,
   zeroAddress,
   zeroHash,
+  type AbiEvent,
   type Address,
   type Chain,
 } from "viem";
@@ -41,6 +47,7 @@ import { Artifact_BaseRegistrarImplementation } from "generated/artifacts/BaseRe
 import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
 import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
+import { isHCAOnlyDeployment } from "../deploy/hca/_helpers.js";
 import { config as rockethConfig } from "../rocketh/config.js";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
 import { generateAddressMarkdown } from "./addressDocs.js";
@@ -52,6 +59,8 @@ import {
 } from "./deploy-constants.js";
 import { main as exportRegistrationsMain } from "./exportTheGraphRegistrations.js";
 import {
+  CHECKPOINT_FILE,
+  type Checkpoint,
   createFreshCheckpoint,
   isValidLabel,
   loadCheckpoint,
@@ -396,9 +405,7 @@ function csvLabelColumnIndex(header: string[]): number {
 // Quote a CSV field when it contains a delimiter, quote, or newline so labels
 // with such characters survive a round-trip through the premigration reader.
 function escapeCsvField(value: string): string {
-  return /[",\n\r]/.test(value)
-    ? `"${value.replace(/"/g, '""')}"`
-    : value;
+  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
 function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
@@ -407,9 +414,7 @@ function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
   const header = parseCSVLine(lines[0]);
   const labelIndex = csvLabelColumnIndex(header);
   if (labelIndex < 0) {
-    throw new Error(
-      `CSV must contain a labelName or label column: ${csvFile}`,
-    );
+    throw new Error(`CSV must contain a labelName or label column: ${csvFile}`);
   }
   const labels: string[] = [];
   for (const line of lines.slice(1)) {
@@ -805,7 +810,10 @@ function installRpcCompatibility(debugRpc: boolean): void {
     const response = await originalFetch(input, init);
     try {
       const payload = await response.clone().json();
-      if (payload?.error && request?.method === "eth_feeHistory") {
+      if (
+        request?.method === "eth_feeHistory" &&
+        isMissingFeeHistory(payload?.error)
+      ) {
         return new Response(JSON.stringify(buildFeeHistoryResponse(request)), {
           headers: { "content-type": "application/json" },
           status: 200,
@@ -1111,8 +1119,11 @@ export async function runPreMigrationCommand(
     v1BaseRegistrar?: Address;
     workDir?: string;
     dryRun?: boolean;
+    metadataLabel?: string;
+    persistMetadata?: boolean;
   },
   resume: boolean,
+  run: (args: string[]) => Promise<void> = preMigrationMain,
 ) {
   const network = opts.network ?? "mainnet";
   const deploymentNetwork = opts.deploymentNetwork ?? network;
@@ -1137,7 +1148,7 @@ export async function runPreMigrationCommand(
   );
   const v1BaseRegistrar =
     opts.v1BaseRegistrar ??
-    requireV1Deployment(network, "BaseRegistrarImplementation", opts).address;
+    requireV1Deployment(network, V1_BASE_REGISTRAR_NAME, opts).address;
   const envFallbackKey = envPrivateKey(
     "PREMIGRATION_PRIVATE_KEY",
     "BATCH_REGISTRAR_OWNER_KEY",
@@ -1189,7 +1200,25 @@ export async function runPreMigrationCommand(
     if (opts.bonusPeriodDays)
       args.push("--bonus-period-days", opts.bonusPeriodDays);
     if (resume) args.push("--continue");
-    await preMigrationMain(args);
+    await run(args);
+
+    // Persist a durable counts sidecar into the deployment namespace. Skipped on
+    // dry runs and when the caller opts out (e.g. a fork rehearsal that does not
+    // save deployments), so a committed namespace is never touched by a throwaway
+    // run. The checkpoint lands in the workDir (or cwd when none was set).
+    if (!opts.dryRun && (opts.persistMetadata ?? true)) {
+      const cpDir = opts.workDir ? resolve(opts.workDir) : previousCwd;
+      const checkpoint = loadCheckpoint(join(cpDir, CHECKPOINT_FILE));
+      if (checkpoint) {
+        recordPreMigrationMetadata({
+          deploymentsDir,
+          deploymentNetwork,
+          network,
+          label: opts.metadataLabel ?? "run",
+          checkpoint,
+        });
+      }
+    }
   } finally {
     process.chdir(previousCwd);
   }
@@ -1245,8 +1274,7 @@ async function verifyPreMigration(opts: {
       ?.address;
   const baseRegistrar =
     opts.v1BaseRegistrar ??
-    requireV1Deployment(opts.network, "BaseRegistrarImplementation", opts)
-      .address;
+    requireV1Deployment(opts.network, V1_BASE_REGISTRAR_NAME, opts).address;
   const expectedStatus = opts.expectedStatus ?? "reserved-or-registered";
   const labels = readLabelsFromCsv(
     opts.csvFile,
@@ -1398,9 +1426,7 @@ async function verifyPreMigration(opts: {
   console.log(`eligible v1 names: ${eligible}`);
   console.log(`skipped ineligible names: ${skipped}`);
   console.log(`verified active names: ${verifiedActive}`);
-  console.log(
-    `verified expired-bonus names: ${verifiedExpiredBonus}`,
-  );
+  console.log(`verified expired-bonus names: ${verifiedExpiredBonus}`);
   console.log(`verified names: ${verifiedActive + verifiedExpiredBonus}`);
   if (errors.length > 0) {
     console.error(errors.slice(0, 20).join("\n"));
@@ -1527,7 +1553,8 @@ async function sendAdminWrite(opts: {
     );
     return;
   }
-  if (opts.impersonateAccount) await impersonate(opts.client, opts.impersonateAccount);
+  if (opts.impersonateAccount)
+    await impersonate(opts.client, opts.impersonateAccount);
   const wallet = walletClient({
     rpcUrl: opts.rpcUrl,
     chain: opts.chain,
@@ -1544,23 +1571,408 @@ async function sendAdminWrite(opts: {
   await waitForSuccessfulReceipt(opts.client, hash, opts.receiptLabel);
 }
 
-async function disableV1Registrars(opts: {
+// v1-side controllers able to mint `.eth` registrations, removed by the freeze.
+const V1_REGISTRATION_CONTROLLER_NAMES = [
+  "LegacyETHRegistrarController",
+  "ETHRegistrarController",
+  "WrappedETHRegistrarController",
+  "NameWrapper",
+] as const;
+
+const V1_BASE_REGISTRAR_NAME = "BaseRegistrarImplementation";
+
+// v1 reverse registrars a migration is granted control of: the premigration
+// registrar writes reverse records on a registrant's behalf, and the adapters
+// forward reverse updates for the accounts they are allowed to name. These are
+// shared v1 contracts, so a superseded deployment's grant stays live across
+// re-deploys.
+const V1_REVERSE_REGISTRAR_NAMES = [
+  "ReverseRegistrar",
+  "DefaultReverseRegistrar",
+] as const;
+
+// v2-side contracts a migration authorizes against v1, keyed by the v1 contract
+// holding the grant. Every deployment namespace holds its own instances, so
+// re-deploying leaves the previous namespace's copies authorized until they are
+// explicitly revoked — including the testnet premigration registrar, which
+// registers names permissionlessly.
+const V1_HANDOFF_CONTROLLERS: Record<
+  typeof V1_BASE_REGISTRAR_NAME | (typeof V1_REVERSE_REGISTRAR_NAMES)[number],
+  readonly string[]
+> = {
+  BaseRegistrarImplementation: [
+    "ETHRenewerV1",
+    "Graveyard",
+    "TestnetV1PremigrationRegistrar",
+  ],
+  ReverseRegistrar: [
+    "TestnetV1PremigrationRegistrar",
+    "ReverseRegistrarAdapter",
+  ],
+  DefaultReverseRegistrar: [
+    "TestnetV1PremigrationRegistrar",
+    "DefaultReverseRegistrarAdapter",
+  ],
+};
+
+const V1_HANDOFF_CONTROLLER_ENTRIES = Object.entries(V1_HANDOFF_CONTROLLERS);
+
+// Every handoff contract name once, so each namespace's artifact is read a single
+// time regardless of how many v1 surfaces it is authorized on.
+const V1_HANDOFF_CONTROLLER_NAMES = [
+  ...new Set(Object.values(V1_HANDOFF_CONTROLLERS).flat()),
+];
+
+// Controller-history events, differing per v1 surface: the BaseRegistrar records
+// grants and revocations separately, the reverse registrars carry both in one event.
+const V1_CONTROLLER_ADDED_EVENT = parseAbiItem(
+  "event ControllerAdded(address indexed controller)",
+);
+const V1_CONTROLLER_REMOVED_EVENT = parseAbiItem(
+  "event ControllerRemoved(address indexed controller)",
+);
+const V1_CONTROLLER_CHANGED_EVENT = parseAbiItem(
+  "event ControllerChanged(address indexed controller, bool enabled)",
+);
+
+// Getter each handoff contract exposes for the reverse registrar it forwards to,
+// so an instance no local artifact describes can still be recognised from chain
+// state. v1's own reverse controllers hold the registrar under a different name
+// and so do not answer these calls.
+const V1_REVERSE_REGISTRAR_BACK_REFERENCES: Record<
+  (typeof V1_REVERSE_REGISTRAR_NAMES)[number],
+  string
+> = {
+  ReverseRegistrar: "REVERSE_REGISTRAR",
+  DefaultReverseRegistrar: "DEFAULT_REVERSE_REGISTRAR",
+};
+
+type V1ControllerState = {
+  // The v1 contract holding the authorization, e.g. "v1 BaseRegistrar".
+  surface: string;
+  name: string;
+  address: Address;
+  enabled: boolean;
+  // Authorized by the active deployment and expected to stay enabled.
+  keep: boolean;
+  // A v1-side controller this tooling never granted. Reported but never revoked:
+  // the reverse registrars' own controllers set reverse records during
+  // registration, so revoking them would break unrelated v1 behaviour.
+  foreign: boolean;
+  // Contract the revoke transaction targets, and whose owner() gates it.
+  target: JsonDeployment;
+  revokeFunctionName: string;
+  revokeArgs: readonly unknown[];
+};
+
+type V1ControllerAudit = {
+  controllers: V1ControllerState[];
+};
+
+function v1ControllersToRemove(audit: V1ControllerAudit): V1ControllerState[] {
+  return audit.controllers.filter(
+    (controller) =>
+      controller.enabled && !controller.keep && !controller.foreign,
+  );
+}
+
+function describeV1Controller(controller: V1ControllerState): string {
+  return `${controller.surface}: ${controller.name} ${controller.address}`;
+}
+
+// Reads `controllers(address)` for a batch of candidates on one v1 contract.
+async function readControllerFlags(
+  client: ReturnType<typeof publicClient>,
+  contract: JsonDeployment,
+  addresses: Address[],
+): Promise<boolean[]> {
+  return Promise.all(
+    addresses.map(
+      (address) =>
+        client.readContract({
+          address: contract.address,
+          abi: contract.abi,
+          functionName: "controllers",
+          args: [address],
+        }) as Promise<boolean>,
+    ),
+  );
+}
+
+// Reads a namespace's recorded chain id, absent when the namespace predates the
+// metadata. A metadata file that exists but cannot be parsed raises.
+function readDeploymentChainId(path: string): number | undefined {
+  const chainPath = join(path, ".chain");
+  if (!existsSync(chainPath)) return undefined;
+  let chainId: unknown;
+  try {
+    ({ chainId } = JSON.parse(readFileSync(chainPath, "utf-8")));
+  } catch (error) {
+    throw new Error(`unreadable deployment metadata: ${chainPath}`, {
+      cause: error,
+    });
+  }
+  const parsed = Number(chainId);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`invalid chainId in ${chainPath}: ${String(chainId)}`);
+  }
+  return parsed;
+}
+
+// Deployment namespaces that target the same chain: every namespace named for one
+// of the given base names — the canonical one, the dated archives a fresh deploy
+// renamed aside, and the `-fork` / `-clean-` runtime sets. The network is included
+// alongside the active namespace so a fork run (`sepolia-fork`) still recognises the
+// canonical `sepolia` set as superseded, whose contracts hold live grants on the
+// forked v1, and so a custom namespace (`--deployment-network staging`) still finds
+// its own archives. A namespace whose recorded chain id matches none of the expected
+// ids is excluded so unrelated deployment sets are never treated as this chain's
+// orphans.
+function siblingDeploymentNamespaces(opts: {
+  deploymentsDir: string;
+  networks: string[];
+  chainIds: number[];
+}): string[] {
+  const root = resolve(opts.deploymentsDir);
+  if (!existsSync(root)) return [];
+  const bases = [...new Set(opts.networks)];
+  return readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((name) =>
+      bases.some((base) => name === base || name.startsWith(`${base}-`)),
+    )
+    .filter((name) => {
+      const chainId = readDeploymentChainId(join(root, name));
+      return chainId === undefined || opts.chainIds.includes(chainId);
+    })
+    .sort();
+}
+
+// Smallest block span worth requesting before a provider's refusal is taken at face
+// value rather than as a demand for a narrower one.
+const LOG_SCAN_MIN_SPAN = 1_000n;
+
+// Refusals of the span rather than of the query: the block range or the result count
+// exceeded a server-side cap. Both are answered by requesting a narrower span.
+const LOG_SCAN_SPAN_REFUSALS = [
+  "block range",
+  "range exceeds",
+  // Some providers put the offending count between the words, e.g. Infura's
+  // "range 11390003 exceeds limit of 10000", which "range exceeds" misses —
+  // without this entry that refusal is rethrown as fatal instead of bisected.
+  "exceeds limit",
+  "narrow your filter",
+  "query returned more than",
+  "more than 10000 results",
+  "log response size",
+  "response size exceeded",
+  "query timeout exceeded",
+];
+
+function isLogSpanRefusal(error: unknown): boolean {
+  const message = errorMessageChain(error).join(" ").toLowerCase();
+  return LOG_SCAN_SPAN_REFUSALS.some((refusal) => message.includes(refusal));
+}
+
+// Every `controller` address one event has ever carried on a contract. Providers cap
+// `eth_getLogs` by block span or by result count, and a load-balanced endpoint may
+// apply a cap to only some requests, so a refused span is bisected and each half
+// requested in turn. The widest span the provider has accepted is carried across the
+// scan, so the cap is discovered once rather than rediscovered per subrange. The
+// blocks covered are the same either way; a refusal at the smallest span, or any
+// error that is not about the span, raises.
+async function readControllerEventAddresses(
+  client: ReturnType<typeof publicClient>,
+  args: { address: Address; event: AbiEvent; toBlock: bigint },
+): Promise<Address[]> {
+  let acceptedSpan: bigint | undefined;
+
+  const readSpan = async (
+    fromBlock: bigint,
+    toBlock: bigint,
+  ): Promise<Address[]> => {
+    const span = toBlock - fromBlock + 1n;
+    const bisect = () => {
+      const mid = fromBlock + span / 2n;
+      return readSpan(fromBlock, mid - 1n).then(async (left) => [
+        ...left,
+        ...(await readSpan(mid, toBlock)),
+      ]);
+    };
+    if (acceptedSpan !== undefined && span > acceptedSpan) return bisect();
+    try {
+      const logs = await client.getLogs({
+        address: args.address,
+        event: args.event,
+        fromBlock,
+        toBlock,
+      });
+      if (acceptedSpan === undefined || span > acceptedSpan)
+        acceptedSpan = span;
+      return logs.map((log) =>
+        getAddress((log.args as { controller: Address }).controller),
+      );
+    } catch (error) {
+      if (!isLogSpanRefusal(error) || span <= LOG_SCAN_MIN_SPAN) throw error;
+      return bisect();
+    }
+  };
+  return readSpan(0n, args.toBlock);
+}
+
+// Every address a v1 surface has ever had as a controller, across the whole chain.
+async function discoverV1ControllerAddresses(
+  client: ReturnType<typeof publicClient>,
+  address: Address,
+  events: readonly AbiEvent[],
+): Promise<Address[]> {
+  const toBlock = await client.getBlockNumber();
+  const discovered = await Promise.all(
+    events.map((event) =>
+      readControllerEventAddresses(client, { address, event, toBlock }),
+    ),
+  );
+  return discovered.flat();
+}
+
+// True when the call reached the chain and the contract declined to answer: it
+// reverted, or the address returned no data because it holds no such function. The
+// message is checked alongside the error type because a provider that flattens
+// JSON-RPC errors loses the type viem would otherwise attach.
+function isContractProbeRejection(error: unknown): boolean {
+  if (
+    error instanceof BaseError &&
+    error.walk(
+      (cause) =>
+        cause instanceof ContractFunctionRevertedError ||
+        cause instanceof ContractFunctionZeroDataError ||
+        cause instanceof AbiDecodingZeroDataError,
+    ) !== null
+  ) {
+    return true;
+  }
+  const message = errorMessageChain(error).join(" ").toLowerCase();
+  return (
+    message.includes("execution reverted") ||
+    message.includes("reverted for an unknown reason") ||
+    message.includes("returned no data")
+  );
+}
+
+// Filters discovered addresses down to this tooling's own handoff contracts, by
+// asking each one which reverse registrar it forwards to. An address that declines
+// the call, or answers with a different registrar, belongs to v1. Any other failure
+// means the answer is unknown and is raised.
+async function filterHandoffControllersByBackReference(
+  client: ReturnType<typeof publicClient>,
+  surface: JsonDeployment,
+  getterName: string,
+  addresses: Address[],
+): Promise<Address[]> {
+  const abi = [
+    parseAbiItem(`function ${getterName}() view returns (address)`),
+  ] as const;
+  const matches = await Promise.all(
+    addresses.map(async (address) => {
+      try {
+        const backReference = (await client.readContract({
+          address,
+          abi,
+          functionName: getterName,
+        })) as Address;
+        return getAddress(backReference) === getAddress(surface.address);
+      } catch (error) {
+        if (!isContractProbeRejection(error)) throw error;
+        return false;
+      }
+    }),
+  );
+  return addresses.filter((_, index) => matches[index]);
+}
+
+type RegistrarControlRoute = {
+  // Contract the owner-gated write targets, and whose owner() gates it.
+  target: JsonDeployment;
+  addFunctionName: string;
+  removeFunctionName: string;
+  transferFunctionName: string;
+};
+
+// The contract that currently drives the v1 BaseRegistrar's owner-gated entrypoints.
+// The security controller is a pass-through that forwards to the registrar as its
+// owner, so it only works while it still holds that ownership: once a migration has
+// handed the registrar to a renewer, or a reclaim has returned it to the v1 owner,
+// its calls revert. The route is therefore chosen from the registrar's live owner
+// rather than from the presence of a security controller artifact.
+async function resolveRegistrarControlRoute(opts: {
+  client: ReturnType<typeof publicClient>;
+  baseRegistrar: JsonDeployment;
+  registrarSecurityController: JsonDeployment | null;
+  owner?: Address;
+}): Promise<RegistrarControlRoute> {
+  const { baseRegistrar, registrarSecurityController } = opts;
+  if (registrarSecurityController) {
+    const owner =
+      opts.owner ??
+      ((await opts.client.readContract({
+        address: baseRegistrar.address,
+        abi: baseRegistrar.abi,
+        functionName: "owner",
+      })) as Address);
+    if (getAddress(owner) === getAddress(registrarSecurityController.address)) {
+      return {
+        target: registrarSecurityController,
+        addFunctionName: "addRegistrarController",
+        removeFunctionName: "removeRegistrarController",
+        transferFunctionName: "transferRegistrarOwnership",
+      };
+    }
+  }
+  return {
+    target: baseRegistrar,
+    addFunctionName: "addController",
+    removeFunctionName: "removeController",
+    transferFunctionName: "transferOwnership",
+  };
+}
+
+type V1ControllerAuditOptions = {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
   provider?: RpcProvider;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
-  extraControllers?: Array<{ name: string; address: Address }>;
-  privateKey?: `0x${string}`;
-  impersonateOwner?: boolean;
-  calldataOnly?: boolean;
-}) {
-  const chain = migrationChain(opts);
-  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+};
+
+// Builds the full picture of the v1 authorizations a migration hands out, across
+// every v1 contract it grants against.
+//
+// Candidates come from three places: the named v1 registration controllers, the
+// handoff contracts recorded in each deployment namespace on this chain (so a
+// superseded deployment's instances are not left authorized), and a scan of each
+// surface's controller events that catches addresses no local artifact describes.
+//
+// What a discovered address means differs by surface. On the BaseRegistrar the
+// freeze bans all v1 minting, so every controller the active deployment did not
+// authorize is revoked. On the reverse registrars only this tooling's own forwarders
+// are in remit: a discovered address is claimed only when it reports forwarding to
+// that registrar, and everything else — the official registrar controllers, which set
+// reverse records during registration — is reported and left alone, since revoking
+// them would break unrelated v1 behaviour.
+//
+// The active namespace's handoff contracts are read directly rather than through the
+// namespace scan, so a namespace naming or chain-id mismatch can only ever cause an
+// under-revoke, never revoke the live deployment's own grants.
+async function auditV1Controllers(
+  opts: V1ControllerAuditOptions & { client: ReturnType<typeof publicClient> },
+): Promise<V1ControllerAudit> {
   const baseRegistrar = requireV1Deployment(
     opts.network,
-    "BaseRegistrarImplementation",
+    V1_BASE_REGISTRAR_NAME,
     opts,
   );
   const registrarSecurityController = loadV1Deployment(
@@ -1568,70 +1980,258 @@ async function disableV1Registrars(opts: {
     "RegistrarSecurityController",
     opts,
   );
-  const controllerNames = [
-    "LegacyETHRegistrarController",
-    "ETHRegistrarController",
-    "WrappedETHRegistrarController",
-    "NameWrapper",
+  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  const canonicalChainId = NETWORKS[opts.network].chain.id;
+
+  // Candidates are tracked per v1 surface, since a handoff contract authorized on
+  // one reverse registrar has no grant to answer for on the other.
+  const surfaceCandidates = new Map<string, Map<Address, string>>();
+  const candidatesFor = (surface: string) => {
+    let candidates = surfaceCandidates.get(surface);
+    if (!candidates) {
+      candidates = new Map<Address, string>();
+      surfaceCandidates.set(surface, candidates);
+    }
+    return candidates;
+  };
+  const keepAddresses = new Set<Address>();
+  const addCandidate = (
+    map: Map<Address, string>,
+    address: Address,
+    name: string,
+  ) => {
+    const key = getAddress(address);
+    if (!map.has(key)) map.set(key, name);
+  };
+
+  const registrarCandidates = candidatesFor(V1_BASE_REGISTRAR_NAME);
+  for (const name of V1_REGISTRATION_CONTROLLER_NAMES) {
+    const controller = loadV1Deployment(opts.network, name, opts);
+    if (controller) addCandidate(registrarCandidates, controller.address, name);
+  }
+
+  // Registers a namespace's handoff contracts against every surface they hold a
+  // grant on, and reports how many the namespace actually describes.
+  const addNamespaceHandoffControllers = (
+    namespace: string,
+    isActiveNamespace: boolean,
+  ) => {
+    let found = 0;
+    for (const name of V1_HANDOFF_CONTROLLER_NAMES) {
+      const controller = maybeLoadV2Deployment(deploymentsDir, namespace, name);
+      if (!controller) continue;
+      found += 1;
+      if (isActiveNamespace) keepAddresses.add(getAddress(controller.address));
+      const label = `${name} (${namespace})`;
+      for (const [surface, handoffNames] of V1_HANDOFF_CONTROLLER_ENTRIES) {
+        if (handoffNames.includes(name)) {
+          addCandidate(candidatesFor(surface), controller.address, label);
+        }
+      }
+    }
+    return found;
+  };
+
+  // The active namespace is read directly, and first so its label wins, rather than
+  // waiting for the scan below to surface it: an empty keep set would mark the live
+  // deployment's own grants superseded and revoke them.
+  if (addNamespaceHandoffControllers(deploymentNetwork, true) === 0) {
+    throw new Error(
+      `no handoff contract artifacts under ${join(resolve(deploymentsDir), deploymentNetwork)}: cannot tell the active deployment's v1 authorizations from a superseded deployment's`,
+    );
+  }
+
+  for (const namespace of siblingDeploymentNamespaces({
+    deploymentsDir,
+    networks: [opts.network, deploymentNetwork],
+    chainIds: [parseNumber(opts.chainId, canonicalChainId), canonicalChainId],
+  })) {
+    if (namespace === deploymentNetwork) continue;
+    addNamespaceHandoffControllers(namespace, false);
+  }
+
+  const registrarRoute = await resolveRegistrarControlRoute({
+    client: opts.client,
+    baseRegistrar,
+    registrarSecurityController,
+  });
+  const surfaces: Array<{
+    surface: string;
+    authority: JsonDeployment;
+    target: JsonDeployment;
+    revokeFunctionName: string;
+    revokeArgs: (address: Address) => readonly unknown[];
+    candidates: Map<Address, string>;
+    events: readonly AbiEvent[];
+    // Getter a discovered address must answer with this surface to be claimed as
+    // this tooling's own. Absent on the BaseRegistrar, where the freeze revokes
+    // every controller the active deployment did not authorize.
+    backReferenceGetter?: string;
+  }> = [
+    {
+      surface: "v1 BaseRegistrar",
+      authority: baseRegistrar,
+      target: registrarRoute.target,
+      revokeFunctionName: registrarRoute.removeFunctionName,
+      revokeArgs: (address) => [address],
+      candidates: registrarCandidates,
+      events: [V1_CONTROLLER_ADDED_EVENT, V1_CONTROLLER_REMOVED_EVENT],
+    },
   ];
 
-  const target = registrarSecurityController ?? baseRegistrar;
-  const wallet = opts.calldataOnly
-    ? null
-    : (
-        await resolveOwnerGatedWallet({
-          client,
-          chain,
-          rpcUrl: opts.rpcUrl,
-          provider: opts.provider,
-          gate: target,
-          ownerLabel: "v1 registrar owner",
-          privateKey: opts.privateKey,
-          impersonateOwner: opts.impersonateOwner,
-        })
-      ).wallet;
-
-  const controllers = [
-    ...controllerNames.flatMap((name) => {
-      const controller = loadV1Deployment(opts.network, name, opts);
-      return controller ? [{ name, address: controller.address }] : [];
-    }),
-    ...(opts.extraControllers ?? []),
-  ];
-
-  for (const { name, address } of controllers) {
-    const enabled = await client.readContract({
-      address: baseRegistrar.address,
-      abi: baseRegistrar.abi,
-      functionName: "controllers",
-      args: [address],
+  for (const name of V1_REVERSE_REGISTRAR_NAMES) {
+    const reverseRegistrar = requireV1Deployment(opts.network, name, opts);
+    surfaces.push({
+      surface: `v1 ${name}`,
+      authority: reverseRegistrar,
+      target: reverseRegistrar,
+      revokeFunctionName: "setController",
+      revokeArgs: (address) => [address, false],
+      candidates: candidatesFor(name),
+      events: [V1_CONTROLLER_CHANGED_EVENT],
+      backReferenceGetter: V1_REVERSE_REGISTRAR_BACK_REFERENCES[name],
     });
-    if (!enabled) {
-      console.log(`already disabled: ${name} ${address}`);
-      continue;
+  }
+
+  const controllers: V1ControllerState[] = [];
+  for (const surface of surfaces) {
+    const discovered = await discoverV1ControllerAddresses(
+      opts.client,
+      surface.authority.address,
+      surface.events,
+    );
+
+    // Addresses the history turned up that no artifact accounts for. Each is
+    // claimed or disowned before it joins the candidate set, so the revoke pass
+    // never has to guess whose grant it is.
+    const unknown = [
+      ...new Set(discovered.map((address) => getAddress(address))),
+    ].filter((address) => !surface.candidates.has(address));
+    const claimed = new Set(
+      surface.backReferenceGetter
+        ? await filterHandoffControllersByBackReference(
+            opts.client,
+            surface.authority,
+            surface.backReferenceGetter,
+            unknown,
+          )
+        : unknown,
+    );
+    const foreignAddresses = new Set(
+      unknown.filter((address) => !claimed.has(address)),
+    );
+    for (const address of unknown) {
+      addCandidate(
+        surface.candidates,
+        address,
+        !surface.backReferenceGetter
+          ? "unrecognized controller"
+          : claimed.has(address)
+            ? "handoff contract (no local artifact)"
+            : "v1 controller",
+      );
     }
 
-    const functionName = registrarSecurityController
-      ? "removeRegistrarController"
-      : "removeController";
+    const entries = [...surface.candidates.entries()];
+    if (entries.length === 0) continue;
+    const flags = await readControllerFlags(
+      opts.client,
+      surface.authority,
+      entries.map(([address]) => address),
+    );
+    entries.forEach(([address, name], index) => {
+      controllers.push({
+        surface: surface.surface,
+        name,
+        address,
+        enabled: flags[index],
+        keep: keepAddresses.has(address),
+        foreign: foreignAddresses.has(address),
+        target: surface.target,
+        revokeFunctionName: surface.revokeFunctionName,
+        revokeArgs: surface.revokeArgs(address),
+      });
+    });
+  }
+
+  return { controllers };
+}
+
+export async function disableV1Registrars(
+  opts: V1ControllerAuditOptions & {
+    privateKey?: `0x${string}`;
+    impersonateOwner?: boolean;
+    calldataOnly?: boolean;
+  },
+) {
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+  const audit = await auditV1Controllers({ ...opts, client });
+
+  for (const controller of audit.controllers) {
+    const { enabled, keep, foreign } = controller;
+    if (enabled && foreign) {
+      console.log(
+        `leaving v1-owned controller: ${describeV1Controller(controller)}`,
+      );
+    } else if (enabled && keep) {
+      console.log(
+        `keeping active deployment grant: ${describeV1Controller(controller)}`,
+      );
+    } else if (!enabled) {
+      console.log(`already revoked: ${describeV1Controller(controller)}`);
+    }
+  }
+
+  const toRemove = v1ControllersToRemove(audit);
+  if (toRemove.length === 0) {
+    console.log("no superseded v1 authorizations left to revoke");
+    return;
+  }
+
+  // Surfaces are gated by different owners, so resolve one signing wallet per gate.
+  const wallets = new Map<Address, ReturnType<typeof walletClient>>();
+  const walletForGate = async (gate: JsonDeployment, ownerLabel: string) => {
+    const key = getAddress(gate.address);
+    const existing = wallets.get(key);
+    if (existing) return existing;
+    const { wallet } = await resolveOwnerGatedWallet({
+      client,
+      chain,
+      rpcUrl: opts.rpcUrl,
+      provider: opts.provider,
+      gate,
+      ownerLabel,
+      privateKey: opts.privateKey,
+      impersonateOwner: opts.impersonateOwner,
+    });
+    wallets.set(key, wallet);
+    return wallet;
+  };
+
+  for (const controller of toRemove) {
+    const { target, revokeFunctionName, revokeArgs, surface } = controller;
+    const label = describeV1Controller(controller);
     const data = encodeFunctionData({
       abi: target.abi,
-      functionName,
-      args: [address],
+      functionName: revokeFunctionName,
+      args: revokeArgs,
     });
     if (opts.calldataOnly) {
-      printPreparedCall(`disable ${name}`, target.address, data);
+      printPreparedCall(`revoke ${label}`, target.address, data);
       continue;
     }
 
-    const hash = await wallet!.writeContract({
+    const wallet = await walletForGate(target, `${surface} owner`);
+    const hash = await wallet.writeContract({
       address: target.address,
       abi: target.abi,
-      functionName,
-      args: [address],
+      functionName: revokeFunctionName,
+      args: revokeArgs,
     });
-    await client.waitForTransactionReceipt({ hash });
-    console.log(`disabled v1 registrar controller ${name}: ${address}`);
+    await waitForSuccessfulReceipt(client, hash, `revoke ${label}`);
+    console.log(`revoked ${label}`);
   }
 }
 
@@ -1683,7 +2283,7 @@ async function setV1RegistrarController(opts: {
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
   const baseRegistrar = requireV1Deployment(
     opts.network,
-    "BaseRegistrarImplementation",
+    V1_BASE_REGISTRAR_NAME,
     opts,
   );
   const registrarSecurityController = loadV1Deployment(
@@ -1700,20 +2300,20 @@ async function setV1RegistrarController(opts: {
   console.log(`${opts.label} v1 registrar controller enabled: ${current}`);
   if (current === opts.enabled) return;
 
-  const target = registrarSecurityController ?? baseRegistrar;
-  const functionName = registrarSecurityController
-    ? opts.enabled
-      ? "addRegistrarController"
-      : "removeRegistrarController"
-    : opts.enabled
-      ? "addController"
-      : "removeController";
+  const route = await resolveRegistrarControlRoute({
+    client,
+    baseRegistrar,
+    registrarSecurityController,
+  });
+  const functionName = opts.enabled
+    ? route.addFunctionName
+    : route.removeFunctionName;
   await sendOwnerGatedWrite({
     client,
     chain,
     rpcUrl: opts.rpcUrl,
     provider: opts.provider,
-    target,
+    target: route.target,
     functionName,
     args: [opts.controller],
     ownerLabel: "v1 registrar owner",
@@ -1852,7 +2452,7 @@ async function reclaimV1RegistrarOwnership(opts: {
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
   const baseRegistrar = requireV1Deployment(
     opts.network,
-    "BaseRegistrarImplementation",
+    V1_BASE_REGISTRAR_NAME,
     opts,
   );
   const currentOwner = (await client.readContract({
@@ -1980,7 +2580,7 @@ async function activateV1RenewerAndTransferOwnership(opts: {
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
   const baseRegistrar = requireV1Deployment(
     opts.network,
-    "BaseRegistrarImplementation",
+    V1_BASE_REGISTRAR_NAME,
     opts,
   );
   const registrarSecurityController = loadV1Deployment(
@@ -1996,17 +2596,19 @@ async function activateV1RenewerAndTransferOwnership(opts: {
   console.log(`v1 BaseRegistrar owner: ${currentOwner}`);
   if (getAddress(currentOwner) === getAddress(ethRenewerV1)) return;
 
-  const target = registrarSecurityController ?? baseRegistrar;
-  const functionName = registrarSecurityController
-    ? "transferRegistrarOwnership"
-    : "transferOwnership";
+  const route = await resolveRegistrarControlRoute({
+    client,
+    baseRegistrar,
+    registrarSecurityController,
+    owner: currentOwner,
+  });
   await sendOwnerGatedWrite({
     client,
     chain,
     rpcUrl: opts.rpcUrl,
     provider: opts.provider,
-    target,
-    functionName,
+    target: route.target,
+    functionName: route.transferFunctionName,
     args: [ethRenewerV1],
     ownerLabel: "v1 registrar owner",
     calldataLabel: "transfer v1 BaseRegistrar ownership to ETHRenewerV1",
@@ -2028,46 +2630,34 @@ async function activateV1RenewerAndTransferOwnership(opts: {
   }
 }
 
-async function verifyV1RegistrarsDisabled(opts: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chainId?: string;
-  v1DeploymentsDir?: string;
-  v1DeploymentNetwork?: string;
-}) {
+// Asserts the *complete* set of v1 authorizations the migration hands out — across
+// the BaseRegistrar and the reverse registrars — not just the named registration
+// controllers. Anything enabled that the active deployment did not authorize can mint
+// or mutate v1 names and so fails the check.
+export async function verifyV1RegistrarsDisabled(
+  opts: V1ControllerAuditOptions,
+) {
   const chain = migrationChain(opts);
-  const client = publicClient(opts.rpcUrl, chain);
-  const baseRegistrar = requireV1Deployment(
-    opts.network,
-    "BaseRegistrarImplementation",
-    opts,
-  );
-  const controllerNames = [
-    "LegacyETHRegistrarController",
-    "ETHRegistrarController",
-    "WrappedETHRegistrarController",
-    "NameWrapper",
-  ];
-  const enabledControllers: string[] = [];
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+  const audit = await auditV1Controllers({ ...opts, client });
 
-  for (const name of controllerNames) {
-    const controller = loadV1Deployment(opts.network, name, opts);
-    if (!controller) continue;
-    const enabled = await client.readContract({
-      address: baseRegistrar.address,
-      abi: baseRegistrar.abi,
-      functionName: "controllers",
-      args: [controller.address],
-    });
-    console.log(
-      `${name}: ${enabled ? "enabled" : "disabled"} (${controller.address})`,
-    );
-    if (enabled) enabledControllers.push(name);
+  for (const controller of audit.controllers) {
+    const state = controller.enabled
+      ? controller.foreign
+        ? "enabled (v1-owned, outside migration remit)"
+        : controller.keep
+          ? "enabled (authorized by active deployment)"
+          : "ENABLED"
+      : "disabled";
+    console.log(`${describeV1Controller(controller)}: ${state}`);
   }
 
-  if (enabledControllers.length > 0) {
+  const unexpected = v1ControllersToRemove(audit);
+  if (unexpected.length > 0) {
     throw new Error(
-      `v1 registrar controllers still enabled: ${enabledControllers.join(", ")}`,
+      `superseded v1 authorizations still enabled: ${unexpected
+        .map(describeV1Controller)
+        .join(", ")}`,
     );
   }
 }
@@ -2154,7 +2744,11 @@ function resolveRegistry(opts: {
 }): ContractRef {
   const registry = opts.registry
     ? null
-    : loadV2Deployment(opts.deploymentsDir, opts.deploymentNetwork, "ETHRegistry");
+    : loadV2Deployment(
+        opts.deploymentsDir,
+        opts.deploymentNetwork,
+        "ETHRegistry",
+      );
   return {
     address: opts.registry ?? registry!.address,
     abi: registry?.abi ?? Artifact_PermissionedRegistry.abi,
@@ -2201,7 +2795,11 @@ async function enableV2Registrar(opts: {
     deploymentNetwork,
     "ETHRegistrar",
   );
-  const beforeEnabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
+  const beforeEnabled = await readHasRegistrarRoles(
+    client,
+    registry,
+    ethRegistrar,
+  );
   console.log(`v2 registrar already enabled: ${beforeEnabled}`);
   if (beforeEnabled) return;
 
@@ -2216,7 +2814,11 @@ async function enableV2Registrar(opts: {
     privateKey: opts.privateKey,
     impersonateAccount: opts.impersonateAccount,
   });
-  const afterEnabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
+  const afterEnabled = await readHasRegistrarRoles(
+    client,
+    registry,
+    ethRegistrar,
+  );
   console.log(`v2 registrar enabled after phase: ${afterEnabled}`);
 }
 
@@ -2789,7 +3391,8 @@ function signerKeyForAccount(
   const keys = candidates.filter((key): key is `0x${string}` => Boolean(key));
   if (!target) return keys[0];
   return keys.find(
-    (key) => getAddress(privateKeyToAccount(key).address) === getAddress(target),
+    (key) =>
+      getAddress(privateKeyToAccount(key).address) === getAddress(target),
   );
 }
 
@@ -2908,6 +3511,7 @@ function buildDeployV2RockethConfig(
   ];
   const tags = uniqueTags([
     opts.network === "sepolia" ? "sepolia" : undefined,
+    opts.tags?.includes("hca") ? "hca" : undefined,
     "deferV2Registrar",
     opts.tenderly ? "tenderly" : undefined,
     opts.includeTestnetPremigrationRegistrar
@@ -2959,7 +3563,6 @@ function buildDeployV2RockethConfig(
       [deploymentNetwork]: {
         ...baseEnvironment,
         chain: chainId,
-        scripts: baseEnvironment.scripts ?? ["deploy"],
         overrides: {
           ...baseEnvironment.overrides,
           tags,
@@ -3115,7 +3718,7 @@ async function deployV1(opts: DeployV1Options) {
     [
       "ENSRegistry",
       "Root",
-      "BaseRegistrarImplementation",
+      V1_BASE_REGISTRAR_NAME,
       "RegistrarSecurityController",
       "ReverseRegistrar",
       "DefaultReverseRegistrar",
@@ -3134,10 +3737,17 @@ async function deployV1(opts: DeployV1Options) {
 export async function deployV2(opts: DeployV2Options) {
   const network = NETWORKS[opts.network];
   const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
-  const deploymentsDir = resolve(opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR);
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
   // A fresh deployment archives any existing namespace and therefore must
   // persist the new one, so it implies saving regardless of the flag.
   const persist = Boolean(opts.saveDeployments) || Boolean(opts.fresh);
+  if (opts.fresh && isHCAOnlyDeployment(opts.tags)) {
+    throw new Error(
+      "an HCA-only deploy requires --resume because it reuses the existing core deployments",
+    );
+  }
   const { provider, chainId, chain } =
     await resolveDeployProviderAndChain(opts);
   if (opts.deferV1OwnerTransactions && !opts.deferredV1OwnerTransactionsFile) {
@@ -3201,6 +3811,12 @@ export async function deployV2(opts: DeployV2Options) {
     "UpgradableUniversalResolverProxy",
     "ReverseRegistrarAdapter",
     "DefaultReverseRegistrarAdapter",
+    "DefaultReverseRegistrarHCAAdapter",
+    "MockRegistrationIntentExecutor",
+    "HCAOwnerAndSessionValidator",
+    "StandaloneHCAFactory",
+    "HCAUpgradeSet",
+    "StandaloneHCAImplementation",
   ]);
 
   // Refresh the generated address table for a persisted deploy so the docs
@@ -3348,14 +3964,10 @@ async function readV1Owner({
   label: string;
 }) {
   const client = publicClient(rpcUrl, chain, provider);
-  const baseRegistrar = requireV1Deployment(
-    network,
-    "BaseRegistrarImplementation",
-    {
-      v1DeploymentsDir,
-      v1DeploymentNetwork,
-    },
-  );
+  const baseRegistrar = requireV1Deployment(network, V1_BASE_REGISTRAR_NAME, {
+    v1DeploymentsDir,
+    v1DeploymentNetwork,
+  });
   return (await client.readContract({
     address: baseRegistrar.address,
     abi: baseRegistrar.abi,
@@ -3485,7 +4097,7 @@ async function migrateUnwrappedV1Name({
   const registry = requireV1Deployment(network, "ENSRegistry", v1Deployments);
   const baseRegistrar = requireV1Deployment(
     network,
-    "BaseRegistrarImplementation",
+    V1_BASE_REGISTRAR_NAME,
     v1Deployments,
   );
   const resolver = (await client.readContract({
@@ -3742,7 +4354,11 @@ function loadV2MigrationDeployments(
       deploymentNetwork,
       "ETHRenewerV1",
     ),
-    mockUsdc: maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, "MockUSDC"),
+    mockUsdc: maybeLoadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      "MockUSDC",
+    ),
     unlockedMigrationController: loadV2Deployment(
       deploymentsDir,
       deploymentNetwork,
@@ -3967,7 +4583,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
 
     const v1BaseRegistrar = requireV1Deployment(
       opts.network,
-      "BaseRegistrarImplementation",
+      V1_BASE_REGISTRAR_NAME,
       v1Deployments,
     );
     const v1RegistrarOwner = (await client.readContract({
@@ -4097,10 +4713,11 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // Signer for the v1-owner-gated controller changes (disable registrars,
     // authorize the renewer, hand off ownership). On a fork we impersonate the
     // owner; for a live run we require the key that controls it.
-    const v1OwnerSigner: { impersonateOwner: true } | { privateKey: `0x${string}` } =
-      useRpcStateControls
-        ? { impersonateOwner: true }
-        : { privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner") };
+    const v1OwnerSigner:
+      | { impersonateOwner: true }
+      | { privateKey: `0x${string}` } = useRpcStateControls
+      ? { impersonateOwner: true }
+      : { privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner") };
 
     // The migration wraps whatever the canonical top proxy currently serves.
     // When reusing a long-lived intermediate URP, the top proxy already fronts
@@ -4224,6 +4841,8 @@ export async function runForkFull(opts: RunForkFullOptions) {
         batchSize: opts.batchSize,
         limit: opts.initialLimit,
         workDir,
+        metadataLabel: "initial",
+        persistMetadata: Boolean(opts.saveDeployments),
       },
       resumeFromPhase === 2,
     );
@@ -4238,12 +4857,31 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(`smoke pre-migration reserved ${smokeLabels.migrate}.eth`);
     }
 
+    // Re-running against an already-migrated chain leaves the v1 BaseRegistrar
+    // owned by the prior deployment's ETHRenewerV1; reclaim it to the v1 owner
+    // before any owner-signed controller change below, the earliest of which is
+    // the phase 3 freeze. (No-op on a pristine chain. Live re-migrations use the
+    // standalone `phase reclaim-v1-registrar-ownership` command beforehand.)
+    if (useRpcStateControls) {
+      await reclaimV1RegistrarOwnership({
+        network: opts.network,
+        rpcUrl,
+        chainId: String(chainId),
+        provider,
+        ...v1Deployments,
+        v1Owner,
+        impersonateOwner: true,
+      });
+    }
+
     console.log("phase 3: disable v1 registrars");
     await disableV1Registrars({
       network: opts.network,
       rpcUrl,
       chainId: String(chainId),
       provider,
+      deploymentsDir,
+      deploymentNetwork,
       ...v1Deployments,
       ...v1OwnerSigner,
     });
@@ -4255,23 +4893,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
         // registration must fail with a revert (at simulation or in the receipt).
         /revert/i,
       );
-    }
-
-    // Re-running against an already-migrated chain leaves the v1 BaseRegistrar
-    // owned by the prior deployment's ETHRenewerV1; reclaim it to the v1 owner
-    // before any owner-signed controller change below. (No-op on a pristine
-    // chain. Live re-migrations use the standalone
-    // `phase reclaim-v1-registrar-ownership` command beforehand.)
-    if (useRpcStateControls) {
-      await reclaimV1RegistrarOwnership({
-        network: opts.network,
-        rpcUrl,
-        chainId: String(chainId),
-        provider,
-        ...v1Deployments,
-        v1Owner,
-        impersonateOwner: true,
-      });
     }
 
     console.log(
@@ -4303,9 +4924,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
           "ETHRenewerV1 was not authorized as a v1 BaseRegistrar controller in phase 4",
         );
       }
-      console.log(
-        "smoke ETHRenewerV1 authorized as a v1 renewal controller",
-      );
+      console.log("smoke ETHRenewerV1 authorized as a v1 renewal controller");
     }
 
     console.log("phase 5: sync remaining names and finish pre-migration");
@@ -4326,8 +4945,10 @@ export async function runForkFull(opts: RunForkFullOptions) {
         batchSize: opts.batchSize,
         limit: opts.finishLimit,
         workDir: finalSyncWorkDir,
+        metadataLabel: "final-sync",
+        persistMetadata: Boolean(opts.saveDeployments),
       },
-      existsSync(join(finalSyncWorkDir, "preMigration-checkpoint.json")),
+      existsSync(join(finalSyncWorkDir, CHECKPOINT_FILE)),
     );
     if (!postMigration) {
       await assertV2State({
@@ -4366,7 +4987,9 @@ export async function runForkFull(opts: RunForkFullOptions) {
         status: STATUS.REGISTERED,
         owner: smokeMigrationOwner,
       });
-      console.log(`smoke migration registered ${smokeLabels.migrate}.eth on v2`);
+      console.log(
+        `smoke migration registered ${smokeLabels.migrate}.eth on v2`,
+      );
     }
 
     console.log(
@@ -4415,6 +5038,21 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ethRenewerV1: ethRenewerV1.address,
       ...v1OwnerSigner,
     });
+
+    // The handoff grants above are the last thing to touch v1 authorizations, so
+    // assert the resulting set here: only the active deployment's contracts may hold
+    // a v1 grant. Catches a superseded deployment's controller surviving the freeze,
+    // which the phase 3 registration smoke test cannot see.
+    await verifyV1RegistrarsDisabled({
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      provider,
+      ...v1Deployments,
+      deploymentsDir,
+      deploymentNetwork,
+    });
+
     const beforeEnabled = await client.readContract({
       address: ethRegistry.address,
       abi: ethRegistry.abi,
@@ -4781,11 +5419,7 @@ function addV1OwnerWriteOptions(command: Command): Command {
   return command
     .option("--private-key <key>", "V1 owner private key")
     .option("--impersonate-owner", "Impersonate owner on a fork", false)
-    .option(
-      "--calldata-only",
-      "Print transaction target and calldata",
-      false,
-    );
+    .option("--calldata-only", "Print transaction target and calldata", false);
 }
 
 function assertCleanDeploymentNamespace(
@@ -4837,6 +5471,125 @@ function recordDeploymentMetadata(
   );
 }
 
+const PREMIGRATION_METADATA_FILE = ".premigration.json";
+
+// One summary entry per logical pre-migration run (initial, final-sync, or a
+// standalone run). Counts only — never label strings.
+interface PreMigrationRunSummary {
+  label: string;
+  finishedAt: string;
+  totalExpected: number;
+  totalProcessed: number;
+  reserved: number;
+  renewed: number;
+  skippedNeverRegistered: number;
+  skippedExpiredPastGrace: number;
+  invalidLabels: number;
+  alreadyOnV2: number;
+  failed: number;
+}
+
+interface PreMigrationMetadata {
+  network: string;
+  deploymentNetwork: string;
+  chainId?: number;
+  updatedAt: string;
+  resolved: {
+    finishedAt: string;
+    totalNames: number;
+    namesPreMigrated: number;
+    newReservations: number;
+    expiryResyncs: number;
+    skippedNeverRegistered: number;
+    skippedExpiredPastGrace: number;
+    invalidLabels: number;
+    alreadyOnV2: number;
+    failed: number;
+  };
+  runs: PreMigrationRunSummary[];
+}
+
+function checkpointToRunSummary(
+  label: string,
+  checkpoint: Checkpoint,
+): PreMigrationRunSummary {
+  return {
+    label,
+    finishedAt: checkpoint.timestamp,
+    totalExpected: checkpoint.totalExpected,
+    totalProcessed: checkpoint.totalProcessed,
+    reserved: checkpoint.successCount,
+    renewed: checkpoint.renewedCount,
+    skippedNeverRegistered: checkpoint.skippedNeverRegisteredCount,
+    skippedExpiredPastGrace: checkpoint.skippedPastGraceCount,
+    invalidLabels: checkpoint.invalidLabelCount,
+    alreadyOnV2: checkpoint.alreadyRegisteredCount,
+    failed: checkpoint.failureCount,
+  };
+}
+
+// The resolved roll-up reflects the run that finished most recently, which in
+// the phased flow is the final-sync pass that re-scans the whole corpus and so
+// represents the end state. `namesPreMigrated` = names currently reserved on v2
+// (newly reserved this run + already-reserved names whose expiry was re-synced).
+function resolveFromRuns(
+  runs: PreMigrationRunSummary[],
+): PreMigrationMetadata["resolved"] {
+  const latest = runs.reduce((a, b) => (b.finishedAt >= a.finishedAt ? b : a));
+  return {
+    finishedAt: latest.finishedAt,
+    totalNames: latest.totalExpected,
+    namesPreMigrated: latest.reserved + latest.renewed,
+    newReservations: latest.reserved,
+    expiryResyncs: latest.renewed,
+    skippedNeverRegistered: latest.skippedNeverRegistered,
+    skippedExpiredPastGrace: latest.skippedExpiredPastGrace,
+    invalidLabels: latest.invalidLabels,
+    alreadyOnV2: latest.alreadyOnV2,
+    failed: latest.failed,
+  };
+}
+
+// Persists a compact pre-migration counts sidecar into the deployment
+// namespace, alongside `.deployment.json`. A dotfile so rocketh's loader ignores
+// it (it only reads `.migrations.json` + non-dot `*.json` artifacts). Each run
+// is upserted by `label` so a resume that re-writes its accumulated checkpoint
+// updates its own entry in place instead of appending a duplicate.
+function recordPreMigrationMetadata(opts: {
+  deploymentsDir: string;
+  deploymentNetwork: string;
+  network: MigrationNetwork;
+  label: string;
+  checkpoint: Checkpoint;
+}) {
+  const dir = join(opts.deploymentsDir, opts.deploymentNetwork);
+  if (!existsSync(dir)) return;
+  const metadataPath = join(dir, PREMIGRATION_METADATA_FILE);
+
+  let existing: PreMigrationMetadata | undefined;
+  if (existsSync(metadataPath)) {
+    try {
+      existing = JSON.parse(readFileSync(metadataPath, "utf-8"));
+    } catch {
+      existing = undefined;
+    }
+  }
+
+  const runs = (existing?.runs ?? []).filter((run) => run.label !== opts.label);
+  runs.push(checkpointToRunSummary(opts.label, opts.checkpoint));
+
+  const metadata: PreMigrationMetadata = {
+    network: opts.network,
+    deploymentNetwork: opts.deploymentNetwork,
+    chainId: NETWORKS[opts.network].chain.id,
+    updatedAt: new Date().toISOString(),
+    resolved: resolveFromRuns(runs),
+    runs,
+  };
+
+  writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
+}
+
 // Resolves a namespace's deploy time, preferring the recorded metadata and
 // falling back to the latest `.migrations.json` entry (unix-epoch seconds).
 function readDeploymentDeployedAt(path: string): string | undefined {
@@ -4850,8 +5603,9 @@ function readDeploymentDeployedAt(path: string): string | undefined {
   const migrationsPath = join(path, ".migrations.json");
   if (existsSync(migrationsPath)) {
     try {
-      const migrations = JSON.parse(readFileSync(migrationsPath, "utf-8")) as
-        Record<string, number>;
+      const migrations = JSON.parse(
+        readFileSync(migrationsPath, "utf-8"),
+      ) as Record<string, number>;
       const timestamps = Object.values(migrations).filter(
         (value) => typeof value === "number" && Number.isFinite(value),
       );
@@ -4873,8 +5627,7 @@ function archiveExistingDeploymentNamespace(root: string, environment: string) {
     (file) => file.endsWith(".json") || file === ".chain",
   );
   if (!hasArtifacts) return;
-  const deployedAt =
-    readDeploymentDeployedAt(path) ?? new Date().toISOString();
+  const deployedAt = readDeploymentDeployedAt(path) ?? new Date().toISOString();
   const stamp = deployedAt.slice(0, 10).replace(/-/g, "");
   let revision = 1;
   let archive = `${environment}-${stamp}-r${revision}`;
@@ -5080,6 +5833,7 @@ export async function main(argv = process.argv): Promise<void> {
       await runPreMigrationCommand(
         {
           ...networkOpts,
+          metadataLabel: "run",
         },
         false,
       );
@@ -5093,6 +5847,7 @@ export async function main(argv = process.argv): Promise<void> {
       await runPreMigrationCommand(
         {
           ...networkOpts,
+          metadataLabel: "run",
         },
         true,
       );
@@ -5192,7 +5947,7 @@ export async function main(argv = process.argv): Promise<void> {
             .option("--debug-rpc", "Log JSON-RPC error responses", false)
             .option(
               "--tags <tags>",
-              "Comma-separated deploy tags to run instead of the default v2 migration tags",
+              "Comma-separated deploy tags to run instead of the default v2 migration tags; use --resume --tags hca for an HCA-only update",
             ),
         ),
       ),
@@ -5247,15 +6002,18 @@ export async function main(argv = process.argv): Promise<void> {
   phase.addCommand(
     addV1OwnerWriteOptions(
       addV1DeploymentOptions(
-        addNetworkOptions(
-          new Command("disable-v1-registrars").description(
-            "Disable v1 registrar controllers",
+        addDeploymentOptions(
+          addNetworkOptions(
+            new Command("disable-v1-registrars").description(
+              "Disable every v1 registrar controller the active deployment did not authorize",
+            ),
           ),
         ),
       ),
     ).action(
       async (
         opts: NetworkCliOptions &
+          DeploymentCliOptions &
           V1DeploymentCliOptions &
           V1OwnerWriteCliOptions,
       ) => {
@@ -5284,25 +6042,30 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await setV1ReverseDefaultResolver({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
   );
   phase.addCommand(
     addV1DeploymentOptions(
-      addNetworkOptions(
-        new Command("verify-v1-registrars-disabled").description(
-          "Verify v1 registrar controllers are disabled",
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("verify-v1-registrars-disabled").description(
+            "Verify no v1 registrar controller outside the active deployment is enabled",
+          ),
         ),
       ),
-    ).action(async (opts: NetworkCliOptions & V1DeploymentCliOptions) => {
-      const networkOpts = withNetworkRpc(opts);
-      await verifyV1RegistrarsDisabled({
-        ...networkOpts,
-      });
-    }),
+    ).action(
+      async (
+        opts: NetworkCliOptions & DeploymentCliOptions & V1DeploymentCliOptions,
+      ) => {
+        const networkOpts = withNetworkRpc(opts);
+        await verifyV1RegistrarsDisabled({
+          ...networkOpts,
+        });
+      },
+    ),
   );
   phase.addCommand(
     addNetworkOptions(
@@ -5398,8 +6161,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await authorizeTestnetV1PremigrationRegistrar({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5427,8 +6189,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await activateV1Graveyard({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5463,8 +6224,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await activateV1HandoffControllers({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5492,8 +6252,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await authorizeV1Renewer({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5521,8 +6280,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await activateV1RenewerAndTransferOwnership({
           ...networkOpts,
-          privateKey:
-            v1OwnerKeyFromEnv(opts),
+          privateKey: v1OwnerKeyFromEnv(opts),
         });
       },
     ),
@@ -5557,8 +6315,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await reclaimV1RegistrarOwnership({
           ...networkOpts,
-          v1Owner:
-            opts.v1Owner ?? NETWORKS[networkOpts.network].defaultV1Owner,
+          v1Owner: opts.v1Owner ?? NETWORKS[networkOpts.network].defaultV1Owner,
           privateKey:
             opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
         });

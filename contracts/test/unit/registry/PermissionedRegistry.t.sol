@@ -781,9 +781,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.safeTransferFrom(user1, user2, tokenId, 1, "");
     }
 
-    function test_safeTransferFrom_rootAuthorizationIgnored() external {
-        // even though root has ROLE_CAN_TRANSFER_ADMIN and has approval for transfer,
-        // the transfer role check is only applied to the token owner
+    function test_safeTransferFrom_rootAuthorizedTokenWithoutRoles() external {
+        // ROLE_CAN_TRANSFER_ADMIN must be on the token for the transfer to occur
         assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
         uint256 tokenId = this._register();
         assertEq(registry.ownerOf(tokenId), user1);
@@ -796,11 +795,35 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeTransferFrom_rootOwnedTokenWithoutRoles() external {
-        // as long as the token owner has ROLE_CAN_TRANSFER_ADMIN on root or token, the transfer can occur
+        // ROLE_CAN_TRANSFER_ADMIN must be on the token for the transfer to occur
         assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
         testOwner = address(this); // mint to account with root
         uint256 tokenId = this._register();
-        assertEq(registry.roles(tokenId, address(this)), 0); // no roles
+        assertEq(registry.roles(tokenId, address(this)), 0); // no token roles
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IStandardRegistry.TransferDisallowed.selector,
+                tokenId,
+                address(this)
+            )
+        );
+        registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
+    }
+
+    function test_safeTransferFrom_rootOwnedTokenWhileExpired() external {
+        // ROLE_CAN_TRANSFER_ADMIN must be on the token for the transfer to occur
+        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
+        testOwner = address(this); // mint to account with root
+        uint256 tokenId = this._register();
+        vm.warp(testExpiry);
+        assertEq(registry.ownerOf(tokenId), address(0)); // expired
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IStandardRegistry.TransferDisallowed.selector,
+                tokenId,
+                address(this)
+            )
+        );
         registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
     }
 
@@ -879,7 +902,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom_invalidReceiver() external {
-        uint256 tokenId = this._register();
+        this._register();
         uint256[] memory v;
         address to; // wrong
         vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, to));
@@ -888,7 +911,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom_invalidSender() external {
-        uint256 tokenId = this._register();
+        this._register();
         uint256[] memory v;
         address from; // wrong
         vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
@@ -1507,12 +1530,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // setURI() and uri()
+    // setURI(), getURI(), and uri()
     ////////////////////////////////////////////////////////////////////////
 
     function test_uri_unset() external view {
         assertEq(registry.uri(0), "");
         assertEq(registry.uri(1), "");
+    }
+
+    function test_getURI(string memory uri, address renderer) external {
+        registry.setURI(uri, IRegistryURIRenderer(renderer));
+
+        (string memory uri_, IRegistryURIRenderer renderer_) = registry.getURI();
+        assertEq(uri_, uri, "uri");
+        assertEq(address(renderer_), renderer, "renderer");
     }
 
     function test_setURI_onlyURI() external {

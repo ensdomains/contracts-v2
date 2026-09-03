@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
@@ -154,9 +154,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         emit ResolverUpdated(tokenId, resolver, msg.sender);
     }
 
-    /// @notice Set the URI for the registry.
-    /// @param uri_ The new URI.
-    /// @param renderer The new renderer address.
+    /// @inheritdoc IPermissionedRegistry
     function setURI(string calldata uri_, IRegistryURIRenderer renderer)
         public
         virtual
@@ -262,6 +260,11 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// @inheritdoc IRegistry
     function getParent() public view returns (IRegistry parent, string memory label) {
         return (_parentRegistry, _childLabel);
+    }
+
+    /// @inheritdoc IPermissionedRegistry
+    function getURI() public view returns (string memory uri_, IRegistryURIRenderer renderer) {
+        return (_uri, _uriRenderer);
     }
 
     /// @inheritdoc IContractNamer
@@ -381,16 +384,6 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasAssignees(uint256 anyId, uint256 roleBitmap)
-        public
-        view
-        override(EnhancedAccessControl, IEnhancedAccessControl)
-        returns (bool)
-    {
-        return super.hasAssignees(getResource(anyId), roleBitmap);
-    }
-
-    /// @inheritdoc IEnhancedAccessControl
     function getAssigneeCount(uint256 anyId, uint256 roleBitmap)
         public
         view
@@ -486,12 +479,13 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             // only transfers (skip mint and burn)
             for (uint256 i; i < tokenIds.length; ++i) {
                 uint256 tokenId = tokenIds[i];
+                uint256 resource = getResource(tokenId);
                 // only check ROLE_CAN_TRANSFER_ADMIN on original owner (from)
                 // ROLE_CAN_TRANSFER_ADMIN is technically a property of the token
-                if (!hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
+                if ((_getRoles(resource, from) & RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN) == 0) {
                     revert TransferDisallowed(tokenId, from);
                 } else if (amounts[i] > 0) {
-                    _transferRoles(getResource(tokenId), from, to, false);
+                    _transferRoles(resource, from, to, false);
                 }
             }
         }
