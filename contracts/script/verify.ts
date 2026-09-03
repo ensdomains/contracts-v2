@@ -33,6 +33,7 @@ type Backend = "etherscan" | "sourcify";
 function parseArgs(argv: string[]) {
   let network: string | undefined;
   let backends: Backend[] = ["etherscan", "sourcify"];
+  let skipV1 = false;
   const passthrough: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -42,16 +43,18 @@ function parseArgs(argv: string[]) {
       backends = ["etherscan"];
     } else if (arg === "--sourcify-only") {
       backends = ["sourcify"];
+    } else if (arg === "--skip-v1") {
+      skipV1 = true;
     } else {
       passthrough.push(arg);
     }
   }
   if (!network) {
     throw new Error(
-      "usage: bun ./script/verify.ts --network <name> [--etherscan-only|--sourcify-only] [<extra rocketh-verify args>] (do not separate extra args with --; they are forwarded as-is)",
+      "usage: bun ./script/verify.ts --network <name> [--etherscan-only|--sourcify-only] [--skip-v1] [<extra rocketh-verify args>] (do not separate extra args with --; they are forwarded as-is)",
     );
   }
-  return { network, backends, passthrough };
+  return { network, backends, skipV1, passthrough };
 }
 
 // The deployed metadata records source paths under solc's source unit prefix
@@ -92,18 +95,27 @@ function backfillSourceContent(artifactPath: string) {
   return true;
 }
 
-function main() {
-  const { network, backends, passthrough } = parseArgs(process.argv.slice(2));
-
-  const srcDir = join(contractsDir, "deployments", network);
-  if (!existsSync(srcDir)) {
-    throw new Error(
-      `no deployments found for network "${network}" (${srcDir})`,
-    );
-  }
-
+/// Verifies one deployment namespace.
+///
+/// Each namespace is staged under its own throwaway root and handed to
+/// `rocketh-verify` as a flat environment name. A v1 stack lives at
+/// `deployments/v1/<namespace>`, and passing that path as the environment would
+/// put a separator in the name, so the leaf is staged on its own instead.
+function verifyNamespace({
+  srcDir,
+  envName,
+  label,
+  backends,
+  passthrough,
+}: {
+  srcDir: string;
+  envName: string;
+  label: string;
+  backends: Backend[];
+  passthrough: string[];
+}) {
   const stagingRoot = mkdtempSync(join(tmpdir(), "rocketh-verify-"));
-  const stagingDir = join(stagingRoot, network);
+  const stagingDir = join(stagingRoot, envName);
   cpSync(srcDir, stagingDir, { recursive: true });
 
   try {
@@ -124,7 +136,7 @@ function main() {
     }
 
     for (const backend of backends) {
-      console.log(`\n=== verifying ${network} on ${backend} ===`);
+      console.log(`\n=== verifying ${label} on ${backend} ===`);
       execFileSync(
         "bun",
         [
@@ -134,7 +146,7 @@ function main() {
           "-d",
           stagingRoot,
           "-e",
-          network,
+          envName,
           backend,
           ...passthrough,
         ],
@@ -143,6 +155,44 @@ function main() {
     }
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true });
+  }
+}
+
+function main() {
+  const { network, backends, skipV1, passthrough } = parseArgs(
+    process.argv.slice(2),
+  );
+
+  const srcDir = join(contractsDir, "deployments", network);
+  if (!existsSync(srcDir)) {
+    throw new Error(
+      `no deployments found for network "${network}" (${srcDir})`,
+    );
+  }
+
+  const targets = [{ srcDir, envName: network, label: network }];
+
+  // A clean testnet deploys its own ENSv1 stack into `deployments/v1/<ns>`, and
+  // those contracts need verifying as much as the v2 ones. Nothing distinguishes
+  // that tree from a network's real v1 by inspection, so both are offered and
+  // `--skip-v1` opts out; already-verified contracts are skipped by the backend
+  // regardless.
+  const v1Dir = join(contractsDir, "deployments", "v1", network);
+  if (!skipV1 && existsSync(v1Dir)) {
+    targets.push({
+      srcDir: v1Dir,
+      envName: network,
+      label: `${network} (ENSv1)`,
+    });
+  }
+
+  console.log(
+    `verifying ${targets.length} deployment set(s): ${targets
+      .map((t) => t.label)
+      .join(", ")}`,
+  );
+  for (const target of targets) {
+    verifyNamespace({ ...target, backends, passthrough });
   }
 }
 

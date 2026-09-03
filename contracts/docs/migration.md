@@ -419,6 +419,21 @@ export ETHERSCAN_API_KEY=<etherscan v2 api key>   # one key covers all chains; n
 bun run verify:sepolia                            # → verify:mainnet for the mainnet set
 ```
 
+A `clean-testnet` namespace also carries the ENSv1 stack it deployed, under
+`deployments/v1/<namespace>`. Both sets are verified: the command picks up that tree whenever it
+exists and submits it as a second pass, so a fresh v1 gets verified alongside the v2 contracts.
+`--skip-v1` limits the run to v2. Pass the namespace as the network for a clean testnet — the chain
+is read from the artifacts, not from a network config:
+
+```bash
+bun run verify -- --network sepolia-clean-<timestamp>
+```
+
+> **Sourcify currently fails.** It removed the v1 verification API that
+> `@rocketh/verifier` 0.19.3 posts to, so every submission comes back as HTML and surfaces as
+> `SyntaxError: Unexpected token '<'`. Etherscan is unaffected. Until the dependency moves to
+> Sourcify's v2 API, use `--etherscan-only` to skip the noise.
+
 `verify:<network>` runs [`script/verify.ts`](../script/verify.ts), which submits every contract to
 both Etherscan and Sourcify via [`@rocketh/verifier`](https://www.npmjs.com/package/@rocketh/verifier).
 It is idempotent and re-runnable: contracts already verified on a backend are detected and skipped. The
