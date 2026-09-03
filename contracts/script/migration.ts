@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   AbiDecodingZeroDataError,
   BaseError,
@@ -96,6 +97,10 @@ const V1_REGISTRATION_DURATION = 365n * SEC_PER_DAY;
 const V2_REGISTRATION_DURATION = 28n * SEC_PER_DAY;
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 const RPC_RETRY_COUNT = 3;
+/// Transport-level retries for a dropped connection, on top of viem's own
+/// JSON-RPC retries, which never see a request that failed to reach the node.
+const RPC_TRANSPORT_RETRIES = 5;
+const RPC_TRANSPORT_BACKOFF_MS = 250;
 const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
 
 const DEFAULT_DEPLOYMENTS_DIR = resolve(import.meta.dirname, "../deployments");
@@ -792,6 +797,35 @@ export function saveRpcSnapshotFile(
   );
 }
 
+/// Retries a fetch that never produced a response.
+///
+/// A long deploy issues thousands of RPC calls, and a single dropped connection
+/// would otherwise abort it partway through — leaving a half-deployed namespace
+/// that cannot be resumed. Only transport failures are retried: an HTTP response
+/// of any status is returned untouched, so JSON-RPC errors keep their existing
+/// handling. Retrying is safe for sends as well as reads, because a signed
+/// transaction replayed after a dropped connection carries the same nonce and
+/// hash, so a node that already saw it rejects the duplicate rather than
+/// submitting it twice.
+async function fetchWithTransportRetry(
+  originalFetch: typeof globalThis.fetch,
+  input: any,
+  init: any,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= RPC_TRANSPORT_RETRIES; attempt++) {
+    try {
+      return await originalFetch(input, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt === RPC_TRANSPORT_RETRIES) break;
+      const backoff = RPC_TRANSPORT_BACKOFF_MS * 2 ** attempt;
+      await sleep(backoff + Math.floor(Math.random() * backoff));
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Permanently monkey-patches `globalThis.fetch` to add JSON-RPC compatibility
  * fallbacks for HTTP traffic issued by libraries we do not control (rocketh/viem
@@ -811,7 +845,7 @@ function installRpcCompatibility(debugRpc: boolean): void {
         return null;
       }
     })();
-    const response = await originalFetch(input, init);
+    const response = await fetchWithTransportRetry(originalFetch, input, init);
     try {
       const payload = await response.clone().json();
       if (
@@ -3838,6 +3872,21 @@ export async function deployV2(opts: DeployV2Options) {
       docName: opts.network,
     });
     console.log(`address docs: ${docPath}`);
+  }
+
+  // Every persisted deploy also carries its address table next to its own
+  // artifacts. A throwaway namespace never reaches the canonical docs above, so
+  // without this its addresses would live only in the individual artifact JSON.
+  if (persist) {
+    const namespacePath = await generateAddressMarkdown({
+      deploymentsDir,
+      namespace: deploymentNetwork,
+      docName: deploymentNetwork,
+      outDir: join(deploymentsDir, deploymentNetwork),
+      fileName: "addresses",
+      generatedBy: "the deploy that wrote this namespace",
+    });
+    console.log(`deployment address table: ${namespacePath}`);
   }
 
   return env;
