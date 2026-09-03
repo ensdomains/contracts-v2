@@ -691,7 +691,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.balanceOfBatch(new address[](0), new uint256[](1));
     }
 
-    function test_safeTransferFrom() external {
+    function test_transfer(bool unsafe) external {
         _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
@@ -703,7 +703,24 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(tokenId, address(r), 0, testRoles); // grant (transfer 2/2)
         vm.prank(user1);
-        registry.safeTransferFrom(user1, address(r), tokenId, 1, "");
+        if (unsafe) {
+            registry.unsafeTransfer(address(r), tokenId, "");
+        } else {
+            registry.safeTransferFrom(user1, address(r), tokenId, 1, "");
+        }
+    }
+
+    function test_transfer_isStrict(bool unsafe) external {
+        _makeEmancipated();
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256 tokenId = this._register() + 1; // wrong
+        vm.expectRevert();
+        vm.prank(user1);
+        if (unsafe) {
+            registry.unsafeTransfer(user1, tokenId, "");
+        } else {
+            registry.safeTransferFrom(user1, user2, tokenId, 1, "");
+        }
     }
 
     function test_safeTransferFrom_noop() external {
@@ -735,12 +752,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.safeTransferFrom(user1, user2, tokenId, amount, "");
     }
 
-    function test_transfer_invalidReceiver(bool permissioned) external {
+    function test_transfer_invalidReceiver(bool unsafe) external {
         uint256 tokenId = this._register();
         address to; // wrong
         vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, to));
         vm.prank(user1);
-        if (permissioned) {
+        if (unsafe) {
             registry.unsafeTransfer(to, tokenId, "");
         } else {
             registry.safeTransferFrom(user1, to, tokenId, 1, "");
@@ -755,7 +772,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.__safeTransferFrom(from, user2, tokenId, 1, "");
     }
 
-    function test_transfer_missingApproval(bool permissioned) external {
+    function test_transfer_missingApproval(bool unsafe) external {
         uint256 tokenId = this._register();
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -765,28 +782,28 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             )
         );
         vm.prank(user2);
-        if (permissioned) {
+        if (unsafe) {
             registry.unsafeTransfer(user2, tokenId, "");
         } else {
             registry.safeTransferFrom(user1, user2, tokenId, 1, "");
         }
     }
 
-    function test_transfer_notAuthorized(bool permissioned) external {
+    function test_transfer_notAuthorized(bool unsafe) external {
         _makeEmancipated();
         uint256 tokenId = this._register();
         vm.expectRevert(
             abi.encodeWithSelector(IPermissionedRegistry.TransferDisallowed.selector, tokenId, user1)
         );
         vm.prank(user1);
-        if (permissioned) {
+        if (unsafe) {
             registry.unsafeTransfer(user2, tokenId, "");
         } else {
             registry.safeTransferFrom(user1, user2, tokenId, 1, "");
         }
     }
 
-    function test_transfer_notAuthorized_setApprovalForAll(bool permissioned) external {
+    function test_transfer_notAuthorized_setApprovalForAll(bool unsafe) external {
         _makeEmancipated();
         uint256 tokenId = this._register();
         vm.prank(user1);
@@ -795,7 +812,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             abi.encodeWithSelector(IPermissionedRegistry.TransferDisallowed.selector, tokenId, user1)
         );
         vm.prank(user2);
-        if (permissioned) {
+        if (unsafe) {
             registry.unsafeTransfer(user2, tokenId, "");
         } else {
             registry.safeTransferFrom(user1, user2, tokenId, 1, "");
