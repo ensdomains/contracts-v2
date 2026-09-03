@@ -66,7 +66,10 @@ import {
   addFixtureSubcommands,
   runFixtureSeedStage,
 } from "./migrationFixture.js";
-import { ACTOR_ALIASES } from "./migrationFixture/config.js";
+import {
+  ACTOR_ALIASES,
+  bufferedGas,
+} from "./migrationFixture/config.js";
 import {
   CHECKPOINT_FILE,
   type Checkpoint,
@@ -3862,10 +3865,17 @@ export async function deployV2(opts: DeployV2Options) {
   ]);
 
   // Refresh the generated address table for a persisted deploy so the docs
-  // track the namespace just written. The table describes the canonical
-  // deployment tree, so a run pointed at another one — every fork rehearsal —
-  // leaves it alone rather than rewriting it with throwaway addresses.
-  if (persist && deploymentsDir === resolve(DEFAULT_DEPLOYMENTS_DIR)) {
+  // track the namespace just written. That table describes the network's
+  // canonical deployment, so it is only rewritten by a run that actually
+  // deployed it: a fork rehearsal points at another tree, and `clean-testnet`
+  // writes a `sepolia-clean-*` namespace into the canonical tree, so the
+  // namespace has to match the network as well as the directory. Without the
+  // second half of this check a throwaway testnet overwrites the real table.
+  if (
+    persist &&
+    deploymentsDir === resolve(DEFAULT_DEPLOYMENTS_DIR) &&
+    deploymentNetwork === opts.network
+  ) {
     const docPath = await generateAddressMarkdown({
       deploymentsDir,
       namespace: deploymentNetwork,
@@ -3962,13 +3972,21 @@ async function registerViaV1Controller({
     functionName: "rentPrice",
     args: [label, V1_REGISTRATION_DURATION],
   })) as { base: bigint; premium: bigint };
-  hash = await wallet.writeContract({
+  const registerRequest = {
     address: controller.address,
     abi: controller.abi,
-    functionName: "register",
+    functionName: "register" as const,
     args: [registration],
     value: price.base + price.premium,
-  });
+    account: wallet.account,
+  };
+  // The estimate is the exact gas the call needs in isolation, which a nested
+  // call can exceed under EIP-150's 63/64 rule once it runs for real — the
+  // transaction then burns the whole limit and reverts. A buffer absorbs that.
+  hash = await wallet.writeContract({
+    ...registerRequest,
+    gas: await bufferedGas(client, registerRequest),
+  } as never);
   await waitForSuccessfulReceipt(client, hash, `v1 register ${label}.eth`);
 }
 

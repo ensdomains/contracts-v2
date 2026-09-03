@@ -15,7 +15,7 @@ import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Hol
 ///      fixture actors.
 contract MigrationFixtureBatcher is Ownable, ERC721Holder, ERC1155Holder {
     ////////////////////////////////////////////////////////////////////////
-    // Constants & Immutables
+    // Types
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice One arbitrary call executed while this contract holds a name.
@@ -31,6 +31,10 @@ contract MigrationFixtureBatcher is Ownable, ERC721Holder, ERC1155Holder {
         bool success;
         bytes returnData;
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Immutables
+    ////////////////////////////////////////////////////////////////////////
 
     /// @notice The v1 registrar controller every registration is routed through.
     IETHRegistrarController public immutable CONTROLLER;
