@@ -401,12 +401,12 @@ bun run verify -- --network sepolia-clean-<timestamp>
 ```
 
 Verification is idempotent and re-runnable: contracts already verified on a backend are detected and
-skipped. Flags after `--` pass through (e.g. `bun run verify -- --network sepolia --etherscan-only`).
+skipped. `--etherscan-only` and `--sourcify-only` limit the run to one backend, and
+`--sourcify-server <url>` points at a self-hosted Sourcify. Any other flag passes through to
+`rocketh-verify` (e.g. `bun run verify -- --network sepolia --etherscan-only`).
 
-> **Sourcify currently fails.** It removed the v1 verification API that `@rocketh/verifier` 0.19.3
-> posts to, so every submission comes back as HTML and surfaces as
-> `SyntaxError: Unexpected token '<'`. Etherscan is unaffected. Use `--etherscan-only` to skip the
-> noise.
+A contract that fails Sourcify verification is reported by name and the command exits non-zero; the
+run continues through the rest of the set first, so one failure does not hide the others.
 
 ## ENSv1 test fixture corpus
 
