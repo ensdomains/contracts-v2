@@ -468,6 +468,11 @@ contract LibRegistryTest is Test, ERC1155Holder {
         }
     }
 
+    // CANDIDATE UR-CYCLE for the later judge, not a verdict:
+    // the parent walk has no iteration bound, so two registries that name each
+    // other as parent are traversed until gas runs out. This pins the observed
+    // non-termination rather than an invariant: bounding the walk so it returns
+    // an empty name instead would be a fix, not a regression.
     function test_findCanonicalName_circularParents_doesNotReturn() external {
         PermissionedRegistry a = _createRegistry();
         PermissionedRegistry b = _createRegistry();

@@ -48,7 +48,9 @@ contract DNSAliasResolverTest is Test {
         bytes memory name = NameCoder.encode("example.org");
         vm.expectRevert(
             abi.encodeWithSelector(
-                DNSAliasResolver.NoSuffixMatch.selector, name, NameCoder.encode("com")
+                DNSAliasResolver.NoSuffixMatch.selector,
+                name,
+                NameCoder.encode("com")
             )
         );
         aliasResolver.rewriteNameWithContext(name, bytes("com base.eth"));

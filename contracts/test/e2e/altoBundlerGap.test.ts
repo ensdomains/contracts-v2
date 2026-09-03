@@ -396,112 +396,110 @@ describeAlto("UserOperation through Alto vs in-process handleOps", () => {
     return owner.signMessage({ message: { raw: userOpHash } });
   }
 
-  it(
-    "the bundler leg is paymaster-sponsored and the direct leg is not, both bump the account",
-    async () => {
-      const chainId = await publicClient.getChainId();
-      const bundlerAccount = await deployAccount();
-      const directAccount = await deployAccount();
-      const fees = await gasFees();
+  it("the bundler leg is paymaster-sponsored and the direct leg is not, both bump the account", async () => {
+    const chainId = await publicClient.getChainId();
+    const bundlerAccount = await deployAccount();
+    const directAccount = await deployAccount();
+    const fees = await gasFees();
 
-      // ---- leg 1: through Alto + the mock verifying paymaster ------------
-      const unsponsored: UnpackedUserOperation = {
-        sender: bundlerAccount,
-        nonce: 0n,
-        callData: bumpCall(bundlerAccount),
-        callGasLimit: CALL_GAS_LIMIT,
-        verificationGasLimit: VERIFICATION_GAS_LIMIT,
-        preVerificationGas: PRE_VERIFICATION_GAS,
-        ...fees,
-        // well-formed 65 bytes so simulation reaches SIG_VALIDATION_FAILED
-        // rather than tripping over a malformed signature.
-        signature: await owner.signMessage({ message: "estimation" }),
-      };
-      // the verifying paymaster signs over everything but `signature`, so the
-      // paymaster fields have to be settled before the owner signs.
-      const sponsored: UnpackedUserOperation = {
-        ...unsponsored,
-        ...(await sponsor(unsponsored, chainId)),
-      };
-      sponsored.signature = await sign(sponsored);
-      const paymaster = sponsored.paymaster!;
-      const paymasterDepositBefore = await readDeposit(paymaster);
+    // ---- leg 1: through Alto + the mock verifying paymaster ------------
+    const unsponsored: UnpackedUserOperation = {
+      sender: bundlerAccount,
+      nonce: 0n,
+      callData: bumpCall(bundlerAccount),
+      callGasLimit: CALL_GAS_LIMIT,
+      verificationGasLimit: VERIFICATION_GAS_LIMIT,
+      preVerificationGas: PRE_VERIFICATION_GAS,
+      ...fees,
+      // well-formed 65 bytes so simulation reaches SIG_VALIDATION_FAILED
+      // rather than tripping over a malformed signature.
+      signature: await owner.signMessage({ message: "estimation" }),
+    };
+    // the verifying paymaster signs over everything but `signature`, so the
+    // paymaster fields have to be settled before the owner signs.
+    const sponsored: UnpackedUserOperation = {
+      ...unsponsored,
+      ...(await sponsor(unsponsored, chainId)),
+    };
+    sponsored.signature = await sign(sponsored);
+    const paymaster = sponsored.paymaster!;
+    const paymasterDepositBefore = await readDeposit(paymaster);
 
-      const userOpHash = await jsonRpc<Hex>(ALTO_URL, "eth_sendUserOperation", [
-        toRpcUserOperation(sponsored),
-        entryPoint07Address,
+    const userOpHash = await jsonRpc<Hex>(ALTO_URL, "eth_sendUserOperation", [
+      toRpcUserOperation(sponsored),
+      entryPoint07Address,
+    ]);
+
+    const deadline = Date.now() + 45_000;
+    let receipt: {
+      success: boolean;
+      actualGasCost: Hex;
+      receipt: { status: Hex };
+    } | null = null;
+    while (!receipt && Date.now() < deadline) {
+      receipt = await jsonRpc(ALTO_URL, "eth_getUserOperationReceipt", [
+        userOpHash,
       ]);
-
-      const deadline = Date.now() + 45_000;
-      let receipt:
-        | { success: boolean; actualGasCost: Hex; receipt: { status: Hex } }
-        | null = null;
-      while (!receipt && Date.now() < deadline) {
-        receipt = await jsonRpc(ALTO_URL, "eth_getUserOperationReceipt", [
-          userOpHash,
-        ]);
-        if (!receipt) await Bun.sleep(250);
-      }
-      expect(receipt).not.toBeNull();
-      expect(receipt!.success).toBe(true);
-      expect(await readBumps(bundlerAccount)).toBe(1n);
-      // the paymaster's deposit, not the account's, funded execution
-      expect(await readDeposit(paymaster)).toBe(
-        paymasterDepositBefore - BigInt(receipt!.actualGasCost),
-      );
-      expect(
-        await publicClient.readContract({
-          address: entryPoint07Address,
-          abi: entryPointAbi,
-          functionName: "getNonce",
-          args: [bundlerAccount, 0n],
-        }),
-      ).toBe(1n);
-
-      // ---- leg 2: the same UserOperation via EntryPoint.handleOps() ------
-      const depositHash = await walletClient.writeContract({
+      if (!receipt) await Bun.sleep(250);
+    }
+    expect(receipt).not.toBeNull();
+    expect(receipt!.success).toBe(true);
+    expect(await readBumps(bundlerAccount)).toBe(1n);
+    // the paymaster's deposit, not the account's, funded execution
+    expect(await readDeposit(paymaster)).toBe(
+      paymasterDepositBefore - BigInt(receipt!.actualGasCost),
+    );
+    expect(
+      await publicClient.readContract({
         address: entryPoint07Address,
         abi: entryPointAbi,
-        functionName: "depositTo",
-        args: [directAccount],
-        value: parseEther("0.05"),
-        chain: null,
-      });
-      await publicClient.waitForTransactionReceipt({ hash: depositHash });
-      const depositBefore = await readDeposit(directAccount);
-      expect(depositBefore).toBe(parseEther("0.05"));
+        functionName: "getNonce",
+        args: [bundlerAccount, 0n],
+      }),
+    ).toBe(1n);
 
-      const direct: UnpackedUserOperation = {
-        ...unsponsored,
-        sender: directAccount,
-        callData: bumpCall(directAccount),
-      };
-      direct.signature = await sign(direct);
+    // ---- leg 2: the same UserOperation via EntryPoint.handleOps() ------
+    const depositHash = await walletClient.writeContract({
+      address: entryPoint07Address,
+      abi: entryPointAbi,
+      functionName: "depositTo",
+      args: [directAccount],
+      value: parseEther("0.05"),
+      chain: null,
+    });
+    await publicClient.waitForTransactionReceipt({ hash: depositHash });
+    const depositBefore = await readDeposit(directAccount);
+    expect(depositBefore).toBe(parseEther("0.05"));
 
-      const handleOpsHash = await walletClient.writeContract({
+    const direct: UnpackedUserOperation = {
+      ...unsponsored,
+      sender: directAccount,
+      callData: bumpCall(directAccount),
+    };
+    direct.signature = await sign(direct);
+
+    const handleOpsHash = await walletClient.writeContract({
+      address: entryPoint07Address,
+      abi: entryPointAbi,
+      functionName: "handleOps",
+      args: [[pack(direct)], deployer.address],
+      chain: null,
+    });
+    const handleOpsReceipt = await publicClient.waitForTransactionReceipt({
+      hash: handleOpsHash,
+    });
+    expect(handleOpsReceipt.status).toBe("success");
+
+    expect(await readBumps(directAccount)).toBe(1n);
+    // no paymaster here, so the account's own deposit paid for the op
+    expect(await readDeposit(directAccount)).toBeLessThan(depositBefore);
+    expect(
+      await publicClient.readContract({
         address: entryPoint07Address,
         abi: entryPointAbi,
-        functionName: "handleOps",
-        args: [[pack(direct)], deployer.address],
-        chain: null,
-      });
-      const handleOpsReceipt = await publicClient.waitForTransactionReceipt({
-        hash: handleOpsHash,
-      });
-      expect(handleOpsReceipt.status).toBe("success");
-
-      expect(await readBumps(directAccount)).toBe(1n);
-      // no paymaster here, so the account's own deposit paid for the op
-      expect(await readDeposit(directAccount)).toBeLessThan(depositBefore);
-      expect(
-        await publicClient.readContract({
-          address: entryPoint07Address,
-          abi: entryPointAbi,
-          functionName: "getNonce",
-          args: [directAccount, 0n],
-        }),
-      ).toBe(1n);
-    },
-    120_000,
-  );
+        functionName: "getNonce",
+        args: [directAccount, 0n],
+      }),
+    ).toBe(1n);
+  }, 120_000);
 });

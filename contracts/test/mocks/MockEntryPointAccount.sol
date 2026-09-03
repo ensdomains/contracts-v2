@@ -49,21 +49,25 @@ contract MockEntryPointAccount {
         external
         returns (uint256 validationData)
     {
-        if (msg.sender != ENTRY_POINT) revert NotEntryPoint(msg.sender);
+        if (msg.sender != ENTRY_POINT)
+            revert NotEntryPoint(msg.sender);
         (address signer, ECDSA.RecoverError err, ) =
             ECDSA.tryRecover(MessageHashUtils.toEthSignedMessageHash(userOpHash), userOp.signature);
         bool valid = err == ECDSA.RecoverError.NoError && signer == OWNER;
         validationData = valid ? 0 : 1; // 1 == SIG_VALIDATION_FAILED
         if (missingAccountFunds != 0) {
-            (bool sent,) = payable(msg.sender).call{value: missingAccountFunds}("");
-            if (!sent) revert DepositFailed();
+            (bool sent, ) = payable(msg.sender).call{value: missingAccountFunds}("");
+            if (!sent)
+                revert DepositFailed();
         }
     }
 
     function execute(address target, uint256 value, bytes calldata data) external {
-        if (msg.sender != ENTRY_POINT) revert NotEntryPoint(msg.sender);
+        if (msg.sender != ENTRY_POINT)
+            revert NotEntryPoint(msg.sender);
         (bool ok, bytes memory reason) = target.call{value: value}(data);
-        if (!ok) revert ExecutionFailed(reason);
+        if (!ok)
+            revert ExecutionFailed(reason);
     }
 
     function bump() external {
