@@ -520,7 +520,9 @@ name whose history clears records it is still expected to hold ends up holding t
 It is resumable per name: a name whose setup finished is skipped, and one registered to anyone but a
 fixture actor aborts the run rather than shaping state against a name we do not control. A name whose
 registration landed but whose setup did not also aborts, naming the name — its state is part-shaped,
-and replaying setup over it would write against a name that has already moved on.
+and replaying setup over it would write against a name that has already moved on. Keep the work
+directory when that happens: it records the batcher that holds the name, and a fresh one deploys
+another and cannot reach it. Drop the name from the selection, or reseed against a fresh chain.
 
 > **Recompile first.** `seed-v1` deploys the corpus's counterparty contracts from
 > `generated/artifacts/`, which is gitignored. A tree compiled before those contracts last changed

@@ -819,12 +819,18 @@ export async function seedV1(
       );
       if (!ours.has(owner)) {
         throw new Error(
-          `${run.fixtureId}: ${run.name} is already registered to ${owner}, which is not a fixture actor`,
+          `${run.fixtureId}: ${run.name} is already registered to ${owner}, which is not a fixture ` +
+            "actor of this run; if that is a batcher, its run state is in another work directory",
         );
       }
+      // The batcher that holds the name is recorded here, so this work
+      // directory is what can still reach it. Sending the operator elsewhere
+      // would deploy a second batcher and strand the name behind the check
+      // above.
       throw new Error(
         `${run.fixtureId}: ${run.name} is registered but its setup did not finish, so its state is ` +
-          "part-shaped; seed it into a fresh work directory rather than replaying setup over it",
+          "part-shaped and cannot be replayed; keep this work directory and either drop the name " +
+          "from the selection or reseed against a fresh chain",
       );
     }
 
