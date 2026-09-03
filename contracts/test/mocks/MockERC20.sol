@@ -103,9 +103,14 @@ contract MockERC20FeeOnTransfer is MockERC20 {
     constructor() MockERC20("FEE", 6) {}
 
     function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        uint256 balance = balanceOf(from);
+        if (balance < amount) {
+            revert ERC20InsufficientBalance(from, balance, amount);
+        }
         uint256 fee = amount / 100;
-        super.transferFrom(from, to, amount - fee);
+        _spendAllowance(from, msg.sender, amount);
         _burn(from, fee);
+        _transfer(from, to, amount - fee);
         return true;
     }
 }

@@ -471,13 +471,15 @@ contract LibRegistryTest is Test, ERC1155Holder {
     function test_findCanonicalName_circularParents_doesNotReturn() external {
         PermissionedRegistry a = _createRegistry();
         PermissionedRegistry b = _createRegistry();
-        uint64 expiry = uint64(block.timestamp + 1000);
-        b.register("a", address(this), a, address(0), EACBaseRolesLib.ALL_ROLES, expiry);
-        a.register("b", address(this), b, address(0), EACBaseRolesLib.ALL_ROLES, expiry);
-        a.setParent(b, "a");
-        b.setParent(a, "b");
-        (bool ok, ) = address(this).call{gas: 500_000}(abi.encodeCall(this.canonicalNameOf, (a)));
+        _register(b, "a", address(this), a, address(0));
+        _register(a, "b", address(this), b, address(0));
+        bytes memory callData = abi.encodeCall(this.canonicalNameOf, (a));
+        uint256 gasBefore = gasleft();
+        (bool ok, bytes memory ret) = address(this).call{gas: 500_000}(callData);
+        uint256 gasUsed = gasBefore - gasleft();
         assertFalse(ok, "circular parent+subregistry must not successfully name a registry");
+        assertEq(ret.length, 0, "out-of-gas leaves no revert data");
+        assertGt(gasUsed, 495_000, "the whole gas cap was consumed, not an early revert");
     }
 
     function canonicalNameOf(PermissionedRegistry registry) external view returns (bytes memory) {

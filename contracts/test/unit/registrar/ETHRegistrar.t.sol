@@ -599,6 +599,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
             ethRegistrar.getRegisterPrice(testLabel, testDuration, feeToken);
         uint256 quoted = base + premium;
         uint256 beneficiary0 = feeToken.balanceOf(beneficiary);
+        uint256 owner0 = feeToken.balanceOf(testOwner);
 
         vm.prank(testOwner);
         ethRegistrar.register(
@@ -613,10 +614,12 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         );
 
         uint256 received = feeToken.balanceOf(beneficiary) - beneficiary0;
+        uint256 debited = owner0 - feeToken.balanceOf(testOwner);
         // CANDIDATE PAY-SETTLE for the later judge, not a verdict:
         // SafeERC20.safeTransferFrom does not re-check beneficiary credit, so a
         // 1% fee-on-transfer token delivers less than the quoted amount.
-        assertLt(received, quoted, "fee-on-transfer shortfall vs quote");
+        assertEq(debited, quoted, "payer debited the full quote");
+        assertEq(received, quoted - quoted / 100, "beneficiary credited quote minus 1% fee");
     }
 
     function test_voidReturn_acceptedBySafeERC20() external {
