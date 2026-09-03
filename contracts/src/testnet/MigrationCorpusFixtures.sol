@@ -24,6 +24,7 @@ interface IFixtureNameWrapper {
     function isApprovedForAll(address owner, address operator) external view returns (bool);
 }
 
+
 /// @title CustomResolver
 /// @notice Test-only v1-style resolver holding the record subset the weighted
 ///         migration corpus writes, referenced by scenarios as
@@ -208,10 +209,7 @@ contract CustomResolver is IERC165 {
         address owner = ENS_REGISTRY.owner(node);
         if (owner == address(NAME_WRAPPER)) {
             address tokenOwner = NAME_WRAPPER.ownerOf(uint256(node));
-            if (
-                tokenOwner == msg.sender ||
-                NAME_WRAPPER.isApprovedForAll(tokenOwner, msg.sender)
-            ) {
+            if (tokenOwner == msg.sender || NAME_WRAPPER.isApprovedForAll(tokenOwner, msg.sender)) {
                 return;
             }
             revert NotAuthorised(node, msg.sender);
@@ -355,7 +353,6 @@ contract ERC1155ReceiverOwner is IERC721Receiver, IERC1155Receiver {
     {
         return IERC1155Receiver.onERC1155BatchReceived.selector;
     }
-
 }
 
 
@@ -425,5 +422,4 @@ contract CustomSubregistry is IRegistry {
     function getResolver(string calldata label) external pure returns (address) {
         return address(0);
     }
-
 }

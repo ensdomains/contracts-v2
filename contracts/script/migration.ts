@@ -66,10 +66,7 @@ import {
   addFixtureSubcommands,
   runFixtureSeedStage,
 } from "./migrationFixture.js";
-import {
-  ACTOR_ALIASES,
-  bufferedGas,
-} from "./migrationFixture/config.js";
+import { ACTOR_ALIASES, bufferedGas } from "./migrationFixture/config.js";
 import {
   CHECKPOINT_FILE,
   type Checkpoint,
