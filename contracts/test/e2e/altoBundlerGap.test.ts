@@ -357,7 +357,9 @@ describeAlto("UserOperation through Alto vs in-process handleOps", () => {
         verificationGasLimit: VERIFICATION_GAS_LIMIT,
         preVerificationGas: PRE_VERIFICATION_GAS,
         ...fees,
-        signature: "0x",
+        // well-formed 65 bytes so simulation reaches SIG_VALIDATION_FAILED
+        // rather than tripping over a malformed signature.
+        signature: await owner.signMessage({ message: "estimation" }),
       };
       // the verifying paymaster signs over everything but `signature`, so the
       // paymaster fields have to be settled before the owner signs.
@@ -366,6 +368,8 @@ describeAlto("UserOperation through Alto vs in-process handleOps", () => {
         ...(await sponsor(unsponsored, chainId)),
       };
       sponsored.signature = await sign(sponsored);
+      const paymaster = sponsored.paymaster!;
+      const paymasterDepositBefore = await readDeposit(paymaster);
 
       const userOpHash = await jsonRpc<Hex>(ALTO_URL, "eth_sendUserOperation", [
         toRpcUserOperation(sponsored),
@@ -385,8 +389,10 @@ describeAlto("UserOperation through Alto vs in-process handleOps", () => {
       expect(receipt).not.toBeNull();
       expect(receipt!.success).toBe(true);
       expect(await readBumps(bundlerAccount)).toBe(1n);
-      // the paymaster, not the account, funded execution
-      expect(await readDeposit(bundlerAccount)).toBe(0n);
+      // the paymaster's deposit, not the account's, funded execution
+      expect(await readDeposit(paymaster)).toBe(
+        paymasterDepositBefore - BigInt(receipt!.actualGasCost),
+      );
       expect(
         await publicClient.readContract({
           address: entryPoint07Address,

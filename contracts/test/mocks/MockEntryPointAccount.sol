@@ -50,9 +50,10 @@ contract MockEntryPointAccount {
         returns (uint256 validationData)
     {
         if (msg.sender != ENTRY_POINT) revert NotEntryPoint(msg.sender);
-        address signer =
-            ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(userOpHash), userOp.signature);
-        validationData = signer == OWNER ? 0 : 1; // 1 == SIG_VALIDATION_FAILED
+        (address signer, ECDSA.RecoverError err, ) =
+            ECDSA.tryRecover(MessageHashUtils.toEthSignedMessageHash(userOpHash), userOp.signature);
+        bool valid = err == ECDSA.RecoverError.NoError && signer == OWNER;
+        validationData = valid ? 0 : 1; // 1 == SIG_VALIDATION_FAILED
         if (missingAccountFunds != 0) {
             (bool sent,) = payable(msg.sender).call{value: missingAccountFunds}("");
             if (!sent) revert DepositFailed();

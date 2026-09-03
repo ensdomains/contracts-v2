@@ -46,7 +46,11 @@ contract DNSAliasResolverTest is Test {
 
     function test_rewrite_revert_noSuffixMatch() external {
         bytes memory name = NameCoder.encode("example.org");
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DNSAliasResolver.NoSuffixMatch.selector, name, NameCoder.encode("com")
+            )
+        );
         aliasResolver.rewriteNameWithContext(name, bytes("com base.eth"));
     }
 }
