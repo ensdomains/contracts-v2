@@ -52,10 +52,10 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 | --- | --- | --- | --- | --- |
 | 0 | Deploy fresh v1 contracts | part of `clean-testnet` | clean-testnet only | `deployer` |
 | 1 | Deploy all v2 contracts, including reverse-registrar adapters and the HCA stack on HCA-enabled networks (registrar deferred) | `phase deploy-v2` | live + clean-testnet | `deployer` / `owner` / `urManager` (+ v1 owner) |
-| 2 | Seed v1 names as reserved on v2 | `premigration run` → `verify` | live + clean-testnet | BatchRegistrar owner |
+| 2 | Seed v1 names as reserved on v2 | `premigration run` → `build-index` → `reconcile` | live + clean-testnet | BatchRegistrar owner |
 | 3 | Freeze v1 registrations | `phase disable-v1-registrars` (+ `verify-*`) | live + clean-testnet | v1 owner |
-| 4 | Keep unmigrated names renewable | `phase authorize-v1-renewer` | live + clean-testnet | v1 owner |
-| 5 | Final pre-migration sync | `premigration run` → `verify` | live + clean-testnet | BatchRegistrar owner |
+| 4 | Authorize `ETHRenewerV1` (renewals resume in phase 6, not here — see [phase 4](#phase-4-authorize-ethrenewerv1)) | `phase authorize-v1-renewer` | live + clean-testnet | v1 owner |
+| 5 | Final pre-migration sync | `premigration run` → `build-index` → `reconcile` | live + clean-testnet | BatchRegistrar owner |
 | 6 | Enable the v2 controller | `disable-batch-registrar` → `activate-v1-handoff-controllers` → `activate-v1-renewer` → `enable-v2-registrar` (+ `verify-*`) | live + clean-testnet | registry root-role admin + v1 owner |
 | 7 | Switch Universal Resolver to v2 (cutover) | `phase upgrade-managed-urp` (+ `switch-urp-to-managed` on bootstrap) (+ `verify-urp`) | live + clean-testnet (bootstrap step mainnet/fresh only) | `urManager` (+ top URP owner on bootstrap) |
 
@@ -139,15 +139,75 @@ External infrastructure not implemented by this repository remains outside the m
   ```bash
   bun run migration -- premigration run --network sepolia \
     --csv-file <registrations.csv> --work-dir .dev/premig-1
-  bun run migration -- premigration verify --network sepolia --csv-file <registrations.csv>
+
+  # Sign-off: build an index from a source other than the CSV's, then reconcile
+  bun run migration -- premigration build-index --network sepolia --work-dir .dev/premig-1
+  bun run migration -- premigration reconcile --network sepolia \
+    --work-dir .dev/premig-1 --csv-file <registrations.csv>
   ```
-- **Prerequisites:** phase 1 complete. A current v1 registration CSV (Dune export for sepolia,
-  BigQuery for mainnet). See [premigration.md](./premigration.md) for the CSV format, expiry rule,
-  checkpointing, and verification.
+- **Prerequisites:** phase 1 complete. A current v1 registration CSV (Dune export). See
+  [premigration.md](./premigration.md) for the CSV format, expiry rule, checkpointing, and
+  verification.
 - **Env / args:** BatchRegistrar owner key (`PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`,
   or `DEPLOYER_KEY`); `--csv-file`, `--work-dir`, `--bonus-period-days` (default 62).
+  `build-index` needs `THEGRAPH_API_KEY` for the default subgraph source, or `--source rpc` and an
+  RPC URL to read the v1 `BaseRegistrar` directly.
 - **Expected outcome:** every active or in-grace v1 `.eth` 2LD seeded as a **reserved** entry on v2,
-  with v2 expiry = v1 expiry + bonus period. `premigration verify` confirms the reservations.
+  with v2 expiry = v1 expiry + bonus period. `premigration reconcile` confirms it in both directions.
+
+> **Why reconcile rather than verify.** `premigration verify` reads its list of names from the CSV, so
+> a name the CSV never contained is invisible to it and the check passes. `premigration reconcile`
+> starts from an independently-built index of v1 instead, and compares both ways: every claimable v1
+> name must be on v2, and every entry on v2 must trace back to a claimable v1 name. It reports
+> *missing*, *unexpected*, and *expiry mismatch* counts, and fails on any of them.
+>
+> The index must come from a **different source than the CSV**. The CSV is a manual Dune export and
+> the index is built from the subgraph, so they are independent; the command refuses to run when a
+> CSV's recorded source matches the index's, because verifying a CSV against the indexer that
+> produced it cannot detect anything missing from that indexer. Use `--report-only` for a dry read.
+>
+> **Read the `cross-source:` line first.** Before comparing anything against v2, reconcile prints the
+> CSV's label count beside the index's claimable count. Two independent views of the same chain must
+> agree on how many names are live, and a disagreement there is a CSV problem rather than a
+> pre-migration problem. The line is meaningful even before phase 2 has written anything, so it can be
+> read as a standalone probe of a freshly exported CSV.
+>
+> **The independence refusal is opt-in.** It compares a source stamp written beside the CSV, so it
+> fires only for a CSV that carries one — `fetch-data` writes a stamp, a manual Dune export does not.
+> An unstamped CSV is accepted without the check, which is correct for a Dune export and blind to a
+> subgraph-derived one that lost its sidecar. Keep the stamp file with the CSV it describes.
+>
+> **Two index sources, chosen with `--source`.** `subgraph` (the default) pages TheGraph and needs a
+> gateway key. `rpc` reads the v1 `BaseRegistrar` directly: `NameRegistered` logs enumerate every
+> label ever registered, and `nameExpires` at the pinned block gives each one's expiry with renewals
+> folded in. The chain source needs no gateway key, cannot lag or be deprecated, and is the ground
+> truth the subgraph itself indexes — worth preferring when the subgraph is unavailable, or when its
+> completeness is the thing in question. It is slower, since it walks blocks rather than a cursor.
+>
+> ```bash
+> bun run migration -- premigration build-index --network sepolia --source rpc \
+>   --work-dir .dev/premig-1 --rpc-url $SEPOLIA_RPC_URL
+> ```
+>
+> The scan starts at the registrar's recorded deploy block and narrows its range whenever a provider
+> refuses the span, so a rate-limited endpoint slows the walk rather than failing it. Both phases
+> checkpoint, so `--resume` continues an interrupted build at a block boundary. A partial index built
+> from one source refuses to resume as the other.
+>
+> **`build-index` defaults to `--network mainnet`.** Omitting the flag on a testnet run builds a
+> mainnet index and reconciles it against a testnet registry, which reports every name as missing
+> rather than failing outright. Pass the network explicitly.
+>
+> **Expect the enumeration total to exceed the index by a wide margin**, since most names ever
+> registered have long since been released, and the index in turn to sit a little above the claimable
+> count: the build keeps an extra week beyond the grace period so a name near the boundary can never
+> be dropped at build time and then wanted at reconcile time. Sepolia at block 11,575,263: 68,849
+> labels ever registered, 9,011 unexpired, 9,739 claimable, 9,782 in the index.
+>
+> During phases 2 and 5 the expected status is strictly `RESERVED`. Migration does not open to users
+> until after phase 5, so a `REGISTERED` name in this window is an anomaly rather than a claim, and is
+> reported as unexpected. Pass `--expected-status reserved-or-registered` when reconciling after
+> migration has opened.
 - **Re-deploying fresh:** the new v2 registry is empty, so this seeds it from scratch exactly like a
   first run. Reservations from the prior deployment lived on the now-archived registry and do **not**
   carry over. Use a fresh `--work-dir` so no stale `preMigration-checkpoint.json` is picked up.
@@ -162,7 +222,13 @@ External infrastructure not implemented by this repository remains outside the m
   bun run migration -- phase verify-v1-registrars-disabled --network sepolia
   ```
 - **Prerequisites:** phase 2 complete (so no active name is stranded by the freeze). Signed by the v1
-  owner. This command takes the key via `--private-key` explicitly — the env fallback applies only
+  owner. **`premigration reconcile` must have passed** for this deployment on this chain — the
+  command refuses to run otherwise. Freezing v1 is the irreversible step: a claimable name that
+  pre-migration missed can never be picked up afterwards, and the reconciliation is what proves none
+  was. `--skip-preconditions` overrides the gate when you have a reason to, and
+  `--max-reconcile-age-blocks` controls how stale a pass may be (default ~1 day) — names keep being
+  registered on v1 until the freeze, so an old pass says nothing about now. A reconciliation that
+  *fails* revokes any earlier pass rather than leaving it standing. This command takes the key via `--private-key` explicitly — the env fallback applies only
   when it is run through `phase execute-owner-txs --role v1Owner`.
 - **Env / args:** v1 owner key via `--private-key` (or `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` through
   execute-owner-txs). `--calldata-only` emits calldata for a multisig instead of broadcasting.
@@ -220,19 +286,53 @@ External infrastructure not implemented by this repository remains outside the m
   so this phase is effective only after the initial pre-migration. Runs right after the phase 3 freeze.
 - **Env / args:** v1 owner key (`SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY`, read from env).
   `--calldata-only` for a multisig.
-- **Expected outcome:** `ETHRenewerV1` authorized as a v1 `BaseRegistrar` controller; unmigrated names
-  stay renewable, each renewal extending both the v1 registration and the v2 reservation in one
-  transaction. This does **not** reopen the phase 3 registration freeze. The final lock-down that
-  transfers v1 `BaseRegistrar` ownership to `ETHRenewerV1` is deferred to
-  [phase 6](#phase-6-enable-the-v2-controller).
+- **Expected outcome:** `ETHRenewerV1` authorized as a v1 `BaseRegistrar` controller. This does
+  **not** reopen the phase 3 registration freeze. The lock-down that transfers v1 `BaseRegistrar`
+  ownership to `ETHRenewerV1` is deferred to [phase 6](#phase-6-enable-the-v2-controller).
 - **Re-deploying fresh:** authorizes the **newly-deployed** `ETHRenewerV1` (a new address) as a v1
   controller — must be re-run. The prior deployment's `ETHRenewerV1` is removed by
   [phase 3](#phase-3-disable-v1-registrars), so run the phases in order rather than skipping ahead.
 
-> **Mainnet renewal continuity.** Renewals are paused between phase 3 (freeze) and phase 4
-> (authorize), and the phase 5 sync can run for days. When the v1 owner is a DAO/multisig, execute
-> phases 3 and 4 **atomically in one v1-owner batch** — both support `--calldata-only`, so their
-> calldata combines into a single Safe/multisend transaction.
+> ### ⚠️ Renewals are unavailable from phase 3 until phase 6 — this is expected
+>
+> **This phase does not restore renewals on its own.** It grants `ETHRenewerV1` the controller role,
+> which is necessary but not sufficient.
+>
+> `ETHRenewerV1.renew` calls `syncWrapper`, which calls `addController` on the v1 `BaseRegistrar` so
+> `NameWrapper` can update a wrapped name's expiry. `addController` is **owner-gated**, and the v1
+> `BaseRegistrar` is not owned by `ETHRenewerV1` until
+> [phase 6](#phase-6-enable-the-v2-controller)'s `activate-v1-renewer` transfers it. Until then every
+> renewal through `ETHRenewerV1` **reverts**.
+>
+> **The renewal outage therefore spans phase 3 → phase 6**, not phase 3 → phase 4:
+>
+> | From | To | Renewals |
+> | --- | --- | --- |
+> | before phase 3 | — | work through the v1 registrar controllers as normal |
+> | **phase 3 (freeze)** | **phase 6 (`activate-v1-renewer`)** | **unavailable — v1 controllers revoked, `ETHRenewerV1` not yet registrar owner** |
+> | after phase 6 | — | work through `ETHRenewerV1` |
+>
+> The phase 5 sync sits inside that window and can run for days, so **plan for a renewal outage of
+> that length** and communicate it before starting phase 3. A name whose v1 registration lapses during
+> the window is not lost: v1's 90-day grace still applies and the owner can renew once phase 6
+> completes, provided the window is comfortably shorter than their remaining grace.
+>
+> This is accepted behaviour, not a defect to work around. It is asserted by
+> `test/e2e/renewerV1Smoke.test.ts`, which checks that a renewal reverts while `ETHRenewerV1` is only
+> a controller and succeeds once it owns the registrar — so the boundary cannot move without a test
+> failing.
+>
+> **To shorten the window** if you need to: `activate-v1-renewer` is an independent v1-owner write and
+> can be executed earlier than the rest of phase 6, immediately after phase 4. Phases 3 and 4 both
+> support `--calldata-only`, so with a DAO/multisig their calldata and the ownership transfer combine
+> into a single Safe/multisend transaction. Note this brings the v1 lock-down forward too — the v1
+> owner can no longer manage controllers afterwards — so do it only with phase 6's ordering
+> requirements in mind.
+
+Once a renewal is possible, each one extends the v1 registration, the v2 reservation, and — for a
+wrapped name — the `NameWrapper`'s own copy of the expiry, all in one transaction, leaving the v2
+entry `RESERVED`. `fork full` performs a real renewal after phase 6 and asserts all of that, rather
+than only checking that the renewer is an authorized controller.
 
 ### Phase 5: final pre-migration sync
 
@@ -241,14 +341,20 @@ External infrastructure not implemented by this repository remains outside the m
   ```bash
   bun run migration -- premigration run --network sepolia \
     --csv-file <fresh-post-freeze.csv> --work-dir .dev/premig-2
-  bun run migration -- premigration verify --network sepolia --csv-file <fresh-post-freeze.csv>
+
+  # Sign-off: rebuild the index at the current head, then reconcile
+  bun run migration -- premigration build-index --network sepolia --work-dir .dev/premig-2
+  bun run migration -- premigration reconcile --network sepolia \
+    --work-dir .dev/premig-2 --csv-file <fresh-post-freeze.csv>
   ```
 - **Prerequisites:** phase 3 freeze done. Export a **fresh** post-freeze registration CSV so names
   registered or renewed since phase 2 are caught up.
-- **Env / args:** same BatchRegistrar owner key as [phase 2](#phase-2-initial-pre-migration).
-- **Expected outcome:** names already reserved on v2 are re-reserved with their bonus-adjusted expiry
-  — picking up any expiry extensions from `ETHRenewerV1` renewals since phase 4 — and newly eligible
-  names are reserved for the first time.
+- **Env / args:** same BatchRegistrar owner key as [phase 2](#phase-2-initial-pre-migration);
+  `THEGRAPH_API_KEY` for `build-index`, or `--source rpc` to index from the chain instead.
+- **Expected outcome:** names whose v1 expiry grew since phase 2 have their reservation extended —
+  picking up `ETHRenewerV1` renewals since phase 4 — and newly eligible names are reserved for the
+  first time. Names already carrying the right expiry are left alone rather than resubmitted, so this
+  sync sends only what changed. `premigration reconcile` is the gate.
 - **Re-deploying fresh:** same as [phase 2](#phase-2-initial-pre-migration) — re-seeds the new
   registry against a fresh post-freeze CSV and a fresh `--work-dir`.
 
@@ -262,7 +368,9 @@ External infrastructure not implemented by this repository remains outside the m
   bun run migration -- phase activate-v1-renewer              --network sepolia
   bun run migration -- phase enable-v2-registrar              --network sepolia
   bun run migration -- phase verify-v2-registrar              --network sepolia
-  bun run migration -- phase verify-v1-registrars-disabled    --network sepolia
+  bun run migration -- phase verify-v1-registrars-disabled    --network sepolia --require-active-grants
+  bun run migration -- phase verify-reverse-adapters          --network sepolia
+  bun run migration -- phase verify-roles                     --network sepolia
   ```
 - **Prerequisites:** phase 5 complete. Order matters — the handoff controllers must be authorized
   **before** `activate-v1-renewer` transfers v1 `BaseRegistrar` ownership away from the v1 owner
@@ -284,6 +392,23 @@ External infrastructure not implemented by this repository remains outside the m
   contracts may hold a v1 grant. `fork full` runs this assertion automatically. It is the check that
   catches a superseded deployment's controller surviving the freeze — the phase 3 registration smoke
   test cannot see one, because it only exercises the official registrar controller's path.
+
+  > **Assert both directions, not just one.** By default that audit only looks for grants that should
+  > be *gone*: it tests whether a controller is enabled before anything else, so a grant the active
+  > deployment *needs* but does not have reads as "disabled" and passes. A revoked reverse adapter
+  > silently stops reverse records being written and nothing else reports it. `--require-active-grants`
+  > adds the missing direction, and `verify-reverse-adapters` checks the adapters specifically —
+  > including that each one points back at the registrar holding its grant, so an adapter authorized
+  > on the wrong registrar is caught too.
+  >
+  > `verify-roles` does the same for the v2 side, which has had no equivalent audit at all. It reads
+  > every role holder live at its current resource rather than replaying `EACRolesChanged`, because
+  > the event log cannot reconstruct the matrix: a name expiring bumps the resource id and orphans
+  > every grant against the old one with no transaction and no event, and an ERC-1155 operator
+  > inherits the owner's roles through a different event entirely. Logs are used only to decide which
+  > addresses to ask about. It catches a role nobody granted, a grant that was never made, and admin
+  > bits left behind when only the regular roles were revoked — none of which a single
+  > `hasRootRoles` spot check can see.
 - **Re-deploying fresh:** re-points v1 at the new set and must be re-run —
   `activate-v1-handoff-controllers` authorizes the new `Graveyard`, `activate-v1-renewer` transfers v1
   `BaseRegistrar` ownership to the new `ETHRenewerV1` (the ownership you reclaimed in phase 1), and
@@ -306,6 +431,18 @@ External infrastructure not implemented by this repository remains outside the m
   bun run migration -- phase upgrade-managed-urp   --network mainnet
   bun run migration -- phase verify-urp            --network mainnet
   ```
+
+  Snapshot resolution **before** the cutover and diff it after, so the switch is verified by
+  comparison rather than by a liveness probe:
+  ```bash
+  # Before switch-urp-to-managed / upgrade-managed-urp
+  bun run migration -- phase snapshot-resolution --network mainnet \
+    --names vitalik.eth,ens.eth,<a name with no resolver>,<an offchain name> \
+    --out-file .dev/resolution-before.json
+  # After
+  bun run migration -- phase verify-resolution --network mainnet \
+    --snapshot-file .dev/resolution-before.json
+  ```
 - **Prerequisites:** phase 6 complete. Run **last**, so public resolution flips to v2 only once
   everything else is live.
 - **Env / args:** intermediate URP admin key (`UR_MANAGER_KEY`, falls back to `DEPLOYER_KEY`) for
@@ -315,6 +452,18 @@ External infrastructure not implemented by this repository remains outside the m
   `UniversalResolverV2` and public resolution serves v2. `verify-urp` confirms both proxy
   implementations. See [universalResolver.md](./universalResolver.md) for the proxy chain and the
   optional post-cutover step.
+
+> **A proxy pointing somewhere new is not a working cutover.** `verify-urp` compares implementation
+> addresses; it says nothing about whether names still resolve. Checking that a name resolves to a
+> non-zero address is barely stronger — a name that resolves to the *wrong* address, loses its text
+> records, or stops answering a coin type it used to support all pass that test.
+>
+> `snapshot-resolution` records the real answers first — `addr`, each coin type, each text key, and
+> contenthash — and `verify-resolution` re-asks exactly those questions afterwards and fails on any
+> record that changed, in either direction: a record that stops resolving, one that starts, and one
+> that returns something different are all differences. Include awkward cases in `--names`: a name
+> with no resolver, a wildcard/offchain name, and a DNS TLD mirror. `fork full` does this
+> automatically around phase 7 and prints any differences.
 - **Re-deploying fresh:** on a reuse network (sepolia) the top **and** intermediate URPs are adopted by
   address and never redeployed — phase 1 deploys a fresh `UniversalResolverV2` implementation and
   `upgrade-managed-urp` re-points the reused intermediate URP at it, orphaning the prior
@@ -372,8 +521,10 @@ prerequisites, and expected outcome:
    `phase execute-owner-txs --role v1Owner`.
 2. [Phase 2 — initial pre-migration](#phase-2-initial-pre-migration) (`--work-dir .dev/sepolia-live/premig-1`).
 3. [Phase 3 — freeze v1 registrations](#phase-3-disable-v1-registrars) (`--private-key $SEPOLIA_V1_OWNER_KEY`).
-4. [Phase 4 — keep names renewable](#phase-4-authorize-ethrenewerv1). With an EOA v1 owner on Sepolia
-   you can run phases 3 and 4 back-to-back, so the renewal gap is small.
+4. [Phase 4 — authorize `ETHRenewerV1`](#phase-4-authorize-ethrenewerv1). **Renewals stay unavailable
+   until phase 6**, not from here — see the window table in that section. With an EOA v1 owner on
+   Sepolia you can run phases 3, 4, and the phase 6 `activate-v1-renewer` back-to-back to keep the
+   outage short.
 5. [Phase 5 — final sync](#phase-5-final-pre-migration-sync) from a fresh post-freeze CSV
    (`--work-dir .dev/sepolia-live/premig-2`).
 6. [Phase 6 — enable the v2 controller](#phase-6-enable-the-v2-controller).
@@ -394,6 +545,12 @@ The new `deployments/sepolia/` namespace (and any dated archive) is committed au
 stateful part: it is checkpointed (`premigration resume`) and has its own flags — read
 [premigration.md](./premigration.md) and confirm the CSV export before the live run.
 
+> **Check the calldata before the Safe signs it.** `--calldata-only` output travels by hand into a
+> Safe, where a wrong target or a transposed argument is invisible — one `0x…` looks like another, and
+> once the threshold signs it executes. `phase verify-owner-tx --file <prepared.jsonl> --to <target>
+> --data <calldata>` re-derives the comparison and fails unless the transaction matches one the tool
+> produced, reporting the closest near-miss when it does not.
+>
 > **Mainnet differs.** The owner, top URP admin, and v1 owner are all the DAO/multisig, so the
 > owner-signed and URP-admin phases run with `--calldata-only` (or deferred) and execute through the
 > Safe. Mainnet is also a **bootstrap** URP network, so phase 7 additionally runs
@@ -439,8 +596,33 @@ smoke checks interleaved:
 When the target chain has already completed the v1 hand-off (re-running against an already-migrated
 Sepolia, or a repeat mainnet run), `fork full` detects this from the v1 registrar-controller state and
 skips the smoke checks that require live v1 registration, while still running the deploy,
-pre-migration, renewer authorization, the pre-enablement rejection, the fresh-name registration, and
-the URP cutover. A pristine chain runs all of them; there is no flag — it is detected automatically.
+pre-migration, renewer authorization, the pre-enablement rejection, and the URP cutover. A pristine
+chain runs all of them; it is detected automatically.
+
+> **Know what a run actually covered.** Post-migration mode drops the live v1 registrations, the
+> phase 3 freeze rejection, the pre-migration `RESERVED` assertions, and the only v1 → v2 migration
+> smoke in the script. On a network with no mintable payment token — mainnet, which whitelists real
+> USDC/DAI — every paid-registration smoke is skipped too, so the entire `ETHRegistrar` commit/reveal,
+> pricing, and ERC-20 payment path goes unexercised. A repeat mainnet run hits both at once and can
+> perform **zero** registrations, **zero** migrations, and **zero** rejection assertions while still
+> reporting success.
+>
+> On a fork with state controls the paid smokes are recovered rather than skipped: the rehearsal
+> writes a real USDC balance for the smoke account directly (`tenderly_setErc20Balance`, or by
+> locating the token's balances storage slot on Anvil) and runs the same registration and renewal
+> checks against the real token. Only when that is not possible are they dropped.
+>
+> Every run therefore ends with a **coverage summary** naming what did not execute, and
+> `--require-full-coverage` turns a reduced run into a failure instead. Detection reads *every* known
+> v1 registration controller rather than the bundled `ETHRegistrarController` alone: reading one
+> address would report a pristine chain as already-migrated if ENS ever rotated that controller, which
+> would silently drop most of the rehearsal's assertions.
+
+The rehearsal deploys into a `<network>-fork` namespace (gitignored, re-created each
+run) rather than the live one, so it never tries to adopt the real chain's proxies —
+pass `--deployment-network` to override. The managed URP's admin is read from chain
+and impersonated, so `--ur-manager` is only needed when running without state
+controls.
 
 `--direct` skips Anvil and targets `--rpc-url` directly (see
 [Tenderly virtual testnets](#tenderly-virtual-testnets)) — it requires explicit `--deployer` and
@@ -567,14 +749,22 @@ Two commands are **not** on-chain and intentionally omit the network options:
 | `premigration run` | Start pre-migration reservations from a fresh checkpoint (phases 2/5) |
 | `premigration resume` | Resume pre-migration from the checkpoint |
 | `premigration status` | Print the current pre-migration checkpoint JSON (local; `--work-dir` only) |
-| `premigration verify` | Verify eligible CSV names were reserved or registered on v2 |
+| `premigration verify` | Verify eligible CSV names were reserved or registered on v2 (CSV-scoped; superseded as the phase 2/5 gate by `reconcile`) |
+| `premigration build-index` | Build an independent labelhash-keyed index of v1 names, from the subgraph or from v1 `BaseRegistrar` logs (`--source subgraph\|rpc`; `--resume` continues a partial build) |
+| `premigration index-status` | Print the local v1 name index metadata (local; `--work-dir` only) |
+| `premigration reconcile` | Reconcile the v1 name index against v2 in both directions — the phase 2/5 sign-off (`--check-fuses` also counts names `CANNOT_TRANSFER` makes unclaimable; needs `--csv-file` for the labels) |
 | `phase deploy-v2` | Phase 1: deploy the v2 migration contracts, reverse-registrar adapters, and enabled HCA infrastructure with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy) |
 | `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the Phase 1 deferred-tx replay on an already-migrated chain) |
 | `phase disable-v1-registrars` | Phase 3: revoke every v1 authorization (BaseRegistrar + reverse registrars) the active deployment did not grant |
 | `phase set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` (v1-owner write) |
-| `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled |
+| `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled (`--require-active-grants` also asserts the active deployment's own grants are present — run it after phase 6) |
+| `phase verify-reverse-adapters` | Verify the active reverse-registrar adapters hold their v1 controller grants and point back at the right registrar |
+| `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions |
+| `phase verify-deployment` | Verify the code at every address in the namespace matches its artifact |
+| `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, beneficiary, accepted tokens |
 | `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable |
-| `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`) |
+| `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`); each success is journalled so a re-run does not re-send it |
+| `phase verify-owner-tx` | Check a transaction about to be signed in a Safe against the prepared owner transactions |
 | `phase disable-batch-registrar` | Phase 6: revoke registrar/renew roles from `BatchRegistrar` |
 | `phase verify-batch-registrar-disabled` | Verify `BatchRegistrar` no longer has registrar/renew roles |
 | `phase batch-registrar-owner` | Print and optionally verify the `BatchRegistrar` owner |
@@ -587,6 +777,8 @@ Two commands are **not** on-chain and intentionally omit the network options:
 | `phase switch-urp-to-managed` | Phase 7 (bootstrap only): point the top URP at the managed URP |
 | `phase upgrade-managed-urp` | Phase 7: upgrade the managed URP to `UniversalResolverV2` (resolution cutover) |
 | `phase verify-urp` | Verify top and managed URP implementations |
+| `phase snapshot-resolution` | Record how names resolve before the cutover (`addr`, coin types, text keys, contenthash) |
+| `phase verify-resolution` | Re-resolve a snapshot's names and fail on any record that changed |
 | `fork full` | Run the full phased migration rehearsal against an Anvil fork (or a Tenderly fork with `--direct`) |
 | `clean-testnet` | Deploy fresh testnet v1 contracts and run the full phased migration (sepolia only) |
 
@@ -633,7 +825,7 @@ Resolved by [`script/migration.ts`](../script/migration.ts) (the CLI also auto-l
 | `HCA_GAS_REFUND_PAYMASTER` | Optional HCA validator gas-refund paymaster override |
 | `<PREFIX>_MNEMONIC`, `<PREFIX>_MNEMONIC_PATH`, `<PREFIX>_MNEMONIC_INDEX`, `<PREFIX>_MNEMONIC_PASSPHRASE` | Mnemonic-backed signer alternatives for `phase execute-owner-txs`; prefixes `OWNER_TX`, `SEPOLIA_V1_OWNER` / `V1_OWNER`, `SEPOLIA_TOP_URP_OWNER` / `TOP_URP_OWNER` |
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
-| `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` |
+| `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` and `premigration build-index --source subgraph` (unused by `--source rpc`) |
 | `ETHERSCAN_API_KEY` | Etherscan v2 (multichain) API key for source-code verification (`bun run verify:<network>`); not needed for Sourcify |
 
 † `phase disable-v1-registrars` takes the key via `--private-key`; the env fallbacks apply when it is

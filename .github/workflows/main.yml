@@ -34,6 +34,24 @@ jobs:
           cd contracts && \
           bun run test:e2e
 
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      # setup
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+
+      # The suite reaches the deploy scripts, which import `generated/`. That is a
+      # compile output and is not committed, so it has to be built first.
+      - name: Run TypeScript unit tests
+        run: |
+          cd contracts && \
+          bun run compile:hardhat && \
+          bun run test:unit
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+
   forge-tests:
     name: Forge Tests
     runs-on: ubuntu-latest
@@ -109,7 +127,7 @@ jobs:
   publish-docker:
     name: Publish Docker Image
     if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
-    needs: [check-types, e2e-tests, forge-tests, hardhat-tests, lint]
+    needs: [check-types, e2e-tests, forge-tests, hardhat-tests, unit-tests, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: read

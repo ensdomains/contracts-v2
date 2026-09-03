@@ -154,7 +154,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
       skippedPastGraceCount: 1,
       alreadyRegisteredCount: 0,
       invalidLabelCount: 1,
-      failureCount: 0,
+      failedLines: [],
       timestamp: "2026-01-01T00:00:00.000Z",
     });
     await runPreMigrationCommand(
@@ -220,8 +220,12 @@ describe("runPreMigrationCommand metadata persistence", () => {
       skippedNeverRegisteredCount: 2,
       skippedPastGraceCount: 1,
       alreadyRegisteredCount: 1,
+      // Reservations already long enough to need no submission. By the final sync
+      // these are most of the corpus, and leaving them out of the roll-up made the
+      // published figure describe only what the last run happened to touch.
+      upToDateCount: 4,
       invalidLabelCount: 1,
-      failureCount: 0,
+      failedLines: [],
       timestamp: "2026-01-02T00:00:00.000Z",
     });
     await runPreMigrationCommand(
@@ -240,9 +244,10 @@ describe("runPreMigrationCommand metadata persistence", () => {
     expect(metadata.resolved).toMatchObject({
       finishedAt: "2026-01-02T00:00:00.000Z",
       totalNames: 10,
-      namesPreMigrated: 6,
+      namesPreMigrated: 10,
       newReservations: 1,
       expiryResyncs: 5,
+      alreadyCurrent: 4,
       skippedNeverRegistered: 2,
       skippedExpiredPastGrace: 1,
       invalidLabels: 1,

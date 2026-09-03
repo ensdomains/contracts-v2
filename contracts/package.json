@@ -52,6 +52,7 @@
     "test:forge": "forge test",
     "test:hardhat": "bun run compile:hardhat && vitest run",
     "test:e2e": "bun run compile --quiet && bun test --max-concurrency=1 ./test/e2e/",
+    "test:unit": "bun test --cwd .. contracts/test/unit/",
     "check:hca-live": "bun ./script/checkLiveHcaRegistration.ts",
     "test": "bun run test:forge && bun run test:hardhat",
     "interfaces": "bun run compile:hardhat --quiet && bun ./lib/ens-contracts/scripts/interfaces.ts",
