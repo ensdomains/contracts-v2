@@ -175,7 +175,7 @@ abstract contract ERC1155Singleton is
     /// @param to Address tokens are moved to. Use `address(0)` for burns.
     /// @param ids Token IDs to update.
     /// @param values Amounts for each token ID.
-    /// @param safe `true` if `safe{Batch}TransferFrom()`.
+    /// @param {safe} Ignored. `true` if `safe{Batch}TransferFrom()`.
     /// @dev Reverts with `ERC1155InvalidArrayLength` if `ids.length != values.length`.
     /// @dev Reverts with `ERC1155InsufficientBalance` if `from` is not the current owner or `value > 1`.
     /// @dev This function does not perform ERC-1155 receiver acceptance checks.
@@ -185,13 +185,11 @@ abstract contract ERC1155Singleton is
         address to,
         uint256[] memory ids,
         uint256[] memory values,
-        bool safe
+        bool /* safe */
     )
         internal
         virtual
     {
-        safe; // unused
-
         if (ids.length != values.length) {
             revert ERC1155InvalidArrayLength(ids.length, values.length);
         }

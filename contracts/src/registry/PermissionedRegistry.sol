@@ -177,11 +177,28 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IPermissionedRegistry
-    function unsafeTransfer(address to, uint256 tokenId, bytes calldata data) public virtual {
+    function unsafeTransfer(address to, uint256 tokenId, bytes calldata data) public {
+        _checkReceiver(to);
         address owner = ownerOf(tokenId);
         _checkApproval(owner, msg.sender);
-        _checkReceiver(to);
         _updateOneWithAcceptanceCheck(owner, to, tokenId, 1, false, data);
+    }
+
+    /// @inheritdoc IPermissionedRegistry
+    function unsafeBatchTransfer(address to, uint256[] calldata tokenIds, bytes calldata data)
+        public
+    {
+        _checkReceiver(to);
+        if (tokenIds.length == 0) {
+            revert ERC1155InvalidSender(address(0));
+        }
+        address owner = ownerOf(tokenIds[0]);
+        _checkApproval(owner, msg.sender);
+        uint256[] memory amounts = new uint256[](tokenIds.length);
+        for (uint256 i; i < tokenIds.length; ++i) {
+            amounts[i] = 1;
+        }
+        _updateWithAcceptanceCheck(owner, to, tokenIds, amounts, false, data, true);
     }
 
     /// @inheritdoc IStandardRegistry
@@ -405,7 +422,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     /// @inheritdoc IPermissionedRegistry
     function allTokensEmancipated() public view virtual returns (bool) {
         return
-            (RegistryRolesLib.EMANCIPATED_ROLE_BITMAP &
+            (RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP &
                 EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) ==
             0;
     }

@@ -868,7 +868,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
     }
 
-    function test_safeBatchTransferFrom() external {
+    function test_batchTransfer(bool unsafe) external {
         _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
@@ -890,10 +890,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(tokenIds[1], address(r), 0, testRoles);
         vm.prank(user1);
-        registry.safeBatchTransferFrom(user1, address(r), tokenIds, amounts, "");
+        if (unsafe) {
+            registry.unsafeBatchTransfer(address(r), tokenIds, "");
+        } else {
+            registry.safeBatchTransferFrom(user1, address(r), tokenIds, amounts, "");
+        }
     }
 
-    function test_safeBatchTransferFrom_noop() external {
+    function test_batchTransfer_noop(bool unsafe) external {
         _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
@@ -902,7 +906,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         tokenIds[1] = this._register();
         uint256[] memory amounts = new uint256[](2);
         vm.prank(user1);
-        registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
+        if (unsafe) {
+            registry.unsafeBatchTransfer(user2, tokenIds, "");
+        } else {
+            registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
+        }
     }
 
     function test_safeBatchTransferFrom_noopAfterTransfer() external {
@@ -923,7 +931,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
     }
 
-    function test_safeBatchTransferFrom_twiceToSelf() external {
+    function test_batchTransfer_twiceToSelf(bool unsafe) external {
         _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
@@ -931,10 +939,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = amounts[1] = 1;
         vm.prank(user1);
-        registry.safeBatchTransferFrom(user1, user1, tokenIds, amounts, "");
+        if (unsafe) {
+            registry.unsafeBatchTransfer(user1, tokenIds, "");
+        } else {
+            registry.safeBatchTransferFrom(user1, user1, tokenIds, amounts, "");
+        }
     }
 
-    function test_safeBatchTransferFrom_oneError() external {
+    function test_batchTransfer_oneError(bool unsafe) external {
         _makeEmancipated();
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register(); // no transfer role
@@ -952,25 +964,36 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             )
         );
         vm.prank(user1);
-        registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
+        if (unsafe) {
+            registry.unsafeBatchTransfer(user2, tokenIds, "");
+        } else {
+            registry.safeBatchTransferFrom(user1, user2, tokenIds, amounts, "");
+        }
     }
 
-    function test_safeBatchTransferFrom_invalidReceiver() external {
+    function test_batchTransfer_invalidReceiver(bool unsafe) external {
         this._register();
         uint256[] memory v;
         address to; // wrong
         vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, to));
         vm.prank(user1);
-        registry.safeBatchTransferFrom(user1, to, v, v, "");
+        if (unsafe) {
+            registry.unsafeBatchTransfer(to, v, "");
+        } else {
+            registry.safeBatchTransferFrom(user1, to, v, v, "");
+        }
     }
 
-    function test_safeBatchTransferFrom_invalidSender() external {
-        this._register();
+    function test_batchTransfer_invalidSender(bool unsafe) external {
         uint256[] memory v;
         address from; // wrong
         vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
         vm.prank(user1);
-        registry.__safeBatchTransferFrom(from, user2, v, v, "");
+        if (unsafe) {
+            registry.unsafeBatchTransfer(user2, v, "");
+        } else {
+            registry.__safeBatchTransferFrom(from, user2, v, v, "");
+        }
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1664,7 +1687,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             registry.__grantRoles(registry.ROOT_RESOURCE(), bit, address(this));
             assertEq(
                 registry.allTokensEmancipated(),
-                (RegistryRolesLib.EMANCIPATED_ROLE_BITMAP & bit) == 0,
+                (RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP & bit) == 0,
                 vm.toString(i)
             );
         }
@@ -2002,7 +2025,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     function _makeEmancipated() internal {
         assertTrue(
             registry.allTokensEmancipated() ||
-            registry.revokeRootRoles(RegistryRolesLib.EMANCIPATED_ROLE_BITMAP, address(this))
+            registry.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, address(this))
         );
     }
 

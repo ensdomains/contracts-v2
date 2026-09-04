@@ -7,7 +7,7 @@ import {IContractNamer} from "../../reverse-registrar/interfaces/IContractNamer.
 import {IRegistryURIRenderer} from "./IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0xd56c39e3`
+/// @dev Interface selector: `0xe8b9d765`
 interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -62,11 +62,18 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Transfer a token without safety checks on the token, root, and locked subregistry root.
+    /// @notice Transfer a token without safety checks.
     /// @param to Address to transfer to.
     /// @param tokenId The token ID.
     /// @param data Additional calldata passed to receiver hooks.
     function unsafeTransfer(address to, uint256 tokenId, bytes calldata data) external;
+
+    /// @notice Batch transfer multiple tokens without safety checks.
+    /// @param to Address to transfer to.
+    /// @param tokenIds Array of token IDs.
+    /// @param data Additional calldata passed to receiver hooks.
+    function unsafeBatchTransfer(address to, uint256[] calldata tokenIds, bytes calldata data)
+        external;
 
     /// @notice Change metadata parameters.
     /// @dev Should emit `URIUpdated`.
