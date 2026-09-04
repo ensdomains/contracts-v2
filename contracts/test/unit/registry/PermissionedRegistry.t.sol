@@ -25,6 +25,7 @@ import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
+import {IUnsafeTransferable} from "~src/utils/interfaces/IUnsafeTransferable.sol";
 
 uint256 constant DEFAULT_ROLE_BITMAP = EACBaseRolesLib.ALL_ROLES;
 
@@ -82,6 +83,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertTrue(
             registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
             "IPermissionedRegistry"
+        );
+        assertTrue(
+            registry.supportsInterface(type(IUnsafeTransferable).interfaceId),
+            "IUnsafeTransferable"
         );
         assertTrue(registry.supportsInterface(type(IContractNamer).interfaceId), "IContractNamer");
     }
@@ -1673,20 +1678,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     ////////////////////////////////////////////////////////////////////////
 
     function test_makeEmancipated() external {
-        assertFalse(registry.allTokensEmancipated());
+        assertFalse(registry.isEmancipated());
         _makeEmancipated();
-        assertTrue(registry.allTokensEmancipated());
+        assertTrue(registry.isEmancipated());
     }
 
-    function test_allTokensEmancipated() external {
+    function test_isEmancipated() external {
         for (uint256 i; i < 64; ++i) {
             registry.__grantRoles(registry.ROOT_RESOURCE(), EACBaseRolesLib.ALL_ROLES, address(this));
             _makeEmancipated();
-            assertTrue(registry.allTokensEmancipated());
+            assertTrue(registry.isEmancipated());
             uint256 bit = 1 << (i << 2);
             registry.__grantRoles(registry.ROOT_RESOURCE(), bit, address(this));
             assertEq(
-                registry.allTokensEmancipated(),
+                registry.isEmancipated(),
                 (RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP & bit) == 0,
                 vm.toString(i)
             );
@@ -1704,7 +1709,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.grantRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user2);
         tokenId = registry.getTokenId(tokenId); // token has regenerated
         assertFalse(registry.isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, user1));
-        assertTrue(registry.allTokensEmancipated());
+        assertTrue(registry.isEmancipated());
         // safe transfer is blocked
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -1730,11 +1735,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             RegistryRolesLib.ROLE_SET_RESOLVER,
             address(this)
         );
-        assertFalse(registry.allTokensEmancipated());
+        assertFalse(registry.isEmancipated());
         // safe transfer is blocked
         vm.expectRevert(
             abi.encodeWithSelector(
-                IPermissionedRegistry.TransferUnsafeWhileTokensNotEmancipated.selector
+                IPermissionedRegistry.TransferUnsafeUntilRegistryIsEmancipated.selector
             )
         );
         vm.prank(user1);
@@ -1755,11 +1760,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             RegistryRolesLib.ROLE_SET_RESOLVER,
             address(this)
         );
-        assertFalse(registry.allTokensEmancipated());
+        assertFalse(registry.isEmancipated());
         // safe transfer is blocked
         vm.expectRevert(
             abi.encodeWithSelector(
-                IPermissionedRegistry.TransferUnsafeWhileTokensNotEmancipated.selector
+                IPermissionedRegistry.TransferUnsafeUntilRegistryIsEmancipated.selector
             )
         );
         vm.prank(user1);
@@ -1779,11 +1784,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN,
             address(this)
         );
-        assertFalse(registry.allTokensEmancipated());
+        assertFalse(registry.isEmancipated());
         // safe transfer is blocked
         vm.expectRevert(
             abi.encodeWithSelector(
-                IPermissionedRegistry.TransferUnsafeWhileTokensNotEmancipated.selector
+                IPermissionedRegistry.TransferUnsafeUntilRegistryIsEmancipated.selector
             )
         );
         vm.prank(user1);
@@ -2024,7 +2029,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
     function _makeEmancipated() internal {
         assertTrue(
-            registry.allTokensEmancipated() ||
+            registry.isEmancipated() ||
             registry.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, address(this))
         );
     }

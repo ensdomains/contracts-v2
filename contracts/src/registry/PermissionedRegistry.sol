@@ -10,6 +10,7 @@ import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
+import {IUnsafeTransferable} from "../utils/interfaces/IUnsafeTransferable.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IOwnedRegistry} from "./interfaces/IOwnedRegistry.sol";
@@ -128,6 +129,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             interfaceId == type(IRegistry).interfaceId ||
             interfaceId == type(IPermissionedRegistry).interfaceId ||
             interfaceId == type(IStandardRegistry).interfaceId ||
+            interfaceId == type(IUnsafeTransferable).interfaceId ||
             interfaceId == type(IContractNamer).interfaceId ||
             interfaceId == type(ITokenizedRegistry).interfaceId ||
             interfaceId == type(ITemporalRegistry).interfaceId ||
@@ -176,7 +178,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         emit ParentUpdated(parent, label, msg.sender);
     }
 
-    /// @inheritdoc IPermissionedRegistry
+    /// @inheritdoc IUnsafeTransferable
     function unsafeTransfer(address to, uint256 tokenId, bytes calldata data) public {
         _checkReceiver(to);
         address owner = ownerOf(tokenId);
@@ -184,7 +186,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         _updateOneWithAcceptanceCheck(owner, to, tokenId, 1, false, data);
     }
 
-    /// @inheritdoc IPermissionedRegistry
+    /// @inheritdoc IUnsafeTransferable
     function unsafeBatchTransfer(address to, uint256[] calldata tokenIds, bytes calldata data)
         public
     {
@@ -420,7 +422,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IPermissionedRegistry
-    function allTokensEmancipated() public view virtual returns (bool) {
+    function isEmancipated() public view virtual returns (bool) {
         return
             (RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP &
                 EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) ==
@@ -516,15 +518,15 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     {
         super._update(from, to, tokenIds, amounts, safe); // ensures amounts[i] is 0 or 1
         if (to != address(0) && from != address(0)) {
-            if (safe && !allTokensEmancipated()) {
-                revert TransferUnsafeWhileTokensNotEmancipated();
-            }
             // only transfers (skip mint and burn)
+            if (safe && !isEmancipated()) {
+                revert TransferUnsafeUntilRegistryIsEmancipated();
+            }
             for (uint256 i; i < tokenIds.length; ++i) {
                 uint256 tokenId = tokenIds[i];
                 uint256 resource = getResource(tokenId);
                 // only check ROLE_CAN_TRANSFER_ADMIN on original owner (from)
-                // ROLE_CAN_TRANSFER_ADMIN is technically a property of the token
+                // ROLE_CAN_TRANSFER_ADMIN is a property of the token (not grantable, ignored on root)
                 if ((_getRoles(resource, from) & RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN) == 0) {
                     revert TransferDisallowed(tokenId, from);
                 } else if (safe && !isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, from)) {

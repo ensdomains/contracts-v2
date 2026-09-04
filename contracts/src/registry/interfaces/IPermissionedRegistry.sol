@@ -3,12 +3,18 @@ pragma solidity >=0.8.13;
 
 import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedAccessControl.sol";
 import {IContractNamer} from "../../reverse-registrar/interfaces/IContractNamer.sol";
+import {IUnsafeTransferable} from "../../utils/interfaces/IUnsafeTransferable.sol";
 
 import {IRegistryURIRenderer} from "./IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0xe8b9d765`
-interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IContractNamer {
+/// @dev Interface selector: `0xc18bd555`
+interface IPermissionedRegistry is
+    IStandardRegistry,
+    IEnhancedAccessControl,
+    IUnsafeTransferable,
+    IContractNamer
+{
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -51,8 +57,8 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     error TransferDisallowed(uint256 tokenId, address from);
 
     /// @notice Safe transfer is not allowed because the registry is not emancipated.
-    /// @dev Error selector: `0x5140dd5f`
-    error TransferUnsafeWhileTokensNotEmancipated();
+    /// @dev Error selector: `0x54838f98`
+    error TransferUnsafeUntilRegistryIsEmancipated();
 
     /// @notice Safe transfer is not allowed because the token has non-owner roles.
     /// @dev Error selector: `0x677f1c18`
@@ -61,19 +67,6 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Transfer a token without safety checks.
-    /// @param to Address to transfer to.
-    /// @param tokenId The token ID.
-    /// @param data Additional calldata passed to receiver hooks.
-    function unsafeTransfer(address to, uint256 tokenId, bytes calldata data) external;
-
-    /// @notice Batch transfer multiple tokens without safety checks.
-    /// @param to Address to transfer to.
-    /// @param tokenIds Array of token IDs.
-    /// @param data Additional calldata passed to receiver hooks.
-    function unsafeBatchTransfer(address to, uint256[] calldata tokenIds, bytes calldata data)
-        external;
 
     /// @notice Change metadata parameters.
     /// @dev Should emit `URIUpdated`.
@@ -118,5 +111,5 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     function getOwner(uint256 anyId) external view returns (address owner);
 
     /// @notice Return `true` if the tokens cannot be controlled by root.
-    function allTokensEmancipated() external view returns (bool);
+    function isEmancipated() external view returns (bool);
 }

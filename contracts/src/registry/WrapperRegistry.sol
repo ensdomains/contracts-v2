@@ -208,7 +208,7 @@ contract WrapperRegistry is
     }
 
     /// @inheritdoc PermissionedRegistry
-    function allTokensEmancipated()
+    function isEmancipated()
         public
         pure
         override(PermissionedRegistry, IPermissionedRegistry)
