@@ -46,7 +46,7 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     /// @dev Error selector: `0xf60759e0`
     error LabelAlreadyReserved(string label);
 
-    /// @notice Safe transfer is not allowed due to missing `CAN_TRANSFER_ADMIN` role.
+    /// @notice Transfer is not allowed due to missing `CAN_TRANSFER_ADMIN` role.
     /// @dev Error selector: `0xe58f6d5a`
     error TransferDisallowed(uint256 tokenId, address from);
 
