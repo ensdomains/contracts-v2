@@ -7,7 +7,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {StandardRentPriceOracle, PaymentRatio} from "~src/registrar/StandardRentPriceOracle.sol";
+import {StandardRentPriceOracle, PaymentConfig} from "~src/registrar/StandardRentPriceOracle.sol";
 import {NATIVE_ETH} from "~src/registrar/interfaces/IETHRenewer.sol";
 import {MockChainlinkAggregator} from "~test/mocks/MockChainlinkAggregator.sol";
 import {
@@ -24,7 +24,6 @@ contract StandardRentPriceOracleFixture is Test {
     MockChainlinkAggregator ethOracle;
     MockChainlinkAggregator invalidOracle;
 
-    MockERC20 tokenETH = MockERC20(NATIVE_ETH);
     MockERC20 tokenWETH;
     MockERC20 tokenUSDC;
     MockERC20 tokenDAI;
@@ -34,7 +33,7 @@ contract StandardRentPriceOracleFixture is Test {
     MockERC20FalseReturn tokenFalse;
 
     MockERC20[] paymentTokens;
-    PaymentRatio[] paymentRatios;
+    PaymentConfig[] paymentConfigs;
 
     address beneficiary = makeAddr("beneficiary");
     address refundTo = makeAddr("refundTo");
@@ -50,7 +49,7 @@ contract StandardRentPriceOracleFixture is Test {
         tokenFalse = new MockERC20FalseReturn();
 
         uint8 decimals = 8; // arbitrary
-        uint256 ethPrice = StandardRegistrar.ETH_PRICE;
+        uint256 ethPrice = StandardRegistrar.USD_PER_ETH;
         ethOracle = new MockChainlinkAggregator(int256(ethPrice * 10 ** decimals), decimals);
         invalidOracle = new MockChainlinkAggregator(0, 0);
 
@@ -65,9 +64,18 @@ contract StandardRentPriceOracleFixture is Test {
 
         for (uint256 i; i < paymentTokens.length; ++i) {
             MockERC20 token = paymentTokens[i];
-            paymentRatios.push(StandardRegistrar.ratioFromParts(token, token.decimals()));
+            PaymentConfig memory pc = StandardRegistrar.configFromParts(token, token.decimals());
+            if (address(token) == address(tokenWETH)) {
+                pc.oracle = ethOracle;
+                pc.flip = true;
+            }
         }
-        paymentRatios.push(StandardRegistrar.ratioFromParts(tokenETH, 18));
+        {
+            PaymentConfig memory pc = StandardRegistrar.configFromParts(NATIVE_ETH, 18);
+            pc.oracle = ethOracle;
+            pc.flip = true;
+            paymentConfigs.push(pc);
+        }
 
         rentPriceOracle = new StandardRentPriceOracle(
             address(this),
@@ -77,9 +85,7 @@ contract StandardRentPriceOracleFixture is Test {
             StandardRegistrar.PREMIUM_PRICE_INITIAL,
             StandardRegistrar.PREMIUM_HALVING_PERIOD,
             StandardRegistrar.PREMIUM_PERIOD,
-            paymentRatios,
-            tokenWETH,
-            ethOracle
+            paymentConfigs
         );
 
         // give beneficiary non-zero balance

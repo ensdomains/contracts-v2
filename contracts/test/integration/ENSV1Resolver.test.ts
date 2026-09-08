@@ -1,6 +1,6 @@
 import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/behaviour";
 import hre from "hardhat";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
 import {
   type KnownProfile,
@@ -73,7 +73,7 @@ describe("ENSV1Resolver", () => {
         resolverAddress: F.ensV1Resolver.address,
       });
       await F.v1.publicResolver.write.multicall([
-        res.resolutions.map((x) => x.write),
+        res.resolutions.map((x) => x.writeV1),
       ]);
       {
         const [answer, resolver] = await F.v2.universalResolver.read.resolve([

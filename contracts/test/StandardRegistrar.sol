@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {PaymentRatio, DiscountPoint} from "~src/registrar/StandardRentPriceOracle.sol";
+import {PaymentConfig, DiscountPoint} from "~src/registrar/StandardRentPriceOracle.sol";
 
 library StandardRegistrar {
     uint64 internal constant SEC_PER_YEAR = 365 * 1 days; // 31536000
@@ -21,7 +21,7 @@ library StandardRegistrar {
     uint8 internal constant PRICE_DECIMALS = 12;
     uint256 internal constant PRICE_SCALE = 10 ** PRICE_DECIMALS;
 
-    uint256 internal constant ETH_PRICE = 2000; // dollars
+    uint256 internal constant USD_PER_ETH = 2000;
 
     uint256 internal constant PREMIUM_PRICE_INITIAL = 100_000_000 * PRICE_SCALE;
     uint64 internal constant PREMIUM_HALVING_PERIOD = 1 days;
@@ -84,15 +84,18 @@ library StandardRegistrar {
         return uint128((DISCOUNT_DENOMINATOR * numer + denom - 1) / denom); // round up
     }
 
-    function ratioFromParts(IERC20 token, uint8 decimals)
+    function configFromParts(IERC20 paymentToken, uint8 decimals)
         internal
         pure
-        returns (PaymentRatio memory)
+        returns (PaymentConfig memory pc)
     {
+        pc.paymentToken = paymentToken;
         if (decimals > PRICE_DECIMALS) {
-            return PaymentRatio(token, uint128(10) ** (decimals - PRICE_DECIMALS), 1);
+            pc.numer = uint128(10) ** (decimals - PRICE_DECIMALS);
+            pc.denom = 1;
         } else {
-            return PaymentRatio(token, 1, uint128(10) ** (PRICE_DECIMALS - decimals));
+            pc.numer = 1
+            pc.denom = uint128(10) ** (PRICE_DECIMALS - decimals);
         }
     }
 }

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 /// @notice Interface for pricing registration and renewals.
-/// @dev Interface selector: `0xdb06fc00`
+/// @dev Interface selector: `0x480851dc`
 interface IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -16,7 +14,7 @@ interface IRentPriceOracle {
 
     /// @notice `paymentToken` is not supported for payment.
     /// @dev Error selector: `0x02e2ae9e`
-    error PaymentTokenNotSupported(IERC20 paymentToken);
+    error PaymentTokenNotSupported(address paymentToken);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
@@ -33,7 +31,7 @@ interface IRentPriceOracle {
         string calldata label,
         uint64 available,
         uint64 duration,
-        IERC20 paymentToken
+        address paymentToken
     )
         external
         view
@@ -49,9 +47,14 @@ interface IRentPriceOracle {
         string calldata label,
         uint64 expiry,
         uint64 duration,
-        IERC20 paymentToken
+        address paymentToken
     )
         external
         view
         returns (uint256);
+
+    /// @notice Check if `paymentToken` is supported for payment.
+    /// @param paymentToken The payment token.
+    /// @return Whether the payment token is supported.
+    function isPaymentToken(address paymentToken) external view returns (bool);
 }

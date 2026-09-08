@@ -22,6 +22,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
     LabelStore labelStore;
 
     address resolverAddress = makeAddr("resolver");
+    address actor = makeAddr("actor");
 
     function setUp() external {
         labelStore = new LabelStore(IContractNamer(address(0)));
@@ -95,7 +96,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
         // resolver:   X
         vm.pauseGasMetering();
         PermissionedRegistry ethRegistry = _createRegistry();
-        _register(rootRegistry, "eth", ethRegistry, resolverAddress);
+        _register(rootRegistry, "eth", address(this), ethRegistry, resolverAddress);
         vm.resumeGasMetering();
 
         IRegistry[] memory v = new IRegistry[](2);
@@ -112,8 +113,8 @@ contract LibRegistryTest is Test, ERC1155Holder {
         vm.pauseGasMetering();
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
-        _register(rootRegistry, "eth", ethRegistry, address(0));
-        _register(ethRegistry, "test", testRegistry, resolverAddress);
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        _register(ethRegistry, "test", address(this), testRegistry, resolverAddress);
         vm.resumeGasMetering();
 
         IRegistry[] memory v = new IRegistry[](3);
@@ -131,8 +132,8 @@ contract LibRegistryTest is Test, ERC1155Holder {
         vm.pauseGasMetering();
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
-        _register(rootRegistry, "eth", ethRegistry, resolverAddress);
-        _register(ethRegistry, "test", testRegistry, address(0));
+        _register(rootRegistry, "eth", address(this), ethRegistry, resolverAddress);
+        _register(ethRegistry, "test", address(this), testRegistry, address(0));
         vm.resumeGasMetering();
 
         IRegistry[] memory v = new IRegistry[](4);
@@ -150,8 +151,8 @@ contract LibRegistryTest is Test, ERC1155Holder {
         vm.pauseGasMetering();
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
-        _register(rootRegistry, "eth", ethRegistry, resolverAddress);
-        _register(ethRegistry, "test", testRegistry, address(0));
+        _register(rootRegistry, "eth", address(this), ethRegistry, resolverAddress);
+        _register(ethRegistry, "test", address(this), testRegistry, address(0));
         vm.resumeGasMetering();
 
         IRegistry[] memory v = new IRegistry[](5);
@@ -165,9 +166,9 @@ contract LibRegistryTest is Test, ERC1155Holder {
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
         PermissionedRegistry subRegistry = _createRegistry();
-        _register(rootRegistry, "eth", ethRegistry, address(0));
-        _register(ethRegistry, "test", testRegistry, address(0));
-        _register(testRegistry, "sub", subRegistry, address(0));
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        _register(ethRegistry, "test", address(this), testRegistry, address(0));
+        _register(testRegistry, "sub", address(this), subRegistry, address(0));
         assertEq(
             LibRegistry.findCanonicalName(rootRegistry, rootRegistry),
             NameCoder.encode(""),
@@ -194,9 +195,9 @@ contract LibRegistryTest is Test, ERC1155Holder {
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
         PermissionedRegistry subRegistry = _createRegistry();
-        _register(rootRegistry, "eth", ethRegistry, address(0));
-        _register(ethRegistry, "test", testRegistry, address(0));
-        _register(testRegistry, "sub", subRegistry, address(0));
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        _register(ethRegistry, "test", address(this), testRegistry, address(0));
+        _register(testRegistry, "sub", address(this), subRegistry, address(0));
         assertEq(
             address(LibRegistry.findCanonicalRegistry(rootRegistry, NameCoder.encode(""))),
             address(rootRegistry),
@@ -239,8 +240,8 @@ contract LibRegistryTest is Test, ERC1155Holder {
     function test_findCanonical_wrongRegistry() external {
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
-        _register(rootRegistry, "eth", ethRegistry, address(0));
-        _register(ethRegistry, "test", testRegistry, address(0));
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        _register(ethRegistry, "test", address(this), testRegistry, address(0));
         ethRegistry.setParent(IRegistry(address(0)), "eth"); // wrong
         assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
         assertEq(
@@ -253,8 +254,8 @@ contract LibRegistryTest is Test, ERC1155Holder {
     function test_findCanonical_wrongLabel() external {
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
-        _register(rootRegistry, "eth", ethRegistry, address(0));
-        _register(ethRegistry, "test", testRegistry, address(0));
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        _register(ethRegistry, "test", address(this), testRegistry, address(0));
         ethRegistry.setParent(IRegistry(address(0)), "xyz"); // wrong
         assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
         assertEq(
@@ -267,8 +268,8 @@ contract LibRegistryTest is Test, ERC1155Holder {
     function test_findCanonical_wrongChild() external {
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
-        _register(rootRegistry, "eth", ethRegistry, address(0));
-        uint256 tokenId = _register(ethRegistry, "test", testRegistry, address(0));
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        uint256 tokenId = _register(ethRegistry, "test", address(this), testRegistry, address(0));
         ethRegistry.setSubregistry(tokenId, IRegistry(address(0))); // wrong
         assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
         assertEq(
@@ -281,8 +282,8 @@ contract LibRegistryTest is Test, ERC1155Holder {
     function test_findCanonical_aliased() external {
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
-        _register(rootRegistry, "eth", ethRegistry, address(0));
-        _register(ethRegistry, "test", testRegistry, address(0));
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        _register(ethRegistry, "test", address(this), testRegistry, address(0));
         assertEq(
             LibRegistry.findCanonicalName(rootRegistry, testRegistry),
             NameCoder.encode("test.eth"),
@@ -298,7 +299,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
             address(0),
             "eth:test.xyz"
         );
-        _register(rootRegistry, "xyz", ethRegistry, address(0));
+        _register(rootRegistry, "xyz", address(this), ethRegistry, address(0));
         assertEq(
             LibRegistry.findCanonicalName(rootRegistry, testRegistry),
             NameCoder.encode("test.xyz"),
@@ -316,15 +317,155 @@ contract LibRegistryTest is Test, ERC1155Holder {
         );
     }
 
-    function test_findOwner() external {
+    function test_findNearestRegistry() external {
         PermissionedRegistry ethRegistry = _createRegistry();
         PermissionedRegistry testRegistry = _createRegistry();
-        _register(rootRegistry, "eth", ethRegistry, address(0));
-        _register(ethRegistry, "test", testRegistry, address(0));
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        _register(ethRegistry, "test", address(this), testRegistry, address(0));
 
-        assertEq(LibRegistry.findOwner(rootRegistry, NameCoder.encode(""), 0), address(0));
-        assertEq(LibRegistry.findOwner(rootRegistry, NameCoder.encode("eth"), 0), address(this));
-        assertEq(LibRegistry.findOwner(rootRegistry, NameCoder.encode("test.eth"), 0), address(this));
+        _findNearestRegistry("");
+        _findNearestRegistry("eth");
+        _findNearestRegistry("dne");
+        _findNearestRegistry("dne.eth");
+        _findNearestRegistry("test.eth");
+        _findNearestRegistry("dne.test.eth");
+        _findNearestRegistry("sub.dne.test.eth");
+    }
+
+    function _findNearestRegistry(string memory ens) internal view {
+        bytes memory name = NameCoder.encode(ens);
+        (IRegistry registry, uint256 offset) =
+            LibRegistry.findNearestRegistry(rootRegistry, name, 0);
+        assertEq(
+            address(registry),
+            address(LibRegistry.findExactRegistry(rootRegistry, name, offset)),
+            ens
+        );
+    }
+
+    function test_findNearestRegistry_specific() external {
+        PermissionedRegistry ethRegistry = _createRegistry();
+        PermissionedRegistry testRegistry = _createRegistry();
+        PermissionedRegistry subRegistry1 = _createRegistry();
+        PermissionedRegistry subRegistry2 = _createRegistry();
+        PermissionedRegistry subRegistry3 = _createRegistry();
+
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        _register(ethRegistry, "sub", address(this), subRegistry1, address(0));
+        _register(ethRegistry, "test", address(this), testRegistry, address(0));
+        _register(testRegistry, "sub", address(this), subRegistry2, address(0));
+        _register(subRegistry1, "sub", address(this), subRegistry3, address(0));
+
+        {
+            (IRegistry registry, uint256 offset) =
+                LibRegistry.findNearestRegistry(
+                    rootRegistry,
+                    NameCoder.encode("sub.dne.test.eth"),
+                    0
+                );
+            assertEq(address(registry), address(testRegistry), "registry@1");
+            assertEq(offset, 8, "offset@1"); // 3sub3dne
+        }
+        {
+            (IRegistry registry, uint256 offset) =
+                LibRegistry.findNearestRegistry(
+                    rootRegistry,
+                    NameCoder.encode("dne.sub.test.eth"),
+                    0
+                );
+            assertEq(address(registry), address(subRegistry2), "registry@2");
+            assertEq(offset, 4, "offset@2"); // 3dne
+        }
+        {
+            (IRegistry registry, uint256 offset) =
+                LibRegistry.findNearestRegistry(rootRegistry, NameCoder.encode("sub.dne.eth"), 0);
+            assertEq(address(registry), address(ethRegistry), "registry@3");
+            assertEq(offset, 8, "offset@3"); // 3sub3dne
+        }
+        {
+            (IRegistry registry, uint256 offset) =
+                LibRegistry.findNearestRegistry(rootRegistry, NameCoder.encode("dne.sub.sub.eth"), 0);
+            assertEq(address(registry), address(subRegistry3), "registry@3");
+            assertEq(offset, 4, "offset@3"); // 3dne
+        }
+    }
+
+    function test_findExactOwner() external {
+        PermissionedRegistry ethRegistry = _createRegistry();
+        PermissionedRegistry testRegistry = _createRegistry();
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        _register(ethRegistry, "test", actor, testRegistry, address(0));
+
+        _findExactOwner("", address(0));
+        _findExactOwner("eth", address(this));
+        _findExactOwner("dne", address(0));
+        _findExactOwner("dne.eth", address(0));
+        _findExactOwner("test.eth", actor);
+        _findExactOwner("dne.test.eth", address(0));
+    }
+
+    function _findExactOwner(string memory ens, address expect) internal view {
+        assertEq(LibRegistry.findExactOwner(rootRegistry, NameCoder.encode(ens), 0), expect, ens);
+    }
+
+    function test_findNearestOwner() external {
+        PermissionedRegistry ethRegistry = _createRegistry();
+        PermissionedRegistry testRegistry = _createRegistry();
+        _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
+        _register(ethRegistry, "test", address(this), testRegistry, address(0));
+
+        _findNearestOwner("");
+        _findNearestOwner("eth");
+        _findNearestOwner("dne");
+        _findNearestOwner("dne.eth");
+        _findNearestOwner("test.eth");
+        _findNearestOwner("dne.test.eth");
+        _findNearestOwner("sub.dne.test.eth");
+    }
+
+    function _findNearestOwner(string memory ens) internal view {
+        bytes memory name = NameCoder.encode(ens);
+        (address owner, uint256 offset) = LibRegistry.findNearestOwner(rootRegistry, name, 0);
+        assertEq(owner, LibRegistry.findExactOwner(rootRegistry, name, offset), ens);
+    }
+
+    function test_findNearestOwner_specific() external {
+        PermissionedRegistry ethRegistry = _createRegistry();
+        PermissionedRegistry testRegistry = _createRegistry();
+
+        _register(rootRegistry, "eth", address(1), ethRegistry, address(0));
+        _register(ethRegistry, "sub", address(2), IRegistry(address(0)), address(0));
+        _register(ethRegistry, "test", address(3), testRegistry, address(0));
+        _register(testRegistry, "sub", address(4), IRegistry(address(0)), address(0));
+
+        {
+            bytes memory name = NameCoder.encode("sub.dne.eth");
+            (address owner, uint256 offset) = LibRegistry.findNearestOwner(rootRegistry, name, 0);
+            assertEq(owner, address(1), "owner@1");
+            assertEq(offset, 8, "offset@1"); // 3sub3dne
+            assertEq(owner, LibRegistry.findExactOwner(rootRegistry, name, offset), "exact@1");
+        }
+        {
+            bytes memory name = NameCoder.encode("dne.sub.sub.eth");
+            (address owner, uint256 offset) = LibRegistry.findNearestOwner(rootRegistry, name, 0);
+            assertEq(owner, address(2), "owner@2");
+            assertEq(offset, 8, "offset@2"); // 3sub3dne
+            assertEq(owner, LibRegistry.findExactOwner(rootRegistry, name, offset), "exact@2");
+        }
+        {
+            bytes memory name = NameCoder.encode("sub.dne.test.eth");
+            (address owner, uint256 offset) = LibRegistry.findNearestOwner(rootRegistry, name, 0);
+            assertEq(owner, address(3), "owner@3");
+            assertEq(offset, 8, "offset@3"); // 3sub3dne
+            assertEq(owner, LibRegistry.findExactOwner(rootRegistry, name, offset), "exact@3");
+        }
+        {
+            bytes memory name = NameCoder.encode("dne.sub.test.eth");
+            (address owner, uint256 offset) = LibRegistry.findNearestOwner(rootRegistry, name, 0);
+            assertEq(owner, address(4), "owner@4");
+            assertEq(offset, 4, "offset@4"); // 3dne
+            assertEq(owner, LibRegistry.findExactOwner(rootRegistry, name, offset), "exact@4");
+        }
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -338,6 +479,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
     function _register(
         PermissionedRegistry parentRegistry,
         string memory label,
+        address owner,
         IRegistry registry,
         address resolver
     )
@@ -346,7 +488,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
     {
         tokenId = parentRegistry.register(
             label,
-            address(this),
+            owner,
             registry,
             resolver,
             EACBaseRolesLib.ALL_ROLES,

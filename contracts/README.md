@@ -145,7 +145,7 @@ Roles granted during core deployment.
 
 Legend: A = admin only, R = regular only, AR = admin and regular
 
-_`ETHRegistrar`, `ETHRenewerV1`, and `ApprovedUpgradeGate` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
+_`ETHRegistrar` and `ETHRenewerV1` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
 
 _Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 6](docs/migration.md#phase-6-enable-the-v2-controller)._
 
@@ -342,8 +342,6 @@ Generated contract address tables, regenerated automatically at the end of `phas
 - [Sepolia](docs/addresses/sepolia.md)
 - [Mainnet](docs/addresses/mainnet.md)
 
-> **Operational note (Sepolia, temporary):** the intermediate URP `0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1` has been repointed from the current fresh deployment (`deployments/sepolia`) back to the previous deployment's `UniversalResolverV2` `0x2f8a180604c42457cb56c7c4f708748ff1f91df1` (`deployments/sepolia-official-v1-20260525-r2`), so the public entrypoint `0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe` again resolves v1 names. This is a temporary measure at the team's request until the fresh deployment's v1 mirror is wired up; to revert, run `phase upgrade-managed-urp --network sepolia --deployment-network sepolia` (the current stack).
-
 ## Getting started
 
 ### Installation
@@ -406,7 +404,8 @@ Start a local devnet:
 bun run devnet        # runs w/last build
 ```
 
-This will start a local chain at http://localhost:8545 (Chain ID: 31337)
+This starts a local chain at http://localhost:8545 (Chain ID: 31337). The live
+deployment manifest is available at http://localhost:8000/deployments.
 
 To populate the devnet with test names (registrations, subnames, aliases, renewals, etc.):
 
@@ -461,24 +460,28 @@ The ten names cover every migration state (unwrapped, wrapped-locked, wrapped-un
 
 ### Using Docker Compose
 
-1. Make sure you have Docker and Docker Compose installed
-2. Run the devnet using either:
+Make sure Docker and Docker Compose are installed, then start the devnet and
+mockestrator transport from the repository root:
 
-   ```bash
-   # Using local build
-   docker compose up -d
+```sh
+docker compose --profile default up -d --build mockestrator
+```
 
-   # Or using pre-built image from GitHub Container Registry
-   docker pull ghcr.io/ensdomains/contracts-v2:latest
-   docker compose up -d
-   ```
+Targeting `mockestrator` starts the devnet dependency without starting the
+unrelated bundler and paymaster services in the default profile.
 
-3. The devnet will be available at http://localhost:8545 (Chain ID: 31337)
+The devnet is available at http://localhost:8545, deployment metadata at
+http://localhost:8000/deployments, and mockestrator at http://localhost:3007.
+
+Mockestrator is a frontend transport mock. It does not replace the SDK's HCA
+adapter or prove the account's authorization policy. For the current frontend
+boundary, see
+[HCA](../docs/HCA.md).
 
 To view logs:
 
 ```bash
-docker logs -f contracts-v2-devnet-1
+docker compose logs -f devnet mockestrator
 ```
 
 To stop the devnet:

@@ -10,7 +10,7 @@ import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAc
 import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
 import {
     StandardRentPriceOracle,
-    PaymentRatio,
+    PaymentConfig,
     DiscountPoint,
     DEFAULT_ROLE_BITMAP,
     ROLE_UPDATE_TOKEN,
@@ -97,8 +97,8 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     }
 
     function test_constructor_emitPaymentTokenUpdated() external {
-        PaymentRatio[] memory v = new PaymentRatio[](1);
-        v[0] = PaymentRatio(tokenUSDC, 1, 1);
+        PaymentConfig[] memory v = new PaymentConfig[](1);
+        v[0] = PaymentConfig(tokenUSDC, 1, 1);
         vm.expectEmit();
         emit StandardRentPriceOracle.PaymentTokenUpdated(tokenUSDC, 1, 1);
         new StandardRentPriceOracle(
@@ -125,7 +125,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
             0,
             0,
             0,
-            new PaymentRatio[](0),
+            new PaymentConfig[](0),
             IERC20(address(0)),
             IChainlinkAggregator(address(0))
         );
@@ -144,7 +144,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
             0,
             0,
             0,
-            new PaymentRatio[](0),
+            new PaymentConfig[](0),
             IERC20(address(0)),
             IChainlinkAggregator(address(0))
         );
@@ -163,7 +163,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
             0,
             0,
             0,
-            new PaymentRatio[](0),
+            new PaymentConfig[](0),
             IERC20(address(0)),
             IChainlinkAggregator(address(0))
         );
@@ -181,7 +181,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
             0,
             0,
             0,
-            new PaymentRatio[](0),
+            new PaymentConfig[](0),
             IERC20(address(0)),
             IChainlinkAggregator(address(0))
         );
@@ -199,15 +199,15 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
             0,
             0,
             0,
-            new PaymentRatio[](0),
+            new PaymentConfig[](0),
             IERC20(address(0)),
             IChainlinkAggregator(address(0))
         );
     }
 
     function test_constructor_invalidRatio() external {
-        PaymentRatio[] memory v = new PaymentRatio[](1);
-        v[0] = PaymentRatio(tokenUSDC, 1, 0); // wrong
+        PaymentConfig[] memory v = new PaymentConfig[](1);
+        v[0] = PaymentConfig(tokenUSDC, 1, 0); // wrong
         vm.expectRevert(abi.encodeWithSelector(StandardRentPriceOracle.InvalidRatio.selector));
         new StandardRentPriceOracle(
             address(this),
@@ -232,21 +232,21 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     }
 
     function test_getPaymentTokenRatio_exists() external view {
-        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(tokenUSDC);
-        PaymentRatio memory pr = StandardRegistrar.ratioFromParts(tokenUSDC, tokenUSDC.decimals());
-        assertEq(numer, pr.numer, "numer");
-        assertEq(denom, pr.denom, "denom");
+        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(address(tokenUSDC));
+        PaymentConfig memory pc = StandardRegistrar.configFromParts(tokenUSDC, tokenUSDC.decimals());
+        assertEq(numer, pc.numer, "numer");
+        assertEq(denom, pc.denom, "denom");
     }
 
     function test_getPaymentTokenRatio_unknown() external view {
-        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(invalidPaymentToken);
+        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(address(invalidPaymentToken));
         assertEq(numer, 0, "numer");
         assertEq(denom, 0, "denom");
     }
 
     function test_getPaymentTokenRatio_eth() external view {
-        (uint128 numer0, uint128 denom0) = rentPriceOracle.getPaymentTokenRatio(tokenETH);
-        (uint128 numer1, uint128 denom1) = rentPriceOracle.getPaymentTokenRatio(tokenWETH);
+        (uint128 numer0, uint128 denom0) = rentPriceOracle.getPaymentTokenRatio(NATIVE_ETH);
+        (uint128 numer1, uint128 denom1) = rentPriceOracle.getPaymentTokenRatio(address(tokenWETH));
         assertEq(numer0, numer1, "same numer");
         assertEq(denom0, denom1, "same denom");
         assertEq(
@@ -257,15 +257,23 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
         assertEq(denom1, uint256(ethOracle.latestAnswer()), "denom");
     }
 
-    function test_updatePaymentToken_add() external {
-        assertFalse(rentPriceOracle.isPaymentToken(invalidPaymentToken));
+    function test_updatePaymentToken_add(uint128 numer, uint128 denom, IChainlinkAggregator oracle, bool flip) external {
+        vm.assume(denom > 0);
+        address paymentToken = address(1);
+        assertFalse(rentPriceOracle.isPaymentToken(paymentToken));
         vm.expectEmit();
-        emit StandardRentPriceOracle.PaymentTokenUpdated(invalidPaymentToken, 1, 1);
-        rentPriceOracle.updatePaymentToken(invalidPaymentToken, 1, 1);
-        (uint128 numer, uint128 denom) = rentPriceOracle.getPaymentTokenRatio(invalidPaymentToken);
-        assertEq(numer, 1, "numer");
-        assertEq(denom, 1, "denom");
-        assertTrue(rentPriceOracle.isPaymentToken(invalidPaymentToken));
+        emit StandardRentPriceOracle.PaymentTokenUpdated(PaymentConfig({
+            paymentToken: paymentToken, 
+            numer: numer,
+            denom: denom,
+            oracle: oracle,
+            flip: flip
+        }));
+        rentPriceOracle.updatePaymentToken(paymentToken, numer, denom, oracle, flip);
+        (uint128 numer_, uint128 denom_) = rentPriceOracle.getPaymentTokenRatio(paymentToken);
+        assertEq(numer, numer_, "numer");
+        assertEq(denom, denom_, "denom");
+        assertTrue(rentPriceOracle.isPaymentToken(paymentToken));
     }
 
     function test_updatePaymentToken_edit() external {
@@ -396,7 +404,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
                 256000,
                 1,
                 8,
-                new PaymentRatio[](0),
+                new PaymentConfig[](0),
                 IERC20(address(0)),
                 IChainlinkAggregator(address(0))
             );
@@ -502,7 +510,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     function test_ethOracle() external view {
         assertEq(
             uint256(ethOracle.latestAnswer()),
-            StandardRegistrar.ETH_PRICE * 10 ** ethOracle.decimals()
+            StandardRegistrar.USD_PER_ETH * 10 ** ethOracle.decimals()
         );
     }
 
@@ -516,7 +524,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
                 StandardRegistrar.PREMIUM_PRICE_INITIAL,
                 StandardRegistrar.PREMIUM_HALVING_PERIOD,
                 StandardRegistrar.PREMIUM_PERIOD,
-                paymentRatios,
+                paymentConfigs,
                 tokenWETH,
                 IChainlinkAggregator(address(0))
             );
@@ -535,7 +543,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
                 StandardRegistrar.PREMIUM_PRICE_INITIAL,
                 StandardRegistrar.PREMIUM_HALVING_PERIOD,
                 StandardRegistrar.PREMIUM_PERIOD,
-                paymentRatios,
+                paymentConfigs,
                 tokenWETH,
                 invalidOracle
             );

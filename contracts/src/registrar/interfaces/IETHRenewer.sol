@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 address constant NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE; // https://eips.ethereum.org/EIPS/eip-7528
 
 struct RenewData {
@@ -34,7 +32,7 @@ interface IETHRenewer {
         string label,
         uint64 duration,
         uint64 newExpiry,
-        IERC20 paymentToken,
+        address paymentToken,
         bytes32 indexed referrer,
         uint256 amount
     );
@@ -59,34 +57,26 @@ interface IETHRenewer {
     /// @dev Error selector: `0x1fbeaea0`
     error InsufficientETH(uint256 supplied, uint256 required);
 
-    /// @notice `supplied` ether was positive.
-    /// @dev Error selector: `0x31e99b9f`
-    error UnexpectedETH(uint256 supplied);
-
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Renew a name.
     /// @param rd The renew data.
-    /// @param paymentToken The payment token.
-    /// @param refundTo The refund address if ether is used.
-    function renew(RenewData calldata rd, IERC20 paymentToken, address refundTo) external payable;
+    /// @param paymentToken The payment token (or refund address if ether is supplied).
+    function renew(RenewData calldata rd, address paymentToken) external payable;
 
     /// @notice Renew multiple names.
     /// @param rds The renew data.
-    /// @param paymentToken The payment token.
-    /// @param refundTo The refund address if ether is used.
-    function renewBatch(RenewData[] calldata rds, IERC20 paymentToken, address refundTo)
-        external
-        payable;
+    /// @param paymentToken The payment token (or refund address if ether is supplied).
+    function renewBatch(RenewData[] calldata rds, address paymentToken) external payable;
 
     /// @notice Determine renew price for a name.
     /// @param label The name to renew.
     /// @param duration The duration extension, in seconds.
     /// @param paymentToken The payment token.
     /// @return The amount of `paymentToken`.
-    function getRenewPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+    function getRenewPrice(string calldata label, uint64 duration, address paymentToken)
         external
         view
         returns (uint256);

@@ -99,33 +99,35 @@ if (!quiet) {
     })),
   );
 
-  const tags = ["v2", "shared", "erc20"] as const;
+  const nameKey = "Contract Name";
   console.table(
-    await Promise.all(
-      Object.entries(env.rocketh.deployments).map(
-        async ([name, { address }]) => {
-          // On a mainnet fork, reverse resolution for freshly-deployed
-          // contracts can revert; fall back to no primary name rather than
-          // crashing the whole table.
-          let primary = "";
-          try {
-            const result = await env.v2.UniversalResolver.read.reverse([
-              address,
-              COIN_TYPE_ETH,
-            ]);
-            primary = result[0];
-          } catch {}
-          return {
-            "Contract Name": name,
-            "Contract Address": getAddress(address),
-            "Primary Name":
-              !primary && (name in env.v2 || name in env.shared)
-                ? undefined
-                : primary,
-          };
-        },
-      ),
-    ),
+    (
+      await Promise.all(
+        Object.entries(env.rocketh.deployments).map(
+          async ([name, { address }]) => {
+            // On a mainnet fork, reverse resolution for freshly-deployed
+            // contracts can revert; fall back to no primary name rather than
+            // crashing the whole table.
+            let primary = "";
+            try {
+              const result = await env.v2.UniversalResolver.read.reverse([
+                address,
+                COIN_TYPE_ETH,
+              ]);
+              primary = result[0];
+            } catch {}
+            return {
+              [nameKey]: name,
+              "Contract Address": getAddress(address),
+              "Primary Name":
+                !primary && (name in env.v2 || name in env.shared)
+                  ? undefined
+                  : primary,
+            };
+          },
+        ),
+      )
+    ).sort((a, b) => a[nameKey].localeCompare(b[nameKey])),
   );
 
   console.log({
@@ -157,9 +159,19 @@ if (forkUrl) {
 console.log(new Date(), `Ready! <${Date.now() - t0}ms>`);
 
 const server = createServer((req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "content-type");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  const path = new URL(req.url ?? "/", "http://devnet.local").pathname;
   // Surface every rocketh-tracked deployment as JSON so consumers don't
   // have to know about the deployments/devnet-{chainId}/*.json layout.
-  if (req.url === "/deployments") {
+  if (path === "/deployments") {
     const body: Record<string, string> = {
       chainId: String(env.client.chain.id),
     };
@@ -170,12 +182,17 @@ const server = createServer((req, res) => {
     res.end(JSON.stringify(body));
     return;
   }
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("healthy\n");
+  if (path === "/health") {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("healthy\n");
+    return;
+  }
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("not found\n");
 });
 
-server.listen(8000, () => {
-  console.log(`Healthcheck endpoint listening on :8000/health`);
+server.listen(8000, "0.0.0.0", () => {
+  console.log(`Devnet metadata listening on :8000`);
 });
 
 // ensure server shuts down with the env

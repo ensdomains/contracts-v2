@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.25;
 
 import {Multicallable} from "@ens/contracts/resolvers/Multicallable.sol";
 import {ABIResolver} from "@ens/contracts/resolvers/profiles/ABIResolver.sol";
@@ -98,7 +98,7 @@ contract PublicResolverV2 is
         ROOT_REGISTRY = rootRegistry;
     }
 
-    /// @inheritdoc AddrResolver
+    /// @inheritdoc ERC165
     function supportsInterface(bytes4 interfaceId)
         public
         view
@@ -176,7 +176,7 @@ contract PublicResolverV2 is
         if (name.length == 0) {
             return false;
         }
-        address owner = LibRegistry.findOwner(ROOT_REGISTRY, name, 0);
+        address owner = LibRegistry.findExactOwner(ROOT_REGISTRY, name, 0);
         return
             owner == operator ||
             isApprovedForAll(owner, operator) ||

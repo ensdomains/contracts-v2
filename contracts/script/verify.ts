@@ -48,7 +48,7 @@ function parseArgs(argv: string[]) {
   }
   if (!network) {
     throw new Error(
-      "usage: bun ./script/verify.ts --network <name> [--etherscan-only|--sourcify-only] [-- <extra rocketh-verify args>]",
+      "usage: bun ./script/verify.ts --network <name> [--etherscan-only|--sourcify-only] [<extra rocketh-verify args>] (do not separate extra args with --; they are forwarded as-is)",
     );
   }
   return { network, backends, passthrough };

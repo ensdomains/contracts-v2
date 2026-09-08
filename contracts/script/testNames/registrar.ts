@@ -1,6 +1,11 @@
-import { type Hex, namehash, zeroAddress } from "viem";
+import { type Hex, zeroAddress } from "viem";
 import type { DevnetAccount, DevnetEnvironment } from "../setup.js";
-import { idFromLabel } from "../../test/utils/utils.js";
+import {
+  COIN_TYPE_ETH,
+  dnsEncodeName,
+  idFromLabel,
+  namehash,
+} from "../../test/utils/utils.js";
 import { formatExpiry } from "./display.js";
 import { trackGas } from "./gas.js";
 import { MAX_EXPIRY } from "../deploy-constants.js";
@@ -29,8 +34,7 @@ export async function registerTestNames(
   const durationInDays = options.durationInDays ?? 28;
   const duration = BigInt(durationInDays * ONE_DAY_SECONDS);
   const paymentToken = env.erc20.MockUSDC.address;
-  const referrer =
-    "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+  const referrer = namehash("referrer");
 
   // use account's resolver (already deployed by devnet)
   const { resolver } = account;
@@ -112,14 +116,14 @@ export async function registerTestNames(
     if (shouldTrackGas) trackGas(`register(${labels[i]})`, receipt);
 
     // Set resolver records
-    const node = namehash(`${labels[i]}.eth`);
+    const name = dnsEncodeName(`${labels[i]}.eth`);
     const setAddrReceipt = await env.waitFor(
-      resolver.write.setAddr([node, 60n, account.address]),
+      resolver.write.setAddress([name, COIN_TYPE_ETH, account.address]),
     );
     if (shouldTrackGas) trackGas(`setAddr(${labels[i]})`, setAddrReceipt);
 
     const setTextReceipt = await env.waitFor(
-      resolver.write.setText([node, "description", `${labels[i]}.eth`]),
+      resolver.write.setText([name, "description", `${labels[i]}.eth`]),
     );
     if (shouldTrackGas) trackGas(`setText(${labels[i]})`, setTextReceipt);
   }
@@ -137,17 +141,20 @@ export async function reregisterName(
     `\n=== Testing Re-registration of Expired Name: ${label}.eth ===`,
   );
 
-  const initialExpiry = await env.v2.ETHRegistry.read.getExpiry([
-    idFromLabel(label),
-  ]);
+  const initialExpiry = await env.v2.ETHRegistry.read.findExpiry([label]);
   console.log(
     `Initial expiry: ${new Date(Number(initialExpiry) * 1000).toISOString()}`,
   );
 
-  // Time warp past expiry (must exceed the registration duration, default 28 days)
-  const warpSeconds = 28 * ONE_DAY_SECONDS + 1;
+  const [minRegDur, gracePeriod, premiumPeriod] = await Promise.all([
+    env.v2.ETHRegistrar.read.MIN_REGISTER_DURATION(),
+    env.v2.ETHRegistrar.read.GRACE_PERIOD(),
+    env.v2.StandardRentPriceOracle.read.PREMIUM_PERIOD(),
+  ]);
+  const warpSeconds = minRegDur + gracePeriod + premiumPeriod;
+
   console.log(`\nTime warping ${warpSeconds} seconds...`);
-  await env.sync({ warpSec: warpSeconds });
+  await env.sync({ warpSec: Number(warpSeconds) });
 
   console.log(
     `\nCurrent onchain timestamp: ${await env.client.getBlock().then((b) => formatExpiry(b.timestamp))}`,
@@ -206,8 +213,6 @@ export async function renewName(
 
   const duration = BigInt(durationInDays * ONE_DAY_SECONDS);
   const paymentToken = env.erc20.MockUSDC.address;
-  const referrer =
-    "0x0000000000000000000000000000000000000000000000000000000000000000";
 
   const price = await env.v2.ETHRegistrar.read.getRenewPrice([
     label,
@@ -234,7 +239,7 @@ export async function renewName(
 
   const receipt = await env.waitFor(
     env.v2.ETHRegistrar.write.renew(
-      [{ label, duration, referrer }, paymentToken, zeroAddress],
+      [{ label, duration, referrer: namehash("referrer") }, paymentToken],
       { account },
     ),
   );

@@ -5,7 +5,6 @@ import {
   type Address,
   encodeAbiParameters,
   type Hex,
-  namehash,
   zeroAddress,
 } from "viem";
 import {
@@ -24,6 +23,7 @@ import {
   getLabelAt,
   getParentName,
   idFromLabel,
+  namehash,
 } from "../utils/utils.js";
 import {
   bundleCalls,
@@ -110,7 +110,7 @@ describe("Migration", () => {
       await env.v1.PublicResolver.write.multicall(
         [
           makeResolutions({ name: this.name, ...defaultProfile }).map(
-            (x) => x.write,
+            (x) => x.writeV1,
           ),
         ],
         { account: this.account },
@@ -207,7 +207,6 @@ describe("Migration", () => {
         [
           { label, duration, referrer: namehash("referrer") },
           env.erc20.MockUSDC.address,
-          zeroAddress,
         ],
         { account },
       );
@@ -337,7 +336,7 @@ describe("Migration", () => {
         target = x.wrapperRegistry().address;
       }
       for (const x of v) {
-        const registry = await env.v2.UniversalResolver.read.findExactRegistry([
+        const registry = await env.v2.UniversalHelper.read.findExactRegistry([
           dnsEncodeName(x.name),
         ]);
         expectVar({ registry }).toEqualAddress(x.wrapperRegistry().address);
@@ -490,7 +489,7 @@ describe("Migration", () => {
       await unwrapped.checkMigrated();
       await resolver.write.multicall([
         makeResolutions({ name: unwrapped.name, ...defaultProfile }).map(
-          (x) => x.write,
+          (x) => x.writeV2,
         ),
       ]);
       await unwrapped.checkResolution();

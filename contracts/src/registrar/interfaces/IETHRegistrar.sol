@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
 import {IETHRenewer} from "./IETHRenewer.sol";
@@ -53,7 +51,7 @@ interface IETHRegistrar is IETHRenewer {
         IRegistry subregistry,
         address resolver,
         uint64 duration,
-        IERC20 paymentToken,
+        address paymentToken,
         bytes32 indexed referrer,
         uint256 base,
         uint256 premium
@@ -90,20 +88,18 @@ interface IETHRegistrar is IETHRenewer {
 
     /// @notice Register a name.
     /// @param cd The commit data.
-    /// @param paymentToken The payment token.
-    /// @param refundTo The refund address if ether is used.
+    /// @param paymentToken The payment token (or refund address if ether is supplied).
     /// @return The registered token ID.
-    function register(CommitData calldata cd, IERC20 paymentToken, address refundTo)
+    function register(CommitData calldata cd, address paymentToken)
         external
         payable
         returns (uint256);
 
     /// @notice Register multiple names.
     /// @param cds The commit data.
-    /// @param paymentToken The payment token.
-    /// @param refundTo The refund address if ether is used.
+    /// @param paymentToken The payment token (or refund address if ether is supplied).
     /// @return The registered token IDs.
-    function registerBatch(CommitData[] calldata cds, IERC20 paymentToken, address refundTo)
+    function registerBatch(CommitData[] calldata cds, address paymentToken)
         external
         payable
         returns (uint256[] memory);
@@ -119,7 +115,7 @@ interface IETHRegistrar is IETHRenewer {
     /// @param paymentToken The payment token.
     /// @return base The amount of `paymentToken` for registration.
     /// @return premium The amount of `paymentToken` due to premium.
-    function getRegisterPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+    function getRegisterPrice(string calldata label, uint64 duration, address paymentToken)
         external
         view
         returns (uint256 base, uint256 premium);

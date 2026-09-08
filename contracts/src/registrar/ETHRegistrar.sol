@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
-
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+pragma solidity 0.8.25;
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
@@ -119,18 +117,18 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @inheritdoc IETHRegistrar
-    function register(CommitData calldata cd, IERC20 paymentToken, address refundTo)
+    function register(CommitData calldata cd, address paymentToken)
         external
         payable
         returns (uint256 tokenId)
     {
         uint256 amount;
         (amount, tokenId) = _register(cd, paymentToken);
-        _transferPayment(paymentToken, amount, refundTo);
+        _transferPayment(paymentToken, amount);
     }
 
     /// @inheritdoc IETHRegistrar
-    function registerBatch(CommitData[] calldata cds, IERC20 paymentToken, address refundTo)
+    function registerBatch(CommitData[] calldata cds, address paymentToken)
         external
         payable
         returns (uint256[] memory tokenIds)
@@ -142,7 +140,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
             (amount, tokenIds[i]) = _register(cds[i], paymentToken);
             total += amount;
         }
-        _transferPayment(paymentToken, total, refundTo);
+        _transferPayment(paymentToken, total);
     }
 
     /// @inheritdoc IETHRegistrar
@@ -151,7 +149,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @inheritdoc IETHRegistrar
-    function getRegisterPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+    function getRegisterPrice(string calldata label, uint64 duration, address paymentToken)
         external
         view
         returns (uint256 base, uint256 premium)
@@ -197,7 +195,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Register a name and return the amount of `paymentToken` and token ID.
-    function _register(CommitData calldata cd, IERC20 paymentToken)
+    function _register(CommitData calldata cd, address paymentToken)
         internal
         returns (uint256 amount, uint256 tokenId)
     {

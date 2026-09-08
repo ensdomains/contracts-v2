@@ -10,9 +10,10 @@ import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IETHRenewer, RenewData, NATIVE_ETH} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
+import {IRentPriceOracleProvider} from "./interfaces/IRentPriceOracleProvider.sol";
 
 /// @dev Abstract registrar implementation shared between `ETHRegistrar` and `ETHRenewerV1`.
-abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
+abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer, IRentPriceOracleProvider {
     ////////////////////////////////////////////////////////////////////////
     // Constants & Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -31,7 +32,7 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Oracle for registration and renewal costs.
-    IRentPriceOracle public rentPriceOracle;
+    IRentPriceOracle public override rentPriceOracle;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -66,7 +67,10 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
 
     /// @inheritdoc ERC165
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return interfaceId == type(IETHRenewer).interfaceId || super.supportsInterface(interfaceId);
+        return
+            interfaceId == type(IETHRenewer).interfaceId ||
+            interfaceId == type(IRentPriceOracleProvider).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -81,29 +85,28 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     }
 
     /// @inheritdoc IETHRenewer
-    function renew(RenewData calldata rd, IERC20 paymentToken, address refundTo) external payable {
-        _transferPayment(paymentToken, _renew(rd, paymentToken), refundTo);
-    }
-
-    /// @inheritdoc IETHRenewer
-    function renewBatch(RenewData[] calldata rds, IERC20 paymentToken, address refundTo)
-        external
-        payable
-    {
-        uint256 total;
-        for (uint256 i; i < rds.length; ++i) {
-            total += _renew(rds[i], paymentToken);
-        }
-        _transferPayment(paymentToken, total, refundTo);
-    }
-
-    /// @inheritdoc IETHRenewer
     function isRenewable(string calldata label) external view returns (bool) {
         return _isRenewable(ETH_REGISTRY.getState(LibLabel.id(label)));
     }
 
     /// @inheritdoc IETHRenewer
-    function getRenewPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+    function renew(RenewData calldata rd, address paymentToken) public virtual payable {
+        _transferPayment(paymentToken, _renew(rd, paymentToken));  // reverts if payment failed
+    }
+
+    /// @inheritdoc IETHRenewer
+    function renewBatch(RenewData[] calldata rds, address paymentToken) public virtual payable  {
+        uint256 total;
+        for (uint256 i; i < rds.length; ++i) {
+            total += _renew(rds[i], paymentToken);
+        }
+        if (rds.length > 0) {
+            _transferPayment(paymentToken, total); // reverts if payment failed
+        }
+    }
+
+    /// @inheritdoc IETHRenewer
+    function getRenewPrice(string calldata label, uint64 duration, address paymentToken)
         public
         view
         returns (uint256)
@@ -122,7 +125,10 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Renew a name and return the amount of `paymentToken`.
-    function _renew(RenewData calldata rd, IERC20 paymentToken) internal returns (uint256 amount) {
+    function _renew(RenewData calldata rd, address paymentToken) internal returns (uint256 amount) {
+        if (msg.value > 0) {
+            paymentToken = NATIVE_ETH;
+        }
         IPermissionedRegistry.State memory state = _requireRenewable(rd.label, rd.duration); // reverts if not
         uint64 newExpiry = state.expiry + rd.duration; // reverts if overflow
         amount = rentPriceOracle.getRenewPrice(rd.label, state.expiry, rd.duration, paymentToken); // reverts if invalid
@@ -140,11 +146,8 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     }
 
     /// @dev Pay beneficiary and refund extra ether.
-    function _transferPayment(IERC20 paymentToken, uint256 amount, address refundTo) internal {
-        if (amount == 0) {
-            return;
-        }
-        if (address(paymentToken) == NATIVE_ETH) {
+    function _transferPayment(address paymentToken, uint256 amount) internal {
+        if (msg.value > 0) {
             if (msg.value < amount) {
                 revert InsufficientETH(msg.value, amount);
             }
@@ -153,16 +156,13 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
                 revert ETHTransferFailed(BENEFICIARY);
             }
             if (msg.value > amount) {
-                (ok, ) = payable(refundTo).call{value: msg.value - amount}("");
+                (ok, ) = payable(paymentToken).call{value: msg.value - amount}("");
                 if (!ok) {
-                    revert ETHTransferFailed(refundTo);
+                    revert ETHTransferFailed(paymentToken);
                 }
             }
         } else {
-            if (msg.value > 0) {
-                revert UnexpectedETH(msg.value);
-            }
-            SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, amount); // reverts if payment failed
+            SafeERC20.safeTransferFrom(IERC20(paymentToken), msg.sender, BENEFICIARY, amount); // reverts if payment failed
         }
     }
 

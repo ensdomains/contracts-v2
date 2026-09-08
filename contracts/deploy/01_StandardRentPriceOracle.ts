@@ -1,5 +1,7 @@
-import type { Address } from "viem";
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import { type Address } from "viem";
+import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
+import { Artifact_StandardRentPriceOracle } from "generated/artifacts/StandardRentPriceOracle.js";
 import {
   SEC_PER_YEAR,
   PRICE_SCALE,
@@ -42,7 +44,7 @@ export default execute(
       wethAddress = MAINNET_WETH;
       paymentTokens.push(MAINNET_USDC);
       paymentTokens.push(MAINNET_DAI);
-    } else if (tags.sepolia) {
+    } else if (tags.sepolia || tags["clean-testnet"]) {
       ethOracleAddress = SEPOLIA_ETH_ORACLE;
       wethAddress = SEPOLIA_WETH;
       paymentTokens.push(SEPOLIA_USDC);
@@ -61,7 +63,7 @@ export default execute(
 
     const paymentFactors = await Promise.all(
       paymentTokens.map(async (address) => {
-        const { abi } = artifacts["test/mocks/MockERC20.sol/MockERC20"];
+        const { abi } = Artifact_MockERC20;
         const [symbol, decimalsResult] = await Promise.all([
           read({ address, abi }, { functionName: "symbol" }),
           read({ address, abi }, { functionName: "decimals" }),
@@ -94,12 +96,12 @@ export default execute(
     );
 
     const standardRentPriceOracle =
-      getOrNull<typeof artifacts.StandardRentPriceOracle.abi>(
+      getOrNull<(typeof Artifact_StandardRentPriceOracle)["abi"]>(
         "StandardRentPriceOracle",
       ) ??
       (await deploy("StandardRentPriceOracle", {
         account: deployer,
-        artifact: artifacts.StandardRentPriceOracle,
+        artifact: Artifact_StandardRentPriceOracle,
         args: [
           owner,
           BASE_RATE_PER_CP,

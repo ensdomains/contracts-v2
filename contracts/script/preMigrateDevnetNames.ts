@@ -18,7 +18,11 @@ import {
   STATUS,
 } from "./deploy-constants.js";
 import { main as preMigrationMain } from "./preMigration.js";
-import { buildMainArgs, createCSVFile, verifyV2State } from "./preMigrationUtils.js";
+import {
+  buildMainArgs,
+  createCSVFile,
+  verifyV2State,
+} from "./preMigrationUtils.js";
 import type { DevnetEnvironment } from "./setup.js";
 
 // Curated real-mainnet .eth 2LDs sourced from morticia's e2e scenario config
@@ -28,16 +32,31 @@ import type { DevnetEnvironment } from "./setup.js";
 // Only labels are pinned; every live property (wrap state, owner, fuses,
 // expiry) is read from the fork at runtime, so the set survives any fork block.
 const CURATED_NAMES: { label: string; note: string }[] = [
-  { label: "swissborg", note: "normal unwrapped happy-path (alphabetic, resolver set)" },
+  {
+    label: "swissborg",
+    note: "normal unwrapped happy-path (alphabetic, resolver set)",
+  },
   { label: "00relayer", note: "unwrapped, leading-zero label, small subtree" },
   { label: "2718", note: "unwrapped, all-numeric label, multi-subname" },
   { label: "$beep", note: "wrapped-locked, special '$' char, minimal subtree" },
-  { label: "agi", note: "wrapped-locked, carries a locked child + third-party child" },
-  { label: "ethscriptions", note: "wrapped-locked, burn-address owner, emancipated child" },
-  { label: "holer", note: "wrapped-but-UNLOCKED/emancipated (no CANNOT_UNWRAP)" },
+  {
+    label: "agi",
+    note: "wrapped-locked, carries a locked child + third-party child",
+  },
+  {
+    label: "ethscriptions",
+    note: "wrapped-locked, burn-address owner, emancipated child",
+  },
+  {
+    label: "holer",
+    note: "wrapped-but-UNLOCKED/emancipated (no CANNOT_UNWRAP)",
+  },
   { label: "analyzes", note: "wrapped-locked, shared batch owner" },
   { label: "daomarketplace", note: "wrapped-locked, shared batch owner" },
-  { label: "alertbot", note: "wrapped-locked + CANNOT_TRANSFER (reassignment skipped)" },
+  {
+    label: "alertbot",
+    note: "wrapped-locked + CANNOT_TRANSFER (reassignment skipped)",
+  },
 ];
 
 export interface PreMigrateDevnetOptions {
@@ -92,7 +111,9 @@ async function reassignOwner(
 
   if (wrapperOwner !== zeroAddress) {
     if ((Number(fuses) & FUSES.CANNOT_TRANSFER) !== 0) {
-      console.log(`  ⊘ ${label}.eth: CANNOT_TRANSFER burned — left reserve-only`);
+      console.log(
+        `  ⊘ ${label}.eth: CANNOT_TRANSFER burned — left reserve-only`,
+      );
       return "skipped";
     }
     await fund(env, wrapperOwner);
@@ -121,7 +142,9 @@ async function reassignOwner(
   try {
     await fund(env, target);
     await env.waitFor(
-      env.v1.BaseRegistrar.write.reclaim([labelId, target], { account: target }),
+      env.v1.BaseRegistrar.write.reclaim([labelId, target], {
+        account: target,
+      }),
     );
   } catch (err) {
     console.log(`  ! ${label}.eth: reclaim skipped (${err})`);
@@ -151,7 +174,10 @@ export async function preMigrateDevnetNames(
     console.log(`  • ${label}.eth — ${note}`);
   }
 
-  const csvPath = join(tmpdir(), `devnet-premigrate-${env.client.chain.id}.csv`);
+  const csvPath = join(
+    tmpdir(),
+    `devnet-premigrate-${env.client.chain.id}.csv`,
+  );
   createCSVFile(csvPath, labels);
   // Mirror the DAO pre-migration by extending each v2 expiry with the
   // production bonus period, so names within the v1 grace period (or expiring
