@@ -13,18 +13,22 @@ import {
   decodeFunctionResult,
   encodeFunctionData,
   namehash,
-  parseAbi,
   zeroAddress,
   type Address,
   type Hex,
 } from "viem";
 
-export const RESOLVER_ABI = parseAbi([
-  "function addr(bytes32 node) view returns (address)",
-  "function addr(bytes32 node, uint256 coinType) view returns (bytes)",
-  "function text(bytes32 node, string key) view returns (string)",
-  "function contenthash(bytes32 node) view returns (bytes)",
-]);
+import { PublicResolver } from "./abis.js";
+
+// The resolver surface a snapshot reads, as narrow as the lookups it makes.
+// `addr` is overloaded, so the coin-type arity stays in its own ABI: viem
+// cannot choose between two arities from one.
+export const RESOLVER_ABI = [
+  ...PublicResolver.addr,
+  ...PublicResolver.text,
+  ...PublicResolver.contenthash,
+] as const;
+export const RESOLVER_MULTICOIN_ABI = PublicResolver.addrMulticoin;
 
 // The records worth comparing. Coin types and text keys are the two places a
 // resolver migration most easily drops data, because each is a separate lookup that
@@ -93,7 +97,7 @@ export function recordQueries(
     queries.push({
       label: `addr(${coinType})`,
       call: encodeFunctionData({
-        abi: RESOLVER_ABI,
+        abi: RESOLVER_MULTICOIN_ABI,
         functionName: "addr",
         args: [node, coinType],
       }),

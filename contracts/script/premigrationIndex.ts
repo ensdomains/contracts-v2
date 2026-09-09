@@ -28,6 +28,7 @@ import {
   getGatewayEndpoint,
   type ENSRegistrationNetwork,
 } from "./exportTheGraphRegistrations.js";
+import { BaseRegistrar } from "./migrations/abis.js";
 import { isLogSpanRefusalMessage } from "./migrations/logSpanRefusal.js";
 import { V1_GRACE_PERIOD_SECONDS } from "./preMigration.js";
 
@@ -485,15 +486,7 @@ function countIndexedNames(workDir: string): number {
 // against. Overridable for a chain that placed it elsewhere.
 export const MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11";
 
-const NAME_EXPIRES_ABI = [
-  {
-    type: "function",
-    name: "nameExpires",
-    stateMutability: "view",
-    inputs: [{ name: "id", type: "uint256" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-] as const;
+const NAME_EXPIRES_ABI = BaseRegistrar.nameExpires;
 
 // Adapts a viem public client to the three questions the builder asks. Kept out of
 // `buildV1NameIndexFromRpc` so the builder stays testable without a node.

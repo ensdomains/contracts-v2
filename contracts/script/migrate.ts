@@ -28,7 +28,6 @@ import {
   http,
   keccak256,
   namehash,
-  parseAbi,
   parseAbiItem,
   parseEther,
   stringToHex,
@@ -153,6 +152,11 @@ import {
 } from "./migrations/plumbing.js";
 import { resolveRegistrarControlRoute } from "./migrations/registrarControl.js";
 import {
+  BaseRegistrar as BaseRegistrarFragments,
+  PermissionedRegistry as PermissionedRegistryFragments,
+  RegistrarOwnershipAbi,
+} from "./migrations/abis.js";
+import {
   CHECKPOINT_FILE,
   type Checkpoint,
   createFreshCheckpoint,
@@ -226,22 +230,16 @@ const SEPOLIA_V1_OWNER = getAddress(rockethConfig.accounts.v1Owner.sepolia);
 
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 
-/// The registry reads that are issued in batches, named one function at a time.
-///
-/// `multicall` infers a result type per entry, and doing that against the whole
-/// registry ABI exceeds the type instantiation depth, which degrades every result to
-/// `unknown[]` and pushes the checking into casts. Naming only the functions being
-/// called keeps the results typed.
-const REGISTRY_BATCH_ABI = parseAbi([
-  "struct State { uint8 status; uint64 expiry; address latestOwner; uint256 tokenId; uint256 resource; }",
-  "function getState(uint256 anyId) view returns (State state)",
-  "function getResource(uint256 anyId) view returns (uint256)",
-  "function getResolver(string label) view returns (address)",
-  "function roles(uint256 anyId, address account) view returns (uint256)",
-]);
-const V1_REGISTRAR_BATCH_ABI = parseAbi([
-  "function nameExpires(uint256 id) view returns (uint256)",
-]);
+/// v1 and v2 surfaces the phases read and write, each as narrow as its use.
+/// The reads are issued in batches, and `multicall` infers a result type per
+/// entry: doing that against a whole artifact ABI exceeds the type
+/// instantiation depth and degrades every result to `unknown`.
+const NAME_EXPIRES_ABI = BaseRegistrarFragments.nameExpires;
+const REGISTRY_STATE_ABI = PermissionedRegistryFragments.getState;
+const REGISTRY_RESOLVER_ABI = PermissionedRegistryFragments.getResolver;
+const REGISTRY_RESOURCE_ABI = PermissionedRegistryFragments.getResource;
+const REGISTRY_ROLES_ABI = PermissionedRegistryFragments.roles;
+const PRIOR_RENEWER_ABI = RegistrarOwnershipAbi;
 const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
 
 const MIGRATION_DEPLOY_TAGS = ["migration:phase1:deploy-v2"] as const;
@@ -743,7 +741,7 @@ async function verifyPreMigration(opts: {
       allowFailure: true,
       contracts: validBatch.map((label) => ({
         address: baseRegistrar,
-        abi: V1_REGISTRAR_BATCH_ABI,
+        abi: NAME_EXPIRES_ABI,
         functionName: "nameExpires",
         args: [labelId(label)],
       })),
@@ -754,7 +752,7 @@ async function verifyPreMigration(opts: {
         (label) =>
           ({
             address: registry.address,
-            abi: REGISTRY_BATCH_ABI,
+            abi: REGISTRY_STATE_ABI,
             functionName: "getState",
             args: [labelId(label)],
           }) as const,
@@ -829,7 +827,7 @@ async function verifyPreMigration(opts: {
         allowFailure: true,
         contracts: resolverChecks.map((label) => ({
           address: registry.address,
-          abi: REGISTRY_BATCH_ABI,
+          abi: REGISTRY_RESOLVER_ABI,
           functionName: "getResolver",
           args: [label],
         })),
@@ -1108,7 +1106,7 @@ export async function reconcilePreMigration(opts: {
         (entry) =>
           ({
             address: registryAddress,
-            abi: REGISTRY_BATCH_ABI,
+            abi: REGISTRY_STATE_ABI,
             functionName: "getState",
             args: [BigInt(entry.id)],
           }) as const,
@@ -1409,7 +1407,7 @@ async function readV2StatesInBatches(
         (labelhash) =>
           ({
             address: registryAddress,
-            abi: REGISTRY_BATCH_ABI,
+            abi: REGISTRY_STATE_ABI,
             functionName: "getState",
             args: [BigInt(labelhash)],
           }) as const,
@@ -2444,25 +2442,6 @@ export async function activateV1HandoffControllers(opts: {
   await activateV1Graveyard(opts);
 }
 
-// Minimal interface of a prior migration's ETHRenewerV1, which holds v1
-// BaseRegistrar ownership once a migration has completed.
-const PRIOR_RENEWER_ABI = [
-  {
-    type: "function",
-    name: "owner",
-    inputs: [],
-    outputs: [{ type: "address" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "transferRegistrarOwnership",
-    inputs: [{ name: "newOwner", type: "address" }],
-    outputs: [],
-    stateMutability: "nonpayable",
-  },
-] as const;
-
 // On a chain that has already completed a migration, the v1 BaseRegistrar is
 // owned by the previous deployment's ETHRenewerV1 contract, so the EOA-signed
 // v1-owner controller steps cannot run. Reclaim ownership back to the v1 owner
@@ -3327,7 +3306,7 @@ export async function verifyV2Roles(opts: {
           (resource) =>
             ({
               address: registry.address,
-              abi: REGISTRY_BATCH_ABI,
+              abi: REGISTRY_RESOURCE_ABI,
               functionName: "getResource",
               args: [resource],
             }) as const,
@@ -3362,7 +3341,7 @@ export async function verifyV2Roles(opts: {
         (pair) =>
           ({
             address: registry.address,
-            abi: REGISTRY_BATCH_ABI,
+            abi: REGISTRY_ROLES_ABI,
             functionName: "roles",
             args: [pair.resource, pair.account],
           }) as const,
@@ -5349,6 +5328,7 @@ export type FixtureRehearsalOptions = {
   fixtureReplicasPerVector?: string;
   fixtureActorMnemonic?: string;
   fixturePrivateKey?: string;
+  fixtureOwnerKey?: string;
 };
 
 // The corpus needs an operator account and a set of actor accounts. On a
@@ -5427,19 +5407,20 @@ async function fixtureRunOptions(
     deploymentNetwork: base.deploymentNetwork,
     v1DeploymentsDir: base.v1DeploymentsDir,
     v1DeploymentNetwork: base.v1DeploymentNetwork,
-    privateKey,
-    actorMnemonic,
+    fixturePrivateKey: privateKey,
+    fixtureActorMnemonic: actorMnemonic,
     // Seeding registers through the v1 controller. On a chain a previous
     // migration already froze, the corpus cannot be created until that
     // controller is re-authorised, which only the v1 owner can do.
     v1Owner: base.v1Owner,
     v1OwnerKey: opts.v1OwnerPrivateKey,
-    limit: opts.fixtureLimit,
-    tiers: opts.fixtureTiers,
-    scenarios: opts.fixtureScenarios,
+    fixtureLimit: opts.fixtureLimit,
+    fixtureTiers: opts.fixtureTiers,
+    fixtureScenarios: opts.fixtureScenarios,
     fixtureIds: opts.fixtureIds,
-    replicasPerVector: opts.fixtureReplicasPerVector,
+    fixtureReplicasPerVector: opts.fixtureReplicasPerVector,
     rpcStateControls: base.useRpcStateControls,
+    fixtureOwnerKey: opts.fixtureOwnerKey,
   };
 }
 
@@ -6809,6 +6790,47 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
     ]),
     resumeFromPhase: undefined,
   });
+}
+
+/// The fixture-corpus options a rehearsal accepts.
+///
+/// Defined once because `fork full` and `clean-testnet` take the same set. Two
+/// hand-kept copies drift, and an option that reaches only one of them is
+/// unusable on the other without anyone noticing. The `--fixture-` prefix
+/// stays: a rehearsal has its own `--limit` and its own several keys, so an
+/// unprefixed `--limit` or `--private-key` here would not say which it meant.
+function addFixtureRehearsalOptions(
+  command: Command,
+  wording: { stage: string; generated: string },
+): Command {
+  return command
+    .option(
+      "--fixture-root <path>",
+      `Seed the ENSv1 fixture corpus from this bundle as part of the ${wording.stage}`,
+    )
+    .option(
+      "--fixture-scenarios <list>",
+      "Fixture execution scenarios to include, e.g. live_now",
+    )
+    .option("--fixture-tiers <list>", "Fixture popularity tiers to include")
+    .option("--fixture-ids <list>", "Explicit fixture IDs to include")
+    .option("--fixture-limit <count>", "Cap the number of fixture names")
+    .option(
+      "--fixture-replicas-per-vector <count>",
+      "Keep at most N replicas of each fixture scenario",
+    )
+    .option(
+      "--fixture-actor-mnemonic <mnemonic>",
+      `Dedicated fixture actor mnemonic (generated per run ${wording.generated})`,
+    )
+    .option(
+      "--fixture-private-key <key>",
+      `Fixture operator key (generated per run ${wording.generated})`,
+    )
+    .option(
+      "--fixture-owner-key <key>",
+      "Private key of the wallet that should own every seeded fixture name",
+    );
 }
 
 function addNetworkOptions(command: Command): Command {
@@ -8479,97 +8501,71 @@ export async function main(argv = process.argv): Promise<void> {
   fork.addCommand(
     addV1DeploymentOptions(
       addDeploymentOptions(
-        addNetworkOptions(
-          new Command("full")
-            .description(
-              "Run the full phased migration rehearsal against an Anvil fork",
-            )
-            .option(
-              "--direct",
-              "Use --rpc-url directly instead of starting Anvil",
-              false,
-            )
-            .option("--port <port>", "Local Anvil port")
-            .requiredOption("--csv-file <path>", "Registration CSV")
-            .option("--batch-size <number>", "Names per pre-migration batch")
-            .option(
-              "--initial-limit <count>",
-              "Optional cap before disabling v1 registrars",
-            )
-            .option(
-              "--finish-limit <count>",
-              "Optional cap after disabling v1 registrars",
-            )
-            .option(
-              "--work-dir <path>",
-              "Directory for fork logs, checkpoints, and generated CSV",
-            )
-            .option(
-              "--resume-from-phase <phase>",
-              "Resume the full rehearsal from phase 2",
-            )
-            .option(
-              "--require-full-coverage",
-              "Fail instead of silently running a reduced set of smoke checks (post-migration mode, or a network with no mintable payment token)",
-              false,
-            )
-            .option(
-              "--resolution-names <list>",
-              "Extra comma-separated names to snapshot and re-check across the phase 7 cutover",
-            )
-            .option(
-              "--save-deployments",
-              "Persist deployment JSON files",
-              false,
-            )
-            .option(
-              "--include-testnet-premigration-registrar",
-              "Deploy the testnet v1 premigration registrar helper",
-              false,
-            )
-            .option(
-              "--fixture-root <path>",
-              "Seed the ENSv1 fixture corpus from this bundle as part of the rehearsal",
-            )
-            .option(
-              "--fixture-scenarios <list>",
-              "Fixture execution scenarios to include, e.g. live_now",
-            )
-            .option(
-              "--fixture-tiers <list>",
-              "Fixture popularity tiers to include",
-            )
-            .option("--fixture-ids <list>", "Explicit fixture IDs to include")
-            .option(
-              "--fixture-limit <count>",
-              "Cap the number of fixture names",
-            )
-            .option(
-              "--fixture-replicas-per-vector <count>",
-              "Keep at most N replicas of each fixture scenario",
-            )
-            .option(
-              "--fixture-actor-mnemonic <mnemonic>",
-              "Dedicated fixture actor mnemonic (generated per run on a fork)",
-            )
-            .option(
-              "--fixture-private-key <key>",
-              "Fixture operator key (generated per run on a fork)",
-            )
-            .option(
-              "--snapshot-file <path>",
-              "Optional file to write a pre-rehearsal snapshot id",
-            )
-            .option("--deployer <address>", "Migration deployer address")
-            .option("--owner <address>", "Migration owner/admin address")
-            .option("--v1-owner <address>", "V1 owner address")
-            .option("--ur-manager <address>", "Managed URP admin address")
-            .option("--debug-rpc", "Log JSON-RPC error responses", false)
-            .option(
-              "--keep-anvil",
-              "Leave the local Anvil process running",
-              false,
-            ),
+        addFixtureRehearsalOptions(
+          addNetworkOptions(
+            new Command("full")
+              .description(
+                "Run the full phased migration rehearsal against an Anvil fork",
+              )
+              .option(
+                "--direct",
+                "Use --rpc-url directly instead of starting Anvil",
+                false,
+              )
+              .option("--port <port>", "Local Anvil port")
+              .requiredOption("--csv-file <path>", "Registration CSV")
+              .option("--batch-size <number>", "Names per pre-migration batch")
+              .option(
+                "--initial-limit <count>",
+                "Optional cap before disabling v1 registrars",
+              )
+              .option(
+                "--finish-limit <count>",
+                "Optional cap after disabling v1 registrars",
+              )
+              .option(
+                "--work-dir <path>",
+                "Directory for fork logs, checkpoints, and generated CSV",
+              )
+              .option(
+                "--resume-from-phase <phase>",
+                "Resume the full rehearsal from phase 2",
+              )
+              .option(
+                "--require-full-coverage",
+                "Fail instead of silently running a reduced set of smoke checks (post-migration mode, or a network with no mintable payment token)",
+                false,
+              )
+              .option(
+                "--resolution-names <list>",
+                "Extra comma-separated names to snapshot and re-check across the phase 7 cutover",
+              )
+              .option(
+                "--save-deployments",
+                "Persist deployment JSON files",
+                false,
+              )
+              .option(
+                "--include-testnet-premigration-registrar",
+                "Deploy the testnet v1 premigration registrar helper",
+                false,
+              )
+              .option(
+                "--snapshot-file <path>",
+                "Optional file to write a pre-rehearsal snapshot id",
+              )
+              .option("--deployer <address>", "Migration deployer address")
+              .option("--owner <address>", "Migration owner/admin address")
+              .option("--v1-owner <address>", "V1 owner address")
+              .option("--ur-manager <address>", "Managed URP admin address")
+              .option("--debug-rpc", "Log JSON-RPC error responses", false)
+              .option(
+                "--keep-anvil",
+                "Leave the local Anvil process running",
+                false,
+              ),
+          ),
+          { stage: "rehearsal", generated: "on a fork" },
         ),
       ),
     ).action(async (opts: ForkFullCliOptions) => {
@@ -8606,75 +8602,49 @@ export async function main(argv = process.argv): Promise<void> {
   program.addCommand(
     addV1DeploymentOptions(
       addDeploymentOptions(
-        addNetworkOptions(
-          new Command("clean-testnet")
-            .description(
-              "Deploy fresh testnet v1 contracts and run the full phased migration",
-            )
-            .option(
-              "--csv-file <path>",
-              "Optional registration CSV to seed in addition to generated smoke labels",
-            )
-            .option("--batch-size <number>", "Names per pre-migration batch")
-            .option(
-              "--initial-limit <count>",
-              "Optional cap before disabling v1 registrars",
-            )
-            .option(
-              "--finish-limit <count>",
-              "Optional cap after disabling v1 registrars",
-            )
-            .option(
-              "--work-dir <path>",
-              "Directory for clean deploy logs, checkpoints, and generated CSV",
-            )
-            .option(
-              "--fixture-root <path>",
-              "Seed the ENSv1 fixture corpus from this bundle as part of the run",
-            )
-            .option(
-              "--fixture-scenarios <list>",
-              "Fixture execution scenarios to include, e.g. live_now",
-            )
-            .option(
-              "--fixture-tiers <list>",
-              "Fixture popularity tiers to include",
-            )
-            .option("--fixture-ids <list>", "Explicit fixture IDs to include")
-            .option(
-              "--fixture-limit <count>",
-              "Cap the number of fixture names",
-            )
-            .option(
-              "--fixture-replicas-per-vector <count>",
-              "Keep at most N replicas of each fixture scenario",
-            )
-            .option(
-              "--fixture-actor-mnemonic <mnemonic>",
-              "Dedicated fixture actor mnemonic (generated per run when impersonating)",
-            )
-            .option(
-              "--fixture-private-key <key>",
-              "Fixture operator key (generated per run when impersonating)",
-            )
-            .option(
-              "--snapshot-file <path>",
-              "Optional file to write a pre-phase snapshot id after v1 deployment",
-            )
-            .option("--deployer <address>", "Migration deployer address")
-            .option("--owner <address>", "Migration owner/admin address")
-            .option("--v1-owner <address>", "V1 owner address")
-            .option("--ur-manager <address>", "Managed URP admin address")
-            .option(
-              "--require-full-coverage",
-              "Fail instead of silently running a reduced set of smoke checks",
-              false,
-            )
-            .option(
-              "--resolution-names <list>",
-              "Extra comma-separated names to snapshot and re-check across the phase 7 cutover",
-            )
-            .option("--debug-rpc", "Log JSON-RPC error responses", false),
+        addFixtureRehearsalOptions(
+          addNetworkOptions(
+            new Command("clean-testnet")
+              .description(
+                "Deploy fresh testnet v1 contracts and run the full phased migration",
+              )
+              .option(
+                "--csv-file <path>",
+                "Optional registration CSV to seed in addition to generated smoke labels",
+              )
+              .option("--batch-size <number>", "Names per pre-migration batch")
+              .option(
+                "--initial-limit <count>",
+                "Optional cap before disabling v1 registrars",
+              )
+              .option(
+                "--finish-limit <count>",
+                "Optional cap after disabling v1 registrars",
+              )
+              .option(
+                "--work-dir <path>",
+                "Directory for clean deploy logs, checkpoints, and generated CSV",
+              )
+              .option(
+                "--snapshot-file <path>",
+                "Optional file to write a pre-phase snapshot id after v1 deployment",
+              )
+              .option("--deployer <address>", "Migration deployer address")
+              .option("--owner <address>", "Migration owner/admin address")
+              .option("--v1-owner <address>", "V1 owner address")
+              .option("--ur-manager <address>", "Managed URP admin address")
+              .option(
+                "--require-full-coverage",
+                "Fail instead of silently running a reduced set of smoke checks",
+                false,
+              )
+              .option(
+                "--resolution-names <list>",
+                "Extra comma-separated names to snapshot and re-check across the phase 7 cutover",
+              )
+              .option("--debug-rpc", "Log JSON-RPC error responses", false),
+          ),
+          { stage: "run", generated: "when impersonating" },
         ),
       ),
     ).action(async (opts: CleanTestnetCliOptions) => {
