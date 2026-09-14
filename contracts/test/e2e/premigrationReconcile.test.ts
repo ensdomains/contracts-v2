@@ -19,7 +19,11 @@ import { V1_INDEX_META_FILE } from "../../script/premigrationIndex.js";
 import { PREMIGRATION_CSV_HEADER } from "../../script/preMigrationUtils.js";
 import { readVerification } from "../../script/migrations/phaseGate.js";
 import { MAX_UINT64 } from "../../script/preMigration.js";
-import { FUSES, GRACE_PERIOD_V2 } from "../../script/deploy-constants.js";
+import {
+  FUSES,
+  GRACE_PERIOD_V2,
+  ROLES,
+} from "../../script/deploy-constants.js";
 import { idFromLabel } from "../utils/utils.js";
 import {
   buildMainArgs,
@@ -744,6 +748,96 @@ describe("premigration reconcile", () => {
 
     expect(result.missing).toEqual([bracketedId]);
     expect(result.unreservable).toEqual([]);
+  });
+
+  // What migration opening lets happen on v2: the registrar registers names, a
+  // migration claims a reserved one, and owners renew.
+  async function openV2Registrations() {
+    await env.v2.ETHRegistry.write.grantRootRoles([
+      ROLES.REGISTRY.REGISTRAR |
+        ROLES.REGISTRY.REGISTER_RESERVED |
+        ROLES.REGISTRY.RENEW,
+      env.namedAccounts.deployer.address,
+    ]);
+  }
+
+  async function registerOnV2(label: string, expiry = 0n) {
+    await env.v2.ETHRegistry.write.register([
+      label,
+      env.namedAccounts.user.address,
+      zeroAddress,
+      zeroAddress,
+      0n,
+      expiry,
+    ]);
+  }
+
+  it("leaves a name first registered on v2 alone once migration has opened", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+    await openV2Registrations();
+    const now = (await env.client.getBlock()).timestamp;
+    await registerOnV2("brandnew", now + BigInt(ONE_YEAR_SECONDS));
+
+    const open = await run(workDir, fromBlock, {
+      expectedStatus: "reserved-or-registered",
+    });
+    expect(open.unexpected).toEqual([]);
+
+    // Before migration opens nothing may register, so the same entry is a fault.
+    const closed = await run(workDir, fromBlock, { reportOnly: true });
+    expect(closed.unexpected).toHaveLength(1);
+    expect(closed.unexpected[0]).toContain("brandnew");
+  });
+
+  it("accepts a migrated name its owner has since renewed on v2", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+    await openV2Registrations();
+    await registerOnV2("alpha");
+    const { tokenId, expiry } = await env.v2.ETHRegistry.read.getState([
+      idFromLabel("alpha"),
+    ]);
+    await env.v2.ETHRegistry.write.renew([
+      tokenId,
+      expiry + BigInt(ONE_YEAR_SECONDS),
+    ]);
+
+    const result = await run(workDir, fromBlock, {
+      expectedStatus: "reserved-or-registered",
+    });
+
+    expect(result.registered).toBe(1);
+    expect(result.expiryMismatched).toEqual([]);
+  });
+
+  it("reports a v1 name registered on v2 without ever being reserved", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user } = env.namedAccounts;
+    // Live on v1 but missed by pre-migration, then taken on v2 through the registrar
+    // once it opened: the v1 owner has lost the name.
+    const missed = "snatched";
+    const missedExpiry = await registerV1Name(
+      env,
+      missed,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: labelhash(missed), expiry: missedExpiry },
+    ]);
+    await openV2Registrations();
+    await registerOnV2(missed, missedExpiry + BONUS_PERIOD_SECONDS);
+
+    const result = await run(workDir, fromBlock, {
+      expectedStatus: "reserved-or-registered",
+      reportOnly: true,
+    });
+
+    expect(result.unexpected).toEqual([
+      `${labelhash(missed)} is REGISTERED on v2 but was never reserved for its v1 owner`,
+    ]);
   });
 
   it("ignores v1 names that have passed grace", async () => {

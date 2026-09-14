@@ -203,7 +203,9 @@ transactions afterwards.
 > During phases 2 and 5 the expected status is strictly `RESERVED`. Migration does not open to users
 > until after phase 5, so a `REGISTERED` name in this window is an anomaly rather than a claim, and is
 > reported as unexpected. Pass `--expected-status reserved-or-registered` when reconciling after
-> migration has opened.
+> migration has opened. That mode accepts what an open registry does: a name first registered on v2
+> that v1 never held, and a migrated name its owner has renewed. It still reports a live v1 name
+> registered on v2 without ever being reserved, because its v1 owner has lost it.
 
 If you seeded a fixture corpus, run this a second time against its own CSV and work-dir — see
 [Reserving the fixture labels on v2](#reserving-the-fixture-labels-on-v2).

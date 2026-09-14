@@ -1098,16 +1098,19 @@ const REGISTERED_EVENT = parseAbiItem(
   "event LabelRegistered(uint256 indexed tokenId, bytes32 indexed labelHash, string label, address owner, uint64 expiry, address indexed sender)",
 );
 
-// Every labelhash the v2 registry has ever created an entry for. The registry is new,
-// so this is a short scan from its deploy block — unlike the v1 side, which is why
-// the v1 half of the reconciliation comes from an indexer instead.
+// Every labelhash the v2 registry has ever created an entry for, and whether it was
+// ever reserved. Pre-migration only reserves, and a migration registers a name that
+// was reserved first, so a name registered without a reservation came from the
+// registrar rather than from the migration. The registry is new, so this is a short
+// scan from its deploy block — unlike the v1 side, which is why the v1 half of the
+// reconciliation comes from an indexer instead.
 async function discoverV2SeededLabelhashes(
   client: ReturnType<typeof publicClient>,
   registry: Address,
   fromBlock: bigint,
-): Promise<Map<string, string>> {
+): Promise<Map<string, { label: string; reserved: boolean }>> {
   const toBlock = await client.getBlockNumber();
-  const seeded = new Map<string, string>();
+  const seeded = new Map<string, { label: string; reserved: boolean }>();
   for (const event of [RESERVED_EVENT, REGISTERED_EVENT]) {
     const logs = await readEventLogs(client, {
       address: registry,
@@ -1118,7 +1121,12 @@ async function discoverV2SeededLabelhashes(
     for (const log of logs) {
       const args = log.args as { labelHash?: string; label?: string };
       if (!args.labelHash) continue;
-      seeded.set(args.labelHash.toLowerCase(), args.label ?? "");
+      const id = args.labelHash.toLowerCase();
+      const known = seeded.get(id);
+      seeded.set(id, {
+        label: known?.label || (args.label ?? ""),
+        reserved: (known?.reserved ?? false) || event === RESERVED_EVENT,
+      });
     }
   }
   return seeded;
@@ -1308,6 +1316,30 @@ export async function reconcilePreMigration(opts: {
     }
   }
 
+  // Every entry the v2 registry has created, read first because the forward pass
+  // needs to know which names were ever reserved.
+  const fromBlock =
+    opts.fromBlock !== undefined
+      ? BigInt(opts.fromBlock)
+      : (readDeploymentBlock(
+          deploymentsDir,
+          deploymentNetwork,
+          "ETHRegistry",
+        ) ?? 0n);
+  const seeded = await discoverV2SeededLabelhashes(
+    client,
+    registryAddress,
+    fromBlock,
+  );
+  const reservedIds = new Set(
+    [...seeded]
+      .filter(([, entry]) => entry.reserved)
+      .map(([labelhash]) => toLabelhashHex(canonicalLabelId(labelhash))),
+  );
+  // Once migration has opened, owners renew on v2 and anyone registers names v1
+  // does not hold, so neither may be read as a fault.
+  const migrationOpen = expectedStatus === "reserved-or-registered";
+
   // Forward: every claimable v1 name must exist on v2 with the bonus-adjusted expiry.
   for (
     let start = 0;
@@ -1369,7 +1401,14 @@ export async function reconcilePreMigration(opts: {
         entry.expiry,
         bonusPeriodSeconds,
       );
-      if (actualExpiry !== expectedExpiry) {
+      // A registered name's owner can renew it on v2, which only ever extends it. A
+      // reservation keeps the expiry pre-migration wrote, since the renewer extends
+      // v1 and v2 together.
+      const expiryHolds =
+        status === STATUS.REGISTERED
+          ? actualExpiry >= expectedExpiry
+          : actualExpiry === expectedExpiry;
+      if (!expiryHolds) {
         result.expiryMismatched.push(
           `${entry.id} v2=${actualExpiry} expected=${expectedExpiry}`,
         );
@@ -1388,6 +1427,13 @@ export async function reconcilePreMigration(opts: {
           result.unexpected.push(
             `${entry.id} is REGISTERED before migration opened`,
           );
+        } else if (!reservedIds.has(canonicalId)) {
+          // A migration only ever registers a reserved name. A claimable v1 name
+          // registered without one was taken through the registrar, so its v1 owner
+          // lost it: pre-migration missed it.
+          result.unexpected.push(
+            `${entry.id} is REGISTERED on v2 but was never reserved for its v1 owner`,
+          );
         }
       } else {
         result.missing.push(`${entry.id} has status ${status}`);
@@ -1398,19 +1444,6 @@ export async function reconcilePreMigration(opts: {
   // Reverse: anything seeded onto v2 that no claimable v1 name accounts for. This is
   // what catches a stray registrar writing into the registry, or a seed run against
   // the wrong data.
-  const fromBlock =
-    opts.fromBlock !== undefined
-      ? BigInt(opts.fromBlock)
-      : (readDeploymentBlock(
-          deploymentsDir,
-          deploymentNetwork,
-          "ETHRegistry",
-        ) ?? 0n);
-  const seeded = await discoverV2SeededLabelhashes(
-    client,
-    registryAddress,
-    fromBlock,
-  );
   const claimableIds = new Set(
     claimable.map((entry) => toLabelhashHex(canonicalLabelId(entry.id))),
   );
@@ -1430,13 +1463,22 @@ export async function reconcilePreMigration(opts: {
     registryAddress,
     staleSeeds,
   );
-  for (const [labelhash, label] of seeded) {
+  for (const [labelhash, { label, reserved }] of seeded) {
     if (claimableIds.has(toLabelhashHex(canonicalLabelId(labelhash)))) continue;
+    // Registered through the registrar with no reservation behind it: once
+    // migration has opened that is someone registering a name v1 no longer holds,
+    // not a seed. Before then nothing may register, so it is still reported.
+    if (!reserved && migrationOpen) continue;
     const known = index.expiries.get(labelhash);
     if (known !== undefined) {
       const expected = bonusAdjustedExpiry(known, bonusPeriodSeconds);
       const actual = staleStates.get(labelhash);
-      if (actual === expected) continue;
+      if (
+        actual === expected ||
+        (migrationOpen && actual !== undefined && actual > expected)
+      ) {
+        continue;
+      }
       result.unexpected.push(
         `${labelhash}${label ? ` (${label}.eth)` : ""} is on v2 with expiry ${actual ?? "unreadable"}, but its v1 name lapsed carrying ${expected}`,
       );
@@ -6267,7 +6309,11 @@ export async function runForkFull(opts: RunForkFullOptions) {
       // the rehearsal needs one of each.
       await registerSmokeV1(smokeLabels.migrateWrapped);
       await assertSmokeV1Owner(smokeLabels.migrateWrapped);
+      // Every name the rehearsal registers on v1 is a live name pre-migration has to
+      // reserve, the one that only proves registration works included; leaving it
+      // out would stage a migration a chain-wide reconciliation rejects.
       prependCsvLabels(transformedCsv, [
+        smokeLabels.v1BeforeDisable,
         smokeLabels.migrate,
         smokeLabels.reservedOnly,
         smokeLabels.migrateWrapped,
