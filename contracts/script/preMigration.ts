@@ -34,6 +34,7 @@ import {
   yellow,
 } from "./logger.js";
 
+import { GRACE_PERIOD_V2, STATUS } from "./deploy-constants.js";
 import { loadArtifact, resolveChain } from "./scriptUtils.js";
 import { BaseRegistrar } from "./migrations/abis.js";
 
@@ -64,6 +65,17 @@ export class CSVFormatError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "CSVFormatError";
+  }
+}
+
+/// A run that finished with names it could not reserve. They are queued in the
+/// checkpoint, so a `--continue` run retries exactly those names.
+export class FailedNamesError extends Error {
+  constructor(public readonly count: number) {
+    super(
+      `pre-migration finished with ${count} failed name(s); see ${ERROR_LOG_FILE}`,
+    );
+    this.name = "FailedNamesError";
   }
 }
 
@@ -156,6 +168,23 @@ export const V1_GRACE_PERIOD_SECONDS = V1_GRACE_PERIOD_DAYS * 86400n;
 /// wall clock disagrees, and a wall-clock now admits names the chain has released.
 export function isClaimableOnV1(expiry: bigint, now: bigint): boolean {
   return expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > now;
+}
+
+/// Whether a v2 entry still holds a pre-migration reservation. A reservation outlives
+/// its expiry by the v2 grace period: `ETHRenewerV1` still renews it and `ETHRegistrar`
+/// still refuses to register it. The bonus period is sized so that this window closes
+/// when v1's grace period does, so a name in the last weeks of its v1 grace reads
+/// `AVAILABLE` on v2 while it still belongs to its v1 owner.
+export function holdsReservation(
+  state: { status: number; latestOwner: Address; expiry: bigint },
+  now: bigint,
+): boolean {
+  return (
+    state.status === STATUS.RESERVED ||
+    (state.status === STATUS.AVAILABLE &&
+      state.latestOwner === zeroAddress &&
+      now - state.expiry < GRACE_PERIOD_V2)
+  );
 }
 
 export function createFreshCheckpoint(): Checkpoint {
@@ -402,13 +431,14 @@ export function formatExpiry(expiry: bigint): string {
 // Wall-clock time only agrees with it on a live network: against a fork pinned to a
 // past block it runs ahead, marking names released that the chain still holds in
 // grace, and against a fork that has time-travelled it runs behind.
-/// Chain time on the v1 side, which is what the grace-period rule is about.
+/// Chain time on the side a rule is about: v1 for the grace-period rule, v2 for
+/// whether a reservation still holds.
 ///
 /// The error is not caught: substituting wall-clock time changes which names count as
 /// claimable, and on a fork pinned to a past block it marks names released that the
 /// chain still holds. A failed read has to be a failed run.
-async function readV1Timestamp(v1Client: any): Promise<bigint> {
-  const block = await v1Client.getBlock();
+async function readChainTimestamp(client: any): Promise<bigint> {
+  const block = await client.getBlock();
   return BigInt(block.timestamp);
 }
 
@@ -446,7 +476,7 @@ export async function verifyNameOnV1(
     args: [tokenId],
   });
 
-  const currentTimestamp = await readV1Timestamp(client);
+  const currentTimestamp = await readChainTimestamp(client);
   const isRegistered = expiry > 0n && expiry > currentTimestamp;
 
   return { isRegistered, expiry };
@@ -741,6 +771,7 @@ async function fetchAndReserveInBatches(
     for await (const batch of batches) {
       try {
         if (mainPass) checkpoint.totalExpected += batch.length;
+        const countedBefore = checkpoint.totalProcessed;
 
         let invalidLabelsInBatch = 0;
         let lastInvalidLineNumber = checkpoint.lastProcessedLineNumber;
@@ -788,6 +819,14 @@ async function fetchAndReserveInBatches(
             registryAbi,
             maxGas,
           );
+        }
+        // A retried row was counted when it first failed, so settling its outcome
+        // must not count it again.
+        if (!mainPass) {
+          checkpoint.totalProcessed = countedBefore;
+          if (!config.disableCheckpoint) {
+            saveCheckpoint(checkpoint);
+          }
         }
 
         logger.info(
@@ -871,6 +910,9 @@ export interface VerificationResult {
   /// Current expiry recorded on v2, or 0 when the name has no v2 entry. Used to tell
   /// a reservation that needs extending from one that is already long enough.
   v2Expiry: bigint;
+  /// Whether v2 still holds a reservation for the name, including one past its
+  /// expiry but inside the v2 grace period.
+  v2Reserved: boolean;
   error?: string;
 }
 
@@ -924,7 +966,10 @@ export async function batchVerifyRegistrations(
       ? v1Settled.value
       : buildFallback(v1Settled.reason);
 
-  const currentTimestamp = await readV1Timestamp(mainnetClient);
+  const [v1Now, v2Now] = await Promise.all([
+    readChainTimestamp(mainnetClient),
+    readChainTimestamp(client),
+  ]);
 
   return registrations.map((reg, i) => {
     const v2 = (v2Results as any[])[i];
@@ -938,17 +983,28 @@ export async function batchVerifyRegistrations(
         v1IsClaimable: false,
         v1Expiry: 0n,
         v2Expiry: 0n,
+        v2Reserved: false,
         error: v2.status === "failure" ? String(v2.error) : String(v1.error),
       };
     }
 
     const expiry = v1.result as bigint;
+    const state = v2.result as any;
+    const v2Expiry = BigInt(state.expiry ?? 0);
     return {
       registration: reg,
-      v2Status: (v2.result as any).status,
-      v2LatestOwner: (v2.result as any).latestOwner,
-      v2Expiry: BigInt((v2.result as any).expiry ?? 0),
-      v1IsClaimable: isClaimableOnV1(expiry, currentTimestamp),
+      v2Status: state.status,
+      v2LatestOwner: state.latestOwner,
+      v2Expiry,
+      v2Reserved: holdsReservation(
+        {
+          status: state.status,
+          latestOwner: state.latestOwner,
+          expiry: v2Expiry,
+        },
+        v2Now,
+      ),
+      v1IsClaimable: isClaimableOnV1(expiry, v1Now),
       v1Expiry: expiry,
     };
   });
@@ -1167,7 +1223,7 @@ async function processBatch(
         logger.finishedName(registration.labelName, "failed");
         continue;
       }
-      if (result.v2Status === 1) {
+      if (result.v2Reserved) {
         alreadyReservedNames.add(registration.labelName);
       }
 
@@ -1198,7 +1254,7 @@ async function processBatch(
       // stored one; submitting an equal or shorter one does nothing. Leaving such
       // names out of the batch keeps the counters honest and keeps the final sync from
       // re-sending the entire CSV when almost nothing has changed.
-      if (result.v2Status === 1 && effectiveExpiry <= result.v2Expiry) {
+      if (result.v2Reserved && effectiveExpiry <= result.v2Expiry) {
         checkpoint.upToDateCount++;
         checkpoint.totalProcessed++;
         clearFailedLine(registration.lineNumber);
@@ -1523,9 +1579,7 @@ export async function main(argv = process.argv): Promise<void> {
   // in the same process — receives an error it can handle, rather than having the
   // whole run terminated by a process exit.
   if (failedNames > 0) {
-    throw new Error(
-      `pre-migration finished with ${failedNames} failed name(s); see ${ERROR_LOG_FILE}`,
-    );
+    throw new FailedNamesError(failedNames);
   }
 }
 

@@ -183,8 +183,10 @@ describe("v2 role audit", () => {
         idFromLabel("reverse"),
       ]);
       await env.v2.RootRegistry.write.grantRoles(
-        [reverseResource, ROLES.REGISTRY.SET_RESOLVER, stranger],
-        { account: env.namedAccounts.owner },
+        // Nobody holds admin roles on `reverse`, but the deployer's root admin
+        // roles still let it grant their regular counterparts on any name.
+        [reverseResource, ROLES.REGISTRY.RENEW, stranger],
+        { account: env.namedAccounts.deployer },
       );
 
       const findings = await audit({ reportOnly: true });

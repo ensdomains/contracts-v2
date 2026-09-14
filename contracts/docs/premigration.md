@@ -86,9 +86,15 @@ bun run script/preMigration.ts [options]
 | `--v1-base-registrar <address>` | mainnet `BaseRegistrar` | v1 `BaseRegistrar` for expiry lookups (override for testing). |
 
 > Eligibility is independently gated by v1's hard-coded 90-day grace: a name expired more than 90 days
-> ago is past grace and skipped, regardless of `--bonus-period-days`. Choose a bonus period large
-> enough that the deepest in-grace name you want migrated does not compute a past v2 expiry (which
-> would fail registration).
+> ago is past grace and skipped, regardless of `--bonus-period-days`.
+>
+> A name deep in its v1 grace can compute a v2 expiry that has already passed. The registry accepts it,
+> and the entry reads `Available` at once, but it is still the v1 owner's: v2 keeps a lapsed
+> reservation in a 28-day grace period of its own, during which `ETHRenewerV1` renews it and
+> `ETHRegistrar` refuses to register it to anyone else. The default bonus of 62 days is the v1 grace
+> less the v2 grace, so that window closes exactly when v1's does. A shorter bonus leaves the names in
+> the gap open to anyone on v2 while v1 still holds them, and `premigration reconcile` reports them as
+> missing.
 
 ## CSV input
 
@@ -133,10 +139,14 @@ Per-name action:
 | v2 status | v1 status | Action |
 |---|---|---|
 | Available (0) | Registered, or expired but within v1's 90-day grace | **Reserve** with expiry `v1Expiry + bonusPeriodDays` |
-| Reserved (1) | Computed expiry longer than the stored one | **Renew** (extend expiry) |
-| Reserved (1) | Computed expiry equal to or shorter than the stored one | **Skip** (up to date) |
+| Reserved (1)† | Computed expiry longer than the stored one | **Renew** (extend expiry) |
+| Reserved (1)† | Computed expiry equal to or shorter than the stored one | **Skip** (up to date) |
 | Registered (2) | Any | **Fail** (already fully owned on v2) |
 | Any | Never registered, or past v1's 90-day grace | **Skip** (v1 owner lost the claim) |
+
+† Including a reservation past its expiry but inside the v2 grace period, which reads `Available (0)`
+yet still belongs to its v1 owner. Treating it as available would re-send it on every sync and count it
+as a fresh reservation each time.
 
 Reserved names are written with owner/registry `address(0)`, resolver = `ENSV1Resolver`, roleBitmap
 `0`, and the computed expiry.

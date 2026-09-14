@@ -153,6 +153,45 @@ describe("checkPrecondition", () => {
     });
   });
 
+  it("accepts a simulated pass when the gated step acts on a simulated node too", async () => {
+    // A rehearsal reconciles the fork it then freezes, so the pass describes the very
+    // chain the freeze acts on.
+    expect(
+      await checkPrecondition({
+        record: record({
+          simulatedEndpoint: "http://127.0.0.1:8545 is a local endpoint",
+        }),
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash,
+        targetSimulated: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("still ties a simulated pass to the node it was taken on", async () => {
+    // Another fork of the same chain shares the history below its fork point but not
+    // the blocks it mined, so a pass carried over from one refuses to gate the other.
+    const otherForkHash = `0x${"ef".repeat(32)}`;
+    expect(
+      await checkPrecondition({
+        record: record({
+          simulatedEndpoint: "http://127.0.0.1:8545 is a local endpoint",
+          headBlockHash: otherForkHash,
+        }),
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash,
+        targetSimulated: true,
+      }),
+    ).toEqual({
+      kind: "foreign-head",
+      headBlock: 138n,
+      recordedHash: otherForkHash,
+      canonicalHash: CANONICAL_HASH,
+    });
+  });
+
   it("fails a pass recorded on a fork, whose observed block is canonical", async () => {
     // The case the observed-block hash cannot catch, and the one a rehearsal
     // actually produces: an index built from a source that lags the chain names a

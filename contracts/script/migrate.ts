@@ -7,6 +7,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -160,11 +161,13 @@ import {
   CHECKPOINT_FILE,
   type Checkpoint,
   createFreshCheckpoint,
+  FailedNamesError,
   isValidLabel,
   loadCheckpoint,
   main as preMigrationMain,
   parseCSVLine,
   bonusAdjustedExpiry,
+  holdsReservation,
   isClaimableOnV1,
 } from "./preMigration.js";
 import {
@@ -229,6 +232,11 @@ const MAINNET_DAO = "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7" as const;
 const SEPOLIA_V1_OWNER = getAddress(rockethConfig.accounts.v1Owner.sepolia);
 
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
+
+/// How many times the rehearsal's Anvil retries a refused upstream read, and the
+/// initial wait between tries. Sized to outlast a provider's rate-limit window.
+const FORK_UPSTREAM_RETRIES = 50;
+const FORK_UPSTREAM_RETRY_BACKOFF_MS = 2_000;
 
 /// v1 and v2 surfaces the phases read and write, each as narrow as its use.
 /// The reads are issued in batches, and `multicall` infers a result type per
@@ -655,6 +663,124 @@ export async function runPreMigrationCommand(
   }
 }
 
+/// How many passes a rehearsal gives pre-migration before a failed name fails the run.
+const REHEARSAL_PREMIGRATION_ATTEMPTS = 3;
+
+/// Runs pre-migration for a rehearsal, retrying the names a pass leaves failed.
+///
+/// A fork forwards every cold read to its upstream, so under a provider's rate limit a
+/// batch can time out with nothing wrong with its names. Pre-migration queues such
+/// names in its checkpoint, and an operator re-runs with `--continue`; the rehearsal
+/// does the same, a bounded number of times, so a name that keeps failing still fails
+/// the run. A retry pass carries the row cap forward rather than restarting it, so it
+/// retries the queued names without reading past the rows the first pass was given.
+export async function runRehearsalPreMigration(
+  opts: Parameters<typeof runPreMigrationCommand>[0] & { workDir: string },
+  resume: boolean,
+  run: (args: string[]) => Promise<void> = preMigrationMain,
+) {
+  for (let attempt = 1; ; attempt++) {
+    const checkpoint =
+      attempt === 1
+        ? undefined
+        : loadCheckpoint(join(resolve(opts.workDir), CHECKPOINT_FILE));
+    const limit =
+      checkpoint && opts.limit !== undefined
+        ? String(Math.max(0, Number(opts.limit) - checkpoint.totalProcessed))
+        : opts.limit;
+    try {
+      await runPreMigrationCommand(
+        { ...opts, limit },
+        resume || attempt > 1,
+        run,
+      );
+      return;
+    } catch (error) {
+      if (
+        !(error instanceof FailedNamesError) ||
+        attempt >= REHEARSAL_PREMIGRATION_ATTEMPTS
+      ) {
+        throw error;
+      }
+      console.log(
+        `pre-migration left ${error.count} name(s) failed; retrying them (pass ${attempt + 1} of ${REHEARSAL_PREMIGRATION_ATTEMPTS})`,
+      );
+    }
+  }
+}
+
+/// The chain reads a v1 name index is built from, served by a viem client.
+function v1IndexClient(
+  client: ReturnType<typeof publicClient>,
+  baseRegistrar: Address,
+) {
+  return createRpcIndexClient({
+    // viem's client satisfies the three calls the adapter makes; its overloaded
+    // signatures do not line up structurally.
+    client: client as unknown as Parameters<
+      typeof createRpcIndexClient
+    >[0]["client"],
+    baseRegistrar,
+  });
+}
+
+/// The row cap a reconciliation has to cover after passes run with each of `limits`:
+/// every row any of them could have reached, and the whole file when one was uncapped.
+function widestRowCap(...limits: (string | undefined)[]): string | undefined {
+  if (limits.some((limit) => limit === undefined)) return undefined;
+  return String(Math.max(...limits.map(Number)));
+}
+
+/// Signs off a rehearsal's pre-migration the way the phase 2 and 5 sign-off does, and
+/// records the pass phase 3 requires before it freezes v1.
+///
+/// A rehearsal pre-migrates the rows it is given, usually a slice of a chain holding
+/// far more names, so an index of every registration would report the rest as missing.
+/// The index covers those rows instead. Each name's expiry is still read from the
+/// chain, the forward pass proves every one of them landed with the right expiry, and
+/// the reverse pass still catches anything else written to the registry — a fixture
+/// name meant to stay unreserved included.
+async function reconcileRehearsalPreMigration(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId: string;
+  client: ReturnType<typeof publicClient>;
+  csvFile: string;
+  limit?: string;
+  workDir: string;
+  deploymentsDir: string;
+  deploymentNetwork: string;
+  v1BaseRegistrar: Address;
+  v1DeploymentsDir?: string;
+  v1DeploymentNetwork?: string;
+}): Promise<ReconcileResult> {
+  // Pre-migration skips a label it cannot submit, so the index does too.
+  const ids = [
+    ...new Set(
+      readLabelsFromCsv(
+        opts.csvFile,
+        opts.limit === undefined ? undefined : Number(opts.limit),
+      )
+        .filter(isValidLabel)
+        .map((label) => keccak256(stringToHex(label))),
+    ),
+  ];
+  await buildV1NameIndexFromRpc(
+    { network: opts.network, workDir: opts.workDir, ids },
+    v1IndexClient(opts.client, opts.v1BaseRegistrar),
+  );
+  return reconcilePreMigration({
+    network: opts.network,
+    rpcUrl: opts.rpcUrl,
+    chainId: opts.chainId,
+    workDir: opts.workDir,
+    deploymentsDir: opts.deploymentsDir,
+    deploymentNetwork: opts.deploymentNetwork,
+    v1DeploymentsDir: opts.v1DeploymentsDir,
+    v1DeploymentNetwork: opts.v1DeploymentNetwork,
+  });
+}
+
 async function printPreMigrationStatus(opts: { workDir?: string }) {
   const previousCwd = process.cwd();
   if (opts.workDir) process.chdir(resolve(opts.workDir));
@@ -964,6 +1090,9 @@ function toLabelhashHex(id: bigint): string {
 type ReconcileResult = {
   claimable: number;
   reserved: number;
+  /// Of `reserved`, the reservations past their expiry but inside the v2 grace
+  /// period, which still belong to their v1 owner.
+  reservedInGrace: number;
   registered: number;
   missing: string[];
   expiryMismatched: string[];
@@ -1032,6 +1161,7 @@ export async function reconcilePreMigration(opts: {
   // to a past block the two disagree, and a wall-clock "now" would mark names
   // eligible that the chain considers long released.
   const v1Now = BigInt((await v1Client.getBlock()).timestamp);
+  const v2Now = BigInt((await client.getBlock()).timestamp);
   // The index's own filter has to reach at least as far back as this reconciliation
   // does, or names it dropped are absent here and pass unexamined.
   assertIndexCoversChainTime(index.meta, v1Now);
@@ -1047,6 +1177,7 @@ export async function reconcilePreMigration(opts: {
   const result: ReconcileResult = {
     claimable: claimable.length,
     reserved: 0,
+    reservedInGrace: 0,
     registered: 0,
     missing: [],
     expiryMismatched: [],
@@ -1086,7 +1217,7 @@ export async function reconcilePreMigration(opts: {
   }
 
   console.log(
-    `v1 index: ${index.expiries.size} names @ block ${index.meta.block} (${index.meta.source})`,
+    `v1 index: ${index.expiries.size} names @ block ${index.meta.block} (${index.meta.source}${index.meta.scope === "labels" ? ", scoped to the names given rather than every registration" : ""})`,
   );
   console.log(`claimable v1 names: ${claimable.length}`);
 
@@ -1120,7 +1251,7 @@ export async function reconcilePreMigration(opts: {
         result.missing.push(`${entry.id} state lookup failed: ${state.error}`);
         continue;
       }
-      const { status, expiry: actualExpiry } = state.result;
+      const { status, expiry: actualExpiry, latestOwner } = state.result;
 
       // Nothing on v2 at all: the name was never seeded.
       if (status === STATUS.AVAILABLE && actualExpiry === 0n) {
@@ -1139,8 +1270,11 @@ export async function reconcilePreMigration(opts: {
         );
         continue;
       }
-      if (status === STATUS.RESERVED) {
+      if (
+        holdsReservation({ status, latestOwner, expiry: actualExpiry }, v2Now)
+      ) {
         result.reserved++;
+        if (status !== STATUS.RESERVED) result.reservedInGrace++;
       } else if (status === STATUS.REGISTERED) {
         result.registered++;
         // Before migration opens no name can legitimately be claimed on v2, so a
@@ -1298,7 +1432,9 @@ export async function reconcilePreMigration(opts: {
     }
   }
 
-  console.log(`v2 reserved: ${result.reserved}`);
+  console.log(
+    `v2 reserved: ${result.reserved}${result.reservedInGrace > 0 ? ` (${result.reservedInGrace} past their v2 expiry, inside the v2 grace period)` : ""}`,
+  );
   console.log(`v2 registered: ${result.registered}`);
   console.log(`missing from v2: ${result.missing.length}`);
   console.log(`expiry mismatches: ${result.expiryMismatched.length}`);
@@ -1332,14 +1468,15 @@ export async function reconcilePreMigration(opts: {
     // the record would otherwise hold: the same chain id, and the same history below
     // the fork point. The pass is still recorded — an operator wants to see that the
     // rehearsal ran, and a later failure has to revoke an earlier pass either way —
-    // but it is stamped with what answered it, and the gate refuses that.
+    // but it is stamped with what answered it, and the gate accepts it only for a
+    // freeze on that same node.
     const v1RpcUrl = opts.mainnetRpcUrl ?? opts.rpcUrl;
     const simulatedEndpoint =
       (await describeSimulatedEndpoint(v1Client, v1RpcUrl)) ??
       (await describeSimulatedEndpoint(client, opts.rpcUrl));
     if (simulatedEndpoint) {
       console.log(
-        `recorded as a rehearsal, which phase 3 will not accept: ${simulatedEndpoint}`,
+        `recorded as a rehearsal, which only a phase 3 freeze on the same node will accept: ${simulatedEndpoint}`,
       );
     }
 
@@ -2185,6 +2322,10 @@ export async function disableV1Registrars(
         opts.maxReconcileAgeBlocks === RECONCILE_AGE_UNBOUNDED
           ? undefined
           : BigInt(parseNumber(opts.maxReconcileAgeBlocks, 7200)),
+      // A rehearsal freezes the fork it reconciled, so its own pass is the right
+      // evidence there; a live freeze still refuses one taken on a simulated node.
+      targetSimulated:
+        (await describeSimulatedEndpoint(client, opts.rpcUrl)) !== null,
     });
     if (failure) {
       throw new Error(
@@ -3107,11 +3248,12 @@ const EXPECTED_TOKEN_ROLES: Record<
       deployment: "@deployer",
       roles: DEPLOYMENT_ROLES.ETH_TOKEN,
     },
-    // 01_ReverseMirror.ts registers `reverse` to the owner.
+    // 01_ReverseMirror.ts hands the owner every regular role on `reverse`, and
+    // leaves no admin role on it with anyone.
     {
       label: "reverse",
       deployment: "@owner",
-      roles: DEPLOYMENT_ROLES.REVERSE_REGISTRY_ROOT,
+      roles: DEPLOYMENT_ROLES.REVERSE_REGISTRY_OPERATOR,
     },
   ],
   ETHRegistry: [],
@@ -5509,6 +5651,13 @@ export async function runForkFull(opts: RunForkFullOptions) {
           String(port),
           "--chain-id",
           String(chainId),
+          // A rehearsal reads far more state than a provider plan is sized for, in
+          // bursts. Anvil's default retry budget turns the first sustained rate
+          // limit into a failed read and kills the run, so it waits instead.
+          "--retries",
+          String(FORK_UPSTREAM_RETRIES),
+          "--fork-retry-backoff",
+          String(FORK_UPSTREAM_RETRY_BACKOFF_MS),
         ],
         { stdout: "ignore", stderr: "inherit" },
       );
@@ -5741,6 +5890,15 @@ export async function runForkFull(opts: RunForkFullOptions) {
         deploymentNetwork,
       );
     } else {
+      // The automatic rehearsal namespace describes contracts on a fork that no
+      // longer exists. Deploying over it makes rocketh adopt those addresses as
+      // live deployments to reuse or upgrade, so it starts empty on every run.
+      if (opts.deploymentNetwork === undefined) {
+        rmSync(join(deploymentsDir, deploymentNetwork), {
+          recursive: true,
+          force: true,
+        });
+      }
       console.log(
         `phase 1: deploy v2 contracts against ${opts.v1DeploymentNetwork ?? network.environment} v1 references`,
       );
@@ -6006,8 +6164,10 @@ export async function runForkFull(opts: RunForkFullOptions) {
       useRpcStateControls,
       v1Owner,
     });
+    let fixtureLabels: string[] = [];
     if (fixtureOptions && resumeFromPhase !== 2) {
       const { labels } = await runFixtureSeedStage(fixtureOptions);
+      fixtureLabels = labels;
       prependCsvLabels(transformedCsv, labels);
       console.log(
         `fixture: added ${labels.length} labels to the pre-migration CSV`,
@@ -6015,7 +6175,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
     }
 
     console.log("phase 2: initial pre-migration");
-    await runPreMigrationCommand(
+    await runRehearsalPreMigration(
       {
         network: opts.network,
         rpcUrl,
@@ -6037,6 +6197,24 @@ export async function runForkFull(opts: RunForkFullOptions) {
       },
       resumeFromPhase === 2,
     );
+    // The sign-off phase 3 refuses to freeze v1 without, run over the rows the
+    // pre-migration passes were given.
+    const reconcileRehearsal = (stage: string, limit: string | undefined) =>
+      reconcileRehearsalPreMigration({
+        network: opts.network,
+        rpcUrl,
+        chainId: String(chainId),
+        client,
+        csvFile: transformedCsv,
+        limit,
+        workDir: join(workDir, `reconcile-${stage}`),
+        deploymentsDir,
+        deploymentNetwork,
+        v1BaseRegistrar: v1BaseRegistrar.address,
+        ...v1Deployments,
+      });
+    console.log("phase 2: reconcile pre-migration");
+    await reconcileRehearsal("initial", opts.initialLimit);
     if (!postMigration) {
       await assertV2State({
         rpcUrl,
@@ -6051,9 +6229,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
 
     console.log("phase 3: disable v1 registrars");
     await disableV1Registrars({
-      // The rehearsal drives the phases itself and, on an already-migrated chain,
-      // cannot run the reconciliation that gates the live command.
-      skipPreconditions: true,
       ...phaseCtx,
       ...v1Deployments,
       ...v1OwnerSigner,
@@ -6159,7 +6334,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
 
     console.log("phase 5: sync remaining names and finish pre-migration");
     const finalSyncWorkDir = join(workDir, "final-sync");
-    await runPreMigrationCommand(
+    await runRehearsalPreMigration(
       {
         network: opts.network,
         rpcUrl,
@@ -6182,6 +6357,16 @@ export async function runForkFull(opts: RunForkFullOptions) {
       existsSync(join(finalSyncWorkDir, CHECKPOINT_FILE)),
     );
     coveredChecks.push(SMOKE_CHECKS.deployAndPreMigration);
+    // Reconciled before any smoke migrates a name, while every seeded name is still
+    // expected to be reserved.
+    console.log("phase 5: reconcile pre-migration");
+    const finalReconciliation = await reconcileRehearsal(
+      "final-sync",
+      widestRowCap(opts.initialLimit, opts.finishLimit),
+    );
+    coveredChecks.push(
+      `pre-migration reconciled in both directions after phases 2 and 5, gating the phase 3 freeze — over the ${finalReconciliation.claimable} claimable name(s) the rehearsal pre-migrated, not every name on ${opts.network}`,
+    );
     if (!postMigration) {
       await assertV2State({
         rpcUrl,
@@ -6399,16 +6584,26 @@ export async function runForkFull(opts: RunForkFullOptions) {
     });
 
     // Phase 6 is the last step to change v2 authority, so audit the whole role
-    // matrix here rather than spot-checking one address. Reported, not enforced: a
-    // rehearsal runs against fixtures that legitimately hold extra grants, and
-    // failing on those would make the check something operators route around.
+    // matrix here rather than spot-checking one address. Extra grants are reported,
+    // not enforced: a rehearsal runs against fixtures that legitimately hold them,
+    // and failing on those would make the check something operators route around.
     console.log("phase 6: v2 role matrix");
-    await verifyV2Roles({
+    const roleFindings = await verifyV2Roles({
       ...phaseCtx,
       deployer,
       owner,
       reportOnly: true,
     });
+    // An extra grant can be the fixtures' doing, but a grant the deployment set out
+    // to make and does not hold is a broken deploy whatever the chain.
+    const missingRoles = roleFindings.filter(
+      (finding) => finding.kind === "missing",
+    );
+    if (missingRoles.length > 0) {
+      throw new Error(
+        `role audit: ${missingRoles.length} grant(s) the deployment intended are missing`,
+      );
+    }
 
     console.log(
       "phase 7: switch the Universal Resolver to v2 (resolution cutover)",
@@ -6429,27 +6624,40 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // forked chain with real records, which is precisely what the cutover must
     // preserve. The source is the operator's CSV, not the transformed one, because
     // phase 3 prepends the generated smoke labels to the latter.
-    const resolvableCsvNames = await selectResolvableNames({
-      client,
-      universalResolver: topUrp.address,
-      candidates: readLabelsFromCsv(
-        resolve(opts.csvFile),
-        RESOLUTION_CANDIDATE_POOL,
-      ).map((label) => `${label}.eth`),
-      limit: RESOLUTION_SAMPLE_SIZE,
-      v1Client: client,
-      v1BaseRegistrar,
-      // Chain time, for the same reason pre-migration uses it: on a fork the wall
-      // clock disagrees, and the two must judge claimability alike or the sample
-      // includes exactly the names pre-migration will drop.
-      v1Now: BigInt((await client.getBlock()).timestamp),
-    });
+    //
+    // Seeded fixture names are sampled too, as a pool of their own. They carry the
+    // shaped v1 records and stay reserved rather than migrated, so the cutover must
+    // leave their answers untouched — and a run without an operator CSV, such as a
+    // clean testnet, has no other names that resolve anything.
+
+    // Chain time, for the same reason pre-migration uses it: on a fork the wall
+    // clock disagrees, and the two must judge claimability alike or the sample
+    // includes exactly the names pre-migration will drop.
+    const v1Now = BigInt((await client.getBlock()).timestamp);
+    const sampleResolvableNames = (labels: string[]) =>
+      selectResolvableNames({
+        client,
+        universalResolver: topUrp.address,
+        candidates: labels
+          .slice(0, RESOLUTION_CANDIDATE_POOL)
+          .map((label) => `${label}.eth`),
+        limit: RESOLUTION_SAMPLE_SIZE,
+        v1Client: client,
+        v1BaseRegistrar,
+        v1Now,
+      });
+    const resolvableSampledNames = [
+      ...(await sampleResolvableNames(
+        readLabelsFromCsv(resolve(opts.csvFile), RESOLUTION_CANDIDATE_POOL),
+      )),
+      ...(await sampleResolvableNames(fixtureLabels)),
+    ];
     const resolutionNames = [
       ...new Set(
         [
           smokeLabels.migrate && `${smokeLabels.migrate}.eth`,
           smokeLabels.v2AfterEnable && `${smokeLabels.v2AfterEnable}.eth`,
-          ...resolvableCsvNames,
+          ...resolvableSampledNames,
           ...(opts.resolutionNames?.split(",").map((name) => name.trim()) ??
             []),
         ].filter((name): name is string => Boolean(name)),
@@ -6461,7 +6669,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       names: resolutionNames,
     });
     console.log(
-      `captured pre-cutover resolution for ${resolutionBefore.names.length} name(s), ${resolvableCsvNames.length} of them carrying records before the switch`,
+      `captured pre-cutover resolution for ${resolutionBefore.names.length} name(s), ${resolvableSampledNames.length} of them carrying records before the switch`,
     );
 
     // Reuse flow: the top URP already fronts the intermediate URP, so the switch
@@ -7472,15 +7680,10 @@ export async function main(argv = process.argv): Promise<void> {
                     resume: opts.resume,
                     onProgress,
                   },
-                  createRpcIndexClient({
-                    // viem's client satisfies the three calls the adapter makes;
-                    // its overloaded signatures do not line up structurally.
-                    client: client as unknown as Parameters<
-                      typeof createRpcIndexClient
-                    >[0]["client"],
-                    baseRegistrar:
-                      opts.v1BaseRegistrar ?? baseRegistrar.address,
-                  }),
+                  v1IndexClient(
+                    client,
+                    opts.v1BaseRegistrar ?? baseRegistrar.address,
+                  ),
                 );
               })()
             : await (async () => {

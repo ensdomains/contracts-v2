@@ -99,6 +99,13 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 The deferred v1-owner transactions point the v1 `.eth` resolver at `ENSV2Resolver` and authorize the
 reverse adapters, including `DefaultReverseRegistrarAdapter` when HCA is enabled.
 
+`reverse` is registered in the v2 root pointing at `ENSV1Resolver`, and the owner ends up operating it:
+it holds every regular role on the name, such as setting its resolver, and nobody holds an admin role
+on it. The deployer holds the name's token, because registering mints it to the holder and the mainnet
+owner, the DAO timelock, has no ERC-1155 receiver to accept it. Admin roles on a name cannot be granted,
+only dropped, so the deployer passes the owner the regular roles and gives up its own; the token it
+keeps can neither be used nor transferred. The owner can operate `reverse` but not delegate roles on it.
+
 HCA deploys as shared infrastructure only — the validator, factory, upgrade set and standalone
 implementation. Individual owner-bound HCAs stay counterfactual and are created lazily through the
 factory. Sepolia uses the fixed Rhinestone intent executor and production USDC addresses from
@@ -178,6 +185,11 @@ transactions afterwards.
 > count: the build keeps an extra week beyond the grace period so a name near the boundary can never
 > be dropped at build time and then wanted at reconcile time. Sepolia at block 11,575,263: 68,849
 > labels ever registered, 9,011 unexpired, 9,739 claimable, 9,782 in the index.
+>
+> A reservation past its expiry but inside the v2 grace period counts as reserved, and the summary
+> says how many there are. It reads `AVAILABLE` on v2, yet v2 still refuses it to anyone but its v1
+> owner. With the default bonus period, every name still in its v1 grace is either `RESERVED` or in
+> this window. See [premigration.md](./premigration.md#cli-reference).
 >
 > During phases 2 and 5 the expected status is strictly `RESERVED`. Migration does not open to users
 > until after phase 5, so a `REGISTERED` name in this window is an anomaly rather than a claim, and is
@@ -838,6 +850,20 @@ smoke checks interleaved:
 - a pre-migrated name is migrated to v2 via `UnlockedMigrationController` after phase 5;
 - the v2 registrar rejects registrations before phase 6's grant, rejects pre-migrated reserved names
   after it, and accepts a fresh name after enablement.
+
+Pre-migration is signed off after phases 2 and 5 exactly as a live run is: the rehearsal builds an
+index, runs `premigration reconcile`, and phase 3 refuses to freeze v1 without the pass it records.
+A rehearsal seeds only the rows it is given, usually a slice of a chain holding far more names, so its
+index covers those rows rather than every registration. Each name's expiry is still read from the
+chain, the forward pass proves every one of them is reserved with the right expiry, and the reverse
+pass still catches anything else written to the registry. The coverage summary states how many names
+that was. The gate accepts a pass taken on a simulated node only when the freeze acts on that same
+node, so a rehearsal's pass can never unlock a live freeze.
+
+Every run starts its `<network>-fork` namespace empty, since the previous run's addresses exist only
+on a fork that is gone. The fork waits out a rate-limited upstream rather than failing the read, and a
+pre-migration pass that leaves names failed is retried twice from its checkpoint, as `--continue`
+would, before the failure counts.
 
 When the target chain has already completed the v1 hand-off, `fork full` detects this from the v1
 registrar-controller state — the run calls it **post-migration mode** — and skips the smoke checks

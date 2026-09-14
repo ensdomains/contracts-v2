@@ -272,7 +272,16 @@ async function waitForReceipt(
         params: [hash],
       })) as EIP1193TransactionReceipt | null;
     } catch {}
-    if (receipt?.blockHash) return receipt;
+    if (receipt?.blockHash) {
+      // A mined transaction that reverted still has a receipt, with a zero status;
+      // saving its deployment would record a contract that was never created.
+      if (receipt.status != null && Number(receipt.status) === 0) {
+        throw new Error(
+          `transaction ${hash} reverted (status 0) in block ${receipt.blockNumber}`,
+        );
+      }
+      return receipt;
+    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 }

@@ -60,6 +60,11 @@ export type V1IndexMeta = {
    */
   lastBlock?: number;
   /**
+   * Set when the index covers a given set of names rather than every registration
+   * the source knows, so a reconciliation over it proves nothing about the rest.
+   */
+  scope?: "labels";
+  /**
    * The "now" the build-time grace filter was measured against. A reconciliation
    * judges claimability against chain time, and if that is far enough behind this,
    * the build dropped names the reconciliation would still want — so it has to be
@@ -318,8 +323,6 @@ function readScannedIds(workDir: string): string[] {
 export type BuildV1NameIndexFromRpcOptions = {
   network: string;
   workDir: string;
-  /** First block to scan; the registrar's deploy block. */
-  fromBlock: number;
   /** Pin to a specific block; defaults to the head. */
   block?: number;
   /** Blocks per log query before any narrowing. */
@@ -329,7 +332,21 @@ export type BuildV1NameIndexFromRpcOptions = {
   resume?: boolean;
   now?: bigint;
   onProgress?: (entries: number, cursor: string) => void;
-};
+} & (
+  | {
+      /** First block to scan; the registrar's deploy block. */
+      fromBlock: number;
+      ids?: undefined;
+    }
+  | {
+      /**
+       * Index exactly these labelhashes rather than enumerating the registrar's
+       * logs. Their expiries are still read from the chain at the pinned block.
+       */
+      ids: readonly string[];
+      fromBlock?: undefined;
+    }
+);
 
 export async function buildV1NameIndexFromRpc(
   opts: BuildV1NameIndexFromRpcOptions,
@@ -368,10 +385,18 @@ export async function buildV1NameIndexFromRpc(
 
   let entries = existing?.entries ?? 0;
   let cursor = existing?.lastId ?? "";
-  let scannedTo = existing?.lastBlock ?? opts.fromBlock - 1;
+  // Given names need no enumeration, so the scan starts already finished.
+  let scannedTo =
+    existing?.lastBlock ?? (opts.ids ? block : opts.fromBlock - 1);
   if (!existing) {
     writeFileSync(indexPath(opts.workDir), "", "utf-8");
-    writeFileSync(idsPath(opts.workDir), "", "utf-8");
+    writeFileSync(
+      idsPath(opts.workDir),
+      opts.ids && opts.ids.length > 0
+        ? `${opts.ids.map(normalizeLabelhash).join("\n")}\n`
+        : "",
+      "utf-8",
+    );
   }
 
   const writeMeta = (complete: boolean): V1IndexMeta => {
@@ -384,6 +409,7 @@ export async function buildV1NameIndexFromRpc(
       complete,
       builtAt: new Date().toISOString(),
       lastBlock: scannedTo,
+      ...(opts.ids ? { scope: "labels" as const } : {}),
       filterTime: now.toString(),
     };
     writeFileSync(

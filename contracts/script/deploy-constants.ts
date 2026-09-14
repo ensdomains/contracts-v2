@@ -169,9 +169,12 @@ export const DEPLOYMENT_ROLES = {
     ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
     ROLES.REGISTRY.SET_RESOLVER |
     ROLES.ADMIN.REGISTRY.SET_RESOLVER,
-  // .reverse token: full role bitmap.
-  // Granting all roles is harmless; some (e.g. REGISTRAR) are root-only and don't apply to tokens.
+  // .reverse token: full role bitmap, held by the deployer only while it hands the
+  // name over. Some roles (e.g. REGISTRAR) are root-only and don't apply to tokens.
   REVERSE_REGISTRY_ROOT: FLAGS.ALL,
+  // .reverse token once handed over: every regular role and no admin role. The owner
+  // operates the name, and nobody can grant or revoke roles on it.
+  REVERSE_REGISTRY_OPERATOR: FLAGS.ALL & ((1n << 128n) - 1n),
   // ETHRegistry root deployer: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓, RENEW✓
   ETH_REGISTRY_ROOT:
     ROLES.ADMIN.REGISTRY.REGISTRAR |

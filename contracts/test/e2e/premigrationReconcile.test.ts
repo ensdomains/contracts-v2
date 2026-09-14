@@ -12,7 +12,7 @@ import { V1_INDEX_META_FILE } from "../../script/premigrationIndex.js";
 import { PREMIGRATION_CSV_HEADER } from "../../script/preMigrationUtils.js";
 import { readVerification } from "../../script/migrations/phaseGate.js";
 import { MAX_UINT64 } from "../../script/preMigration.js";
-import { FUSES } from "../../script/deploy-constants.js";
+import { FUSES, GRACE_PERIOD_V2 } from "../../script/deploy-constants.js";
 import { idFromLabel } from "../utils/utils.js";
 import {
   buildMainArgs,
@@ -109,7 +109,7 @@ describe("premigration reconcile", () => {
 
   // Registers `labels` on v1, seeds them onto v2 through the real pre-migration
   // path, and returns everything the reconciliation needs to run against them.
-  async function seed(labels: string[]) {
+  async function seed(labels: string[], bonusPeriodDays = BONUS_PERIOD_DAYS) {
     const { user } = env.namedAccounts;
     const workDir = mkdtempSync(join(tmpdir(), "reconcile-"));
     const csvFile = join(workDir, "registrations.csv");
@@ -128,9 +128,7 @@ describe("premigration reconcile", () => {
     }
 
     createCSVFile(csvFile, labels);
-    await preMigrationMain(
-      buildMainArgs(env, csvFile, { bonusPeriodDays: BONUS_PERIOD_DAYS }),
-    );
+    await preMigrationMain(buildMainArgs(env, csvFile, { bonusPeriodDays }));
 
     const indexEntries = labels.map((label) => ({
       id: labelhash(label),
@@ -152,6 +150,9 @@ describe("premigration reconcile", () => {
       registry: env.v2.ETHRegistry.address,
       bonusPeriodDays: String(BONUS_PERIOD_DAYS),
       fromBlock: fromBlock.toString(),
+      // A passing reconciliation records itself for the phase 3 gate, which would
+      // otherwise land in the repository's own deployment tree.
+      deploymentsDir: mkdtempSync(join(tmpdir(), "reconcile-gate-default-")),
       ...extra,
     });
   }
@@ -483,6 +484,57 @@ describe("premigration reconcile", () => {
     writeIndex(workDir, indexEntries, { complete: false });
 
     await expect(run(workDir, fromBlock)).rejects.toThrow(/incomplete/);
+  });
+
+  async function advanceChainTo(timestamp: bigint) {
+    await env.client.setNextBlockTimestamp({ timestamp });
+    await env.client.mine({ blocks: 1 });
+  }
+
+  it("counts a reservation inside the v2 grace period as reserved", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+
+    // Past the reservation's expiry but inside the v2 grace period. The name reads
+    // AVAILABLE on v2, yet v1 still holds it in grace and v2 will neither register it
+    // to anyone else nor refuse its owner a renewal, so it is reserved in every sense
+    // that matters to the freeze.
+    await advanceChainTo(
+      indexEntries[0].expiry + BONUS_PERIOD_SECONDS + 86400n,
+    );
+
+    const result = await run(workDir, fromBlock);
+
+    expect(result.claimable).toBe(1);
+    expect(result.reserved).toBe(1);
+    expect(result.reservedInGrace).toBe(1);
+    expect(result.missing).toEqual([]);
+  });
+
+  it("reports a claimable name whose reservation has outlived the v2 grace period", async () => {
+    // A bonus shorter than the gap between the two grace periods lets the v2 grace
+    // close while v1 still holds the name, leaving it open to anyone on v2.
+    const bonusPeriodDays = 20;
+    const { workDir, indexEntries, fromBlock } = await seed(
+      ["alpha"],
+      bonusPeriodDays,
+    );
+    writeIndex(workDir, indexEntries);
+    await advanceChainTo(
+      indexEntries[0].expiry +
+        BigInt(bonusPeriodDays) * 86400n +
+        GRACE_PERIOD_V2 +
+        86400n,
+    );
+
+    const result = await run(workDir, fromBlock, {
+      bonusPeriodDays: String(bonusPeriodDays),
+      reportOnly: true,
+    });
+
+    expect(result.claimable).toBe(1);
+    expect(result.reserved).toBe(0);
+    expect(result.missing).toEqual([`${indexEntries[0].id} has status 0`]);
   });
 
   it("ignores v1 names that have passed grace", async () => {

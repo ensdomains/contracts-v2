@@ -336,6 +336,40 @@ describe("premigrationIndex from chain logs", () => {
     expect(index.expiries.get(labelhash(3))).toBe(NOW + 9_000_000n);
   });
 
+  it("indexes only the names it is given, without enumerating logs", async () => {
+    const dir = workDir();
+    const { client, calls } = fakeChain([
+      registered(1, 3_710_000),
+      registered(2, 3_800_000, NOW + 9_000_000n),
+      registered(3, 3_750_000),
+      // Given, but released long ago: dropped exactly as a scanned name would be.
+      registered(4, 3_760_000, NOW - V1_GRACE_PERIOD_SECONDS - 400n * 86400n),
+    ]);
+
+    const meta = await buildV1NameIndexFromRpc(
+      {
+        network: "sepolia",
+        workDir: dir,
+        ids: [labelhash(2), labelhash(4), labelhash(1)],
+        batchSize: 2,
+        now: NOW,
+      },
+      client,
+    );
+
+    expect(calls.logs).toBe(0);
+    expect(meta.complete).toBe(true);
+    // Recorded, so a reconciliation over it can say it covered only these names.
+    expect(meta.scope).toBe("labels");
+    const index = loadV1NameIndex(dir);
+    expect([...index.expiries.keys()].sort()).toEqual([
+      labelhash(1),
+      labelhash(2),
+    ]);
+    // Expiries still come from the chain, not from whoever supplied the names.
+    expect(index.expiries.get(labelhash(2))).toBe(NOW + 9_000_000n);
+  });
+
   it("narrows the block range when the provider refuses the span", async () => {
     const dir = workDir();
     // Eight registrations in one scan window against a provider capping at two

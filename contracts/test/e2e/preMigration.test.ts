@@ -311,6 +311,9 @@ describe("PreMigration", () => {
     await main(buildMainArgs(env, csvFilePath, { continue: true }));
 
     expect(readTestCheckpoint()!.failedLines).toEqual([]);
+    // Each row was counted when it failed; the retry settles it without counting
+    // it again.
+    expect(readTestCheckpoint()!.totalProcessed).toBe(labels.length);
     for (const label of labels) {
       expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
     }
@@ -1456,6 +1459,62 @@ describe("PreMigration", () => {
         BigInt(before[index].expiry),
       );
     }
+  });
+
+  // Reserves a name, then moves the chain past the reservation's expiry into the v2
+  // grace period. The bonus period is sized so that window ends with v1's grace, so
+  // the name reads AVAILABLE on v2 while its v1 owner can still renew it.
+  async function reserveThenEnterV2Grace(label: string) {
+    const { user } = env.namedAccounts;
+    const bonusPeriodDays = 62;
+    const v1Expiry = await registerV1Name(
+      env,
+      label,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    createCSVFile(csvFilePath, [label]);
+    const args = buildMainArgs(env, csvFilePath, { bonusPeriodDays });
+    await main(args);
+
+    const bonusPeriodSeconds = BigInt(bonusPeriodDays) * 86400n;
+    await env.client.setNextBlockTimestamp({
+      timestamp: v1Expiry + bonusPeriodSeconds + 86400n,
+    });
+    await env.client.mine({ blocks: 1 });
+    expect((await verifyV2State(env, label)).status).toBe(STATUS.AVAILABLE);
+
+    deleteTestCheckpoint();
+    return { args, bonusPeriodSeconds };
+  }
+
+  it("leaves a reservation inside the v2 grace period alone on a re-run", async () => {
+    const { args } = await reserveThenEnterV2Grace("ingrace");
+
+    await main(args);
+
+    // Still the v1 owner's reservation, so nothing is sent and nothing is counted as
+    // a fresh one.
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(0);
+    expect(checkpoint!.renewedCount).toBe(0);
+    expect(checkpoint!.upToDateCount).toBe(1);
+  });
+
+  it("extends a reservation inside the v2 grace period when v1 is renewed", async () => {
+    const label = "ingracerenewed";
+    const { args, bonusPeriodSeconds } = await reserveThenEnterV2Grace(label);
+    const renewedV1Expiry = await renewV1Name(env, label, ONE_YEAR_SECONDS);
+
+    await main(args);
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(0);
+    expect(checkpoint!.renewedCount).toBe(1);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+    expect(BigInt(state.expiry)).toBe(renewedV1Expiry + bonusPeriodSeconds);
   });
 });
 

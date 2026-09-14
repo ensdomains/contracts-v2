@@ -145,12 +145,18 @@ export async function checkPrecondition(opts: {
   currentBlock: bigint;
   canonicalBlockHash: (blockNumber: bigint) => Promise<string | null>;
   maxAgeBlocks?: bigint;
+  /**
+   * Whether the step being gated acts on a simulated node itself. A pass recorded on
+   * one then describes the chain it gates, as in a rehearsal, rather than a fork
+   * standing in for a live chain; its head hash still has to belong to this node.
+   */
+  targetSimulated?: boolean;
 }): Promise<PreconditionFailure | null> {
   if (!opts.record) return { kind: "missing" };
   if (opts.record.chainId !== opts.chainId) {
     return { kind: "wrong-chain", recordedChainId: opts.record.chainId };
   }
-  if (opts.record.simulatedEndpoint) {
+  if (opts.record.simulatedEndpoint && !opts.targetSimulated) {
     return { kind: "simulated", endpoint: opts.record.simulatedEndpoint };
   }
   if (!opts.record.blockHash || !opts.record.headBlockHash) {
