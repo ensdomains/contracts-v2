@@ -78,6 +78,7 @@ import {
 } from "./exportTheGraphRegistrations.js";
 import {
   addFixtureSubcommands,
+  keptUnreservedFixtureNames,
   runFixtureSeedStage,
 } from "./migrations/fixture.js";
 import { ACTOR_ALIASES, bufferedGas } from "./migrations/fixture/config.js";
@@ -326,33 +327,6 @@ function parseResumeFromPhase(value: string | undefined): 2 | undefined {
 // neither is present so callers can fail loudly instead of guessing a column.
 // How many CSV rows name a v1 registration that is still claimable at `chainNow`.
 //
-// The seeded fixture names pre-migration leaves out, keyed by labelhash, with the v2
-// state each one's scenario declares.
-function readUnreservedFixtureNames(
-  csvFile: string,
-): Map<string, { label: string; state: string }> {
-  const { header, rows, labelIndex } = openLabelCsv(csvFile);
-  const stateIndex = header
-    .map((field) => field.trim().toLowerCase())
-    .indexOf("reservationstate");
-  if (labelIndex < 0 || stateIndex < 0) {
-    throw new Error(
-      `${csvFile} is not a fixture unreserved list: it needs labelName and reservationState columns`,
-    );
-  }
-  const names = new Map<string, { label: string; state: string }>();
-  for (const line of rows) {
-    const fields = parseCSVLine(line);
-    const label = fields[labelIndex]?.trim();
-    if (!label) continue;
-    names.set(toLabelhashHex(canonicalLabelId(keccak256(stringToHex(label)))), {
-      label,
-      state: fields[stateIndex]?.trim() ?? "",
-    });
-  }
-  return names;
-}
-
 // Rows whose label has the `[labelhash]` shape, keyed by every labelhash the row can
 // stand for: the hash of the text itself, for a name registered with that text, and
 // the hash inside the brackets, for a placeholder of a label nobody knows.
@@ -1219,8 +1193,9 @@ export async function reconcilePreMigration(opts: {
   // How far the CSV's and the index's claimable counts may differ before the
   // reconciliation fails. Defaults to no difference.
   crossSourceTolerance?: string;
-  // The fixture corpus's list of seeded names pre-migration leaves unreserved.
-  unreservedCsv?: string;
+  // A fixture work directory, whose seeded names pre-migration leaves unreserved on
+  // purpose are listed apart rather than counted as missing.
+  fixtureWorkDir?: string;
 }): Promise<ReconcileResult> {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
@@ -1323,9 +1298,15 @@ export async function reconcilePreMigration(opts: {
     opts.csvFile && existsSync(opts.csvFile)
       ? readEncodedLabelhashRows(opts.csvFile)
       : new Map<string, string>();
-  const keptOut = opts.unreservedCsv
-    ? readUnreservedFixtureNames(opts.unreservedCsv)
-    : new Map<string, { label: string; state: string }>();
+  const keptOut = new Map<string, { label: string; state: string }>();
+  if (opts.fixtureWorkDir) {
+    for (const name of keptUnreservedFixtureNames(opts.fixtureWorkDir)) {
+      keptOut.set(
+        toLabelhashHex(canonicalLabelId(keccak256(stringToHex(name.label)))),
+        name,
+      );
+    }
+  }
 
   // Forward: every claimable v1 name must exist on v2 with the bonus-adjusted expiry.
   for (
@@ -7921,8 +7902,8 @@ export async function main(argv = process.argv): Promise<void> {
               "0",
             )
             .option(
-              "--unreserved-csv <path>",
-              "The fixture corpus's fixture-unreserved.csv: seeded names pre-migration leaves out, listed apart rather than counted as missing",
+              "--fixture-work-dir <path>",
+              "Work directory of a seeded fixture corpus: names it leaves unreserved on purpose are listed apart rather than counted as missing",
             ),
         ),
       ),
@@ -7939,7 +7920,7 @@ export async function main(argv = process.argv): Promise<void> {
           checkFuses?: boolean;
           bonusPeriodDays?: string;
           crossSourceTolerance?: string;
-          unreservedCsv?: string;
+          fixtureWorkDir?: string;
           deploymentsDir?: string;
           deploymentNetwork?: string;
         },

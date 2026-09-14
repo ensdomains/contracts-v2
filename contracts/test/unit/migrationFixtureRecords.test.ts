@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Command } from "commander";
 import { parseEther, toHex, zeroAddress, type Address } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
@@ -19,6 +22,7 @@ import { fundActors } from "../../script/migrations/fixture/execute.js";
 import {
   addFixtureSubcommands,
   assertSeedable,
+  keptUnreservedFixtureNames,
   refContext,
   reportReverseClaimOverlap,
   splitFixtureReservations,
@@ -146,6 +150,51 @@ describe("fixture reservations", () => {
 
     expect(reserved.map((row) => row.fixture_id)).toEqual(["A"]);
     expect(unreserved.map((row) => row.fixture_id)).toEqual(["B", "C", "D"]);
+  });
+
+  // A work directory as seeding leaves it: run state naming the seeded ids and the
+  // corpus they came from.
+  function seededWorkDir(corpus: FixtureEnvelope[], seededIds: string[]) {
+    const dir = mkdtempSync(join(tmpdir(), "fixture-kept-"));
+    mkdirSync(join(dir, "corpus"));
+    writeFileSync(
+      join(dir, "corpus", "weighted-scenarios.jsonl"),
+      corpus.map((row) => JSON.stringify(row)).join("\n"),
+    );
+    writeFileSync(
+      join(dir, "fixture-run.json"),
+      JSON.stringify({
+        version: 2,
+        fixtureRoot: join(dir, "corpus"),
+        names: seededIds.map((fixtureId) => ({ fixtureId })),
+      }),
+    );
+    return dir;
+  }
+
+  it("reads the names kept unreserved from a seeded work directory", () => {
+    const corpus = [
+      { ...withProfile("A", "present"), label: "a" },
+      { ...withProfile("B", "missing"), label: "b" },
+      { ...withProfile("C", "missing"), label: "c" },
+    ];
+
+    // C sits in the corpus but was never seeded, so it is no concern of this run.
+    expect(
+      keptUnreservedFixtureNames(seededWorkDir(corpus, ["A", "B"])),
+    ).toEqual([{ label: "b", state: "missing" }]);
+  });
+
+  it("refuses a work directory whose corpus no longer holds what it seeded", () => {
+    const dir = seededWorkDir([withProfile("A", "present")], ["A", "GONE"]);
+
+    expect(() => keptUnreservedFixtureNames(dir)).toThrow(/holds 1 of the 2/);
+  });
+
+  it("refuses a directory no seeding ran in", () => {
+    expect(() =>
+      keptUnreservedFixtureNames(mkdtempSync(join(tmpdir(), "fixture-empty-"))),
+    ).toThrow(/no fixture run state/);
   });
 });
 

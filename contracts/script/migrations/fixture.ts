@@ -414,10 +414,6 @@ function saveRunState(opts: CommonOptions, state: FixtureRunState): void {
 const FIXTURE_CSV_HEADER =
   "labelName,fixtureId,reservationState,sourceScenarioId,replicaIndex,popularityTier";
 
-/// Name of the list of seeded names pre-migration must leave alone, beside
-/// `fixture-premigration.csv` in the work directory.
-export const FIXTURE_UNRESERVED_CSV = "fixture-unreserved.csv";
-
 /// Splits the seeded names by whether pre-migration reserves them. Only names whose
 /// v2 pre-migration profile is `present` are reserved — the rest model names that
 /// are deliberately absent, already registered, or expired on v2, and reserving
@@ -436,9 +432,37 @@ export function splitFixtureReservations(
   return { reserved, unreserved };
 }
 
-/// Writes the label list the pre-migration phases reserve on v2, and beside it the
-/// seeded names they must not, which `premigration reconcile --unreserved-csv`
-/// reads so that live v1 names left out on purpose are not reported as missing.
+/// The seeded names pre-migration leaves unreserved on purpose, with the v2 state
+/// each one's scenario declares. The run state in `workDir` says which names were
+/// seeded and from which corpus, and the corpus says what each name needs, so the
+/// answer comes from the same records seeding used rather than from a copy of them.
+export function keptUnreservedFixtureNames(
+  workDir: string,
+): Array<{ label: string; state: string }> {
+  const opts = { workDir } as CommonOptions;
+  const state = loadRunState(opts);
+  if (!state) {
+    throw new Error(
+      `no fixture run state at ${runStatePath(opts)}; pass the work directory "fixture seed-v1" used`,
+    );
+  }
+  const seeded = new Set(state.names.map((name) => name.fixtureId));
+  const rows = loadFixture({
+    ...opts,
+    fixtureRoot: state.fixtureRoot,
+  }).filter((row) => seeded.has(row.fixture_id));
+  if (rows.length !== seeded.size) {
+    throw new Error(
+      `the corpus at ${state.fixtureRoot} holds ${rows.length} of the ${seeded.size} names this run seeded; point the run at the corpus it was seeded from`,
+    );
+  }
+  return splitFixtureReservations(rows, seeded).unreserved.map((row) => ({
+    label: row.label,
+    state: row.scenario.v2_premigration?.profile ?? "",
+  }));
+}
+
+/// Writes the label list the pre-migration phases reserve on v2.
 ///
 /// Derived from the corpus rather than shipped beside it: every column restates
 /// a field of the envelope, so a separate file is one more thing that can fall
@@ -447,30 +471,27 @@ function writePremigrationCsv(
   opts: CommonOptions,
   rows: FixtureEnvelope[],
   state: FixtureRunState,
-): { path: string; labels: string[]; unreservedPath: string } {
-  const { reserved, unreserved } = splitFixtureReservations(
+): { path: string; labels: string[] } {
+  const { reserved } = splitFixtureReservations(
     rows,
     new Set(state.names.map((n) => n.fixtureId)),
   );
-  const toCsv = (entries: FixtureEnvelope[]) =>
-    `${[
-      FIXTURE_CSV_HEADER,
-      ...entries.map((row) =>
-        [
-          row.label,
-          row.fixture_id,
-          row.scenario.v2_premigration?.profile,
-          row.source_scenario_id,
-          row.replica_index,
-          row.popularity_tier,
-        ].join(","),
-      ),
-    ].join("\n")}\n`;
+  const output = [
+    FIXTURE_CSV_HEADER,
+    ...reserved.map((row) =>
+      [
+        row.label,
+        row.fixture_id,
+        row.scenario.v2_premigration?.profile,
+        row.source_scenario_id,
+        row.replica_index,
+        row.popularity_tier,
+      ].join(","),
+    ),
+  ];
   const path = join(resolve(opts.workDir), "fixture-premigration.csv");
-  const unreservedPath = join(resolve(opts.workDir), FIXTURE_UNRESERVED_CSV);
-  writeFileSync(path, toCsv(reserved));
-  writeFileSync(unreservedPath, toCsv(unreserved));
-  return { path, labels: reserved.map((row) => row.label), unreservedPath };
+  writeFileSync(path, `${output.join("\n")}\n`);
+  return { path, labels: reserved.map((row) => row.label) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1032,9 +1053,6 @@ export async function seedV1(
   console.log(`run state: ${runStatePath(opts)}`);
   console.log(
     `premigration CSV: ${csv.path} (${csv.labels.length} of ${state.names.length} names reserved on v2)`,
-  );
-  console.log(
-    `kept unreserved: ${csv.unreservedPath} (pass to premigration reconcile --unreserved-csv)`,
   );
   console.log(
     `next: bun run migration -- premigration run --csv-file ${csv.path}`,

@@ -703,12 +703,13 @@ It takes no owner option of its own. Each actor alias is resolved against the ad
 run recorded in `<work-dir>/fixture-run.json`, so a cohort registered to a [nominated
 wallet](#choosing-who-owns-the-seeded-names) is checked against that wallet.
 
-> **Fuses are compared exactly.** A scenario declaring a fuse no chain can set fails `verify-v1`,
-> and `fixture verify` cannot catch it — the plan is buildable; only the chain rejects it.
-> `CAN_EXTEND_EXPIRY` on a `.eth` 2LD is the case to watch: the fuse is parent-controlled and
-> `wrapETH2LD` always burns `PARENT_CANNOT_CONTROL`, so nothing can set it afterwards. The bundled
-> corpus declares it only on subnames, where it is reachable. Standalone a mismatch is a report you
-> can read past — [in a rehearsal it aborts the run](#in-a-rehearsal).
+> **Some fuses cannot be set on some names.** `verify-v1` compares fuses exactly, so a scenario that
+> asks for a fuse the chain does not allow fails the check. `fixture verify` does not warn you,
+> because it only checks that the calls can be built. The fuse to watch is `CAN_EXTEND_EXPIRY` on a
+> `.eth` 2LD: wrapping a 2LD always burns `PARENT_CANNOT_CONTROL`, and after that
+> `CAN_EXTEND_EXPIRY` can never be set. The bundled corpus sets it only on subnames, so it is not
+> affected. When you run `verify-v1` yourself a mismatch is only a report, but
+> [in a rehearsal it stops the run](#in-a-rehearsal).
 
 ### Choosing who owns the seeded names
 
@@ -806,17 +807,17 @@ Run it in addition to the real registration export, at [phase 2](#phase-2-initia
 again at [phase 5](#phase-5-final-pre-migration-sync), with its own `--work-dir` so the two runs keep
 separate checkpoints.
 
-The names left out are still live v1 names, so `premigration reconcile` — whose index covers every
-registration — would count them as missing and keep the phase 3 gate shut. `seed-v1` writes them to
-`<work-dir>/fixture-unreserved.csv` beside the reserved list; pass that file to reconcile with
-`--unreserved-csv` and it lists them under "kept unreserved by the fixture corpus" instead. A name the
-list says must stay absent that turns up reserved on v2 is reported as unexpected, since the case its
-scenario tests is gone:
+The names left out are still live v1 names. `premigration reconcile` checks every registration on the
+chain, so it would count them as missing and keep the phase 3 gate shut. Pass the fixture work
+directory with `--fixture-work-dir` and reconcile lists them under "kept unreserved by the fixture
+corpus" instead. It reads which names were seeded from `fixture-run.json`, and what each one needs
+from the corpus that run used. If a name that must stay absent is reserved on v2, reconcile reports it
+as unexpected, because the case its scenario tests is gone:
 
 ```bash
 bun run migration -- premigration reconcile --network sepolia \
   --work-dir .dev/premig-1 --csv-file <registrations.csv> \
-  --unreserved-csv .dev/fixture/fixture-unreserved.csv
+  --fixture-work-dir .dev/fixture
 ```
 
 ### In a rehearsal

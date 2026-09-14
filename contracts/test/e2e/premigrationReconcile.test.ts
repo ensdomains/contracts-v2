@@ -645,22 +645,40 @@ describe("premigration reconcile", () => {
     ]);
   });
 
-  // A fixture list in the shape seeding writes beside fixture-premigration.csv.
-  function writeUnreservedCsv(
-    workDir: string,
-    entries: Array<{ label: string; state: string }>,
+  // A seeded fixture work directory: the run state naming what was seeded, and the
+  // corpus it was seeded from, holding each name's declared v2 state.
+  function writeFixtureWorkDir(
+    names: Array<{ label: string; profile: string }>,
   ) {
-    const path = join(workDir, "fixture-unreserved.csv");
+    const dir = mkdtempSync(join(tmpdir(), "reconcile-fixture-"));
+    const corpus = join(dir, "corpus");
+    mkdirSync(corpus);
     writeFileSync(
-      path,
-      [
-        "labelName,fixtureId,reservationState,sourceScenarioId,replicaIndex,popularityTier",
-        ...entries.map(
-          ({ label, state }) => `${label},FX-${label},${state},FX,1,long_tail`,
-        ),
-      ].join("\n"),
+      join(corpus, "weighted-scenarios.jsonl"),
+      names
+        .map(({ label, profile }) =>
+          JSON.stringify({
+            fixture_id: `FX-${label}`,
+            source_scenario_id: `FX-${label}`,
+            replica_index: 1,
+            label,
+            scenario: {
+              execution: { scenario: "live_now" },
+              v2_premigration: { profile },
+            },
+          }),
+        )
+        .join("\n"),
     );
-    return path;
+    writeFileSync(
+      join(dir, "fixture-run.json"),
+      JSON.stringify({
+        version: 2,
+        fixtureRoot: corpus,
+        names: names.map(({ label }) => ({ fixtureId: `FX-${label}`, label })),
+      }),
+    );
+    return dir;
   }
 
   it("lists a fixture name kept off v2 on purpose apart from the missing", async () => {
@@ -682,8 +700,9 @@ describe("premigration reconcile", () => {
     ]);
 
     const result = await run(workDir, fromBlock, {
-      unreservedCsv: writeUnreservedCsv(workDir, [
-        { label: keptOut, state: "missing" },
+      fixtureWorkDir: writeFixtureWorkDir([
+        { label: "alpha", profile: "present" },
+        { label: keptOut, profile: "missing" },
       ]),
     });
 
@@ -701,8 +720,9 @@ describe("premigration reconcile", () => {
 
     const result = await run(workDir, fromBlock, {
       reportOnly: true,
-      unreservedCsv: writeUnreservedCsv(workDir, [
-        { label: "beta", state: "missing" },
+      fixtureWorkDir: writeFixtureWorkDir([
+        { label: "alpha", profile: "present" },
+        { label: "beta", profile: "missing" },
       ]),
     });
 
