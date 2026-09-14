@@ -148,6 +148,15 @@ transactions afterwards.
 > CSV's recorded source matches the index's, because verifying a CSV against the indexer that
 > produced it cannot detect anything missing from that indexer. Use `--report-only` for a dry read.
 >
+> **Names the CSV holds only as `[labelhash]` are listed apart.** ENS writes a label it cannot show
+> as text — one nobody knows, or one longer than DNS encoding's 255 bytes — as its labelhash in square
+> brackets, and ENSIP-15 disallows brackets in a normalized name. Pre-migration refuses a label of that
+> shape, since the text alone cannot say whether it is a placeholder or a name registered with the
+> placeholder text itself; mainnet holds a handful of the latter, registered by typing the bracketed
+> form. Such a name can never be reserved from the CSV, so when `--csv-file` is given reconcile lists
+> each one under "not reservable from the CSV" instead of counting it as missing. Without the CSV they
+> cannot be told apart and count as missing.
+>
 > **Read the `cross-source:` line first.** Before comparing anything against v2, reconcile prints the
 > CSV's label count beside the index's claimable count. Two independent views of the same chain must
 > agree on how many names are live, and a disagreement there is a CSV problem rather than a
@@ -213,8 +222,10 @@ If you seeded a fixture corpus, run this a second time against its own CSV and w
   pre-migration missed can never be picked up afterwards, and the reconciliation is what proves none
   was. `--skip-preconditions` overrides the gate when you have a reason to, and
   `--max-reconcile-age-blocks` controls how stale a pass may be (default ~1 day) — names keep being
-  registered on v1 until the freeze, so an old pass says nothing about now. A reconciliation that
-  *fails* revokes any earlier pass rather than leaving it standing. This command takes the key via `--private-key` explicitly — the env fallback applies only
+  registered on v1 until the freeze, so an old pass says nothing about now. Starting a reconciliation
+  revokes any earlier pass, so one that fails — or stops early on a refused CSV or a count
+  disagreement — leaves none standing. A pass also records the registry it examined, and the freeze
+  accepts it only for this deployment's `ETHRegistry`. This command takes the key via `--private-key` explicitly — the env fallback applies only
   when it is run through `phase execute-owner-txs --role v1Owner`.
 - **Env / args:** v1 owner key via `--private-key` (or `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` through
   execute-owner-txs). `--calldata-only` emits calldata for a multisig instead of broadcasting.
@@ -394,7 +405,10 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
   bootstrap `switch-urp-to-managed`. `--calldata-only` for a multisig/DAO.
 - **Expected outcome:** the resolution cutover — the intermediate URP is upgraded to
   `UniversalResolverV2` and public resolution serves v2. `verify-urp` confirms both proxy
-  implementations. See [universalResolver.md](./universalResolver.md) for the proxy chain and the
+  implementations: by default it expects the top URP to front the deployment's
+  `ManagedUniversalResolverProxy` and that proxy to serve its `UniversalResolverV2`, and fails
+  otherwise — so a `--calldata-only` switch the Safe never executed does not pass. Pass
+  `--expected-top-implementation` / `--expected-managed-implementation` to check any other state. See [universalResolver.md](./universalResolver.md) for the proxy chain and the
   optional post-cutover step.
 
 > **A proxy pointing somewhere new is not a working cutover.** `verify-urp` compares implementation

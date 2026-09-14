@@ -21,6 +21,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  decodeAbiParameters,
   defineChain,
   encodeAbiParameters,
   encodeFunctionData,
@@ -31,9 +32,11 @@ import {
   namehash,
   parseAbiItem,
   parseEther,
+  slice,
   stringToHex,
   zeroAddress,
   zeroHash,
+  type AbiParameter,
   type AbiEvent,
   type Address,
   type Chain,
@@ -162,6 +165,7 @@ import {
   type Checkpoint,
   createFreshCheckpoint,
   FailedNamesError,
+  isEncodedLabelhash,
   isValidLabel,
   loadCheckpoint,
   main as preMigrationMain,
@@ -322,6 +326,26 @@ function parseResumeFromPhase(value: string | undefined): 2 | undefined {
 // neither is present so callers can fail loudly instead of guessing a column.
 // How many CSV rows name a v1 registration that is still claimable at `chainNow`.
 //
+// Rows whose label has the `[labelhash]` shape, keyed by every labelhash the row can
+// stand for: the hash of the text itself, for a name registered with that text, and
+// the hash inside the brackets, for a placeholder of a label nobody knows.
+function readEncodedLabelhashRows(csvFile: string): Map<string, string> {
+  const { rows, labelIndex } = openLabelCsv(csvFile);
+  const labels = new Map<string, string>();
+  if (labelIndex < 0) return labels;
+  for (const line of rows) {
+    const label = parseCSVLine(line)[labelIndex]?.trim();
+    if (!label || !isEncodedLabelhash(label)) continue;
+    for (const id of [
+      keccak256(stringToHex(label)),
+      `0x${label.slice(1, -1)}`,
+    ]) {
+      labels.set(toLabelhashHex(canonicalLabelId(id)), label);
+    }
+  }
+  return labels;
+}
+
 // The exporter's query has no expiry filter, so a CSV holds every registration the
 // subgraph ever indexed. Comparing that raw total against an index of claimable names
 // puts two correct sources millions of rows apart and calls it a discrepancy. Where
@@ -1035,6 +1059,30 @@ function deploymentOrigin(deployment: JsonDeployment): Address | undefined {
   return origin ? getAddress(origin) : undefined;
 }
 
+/// The owner a namespace was deployed with, read from the constructor arguments of its
+/// ETHRegistrar, whose first argument is the owner.
+function deploymentOwner(
+  deploymentsDir: string,
+  deploymentNetwork: string,
+): Address | undefined {
+  const registrar = maybeLoadV2Deployment(
+    deploymentsDir,
+    deploymentNetwork,
+    "ETHRegistrar",
+  ) as (JsonDeployment & { argsData?: Hex }) | undefined;
+  const constructor = registrar?.abi.find(
+    (item) => item.type === "constructor",
+  ) as { inputs: readonly AbiParameter[] } | undefined;
+  if (!registrar?.argsData || constructor?.inputs[0]?.name !== "owner_") {
+    return undefined;
+  }
+  const [owner] = decodeAbiParameters(
+    constructor.inputs.slice(0, 1),
+    slice(registrar.argsData, 0, 32),
+  );
+  return getAddress(owner as Address);
+}
+
 function deploymentBlockNumber(deployment: JsonDeployment): number | undefined {
   const block = (deployment as { receipt?: { blockNumber?: string | number } })
     .receipt?.blockNumber;
@@ -1095,6 +1143,10 @@ type ReconcileResult = {
   reservedInGrace: number;
   registered: number;
   missing: string[];
+  /// Claimable names the CSV carries only as `[labelhash]`-shaped text, which
+  /// pre-migration refuses to submit. They can never be reserved from that CSV, so
+  /// they are listed on their own rather than counted as missing.
+  unreservable: Array<{ id: string; label: string }>;
   expiryMismatched: string[];
   unexpected: string[];
   /// Names the exporter could not decode a label for, so pre-migration cannot seed
@@ -1144,6 +1196,16 @@ export async function reconcilePreMigration(opts: {
   const client = publicClient(opts.rpcUrl, chain);
   const v1Client = publicClient(opts.mainnetRpcUrl ?? opts.rpcUrl, chain);
 
+  // A pass stands only until the next reconciliation. Revoked before anything can
+  // fail, so a refused CSV, a count disagreement or an unreachable node cannot leave
+  // an earlier pass authorising the freeze; only a run that completes clean records
+  // one again.
+  clearVerification(
+    resolve(deploymentsDir),
+    deploymentNetwork,
+    PRECONDITION_RECONCILE,
+  );
+
   const index = loadV1NameIndex(opts.workDir);
   if (opts.csvFile) {
     assertCompleteCsv(opts.csvFile);
@@ -1180,6 +1242,7 @@ export async function reconcilePreMigration(opts: {
     reservedInGrace: 0,
     registered: 0,
     missing: [],
+    unreservable: [],
     expiryMismatched: [],
     unexpected: [],
     unmigratableNoLabel: 0,
@@ -1190,6 +1253,7 @@ export async function reconcilePreMigration(opts: {
   // Two independent views of the same chain should agree on how many names are
   // live. A disagreement means one of them is wrong, and it is far cheaper to learn
   // that here than after the freeze.
+  let crossSourceProblem: string | undefined;
   if (opts.csvFile && existsSync(opts.csvFile)) {
     const csv = countClaimableCsvRows(opts.csvFile, v1Now);
     result.crossSource = { csv: csv.count, index: claimable.length };
@@ -1204,14 +1268,14 @@ export async function reconcilePreMigration(opts: {
     if (csv.filtered) {
       const drift = Math.abs(csv.count - claimable.length);
       const tolerance = parseNumber(opts.crossSourceTolerance, 0);
-      if (drift > tolerance && !opts.reportOnly) {
+      if (drift > tolerance) {
+        crossSourceProblem = `cross-source: the CSV and the index disagree on how many names are live by ${drift} (CSV ${csv.count}, index ${claimable.length}); one of the two is incomplete, and which one decides whether a name is stranded. Re-export or rebuild, or pass --cross-source-tolerance to accept a known difference`;
         // Thrown here rather than collected with the per-name problems: a count
         // disagreement says one of the two sources is incomplete, so the passes below
         // would be examining the wrong set of names. It is also the cheapest evidence
-        // available, which is the whole point of taking it before the reads.
-        throw new Error(
-          `cross-source: the CSV and the index disagree on how many names are live by ${drift} (CSV ${csv.count}, index ${claimable.length}); one of the two is incomplete, and which one decides whether a name is stranded. Re-export or rebuild, or pass --cross-source-tolerance to accept a known difference`,
-        );
+        // available, which is the whole point of taking it before the reads. A report
+        // still reads on, but the disagreement keeps it from recording a pass.
+        if (!opts.reportOnly) throw new Error(crossSourceProblem);
       }
     }
   }
@@ -1220,6 +1284,11 @@ export async function reconcilePreMigration(opts: {
     `v1 index: ${index.expiries.size} names @ block ${index.meta.block} (${index.meta.source}${index.meta.scope === "labels" ? ", scoped to the names given rather than every registration" : ""})`,
   );
   console.log(`claimable v1 names: ${claimable.length}`);
+
+  const bracketLabels =
+    opts.csvFile && existsSync(opts.csvFile)
+      ? readEncodedLabelhashRows(opts.csvFile)
+      : new Map<string, string>();
 
   // Forward: every claimable v1 name must exist on v2 with the bonus-adjusted expiry.
   for (
@@ -1255,7 +1324,11 @@ export async function reconcilePreMigration(opts: {
 
       // Nothing on v2 at all: the name was never seeded.
       if (status === STATUS.AVAILABLE && actualExpiry === 0n) {
-        result.missing.push(entry.id);
+        const label = bracketLabels.get(
+          toLabelhashHex(canonicalLabelId(entry.id)),
+        );
+        if (label === undefined) result.missing.push(entry.id);
+        else result.unreservable.push({ id: entry.id, label });
         continue;
       }
       // Computed with the same cap pre-migration applies, or every name near the
@@ -1437,24 +1510,25 @@ export async function reconcilePreMigration(opts: {
   );
   console.log(`v2 registered: ${result.registered}`);
   console.log(`missing from v2: ${result.missing.length}`);
+  if (result.unreservable.length > 0) {
+    console.log(
+      `not reservable from the CSV, label in [labelhash] form: ${result.unreservable.length}`,
+    );
+    for (const { id, label } of result.unreservable) {
+      console.log(`  ${id} ${label}.eth`);
+    }
+  }
   console.log(`expiry mismatches: ${result.expiryMismatched.length}`);
   console.log(`unexpected on v2: ${result.unexpected.length}`);
 
   const problems = [
+    ...(crossSourceProblem ? [crossSourceProblem] : []),
     ...result.missing.map((entry) => `missing: ${entry}`),
     ...result.expiryMismatched.map((entry) => `expiry: ${entry}`),
     ...result.unexpected.map((entry) => `unexpected: ${entry}`),
   ];
-  if (problems.length > 0) {
-    // A failing reconciliation must revoke any earlier pass, not just decline to
-    // record a new one: phase 3 would otherwise read the stale success and permit
-    // the irreversible freeze despite the latest evidence showing incompleteness.
-    clearVerification(
-      resolve(deploymentsDir),
-      deploymentNetwork,
-      PRECONDITION_RECONCILE,
-    );
-  } else {
+  // Any earlier pass was revoked on the way in, so a failing run records nothing.
+  if (problems.length === 0) {
     // Phase 3 freezes v1. Recording the pass lets it refuse to run when the
     // reconciliation that proves nothing was missed has not been done.
     //
@@ -1499,12 +1573,14 @@ export async function reconcilePreMigration(opts: {
       blockHash: indexBlockHash,
       headBlockNumber: headBlockNumber.toString(),
       headBlockHash,
+      registry: getAddress(registryAddress),
       ...(simulatedEndpoint ? { simulatedEndpoint } : {}),
       verifiedAt: new Date().toISOString(),
       details: {
         claimable: result.claimable,
         reserved: result.reserved,
         registered: result.registered,
+        unreservable: result.unreservable.length,
         rpcHead: (await client.getBlockNumber()).toString(),
       },
     });
@@ -2322,6 +2398,12 @@ export async function disableV1Registrars(
         opts.maxReconcileAgeBlocks === RECONCILE_AGE_UNBOUNDED
           ? undefined
           : BigInt(parseNumber(opts.maxReconcileAgeBlocks, 7200)),
+      // The pass has to be for the registry this deployment seeds, not whatever
+      // `--registry` a reconciliation happened to be pointed at.
+      expectedRegistry: getAddress(
+        loadV2Deployment(deploymentsDir, deploymentNetwork, "ETHRegistry")
+          .address,
+      ),
       // A rehearsal freezes the fork it reconciled, so its own pass is the right
       // evidence there; a live freeze still refuses one taken on a simulated node.
       targetSimulated:
@@ -3324,7 +3406,13 @@ export async function verifyV2Roles(opts: {
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
 
-  const owner = opts.owner ?? NETWORKS[opts.network].defaultOwner;
+  // The owner the namespace was deployed with, which is what every grant to it was
+  // made against. The network's configured default is only a guess where no
+  // deployment record names one: on live Sepolia it is a local test account.
+  const owner =
+    opts.owner ??
+    deploymentOwner(deploymentsDir, deploymentNetwork) ??
+    NETWORKS[opts.network].defaultOwner;
   // Falling back to the owner here made the audit compare every constructor grant
   // against the wrong address: on a live deployment the deployer and the owner
   // differ, so the real deployer was reported as unexpected and the owner as missing
@@ -4479,15 +4567,16 @@ async function verifyUrp(opts: {
     opts.expectedTopImplementation &&
     !sameAddress(topImplementation, opts.expectedTopImplementation)
   ) {
-    throw new Error("top URP implementation does not match expected address");
+    throw new Error(
+      `top URP implementation is ${topImplementation}, expected ${opts.expectedTopImplementation}`,
+    );
   }
   if (
     opts.expectedManagedImplementation &&
-    getAddress(managedImplementation) !==
-      getAddress(opts.expectedManagedImplementation)
+    !sameAddress(managedImplementation, opts.expectedManagedImplementation)
   ) {
     throw new Error(
-      "managed URP implementation does not match expected address",
+      `managed URP implementation is ${managedImplementation}, expected ${opts.expectedManagedImplementation}`,
     );
   }
 }
@@ -8064,11 +8153,11 @@ export async function main(argv = process.argv): Promise<void> {
           )
           .option(
             "--deployer <address>",
-            "Deployer address; defaults to the network's configured owner",
+            "Deployer address; defaults to the account that sent the namespace's deploy transactions",
           )
           .option(
             "--owner <address>",
-            "Owner address; defaults to the network's configured owner",
+            "Owner address; defaults to the owner the namespace's ETHRegistrar was deployed with, else the network's configured owner",
           )
           .option(
             "--from-block <number>",
@@ -8247,11 +8336,11 @@ export async function main(argv = process.argv): Promise<void> {
           .option("--managed-urp <address>", "Managed URP address")
           .option(
             "--expected-top-implementation <address>",
-            "Expected top-level URP implementation",
+            "Expected top-level URP implementation; defaults to the deployment's ManagedUniversalResolverProxy",
           )
           .option(
             "--expected-managed-implementation <address>",
-            "Expected managed URP implementation",
+            "Expected managed URP implementation; defaults to the deployment's UniversalResolverV2",
           ),
       ),
     ).action(
@@ -8265,8 +8354,31 @@ export async function main(argv = process.argv): Promise<void> {
           },
       ) => {
         const networkOpts = withNetworkRpc(opts);
+        const deploymentsDir =
+          networkOpts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+        const deploymentNetwork =
+          networkOpts.deploymentNetwork ?? networkOpts.network;
+        // Run after the cutover, where the top proxy fronts the managed one and the
+        // managed one serves UniversalResolverV2. Without expectations the command
+        // only prints the two proxies, so a switch that never executed would pass.
         await verifyUrp({
           ...networkOpts,
+          expectedTopImplementation:
+            networkOpts.expectedTopImplementation ??
+            resolveDeploymentAddress(
+              networkOpts.managedUrp,
+              deploymentsDir,
+              deploymentNetwork,
+              "ManagedUniversalResolverProxy",
+            ),
+          expectedManagedImplementation:
+            networkOpts.expectedManagedImplementation ??
+            resolveDeploymentAddress(
+              undefined,
+              deploymentsDir,
+              deploymentNetwork,
+              "UniversalResolverV2",
+            ),
         });
       },
     ),

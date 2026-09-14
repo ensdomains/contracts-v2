@@ -153,6 +153,54 @@ describe("checkPrecondition", () => {
     });
   });
 
+  it("refuses a pass for a registry other than the one the step relies on", async () => {
+    const recorded = `0x${"11".repeat(20)}`;
+    const expected = `0x${"22".repeat(20)}`;
+    expect(
+      await checkPrecondition({
+        record: record({ registry: recorded }),
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash,
+        expectedRegistry: expected,
+      }),
+    ).toEqual({
+      kind: "wrong-registry",
+      recordedRegistry: recorded,
+      expectedRegistry: expected,
+    });
+  });
+
+  it("refuses a pass that does not say which registry it examined", async () => {
+    const expected = `0x${"22".repeat(20)}`;
+    expect(
+      await checkPrecondition({
+        record: record(),
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash,
+        expectedRegistry: expected,
+      }),
+    ).toEqual({
+      kind: "wrong-registry",
+      recordedRegistry: null,
+      expectedRegistry: expected,
+    });
+  });
+
+  it("matches the examined registry whatever its letter case", async () => {
+    const registry = "0xAbCdEf0000000000000000000000000000000001";
+    expect(
+      await checkPrecondition({
+        record: record({ registry }),
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash,
+        expectedRegistry: registry.toLowerCase(),
+      }),
+    ).toBeNull();
+  });
+
   it("accepts a simulated pass when the gated step acts on a simulated node too", async () => {
     // A rehearsal reconciles the fork it then freezes, so the pass describes the very
     // chain the freeze acts on.

@@ -81,13 +81,21 @@ export class FailedNamesError extends Error {
 
 const ENCODED_LABELHASH_RE = /^\[[0-9a-fA-F]{64}\]$/;
 
+/// Whether a label has the `[labelhash]` shape ENS uses to show a label it does not
+/// know. A CSV row in that shape is not a label pre-migration can submit: it is either
+/// such a placeholder, or a name registered with the placeholder text itself, and the
+/// two cannot be told apart from the text.
+export function isEncodedLabelhash(label: string): boolean {
+  return ENCODED_LABELHASH_RE.test(label);
+}
+
 export function isValidLabel(label: any): label is string {
   return (
     !!label &&
     typeof label === "string" &&
     label.trim() !== "" &&
     Buffer.from(label).length <= 255 &&
-    !ENCODED_LABELHASH_RE.test(label)
+    !isEncodedLabelhash(label)
   );
 }
 
@@ -1510,6 +1518,10 @@ export async function main(argv = process.argv): Promise<void> {
     limit: opts.limit ? parseInt(opts.limit) : null,
     dryRun: opts.dryRun,
     continue: opts.continue,
+    // A dry run reads the checkpoint but never clears or saves it. Saving would move
+    // the resume cursor past rows nothing was sent for and drop them from the retry
+    // queue, so a later real `--continue` would skip them for good.
+    disableCheckpoint: opts.dryRun,
     bonusPeriodDays: parseBonusPeriodDays(opts.bonusPeriodDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,

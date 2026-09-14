@@ -1209,8 +1209,39 @@ describe("PreMigration", () => {
       expect(state.status).toBe(STATUS.AVAILABLE);
     }
 
-    const checkpoint = readTestCheckpoint();
-    expect(checkpoint!.successCount).toBe(2);
+    // Nothing was sent, so there is nothing to resume from.
+    expect(readTestCheckpoint()).toBeNull();
+  });
+
+  it("a dry run leaves an existing checkpoint's retry queue and cursor alone", async () => {
+    const labels = ["dryq1", "dryq2", "dryq3"];
+    const { user } = env.namedAccounts;
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+    createCSVFile(csvFilePath, labels);
+    const recorded = createTestCheckpoint({
+      lastProcessedLineNumber: 2,
+      totalProcessed: 3,
+      totalExpected: 3,
+      successCount: 2,
+      failedLines: [0],
+    });
+    writeTestCheckpoint(recorded);
+
+    await main(
+      buildMainArgs(env, csvFilePath, { continue: true, dryRun: true }),
+    );
+
+    // Had the dry run saved its plan, the failed row would have left the queue and a
+    // real resume would step over it, leaving the name unreserved.
+    const after = readTestCheckpoint();
+    expect(after!.failedLines).toEqual([0]);
+    expect(after!.lastProcessedLineNumber).toBe(2);
+    expect(after!.successCount).toBe(2);
+
+    await main(buildMainArgs(env, csvFilePath, { continue: true }));
+    expect((await verifyV2State(env, labels[0])).status).toBe(STATUS.RESERVED);
   });
 
   it("--continue does not validate a wrong-column-count row before the resume point", async () => {

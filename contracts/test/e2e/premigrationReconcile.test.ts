@@ -1,10 +1,17 @@
 import { describe, expect, it, setDefaultTimeout } from "bun:test";
 setDefaultTimeout(120_000);
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { encodeAbiParameters, keccak256, toHex, zeroAddress } from "viem";
+import {
+  encodeAbiParameters,
+  getAddress,
+  keccak256,
+  stringToHex,
+  toHex,
+  zeroAddress,
+} from "viem";
 
 import { reconcilePreMigration } from "../../script/migrate.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
@@ -535,6 +542,121 @@ describe("premigration reconcile", () => {
     expect(result.claimable).toBe(1);
     expect(result.reserved).toBe(0);
     expect(result.missing).toEqual([`${indexEntries[0].id} has status 0`]);
+  });
+
+  it("records which registry a pass examined, for the phase 3 gate to check", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+    const gateDir = mkdtempSync(join(tmpdir(), "reconcile-gate-registry-"));
+
+    await run(workDir, fromBlock, {
+      deploymentsDir: gateDir,
+      deploymentNetwork: "mainnet",
+    });
+
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile")?.registry,
+    ).toBe(getAddress(env.v2.ETHRegistry.address));
+  });
+
+  it("revokes an earlier pass when a later reconciliation stops early", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    writeIndex(workDir, indexEntries);
+    const gateDir = mkdtempSync(join(tmpdir(), "reconcile-gate-early-"));
+    const gate = { deploymentsDir: gateDir, deploymentNetwork: "mainnet" };
+    await run(workDir, fromBlock, gate);
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).not.toBeNull();
+
+    // The count disagreement throws before any name is read. Stopping there must not
+    // leave the earlier pass standing to authorise the freeze.
+    writeDatedCsv(csvFile, ["alpha", "beta"], indexEntries);
+    writeIndex(workDir, indexEntries.slice(0, 1));
+    await expect(run(workDir, fromBlock, { ...gate, csvFile })).rejects.toThrow(
+      /disagree on how many names are live/,
+    );
+
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).toBeNull();
+  });
+
+  it("records no pass from a report whose sources disagree on the count", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    // A CSV counting a name the index lacks, while v2 holds both: every per-name
+    // pass is clean, and only the count says one source is incomplete.
+    writeDatedCsv(csvFile, ["alpha", "beta"], indexEntries);
+    writeIndex(workDir, indexEntries);
+    writeFileSync(
+      csvFile,
+      `${readFileSync(csvFile, "utf-8").trimEnd()}\n,,,,,,gamma,,${indexEntries[0].expiry}`,
+    );
+    const gateDir = mkdtempSync(join(tmpdir(), "reconcile-gate-drift-"));
+
+    await run(workDir, fromBlock, {
+      csvFile,
+      reportOnly: true,
+      deploymentsDir: gateDir,
+      deploymentNetwork: "mainnet",
+    });
+
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).toBeNull();
+  });
+
+  it("lists a name the CSV carries only in [labelhash] form apart from the missing", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user } = env.namedAccounts;
+
+    // A name registered with ENS's placeholder text as its label, as some live
+    // mainnet names were. Pre-migration refuses that shape, so it never reaches v2.
+    const bracketed = `[${"0418".padEnd(64, "0")}]`;
+    const bracketedId = keccak256(stringToHex(bracketed));
+    await env.v1.BaseRegistrar.write.register([
+      BigInt(bracketedId),
+      user.address,
+      BigInt(ONE_YEAR_SECONDS),
+    ]);
+    const bracketedExpiry = await env.v1.BaseRegistrar.read.nameExpires([
+      BigInt(bracketedId),
+    ]);
+    writeFileSync(
+      csvFile,
+      `${readFileSync(csvFile, "utf-8").trimEnd()}\n,,,,,,${bracketed},,`,
+    );
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: bracketedId, expiry: bracketedExpiry },
+    ]);
+
+    const result = await run(workDir, fromBlock, { csvFile });
+
+    expect(result.missing).toEqual([]);
+    expect(result.unreservable).toEqual([
+      { id: bracketedId, label: bracketed },
+    ]);
+  });
+
+  it("still counts a [labelhash]-shaped name as missing without a CSV to show it", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const bracketedId = keccak256(stringToHex(`[${"ab".repeat(32)}]`));
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: bracketedId, expiry: indexEntries[0].expiry },
+    ]);
+
+    const result = await run(workDir, fromBlock, { reportOnly: true });
+
+    expect(result.missing).toEqual([bracketedId]);
+    expect(result.unreservable).toEqual([]);
   });
 
   it("ignores v1 names that have passed grace", async () => {

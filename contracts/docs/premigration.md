@@ -186,9 +186,12 @@ resume command in [Quick start](#quick-start).
 
 ## Dry run
 
-`--dry-run` runs the full pipeline — CSV parse, v1/v2 verification, expiry computation, checkpointing
-— and logs what would happen, but sends no transactions. It is the default first step in
-[Quick start](#quick-start).
+`--dry-run` runs the full pipeline — CSV parse, v1/v2 verification, expiry computation — and logs what
+would happen, but sends no transactions. It is the default first step in [Quick start](#quick-start).
+
+A dry run reads an existing checkpoint with `--continue` but never clears or saves one. Saving would move
+the resume cursor past rows nothing was sent for and drop them from the retry queue, so a later real
+`--continue` would skip them for good.
 
 ## Output
 

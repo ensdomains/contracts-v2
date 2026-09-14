@@ -34,6 +34,11 @@ export type VerificationRecord = {
   headBlockNumber: string;
   headBlockHash: string;
   /**
+   * The contract the verification examined, where it examined one. A pass says
+   * nothing about a different contract in the same namespace.
+   */
+  registry?: string;
+  /**
    * Set when the endpoint that answered the verification was a simulated node. A
    * rehearsal is worth recording — an operator wants to see that it ran, and a later
    * failure must still revoke an earlier pass — but it says nothing about the chain
@@ -113,6 +118,11 @@ export type PreconditionFailure =
   | { kind: "unbound" }
   | { kind: "simulated"; endpoint: string }
   | { kind: "wrong-chain"; recordedChainId: number }
+  | {
+      kind: "wrong-registry";
+      recordedRegistry: string | null;
+      expectedRegistry: string;
+    }
   | { kind: "ahead"; verifiedBlock: bigint; currentBlock: bigint }
   | {
       kind: "not-canonical";
@@ -146,6 +156,11 @@ export async function checkPrecondition(opts: {
   canonicalBlockHash: (blockNumber: bigint) => Promise<string | null>;
   maxAgeBlocks?: bigint;
   /**
+   * The contract the gated step relies on having been verified. A pass for any
+   * other, or one recorded without saying which it examined, does not count.
+   */
+  expectedRegistry?: string;
+  /**
    * Whether the step being gated acts on a simulated node itself. A pass recorded on
    * one then describes the chain it gates, as in a rehearsal, rather than a fork
    * standing in for a live chain; its head hash still has to belong to this node.
@@ -155,6 +170,16 @@ export async function checkPrecondition(opts: {
   if (!opts.record) return { kind: "missing" };
   if (opts.record.chainId !== opts.chainId) {
     return { kind: "wrong-chain", recordedChainId: opts.record.chainId };
+  }
+  if (
+    opts.expectedRegistry !== undefined &&
+    opts.record.registry?.toLowerCase() !== opts.expectedRegistry.toLowerCase()
+  ) {
+    return {
+      kind: "wrong-registry",
+      recordedRegistry: opts.record.registry ?? null,
+      expectedRegistry: opts.expectedRegistry,
+    };
   }
   if (opts.record.simulatedEndpoint && !opts.targetSimulated) {
     return { kind: "simulated", endpoint: opts.record.simulatedEndpoint };
@@ -219,6 +244,10 @@ export function describePreconditionFailure(
       return `${check} was recorded without a block hash, so it cannot be tied to this chain; re-run it here`;
     case "simulated":
       return `${check} last passed against ${failure.endpoint}, which is a simulated node rather than this chain; re-run it here`;
+    case "wrong-registry":
+      return failure.recordedRegistry === null
+        ? `${check} was recorded without the registry it examined, so it cannot be tied to ${failure.expectedRegistry}; re-run it`
+        : `${check} examined registry ${failure.recordedRegistry}, not this deployment's ${failure.expectedRegistry}; re-run it against this deployment`;
     case "wrong-chain":
       return `${check} was verified against chain ${failure.recordedChainId}, not this one; re-run it here`;
     case "ahead":

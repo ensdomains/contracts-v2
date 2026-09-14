@@ -2,7 +2,10 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeDeploymentNamespace } from "../utils/deploymentArtifacts.js";
+import {
+  writeDeploymentNamespace,
+  writeDeploymentRecord,
+} from "../utils/deploymentArtifacts.js";
 import { getAddress, type Address } from "viem";
 
 import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
@@ -123,6 +126,34 @@ describe("v2 role audit", () => {
           getAddress(candidate.holder.account as Address) === stranger,
       );
       expect(finding).toBeDefined();
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "takes the owner from the deployment when none is given",
+    async () => {
+      writeDeploymentArtifacts();
+      // A real namespace records each contract's constructor arguments, and the
+      // ETHRegistrar's first one is the owner.
+      const registrar = env.rocketh.deployments.ETHRegistrar!;
+      writeDeploymentRecord(deploymentsDir, NAMESPACE, "ETHRegistrar", {
+        address: registrar.address,
+        abi: registrar.abi,
+        argsData: (registrar as { argsData?: string }).argsData,
+      });
+
+      // The network default names a different account, so reading it would report
+      // the real owner's grants as unexpected and a grant nobody made as missing.
+      const findings = await audit({ owner: undefined, reportOnly: true });
+      const owner = getAddress(env.namedAccounts.owner.address);
+      expect(
+        findings.filter(
+          (finding) =>
+            finding.kind === "missing" ||
+            getAddress(finding.holder.account as Address) === owner,
+        ),
+      ).toEqual([]);
     },
     TEST_TIMEOUT_MS,
   );
