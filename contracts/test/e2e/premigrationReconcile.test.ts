@@ -645,6 +645,73 @@ describe("premigration reconcile", () => {
     ]);
   });
 
+  // A fixture list in the shape seeding writes beside fixture-premigration.csv.
+  function writeUnreservedCsv(
+    workDir: string,
+    entries: Array<{ label: string; state: string }>,
+  ) {
+    const path = join(workDir, "fixture-unreserved.csv");
+    writeFileSync(
+      path,
+      [
+        "labelName,fixtureId,reservationState,sourceScenarioId,replicaIndex,popularityTier",
+        ...entries.map(
+          ({ label, state }) => `${label},FX-${label},${state},FX,1,long_tail`,
+        ),
+      ].join("\n"),
+    );
+    return path;
+  }
+
+  it("lists a fixture name kept off v2 on purpose apart from the missing", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user } = env.namedAccounts;
+
+    // A live v1 name whose scenario needs it absent from v2, so pre-migration never
+    // reserves it. Without the list it is indistinguishable from a name missed.
+    const keptOut = "keptout";
+    const keptOutExpiry = await registerV1Name(
+      env,
+      keptOut,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: labelhash(keptOut), expiry: keptOutExpiry },
+    ]);
+
+    const result = await run(workDir, fromBlock, {
+      unreservedCsv: writeUnreservedCsv(workDir, [
+        { label: keptOut, state: "missing" },
+      ]),
+    });
+
+    expect(result.missing).toEqual([]);
+    expect(result.keptUnreserved).toEqual([
+      { id: labelhash(keptOut), label: keptOut, state: "missing" },
+    ]);
+  });
+
+  it("reports a fixture name reserved though its scenario needs it absent", async () => {
+    // Pre-migration seeded beta, yet the fixture list says its scenario needs it
+    // absent from v2: the precondition that scenario tests is gone.
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha", "beta"]);
+    writeIndex(workDir, indexEntries);
+
+    const result = await run(workDir, fromBlock, {
+      reportOnly: true,
+      unreservedCsv: writeUnreservedCsv(workDir, [
+        { label: "beta", state: "missing" },
+      ]),
+    });
+
+    expect(result.unexpected).toEqual([
+      `${labelhash("beta")} (beta.eth) is on v2, but its fixture scenario keeps it unreserved`,
+    ]);
+    expect(result.keptUnreserved).toEqual([]);
+  });
+
   it("still counts a [labelhash]-shaped name as missing without a CSV to show it", async () => {
     const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
     const bracketedId = keccak256(stringToHex(`[${"ab".repeat(32)}]`));

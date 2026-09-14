@@ -703,14 +703,12 @@ It takes no owner option of its own. Each actor alias is resolved against the ad
 run recorded in `<work-dir>/fixture-run.json`, so a cohort registered to a [nominated
 wallet](#choosing-who-owns-the-seeded-names) is checked against that wallet.
 
-> **Known-bad vectors — exclude them from the cohort.** A few scenarios declare `CAN_EXTEND_EXPIRY` on
-> a `.eth` 2LD, which no chain can satisfy: the fuse is parent-controlled and `wrapETH2LD` always
-> burns `PARENT_CANNOT_CONTROL`, so nothing can set it afterwards. Fuses are compared exactly, so
-> `verify-v1` fails on any cohort containing one, and `fixture verify` does not catch them — the plan
-> is buildable; only the chain rejects it. Their ids begin `3W-`, `FE-` or `PW-`, and the verification
-> report names the exact ones. A `--fixture-limit` cohort takes an alphabetical prefix of the scenario
-> ids and so tends to include some; pin the cohort with `--fixture-ids` instead. Standalone this is a
-> report you can read past — [in a rehearsal it aborts the run](#in-a-rehearsal).
+> **Fuses are compared exactly.** A scenario declaring a fuse no chain can set fails `verify-v1`,
+> and `fixture verify` cannot catch it — the plan is buildable; only the chain rejects it.
+> `CAN_EXTEND_EXPIRY` on a `.eth` 2LD is the case to watch: the fuse is parent-controlled and
+> `wrapETH2LD` always burns `PARENT_CANNOT_CONTROL`, so nothing can set it afterwards. The bundled
+> corpus declares it only on subnames, where it is reachable. Standalone a mismatch is a report you
+> can read past — [in a rehearsal it aborts the run](#in-a-rehearsal).
 
 ### Choosing who owns the seeded names
 
@@ -808,6 +806,19 @@ Run it in addition to the real registration export, at [phase 2](#phase-2-initia
 again at [phase 5](#phase-5-final-pre-migration-sync), with its own `--work-dir` so the two runs keep
 separate checkpoints.
 
+The names left out are still live v1 names, so `premigration reconcile` — whose index covers every
+registration — would count them as missing and keep the phase 3 gate shut. `seed-v1` writes them to
+`<work-dir>/fixture-unreserved.csv` beside the reserved list; pass that file to reconcile with
+`--unreserved-csv` and it lists them under "kept unreserved by the fixture corpus" instead. A name the
+list says must stay absent that turns up reserved on v2 is reported as unexpected, since the case its
+scenario tests is gone:
+
+```bash
+bun run migration -- premigration reconcile --network sepolia \
+  --work-dir .dev/premig-1 --csv-file <registrations.csv> \
+  --unreserved-csv .dev/fixture/fixture-unreserved.csv
+```
+
 ### In a rehearsal
 
 `fork full` and `clean-testnet` run the whole corpus stage themselves when given `--fixture-root`,
@@ -841,8 +852,7 @@ ERC-1155 receipt fail. Without state controls, pass `--fixture-private-key` and
 
 > **The state check is fatal here.** Standalone, `verify-v1` reports mismatches and exits non-zero,
 > leaving you to decide. In a rehearsal it runs inside the seed stage, so one mismatch takes the whole
-> run down before phase 2 — a [known-bad vector](#checking-the-shaped-state) included, which the
-> `--fixture-limit 40` cohort above will contain. Pin the cohort with `--fixture-ids` instead.
+> run down before phase 2.
 
 ## Rehearsals
 

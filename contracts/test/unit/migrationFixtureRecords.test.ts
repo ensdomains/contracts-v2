@@ -21,6 +21,7 @@ import {
   assertSeedable,
   refContext,
   reportReverseClaimOverlap,
+  splitFixtureReservations,
 } from "../../script/migrations/fixture.js";
 import type { RefContext } from "../../script/migrations/fixture/scenario.js";
 import type {
@@ -121,6 +122,32 @@ const envelope = (scenario: Record<string, any>): FixtureEnvelope =>
       ...scenario,
     },
   }) as unknown as FixtureEnvelope;
+
+describe("fixture reservations", () => {
+  const withProfile = (id: string, profile: string) => ({
+    ...envelope({ v2_premigration: { profile } }),
+    fixture_id: id,
+  });
+
+  it("reserves only present names and keeps every other seeded name out", () => {
+    const rows = [
+      withProfile("A", "present"),
+      withProfile("B", "missing"),
+      withProfile("C", "already_registered"),
+      withProfile("D", "expired"),
+      withProfile("E", "present"),
+    ];
+
+    // E was never seeded, so it belongs on neither list.
+    const { reserved, unreserved } = splitFixtureReservations(
+      rows,
+      new Set(["A", "B", "C", "D"]),
+    );
+
+    expect(reserved.map((row) => row.fixture_id)).toEqual(["A"]);
+    expect(unreserved.map((row) => row.fixture_id)).toEqual(["B", "C", "D"]);
+  });
+});
 
 describe("seedable selections", () => {
   it("accepts a scenario seeding can establish", () => {

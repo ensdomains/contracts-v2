@@ -326,6 +326,33 @@ function parseResumeFromPhase(value: string | undefined): 2 | undefined {
 // neither is present so callers can fail loudly instead of guessing a column.
 // How many CSV rows name a v1 registration that is still claimable at `chainNow`.
 //
+// The seeded fixture names pre-migration leaves out, keyed by labelhash, with the v2
+// state each one's scenario declares.
+function readUnreservedFixtureNames(
+  csvFile: string,
+): Map<string, { label: string; state: string }> {
+  const { header, rows, labelIndex } = openLabelCsv(csvFile);
+  const stateIndex = header
+    .map((field) => field.trim().toLowerCase())
+    .indexOf("reservationstate");
+  if (labelIndex < 0 || stateIndex < 0) {
+    throw new Error(
+      `${csvFile} is not a fixture unreserved list: it needs labelName and reservationState columns`,
+    );
+  }
+  const names = new Map<string, { label: string; state: string }>();
+  for (const line of rows) {
+    const fields = parseCSVLine(line);
+    const label = fields[labelIndex]?.trim();
+    if (!label) continue;
+    names.set(toLabelhashHex(canonicalLabelId(keccak256(stringToHex(label)))), {
+      label,
+      state: fields[stateIndex]?.trim() ?? "",
+    });
+  }
+  return names;
+}
+
 // Rows whose label has the `[labelhash]` shape, keyed by every labelhash the row can
 // stand for: the hash of the text itself, for a name registered with that text, and
 // the hash inside the brackets, for a placeholder of a label nobody knows.
@@ -1147,6 +1174,10 @@ type ReconcileResult = {
   /// pre-migration refuses to submit. They can never be reserved from that CSV, so
   /// they are listed on their own rather than counted as missing.
   unreservable: Array<{ id: string; label: string }>;
+  /// Seeded fixture names pre-migration leaves out on purpose, with the v2 state
+  /// their scenario declares. They are live v1 names, so without the list they would
+  /// read as missing and keep the gate shut.
+  keptUnreserved: Array<{ id: string; label: string; state: string }>;
   expiryMismatched: string[];
   unexpected: string[];
   /// Names the exporter could not decode a label for, so pre-migration cannot seed
@@ -1188,6 +1219,8 @@ export async function reconcilePreMigration(opts: {
   // How far the CSV's and the index's claimable counts may differ before the
   // reconciliation fails. Defaults to no difference.
   crossSourceTolerance?: string;
+  // The fixture corpus's list of seeded names pre-migration leaves unreserved.
+  unreservedCsv?: string;
 }): Promise<ReconcileResult> {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
@@ -1243,6 +1276,7 @@ export async function reconcilePreMigration(opts: {
     registered: 0,
     missing: [],
     unreservable: [],
+    keptUnreserved: [],
     expiryMismatched: [],
     unexpected: [],
     unmigratableNoLabel: 0,
@@ -1289,6 +1323,9 @@ export async function reconcilePreMigration(opts: {
     opts.csvFile && existsSync(opts.csvFile)
       ? readEncodedLabelhashRows(opts.csvFile)
       : new Map<string, string>();
+  const keptOut = opts.unreservedCsv
+    ? readUnreservedFixtureNames(opts.unreservedCsv)
+    : new Map<string, { label: string; state: string }>();
 
   // Forward: every claimable v1 name must exist on v2 with the bonus-adjusted expiry.
   for (
@@ -1322,13 +1359,27 @@ export async function reconcilePreMigration(opts: {
       }
       const { status, expiry: actualExpiry, latestOwner } = state.result;
 
+      const canonicalId = toLabelhashHex(canonicalLabelId(entry.id));
+      const fixture = keptOut.get(canonicalId);
       // Nothing on v2 at all: the name was never seeded.
       if (status === STATUS.AVAILABLE && actualExpiry === 0n) {
-        const label = bracketLabels.get(
-          toLabelhashHex(canonicalLabelId(entry.id)),
-        );
-        if (label === undefined) result.missing.push(entry.id);
+        const label = bracketLabels.get(canonicalId);
+        if (fixture) result.keptUnreserved.push({ id: entry.id, ...fixture });
+        else if (label === undefined) result.missing.push(entry.id);
         else result.unreservable.push({ id: entry.id, label });
+        continue;
+      }
+      if (fixture) {
+        // A name whose scenario needs it absent from v2 has been reserved after all,
+        // which destroys the case it exists to test. The other kept-out states model
+        // a name v2 already holds, so finding it there is what they declare.
+        if (fixture.state === "missing") {
+          result.unexpected.push(
+            `${entry.id} (${fixture.label}.eth) is on v2, but its fixture scenario keeps it unreserved`,
+          );
+        } else {
+          result.keptUnreserved.push({ id: entry.id, ...fixture });
+        }
         continue;
       }
       // Computed with the same cap pre-migration applies, or every name near the
@@ -1510,6 +1561,14 @@ export async function reconcilePreMigration(opts: {
   );
   console.log(`v2 registered: ${result.registered}`);
   console.log(`missing from v2: ${result.missing.length}`);
+  if (result.keptUnreserved.length > 0) {
+    console.log(
+      `kept unreserved by the fixture corpus: ${result.keptUnreserved.length}`,
+    );
+    for (const { id, label, state } of result.keptUnreserved) {
+      console.log(`  ${id} ${label}.eth (${state})`);
+    }
+  }
   if (result.unreservable.length > 0) {
     console.log(
       `not reservable from the CSV, label in [labelhash] form: ${result.unreservable.length}`,
@@ -1581,6 +1640,7 @@ export async function reconcilePreMigration(opts: {
         reserved: result.reserved,
         registered: result.registered,
         unreservable: result.unreservable.length,
+        keptUnreserved: result.keptUnreserved.length,
         rpcHead: (await client.getBlockNumber()).toString(),
       },
     });
@@ -7859,6 +7919,10 @@ export async function main(argv = process.argv): Promise<void> {
               "--cross-source-tolerance <count>",
               "How far the CSV's and the index's claimable counts may differ before the reconciliation fails",
               "0",
+            )
+            .option(
+              "--unreserved-csv <path>",
+              "The fixture corpus's fixture-unreserved.csv: seeded names pre-migration leaves out, listed apart rather than counted as missing",
             ),
         ),
       ),
@@ -7875,6 +7939,7 @@ export async function main(argv = process.argv): Promise<void> {
           checkFuses?: boolean;
           bonusPeriodDays?: string;
           crossSourceTolerance?: string;
+          unreservedCsv?: string;
           deploymentsDir?: string;
           deploymentNetwork?: string;
         },

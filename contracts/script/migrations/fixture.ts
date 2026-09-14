@@ -414,41 +414,63 @@ function saveRunState(opts: CommonOptions, state: FixtureRunState): void {
 const FIXTURE_CSV_HEADER =
   "labelName,fixtureId,reservationState,sourceScenarioId,replicaIndex,popularityTier";
 
-/// Writes the label list the pre-migration phases reserve on v2.
+/// Name of the list of seeded names pre-migration must leave alone, beside
+/// `fixture-premigration.csv` in the work directory.
+export const FIXTURE_UNRESERVED_CSV = "fixture-unreserved.csv";
+
+/// Splits the seeded names by whether pre-migration reserves them. Only names whose
+/// v2 pre-migration profile is `present` are reserved — the rest model names that
+/// are deliberately absent, already registered, or expired on v2, and reserving
+/// them would defeat the case they exist to cover.
+export function splitFixtureReservations(
+  rows: FixtureEnvelope[],
+  seededIds: ReadonlySet<string>,
+): { reserved: FixtureEnvelope[]; unreserved: FixtureEnvelope[] } {
+  const reserved: FixtureEnvelope[] = [];
+  const unreserved: FixtureEnvelope[] = [];
+  for (const row of rows) {
+    if (!seededIds.has(row.fixture_id)) continue;
+    if (row.scenario.v2_premigration?.profile === "present") reserved.push(row);
+    else unreserved.push(row);
+  }
+  return { reserved, unreserved };
+}
+
+/// Writes the label list the pre-migration phases reserve on v2, and beside it the
+/// seeded names they must not, which `premigration reconcile --unreserved-csv`
+/// reads so that live v1 names left out on purpose are not reported as missing.
 ///
 /// Derived from the corpus rather than shipped beside it: every column restates
 /// a field of the envelope, so a separate file is one more thing that can fall
-/// out of step with the scenarios it describes. Only names whose v2
-/// pre-migration profile is `present` are listed — the rest model names that are
-/// deliberately absent, already registered, or expired on v2, and reserving them
-/// would defeat the case they exist to cover.
+/// out of step with the scenarios it describes.
 function writePremigrationCsv(
   opts: CommonOptions,
   rows: FixtureEnvelope[],
   state: FixtureRunState,
-): { path: string; labels: string[] } {
-  const seeded = new Set(state.names.map((n) => n.fixtureId));
-  const labels: string[] = [];
-  const output = [FIXTURE_CSV_HEADER];
-  for (const row of rows) {
-    if (!seeded.has(row.fixture_id)) continue;
-    const profile = row.scenario.v2_premigration?.profile;
-    if (profile !== "present") continue;
-    labels.push(row.label);
-    output.push(
-      [
-        row.label,
-        row.fixture_id,
-        profile,
-        row.source_scenario_id,
-        row.replica_index,
-        row.popularity_tier,
-      ].join(","),
-    );
-  }
+): { path: string; labels: string[]; unreservedPath: string } {
+  const { reserved, unreserved } = splitFixtureReservations(
+    rows,
+    new Set(state.names.map((n) => n.fixtureId)),
+  );
+  const toCsv = (entries: FixtureEnvelope[]) =>
+    `${[
+      FIXTURE_CSV_HEADER,
+      ...entries.map((row) =>
+        [
+          row.label,
+          row.fixture_id,
+          row.scenario.v2_premigration?.profile,
+          row.source_scenario_id,
+          row.replica_index,
+          row.popularity_tier,
+        ].join(","),
+      ),
+    ].join("\n")}\n`;
   const path = join(resolve(opts.workDir), "fixture-premigration.csv");
-  writeFileSync(path, `${output.join("\n")}\n`);
-  return { path, labels };
+  const unreservedPath = join(resolve(opts.workDir), FIXTURE_UNRESERVED_CSV);
+  writeFileSync(path, toCsv(reserved));
+  writeFileSync(unreservedPath, toCsv(unreserved));
+  return { path, labels: reserved.map((row) => row.label), unreservedPath };
 }
 
 // ---------------------------------------------------------------------------
@@ -1010,6 +1032,9 @@ export async function seedV1(
   console.log(`run state: ${runStatePath(opts)}`);
   console.log(
     `premigration CSV: ${csv.path} (${csv.labels.length} of ${state.names.length} names reserved on v2)`,
+  );
+  console.log(
+    `kept unreserved: ${csv.unreservedPath} (pass to premigration reconcile --unreserved-csv)`,
   );
   console.log(
     `next: bun run migration -- premigration run --csv-file ${csv.path}`,
