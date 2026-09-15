@@ -914,6 +914,26 @@ describe("PreMigration", () => {
     expect(state.status).toBe(STATUS.RESERVED);
   });
 
+  it("reserves a label registered with surrounding spaces as written", async () => {
+    const labels = ["  spacedlead", "spacedtrail "];
+    const { user } = env.namedAccounts;
+
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+
+    createCSVFile(csvFilePath, labels);
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    for (const label of labels) {
+      expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
+      expect((await verifyV2State(env, label.trim())).status).toBe(
+        STATUS.AVAILABLE,
+      );
+    }
+  });
+
   it("fails fast when header has no labelName or label column", async () => {
     const csvContent = ["node,name,owner", "n,foo,0x00"].join("\n");
     writeFileSync(csvFilePath, csvContent);

@@ -633,8 +633,8 @@ async function* readCSVInBatches(
       );
     }
 
-    const labelName = parts[labelColumnIndex].trim();
-    if (labelName === "") {
+    const labelName = csvLabelCell(parts, labelColumnIndex);
+    if (labelName === undefined) {
       throw new CSVFormatError(
         `CSV row at ${csvFilePath}:${rawLineNumber} has empty "labelName". ` +
           `Row: ${previewCSVLine(line)}`,
@@ -661,6 +661,17 @@ async function* readCSVInBatches(
   if (batch.length > 0) {
     yield batch;
   }
+}
+
+/// The label in a parsed CSV row, exactly as written, or `undefined` when the cell is
+/// empty or holds only whitespace. v1 accepts labels with leading or trailing spaces,
+/// so trimming the cell would name a different label from the one registered.
+export function csvLabelCell(
+  fields: readonly string[],
+  labelIndex: number,
+): string | undefined {
+  const label = fields[labelIndex];
+  return label?.trim() ? label : undefined;
 }
 
 export function parseCSVLine(line: string): string[] {

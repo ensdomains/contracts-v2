@@ -166,6 +166,7 @@ import {
   type Checkpoint,
   createFreshCheckpoint,
   FailedNamesError,
+  csvLabelCell,
   isEncodedLabelhash,
   isValidLabel,
   loadCheckpoint,
@@ -335,7 +336,7 @@ function readEncodedLabelhashRows(csvFile: string): Map<string, string> {
   const labels = new Map<string, string>();
   if (labelIndex < 0) return labels;
   for (const line of rows) {
-    const label = parseCSVLine(line)[labelIndex]?.trim();
+    const label = csvLabelCell(parseCSVLine(line), labelIndex);
     if (!label || !isEncodedLabelhash(label)) continue;
     for (const id of [
       keccak256(stringToHex(label)),
@@ -369,7 +370,7 @@ function countClaimableCsvRows(
   let dated = 0;
   for (const line of rows) {
     const fields = parseCSVLine(line);
-    if (!fields[labelIndex]?.trim()) continue;
+    if (csvLabelCell(fields, labelIndex) === undefined) continue;
     labelled++;
     if (expiryIndex < 0) continue;
     const raw = fields[expiryIndex]?.trim();
@@ -412,7 +413,10 @@ function openLabelCsv(csvFile: string): {
   rows: string[];
   labelIndex: number;
 } {
-  const lines = readFileSync(csvFile, "utf-8").trim().split(/\r?\n/);
+  const lines = readFileSync(csvFile, "utf-8")
+    .replace(/^\uFEFF/, "")
+    .replace(/[\r\n]+$/, "")
+    .split(/\r?\n/);
   if (lines.length === 0 || !lines[0]) {
     return { header: [], rows: [], labelIndex: -1 };
   }
@@ -430,7 +434,7 @@ function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
   const labels: string[] = [];
   for (const line of rows) {
     if (limit !== undefined && labels.length >= limit) break;
-    const label = parseCSVLine(line)[labelIndex]?.trim();
+    const label = csvLabelCell(parseCSVLine(line), labelIndex);
     if (label) labels.push(label);
   }
   return labels;
@@ -446,7 +450,7 @@ function transformCsvForPreMigration(
   const output = [PREMIGRATION_CSV_HEADER];
   for (const line of rows) {
     const columns = parseCSVLine(line);
-    const label = columns[labelIndex]?.trim();
+    const label = csvLabelCell(columns, labelIndex);
     if (label) output.push(premigrationCsvRow(label));
   }
   writeFileSync(targetPath, `${output.join("\n")}\n`);
