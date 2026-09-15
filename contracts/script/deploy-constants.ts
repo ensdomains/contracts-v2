@@ -19,7 +19,7 @@ export const SEPOLIA_USDC =
 // Archived deployment namespaces carry their own MockUSDC instances that the
 // live oracle rejects — never source this address from an archived artifact.
 export const SEPOLIA_MOCK_USDC =
-  "0x768F42455A2D082E23ceeF7d51e5787C82d67a39" as const;
+  "0x16f95D91DBa7dA3Aca778Ec053dF0FF6C6A8aA8e" as const;
 
 export const RHINESTONE_INTENT_EXECUTOR =
   "0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF" as const;
