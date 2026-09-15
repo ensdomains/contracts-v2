@@ -235,6 +235,49 @@ describe("v2 role audit", () => {
   );
 
   it(
+    "expects the ETHRegistrar grant only once phase 6 has made it",
+    async () => {
+      writeDeploymentArtifacts();
+      const ethRegistrar = getAddress(env.v2.ETHRegistrar.address);
+      const findingsFor = (findings: Awaited<ReturnType<typeof audit>>) =>
+        findings.filter((finding) =>
+          finding.kind === "unexpected"
+            ? getAddress(finding.holder.account as Address) === ethRegistrar
+            : getAddress(finding.expectation.account) === ethRegistrar,
+        );
+
+      // Phase 1 defers the grant, so before the handoff the registrar holds nothing.
+      await env.v2.ETHRegistry.write.revokeRootRoles(
+        [DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT, ethRegistrar],
+        { account: env.namedAccounts.deployer },
+      );
+      expect(
+        findingsFor(await audit({ reportOnly: true, preHandoff: true })),
+      ).toEqual([]);
+
+      const [missing] = findingsFor(await audit({ reportOnly: true }));
+      expect(missing?.kind).toBe("missing");
+      expect(missing && "absent" in missing ? missing.absent : 0n).toBe(
+        DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
+      );
+
+      // Holding the grant before the handoff means registrations opened early.
+      await env.v2.ETHRegistry.write.grantRootRoles(
+        [DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT, ethRegistrar],
+        { account: env.namedAccounts.deployer },
+      );
+      const [early] = findingsFor(
+        await audit({ reportOnly: true, preHandoff: true }),
+      );
+      expect(early?.kind).toBe("unexpected");
+      expect(early && "extra" in early ? early.extra : 0n).toBe(
+        DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
     "catches admin bits left behind when only the regular roles were revoked",
     async () => {
       writeDeploymentArtifacts();

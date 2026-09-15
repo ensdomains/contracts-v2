@@ -3350,7 +3350,12 @@ const AUDITED_REGISTRIES = ["RootRegistry", "ETHRegistry"] as const;
 // about authority, while still auditing the two separately.
 const EXPECTED_ROOT_ROLES: Record<
   (typeof AUDITED_REGISTRIES)[number],
-  Array<{ deployment: string; roles: bigint; onlyBeforeHandoff?: boolean }>
+  Array<{
+    deployment: string;
+    roles: bigint;
+    // Limits the grant to one side of the phase 6 handoff; unset means both.
+    stage?: "pre-handoff" | "post-handoff";
+  }>
 > = {
   RootRegistry: [
     { deployment: "@deployer", roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT },
@@ -3359,16 +3364,18 @@ const EXPECTED_ROOT_ROLES: Record<
   ETHRegistry: [
     { deployment: "@deployer", roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT },
     { deployment: "@owner", roles: ROLES.REGISTRY.CAN_NAME },
+    // Phase 1 defers the ETHRegistrar grant and phase 6 makes it, while BatchRegistrar
+    // seeds pre-migration reservations until phase 6 strips its roles. What each should
+    // hold therefore depends on which side of the handoff the audit runs.
     {
       deployment: "ETHRegistrar",
       roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
+      stage: "post-handoff",
     },
-    // BatchRegistrar seeds pre-migration reservations and is stripped of its roles
-    // in phase 6, so what it should hold depends on where the migration is.
     {
       deployment: "BatchRegistrar",
       roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
-      onlyBeforeHandoff: true,
+      stage: "pre-handoff",
     },
     { deployment: "ETHRenewerV1", roles: DEPLOYMENT_ROLES.ETH_RENEWER_V1_ROOT },
     {
@@ -3480,8 +3487,8 @@ export async function verifyV2Roles(opts: {
   owner?: Address;
   fromBlock?: string;
   reportOnly?: boolean;
-  // Audit the state before phase 6 revokes the seeding roles, where BatchRegistrar
-  // still holds the roles it seeds reservations with.
+  // Audit the state before phase 6, where BatchRegistrar still holds the roles it
+  // seeds reservations with and ETHRegistrar does not yet hold its own.
   preHandoff?: boolean;
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
@@ -3540,9 +3547,10 @@ export async function verifyV2Roles(opts: {
     };
 
     for (const entry of EXPECTED_ROOT_ROLES[registryName]) {
-      // A pre-handoff-only grant must be absent once phase 6 has run, so after the
-      // handoff it is expected to hold nothing rather than simply not being checked.
-      if (entry.onlyBeforeHandoff && !opts.preHandoff) continue;
+      // A grant limited to the other side of the handoff is expected to be absent
+      // here, so it is reported if held rather than simply not being checked.
+      const stage = opts.preHandoff ? "pre-handoff" : "post-handoff";
+      if (entry.stage && entry.stage !== stage) continue;
       const address = resolveAccount(entry.deployment);
       // A contract this deployment does not include simply has no expectation; the
       // discovery pass below still reports it if it somehow holds roles.
@@ -8257,7 +8265,7 @@ export async function main(argv = process.argv): Promise<void> {
           )
           .option(
             "--pre-handoff",
-            "Audit the state before phase 6, where BatchRegistrar still holds its seeding roles",
+            "Audit the state before phase 6, where BatchRegistrar still holds its seeding roles and ETHRegistrar holds none",
             false,
           )
           .option("--report-only", "Print findings without failing", false),
