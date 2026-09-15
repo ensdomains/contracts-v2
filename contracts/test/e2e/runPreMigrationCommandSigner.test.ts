@@ -13,10 +13,14 @@ import { privateKeyToAccount } from "viem/accounts";
 import {
   CHECKPOINT_FILE,
   createFreshCheckpoint,
+  FailedNamesError,
   type Checkpoint,
 } from "../../script/preMigration.js";
 
-import { runPreMigrationCommand } from "../../script/migration.js";
+import {
+  runPreMigrationCommand,
+  runRehearsalPreMigration,
+} from "../../script/migrate.js";
 
 // The BatchRegistrar owner that fork/clean-testnet runs impersonate. The env
 // deployer key below does NOT control it.
@@ -154,7 +158,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
       skippedPastGraceCount: 1,
       alreadyRegisteredCount: 0,
       invalidLabelCount: 1,
-      failureCount: 0,
+      failedLines: [],
       timestamp: "2026-01-01T00:00:00.000Z",
     });
     await runPreMigrationCommand(
@@ -220,8 +224,12 @@ describe("runPreMigrationCommand metadata persistence", () => {
       skippedNeverRegisteredCount: 2,
       skippedPastGraceCount: 1,
       alreadyRegisteredCount: 1,
+      // Reservations already long enough to need no submission. By the final sync
+      // these are most of the corpus, and leaving them out of the roll-up made the
+      // published figure describe only what the last run happened to touch.
+      upToDateCount: 4,
       invalidLabelCount: 1,
-      failureCount: 0,
+      failedLines: [],
       timestamp: "2026-01-02T00:00:00.000Z",
     });
     await runPreMigrationCommand(
@@ -240,9 +248,10 @@ describe("runPreMigrationCommand metadata persistence", () => {
     expect(metadata.resolved).toMatchObject({
       finishedAt: "2026-01-02T00:00:00.000Z",
       totalNames: 10,
-      namesPreMigrated: 6,
+      namesPreMigrated: 10,
       newReservations: 1,
       expiryResyncs: 5,
+      alreadyCurrent: 4,
       skippedNeverRegistered: 2,
       skippedExpiredPastGrace: 1,
       invalidLabels: 1,
@@ -305,5 +314,85 @@ describe("runPreMigrationCommand metadata persistence", () => {
     expect(
       existsSync(join(deploymentsDir, "does-not-exist", ".premigration.json")),
     ).toBe(false);
+  });
+});
+
+describe("runRehearsalPreMigration", () => {
+  let workDir: string;
+
+  beforeEach(() => {
+    workDir = mkdtempSync(join(tmpdir(), "premigration-rehearsal-"));
+  });
+
+  afterEach(() => {
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  // Stands in for pre-migration: each pass records its arguments and plays out the
+  // next scripted outcome, leaving the checkpoint a real pass would leave behind.
+  function scriptedRuns(outcomes: Array<{ failed: number[] } | Error>) {
+    const calls: string[][] = [];
+    const run = async (args: string[]) => {
+      calls.push(args);
+      const outcome = outcomes[calls.length - 1];
+      if (outcome instanceof Error) throw outcome;
+      writeFileSync(
+        CHECKPOINT_FILE,
+        JSON.stringify(
+          makeCheckpoint({ totalProcessed: 1000, failedLines: outcome.failed }),
+        ),
+      );
+      if (outcome.failed.length > 0) {
+        throw new FailedNamesError(outcome.failed.length);
+      }
+    };
+    return { calls, run };
+  }
+
+  const opts = () => ({
+    ...baseOpts,
+    workDir,
+    limit: "1000",
+    persistMetadata: false,
+  });
+
+  it("retries the names a pass left failed without reading past its row cap", async () => {
+    const { calls, run } = scriptedRuns([
+      { failed: [650, 651] },
+      { failed: [] },
+    ]);
+
+    await runRehearsalPreMigration(opts(), false, run);
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).not.toContain("--continue");
+    expect(flagValue(calls[0], "--limit")).toBe("1000");
+    // The retry resumes the checkpoint, which replays the queued names, and has no
+    // rows of its cap left to read beyond them.
+    expect(calls[1]).toContain("--continue");
+    expect(flagValue(calls[1], "--limit")).toBe("0");
+  });
+
+  it("fails the run when names keep failing", async () => {
+    const { calls, run } = scriptedRuns([
+      { failed: [1] },
+      { failed: [1] },
+      { failed: [1] },
+      { failed: [] },
+    ]);
+
+    await expect(runRehearsalPreMigration(opts(), false, run)).rejects.toThrow(
+      FailedNamesError,
+    );
+    expect(calls).toHaveLength(3);
+  });
+
+  it("does not retry an error other than failed names", async () => {
+    const { calls, run } = scriptedRuns([new Error("rpc unreachable")]);
+
+    await expect(runRehearsalPreMigration(opts(), false, run)).rejects.toThrow(
+      "rpc unreachable",
+    );
+    expect(calls).toHaveLength(1);
   });
 });

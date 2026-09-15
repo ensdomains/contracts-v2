@@ -37,6 +37,7 @@ import {
   readTestCheckpoint,
   writeTestCheckpoint,
 } from "../utils/preMigrationTestUtils.js";
+import { idFromLabel } from "../utils/utils.js";
 
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 
@@ -153,7 +154,7 @@ describe("PreMigration", () => {
 
     const checkpoint = readTestCheckpoint();
     expect(checkpoint!.successCount).toBe(1);
-    expect(checkpoint!.failureCount).toBe(0);
+    expect(checkpoint!.failedLines).toEqual([]);
   });
 
   it("reserves names that are expired but within v1 grace period", async () => {
@@ -221,6 +222,129 @@ describe("PreMigration", () => {
     const stateAfter = await verifyV2State(env, label);
     expect(stateAfter.status).toBe(STATUS.RESERVED);
     expect(stateAfter.expiry).toBeGreaterThan(stateBefore.expiry);
+  });
+
+  it("a name with a maximal expiry does not abort the run", async () => {
+    // Real Sepolia data contains names registered to nearly uint64.max. Formatting
+    // one for a log line used to throw and kill the whole pre-migration, taking the
+    // healthy names in the same batch with it.
+    const { user } = env.namedAccounts;
+    const healthy = "healthyname";
+    const extreme = "extremeexpiry";
+
+    await registerV1Name(env, healthy, user.address, ONE_YEAR_SECONDS);
+    await registerV1Name(env, extreme, user.address, ONE_YEAR_SECONDS);
+    // Push it far beyond any representable date, as the real name is.
+    await env.v1.BaseRegistrar.write.renew([idFromLabel(extreme), 2n ** 63n]);
+
+    createCSVFile(csvFilePath, [extreme, healthy]);
+    await main(buildMainArgs(env, csvFilePath));
+
+    // The healthy name in the same batch is still reserved.
+    expect((await verifyV2State(env, healthy)).status).toBe(STATUS.RESERVED);
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.totalProcessed).toBe(2);
+  });
+
+  it("one unprocessable name does not stop the rest of its batch", async () => {
+    // Whatever goes wrong for a single name — an overflow, a malformed record — the
+    // others in the batch must still be reserved.
+    const { user } = env.namedAccounts;
+    const labels = ["batchmate1", "batchmate2", "batchmate3"];
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+    await env.v1.BaseRegistrar.write.renew([idFromLabel(labels[1]), 2n ** 63n]);
+
+    createCSVFile(csvFilePath, labels);
+    await main(buildMainArgs(env, csvFilePath));
+
+    for (const label of [labels[0], labels[2]]) {
+      expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
+    }
+  });
+
+  it("a failed name is retried by --continue, not stepped over", async () => {
+    // A failure means nothing was written to v2. If the resume cursor moved past it,
+    // `--continue` would skip it and the name would stay missing with nothing left
+    // to report it.
+    const { user } = env.namedAccounts;
+    const labels = ["retry1", "retry2", "retry3"];
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+    createCSVFile(csvFilePath, labels);
+
+    // Point at a contract that is not a BatchRegistrar so submission fails.
+    const args = buildMainArgs(env, csvFilePath);
+    args[args.indexOf("--batch-registrar") + 1] = env.v2.ETHRegistry.address;
+
+    await expect(main(args)).rejects.toThrow();
+
+    const checkpoint = readTestCheckpoint();
+    // Every one of them is queued for retry, so a resumed run reaches them again.
+    expect(checkpoint!.failedLines).toEqual([0, 1, 2]);
+
+    // None of them reached v2, which is what makes the retry necessary.
+    for (const label of labels) {
+      expect((await verifyV2State(env, label)).status).toBe(STATUS.AVAILABLE);
+    }
+  });
+
+  it("a successful retry clears the failure and the run exits cleanly", async () => {
+    // The retry queue has to empty. Carrying a cumulative failure count instead
+    // would make every later --continue throw, long after the names were reserved.
+    const { user } = env.namedAccounts;
+    const labels = ["cleared1", "cleared2", "cleared3"];
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+    createCSVFile(csvFilePath, labels);
+
+    const broken = buildMainArgs(env, csvFilePath);
+    broken[broken.indexOf("--batch-registrar") + 1] =
+      env.v2.ETHRegistry.address;
+    await expect(main(broken)).rejects.toThrow();
+    expect(readTestCheckpoint()!.failedLines).toEqual([0, 1, 2]);
+
+    await main(buildMainArgs(env, csvFilePath, { continue: true }));
+
+    expect(readTestCheckpoint()!.failedLines).toEqual([]);
+    // Each row was counted when it failed; the retry settles it without counting
+    // it again.
+    expect(readTestCheckpoint()!.totalProcessed).toBe(labels.length);
+    for (const label of labels) {
+      expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
+    }
+  });
+
+  it("retries a failure recorded behind the resume cursor", async () => {
+    // A failure in one batch followed by a clean batch leaves the cursor past the
+    // failed row. The retry queue is what reaches it: driving the resume from the
+    // cursor alone would step over the name and leave it missing from v2 with
+    // nothing left to report it.
+    const { user } = env.namedAccounts;
+    const labels = ["behind1", "behind2", "behind3"];
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+    createCSVFile(csvFilePath, labels);
+
+    writeTestCheckpoint(
+      createTestCheckpoint({
+        lastProcessedLineNumber: 2,
+        totalProcessed: 3,
+        totalExpected: 3,
+        successCount: 2,
+        failedLines: [0],
+      }),
+    );
+
+    await main(buildMainArgs(env, csvFilePath, { continue: true }));
+
+    expect((await verifyV2State(env, labels[0])).status).toBe(STATUS.RESERVED);
+    expect(readTestCheckpoint()!.failedLines).toEqual([]);
   });
 
   it("dry run does not create on-chain state", async () => {
@@ -596,7 +720,7 @@ describe("PreMigration", () => {
     const checkpoint = readTestCheckpoint();
     expect(checkpoint).not.toBeNull();
     expect(checkpoint!.successCount).toBe(5);
-    expect(checkpoint!.failureCount).toBe(0);
+    expect(checkpoint!.failedLines).toEqual([]);
   });
 
   // ─── Gas estimation (exercises estimateAndSplitBatch path) ─────────
@@ -628,7 +752,7 @@ describe("PreMigration", () => {
 
     const checkpoint = readTestCheckpoint();
     expect(checkpoint!.successCount).toBe(10);
-    expect(checkpoint!.failureCount).toBe(0);
+    expect(checkpoint!.failedLines).toEqual([]);
   });
 
   it("handles batch of names with long labels (higher calldata cost)", async () => {
@@ -679,7 +803,7 @@ describe("PreMigration", () => {
     expect(checkpoint!.skippedCount).toBe(1);
     expect(checkpoint!.skippedNeverRegisteredCount).toBe(1);
     expect(checkpoint!.skippedPastGraceCount).toBe(0);
-    expect(checkpoint!.failureCount).toBe(0);
+    expect(checkpoint!.failedLines).toEqual([]);
     expect(checkpoint!.totalProcessed).toBe(3);
   });
 
@@ -708,7 +832,7 @@ describe("PreMigration", () => {
     expect(checkpoint).not.toBeNull();
     expect(checkpoint!.successCount).toBe(1);
     expect(checkpoint!.alreadyRegisteredCount).toBe(1);
-    expect(checkpoint!.failureCount).toBe(0);
+    expect(checkpoint!.failedLines).toEqual([]);
   });
 
   it("checkpoint tracks renewed count separately", async () => {
@@ -788,6 +912,26 @@ describe("PreMigration", () => {
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
+  });
+
+  it("reserves a label registered with surrounding spaces as written", async () => {
+    const labels = ["  spacedlead", "spacedtrail "];
+    const { user } = env.namedAccounts;
+
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+
+    createCSVFile(csvFilePath, labels);
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    for (const label of labels) {
+      expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
+      expect((await verifyV2State(env, label.trim())).status).toBe(
+        STATUS.AVAILABLE,
+      );
+    }
   });
 
   it("fails fast when header has no labelName or label column", async () => {
@@ -1085,8 +1229,39 @@ describe("PreMigration", () => {
       expect(state.status).toBe(STATUS.AVAILABLE);
     }
 
-    const checkpoint = readTestCheckpoint();
-    expect(checkpoint!.successCount).toBe(2);
+    // Nothing was sent, so there is nothing to resume from.
+    expect(readTestCheckpoint()).toBeNull();
+  });
+
+  it("a dry run leaves an existing checkpoint's retry queue and cursor alone", async () => {
+    const labels = ["dryq1", "dryq2", "dryq3"];
+    const { user } = env.namedAccounts;
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+    createCSVFile(csvFilePath, labels);
+    const recorded = createTestCheckpoint({
+      lastProcessedLineNumber: 2,
+      totalProcessed: 3,
+      totalExpected: 3,
+      successCount: 2,
+      failedLines: [0],
+    });
+    writeTestCheckpoint(recorded);
+
+    await main(
+      buildMainArgs(env, csvFilePath, { continue: true, dryRun: true }),
+    );
+
+    // Had the dry run saved its plan, the failed row would have left the queue and a
+    // real resume would step over it, leaving the name unreserved.
+    const after = readTestCheckpoint();
+    expect(after!.failedLines).toEqual([0]);
+    expect(after!.lastProcessedLineNumber).toBe(2);
+    expect(after!.successCount).toBe(2);
+
+    await main(buildMainArgs(env, csvFilePath, { continue: true }));
+    expect((await verifyV2State(env, labels[0])).status).toBe(STATUS.RESERVED);
   });
 
   it("--continue does not validate a wrong-column-count row before the resume point", async () => {
@@ -1229,7 +1404,7 @@ describe("PreMigration", () => {
     const checkpoint = readTestCheckpoint();
     expect(checkpoint!.successCount).toBe(5);
     expect(checkpoint!.skippedCount).toBe(1);
-    expect(checkpoint!.failureCount).toBe(0);
+    expect(checkpoint!.failedLines).toEqual([]);
   });
 
   it("multiple already-registered names in batch are all counted separately from failures", async () => {
@@ -1259,10 +1434,10 @@ describe("PreMigration", () => {
     const checkpoint = readTestCheckpoint();
     expect(checkpoint!.successCount).toBe(1);
     expect(checkpoint!.alreadyRegisteredCount).toBe(2);
-    expect(checkpoint!.failureCount).toBe(0);
+    expect(checkpoint!.failedLines).toEqual([]);
   });
 
-  it("re-running same batch after successful reservation uses renewal path", async () => {
+  it("re-running an unchanged batch reports names as up to date, not renewed", async () => {
     const labels = ["rerun1", "rerun2"];
     const { user } = env.namedAccounts;
 
@@ -1277,18 +1452,120 @@ describe("PreMigration", () => {
     const checkpoint1 = readTestCheckpoint();
     expect(checkpoint1!.successCount).toBe(2);
     expect(checkpoint1!.renewedCount).toBe(0);
+    expect(checkpoint1!.upToDateCount).toBe(0);
 
     deleteTestCheckpoint();
     await main(args);
 
+    // Nothing changed on v1, so the reservations already carry the expiry this run
+    // would set. The registrar would no-op on them, so they are not sent and not
+    // counted as renewals.
     const checkpoint2 = readTestCheckpoint();
     expect(checkpoint2!.successCount).toBe(0);
-    expect(checkpoint2!.renewedCount).toBe(2);
+    expect(checkpoint2!.renewedCount).toBe(0);
+    expect(checkpoint2!.upToDateCount).toBe(2);
 
     for (const label of labels) {
       const state = await verifyV2State(env, label);
       expect(state.status).toBe(STATUS.RESERVED);
     }
+  });
+
+  it("renews a reservation when the v1 expiry has been extended", async () => {
+    const labels = ["extended1", "extended2"];
+    const { user } = env.namedAccounts;
+
+    for (const label of labels) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    }
+
+    createCSVFile(csvFilePath, labels);
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    const before = await Promise.all(
+      labels.map((label) => verifyV2State(env, label)),
+    );
+
+    // Extend on v1, exactly as ETHRenewerV1 would during the migration window.
+    for (const label of labels) {
+      await renewV1Name(env, label, ONE_YEAR_SECONDS);
+    }
+
+    deleteTestCheckpoint();
+    await main(args);
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(0);
+    expect(checkpoint!.renewedCount).toBe(2);
+    expect(checkpoint!.upToDateCount).toBe(0);
+
+    // The v2 reservation actually moved, rather than merely being reported as renewed.
+    const after = await Promise.all(
+      labels.map((label) => verifyV2State(env, label)),
+    );
+    for (let index = 0; index < labels.length; index++) {
+      expect(after[index].status).toBe(STATUS.RESERVED);
+      expect(BigInt(after[index].expiry)).toBeGreaterThan(
+        BigInt(before[index].expiry),
+      );
+    }
+  });
+
+  // Reserves a name, then moves the chain past the reservation's expiry into the v2
+  // grace period. The bonus period is sized so that window ends with v1's grace, so
+  // the name reads AVAILABLE on v2 while its v1 owner can still renew it.
+  async function reserveThenEnterV2Grace(label: string) {
+    const { user } = env.namedAccounts;
+    const bonusPeriodDays = 62;
+    const v1Expiry = await registerV1Name(
+      env,
+      label,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    createCSVFile(csvFilePath, [label]);
+    const args = buildMainArgs(env, csvFilePath, { bonusPeriodDays });
+    await main(args);
+
+    const bonusPeriodSeconds = BigInt(bonusPeriodDays) * 86400n;
+    await env.client.setNextBlockTimestamp({
+      timestamp: v1Expiry + bonusPeriodSeconds + 86400n,
+    });
+    await env.client.mine({ blocks: 1 });
+    expect((await verifyV2State(env, label)).status).toBe(STATUS.AVAILABLE);
+
+    deleteTestCheckpoint();
+    return { args, bonusPeriodSeconds };
+  }
+
+  it("leaves a reservation inside the v2 grace period alone on a re-run", async () => {
+    const { args } = await reserveThenEnterV2Grace("ingrace");
+
+    await main(args);
+
+    // Still the v1 owner's reservation, so nothing is sent and nothing is counted as
+    // a fresh one.
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(0);
+    expect(checkpoint!.renewedCount).toBe(0);
+    expect(checkpoint!.upToDateCount).toBe(1);
+  });
+
+  it("extends a reservation inside the v2 grace period when v1 is renewed", async () => {
+    const label = "ingracerenewed";
+    const { args, bonusPeriodSeconds } = await reserveThenEnterV2Grace(label);
+    const renewedV1Expiry = await renewV1Name(env, label, ONE_YEAR_SECONDS);
+
+    await main(args);
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(0);
+    expect(checkpoint!.renewedCount).toBe(1);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+    expect(BigInt(state.expiry)).toBe(renewedV1Expiry + bonusPeriodSeconds);
   });
 });
 

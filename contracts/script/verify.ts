@@ -99,13 +99,20 @@ function artifactFiles(dir: string) {
   );
 }
 
+// Rocketh records the chain as JSON in `.chain`; sets written by the older
+// hardhat-deploy format record the bare id in `.chainId`.
 function readChainId(dir: string) {
   const chainFile = join(dir, ".chain");
-  if (!existsSync(chainFile)) {
-    throw new Error(`deployment set has no .chain file: ${dir}`);
+  const legacyChainFile = join(dir, ".chainId");
+  let chainId: unknown;
+  if (existsSync(chainFile)) {
+    chainId = JSON.parse(readFileSync(chainFile, "utf8")).chainId;
+  } else if (existsSync(legacyChainFile)) {
+    chainId = readFileSync(legacyChainFile, "utf8").trim();
+  } else {
+    throw new Error(`deployment set has no .chain or .chainId file: ${dir}`);
   }
-  const { chainId } = JSON.parse(readFileSync(chainFile, "utf8"));
-  if (!chainId) throw new Error(`no chainId recorded in ${chainFile}`);
+  if (!chainId) throw new Error(`no chainId recorded in ${dir}`);
   return String(chainId);
 }
 
