@@ -143,6 +143,9 @@ export type FixtureRunName = {
   /// as it is registered, so an interrupted run can tell a finished name from
   /// one whose state is only part-shaped.
   setupComplete: boolean;
+  /// The call a contract refused while shaping this name, and why. Such a name
+  /// is left part-shaped while the rest of its run carries on.
+  setupFailure?: string;
 };
 
 export type FixtureRunState = {

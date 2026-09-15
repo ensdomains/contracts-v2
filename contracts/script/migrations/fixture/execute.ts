@@ -1,13 +1,24 @@
 import {
+  BaseError,
+  ContractFunctionRevertedError,
   createWalletClient,
-  encodeFunctionData,
+  decodeErrorResult,
+  ExecutionRevertedError,
   http,
+  isHex,
+  type Abi,
   type Address,
   type Chain,
   type Hex,
 } from "viem";
 
+import { Artifact_BaseRegistrarImplementation } from "generated/artifacts/BaseRegistrarImplementation.js";
+import { Artifact_ENSRegistry } from "generated/artifacts/ENSRegistry.js";
+import { Artifact_ETHRegistrarController } from "generated/artifacts/ETHRegistrarController.js";
 import { Artifact_MigrationFixtureBatcher } from "generated/artifacts/MigrationFixtureBatcher.js";
+import { Artifact_NameWrapper } from "generated/artifacts/NameWrapper.js";
+import { Artifact_PublicResolver } from "generated/artifacts/PublicResolver.js";
+import { Artifact_ReverseRegistrar } from "generated/artifacts/ReverseRegistrar.js";
 
 import {
   bufferedGas,
@@ -54,6 +65,15 @@ export function segmentBySigner(calls: PlannedCall[]): PlannedCall[][] {
   return runs;
 }
 
+/// A name whose setup was abandoned: the call a contract refused, and why.
+export type SetAside = { fixtureId: string; call: string; reason: string };
+
+export type ExecutionHooks = {
+  onTransaction?: (fixtureId: string, hash: Hex) => void;
+  onNameComplete?: (fixtureId: string) => Promise<void> | void;
+  onNameSetAside?: (setAside: SetAside) => Promise<void> | void;
+};
+
 /// Schedules planned calls for many names.
 ///
 /// Names are independent of each other but each name's calls are ordered, so
@@ -61,17 +81,35 @@ export function segmentBySigner(calls: PlannedCall[]): PlannedCall[][] {
 /// those runs are grouped by signer and executed, then the next round begins.
 /// This keeps per-name ordering intact while still aggregating batcher calls
 /// across names into full batches.
+///
+/// Because names are independent, a contract refusing one name's call is that
+/// name's fault alone. The name is set aside with the refusal and the rest carry
+/// on, where stopping would leave every name in the round part-shaped. Anything
+/// that is not a refusal — a dropped connection, a nonce clash, a transaction
+/// that reverted after its estimate passed — says nothing about one name, so it
+/// still stops the run.
+///
+/// Returns the names set aside, in the order they were.
 export async function executePlannedCalls(
   ex: Executor,
   perName: Map<string, PlannedCall[]>,
-  onTransaction?: (fixtureId: string, hash: Hex) => void,
-  onNameComplete?: (fixtureId: string) => Promise<void> | void,
+  hooks: ExecutionHooks = {},
   batchSize = DEFAULT_BATCH_SIZE,
-): Promise<void> {
+): Promise<SetAside[]> {
   const queues = new Map<string, PlannedCall[][]>();
   for (const [id, calls] of perName) {
     if (calls.length) queues.set(id, segmentBySigner(calls));
   }
+
+  const setAside: SetAside[] = [];
+  const abandoned = new Set<string>();
+  const abandon = async (id: string, call: PlannedCall, reason: string) => {
+    abandoned.add(id);
+    queues.delete(id);
+    const entry = { fixtureId: id, call: call.label, reason };
+    setAside.push(entry);
+    await hooks.onNameSetAside?.(entry);
+  };
 
   let round = 0;
   while (queues.size) {
@@ -102,19 +140,28 @@ export async function executePlannedCalls(
       }
     }
 
-    // Batcher runs from different names may be concatenated freely.
+    // Batcher runs from different names may be concatenated freely. A refused
+    // call takes its whole name out of the batch, which is then retried.
     const flatBatcher = batcherWork.flatMap((w) =>
       w.calls.map((c) => ({ id: w.id, call: c })),
     );
     for (let i = 0; i < flatBatcher.length; i += batchSize) {
-      const slice = flatBatcher.slice(i, i + batchSize);
-      const hash = await executeBatcherCalls(
-        ex,
-        slice.map((s) => s.call),
-        `round ${round} batcher (${slice.length} calls)`,
-      );
-      if (hash && onTransaction) {
-        for (const s of slice) onTransaction(s.id, hash);
+      let slice = flatBatcher.slice(i, i + batchSize);
+      while ((slice = slice.filter((s) => !abandoned.has(s.id))).length) {
+        try {
+          const hash = await executeBatcherCalls(
+            ex,
+            slice.map((s) => s.call),
+            `round ${round} batcher (${slice.length} calls)`,
+          );
+          if (hash) for (const s of slice) hooks.onTransaction?.(s.id, hash);
+          break;
+        } catch (error) {
+          const refused = refusedBatchCall(error);
+          const failed = refused && slice[refused.index];
+          if (!failed) throw error;
+          await abandon(failed.id, failed.call, refused.reason);
+        }
       }
     }
 
@@ -122,15 +169,82 @@ export async function executePlannedCalls(
     for (const [alias, work] of actorWork) {
       for (const { id, calls } of work) {
         for (const call of calls) {
-          const hash = await executeAsActor(ex, alias, call);
-          if (hash && onTransaction) onTransaction(id, hash);
+          let hash: Hex | undefined;
+          try {
+            hash = await executeAsActor(ex, alias, call);
+          } catch (error) {
+            const reason = refusalReason(error);
+            if (reason === null) throw error;
+            await abandon(id, call, reason);
+            break;
+          }
+          if (hash) hooks.onTransaction?.(id, hash);
         }
       }
     }
 
-    if (onNameComplete) {
-      for (const id of finishing) await onNameComplete(id);
+    for (const id of finishing) {
+      if (!abandoned.has(id)) await hooks.onNameComplete?.(id);
     }
+  }
+  return setAside;
+}
+
+/// The call a batch was refused on, when the batcher names one.
+///
+/// The batcher reverts with the position of the first call that failed and that
+/// call's own revert data, so the refusal can be pinned on one name.
+function refusedBatchCall(
+  error: unknown,
+): { index: number; reason: string } | null {
+  if (!(error instanceof BaseError)) return null;
+  const reverted = error.walk(
+    (e) => e instanceof ContractFunctionRevertedError,
+  ) as ContractFunctionRevertedError | null;
+  if (reverted?.data?.errorName !== "CallFailed") return null;
+  const [index, , data] = reverted.data.args as readonly [bigint, Address, Hex];
+  return { index: Number(index), reason: describeRevert(data) };
+}
+
+/// What a contract said when it refused a call, or null when the error is not a
+/// refusal at all but a failure to get the call to the chain.
+function refusalReason(error: unknown): string | null {
+  if (!(error instanceof BaseError)) return null;
+  const reverted = error.walk(
+    (e) =>
+      e instanceof ExecutionRevertedError ||
+      e instanceof ContractFunctionRevertedError,
+  );
+  if (!reverted) return null;
+  const data = error.walk(
+    (e) =>
+      typeof (e as { data?: unknown }).data === "string" &&
+      isHex((e as { data: string }).data),
+  ) as { data: Hex } | null;
+  return data
+    ? describeRevert(data.data)
+    : (reverted as BaseError).shortMessage;
+}
+
+/// Every custom error the v1 contracts that setup writes through can revert
+/// with, so a refusal is reported by name rather than as raw bytes.
+const V1_ERRORS: Abi = [
+  Artifact_BaseRegistrarImplementation.abi,
+  Artifact_ENSRegistry.abi,
+  Artifact_ETHRegistrarController.abi,
+  Artifact_NameWrapper.abi,
+  Artifact_PublicResolver.abi,
+  Artifact_ReverseRegistrar.abi,
+].flatMap((abi: Abi) => abi.filter((entry) => entry.type === "error"));
+
+/// Names a revert from the v1 contracts' errors, falling back to its raw bytes.
+function describeRevert(data: Hex): string {
+  if (data === "0x") return "reverted without a reason";
+  try {
+    const { errorName, args } = decodeErrorResult({ abi: V1_ERRORS, data });
+    return `${errorName}(${(args ?? []).map(String).join(", ")})`;
+  } catch {
+    return `reverted with unrecognised data ${data}`;
   }
 }
 

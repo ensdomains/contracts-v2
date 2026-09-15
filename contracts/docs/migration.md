@@ -603,9 +603,11 @@ is. Selection flags compose:
 | `--fixture-limit <n>` | Cap the cohort at *n* names, applied after the filters above. |
 
 Seeding refuses a selection whose scenarios it cannot establish, naming them: an expiry that needs a
-controlled clock, a v2 state that needs the name already registered there, or a lease below the v1
-controller's minimum. `fixture verify` applies the same check offline, so a cohort can be tested
-before a run starts. Every `live_now` scenario passes it.
+controlled clock, a v2 state that needs the name already registered there, a lease below the v1
+controller's minimum, or an address record no ENSIP-19 resolver will store — a value for an EVM coin
+type that is neither empty nor 20 bytes, which the v1 `PublicResolver` reverts on. `fixture verify`
+applies the same check offline, so a cohort can be tested before a run starts. Every `live_now`
+scenario passes it, and a unit test holds the bundled corpus to that.
 
 > **Reverse records are shared.** A reverse node derives from the account that claims it, so
 > scenarios claiming from one account all write the same node and only the last survives. Which
@@ -666,12 +668,20 @@ state, and writes `<work-dir>/fixture-premigration.csv`. It replays each scenari
 state, then the setup steps modelling the history in between, then closes on the target state — so a
 name whose history clears records it is still expected to hold ends up holding them.
 
+A contract refusing one name's setup call does not stop the others. That name is set aside
+part-shaped, with the call and the contract's reason recorded in `fixture-run.json`, and seeding
+carries on with the rest. The run still writes `fixture-premigration.csv`, reserving a set-aside
+name by its declared v2 state like any other, because it remains a registered v1 name. It then exits
+non-zero listing every set-aside name, and `verify-v1` reports them. Anything that is not a contract's
+refusal, such as a dropped connection, still stops the run where it is.
+
 It is resumable per name: a name whose setup finished is skipped, and one registered to anyone but a
 fixture actor aborts the run rather than shaping state against a name we do not control. A name whose
-registration landed but whose setup did not also aborts, naming the name — its state is part-shaped,
-and replaying setup over it would write against a name that has already moved on. Keep the work
-directory when that happens: it records the batcher that holds the name, and a fresh one deploys
-another and cannot reach it. Drop the name from the selection, or reseed against a fresh chain.
+registration landed but whose setup did not also aborts, naming the name and, for a set-aside one,
+the refusal — its state is part-shaped, and replaying setup over it would write against a name that
+has already moved on. Keep the work directory when that happens: it records the batcher that holds
+the name, and a fresh one deploys another and cannot reach it. Drop the name from the selection, or
+reseed against a fresh chain.
 
 > **Recompile first.** The counterparty contracts are deployed from the gitignored
 > `generated/artifacts/`. A tree compiled before they last changed fails at the first deployment with

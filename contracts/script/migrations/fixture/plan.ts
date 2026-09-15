@@ -373,6 +373,31 @@ export function recordValue(record: RecordSpec, ctx: RefContext): string {
   return record.value ?? "";
 }
 
+/// Whether a coin type names an EVM address, as ENSIP-19 defines it: Ethereum's
+/// own coin type, or one whose low 32 bits carry the EVM flag, which covers the
+/// default coin type and every chain-specific one.
+export function isEVMCoinType(coinType: number): boolean {
+  return coinType === 60 || (coinType >= 0x80000000 && coinType < 0x100000000);
+}
+
+/// Why a record is not one an ENSIP-19 resolver will store, or null when it is.
+///
+/// An EVM coin type holds an address or nothing, and the v1 `PublicResolver`
+/// reverts on any other length. The corpus declares multicoin bytes verbatim, so
+/// a value of the wrong length only surfaces as a revert part-way through
+/// seeding, after the name has been registered — or not at all, on a resolver
+/// that stores whatever it is given, leaving a record no conforming resolver
+/// would hold. An Ethereum `addr` is encoded from an address and cannot be the
+/// wrong length.
+export function recordRefusal(record: RecordSpec): string | null {
+  if (record.kind !== "addr" || record.value_hex === undefined) return null;
+  const coinType = record.coin_type ?? 60;
+  if (coinType === 60 || !isEVMCoinType(coinType)) return null;
+  const bytes = (record.value_hex.length - 2) / 2;
+  if (bytes === 0 || bytes === 20) return null;
+  return `addr record for EVM coin type ${coinType} holds ${bytes} bytes; ENSIP-19 resolvers accept only 0 or 20`;
+}
+
 /// The empty write that clears a record slot.
 ///
 /// A record is cleared by writing the empty value its setter accepts, so every

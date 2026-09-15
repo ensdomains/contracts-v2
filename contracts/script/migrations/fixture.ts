@@ -13,6 +13,7 @@ import {
   getAddress,
   http,
   keccak256,
+  namehash,
   stringToHex,
   zeroAddress,
   zeroHash,
@@ -63,6 +64,7 @@ import {
 } from "./fixture/scenario.js";
 import {
   planSetupSteps,
+  recordRefusal,
   tokenIdOf,
   type PlanContext,
   type PlannedCall,
@@ -89,6 +91,7 @@ import {
   type FixtureRunName,
   type FixtureRunState,
   type FixtureActor,
+  type RecordSpec,
 } from "./fixture/types.js";
 
 /// The registrar-ownership surface the v1 controller check walks.
@@ -512,6 +515,10 @@ const MIN_REGISTRATION_SECONDS = 28 * 24 * 60 * 60;
 /// leases below the controller's minimum — would otherwise be registered fresh
 /// and then verified against assertions that never mention what is missing. That
 /// reads as a pass, so the selection is refused instead.
+///
+/// A record no ENSIP-19 resolver will store is refused for the opposite reason:
+/// on the v1 `PublicResolver` it fails loudly, but only once the name is
+/// registered and part-shaped.
 const SEEDABLE_CLOCKS = new Set(["none"]);
 const SEEDABLE_EXPIRY_COHORTS = new Set(["long", "minimum"]);
 const SEEDABLE_V2_PROFILES = new Set(["present", "missing"]);
@@ -554,6 +561,20 @@ export function assertSeedable(rows: FixtureEnvelope[]): void {
         `lease of ${duration}s is below the v1 controller minimum`,
         row.fixture_id,
       );
+
+    // Every record seeding writes. A scenario often restates one record across
+    // these lists, so each refusal is counted once per scenario.
+    const written: RecordSpec[] = [
+      ...(scenario.v1.registration.records ?? []),
+      ...(scenario.v1.registration.target_current_records ?? []),
+      ...(scenario.v1.setup_steps ?? []).flatMap((step) => step.records ?? []),
+    ];
+    const refusals = new Set(
+      written
+        .map(recordRefusal)
+        .filter((refusal): refusal is string => refusal !== null),
+    );
+    for (const refusal of refusals) note(refusal, row.fixture_id);
   }
 
   if (!unsupported.size) return;
@@ -566,7 +587,7 @@ export function assertSeedable(rows: FixtureEnvelope[]): void {
     .join("\n");
   throw new Error(
     `fixture selection contains scenarios seeding cannot establish:\n${detail}\n` +
-      "restrict the selection (--scenarios live_now) or implement the missing state",
+      "restrict the selection (--fixture-scenarios live_now), correct the corpus, or implement the missing state",
   );
 }
 
@@ -756,6 +777,35 @@ async function deployFixtures(opts: CommonOptions): Promise<void> {
   console.log(`run state: ${runStatePath(opts)}`);
 }
 
+/// Who holds a `.eth` 2LD on v1.
+///
+/// A wrapped name's registration sits with the NameWrapper whoever wrapped it,
+/// so the registrar alone would make every wrapped name look like the same
+/// holder's. The wrapper token says whose it actually is.
+export async function v1Holder(
+  client: { readContract: (args: any) => Promise<unknown> },
+  addresses: { baseRegistrar: Address; wrapper: Address },
+  label: string,
+): Promise<Address> {
+  const registrant = getAddress(
+    (await client.readContract({
+      address: addresses.baseRegistrar,
+      abi: BaseRegistrar.ownerOf,
+      functionName: "ownerOf",
+      args: [tokenIdOf(label)],
+    })) as Address,
+  );
+  if (!sameAddress(registrant, addresses.wrapper)) return registrant;
+  return getAddress(
+    (await client.readContract({
+      address: addresses.wrapper,
+      abi: NameWrapper.ownerOf,
+      functionName: "ownerOf",
+      args: [BigInt(namehash(`${label}.eth`))],
+    })) as Address,
+  );
+}
+
 /// Registers the selected corpus on V1 and shapes each name's state. Returns
 /// the label list the pre-migration phases reserve on V2, which is a subset of
 /// what was seeded: see `writePremigrationCsv`.
@@ -856,6 +906,17 @@ export async function seedV1(
   const pending = runNames.filter((n) => !alreadySeeded.has(n.fixtureId));
   const rowById = new Map(rows.map((r) => [r.fixture_id, r]));
 
+  // Planned before anything is registered. Planning is pure, so a scenario it
+  // cannot plan fails before anything is paid for, rather than after every name
+  // is registered but none is recorded.
+  const perName = new Map<string, PlannedCall[]>();
+  for (const run of pending) {
+    perName.set(
+      run.fixtureId,
+      planSetupSteps(rowById.get(run.fixtureId)!, ctx),
+    );
+  }
+
   const registrations: {
     run: FixtureRunName;
     registration: any;
@@ -876,20 +937,15 @@ export async function seedV1(
       // Resuming is only safe when the existing registration is one of ours.
       // Any other holder means the label collides with a name we do not
       // control, and shaping state against it would corrupt that name.
-      const owner = getAddress(
-        (await client.readContract({
-          address: v1.base.address,
-          abi: v1.base.abi,
-          functionName: "ownerOf",
-          args: [tokenId],
-        })) as Address,
+      const owner = await v1Holder(
+        client,
+        { baseRegistrar: v1.base.address, wrapper: v1.wrapper.address },
+        run.label,
       );
       const ours = new Set(
-        [
-          batcher,
-          v1.wrapper.address,
-          ...actors.map((a) => a.account.address),
-        ].map((a) => getAddress(a)),
+        [batcher, ...actors.map((a) => a.account.address)].map((a) =>
+          getAddress(a),
+        ),
       );
       if (!ours.has(owner)) {
         throw new Error(
@@ -901,10 +957,14 @@ export async function seedV1(
       // directory is what can still reach it. Sending the operator elsewhere
       // would deploy a second batcher and strand the name behind the check
       // above.
+      const failure = seeded.names.find(
+        (n) => n.fixtureId === run.fixtureId,
+      )?.setupFailure;
       throw new Error(
-        `${run.fixtureId}: ${run.name} is registered but its setup did not finish, so its state is ` +
-          "part-shaped and cannot be replayed; keep this work directory and either drop the name " +
-          "from the selection or reseed against a fresh chain",
+        `${run.fixtureId}: ${run.name} is registered but its setup did not finish` +
+          (failure ? ` (${failure})` : "") +
+          ", so its state is part-shaped and cannot be replayed; keep this work directory and " +
+          "either drop the name from the selection or reseed against a fresh chain",
       );
     }
 
@@ -998,13 +1058,6 @@ export async function seedV1(
     for (const x of batch) x.run.seedTransactions.push(hash);
   }
 
-  const perName = new Map<string, PlannedCall[]>();
-  for (const run of pending) {
-    perName.set(
-      run.fixtureId,
-      planSetupSteps(rowById.get(run.fixtureId)!, ctx),
-    );
-  }
   const byId = new Map(pending.map((r) => [r.fixtureId, r]));
   // A name the corpus asks nothing further of is shaped by its registration
   // alone, and never reaches the executor to report itself finished.
@@ -1021,19 +1074,25 @@ export async function seedV1(
   ];
   saveRunState(opts, seeded);
 
-  await executePlannedCalls(
-    executor,
-    perName,
-    (fixtureId, hash) => {
+  const setAside = await executePlannedCalls(executor, perName, {
+    onTransaction: (fixtureId, hash) => {
       byId.get(fixtureId)?.seedTransactions.push(hash);
     },
-    (fixtureId) => {
+    onNameComplete: (fixtureId) => {
       const run = byId.get(fixtureId);
       if (run) run.setupComplete = true;
       saveRunState(opts, seeded);
     },
-  );
+    onNameSetAside: ({ fixtureId, call, reason }) => {
+      const run = byId.get(fixtureId);
+      if (run) run.setupFailure = `${call}: ${reason}`;
+      saveRunState(opts, seeded);
+    },
+  });
 
+  // A name set aside is still a live v1 registration, so the CSV reserves it by
+  // its declared v2 state like every other seeded name; leaving it out would
+  // make reconcile report a registration nothing reserved.
   const state = seeded;
   state.fixtureDigest = fixtureDigest(rows);
   saveRunState(opts, state);
@@ -1057,6 +1116,17 @@ export async function seedV1(
   console.log(
     `next: bun run migration -- premigration run --csv-file ${csv.path}`,
   );
+  if (setAside.length) {
+    // Every planned call's label leads with its fixture ID.
+    const detail = setAside
+      .map(({ call, reason }) => `  ${call}: ${reason}`)
+      .join("\n");
+    throw new Error(
+      `${setAside.length} of ${state.names.length} fixture names were set aside part-shaped ` +
+        `when a contract refused their setup; the rest are seeded:\n${detail}\n` +
+        "drop them from the selection to resume, and expect verify-v1 to report them",
+    );
+  }
   return csv;
 }
 

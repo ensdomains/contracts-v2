@@ -3,22 +3,48 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Command } from "commander";
-import { parseEther, toHex, zeroAddress, type Address } from "viem";
+import {
+  createPublicClient,
+  createWalletClient,
+  decodeFunctionData,
+  encodeErrorResult,
+  getAddress,
+  http,
+  parseEther,
+  parseTransaction,
+  toHex,
+  zeroAddress,
+  type Address,
+  type Hex,
+} from "viem";
 import { mnemonicToAccount } from "viem/accounts";
+import { sepolia } from "viem/chains";
+
+import { Artifact_MigrationFixtureBatcher } from "generated/artifacts/MigrationFixtureBatcher.js";
+import { Artifact_PublicResolver } from "generated/artifacts/PublicResolver.js";
 
 import { isRetryableRpcRequest } from "../../script/migrate.js";
+import { sameAddress } from "../../script/migrations/plumbing.js";
 import {
   clearedRecord,
+  isEVMCoinType,
   planSetupSteps,
   recordValue,
   type PlanContext,
+  type PlannedCall,
+  type Signer,
 } from "../../script/migrations/fixture/plan.js";
 import {
   accounts,
   ACTOR_ALIASES,
   fundingTargets,
+  loadFixture,
 } from "../../script/migrations/fixture/config.js";
-import { fundActors } from "../../script/migrations/fixture/execute.js";
+import {
+  executePlannedCalls,
+  fundActors,
+  type Executor,
+} from "../../script/migrations/fixture/execute.js";
 import {
   addFixtureSubcommands,
   assertSeedable,
@@ -26,9 +52,11 @@ import {
   refContext,
   reportReverseClaimOverlap,
   splitFixtureReservations,
+  v1Holder,
 } from "../../script/migrations/fixture.js";
 import type { RefContext } from "../../script/migrations/fixture/scenario.js";
 import type {
+  CommonOptions,
   FixtureEnvelope,
   RecordSpec,
 } from "../../script/migrations/fixture/types.js";
@@ -247,6 +275,132 @@ describe("seedable selections", () => {
         }),
       ]),
     ).toThrow(/below the v1 controller minimum/);
+  });
+
+  const POLYGON = 2147483785;
+  const withRecords = (
+    records: RecordSpec[],
+    where: "records" | "target_current_records" | "setup_steps" = "records",
+  ) =>
+    envelope({
+      v1: {
+        registration: {
+          duration_seconds: 31536000,
+          ...(where === "setup_steps" ? {} : { [where]: records }),
+        },
+        setup_steps:
+          where === "setup_steps" ? [{ action: "write_records", records }] : [],
+        expected_pre_migration: { expiry_cohort: "long" },
+      },
+    });
+
+  it("refuses an EVM coin type holding a value that is not an address", () => {
+    for (const where of [
+      "records",
+      "target_current_records",
+      "setup_steps",
+    ] as const) {
+      expect(() =>
+        assertSeedable([
+          withRecords(
+            [
+              {
+                kind: "addr",
+                coin_type: POLYGON,
+                value_hex: "0x0102030405060708",
+              },
+            ],
+            where,
+          ),
+        ]),
+      ).toThrow(/EVM coin type 2147483785 holds 8 bytes/);
+    }
+  });
+
+  it("counts a refused record once however often the scenario restates it", () => {
+    const record: RecordSpec = {
+      kind: "addr",
+      coin_type: POLYGON,
+      value_hex: "0x0102030405060708",
+    };
+    const row = envelope({
+      v1: {
+        registration: {
+          duration_seconds: 31536000,
+          records: [record],
+          target_current_records: [record],
+        },
+        setup_steps: [{ action: "write_records", records: [record] }],
+        expected_pre_migration: { expiry_cohort: "long" },
+      },
+    });
+
+    expect(() => assertSeedable([row])).toThrow(/ 1x addr record/);
+  });
+
+  it("accepts an address, or nothing, on an EVM coin type", () => {
+    expect(() =>
+      assertSeedable([
+        withRecords([
+          {
+            kind: "addr",
+            coin_type: POLYGON,
+            value_hex: "0x0102030405060708090a0b0c0d0e0f1011121314",
+          },
+          { kind: "addr", coin_type: 0x80000000, value_hex: "0x" },
+        ]),
+      ]),
+    ).not.toThrow();
+  });
+
+  it("leaves a non-EVM coin type to hold whatever encoding its chain uses", () => {
+    expect(() =>
+      assertSeedable([
+        withRecords([
+          { kind: "addr", coin_type: 0, value_hex: "0x0102030405060708" },
+        ]),
+      ]),
+    ).not.toThrow();
+  });
+});
+
+describe("EVM coin types", () => {
+  it("covers Ethereum, the default and every chain-specific coin type", () => {
+    expect(isEVMCoinType(60)).toBe(true);
+    expect(isEVMCoinType(0x80000000)).toBe(true);
+    expect(isEVMCoinType(0x80000089)).toBe(true);
+    expect(isEVMCoinType(0xffffffff)).toBe(true);
+  });
+
+  it("excludes coin types of other chains and values past 32 bits", () => {
+    expect(isEVMCoinType(0)).toBe(false);
+    expect(isEVMCoinType(501)).toBe(false);
+    expect(isEVMCoinType(0x7fffffff)).toBe(false);
+    expect(isEVMCoinType(0x100000000)).toBe(false);
+  });
+});
+
+describe("the bundled corpus", () => {
+  it("offers only live_now scenarios seeding can establish", () => {
+    const fixtureRoot = join(
+      import.meta.dir,
+      "../../csv-data/migration-fixture",
+    );
+    let rows: FixtureEnvelope[];
+    try {
+      rows = loadFixture({
+        fixtureRoot,
+        fixtureScenarios: "live_now",
+      } as CommonOptions);
+    } catch (error) {
+      throw new Error(
+        "the bundled corpus is not extracted; run `bun run fixtures:extract`",
+        { cause: error },
+      );
+    }
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(() => assertSeedable(rows)).not.toThrow();
   });
 });
 
@@ -768,5 +922,244 @@ describe("the fixture command line", () => {
     await expect(
       run(argvFor("verify-v1", "--fixture-owner-key", OWNER_KEY)),
     ).rejects.toThrow(/unknown option/);
+  });
+});
+
+describe("a shaping run", () => {
+  const BATCHER = "0x00000000000000000000000000000000000000b0" as Address;
+  const ACCEPTS = "0x00000000000000000000000000000000000000c1" as Address;
+  /// Every call to this target is refused, as the v1 resolver refuses a
+  /// multicoin value an EVM coin type cannot hold.
+  const REFUSES = "0x00000000000000000000000000000000000000c2" as Address;
+  /// Every call to this target fails to reach the chain at all.
+  const UNREACHABLE = "0x00000000000000000000000000000000000000c3" as Address;
+  const REFUSAL = encodeErrorResult({
+    abi: Artifact_PublicResolver.abi,
+    errorName: "InvalidEVMAddress",
+    args: ["0x0102030405060708"],
+  });
+  const HASH = `0x${"11".repeat(32)}` as Hex;
+
+  /// A node that answers what signing and estimating ask of it, applies the
+  /// batcher's refusal rule to each batch, and records what was sent.
+  const node = () => {
+    const sent: { to: Address; data: Hex }[] = [];
+    const reverted = (data: Hex) => ({
+      error: { code: 3, message: "execution reverted", data },
+    });
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const { id, method, params } = (await request.json()) as {
+          id: number;
+          method: string;
+          params: any[];
+        };
+        const answer = (body: object) =>
+          Response.json({ jsonrpc: "2.0", id, ...body });
+        switch (method) {
+          case "eth_chainId":
+            return answer({ result: toHex(sepolia.id) });
+          case "eth_getTransactionCount":
+          case "eth_maxPriorityFeePerGas":
+          case "eth_gasPrice":
+            return answer({ result: "0x1" });
+          case "eth_getBlockByNumber":
+            return answer({
+              result: {
+                number: "0x1",
+                hash: HASH,
+                baseFeePerGas: "0x1",
+                gasLimit: "0x1c9c380",
+                gasUsed: "0x0",
+                timestamp: "0x1",
+                transactions: [],
+              },
+            });
+          case "eth_sendRawTransaction": {
+            const tx = parseTransaction(params[0]);
+            sent.push({ to: tx.to!, data: tx.data! });
+            return answer({ result: HASH });
+          }
+          case "eth_estimateGas": {
+            const { to, data } = params[0] as { to: Address; data: Hex };
+            if (sameAddress(to, REFUSES)) return answer(reverted(REFUSAL));
+            if (!sameAddress(to, BATCHER)) return answer({ result: "0x5208" });
+            const { args } = decodeFunctionData({
+              abi: Artifact_MigrationFixtureBatcher.abi,
+              data,
+            });
+            const calls = args[0] as readonly { target: Address }[];
+            if (calls.some((c) => sameAddress(c.target, UNREACHABLE)))
+              return new Response("unavailable", { status: 503 });
+            const index = calls.findIndex((c) =>
+              sameAddress(c.target, REFUSES),
+            );
+            if (index < 0) return answer({ result: "0x5208" });
+            return answer(
+              reverted(
+                encodeErrorResult({
+                  abi: Artifact_MigrationFixtureBatcher.abi,
+                  errorName: "CallFailed",
+                  args: [BigInt(index), REFUSES, REFUSAL],
+                }),
+              ),
+            );
+          }
+          default:
+            return answer({ error: { code: -32601, message: method } });
+        }
+      },
+    });
+    return { url: server.url.href, sent, stop: () => server.stop(true) };
+  };
+
+  const call = (
+    signer: Signer,
+    target: Address,
+    label: string,
+  ): PlannedCall => ({
+    signer,
+    target,
+    value: 0n,
+    data: "0x12345678",
+    allowFailure: false,
+    label,
+  });
+  const viaBatcher = (target: Address, label: string) =>
+    call({ kind: "batcher" }, target, label);
+  const asOwner = (target: Address, label: string) =>
+    call({ kind: "actor", alias: "owner_a" }, target, label);
+
+  /// Shapes the planned names against a fresh node and reports what happened.
+  const shape = async (perName: Record<string, PlannedCall[]>) => {
+    const { url, sent, stop } = node();
+    const transport = http(url, { retryCount: 0 });
+    const reader = createPublicClient({ chain: sepolia, transport });
+    const completed: string[] = [];
+    const ex = {
+      opts: { rpcUrl: url },
+      chain: sepolia,
+      client: {
+        estimateContractGas: reader.estimateContractGas,
+        waitForTransactionReceipt: async () => ({ status: "success" }),
+      },
+      wallet: createWalletClient({
+        chain: sepolia,
+        account: mnemonicToAccount(MNEMONIC, { accountIndex: 9 }),
+        transport,
+      }),
+      batcher: BATCHER,
+      actors: new Map([
+        ["owner_a", { alias: "owner_a", account: mnemonicToAccount(MNEMONIC) }],
+      ]),
+    } as unknown as Executor;
+    const outcome = executePlannedCalls(ex, new Map(Object.entries(perName)), {
+      onNameComplete: (id) => {
+        completed.push(id);
+      },
+    }).finally(stop);
+    return { outcome, completed, sent };
+  };
+
+  /// The targets of the calls a sent batch carried.
+  const batchTargets = (data: Hex) =>
+    (
+      decodeFunctionData({ abi: Artifact_MigrationFixtureBatcher.abi, data })
+        .args[0] as readonly { target: Address }[]
+    ).map((c) => c.target.toLowerCase());
+
+  it("sets aside the name a batch was refused on and finishes the rest", async () => {
+    const { outcome, completed, sent } = await shape({
+      A: [viaBatcher(ACCEPTS, "a1"), viaBatcher(ACCEPTS, "a2")],
+      B: [viaBatcher(ACCEPTS, "b1"), viaBatcher(REFUSES, "b2")],
+      C: [viaBatcher(ACCEPTS, "c1")],
+    });
+
+    expect(await outcome).toEqual([
+      {
+        fixtureId: "B",
+        call: "b2",
+        reason: "InvalidEVMAddress(0x0102030405060708)",
+      },
+    ]);
+    expect(completed).toEqual(["A", "C"]);
+    // The retried batch carries A's and C's calls and none of B's.
+    expect(sent).toHaveLength(1);
+    expect(batchTargets(sent[0].data)).toEqual([ACCEPTS, ACCEPTS, ACCEPTS]);
+  });
+
+  it("never runs a set-aside name's later rounds", async () => {
+    const { outcome, completed, sent } = await shape({
+      A: [viaBatcher(ACCEPTS, "a1"), asOwner(ACCEPTS, "a2")],
+      B: [
+        viaBatcher(REFUSES, "b1"),
+        asOwner(ACCEPTS, "b2"),
+        viaBatcher(ACCEPTS, "b3"),
+      ],
+    });
+
+    expect((await outcome).map((s) => s.fixtureId)).toEqual(["B"]);
+    expect(completed).toEqual(["A"]);
+    // A's batch, then A's own transaction; nothing of B's.
+    expect(sent.map((tx) => tx.to.toLowerCase())).toEqual([BATCHER, ACCEPTS]);
+    expect(batchTargets(sent[0].data)).toEqual([ACCEPTS]);
+  });
+
+  it("sets aside only the name whose own transaction is refused", async () => {
+    const { outcome, completed, sent } = await shape({
+      A: [asOwner(REFUSES, "a1"), asOwner(ACCEPTS, "a2")],
+      B: [asOwner(ACCEPTS, "b1")],
+    });
+
+    expect(await outcome).toEqual([
+      {
+        fixtureId: "A",
+        call: "a1",
+        reason: "InvalidEVMAddress(0x0102030405060708)",
+      },
+    ]);
+    expect(completed).toEqual(["B"]);
+    // A's second call never went out.
+    expect(sent.map((tx) => tx.to.toLowerCase())).toEqual([ACCEPTS]);
+  });
+
+  it("stops on a failure that is no contract's refusal", async () => {
+    const { outcome, completed, sent } = await shape({
+      A: [viaBatcher(ACCEPTS, "a1")],
+      B: [viaBatcher(UNREACHABLE, "b1")],
+    });
+
+    await expect(outcome).rejects.toThrow(/HTTP request failed/);
+    expect(completed).toEqual([]);
+    expect(sent).toHaveLength(0);
+  });
+});
+
+describe("the holder of a seeded name", () => {
+  const REGISTRAR = "0x00000000000000000000000000000000000000e1" as Address;
+  const WRAPPER = "0x00000000000000000000000000000000000000e2" as Address;
+  const HOLDER = "0x00000000000000000000000000000000000000e3" as Address;
+
+  /// A chain where the registrar answers `registrant` and the wrapper answers
+  /// `wrapped` for every token.
+  const chain = (registrant: Address, wrapped: Address) => ({
+    readContract: async ({ address }: { address: Address }) =>
+      sameAddress(address, WRAPPER) ? wrapped : registrant,
+  });
+  const addresses = { baseRegistrar: REGISTRAR, wrapper: WRAPPER };
+
+  it("is the registrant of an unwrapped name", async () => {
+    expect(await v1Holder(chain(HOLDER, zeroAddress), addresses, "fx")).toBe(
+      getAddress(HOLDER),
+    );
+  });
+
+  // Every wrapped name's registration sits with the wrapper, so reading the
+  // registrar alone mistakes a name another run wrapped for one of this run's.
+  it("is the wrapper token's owner for a wrapped name", async () => {
+    expect(await v1Holder(chain(WRAPPER, HOLDER), addresses, "fx")).toBe(
+      getAddress(HOLDER),
+    );
   });
 });
