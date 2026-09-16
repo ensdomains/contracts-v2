@@ -31,11 +31,16 @@ COPY contracts/package.json ./contracts/
 # The root manifest applies these dependency patches during `bun install`.
 COPY patches ./patches
 
-# Install all dependencies
-RUN bun i
+# Install all dependencies. The root postinstall unpacks the migration fixture
+# corpus with a script that is not in the image yet, so skip lifecycle scripts
+# here and run that step once the source has been copied.
+RUN bun i --ignore-scripts
 
 # Copy the rest of the application source
 COPY . .
+
+# Unpack the migration fixture corpus (the postinstall step skipped above)
+RUN bun run fixtures:extract
 
 # Build Contracts
 WORKDIR /app/contracts
