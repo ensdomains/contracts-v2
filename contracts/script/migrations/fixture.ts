@@ -53,6 +53,7 @@ import {
   withPriceBuffer,
 } from "./fixture/config.js";
 import { verifySeededV1State } from "./fixture/verifyV1.js";
+import { writeFixtureMarkdown } from "./fixture/docs.js";
 import { resolveRegistrarControlRoute } from "./registrarControl.js";
 import {
   executionScenario,
@@ -439,10 +440,15 @@ export function splitFixtureReservations(
 /// each one's scenario declares. The run state in `workDir` says which names were
 /// seeded and from which corpus, and the corpus says what each name needs, so the
 /// answer comes from the same records seeding used rather than from a copy of them.
-export function keptUnreservedFixtureNames(
-  workDir: string,
-): Array<{ label: string; state: string }> {
-  const opts = { workDir } as CommonOptions;
+/// A finished run read back off disk: the state it recorded, and the corpus rows
+/// for exactly the names it seeded. The corpus is located through the state, so
+/// a caller names only the work directory and cannot pair a run with a corpus it
+/// was not seeded from.
+function loadSeededRun(opts: CommonOptions): {
+  state: FixtureRunState;
+  rows: FixtureEnvelope[];
+  seeded: Set<string>;
+} {
   const state = loadRunState(opts);
   if (!state) {
     throw new Error(
@@ -459,10 +465,32 @@ export function keptUnreservedFixtureNames(
       `the corpus at ${state.fixtureRoot} holds ${rows.length} of the ${seeded.size} names this run seeded; point the run at the corpus it was seeded from`,
     );
   }
+  return { state, rows, seeded };
+}
+
+export function keptUnreservedFixtureNames(
+  workDir: string,
+): Array<{ label: string; state: string }> {
+  const { rows, seeded } = loadSeededRun({ workDir } as CommonOptions);
   return splitFixtureReservations(rows, seeded).unreserved.map((row) => ({
     label: row.label,
     state: row.scenario.v2_premigration?.profile ?? "",
   }));
+}
+
+/// Rebuilds the corpus document for a run that has already been seeded, so the
+/// file can be refreshed without re-registering anything. Offline: the run state
+/// and the corpus carry everything the document says.
+export function writeFixtureDocs(opts: CommonOptions): string | null {
+  const { state, rows, seeded } = loadSeededRun(opts);
+  const { reserved } = splitFixtureReservations(rows, seeded);
+  return writeFixtureMarkdown(
+    opts,
+    state,
+    rows,
+    new Set(reserved.map((row) => row.fixture_id)),
+    "`bun run migration -- fixture docs`",
+  );
 }
 
 /// Writes the label list the pre-migration phases reserve on v2.
@@ -472,13 +500,8 @@ export function keptUnreservedFixtureNames(
 /// out of step with the scenarios it describes.
 function writePremigrationCsv(
   opts: CommonOptions,
-  rows: FixtureEnvelope[],
-  state: FixtureRunState,
+  reserved: FixtureEnvelope[],
 ): { path: string; labels: string[] } {
-  const { reserved } = splitFixtureReservations(
-    rows,
-    new Set(state.names.map((n) => n.fixtureId)),
-  );
   const output = [
     FIXTURE_CSV_HEADER,
     ...reserved.map((row) =>
@@ -1096,7 +1119,20 @@ export async function seedV1(
   const state = seeded;
   state.fixtureDigest = fixtureDigest(rows);
   saveRunState(opts, state);
-  const csv = writePremigrationCsv(opts, rows, state);
+  const { reserved } = splitFixtureReservations(
+    rows,
+    new Set(state.names.map((n) => n.fixtureId)),
+  );
+  const csv = writePremigrationCsv(opts, reserved);
+  // Written before the set-aside throw below, so a run that leaves names
+  // part-shaped still says what every name it registered stands for.
+  const doc = writeFixtureMarkdown(
+    opts,
+    state,
+    rows,
+    new Set(reserved.map((row) => row.fixture_id)),
+    "`bun run migration -- fixture seed-v1`",
+  );
 
   console.log(`seeded ${state.names.length} fixture names on v1`);
   // An owner key makes owner_a, owner_b and owner_c one account, so a run says
@@ -1113,6 +1149,7 @@ export async function seedV1(
   console.log(
     `premigration CSV: ${csv.path} (${csv.labels.length} of ${state.names.length} names reserved on v2)`,
   );
+  if (doc) console.log(`corpus document: ${doc}`);
   console.log(
     `next: bun run migration -- premigration run --csv-file ${csv.path}`,
   );
@@ -1426,6 +1463,28 @@ export function addFixtureSubcommands(program: Command): Command {
     ).action(async (raw) => {
       await seedV1(normalizeOptions(raw));
     }),
+  );
+  program.addCommand(
+    new Command("docs")
+      .description(
+        "Offline: rewrite the corpus document for an already-seeded run",
+      )
+      .requiredOption("--network <network>", "sepolia or mainnet")
+      .requiredOption("--work-dir <path>", "Work directory of the seeding run")
+      .option(
+        "--deployments-dir <path>",
+        "V2 deployments root",
+        "./deployments",
+      )
+      .option("--deployment-network <name>", "V2 deployment namespace")
+      .action((raw) => {
+        const path = writeFixtureDocs(raw as CommonOptions);
+        console.log(
+          path
+            ? `corpus document: ${path}`
+            : "this run seeded no names; no corpus document written",
+        );
+      }),
   );
   program.addCommand(
     addCommon(

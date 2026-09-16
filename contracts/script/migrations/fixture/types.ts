@@ -19,6 +19,14 @@ export const FUSES = {
 
 export type FuseName = keyof typeof FUSES;
 
+/// A fuse bitmap as its number and the fuses it burns, e.g. `4 [CANNOT_TRANSFER]`.
+export function fuseNames(bitmap: number): string {
+  const names = Object.entries(FUSES)
+    .filter(([, bit]) => (bitmap & bit) !== 0)
+    .map(([name]) => name);
+  return names.length ? `${bitmap} [${names.join("|")}]` : `${bitmap} []`;
+}
+
 /// Owner-controlled fuses are the only ones `wrapETH2LD` accepts directly; the
 /// parent-controlled bits live in the upper half of the bitmap.
 export const OWNER_CONTROLLED_MASK = 0xffff;
@@ -65,6 +73,9 @@ export type SetupStep = Record<string, any> & { action: string };
 export type Scenario = {
   scenario_id: string;
   layer: string;
+  /// One line saying what the scenario covers, e.g. "Direct unwrapped `.eth`
+  /// migration; nonzero v1 TTL is reset".
+  title: string;
   name: string;
   top_level_label: string;
   child_label: string | null;

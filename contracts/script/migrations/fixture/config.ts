@@ -134,6 +134,23 @@ export function runStatePath(opts: CommonOptions): string {
   return join(resolve(opts.workDir), "fixture-run.json");
 }
 
+/// The namespace directory a deployment's artifacts live in, resolved the way
+/// `v2Deployment` resolves the contracts it reads, so a document written beside
+/// them lands in the namespace the run actually used.
+export function deploymentNamespaceDir(opts: CommonOptions): string {
+  return join(
+    resolve(opts.deploymentsDir),
+    opts.deploymentNetwork ?? opts.network,
+  );
+}
+
+/// Where the corpus document is written: beside the deployment's artifacts,
+/// because it describes names seeded against that deployment rather than
+/// anything about the run directory.
+export function fixtureDocPath(opts: CommonOptions): string {
+  return join(deploymentNamespaceDir(opts), "fixtures.md");
+}
+
 function splitList(value: string | undefined): Set<string> {
   return new Set(
     (value ?? "")

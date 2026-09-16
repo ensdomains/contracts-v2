@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -54,12 +54,37 @@ import {
   splitFixtureReservations,
   v1Holder,
 } from "../../script/migrations/fixture.js";
+import { renderFixtureMarkdown } from "../../script/migrations/fixture/docs.js";
 import type { RefContext } from "../../script/migrations/fixture/scenario.js";
 import type {
   CommonOptions,
   FixtureEnvelope,
+  FixtureRunState,
   RecordSpec,
 } from "../../script/migrations/fixture/types.js";
+
+// The fixture commands fall back to MIGRATION_FIXTURE_* environment variables,
+// and `contracts/.env` carries them on any machine that has run a seeding. These
+// tests describe what the commands do when nothing is nominated, so they run
+// with those variables cleared rather than reporting the operator's .env.
+const AMBIENT_FIXTURE_ENV = [
+  "MIGRATION_FIXTURE_OWNER_KEY",
+  "MIGRATION_FIXTURE_ACTOR_MNEMONIC",
+  "MIGRATION_FIXTURE_PRIVATE_KEY",
+] as const;
+const ambient = new Map<string, string | undefined>();
+beforeAll(() => {
+  for (const name of AMBIENT_FIXTURE_ENV) {
+    ambient.set(name, process.env[name]);
+    delete process.env[name];
+  }
+});
+afterAll(() => {
+  for (const [name, value] of ambient) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+});
 
 const OWNER = "0x00000000000000000000000000000000000000a1" as Address;
 
@@ -223,6 +248,200 @@ describe("fixture reservations", () => {
     expect(() =>
       keptUnreservedFixtureNames(mkdtempSync(join(tmpdir(), "fixture-empty-"))),
     ).toThrow(/no fixture run state/);
+  });
+});
+
+describe("fixture corpus document", () => {
+  const named = (
+    id: string,
+    scenario: Record<string, any>,
+    run: Record<string, any> = {},
+  ) => ({
+    row: {
+      ...envelope(scenario),
+      fixture_id: id,
+      label: id.toLowerCase(),
+      name: `${id.toLowerCase()}.eth`,
+      popularity_tier: "common",
+    } as FixtureEnvelope,
+    name: {
+      fixtureId: id,
+      sourceScenarioId: id,
+      label: id.toLowerCase(),
+      name: `${id.toLowerCase()}.eth`,
+      ownerAlias: "owner_a",
+      owner: zeroAddress,
+      form: "unwrapped",
+      wrapped: false,
+      locked: false,
+      fuses: 0,
+      route: "unlocked_controller",
+      batchId: null,
+      expectedResult: "success",
+      seedTransactions: [],
+      setupComplete: true,
+      ...run,
+    },
+  });
+
+  const state = (names: any[]) =>
+    ({
+      version: 2,
+      chainId: 11155111,
+      fixtureRoot: "/corpus",
+      fixtureDigest: "0xdigest",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      batcher: zeroAddress,
+      fixtureContracts: {},
+      actorAddresses: { owner_a: zeroAddress },
+      names,
+    }) as unknown as FixtureRunState;
+
+  const render = (entries: ReturnType<typeof named>[], reserved: string[]) =>
+    renderFixtureMarkdown(
+      state(entries.map((entry) => entry.name)),
+      entries.map((entry) => entry.row),
+      { namespace: "sepolia", reserved: new Set(reserved) },
+    );
+
+  it("gives every seeded name a row naming the scenario it stands for", () => {
+    const doc = render(
+      [
+        named("A", {
+          title: "Direct unwrapped migration",
+          layer: "legacy_anchor",
+        }),
+        named("B", { title: "Wrapped locked migration", layer: "hierarchy" }),
+      ],
+      ["A", "B"],
+    );
+
+    expect(doc).toContain("| a.eth | A | Direct unwrapped migration |");
+    expect(doc).toContain("| b.eth | B | Wrapped locked migration |");
+    // Sectioned by the layer each scenario declares.
+    expect(doc).toContain("## legacy_anchor (1)");
+    expect(doc).toContain("## hierarchy (1)");
+    expect(doc).toContain("- **Names:** 2 across 2 layer(s)");
+  });
+
+  it("says which names pre-migration left unreserved, and why", () => {
+    const doc = render(
+      [
+        named("A", { title: "Reserved", layer: "legacy_anchor" }),
+        named("B", {
+          title: "Absent on v2",
+          layer: "legacy_anchor",
+          v2_premigration: { profile: "missing" },
+        }),
+      ],
+      ["A"],
+    );
+
+    expect(doc).toContain("- **Reserved on v2:** 1");
+    expect(doc).toContain("- **Kept unreserved:** 1");
+    expect(doc).toContain("kept unreserved (missing)");
+  });
+
+  it("reports a name a contract refused to shape", () => {
+    const doc = render(
+      [
+        named(
+          "A",
+          { title: "Refused", layer: "legacy_anchor" },
+          { setupFailure: "set_ttl: CannotSetTTL" },
+        ),
+      ],
+      ["A"],
+    );
+
+    expect(doc).toContain("- **Set aside part-shaped:** 1");
+    expect(doc).toContain("## Set aside");
+    expect(doc).toContain("| a.eth | set_ttl: CannotSetTTL |");
+  });
+
+  it("collapses owner aliases a nominated wallet made one account", () => {
+    const shared = "0x00000000000000000000000000000000000000aa" as Address;
+    const entries = [
+      named("A", { title: "One", layer: "legacy_anchor" }, { owner: shared }),
+      named(
+        "B",
+        { title: "Two", layer: "legacy_anchor" },
+        { ownerAlias: "owner_b", owner: shared },
+      ),
+    ];
+    const runState = state(entries.map((entry) => entry.name));
+    runState.actorAddresses = {
+      owner_a: shared,
+      owner_b: shared,
+      owner_c: shared,
+      operator: OWNER,
+    };
+
+    const doc = renderFixtureMarkdown(
+      runState,
+      entries.map((entry) => entry.row),
+      { namespace: "sepolia", reserved: new Set(["A", "B"]) },
+    );
+
+    // One account, so the aliases share a row in the owners table and every
+    // name's row names that owner once.
+    expect(doc).toContain(`| owner_a, owner_b, owner_c | [${shared}]`);
+    expect(doc).toContain("| Tier | Owner |");
+    expect(doc).toContain("| common | owner_a |");
+    expect(doc).not.toContain("| common | owner_b |");
+  });
+
+  it("keeps the owner column when the names have different owners", () => {
+    const entries = [
+      named("A", { title: "One", layer: "legacy_anchor" }, { owner: OWNER }),
+      named(
+        "B",
+        { title: "Two", layer: "legacy_anchor" },
+        {
+          ownerAlias: "owner_b",
+          owner: "0x00000000000000000000000000000000000000bb" as Address,
+        },
+      ),
+    ];
+    const runState = state(entries.map((entry) => entry.name));
+    runState.actorAddresses = {
+      owner_a: OWNER,
+      owner_b: "0x00000000000000000000000000000000000000bb" as Address,
+    };
+
+    const doc = renderFixtureMarkdown(
+      runState,
+      entries.map((entry) => entry.row),
+      { namespace: "sepolia", reserved: new Set(["A", "B"]) },
+    );
+
+    expect(doc).toContain("| Tier | Owner |");
+    expect(doc).toContain("| common | owner_a |");
+    expect(doc).toContain("| common | owner_b |");
+  });
+
+  it("names the error a reverting scenario expects, and the fuses a name burns", () => {
+    const doc = render(
+      [
+        named(
+          "A",
+          {
+            title: "Locked name refuses",
+            layer: "legacy_anchor",
+            execution: {
+              scenario: "live_now",
+              expected_error: "ReservedRegistrationRequired",
+            },
+          },
+          { expectedResult: "revert", wrapped: true, locked: true, fuses: 1 },
+        ),
+      ],
+      ["A"],
+    );
+
+    expect(doc).toContain("revert: ReservedRegistrationRequired");
+    expect(doc).toContain("1 [CANNOT_UNWRAP]");
   });
 });
 

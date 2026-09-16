@@ -668,6 +668,19 @@ state, and writes `<work-dir>/fixture-premigration.csv`. It replays each scenari
 state, then the setup steps modelling the history in between, then closes on the target state — so a
 name whose history clears records it is still expected to hold ends up holding them.
 
+It also writes **`deployments/<namespace>/fixtures.md`**, the record of which name stands for which
+scenario: every seeded name with the scenario's own one-line description, the form and fuses it was
+shaped into, its migration route, whether it is expected to succeed or revert, and whether
+pre-migration reserves it on v2 — sectioned by scenario layer. Without it a seeded testnet is a list
+of names nobody can read. It is written beside the deployment's artifacts because it describes names
+seeded against that deployment, and only when a run seeded something, so a deployment with no corpus
+carries no such file. `fixture docs` rewrites it from `fixture-run.json` and the corpus, which needs
+no RPC or key:
+
+```bash
+bun run migration -- fixture docs --network sepolia --work-dir .dev/fixture
+```
+
 A contract refusing one name's setup call does not stop the others. That name is set aside
 part-shaped, with the call and the contract's reason recorded in `fixture-run.json`, and seeding
 carries on with the rest. The run still writes `fixture-premigration.csv`, reserving a set-aside
@@ -1079,6 +1092,7 @@ and idempotency rules.
 | `fixture deploy-fixtures` | Deploy the fixture batcher and the corpus counterparty contracts |
 | `fixture seed-v1` | Register the corpus, shape each name's v1 state, and emit the labels pre-migration reserves |
 | `fixture verify-v1` | Read the shaped v1 state back and check it against each scenario |
+| `fixture docs` | Offline: rewrite `deployments/<namespace>/fixtures.md` for an already-seeded run |
 | `phase deploy-v2` | Phase 1: deploy the v2 contracts, reverse adapters and HCA stack, with the registrar grant deferred |
 | `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior `ETHRenewerV1` |
 | `phase disable-v1-registrars` | Phase 3: revoke every v1 authorization the active deployment did not grant |

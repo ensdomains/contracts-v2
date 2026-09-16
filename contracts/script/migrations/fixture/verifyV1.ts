@@ -20,6 +20,7 @@ import { labelhashOf, recordValue, tokenIdOf } from "./plan.js";
 import { sameAddress } from "../plumbing.js";
 import {
   FUSES,
+  fuseNames,
   OWNER_CONTROLLED_MASK,
   type FixtureEnvelope,
   type RecordSpec,
@@ -111,13 +112,6 @@ function implicitFuses(
   if (!wrapped) return 0;
   if (!child) return FUSES.PARENT_CANNOT_CONTROL | FUSES.IS_DOT_ETH;
   return declared & OWNER_CONTROLLED_MASK ? FUSES.PARENT_CANNOT_CONTROL : 0;
-}
-
-function fuseNames(bitmap: number): string {
-  const names = Object.entries(FUSES)
-    .filter(([, bit]) => (bitmap & bit) !== 0)
-    .map(([name]) => name);
-  return names.length ? `${bitmap} [${names.join("|")}]` : `${bitmap} []`;
 }
 
 function recordChecks(
