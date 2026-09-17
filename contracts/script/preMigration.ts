@@ -1232,7 +1232,7 @@ async function processBatch(
         continue;
       }
 
-      if (result.v2Status === 2) {
+      if (result.v2Status === STATUS.REGISTERED) {
         logger.error(
           `Name ${registration.labelName}.eth is already registered with owner: ${result.v2LatestOwner}`,
         );
