@@ -7,8 +7,7 @@ import type { Abi_BaseRegistrarImplementation } from "generated/abis/BaseRegistr
 import type { Abi_OwnedResolver } from "generated/abis/OwnedResolver.js";
 import type { Abi_ENS } from "generated/abis/ENS.js";
 import { Artifact_ENSV2Resolver } from "generated/artifacts/ENSV2Resolver.js";
-import { getAddress, namehash, zeroAddress } from "viem";
-import { unwindMirrorResolvers } from "../script/resolverDeployUtils.js";
+import { getAddress, namehash } from "viem";
 
 export default execute(
   async ({
@@ -32,24 +31,14 @@ export default execute(
       ).catch(() => {});
 
     console.log("Deploying ENSV2Resolver");
-    console.log("  - Getting ENSv1 .eth resolver");
+    // The ENSv1 `.eth` resolver comes from the v1 deployment rather than the registry,
+    // which points at an ENSV2Resolver mirror once one has been installed.
+    const ethResolver = await getV1<Abi_OwnedResolver>("OwnedResolver");
+    console.log(`  - ENSv1 .eth resolver: ${ethResolver.address}`);
     const currentResolver = await read(ensRegistry, {
       functionName: "resolver",
       args: [namehash("eth")],
     });
-    const v1EthResolver = await unwindMirrorResolvers(read, currentResolver);
-    if (getAddress(v1EthResolver) !== getAddress(currentResolver)) {
-      console.log(
-        `  - Unwound superseded mirror resolver ${currentResolver} to ${v1EthResolver}`,
-      );
-    }
-    const ethResolver =
-      getAddress(v1EthResolver) === getAddress(zeroAddress)
-        ? await getV1<Abi_OwnedResolver>("OwnedResolver")
-            .then((deployment) => deployment.address)
-            .catch(() => v1EthResolver)
-        : v1EthResolver;
-    console.log(`  - Got: ${ethResolver}`);
 
     const existingEnsV2Resolver =
       getOrNull<(typeof Artifact_ENSV2Resolver)["abi"]>("ENSV2Resolver");
@@ -62,7 +51,7 @@ export default execute(
           batchGatewayProvider.address,
           contractNamer.address,
           rootRegistry.address,
-          ethResolver,
+          ethResolver.address,
         ],
       }));
 

@@ -303,6 +303,9 @@ export async function setupDevnet({
         askBeforeProceeding: false,
         saveDeployments,
         defaultPollingInterval: 0.001, // cannot be zero
+        // A fork reads v1 contracts from the canonical mainnet set, including the
+        // references the bootstrap does not copy.
+        ...(isFork ? { extra: { v1DeploymentNetwork: "mainnet" } } : {}),
       },
       {
         accounts: Object.fromEntries(

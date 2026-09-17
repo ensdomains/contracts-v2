@@ -146,6 +146,7 @@ deployments/*-fork/        # fork full --save-deployments rehearsal namespaces
 deployments/*-clean-*/      # clean-testnet runtime namespaces
 deployments/v1/*            # v1 references are ignored …
 !deployments/v1/sepolia/    # … except the tracked sepolia v1 references
+!deployments/v1/mainnet/    # … and the tracked mainnet v1 references
 ```
 
 A live namespace (`deployments/sepolia/`) and dated archives
