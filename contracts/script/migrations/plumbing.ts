@@ -5,8 +5,9 @@
 /// primitive is not just repetition: the copies drift, and the drift is invisible
 /// until an operator runs one entry point from a directory the other never sees.
 ///
-/// Nothing here reaches back into the modules that use it, so it can be imported from
-/// anywhere in the tooling without closing a cycle.
+/// It imports `rpc.ts` for the chain-time helper behind the commitment wait, and
+/// `rpc.ts` imports this module back, so the two load as a cycle. Nothing here may use
+/// an `rpc.ts` export while the module is still loading.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -18,7 +19,6 @@ import {
   http,
   type Address,
   type Chain,
-  type Hex,
 } from "viem";
 import { keccak256, stringToHex } from "viem";
 import { mainnet, sepolia } from "viem/chains";
@@ -27,18 +27,6 @@ import { SEC_PER_DAY } from "../deploy-constants.js";
 import { increaseTime } from "./rpc.js";
 
 import { config as rockethConfig } from "../../rocketh/config.js";
-
-/// A name in the length-prefixed wire encoding the v1 and v2 resolvers read.
-export function dnsEncodeName(name: string): Hex {
-  const bytes: number[] = [];
-  for (const label of name.split(".")) {
-    const labelBytes = Buffer.from(label, "utf8");
-    if (labelBytes.length > 255) throw new Error(`label is too long: ${label}`);
-    bytes.push(labelBytes.length, ...labelBytes);
-  }
-  bytes.push(0);
-  return `0x${Buffer.from(bytes).toString("hex")}`;
-}
 
 /// Every message in an error's `cause` chain, outermost first.
 ///

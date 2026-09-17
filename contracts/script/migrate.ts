@@ -133,7 +133,6 @@ import {
   waitForCommitmentAge,
   waitForSuccessfulReceipt,
   DEFAULT_DEPLOYMENTS_DIR,
-  dnsEncodeName,
   errorMessageChain,
   forkChain,
   type JsonDeployment,
@@ -155,6 +154,7 @@ import {
   type RpcProvider,
   type V1DeploymentOptions,
 } from "./migrations/plumbing.js";
+import { dnsEncodeName } from "../test/utils/utils.js";
 import { resolveRegistrarControlRoute } from "./migrations/registrarControl.js";
 import {
   BaseRegistrar as BaseRegistrarFragments,

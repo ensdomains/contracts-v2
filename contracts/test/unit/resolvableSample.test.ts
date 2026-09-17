@@ -3,10 +3,10 @@ import { type Address, encodeAbiParameters, type Hex } from "viem";
 
 import { selectResolvableNames } from "../../script/migrate.js";
 import {
-  dnsEncodeName,
   type JsonDeployment,
   labelId,
 } from "../../script/migrations/plumbing.js";
+import { dnsEncodeName } from "../utils/utils.js";
 import { V1_GRACE_PERIOD_SECONDS } from "../../script/preMigration.js";
 
 // `addr(bytes32)`. The stubbed resolver answers this one call and refuses the rest,
