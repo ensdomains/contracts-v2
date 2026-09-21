@@ -86,9 +86,15 @@ bun run script/preMigration.ts [options]
 | `--v1-base-registrar <address>` | mainnet `BaseRegistrar` | v1 `BaseRegistrar` for expiry lookups (override for testing). |
 
 > Eligibility is independently gated by v1's hard-coded 90-day grace: a name expired more than 90 days
-> ago is past grace and skipped, regardless of `--bonus-period-days`. Choose a bonus period large
-> enough that the deepest in-grace name you want migrated does not compute a past v2 expiry (which
-> would fail registration).
+> ago is past grace and skipped, regardless of `--bonus-period-days`.
+>
+> A name deep in its v1 grace can compute a v2 expiry that has already passed. The registry accepts it,
+> and the entry reads `Available` at once, but it is still the v1 owner's: v2 keeps a lapsed
+> reservation in a 28-day grace period of its own, during which `ETHRenewerV1` renews it and
+> `ETHRegistrar` refuses to register it to anyone else. The default bonus of 62 days is the v1 grace
+> less the v2 grace, so that window closes exactly when v1's does. A shorter bonus leaves the names in
+> the gap open to anyone on v2 while v1 still holds them, and `premigration reconcile` reports them as
+> missing.
 
 ## CSV input
 
@@ -133,13 +139,38 @@ Per-name action:
 | v2 status | v1 status | Action |
 |---|---|---|
 | Available (0) | Registered, or expired but within v1's 90-day grace | **Reserve** with expiry `v1Expiry + bonusPeriodDays` |
-| Reserved (1) | Registered, different expiry | **Renew** (sync expiry) |
-| Reserved (1) | Registered, same expiry | **Skip** (up to date) |
+| Reserved (1)† | Computed expiry longer than the stored one | **Renew** (extend expiry) |
+| Reserved (1)† | Computed expiry equal to or shorter than the stored one | **Skip** (up to date) |
 | Registered (2) | Any | **Fail** (already fully owned on v2) |
 | Any | Never registered, or past v1's 90-day grace | **Skip** (v1 owner lost the claim) |
 
+† Including a reservation past its expiry but inside the v2 grace period, which reads `Available (0)`
+yet still belongs to its v1 owner. Treating it as available would re-send it on every sync and count it
+as a fresh reservation each time.
+
 Reserved names are written with owner/registry `address(0)`, resolver = `ENSV1Resolver`, roleBitmap
 `0`, and the computed expiry.
+
+A reservation is only ever extended, never shortened: `BatchRegistrar` renews when the requested
+expiry is greater than the stored one and does nothing otherwise. Names that would be a no-op are left
+out of the batch and counted separately, so the final sync sends only what has actually changed rather
+than resubmitting the whole CSV.
+
+> **When can a name be `Registered (2)`?** Not during the migration phases. Migration opens to users
+> only after the final pre-migration sync completes, so a name owned on v2 while pre-migration is
+> still running did not get there by being claimed. It is reported and counted, and does not fail the
+> run, but it is worth understanding before continuing.
+
+**One name cannot stop the run.** Every per-name failure mode is handled explicitly, but an
+unforeseen one — a value that overflows a conversion, a malformed record — is caught, counted as a
+failure, and skipped, so the rest of its batch is still reserved. Real chain data contains names with
+deliberately maximal expiries (near `uint64` max), which is exactly the kind of value that used to
+abort a whole run from a log line. Bonus-adjusted expiries are capped at `uint64` so they cannot wrap.
+
+A whole batch failing is treated differently, because none of its names were written: the run stops
+there so the checkpoint still points **before** those rows. Carrying on would advance the resume
+cursor past names that were never reserved, and `--continue` would then skip them permanently. Re-run
+with `--continue` once the cause is fixed.
 
 **Gas safety.** Before submitting, the script estimates gas; if it exceeds 80% of the block limit the
 batch is split in half and re-estimated (recursively). If a batch reverts at execution, it is
@@ -155,16 +186,30 @@ resume command in [Quick start](#quick-start).
 
 ## Dry run
 
-`--dry-run` runs the full pipeline — CSV parse, v1/v2 verification, expiry computation, checkpointing
-— and logs what would happen, but sends no transactions. It is the default first step in
-[Quick start](#quick-start).
+`--dry-run` runs the full pipeline — CSV parse, v1/v2 verification, expiry computation — and logs what
+would happen, but sends no transactions. It is the default first step in [Quick start](#quick-start).
+
+A dry run reads an existing checkpoint with `--continue` but never clears or saves one. Saving would move
+the resume cursor past rows nothing was sent for and drop them from the retry queue, so a later real
+`--continue` would skip them for good.
 
 ## Output
 
 Informational output goes to `preMigration.log` and errors to `preMigration-errors.log`; the console
-mirrors progress with a final summary table (processed / reserved / renewed / skipped / invalid /
-failed / success rate). Non-CSV failures (individual name reverts, RPC timeouts at a 30s per-call
-limit, checkpoint write errors) are counted and logged without aborting the run.
+mirrors progress with a final summary table (processed / reserved / renewed / skipped / already
+registered / already up to date / invalid / failed / success rate). Individual failures (name reverts,
+RPC timeouts at a 30s per-call limit, checkpoint write errors) are counted and logged without aborting
+the batch, so partial progress is preserved.
+
+**A failed name is retried, not stepped over.** The checkpoint stops before the first failure, so
+`--continue` reaches that name again rather than resuming past it. Names that succeeded after it are
+re-read and skipped as already up to date, so the retry is cheap. A whole batch failing stops the run
+for the same reason: none of its names were written, and the cursor must stay before them.
+
+**A run that ends with failures exits non-zero.** A name that reverted was never written to v2, so
+reporting the run as a success would hand back a green result over an incomplete reservation set.
+Re-run with `--continue` after fixing the cause. The "already registered" and "already up to date"
+counters are not failures — nothing was lost in either case — and do not affect the exit status.
 
 ## Testing on a Sepolia fork
 
