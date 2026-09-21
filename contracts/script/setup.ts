@@ -75,6 +75,7 @@ import {
   http,
   zeroAddress,
   defineChain,
+  encodeFunctionData,
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
@@ -954,27 +955,36 @@ export async function setupDevnet({
         ROLES.ALL,
         MAX_EXPIRY,
       ]);
+      const writes: Hex[] = [];
       for (const x of await getContractNames()) {
-        const { address } = rocketh.get(x.deployment);
         try {
+          const { address } = rocketh.get(x.deployment);
           if (x.claim) {
             await shared.ReverseRegistrarAdapter.write.claim(
               [address, resolver.address],
               { account },
             );
           }
-          await resolver.write.setName([
-            dnsEncodeName(getReverseName(address)),
-            x.name,
-          ]);
+          writes.push(
+            encodeFunctionData({
+              abi: resolver.abi,
+              functionName: "setName",
+              args: [dnsEncodeName(getReverseName(address)), x.name],
+            }),
+          );
+          writes.push(
+            encodeFunctionData({
+              abi: resolver.abi,
+              functionName: "setAddress",
+              args: [dnsEncodeName(x.name), COIN_TYPE_ETH, address],
+            }),
+          );
         } catch (err) {
-          console.log(`Cannot name: ${x.name}`);
+          console.log(`Cannot name: ${x.name}: ${err}`);
         }
-        await resolver.write.setAddress([
-          dnsEncodeName(x.name),
-          COIN_TYPE_ETH,
-          address,
-        ]);
+      }
+      if (writes.length) {
+        await resolver.write.multicall([writes]);
       }
     }
 

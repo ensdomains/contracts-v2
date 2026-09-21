@@ -4,8 +4,9 @@
     "name": "root.legacy.ens.eth"
   },
   {
-    "deployment": "UniversalResolverV1",
-    "name": "universal.legacy.ens.eth"
+    "deployment": "UniversalResolver",
+    "name": "universal.legacy.ens.eth",
+    "todo": "change to UniversalResolverV1"
   },
   {
     "deployment": "ContractNamer",
@@ -68,7 +69,7 @@
     "claim": "DelegatedContractNamer"
   },
   {
-    "deployment": "PublicResolver",
+    "deployment": "PublicResolverV2",
     "name": "public.resolver.ens.eth",
     "claim": "DelegatedContractNamer"
   },
