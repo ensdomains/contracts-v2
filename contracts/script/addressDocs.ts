@@ -61,19 +61,26 @@ function addressCell(chainId: number | undefined, address: string): string {
   return url ? `[${address}](${url})` : address;
 }
 
+/// Render rows as a markdown table. The first row is the header; the separator
+/// is supplied here so callers pass content only.
+export function markdownTable(rows: string[][]): string {
+  const [header, ...body] = rows;
+  return [header, header.map(() => "---"), ...body]
+    .map((row) => `| ${row.join(" | ")} |`)
+    .join("\n");
+}
+
 function formatTable(
   contracts: ContractEntry[],
   chainId: number | undefined,
 ): string {
-  const rows = [
+  return markdownTable([
     ["Contract", "Address"],
-    ["---", "---"],
     ...contracts.map(({ name, address }) => [
       name,
       addressCell(chainId, address),
     ]),
-  ];
-  return rows.map((row) => `| ${row.join(" | ")} |`).join("\n");
+  ]);
 }
 
 function readJson<T>(path: string): T | null {

@@ -1,32 +1,90 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Command } from "commander";
-import { parseEther, toHex, zeroAddress, type Address } from "viem";
+import {
+  createPublicClient,
+  createWalletClient,
+  decodeFunctionData,
+  encodeErrorResult,
+  getAddress,
+  http,
+  parseEther,
+  parseTransaction,
+  toHex,
+  zeroAddress,
+  type Address,
+  type Hex,
+} from "viem";
 import { mnemonicToAccount } from "viem/accounts";
+import { sepolia } from "viem/chains";
 
-import { isRetryableRpcRequest } from "../../script/migration.js";
+import { Artifact_MigrationFixtureBatcher } from "generated/artifacts/MigrationFixtureBatcher.js";
+import { Artifact_PublicResolver } from "generated/artifacts/PublicResolver.js";
+
+import { isRetryableRpcRequest } from "../../script/migrate.js";
+import { sameAddress } from "../../script/migrations/plumbing.js";
 import {
   clearedRecord,
+  isEVMCoinType,
   planSetupSteps,
   recordValue,
   type PlanContext,
-} from "../../script/migrationFixture/plan.js";
+  type PlannedCall,
+  type Signer,
+} from "../../script/migrations/fixture/plan.js";
 import {
   accounts,
   ACTOR_ALIASES,
   fundingTargets,
-} from "../../script/migrationFixture/config.js";
-import { fundActors } from "../../script/migrationFixture/execute.js";
+  loadFixture,
+} from "../../script/migrations/fixture/config.js";
+import {
+  executePlannedCalls,
+  fundActors,
+  type Executor,
+} from "../../script/migrations/fixture/execute.js";
 import {
   addFixtureSubcommands,
   assertSeedable,
+  keptUnreservedFixtureNames,
   refContext,
   reportReverseClaimOverlap,
-} from "../../script/migrationFixture.js";
-import type { RefContext } from "../../script/migrationFixture/scenario.js";
+  splitFixtureReservations,
+  v1Holder,
+} from "../../script/migrations/fixture.js";
+import { renderFixtureMarkdown } from "../../script/migrations/fixture/docs.js";
+import type { RefContext } from "../../script/migrations/fixture/scenario.js";
 import type {
+  CommonOptions,
   FixtureEnvelope,
+  FixtureRunState,
   RecordSpec,
-} from "../../script/migrationFixture/types.js";
+} from "../../script/migrations/fixture/types.js";
+
+// The fixture commands fall back to MIGRATION_FIXTURE_* environment variables,
+// and `contracts/.env` carries them on any machine that has run a seeding. These
+// tests describe what the commands do when nothing is nominated, so they run
+// with those variables cleared rather than reporting the operator's .env.
+const AMBIENT_FIXTURE_ENV = [
+  "MIGRATION_FIXTURE_OWNER_KEY",
+  "MIGRATION_FIXTURE_ACTOR_MNEMONIC",
+  "MIGRATION_FIXTURE_PRIVATE_KEY",
+] as const;
+const ambient = new Map<string, string | undefined>();
+beforeAll(() => {
+  for (const name of AMBIENT_FIXTURE_ENV) {
+    ambient.set(name, process.env[name]);
+    delete process.env[name];
+  }
+});
+afterAll(() => {
+  for (const [name, value] of ambient) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+});
 
 const OWNER = "0x00000000000000000000000000000000000000a1" as Address;
 
@@ -122,6 +180,271 @@ const envelope = (scenario: Record<string, any>): FixtureEnvelope =>
     },
   }) as unknown as FixtureEnvelope;
 
+describe("fixture reservations", () => {
+  const withProfile = (id: string, profile: string) => ({
+    ...envelope({ v2_premigration: { profile } }),
+    fixture_id: id,
+  });
+
+  it("reserves only present names and keeps every other seeded name out", () => {
+    const rows = [
+      withProfile("A", "present"),
+      withProfile("B", "missing"),
+      withProfile("C", "already_registered"),
+      withProfile("D", "expired"),
+      withProfile("E", "present"),
+    ];
+
+    // E was never seeded, so it belongs on neither list.
+    const { reserved, unreserved } = splitFixtureReservations(
+      rows,
+      new Set(["A", "B", "C", "D"]),
+    );
+
+    expect(reserved.map((row) => row.fixture_id)).toEqual(["A"]);
+    expect(unreserved.map((row) => row.fixture_id)).toEqual(["B", "C", "D"]);
+  });
+
+  // A work directory as seeding leaves it: run state naming the seeded ids and the
+  // corpus they came from.
+  function seededWorkDir(corpus: FixtureEnvelope[], seededIds: string[]) {
+    const dir = mkdtempSync(join(tmpdir(), "fixture-kept-"));
+    mkdirSync(join(dir, "corpus"));
+    writeFileSync(
+      join(dir, "corpus", "weighted-scenarios.jsonl"),
+      corpus.map((row) => JSON.stringify(row)).join("\n"),
+    );
+    writeFileSync(
+      join(dir, "fixture-run.json"),
+      JSON.stringify({
+        version: 2,
+        fixtureRoot: join(dir, "corpus"),
+        names: seededIds.map((fixtureId) => ({ fixtureId })),
+      }),
+    );
+    return dir;
+  }
+
+  it("reads the names kept unreserved from a seeded work directory", () => {
+    const corpus = [
+      { ...withProfile("A", "present"), label: "a" },
+      { ...withProfile("B", "missing"), label: "b" },
+      { ...withProfile("C", "missing"), label: "c" },
+    ];
+
+    // C sits in the corpus but was never seeded, so it is no concern of this run.
+    expect(
+      keptUnreservedFixtureNames(seededWorkDir(corpus, ["A", "B"])),
+    ).toEqual([{ label: "b", state: "missing" }]);
+  });
+
+  it("refuses a work directory whose corpus no longer holds what it seeded", () => {
+    const dir = seededWorkDir([withProfile("A", "present")], ["A", "GONE"]);
+
+    expect(() => keptUnreservedFixtureNames(dir)).toThrow(/holds 1 of the 2/);
+  });
+
+  it("refuses a directory no seeding ran in", () => {
+    expect(() =>
+      keptUnreservedFixtureNames(mkdtempSync(join(tmpdir(), "fixture-empty-"))),
+    ).toThrow(/no fixture run state/);
+  });
+});
+
+describe("fixture corpus document", () => {
+  const named = (
+    id: string,
+    scenario: Record<string, any>,
+    run: Record<string, any> = {},
+  ) => ({
+    row: {
+      ...envelope(scenario),
+      fixture_id: id,
+      label: id.toLowerCase(),
+      name: `${id.toLowerCase()}.eth`,
+      popularity_tier: "common",
+    } as FixtureEnvelope,
+    name: {
+      fixtureId: id,
+      sourceScenarioId: id,
+      label: id.toLowerCase(),
+      name: `${id.toLowerCase()}.eth`,
+      ownerAlias: "owner_a",
+      owner: zeroAddress,
+      form: "unwrapped",
+      wrapped: false,
+      locked: false,
+      fuses: 0,
+      route: "unlocked_controller",
+      batchId: null,
+      expectedResult: "success",
+      seedTransactions: [],
+      setupComplete: true,
+      ...run,
+    },
+  });
+
+  const state = (names: any[]) =>
+    ({
+      version: 2,
+      chainId: 11155111,
+      fixtureRoot: "/corpus",
+      fixtureDigest: "0xdigest",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      batcher: zeroAddress,
+      fixtureContracts: {},
+      actorAddresses: { owner_a: zeroAddress },
+      names,
+    }) as unknown as FixtureRunState;
+
+  const render = (entries: ReturnType<typeof named>[], reserved: string[]) =>
+    renderFixtureMarkdown(
+      state(entries.map((entry) => entry.name)),
+      entries.map((entry) => entry.row),
+      { namespace: "sepolia", reserved: new Set(reserved) },
+    );
+
+  it("gives every seeded name a row naming the scenario it stands for", () => {
+    const doc = render(
+      [
+        named("A", {
+          title: "Direct unwrapped migration",
+          layer: "legacy_anchor",
+        }),
+        named("B", { title: "Wrapped locked migration", layer: "hierarchy" }),
+      ],
+      ["A", "B"],
+    );
+
+    expect(doc).toContain("| a.eth | A | Direct unwrapped migration |");
+    expect(doc).toContain("| b.eth | B | Wrapped locked migration |");
+    // Sectioned by the layer each scenario declares.
+    expect(doc).toContain("## legacy_anchor (1)");
+    expect(doc).toContain("## hierarchy (1)");
+    expect(doc).toContain("- **Names:** 2 across 2 layer(s)");
+  });
+
+  it("says which names pre-migration left unreserved, and why", () => {
+    const doc = render(
+      [
+        named("A", { title: "Reserved", layer: "legacy_anchor" }),
+        named("B", {
+          title: "Absent on v2",
+          layer: "legacy_anchor",
+          v2_premigration: { profile: "missing" },
+        }),
+      ],
+      ["A"],
+    );
+
+    expect(doc).toContain("- **Reserved on v2:** 1");
+    expect(doc).toContain("- **Kept unreserved:** 1");
+    expect(doc).toContain("kept unreserved (missing)");
+  });
+
+  it("reports a name a contract refused to shape", () => {
+    const doc = render(
+      [
+        named(
+          "A",
+          { title: "Refused", layer: "legacy_anchor" },
+          { setupFailure: "set_ttl: CannotSetTTL" },
+        ),
+      ],
+      ["A"],
+    );
+
+    expect(doc).toContain("- **Set aside part-shaped:** 1");
+    expect(doc).toContain("## Set aside");
+    expect(doc).toContain("| a.eth | set_ttl: CannotSetTTL |");
+  });
+
+  it("collapses owner aliases a nominated wallet made one account", () => {
+    const shared = "0x00000000000000000000000000000000000000aa" as Address;
+    const entries = [
+      named("A", { title: "One", layer: "legacy_anchor" }, { owner: shared }),
+      named(
+        "B",
+        { title: "Two", layer: "legacy_anchor" },
+        { ownerAlias: "owner_b", owner: shared },
+      ),
+    ];
+    const runState = state(entries.map((entry) => entry.name));
+    runState.actorAddresses = {
+      owner_a: shared,
+      owner_b: shared,
+      owner_c: shared,
+      operator: OWNER,
+    };
+
+    const doc = renderFixtureMarkdown(
+      runState,
+      entries.map((entry) => entry.row),
+      { namespace: "sepolia", reserved: new Set(["A", "B"]) },
+    );
+
+    // One account, so the aliases share a row in the owners table and every
+    // name's row names that owner once.
+    expect(doc).toContain(`| owner_a, owner_b, owner_c | [${shared}]`);
+    expect(doc).toContain("| Tier | Owner |");
+    expect(doc).toContain("| common | owner_a |");
+    expect(doc).not.toContain("| common | owner_b |");
+  });
+
+  it("keeps the owner column when the names have different owners", () => {
+    const entries = [
+      named("A", { title: "One", layer: "legacy_anchor" }, { owner: OWNER }),
+      named(
+        "B",
+        { title: "Two", layer: "legacy_anchor" },
+        {
+          ownerAlias: "owner_b",
+          owner: "0x00000000000000000000000000000000000000bb" as Address,
+        },
+      ),
+    ];
+    const runState = state(entries.map((entry) => entry.name));
+    runState.actorAddresses = {
+      owner_a: OWNER,
+      owner_b: "0x00000000000000000000000000000000000000bb" as Address,
+    };
+
+    const doc = renderFixtureMarkdown(
+      runState,
+      entries.map((entry) => entry.row),
+      { namespace: "sepolia", reserved: new Set(["A", "B"]) },
+    );
+
+    expect(doc).toContain("| Tier | Owner |");
+    expect(doc).toContain("| common | owner_a |");
+    expect(doc).toContain("| common | owner_b |");
+  });
+
+  it("names the error a reverting scenario expects, and the fuses a name burns", () => {
+    const doc = render(
+      [
+        named(
+          "A",
+          {
+            title: "Locked name refuses",
+            layer: "legacy_anchor",
+            execution: {
+              scenario: "live_now",
+              expected_error: "ReservedRegistrationRequired",
+            },
+          },
+          { expectedResult: "revert", wrapped: true, locked: true, fuses: 1 },
+        ),
+      ],
+      ["A"],
+    );
+
+    expect(doc).toContain("revert: ReservedRegistrationRequired");
+    expect(doc).toContain("1 [CANNOT_UNWRAP]");
+  });
+});
+
 describe("seedable selections", () => {
   it("accepts a scenario seeding can establish", () => {
     expect(() => assertSeedable([envelope({})])).not.toThrow();
@@ -171,6 +494,132 @@ describe("seedable selections", () => {
         }),
       ]),
     ).toThrow(/below the v1 controller minimum/);
+  });
+
+  const POLYGON = 2147483785;
+  const withRecords = (
+    records: RecordSpec[],
+    where: "records" | "target_current_records" | "setup_steps" = "records",
+  ) =>
+    envelope({
+      v1: {
+        registration: {
+          duration_seconds: 31536000,
+          ...(where === "setup_steps" ? {} : { [where]: records }),
+        },
+        setup_steps:
+          where === "setup_steps" ? [{ action: "write_records", records }] : [],
+        expected_pre_migration: { expiry_cohort: "long" },
+      },
+    });
+
+  it("refuses an EVM coin type holding a value that is not an address", () => {
+    for (const where of [
+      "records",
+      "target_current_records",
+      "setup_steps",
+    ] as const) {
+      expect(() =>
+        assertSeedable([
+          withRecords(
+            [
+              {
+                kind: "addr",
+                coin_type: POLYGON,
+                value_hex: "0x0102030405060708",
+              },
+            ],
+            where,
+          ),
+        ]),
+      ).toThrow(/EVM coin type 2147483785 holds 8 bytes/);
+    }
+  });
+
+  it("counts a refused record once however often the scenario restates it", () => {
+    const record: RecordSpec = {
+      kind: "addr",
+      coin_type: POLYGON,
+      value_hex: "0x0102030405060708",
+    };
+    const row = envelope({
+      v1: {
+        registration: {
+          duration_seconds: 31536000,
+          records: [record],
+          target_current_records: [record],
+        },
+        setup_steps: [{ action: "write_records", records: [record] }],
+        expected_pre_migration: { expiry_cohort: "long" },
+      },
+    });
+
+    expect(() => assertSeedable([row])).toThrow(/ 1x addr record/);
+  });
+
+  it("accepts an address, or nothing, on an EVM coin type", () => {
+    expect(() =>
+      assertSeedable([
+        withRecords([
+          {
+            kind: "addr",
+            coin_type: POLYGON,
+            value_hex: "0x0102030405060708090a0b0c0d0e0f1011121314",
+          },
+          { kind: "addr", coin_type: 0x80000000, value_hex: "0x" },
+        ]),
+      ]),
+    ).not.toThrow();
+  });
+
+  it("leaves a non-EVM coin type to hold whatever encoding its chain uses", () => {
+    expect(() =>
+      assertSeedable([
+        withRecords([
+          { kind: "addr", coin_type: 0, value_hex: "0x0102030405060708" },
+        ]),
+      ]),
+    ).not.toThrow();
+  });
+});
+
+describe("EVM coin types", () => {
+  it("covers Ethereum, the default and every chain-specific coin type", () => {
+    expect(isEVMCoinType(60)).toBe(true);
+    expect(isEVMCoinType(0x80000000)).toBe(true);
+    expect(isEVMCoinType(0x80000089)).toBe(true);
+    expect(isEVMCoinType(0xffffffff)).toBe(true);
+  });
+
+  it("excludes coin types of other chains and values past 32 bits", () => {
+    expect(isEVMCoinType(0)).toBe(false);
+    expect(isEVMCoinType(501)).toBe(false);
+    expect(isEVMCoinType(0x7fffffff)).toBe(false);
+    expect(isEVMCoinType(0x100000000)).toBe(false);
+  });
+});
+
+describe("the bundled corpus", () => {
+  it("offers only live_now scenarios seeding can establish", () => {
+    const fixtureRoot = join(
+      import.meta.dir,
+      "../../csv-data/migration-fixture",
+    );
+    let rows: FixtureEnvelope[];
+    try {
+      rows = loadFixture({
+        fixtureRoot,
+        fixtureScenarios: "live_now",
+      } as CommonOptions);
+    } catch (error) {
+      throw new Error(
+        "the bundled corpus is not extracted; run `bun run fixtures:extract`",
+        { cause: error },
+      );
+    }
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(() => assertSeedable(rows)).not.toThrow();
   });
 });
 
@@ -692,5 +1141,244 @@ describe("the fixture command line", () => {
     await expect(
       run(argvFor("verify-v1", "--fixture-owner-key", OWNER_KEY)),
     ).rejects.toThrow(/unknown option/);
+  });
+});
+
+describe("a shaping run", () => {
+  const BATCHER = "0x00000000000000000000000000000000000000b0" as Address;
+  const ACCEPTS = "0x00000000000000000000000000000000000000c1" as Address;
+  /// Every call to this target is refused, as the v1 resolver refuses a
+  /// multicoin value an EVM coin type cannot hold.
+  const REFUSES = "0x00000000000000000000000000000000000000c2" as Address;
+  /// Every call to this target fails to reach the chain at all.
+  const UNREACHABLE = "0x00000000000000000000000000000000000000c3" as Address;
+  const REFUSAL = encodeErrorResult({
+    abi: Artifact_PublicResolver.abi,
+    errorName: "InvalidEVMAddress",
+    args: ["0x0102030405060708"],
+  });
+  const HASH = `0x${"11".repeat(32)}` as Hex;
+
+  /// A node that answers what signing and estimating ask of it, applies the
+  /// batcher's refusal rule to each batch, and records what was sent.
+  const node = () => {
+    const sent: { to: Address; data: Hex }[] = [];
+    const reverted = (data: Hex) => ({
+      error: { code: 3, message: "execution reverted", data },
+    });
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const { id, method, params } = (await request.json()) as {
+          id: number;
+          method: string;
+          params: any[];
+        };
+        const answer = (body: object) =>
+          Response.json({ jsonrpc: "2.0", id, ...body });
+        switch (method) {
+          case "eth_chainId":
+            return answer({ result: toHex(sepolia.id) });
+          case "eth_getTransactionCount":
+          case "eth_maxPriorityFeePerGas":
+          case "eth_gasPrice":
+            return answer({ result: "0x1" });
+          case "eth_getBlockByNumber":
+            return answer({
+              result: {
+                number: "0x1",
+                hash: HASH,
+                baseFeePerGas: "0x1",
+                gasLimit: "0x1c9c380",
+                gasUsed: "0x0",
+                timestamp: "0x1",
+                transactions: [],
+              },
+            });
+          case "eth_sendRawTransaction": {
+            const tx = parseTransaction(params[0]);
+            sent.push({ to: tx.to!, data: tx.data! });
+            return answer({ result: HASH });
+          }
+          case "eth_estimateGas": {
+            const { to, data } = params[0] as { to: Address; data: Hex };
+            if (sameAddress(to, REFUSES)) return answer(reverted(REFUSAL));
+            if (!sameAddress(to, BATCHER)) return answer({ result: "0x5208" });
+            const { args } = decodeFunctionData({
+              abi: Artifact_MigrationFixtureBatcher.abi,
+              data,
+            });
+            const calls = args[0] as readonly { target: Address }[];
+            if (calls.some((c) => sameAddress(c.target, UNREACHABLE)))
+              return new Response("unavailable", { status: 503 });
+            const index = calls.findIndex((c) =>
+              sameAddress(c.target, REFUSES),
+            );
+            if (index < 0) return answer({ result: "0x5208" });
+            return answer(
+              reverted(
+                encodeErrorResult({
+                  abi: Artifact_MigrationFixtureBatcher.abi,
+                  errorName: "CallFailed",
+                  args: [BigInt(index), REFUSES, REFUSAL],
+                }),
+              ),
+            );
+          }
+          default:
+            return answer({ error: { code: -32601, message: method } });
+        }
+      },
+    });
+    return { url: server.url.href, sent, stop: () => server.stop(true) };
+  };
+
+  const call = (
+    signer: Signer,
+    target: Address,
+    label: string,
+  ): PlannedCall => ({
+    signer,
+    target,
+    value: 0n,
+    data: "0x12345678",
+    allowFailure: false,
+    label,
+  });
+  const viaBatcher = (target: Address, label: string) =>
+    call({ kind: "batcher" }, target, label);
+  const asOwner = (target: Address, label: string) =>
+    call({ kind: "actor", alias: "owner_a" }, target, label);
+
+  /// Shapes the planned names against a fresh node and reports what happened.
+  const shape = async (perName: Record<string, PlannedCall[]>) => {
+    const { url, sent, stop } = node();
+    const transport = http(url, { retryCount: 0 });
+    const reader = createPublicClient({ chain: sepolia, transport });
+    const completed: string[] = [];
+    const ex = {
+      opts: { rpcUrl: url },
+      chain: sepolia,
+      client: {
+        estimateContractGas: reader.estimateContractGas,
+        waitForTransactionReceipt: async () => ({ status: "success" }),
+      },
+      wallet: createWalletClient({
+        chain: sepolia,
+        account: mnemonicToAccount(MNEMONIC, { accountIndex: 9 }),
+        transport,
+      }),
+      batcher: BATCHER,
+      actors: new Map([
+        ["owner_a", { alias: "owner_a", account: mnemonicToAccount(MNEMONIC) }],
+      ]),
+    } as unknown as Executor;
+    const outcome = executePlannedCalls(ex, new Map(Object.entries(perName)), {
+      onNameComplete: (id) => {
+        completed.push(id);
+      },
+    }).finally(stop);
+    return { outcome, completed, sent };
+  };
+
+  /// The targets of the calls a sent batch carried.
+  const batchTargets = (data: Hex) =>
+    (
+      decodeFunctionData({ abi: Artifact_MigrationFixtureBatcher.abi, data })
+        .args[0] as readonly { target: Address }[]
+    ).map((c) => c.target.toLowerCase());
+
+  it("sets aside the name a batch was refused on and finishes the rest", async () => {
+    const { outcome, completed, sent } = await shape({
+      A: [viaBatcher(ACCEPTS, "a1"), viaBatcher(ACCEPTS, "a2")],
+      B: [viaBatcher(ACCEPTS, "b1"), viaBatcher(REFUSES, "b2")],
+      C: [viaBatcher(ACCEPTS, "c1")],
+    });
+
+    expect(await outcome).toEqual([
+      {
+        fixtureId: "B",
+        call: "b2",
+        reason: "InvalidEVMAddress(0x0102030405060708)",
+      },
+    ]);
+    expect(completed).toEqual(["A", "C"]);
+    // The retried batch carries A's and C's calls and none of B's.
+    expect(sent).toHaveLength(1);
+    expect(batchTargets(sent[0].data)).toEqual([ACCEPTS, ACCEPTS, ACCEPTS]);
+  });
+
+  it("never runs a set-aside name's later rounds", async () => {
+    const { outcome, completed, sent } = await shape({
+      A: [viaBatcher(ACCEPTS, "a1"), asOwner(ACCEPTS, "a2")],
+      B: [
+        viaBatcher(REFUSES, "b1"),
+        asOwner(ACCEPTS, "b2"),
+        viaBatcher(ACCEPTS, "b3"),
+      ],
+    });
+
+    expect((await outcome).map((s) => s.fixtureId)).toEqual(["B"]);
+    expect(completed).toEqual(["A"]);
+    // A's batch, then A's own transaction; nothing of B's.
+    expect(sent.map((tx) => tx.to.toLowerCase())).toEqual([BATCHER, ACCEPTS]);
+    expect(batchTargets(sent[0].data)).toEqual([ACCEPTS]);
+  });
+
+  it("sets aside only the name whose own transaction is refused", async () => {
+    const { outcome, completed, sent } = await shape({
+      A: [asOwner(REFUSES, "a1"), asOwner(ACCEPTS, "a2")],
+      B: [asOwner(ACCEPTS, "b1")],
+    });
+
+    expect(await outcome).toEqual([
+      {
+        fixtureId: "A",
+        call: "a1",
+        reason: "InvalidEVMAddress(0x0102030405060708)",
+      },
+    ]);
+    expect(completed).toEqual(["B"]);
+    // A's second call never went out.
+    expect(sent.map((tx) => tx.to.toLowerCase())).toEqual([ACCEPTS]);
+  });
+
+  it("stops on a failure that is no contract's refusal", async () => {
+    const { outcome, completed, sent } = await shape({
+      A: [viaBatcher(ACCEPTS, "a1")],
+      B: [viaBatcher(UNREACHABLE, "b1")],
+    });
+
+    await expect(outcome).rejects.toThrow(/HTTP request failed/);
+    expect(completed).toEqual([]);
+    expect(sent).toHaveLength(0);
+  });
+});
+
+describe("the holder of a seeded name", () => {
+  const REGISTRAR = "0x00000000000000000000000000000000000000e1" as Address;
+  const WRAPPER = "0x00000000000000000000000000000000000000e2" as Address;
+  const HOLDER = "0x00000000000000000000000000000000000000e3" as Address;
+
+  /// A chain where the registrar answers `registrant` and the wrapper answers
+  /// `wrapped` for every token.
+  const chain = (registrant: Address, wrapped: Address) => ({
+    readContract: async ({ address }: { address: Address }) =>
+      sameAddress(address, WRAPPER) ? wrapped : registrant,
+  });
+  const addresses = { baseRegistrar: REGISTRAR, wrapper: WRAPPER };
+
+  it("is the registrant of an unwrapped name", async () => {
+    expect(await v1Holder(chain(HOLDER, zeroAddress), addresses, "fx")).toBe(
+      getAddress(HOLDER),
+    );
+  });
+
+  // Every wrapped name's registration sits with the wrapper, so reading the
+  // registrar alone mistakes a name another run wrapped for one of this run's.
+  it("is the wrapper token's owner for a wrapped name", async () => {
+    expect(await v1Holder(chain(WRAPPER, HOLDER), addresses, "fx")).toBe(
+      getAddress(HOLDER),
+    );
   });
 });

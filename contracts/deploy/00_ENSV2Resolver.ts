@@ -7,7 +7,7 @@ import type { Abi_BaseRegistrarImplementation } from "generated/abis/BaseRegistr
 import type { Abi_OwnedResolver } from "generated/abis/OwnedResolver.js";
 import type { Abi_ENS } from "generated/abis/ENS.js";
 import { Artifact_ENSV2Resolver } from "generated/artifacts/ENSV2Resolver.js";
-import { getAddress, namehash, zeroAddress } from "viem";
+import { getAddress, namehash } from "viem";
 
 export default execute(
   async ({
@@ -31,18 +31,14 @@ export default execute(
       ).catch(() => {});
 
     console.log("Deploying ENSV2Resolver");
-    console.log("  - Getting ENSv1 .eth resolver");
+    // The ENSv1 `.eth` resolver comes from the v1 deployment rather than the registry,
+    // which points at an ENSV2Resolver mirror once one has been installed.
+    const ethResolver = await getV1<Abi_OwnedResolver>("OwnedResolver");
+    console.log(`  - ENSv1 .eth resolver: ${ethResolver.address}`);
     const currentResolver = await read(ensRegistry, {
       functionName: "resolver",
       args: [namehash("eth")],
     });
-    const ethResolver =
-      getAddress(currentResolver) === getAddress(zeroAddress)
-        ? await getV1<Abi_OwnedResolver>("OwnedResolver")
-            .then((deployment) => deployment.address)
-            .catch(() => currentResolver)
-        : currentResolver;
-    console.log(`  - Got: ${ethResolver}`);
 
     const existingEnsV2Resolver =
       getOrNull<(typeof Artifact_ENSV2Resolver)["abi"]>("ENSV2Resolver");
@@ -55,7 +51,7 @@ export default execute(
           batchGatewayProvider.address,
           contractNamer.address,
           rootRegistry.address,
-          ethResolver,
+          ethResolver.address,
         ],
       }));
 
@@ -89,6 +85,13 @@ export default execute(
       "RootRegistry",
       "EthOwnedResolver", // BaseRegistrarImplementation:setup => eventually setup as OwnedResolver
       "RegistrarSecurityController",
+      // The v1 deploy scripts register their interface ids against whatever
+      // `.eth` currently resolves to, through a write only the v1 resolver's
+      // owner can make. Repointing `.eth` has to come after all of them. Only a
+      // devnet or clean-testnet run carries these scripts; elsewhere the tags
+      // name nothing and impose no order.
+      "WrappedETHRegistrarController",
+      "StaticBulkRenewal", // depends on ETHRegistrarController, which depends on NameWrapper
     ],
   },
 );

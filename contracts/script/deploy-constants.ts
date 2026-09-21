@@ -16,7 +16,7 @@ export const KNOWN_INTERMEDIATE_URP: Record<string, `0x${string}`> = {
 // Archived deployment namespaces carry their own MockUSDC instances that the
 // live oracle rejects — never source this address from an archived artifact.
 export const SEPOLIA_MOCK_USDC =
-  "0x768F42455A2D082E23ceeF7d51e5787C82d67a39" as const;
+  "0x16f95D91DBa7dA3Aca778Ec053dF0FF6C6A8aA8e" as const;
 
 export const RHINESTONE_INTENT_EXECUTOR =
   "0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF" as const;
@@ -120,9 +120,12 @@ export const DEPLOYMENT_ROLES = {
     ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
     ROLES.REGISTRY.SET_RESOLVER |
     ROLES.ADMIN.REGISTRY.SET_RESOLVER,
-  // .reverse token: full role bitmap.
-  // Granting all roles is harmless; some (e.g. REGISTRAR) are root-only and don't apply to tokens.
+  // .reverse token: full role bitmap, held by the deployer only while it hands the
+  // name over. Some roles (e.g. REGISTRAR) are root-only and don't apply to tokens.
   REVERSE_REGISTRY_ROOT: FLAGS.ALL,
+  // .reverse token once handed over: every regular role and no admin role. The owner
+  // operates the name, and nobody can grant or revoke roles on it.
+  REVERSE_REGISTRY_OPERATOR: FLAGS.ALL & ((1n << 128n) - 1n),
   // ETHRegistry root deployer: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓, RENEW✓
   ETH_REGISTRY_ROOT:
     ROLES.ADMIN.REGISTRY.REGISTRAR |
