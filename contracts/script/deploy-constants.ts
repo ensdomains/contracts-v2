@@ -11,9 +11,6 @@ export const KNOWN_INTERMEDIATE_URP: Record<string, `0x${string}`> = {
   sepolia: "0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1",
 };
 
-export const SEPOLIA_USDC =
-  "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
-
 // Faucet-minted MockUSDC from the active deployment namespace, accepted by the
 // live rent price oracle and whitelisted on the Rhinestone orchestrator.
 // Archived deployment namespaces carry their own MockUSDC instances that the
@@ -34,54 +31,8 @@ export const MAINNET_USDC =
   "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" as const;
 export const MAINNET_DAI =
   "0x6B175474E89094C44Da98b954EedeAC495271d0F" as const;
-
-export const STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS = 12n;
-export const STANDARD_RENT_PRICE_ORACLE_PRICE_SCALE =
-  10n ** STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS;
-
-export const STANDARD_RENT_PRICE_ORACLE_BASE_RATE_SPECS = [
-  { codepointCount: 1, yearlyPrice: 0n },
-  { codepointCount: 2, yearlyPrice: 0n },
-  { codepointCount: 3, yearlyPrice: 640n },
-  { codepointCount: 4, yearlyPrice: 160n },
-  { codepointCount: 5, yearlyPrice: 8n },
-] as const;
-
-export const STANDARD_RENT_PRICE_ORACLE_DISCOUNT_SCALE = (1n << 128n) - 1n;
-
-export const STANDARD_RENT_PRICE_ORACLE_DISCOUNT_POINT_SPECS = [
-  { t: 31_557_600n, numer: 0n, denom: 1n },
-  { t: 31_557_600n, numer: 1n, denom: 4n },
-  { t: 31_557_600n, numer: 11n, denom: 16n },
-  { t: 31_557_600n, numer: 5n, denom: 16n },
-  { t: 31_557_600n, numer: 3n, denom: 8n },
-  { t: 31_557_600n, numer: 1n, denom: 1n },
-] as const;
-
-export function standardRentPriceOracleDiscountRatio(
-  numer: bigint,
-  denom: bigint,
-) {
-  return (
-    (STANDARD_RENT_PRICE_ORACLE_DISCOUNT_SCALE * numer + denom - 1n) / denom
-  );
-}
-
-export function standardRentPriceOracleDiscountPoints() {
-  return STANDARD_RENT_PRICE_ORACLE_DISCOUNT_POINT_SPECS.map(
-    ({ t, numer, denom }) => ({
-      t,
-      value: standardRentPriceOracleDiscountRatio(numer, denom),
-    }),
-  );
-}
-
-export function standardRentPriceOracleBaseRates(secPerYear: bigint) {
-  return STANDARD_RENT_PRICE_ORACLE_BASE_RATE_SPECS.map(({ yearlyPrice }) => {
-    const yearlyUnits = STANDARD_RENT_PRICE_ORACLE_PRICE_SCALE * yearlyPrice;
-    return (yearlyUnits + secPerYear - 1n) / secPerYear;
-  });
-}
+export const SEPOLIA_USDC =
+  "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
 
 interface Flags {
   [key: string]: bigint | Flags;
@@ -261,3 +212,10 @@ export const DISCOUNT_POINTS: { duration: bigint; numer: bigint }[] = [
   { duration: SEC_PER_YEAR * 3n, numer: discountNumer(11n, 16n) }, // 1 - 11/16 = 31.25%
   { duration: SEC_PER_YEAR * 6n, numer: discountNumer(9n, 16n) }, /// 1 -  9/16 = 43.75%
 ];
+
+export function ratioFromDecimals(decimals: number) {
+  return [
+    10n ** BigInt(Math.max(decimals - PRICE_DECIMALS, 0)),
+    10n ** BigInt(Math.max(PRICE_DECIMALS - decimals, 0)),
+  ];
+}
