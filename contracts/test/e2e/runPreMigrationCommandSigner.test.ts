@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
   CHECKPOINT_FILE,
@@ -53,6 +54,8 @@ function flagValue(args: string[], flag: string): string | undefined {
   return i === -1 ? undefined : args[i + 1];
 }
 
+const GRAVEYARD = "0x0000000000000000000000000000000000000005" as const;
+
 const baseOpts = {
   rpcUrl: "http://127.0.0.1:8545",
   network: "mainnet" as const,
@@ -60,6 +63,7 @@ const baseOpts = {
   batchRegistrar: "0x0000000000000000000000000000000000000002" as const,
   v1Resolver: "0x0000000000000000000000000000000000000003" as const,
   v1BaseRegistrar: "0x0000000000000000000000000000000000000004" as const,
+  graveyards: [GRAVEYARD],
   csvFile: "names.csv",
 };
 
@@ -122,6 +126,53 @@ describe("runPreMigrationCommand signer resolution", () => {
   });
 });
 
+describe("runPreMigrationCommand Graveyard set", () => {
+  let deploymentsDir: string;
+
+  beforeEach(() => {
+    capturedArgs = null;
+    process.env.DEPLOYER_KEY = DEPLOYER_KEY;
+    deploymentsDir = mkdtempSync(join(tmpdir(), "premigration-graveyards-"));
+  });
+
+  afterEach(() => {
+    delete process.env.DEPLOYER_KEY;
+    rmSync(deploymentsDir, { recursive: true, force: true });
+  });
+
+  function writeGraveyard(namespace: string, address: string, chainId = 1) {
+    const dir = join(deploymentsDir, namespace);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, ".chain"), JSON.stringify({ chainId }));
+    writeFileSync(join(dir, "Graveyard.json"), JSON.stringify({ address }));
+  }
+
+  const withoutGraveyards = { ...baseOpts, graveyards: undefined };
+
+  it("passes an explicit set through to the run", async () => {
+    await runPreMigrationCommand({ ...baseOpts }, false, captureArgs);
+    expect(flagValue(capturedArgs!, "--graveyards")).toBe(GRAVEYARD);
+  });
+
+  it("defaults to every Graveyard the deployments record for this chain", async () => {
+    const active = "0x00000000000000000000000000000000000000a1";
+    const archived = "0x00000000000000000000000000000000000000a2";
+    writeGraveyard("mainnet", active);
+    writeGraveyard("mainnet-20260101-r1", archived);
+
+    await runPreMigrationCommand(
+      { ...withoutGraveyards, deploymentsDir },
+      false,
+      captureArgs,
+    );
+
+    expect(flagValue(capturedArgs!, "--graveyards")?.split(",")).toEqual([
+      getAddress(active),
+      getAddress(archived),
+    ]);
+  });
+});
+
 describe("runPreMigrationCommand metadata persistence", () => {
   let deploymentsDir: string;
   let workDir: string;
@@ -153,9 +204,10 @@ describe("runPreMigrationCommand metadata persistence", () => {
       totalProcessed: 9,
       successCount: 5,
       renewedCount: 0,
-      skippedCount: 3,
+      skippedCount: 4,
       skippedNeverRegisteredCount: 2,
       skippedPastGraceCount: 1,
+      skippedGraveyardCount: 1,
       alreadyRegisteredCount: 0,
       invalidLabelCount: 1,
       failedLines: [],
@@ -182,6 +234,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
       renewed: 0,
       skippedNeverRegistered: 2,
       skippedExpiredPastGrace: 1,
+      skippedGraveyard: 1,
       invalidLabels: 1,
       alreadyOnV2: 0,
       failed: 0,
@@ -220,9 +273,10 @@ describe("runPreMigrationCommand metadata persistence", () => {
       totalProcessed: 10,
       successCount: 1,
       renewedCount: 5,
-      skippedCount: 3,
+      skippedCount: 5,
       skippedNeverRegisteredCount: 2,
       skippedPastGraceCount: 1,
+      skippedGraveyardCount: 2,
       alreadyRegisteredCount: 1,
       // Reservations already long enough to need no submission. By the final sync
       // these are most of the corpus, and leaving them out of the roll-up made the
@@ -254,6 +308,7 @@ describe("runPreMigrationCommand metadata persistence", () => {
       alreadyCurrent: 4,
       skippedNeverRegistered: 2,
       skippedExpiredPastGrace: 1,
+      skippedGraveyard: 2,
       invalidLabels: 1,
       alreadyOnV2: 1,
       failed: 0,

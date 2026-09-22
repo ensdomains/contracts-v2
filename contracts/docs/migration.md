@@ -135,7 +135,8 @@ transactions afterwards.
   `build-index` needs `THEGRAPH_API_KEY` for the default subgraph source, or `--source rpc` and an
   RPC URL to read the v1 `BaseRegistrar` directly.
 - **Expected outcome:** every active or in-grace v1 `.eth` 2LD seeded as a **reserved** entry on v2,
-  with v2 expiry = v1 expiry + bonus period. `premigration reconcile` confirms it in both directions.
+  with v2 expiry = v1 expiry + bonus period, except names whose v1 registrant is a `Graveyard` (see
+  below). `premigration reconcile` confirms it in both directions.
 
 > **Why reconcile rather than verify.** `premigration verify` reads its list of names from the CSV, so
 > a name the CSV never contained is invisible to it and the check passes. `premigration reconcile`
@@ -194,6 +195,39 @@ transactions afterwards.
 > count: the build keeps an extra week beyond the grace period so a name near the boundary can never
 > be dropped at build time and then wanted at reconcile time. Sepolia at block 11,575,263: 68,849
 > labels ever registered, 9,011 unexpired, 9,739 claimable, 9,782 in the index.
+>
+> **Names a Graveyard holds are not claimable.** A migration hands the Graveyard each migrated
+> name's v1 token, and `Graveyard.clear` re-registers an expired name to itself with an expiry at the
+> `uint64` ceiling less the grace period, to take it out of circulation. By expiry alone either reads
+> as live, but no v1 owner can claim a reservation for it, and `ETHRegistrar` never offers a reserved
+> name. So `premigration run` does not reserve or extend a name whose v1 registrant is a Graveyard,
+> `premigration verify` skips it, and `premigration reconcile` does not expect it on v2 ("not
+> claimable, v1 registrant is a Graveyard"). The rule is the same in all three. The registrant is
+> the live `BaseRegistrar` token holder, or else the registry's owner of the name's node once the
+> registration is in grace. When that holder is the `NameWrapper`, the registrant is the wrapper
+> token's owner, which is how a locked migration hands a name to the Graveyard
+> ([premigration.md](./premigration.md#graveyard-held-names)).
+>
+> The Graveyard set is every `Graveyard` artifact on this chain: the active namespace's and that of
+> every superseded namespace, found the way phase 3 finds superseded controllers. A superseded
+> Graveyard keeps the names it took, so the active one alone is not enough. A Graveyard recorded
+> against another `NameWrapper` belongs to another v1 and is left out. The commands refuse to run
+> when the active namespace has no Graveyard artifact. They also refuse any address that is not a
+> Graveyard of this v1: it must answer `NAME_WRAPPER()`, accept a simulated `clear([])`, and report
+> the same `NameWrapper` as the rest, whose registrar is the `BaseRegistrar` in use.
+> `--graveyards <addresses>` replaces the derived set.
+>
+> Reconcile reads each registrant from the v1 chain head, for both index sources. That covers the
+> names live in the index, and every index name seeded on v2 whose index expiry is no longer live:
+> such a name may have been reclaimed after the index was built, or handed to a Graveyard and since
+> lapsed. Those are judged by the registrant alone, not by their expiry. The index keeps Graveyard-held names,
+> since the reverse pass needs them. In the reverse pass, a v2 entry for a
+> Graveyard-held name passes when it is `REGISTERED` once migration has opened (a migrated name) or
+> has lapsed. It is reported as unexpected when it is `REGISTERED` before migration opens, or when it
+> still holds a reservation, because such a reservation locks the name for nobody. With the default
+> bonus period, a reservation written before a Graveyard reclaimed the name has always lapsed by the
+> time the reclaim is possible. The `cross-source:` counts go by expiry alone, before this exclusion,
+> since the CSV cannot show owners.
 >
 > A reservation past its expiry but inside the v2 grace period counts as reserved, and the summary
 > says how many there are. It reads `AVAILABLE` on v2, yet v2 still refuses it to anyone but its v1
@@ -340,7 +374,9 @@ renewer is an authorized controller.
 - **Expected outcome:** names whose v1 expiry grew since phase 2 have their reservation extended —
   picking up `ETHRenewerV1` renewals since phase 4 — and newly eligible names are reserved for the
   first time. Names already carrying the right expiry are left alone rather than resubmitted, so this
-  sync sends only what changed. `premigration reconcile` is the gate.
+  sync sends only what changed. `premigration reconcile` is the gate. Phase 4 authorizes the
+  `Graveyard`, so from here it can reclaim expired names; a name it has reclaimed is skipped, not
+  extended to its reclaim expiry.
 
 If you seeded a fixture corpus, re-run against the same `fixture-premigration.csv` as at phase 2 with
 a fresh `--work-dir`; the corpus is frozen by then, so the file does not need regenerating.
@@ -451,7 +487,7 @@ adjusts automatically.
 | Phase | What changes on a repeat deploy |
 | --- | --- |
 | 1 | Archives the existing `deployments/<network>/` namespace and deploys a brand-new v2 set with new addresses. `--resume` is for continuing an *interrupted* deploy into the same namespace, **not** for a fresh redeploy. Needs the `reclaim-v1-registrar-ownership` step above first. |
-| 2 | The new v2 registry is empty, so this seeds from scratch exactly like a first run — reservations from the prior deployment lived on the now-archived registry. Use a fresh `--work-dir` so no stale `preMigration-checkpoint.json` is picked up. |
+| 2 | The new v2 registry is empty, so this seeds from scratch exactly like a first run — reservations from the prior deployment lived on the now-archived registry. Names the prior deployment's `Graveyard` reclaimed or received are left unreserved: the Graveyard set includes the archived namespace's. Use a fresh `--work-dir` so no stale `preMigration-checkpoint.json` is picked up. |
 | 3 | **Must be run — not a no-op.** The v1 registration controllers stay frozen from the prior deployment, but *its* handoff contracts are still authorized. `TestnetV1PremigrationRegistrar` among them is a permissionless free registrar: leaving it enabled silently reopens `.eth` registration on v1, and the names it mints reserve into the **archived** v2 registry (they are also invisible to the TheGraph-based CSV export, so a later pre-migration will not pick them up). Follow with `verify-v1-registrars-disabled`. |
 | 4 | Re-points v1 at the new set: authorizes the **newly-deployed** `ETHRenewerV1` and `Graveyard` (new addresses), then transfers v1 `BaseRegistrar` ownership to the new `ETHRenewerV1` (the ownership reclaimed above). The prior deployment's `Graveyard`/`ETHRenewerV1`/`TestnetV1PremigrationRegistrar` are removed by phase 3 in the same run, so run the phases in order rather than skipping ahead. |
 | 5 | Same as phase 2 — re-seeds the new registry against a fresh post-freeze CSV and a fresh `--work-dir`. |
@@ -1086,7 +1122,7 @@ and idempotency rules.
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 (CSV-scoped; superseded as the phase 2/5 gate by `reconcile`) |
 | `premigration build-index` | Build an independent labelhash-keyed index of v1 names, from the subgraph or from v1 `BaseRegistrar` logs (`--source subgraph\|rpc`; `--resume` continues a partial build) |
 | `premigration index-status` | Print the local v1 name index metadata (local; `--work-dir` only) |
-| `premigration reconcile` | Reconcile the v1 name index against v2 in both directions — the phase 2/5 sign-off (`--check-fuses` also counts names `CANNOT_TRANSFER` makes unclaimable; needs `--csv-file` for the labels) |
+| `premigration reconcile` | Reconcile the v1 name index against v2 in both directions — the phase 2/5 sign-off (`--check-fuses` also counts names `CANNOT_TRANSFER` makes unclaimable; needs `--csv-file` for the labels). Reads each registrant from v1, so it takes `--v1-base-registrar` and `--graveyards` like `run` |
 | `fixture verify` | Offline: validate a fixture selection and plan every scenario's calls |
 | `fixture fund-actors` | Top up the accounts seeding will sign from, to `--floor` (default 0.5 ETH) per alias |
 | `fixture deploy-fixtures` | Deploy the fixture batcher and the corpus counterparty contracts |

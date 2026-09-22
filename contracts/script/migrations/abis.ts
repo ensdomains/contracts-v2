@@ -2,6 +2,7 @@ import { Artifact_BaseRegistrarImplementation } from "generated/artifacts/BaseRe
 import { Artifact_ENSRegistry } from "generated/artifacts/ENSRegistry.js";
 import { Artifact_ETHRegistrarController } from "generated/artifacts/ETHRegistrarController.js";
 import { Artifact_ETHRenewerV1 } from "generated/artifacts/ETHRenewerV1.js";
+import { Artifact_Graveyard } from "generated/artifacts/Graveyard.js";
 import { Artifact_NameWrapper } from "generated/artifacts/NameWrapper.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
 import { Artifact_PublicResolver } from "generated/artifacts/PublicResolver.js";
@@ -55,6 +56,7 @@ const RESOLVER = Artifact_PublicResolver.abi;
 const CONTROLLER = Artifact_ETHRegistrarController.abi;
 const REVERSE = Artifact_ReverseRegistrar.abi;
 const RENEWER = Artifact_ETHRenewerV1.abi;
+const GRAVEYARD = Artifact_Graveyard.abi;
 const V2_REGISTRY = Artifact_PermissionedRegistry.abi;
 
 /// The v1 `.eth` registrar: an ERC-721 plus its own registration surface.
@@ -86,6 +88,9 @@ export const NameWrapper = {
   approve: pick(NAME_WRAPPER, "approve"),
   setResolver: pick(NAME_WRAPPER, "setResolver"),
   setTTL: pick(NAME_WRAPPER, "setTTL"),
+  /// The v1 registry and `.eth` registrar the wrapper is bound to.
+  ens: pick(NAME_WRAPPER, "ens"),
+  registrar: pick(NAME_WRAPPER, "registrar"),
 } as const;
 
 export const EnsRegistry = {
@@ -116,6 +121,13 @@ export const EthRegistrarController = {
 
 export const ReverseRegistrar = {
   setName: pick(REVERSE, "setName", 1),
+} as const;
+
+/// The v2 Graveyard, which holds the v1 tokens of migrated names and of expired
+/// names it has reclaimed.
+export const Graveyard = {
+  NAME_WRAPPER: pick(GRAVEYARD, "NAME_WRAPPER"),
+  clear: pick(GRAVEYARD, "clear"),
 } as const;
 
 /// Whatever currently owns the v1 BaseRegistrar — the v1 owner directly, or a

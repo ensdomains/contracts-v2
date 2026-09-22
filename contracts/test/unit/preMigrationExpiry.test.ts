@@ -22,7 +22,8 @@ describe("formatExpiry", () => {
   });
 
   it("handles the largest expiry actually seen on chain", () => {
-    // `--web.eth` on Sepolia: uint64 max minus the 90-day grace period.
+    // `--web.eth` on Sepolia: uint64 max minus the 90-day grace period, the expiry
+    // `Graveyard.clear` leaves on a name it reclaims.
     const observed = 18446744073701775615n;
     expect(() => formatExpiry(observed)).not.toThrow();
   });

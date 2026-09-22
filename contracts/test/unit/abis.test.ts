@@ -24,6 +24,7 @@ describe("shared ABI fragments", () => {
       "BaseRegistrar",
       "EnsRegistry",
       "EthRegistrarController",
+      "Graveyard",
       "NameWrapper",
       "PermissionedRegistry",
       "PublicResolver",

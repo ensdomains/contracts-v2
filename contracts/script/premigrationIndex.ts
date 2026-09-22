@@ -39,6 +39,10 @@ export const V1_INDEX_META_FILE = "v1-name-index.meta.json";
 // reconciliation re-applies the grace rule against a chain block timestamp. Keeping
 // an extra week of already-expired names means a name near the boundary can never be
 // dropped here and then wanted there.
+//
+// The build does not drop names a Graveyard holds. The reconciliation reads each
+// registrant from the chain, for either source, and it needs those names' expiries to
+// account for their v2 entries.
 const BUILD_FILTER_MARGIN_SECONDS = 7n * 24n * 60n * 60n;
 
 const PAGE_DELAY_MS = 200;

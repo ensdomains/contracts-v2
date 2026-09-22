@@ -13,23 +13,38 @@ import {
   zeroAddress,
 } from "viem";
 
+import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
+import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
 import { reconcilePreMigration } from "../../script/migrate.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import { V1_INDEX_META_FILE } from "../../script/premigrationIndex.js";
 import { PREMIGRATION_CSV_HEADER } from "../../script/preMigrationUtils.js";
 import { readVerification } from "../../script/migrations/phaseGate.js";
-import { MAX_UINT64 } from "../../script/preMigration.js";
+import {
+  MAX_UINT64,
+  V1_GRACE_PERIOD_SECONDS,
+} from "../../script/preMigration.js";
 import {
   FUSES,
   GRACE_PERIOD_V2,
   ROLES,
+  STATUS,
 } from "../../script/deploy-constants.js";
 import { idFromLabel } from "../utils/utils.js";
+import { waitForSuccessfulTransactionReceipt } from "../utils/waitForSuccessfulTransactionReceipt.js";
 import {
   buildMainArgs,
+  clearThroughGraveyard,
   createCSVFile,
+  deployFreshEthRegistry,
+  deployGraveyard,
+  handToGraveyard,
+  migrateLocked,
+  migrateUnwrapped,
+  reclaimThroughGraveyard,
   registerV1Name,
   setupBaseRegistrarController,
+  warpTo,
 } from "../utils/mockPreMigration.js";
 
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
@@ -159,6 +174,8 @@ describe("premigration reconcile", () => {
       rpcUrl: `http://${env.hostPort}`,
       workDir,
       registry: env.v2.ETHRegistry.address,
+      v1BaseRegistrar: env.v1.BaseRegistrar.address,
+      graveyards: [env.v2.Graveyard.address],
       bonusPeriodDays: String(BONUS_PERIOD_DAYS),
       fromBlock: fromBlock.toString(),
       // A passing reconciliation records itself for the phase 3 gate, which would
@@ -854,5 +871,257 @@ describe("premigration reconcile", () => {
 
     expect(result.claimable).toBe(1);
     expect(result.missing).toEqual([]);
+  });
+
+  // ─── Graveyard-held names ──────────────────────────────────────────
+
+  it("does not expect a reservation for a name a Graveyard reclaimed", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const reclaimed = "reclaimed";
+    const reclaimedExpiry = await reclaimThroughGraveyard(
+      env,
+      reclaimed,
+      env.namedAccounts.user.address,
+    );
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: labelhash(reclaimed), expiry: reclaimedExpiry },
+    ]);
+
+    const result = await run(workDir, fromBlock);
+
+    expect(result.claimable).toBe(1);
+    expect(result.graveyardOwned).toBe(1);
+    expect(result.missing).toEqual([]);
+    expect(result.unexpected).toEqual([]);
+
+    // Its expiry alone reads as claimable, so a set that leaves this Graveyard out
+    // demands a reservation for it. Another Graveyard, holding nothing, stands in for
+    // such a set.
+    const blind = await run(workDir, fromBlock, {
+      graveyards: [await deployGraveyard(env)],
+      reportOnly: true,
+    });
+    expect(blind.graveyardOwned).toBe(0);
+    expect(blind.missing).toEqual([labelhash(reclaimed)]);
+
+    // A migration controller answers the Graveyard's NAME_WRAPPER() too, but not its
+    // clear(), so it cannot pass for one.
+    await expect(
+      run(workDir, fromBlock, {
+        graveyards: [
+          env.v2.Graveyard.address,
+          env.v2.UnlockedMigrationController.address,
+        ],
+      }),
+    ).rejects.toThrow(/not a Graveyard/);
+  });
+
+  it("reports a still-held reservation for a name reclaimed after the index was built", async () => {
+    // A bonus longer than the v1 grace keeps the reservation alive after the name
+    // has lapsed and the Graveyard has reclaimed it.
+    const bonusPeriodDays = 120;
+    const { workDir, indexEntries, fromBlock } = await seed(
+      ["alpha"],
+      bonusPeriodDays,
+    );
+    writeIndex(workDir, indexEntries);
+    await warpTo(env, indexEntries[0].expiry + V1_GRACE_PERIOD_SECONDS + 1n);
+    await clearThroughGraveyard(env, "alpha");
+
+    const result = await run(workDir, fromBlock, {
+      bonusPeriodDays: String(bonusPeriodDays),
+      reportOnly: true,
+    });
+
+    // The index still carries the expiry from before the reclaim, so the name is not
+    // live there, and its seed matches that expiry. Only the registrant says no v1
+    // owner can claim the reservation.
+    expect(result.claimable).toBe(0);
+    expect(result.unexpected).toHaveLength(1);
+    expect(result.unexpected[0]).toContain(labelhash("alpha"));
+    expect(result.unexpected[0]).toContain("holds a v2 reservation");
+  });
+
+  it("reports a still-held reservation for a name handed to a Graveyard that has since lapsed", async () => {
+    // Handing the token to a Graveyard leaves the v1 expiry as it was, so the name
+    // lapses on schedule while a bonus longer than the v1 grace keeps its reservation.
+    const bonusPeriodDays = 120;
+    const { workDir, indexEntries, fromBlock } = await seed(
+      ["alpha"],
+      bonusPeriodDays,
+    );
+    writeIndex(workDir, indexEntries);
+    await handToGraveyard(env, "alpha", env.namedAccounts.user);
+    await warpTo(env, indexEntries[0].expiry + V1_GRACE_PERIOD_SECONDS + 1n);
+
+    const result = await run(workDir, fromBlock, {
+      bonusPeriodDays: String(bonusPeriodDays),
+      reportOnly: true,
+    });
+
+    expect(result.claimable).toBe(0);
+    expect(result.unexpected).toHaveLength(1);
+    expect(result.unexpected[0]).toContain(labelhash("alpha"));
+    expect(result.unexpected[0]).toContain("holds a v2 reservation");
+  });
+
+  it("reconciles a fresh registry without the names earlier migrations left the Graveyard", async () => {
+    const { user } = env.namedAccounts;
+    const locked = "lockedmig";
+    const unwrapped = "plainmig";
+    const stayer = "stayer";
+    const workDir = mkdtempSync(join(tmpdir(), "reconcile-redeploy-"));
+
+    // Migrated on the devnet's registry, the earlier deployment. The unwrapped name
+    // runs out first, so it is in v1 grace by the time the fresh registry is seeded.
+    const unwrappedExpiry = await registerV1Name(
+      env,
+      unwrapped,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    for (const label of [locked, stayer]) {
+      await registerV1Name(env, label, user.address, 2 * ONE_YEAR_SECONDS);
+    }
+    const earlierCsv = join(workDir, "earlier.csv");
+    createCSVFile(earlierCsv, [locked, unwrapped]);
+    await preMigrationMain(
+      buildMainArgs(env, earlierCsv, { bonusPeriodDays: BONUS_PERIOD_DAYS }),
+    );
+    await migrateLocked(env, locked, user);
+    await migrateUnwrapped(env, unwrapped, user);
+    for (const label of [locked, unwrapped]) {
+      expect(
+        Number(
+          (await env.v2.ETHRegistry.read.getState([idFromLabel(label)])).status,
+        ),
+      ).toBe(STATUS.REGISTERED);
+    }
+    await warpTo(env, unwrappedExpiry + 86_400n);
+
+    const fromBlock = await env.client.getBlockNumber();
+    const fresh = await deployFreshEthRegistry(env);
+    const csvFile = join(workDir, "registrations.csv");
+    createCSVFile(csvFile, [locked, unwrapped, stayer]);
+    await preMigrationMain(
+      buildMainArgs(env, csvFile, {
+        bonusPeriodDays: BONUS_PERIOD_DAYS,
+        registry: fresh.registry,
+        batchRegistrar: fresh.batchRegistrar,
+      }),
+    );
+
+    const freshState = (label: string) =>
+      env.client.readContract({
+        address: fresh.registry,
+        abi: Artifact_PermissionedRegistry.abi,
+        functionName: "getState",
+        args: [idFromLabel(label)],
+      });
+    expect((await freshState(locked)).status).toBe(STATUS.AVAILABLE);
+    expect((await freshState(unwrapped)).status).toBe(STATUS.AVAILABLE);
+    expect((await freshState(stayer)).status).toBe(STATUS.RESERVED);
+
+    const indexEntries = await Promise.all(
+      [locked, unwrapped, stayer].map(async (label) => ({
+        id: labelhash(label),
+        expiry: await env.v1.BaseRegistrar.read.nameExpires([
+          idFromLabel(label),
+        ]),
+      })),
+    );
+    writeIndex(workDir, indexEntries);
+
+    const result = await run(workDir, fromBlock, { registry: fresh.registry });
+    expect(result.claimable).toBe(1);
+    expect(result.graveyardOwned).toBe(2);
+    expect(result.missing).toEqual([]);
+    expect(result.unexpected).toEqual([]);
+
+    // What a run that did not follow the wrapper would have written for the locked
+    // name: a reservation nobody can claim.
+    await waitForSuccessfulTransactionReceipt(env.client, {
+      hash: await env.client.writeContract({
+        address: fresh.batchRegistrar,
+        abi: Artifact_BatchRegistrar.abi,
+        functionName: "batchRegister",
+        args: [
+          zeroAddress,
+          env.v2.ENSV1Resolver.address,
+          [locked],
+          [indexEntries[0].expiry + BONUS_PERIOD_SECONDS],
+        ],
+      }),
+    });
+    const stale = await run(workDir, fromBlock, {
+      registry: fresh.registry,
+      reportOnly: true,
+    });
+    expect(stale.unexpected).toHaveLength(1);
+    expect(stale.unexpected[0]).toContain(
+      `${labelhash(locked)} (${locked}.eth)`,
+    );
+    expect(stale.unexpected[0]).toContain("holds a v2 reservation");
+  });
+
+  it("reports a reservation still held for a name a Graveyard reclaimed", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const reclaimed = "lockedaway";
+    const reclaimedExpiry = await reclaimThroughGraveyard(
+      env,
+      reclaimed,
+      env.namedAccounts.user.address,
+    );
+    // What a pre-migration run that did not know the Graveyard wrote: a reservation
+    // at the cap, which ETHRegistrar never offers. The reconciliation scans up to the
+    // head it reads, so the reservation has to be mined before it runs.
+    await waitForSuccessfulTransactionReceipt(env.client, {
+      hash: await env.client.writeContract({
+        address: env.rocketh.get("BatchRegistrar").address,
+        abi: Artifact_BatchRegistrar.abi,
+        functionName: "batchRegister",
+        args: [
+          zeroAddress,
+          env.v2.ENSV1Resolver.address,
+          [reclaimed],
+          [MAX_UINT64],
+        ],
+      }),
+    });
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: labelhash(reclaimed), expiry: reclaimedExpiry },
+    ]);
+
+    await expect(run(workDir, fromBlock)).rejects.toThrow(
+      /reconciliation failed/,
+    );
+    const result = await run(workDir, fromBlock, { reportOnly: true });
+    expect(result.missing).toEqual([]);
+    expect(result.unexpected).toHaveLength(1);
+    expect(result.unexpected[0]).toContain(labelhash(reclaimed));
+    expect(result.unexpected[0]).toContain("holds a v2 reservation");
+  });
+
+  it("accepts a migrated name once migration has opened, and reports it before", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+    // What a migration leaves: the v1 token with the Graveyard, the name on v2.
+    await handToGraveyard(env, "alpha", env.namedAccounts.user);
+    await openV2Registrations();
+    await registerOnV2("alpha");
+
+    const open = await run(workDir, fromBlock, {
+      expectedStatus: "reserved-or-registered",
+    });
+    expect(open.claimable).toBe(0);
+    expect(open.graveyardOwned).toBe(1);
+    expect(open.unexpected).toEqual([]);
+
+    const closed = await run(workDir, fromBlock, { reportOnly: true });
+    expect(closed.unexpected).toEqual([
+      `${labelhash("alpha")} (alpha.eth) is REGISTERED before migration opened`,
+    ]);
   });
 });

@@ -8,13 +8,15 @@ import { setTimeout } from "node:timers/promises";
 import {
   createPublicClient,
   createWalletClient,
+  getAddress,
   http,
+  namehash,
   publicActions,
   zeroAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { mainnet } from "viem/chains";
-import { STATUS, MAX_EXPIRY } from "../../script/deploy-constants.js";
+import { FUSES, STATUS, MAX_EXPIRY } from "../../script/deploy-constants.js";
 import {
   main,
   verifyNameOnV1,
@@ -22,6 +24,7 @@ import {
   InvalidLabelNameError,
   CSVFormatError,
   isValidLabel,
+  V1_GRACE_PERIOD_SECONDS,
 } from "../../script/preMigration.js";
 import {
   setupBaseRegistrarController,
@@ -30,6 +33,10 @@ import {
   createCSVFile,
   buildMainArgs,
   verifyV2State,
+  reclaimThroughGraveyard,
+  handToGraveyard,
+  warpTo,
+  wrapV1Name,
 } from "../utils/mockPreMigration.js";
 import {
   createTestCheckpoint,
@@ -602,6 +609,7 @@ describe("PreMigration", () => {
     const expiredLabel = "bvexpired";
     const registeredLabel = "bvregistered";
     const neverLabel = "bvnever";
+    const graveyardLabel = "bvgraveyard";
     const { user, deployer } = env.namedAccounts;
 
     const validExpiry = await registerV1Name(
@@ -612,6 +620,8 @@ describe("PreMigration", () => {
     );
     await registerV1Name(env, expiredLabel, user.address, 1);
     await registerV1Name(env, registeredLabel, user.address, ONE_YEAR_SECONDS);
+    await registerV1Name(env, graveyardLabel, user.address, ONE_YEAR_SECONDS);
+    await handToGraveyard(env, graveyardLabel, user);
     await setTimeout(2000);
 
     await env.v2.ETHRegistry.write.register([
@@ -643,6 +653,7 @@ describe("PreMigration", () => {
       { labelName: expiredLabel, lineNumber: 2 },
       { labelName: registeredLabel, lineNumber: 3 },
       { labelName: neverLabel, lineNumber: 4 },
+      { labelName: graveyardLabel, lineNumber: 5 },
     ];
 
     const results = await batchVerifyRegistrations(
@@ -651,25 +662,39 @@ describe("PreMigration", () => {
       mainnetClient,
       env.v2.ETHRegistry.address,
       registryAbi,
-      env.v1.BaseRegistrar.address,
+      {
+        baseRegistrar: env.v1.BaseRegistrar.address,
+        registry: env.v1.ENSRegistry.address,
+        nameWrapper: env.v1.NameWrapper.address,
+      },
+      new Set([getAddress(env.v2.Graveyard.address)]),
     );
 
-    expect(results.length).toBe(4);
+    expect(results.length).toBe(5);
 
     expect(results[0].v2Status).toBe(STATUS.AVAILABLE);
-    expect(results[0].v1IsClaimable).toBe(true);
+    expect(results[0].v1Eligibility).toBe("claimable");
     expect(results[0].v1Expiry).toBe(validExpiry);
+    expect(results[0].v1Registrant).toBe(getAddress(user.address));
 
-    // Just-expired name is still within v1's 90-day grace, so claimable.
+    // Just-expired name is still within v1's 90-day grace, so claimable. `ownerOf`
+    // reverts for it, and the registry's node owner names the registrant instead.
     expect(results[1].v2Status).toBe(STATUS.AVAILABLE);
-    expect(results[1].v1IsClaimable).toBe(true);
+    expect(results[1].v1Eligibility).toBe("claimable");
+    expect(results[1].v1Registrant).toBe(getAddress(user.address));
+    expect(results[1].error).toBeUndefined();
 
     expect(results[2].v2Status).toBe(STATUS.REGISTERED);
-    expect(results[2].v1IsClaimable).toBe(true);
+    expect(results[2].v1Eligibility).toBe("claimable");
 
     expect(results[3].v2Status).toBe(STATUS.AVAILABLE);
-    expect(results[3].v1IsClaimable).toBe(false);
+    expect(results[3].v1Eligibility).toBe("never-registered");
     expect(results[3].v1Expiry).toBe(0n);
+    expect(results[3].v1Registrant).toBeNull();
+
+    expect(results[4].v2Status).toBe(STATUS.AVAILABLE);
+    expect(results[4].v1Eligibility).toBe("graveyard");
+    expect(results[4].v1Registrant).toBe(getAddress(env.v2.Graveyard.address));
   });
 
   // ─── Batch sizing ──────────────────────────────────────────────────
@@ -1511,6 +1536,193 @@ describe("PreMigration", () => {
       );
     }
   });
+
+  // ─── Graveyard-held names ──────────────────────────────────────────
+
+  it("does not reserve a name the Graveyard has reclaimed", async () => {
+    const { user } = env.namedAccounts;
+    const reclaimed = "gyreclaimed";
+    const live = "gylive";
+    await registerV1Name(env, live, user.address, ONE_YEAR_SECONDS);
+    const reclaimedExpiry = await reclaimThroughGraveyard(
+      env,
+      reclaimed,
+      user.address,
+    );
+    // The reclaim leaves an expiry the expiry rule alone reads as claimable.
+    expect(reclaimedExpiry).toBe(MAX_EXPIRY - V1_GRACE_PERIOD_SECONDS);
+    expect(
+      await env.v1.BaseRegistrar.read.ownerOf([idFromLabel(reclaimed)]),
+    ).toBe(getAddress(env.v2.Graveyard.address));
+
+    createCSVFile(csvFilePath, [reclaimed, live]);
+    await main(buildMainArgs(env, csvFilePath));
+
+    const reclaimedState = await verifyV2State(env, reclaimed);
+    expect(reclaimedState.status).toBe(STATUS.AVAILABLE);
+    expect(reclaimedState.expiry).toBe(0n);
+    expect((await verifyV2State(env, live)).status).toBe(STATUS.RESERVED);
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(1);
+    expect(checkpoint!.skippedCount).toBe(1);
+    expect(checkpoint!.skippedGraveyardCount).toBe(1);
+    expect(checkpoint!.failedLines).toEqual([]);
+  });
+
+  it("does not extend a reservation once the Graveyard holds the name", async () => {
+    const { user } = env.namedAccounts;
+    const label = "gyhanded";
+    const v1Expiry = await registerV1Name(
+      env,
+      label,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    createCSVFile(csvFilePath, [label]);
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+    expect((await verifyV2State(env, label)).expiry).toBe(v1Expiry);
+
+    // Moved to the Graveyard, then renewed on v1: a run that ignored the registrant
+    // would extend the reservation to match.
+    await handToGraveyard(env, label, user);
+    await renewV1Name(env, label, ONE_YEAR_SECONDS);
+
+    deleteTestCheckpoint();
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+    expect(state.expiry).toBe(v1Expiry);
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.renewedCount).toBe(0);
+    expect(checkpoint!.skippedGraveyardCount).toBe(1);
+  });
+
+  it("still counts a migrated name as already registered on v2", async () => {
+    const { user, deployer } = env.namedAccounts;
+    const label = "gymigrated";
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    // What a migration leaves: the v1 token with the Graveyard, the name on v2.
+    await handToGraveyard(env, label, user);
+    await env.v2.ETHRegistry.write.register([
+      label,
+      deployer.address,
+      zeroAddress,
+      zeroAddress,
+      0n,
+      MAX_EXPIRY,
+    ]);
+
+    createCSVFile(csvFilePath, [label]);
+    await main(buildMainArgs(env, csvFilePath));
+
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.alreadyRegisteredCount).toBe(1);
+    expect(checkpoint!.skippedGraveyardCount).toBe(0);
+    expect(checkpoint!.failedLines).toEqual([]);
+  });
+
+  it("does not reserve a migrated name whose registration is in v1 grace", async () => {
+    const { user } = env.namedAccounts;
+    const label = "gyingrace";
+    const expiry = await registerV1Name(
+      env,
+      label,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    await handToGraveyard(env, label, user);
+    await warpTo(env, expiry + 86_400n);
+    // In grace the registrar no longer names a holder, so only the registry's node
+    // owner says the Graveyard has it.
+    await expect(
+      env.v1.BaseRegistrar.read.ownerOf([idFromLabel(label)]),
+    ).rejects.toThrow();
+
+    createCSVFile(csvFilePath, [label]);
+    await main(buildMainArgs(env, csvFilePath));
+
+    expect((await verifyV2State(env, label)).status).toBe(STATUS.AVAILABLE);
+    expect(readTestCheckpoint()!.skippedGraveyardCount).toBe(1);
+  });
+
+  it("does not reserve a wrapped name whose wrapper token the Graveyard holds", async () => {
+    const { user } = env.namedAccounts;
+    const held = "gywrapheld";
+    const kept = "gywrapkept";
+    for (const label of [held, kept]) {
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+      await wrapV1Name(env, label, user, FUSES.CANNOT_UNWRAP);
+    }
+    // What a locked migration leaves on v1: the registrar token with the
+    // NameWrapper, and the wrapper token with the Graveyard.
+    await env.v1.NameWrapper.write.safeTransferFrom(
+      [
+        user.address,
+        env.v2.Graveyard.address,
+        BigInt(namehash(`${held}.eth`)),
+        1n,
+        "0x",
+      ],
+      { account: user },
+    );
+    expect(await env.v1.BaseRegistrar.read.ownerOf([idFromLabel(held)])).toBe(
+      getAddress(env.v1.NameWrapper.address),
+    );
+
+    createCSVFile(csvFilePath, [held, kept]);
+    await main(buildMainArgs(env, csvFilePath));
+
+    expect((await verifyV2State(env, held)).status).toBe(STATUS.AVAILABLE);
+    // A wrapped name its owner still holds is reserved as before.
+    expect((await verifyV2State(env, kept)).status).toBe(STATUS.RESERVED);
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.skippedGraveyardCount).toBe(1);
+    expect(checkpoint!.successCount).toBe(1);
+  });
+
+  for (const [what, graveyards] of [
+    ["an account", () => [env.namedAccounts.user.address]],
+    // It answers the Graveyard's NAME_WRAPPER(), but has no clear().
+    [
+      "a migration controller",
+      () => [
+        env.v2.Graveyard.address,
+        env.v2.UnlockedMigrationController.address,
+      ],
+    ],
+  ] as const) {
+    it(`refuses a Graveyard set naming ${what}`, async () => {
+      const { user } = env.namedAccounts;
+      const label = "gywrongset";
+      await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+      createCSVFile(csvFilePath, [label]);
+
+      const originalExit = process.exit;
+      let exitCode: number | undefined;
+      process.exit = ((code?: number) => {
+        exitCode = code;
+        throw new Error(`process.exit(${code})`);
+      }) as never;
+      try {
+        await main(
+          buildMainArgs(env, csvFilePath, { graveyards: graveyards() }),
+        );
+      } catch (e: any) {
+        expect(e.message).toBe("process.exit(1)");
+      } finally {
+        process.exit = originalExit;
+      }
+
+      expect(exitCode).toBe(1);
+      expect(readFileSync("preMigration-errors.log", "utf-8")).toContain(
+        "not a Graveyard",
+      );
+      expect((await verifyV2State(env, label)).status).toBe(STATUS.AVAILABLE);
+    });
+  }
 
   // Reserves a name, then moves the chain past the reservation's expiry into the v2
   // grace period. The bonus period is sized so that window ends with v1's grace, so

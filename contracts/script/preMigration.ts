@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 import {
   createReadStream,
   existsSync,
@@ -9,15 +9,22 @@ import {
   writeFileSync,
 } from "node:fs";
 import {
+  BaseError,
+  concat,
+  ContractFunctionRevertedError,
   createPublicClient,
   createWalletClient,
+  encodeFunctionData,
+  getAddress,
   getContract,
   http,
   keccak256,
+  namehash,
   publicActions,
   toHex,
   zeroAddress,
   type Address,
+  type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { mainnet } from "viem/chains";
@@ -36,7 +43,12 @@ import {
 
 import { GRACE_PERIOD_V2, STATUS } from "./deploy-constants.js";
 import { loadArtifact, resolveChain } from "./scriptUtils.js";
-import { BaseRegistrar } from "./migrations/abis.js";
+import {
+  BaseRegistrar,
+  EnsRegistry,
+  Graveyard,
+  NameWrapper,
+} from "./migrations/abis.js";
 
 const BASE_REGISTRAR_ABI = BaseRegistrar.nameExpires;
 
@@ -122,6 +134,8 @@ export interface PreMigrationConfig {
   bonusPeriodDays: number;
   v1ResolverAddress: Address;
   v1BaseRegistrarAddress: Address;
+  /// Graveyards whose v1 names are not claimable. See `v1Eligibility`.
+  graveyards: ReadonlySet<Address>;
 }
 
 export interface Checkpoint {
@@ -134,12 +148,14 @@ export interface Checkpoint {
   /// lines rather than as a count so a resumed run can retry exactly those rows,
   /// and so a row that later succeeds stops being reported as a failure.
   failedLines: number[];
-  /// Aggregate of the two skip sub-counters below (names not claimable on v1).
+  /// Aggregate of the skip sub-counters below (names not claimable on v1).
   skippedCount: number;
   /// Names skipped because they were never registered on v1.
   skippedNeverRegisteredCount: number;
   /// Names skipped because their v1 registration lapsed past the grace period.
   skippedPastGraceCount: number;
+  /// Names skipped because a Graveyard is their v1 registrant.
+  skippedGraveyardCount: number;
   /// Names skipped because they are already registered (owned) on v2. Tracked
   /// separately from genuine failures.
   alreadyRegisteredCount: number;
@@ -169,13 +185,309 @@ const BASE_REGISTRAR_ADDRESS =
 export const V1_GRACE_PERIOD_DAYS = 90n;
 export const V1_GRACE_PERIOD_SECONDS = V1_GRACE_PERIOD_DAYS * 86400n;
 
-/// Whether a v1 name is still claimable, and so within the migration's remit. A
-/// name that was never registered, or whose grace period has elapsed, is not:
-/// pre-migration will not reserve it, and nothing downstream may treat it as
-/// something the migration carries over. Judge against chain time — on a fork the
-/// wall clock disagrees, and a wall-clock now admits names the chain has released.
+/// Whether a v1 name's expiry still leaves it claimable. A name that was never
+/// registered, or whose grace period has elapsed, is not: pre-migration will not
+/// reserve it, and nothing downstream may treat it as something the migration
+/// carries over. Judge against chain time — on a fork the wall clock disagrees, and
+/// a wall-clock now admits names the chain has released.
+///
+/// This is the expiry half of `v1Eligibility`. On its own it suits only a question
+/// about expiries, such as whether two exports agree on how many names are live.
 export function isClaimableOnV1(expiry: bigint, now: bigint): boolean {
   return expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > now;
+}
+
+/// A v1 `.eth` registration: its expiry, and the account that holds it (see
+/// `readV1Registrations`), or null when nobody does.
+export type V1Registration = { expiry: bigint; registrant: Address | null };
+
+/// Whether a v1 name is within the migration's remit, and why not when it is not.
+export type V1Eligibility =
+  | "claimable"
+  | "never-registered"
+  | "past-grace"
+  | "graveyard";
+
+/// Log text for each reason a v1 name is not claimable.
+export const V1_INELIGIBILITY_REASONS: Record<
+  Exclude<V1Eligibility, "claimable">,
+  string
+> = {
+  "never-registered": "never registered on v1",
+  "past-grace": `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`,
+  graveyard: "v1 registrant is a Graveyard",
+};
+
+/// The single rule for whether pre-migration reserves a v1 name, and whether anything
+/// that checks its work may expect a reservation.
+///
+/// The expiry has to leave the name claimable (see `isClaimableOnV1`), and a Graveyard
+/// must not be its registrant. A Graveyard holds v1 tokens that no v1 owner can take
+/// back: a migration hands it the token of a migrated name, and `Graveyard.clear`
+/// re-registers an expired name to itself with an expiry near the uint64 ceiling to
+/// take it out of circulation. A reservation for such a name belongs to nobody, and
+/// `ETHRegistrar` never offers a reserved name, so reserving it would lock the name on
+/// v2 instead of freeing it.
+///
+/// `graveyards` must hold every Graveyard deployed on the chain, superseded ones
+/// included, since each keeps the names it took while its deployment was live.
+export function v1Eligibility(
+  registration: V1Registration,
+  now: bigint,
+  graveyards: ReadonlySet<Address>,
+): V1Eligibility {
+  if (registration.expiry === 0n) return "never-registered";
+  if (!isClaimableOnV1(registration.expiry, now)) return "past-grace";
+  if (
+    registration.registrant !== null &&
+    graveyards.has(getAddress(registration.registrant))
+  ) {
+    return "graveyard";
+  }
+  return "claimable";
+}
+
+/// The Graveyard addresses given, checksummed and deduplicated.
+///
+/// An empty set is refused rather than read as "no Graveyards": every deployment
+/// carries one, so an empty set means the addresses were never supplied, and running
+/// without them reserves every name a Graveyard holds.
+export function graveyardSet(
+  addresses: readonly string[],
+): ReadonlySet<Address> {
+  const set = new Set<Address>();
+  for (const address of addresses) {
+    const trimmed = address.trim();
+    if (trimmed === "") continue;
+    try {
+      set.add(getAddress(trimmed));
+    } catch {
+      throw new Error(`not an address: ${JSON.stringify(address)}`);
+    }
+  }
+  if (set.size === 0) {
+    throw new Error(
+      "no Graveyard address given: without one, every v1 name a Graveyard holds would be reserved",
+    );
+  }
+  return set;
+}
+
+/// Parses a comma-separated `--graveyards` value for a command line.
+export function parseGraveyardAddresses(value: string): Address[] {
+  try {
+    return [...graveyardSet(value.split(","))];
+  } catch (error) {
+    throw new InvalidArgumentError((error as Error).message);
+  }
+}
+
+/// The v1 contracts a registrant is resolved through.
+export type V1Contracts = {
+  baseRegistrar: Address;
+  /// The v1 `ENSRegistry`, which records who owns each name's node.
+  registry: Address;
+  nameWrapper: Address;
+};
+
+/// Checks that every address in the set is a Graveyard of this v1, and returns the
+/// v1 contracts the Graveyards are bound to.
+///
+/// Pre-migration leaves a name unreserved when a listed address holds it, and the
+/// reconciliation that gates the v1 freeze stops expecting it. A wrong address would
+/// therefore strand every name its account holds. So each address has to answer the
+/// Graveyard's `NAME_WRAPPER()`, which an externally owned account or a Safe does not,
+/// and accept a simulated `clear([])`, a no-op for a Graveyard that the migration
+/// controllers, which also answer `NAME_WRAPPER()`, do not have. Every Graveyard must
+/// report the same `NameWrapper`, and that wrapper's registrar must be
+/// `baseRegistrar`. The wrapper's registry is where a name's node owner is read.
+export async function resolveV1Contracts(
+  client: any,
+  graveyards: ReadonlySet<Address>,
+  baseRegistrar: Address,
+): Promise<V1Contracts> {
+  const failures: string[] = [];
+  const wrappers = new Map<Address, Address[]>();
+  const clearCall = encodeFunctionData({
+    abi: Graveyard.clear,
+    functionName: "clear",
+    args: [[]],
+  });
+  await Promise.all(
+    [...graveyards].map(async (address) => {
+      try {
+        const [wrapper] = await Promise.all([
+          client.readContract({
+            address,
+            abi: Graveyard.NAME_WRAPPER,
+            functionName: "NAME_WRAPPER",
+          }) as Promise<Address>,
+          client.call({ to: address, data: clearCall }),
+        ]);
+        const key = getAddress(wrapper);
+        wrappers.set(key, [...(wrappers.get(key) ?? []), address]);
+      } catch (error) {
+        const message =
+          error instanceof BaseError ? error.shortMessage : String(error);
+        failures.push(`${address} (${message})`);
+      }
+    }),
+  );
+  if (failures.length > 0) {
+    throw new Error(
+      `not a Graveyard on the v1 chain: ${failures.sort().join(", ")}. A name held by a listed address is not reserved, so the set must name Graveyards only.`,
+    );
+  }
+  if (wrappers.size !== 1) {
+    const described = [...wrappers]
+      .map(([wrapper, holders]) => `${wrapper} (${holders.join(", ")})`)
+      .join("; ");
+    throw new Error(
+      `the Graveyards report different NameWrappers: ${described}. A Graveyard of another v1 holds none of this one's names; leave it out of the set.`,
+    );
+  }
+  const [nameWrapper] = wrappers.keys();
+  const [registrar, registry] = await Promise.all([
+    client.readContract({
+      address: nameWrapper,
+      abi: NameWrapper.registrar,
+      functionName: "registrar",
+    }) as Promise<Address>,
+    client.readContract({
+      address: nameWrapper,
+      abi: NameWrapper.ens,
+      functionName: "ens",
+    }) as Promise<Address>,
+  ]);
+  if (getAddress(registrar) !== getAddress(baseRegistrar)) {
+    throw new Error(
+      `the Graveyards' NameWrapper ${nameWrapper} is bound to BaseRegistrar ${registrar}, not ${baseRegistrar}: they belong to another v1`,
+    );
+  }
+  return {
+    baseRegistrar: getAddress(baseRegistrar),
+    registry: getAddress(registry),
+    nameWrapper,
+  };
+}
+
+/// A v1 read that failed, and so says nothing about the name.
+export type V1ReadError = { error: string };
+
+// Whether a failed call reverted, as opposed to failing to reach or decode.
+function isRevert(error: unknown): boolean {
+  return (
+    error instanceof BaseError &&
+    error.walk((cause) => cause instanceof ContractFunctionRevertedError) !==
+      null
+  );
+}
+
+type CallOutcome = {
+  status: "success" | "failure";
+  result?: unknown;
+  error?: unknown;
+};
+
+const ETH_NODE = namehash("eth");
+
+/// The v1 node of the `.eth` 2LD with this labelhash, which the registry and the
+/// `NameWrapper` key the name by.
+export function ethNameNode(labelhash: bigint): Hex {
+  return keccak256(concat([ETH_NODE, toHex(labelhash, { size: 32 })]));
+}
+
+// Follows a name to its registrant through the four reads `readV1Registrations` makes.
+//
+// The token holder is authoritative while the registration is live: they can reclaim
+// the registry node whenever they like. `ownerOf` reverts once the registration has
+// expired, in grace too, and then the registry's node owner is the best record left.
+// The migration controllers and `Graveyard.clear` point it at the Graveyard, so a
+// migrated name still reads as the Graveyard's in grace. A wrapped name's token and
+// node both sit with the `NameWrapper`, so its registrant is whoever the wrapper
+// names: a locked migration hands the wrapper token to the Graveyard.
+function resolveRegistrant(
+  v1: V1Contracts,
+  ownerOf: CallOutcome,
+  nodeOwner: CallOutcome,
+  wrapperOwner: CallOutcome,
+): Pick<V1Registration, "registrant"> | V1ReadError {
+  let holder: Address;
+  if (ownerOf.status === "success") {
+    holder = getAddress(ownerOf.result as Address);
+  } else if (!isRevert(ownerOf.error)) {
+    return { error: `ownerOf: ${String(ownerOf.error)}` };
+  } else if (nodeOwner.status === "success") {
+    holder = getAddress(nodeOwner.result as Address);
+  } else {
+    return { error: `registry owner: ${String(nodeOwner.error)}` };
+  }
+  if (holder === v1.nameWrapper) {
+    if (wrapperOwner.status === "failure") {
+      return { error: `NameWrapper ownerOf: ${String(wrapperOwner.error)}` };
+    }
+    holder = getAddress(wrapperOwner.result as Address);
+  }
+  return { registrant: holder === zeroAddress ? null : holder };
+}
+
+/// Each id's v1 expiry and registrant, read in one multicall so they describe the same
+/// state: `nameExpires`, `BaseRegistrar.ownerOf`, the registry's owner of the name's
+/// node, and `NameWrapper.ownerOf` of that node. See `resolveRegistrant` for how the
+/// three owner reads combine into the registrant.
+export async function readV1Registrations(
+  client: any,
+  v1: V1Contracts,
+  ids: readonly bigint[],
+): Promise<Array<V1Registration | V1ReadError>> {
+  if (ids.length === 0) return [];
+  const outcomes: CallOutcome[] = await client.multicall({
+    allowFailure: true,
+    contracts: ids.flatMap((id) => {
+      const node = ethNameNode(id);
+      return [
+        {
+          address: v1.baseRegistrar,
+          abi: BASE_REGISTRAR_ABI,
+          functionName: "nameExpires",
+          args: [id],
+        },
+        {
+          address: v1.baseRegistrar,
+          abi: BaseRegistrar.ownerOf,
+          functionName: "ownerOf",
+          args: [id],
+        },
+        {
+          address: v1.registry,
+          abi: EnsRegistry.owner,
+          functionName: "owner",
+          args: [node],
+        },
+        {
+          address: v1.nameWrapper,
+          abi: NameWrapper.ownerOf,
+          functionName: "ownerOf",
+          args: [BigInt(node)],
+        },
+      ];
+    }),
+  });
+  return ids.map((_, index) => {
+    const [expiry, ownerOf, nodeOwner, wrapperOwner] = outcomes.slice(
+      4 * index,
+      4 * index + 4,
+    );
+    if (expiry.status === "failure") {
+      return { error: `nameExpires: ${String(expiry.error)}` };
+    }
+    const owner = resolveRegistrant(v1, ownerOf, nodeOwner, wrapperOwner);
+    if ("error" in owner) return owner;
+    return {
+      expiry: BigInt(expiry.result as bigint),
+      registrant: owner.registrant,
+    };
+  });
 }
 
 /// Whether a v2 entry still holds a pre-migration reservation. A reservation outlives
@@ -206,6 +518,7 @@ export function createFreshCheckpoint(): Checkpoint {
     skippedCount: 0,
     skippedNeverRegisteredCount: 0,
     skippedPastGraceCount: 0,
+    skippedGraveyardCount: 0,
     alreadyRegisteredCount: 0,
     upToDateCount: 0,
     invalidLabelCount: 0,
@@ -711,6 +1024,7 @@ interface MigrationClients {
   registry: any;
   batchRegistrar: any;
   registryAbi: any[];
+  v1Contracts: V1Contracts;
 }
 
 async function createMigrationClients(
@@ -749,6 +1063,11 @@ async function createMigrationClients(
   });
 
   await validateBatchRegistrar(client, config.batchRegistrarAddress);
+  const v1Contracts = await resolveV1Contracts(
+    mainnetClient,
+    config.graveyards,
+    config.v1BaseRegistrarAddress,
+  );
 
   const batchRegistrarArtifact = loadArtifact("BatchRegistrar");
   const batchRegistrar = getContract({
@@ -763,6 +1082,7 @@ async function createMigrationClients(
     registry,
     batchRegistrar,
     registryAbi: registryArtifact.abi,
+    v1Contracts,
   };
 }
 
@@ -770,8 +1090,14 @@ async function fetchAndReserveInBatches(
   config: PreMigrationConfig,
   checkpoint: Checkpoint,
 ): Promise<void> {
-  const { client, mainnetClient, registry, batchRegistrar, registryAbi } =
-    await createMigrationClients(config);
+  const {
+    client,
+    mainnetClient,
+    registry,
+    batchRegistrar,
+    registryAbi,
+    v1Contracts,
+  } = await createMigrationClients(config);
 
   const block = await client.getBlock();
   const maxGas = BigInt(
@@ -832,6 +1158,7 @@ async function fetchAndReserveInBatches(
             validBatch,
             client,
             mainnetClient,
+            v1Contracts,
             registry,
             batchRegistrar,
             checkpoint,
@@ -920,12 +1247,13 @@ export interface VerificationResult {
   registration: ENSRegistration;
   v2Status: number;
   v2LatestOwner: string;
-  /// Whether the original v1 owner still has renewal rights — i.e., the name
-  /// is currently registered or within the v1 90-day grace period. Names that
-  /// pass this gate are candidates for migration; the v2 expiry is computed
-  /// separately by adding the configurable `--bonus-period-days`.
-  v1IsClaimable: boolean;
+  /// Whether the name is a candidate for migration, and why not when it is not; see
+  /// `v1Eligibility`. The v2 expiry is computed separately by adding the configurable
+  /// `--bonus-period-days`. Null when the lookup failed.
+  v1Eligibility: V1Eligibility | null;
   v1Expiry: bigint;
+  /// The v1 registrant, or null when v1 has no live registration for the name.
+  v1Registrant: Address | null;
   /// Current expiry recorded on v2, or 0 when the name has no v2 entry. Used to tell
   /// a reservation that needs extending from one that is already long enough.
   v2Expiry: bigint;
@@ -941,25 +1269,20 @@ export async function batchVerifyRegistrations(
   mainnetClient: any,
   registryAddress: Address,
   registryAbi: any[],
-  v1BaseRegistrarAddress: Address,
+  v1Contracts: V1Contracts,
+  graveyards: ReadonlySet<Address>,
 ): Promise<VerificationResult[]> {
-  const v2Contracts = registrations.map((r) => ({
+  const ids = registrations.map((r) => BigInt(keccak256(toHex(r.labelName))));
+  const v2Contracts = ids.map((id) => ({
     address: registryAddress,
     abi: registryAbi,
     functionName: "getState" as const,
-    args: [BigInt(keccak256(toHex(r.labelName)))],
-  }));
-
-  const v1Contracts = registrations.map((r) => ({
-    address: v1BaseRegistrarAddress,
-    abi: BASE_REGISTRAR_ABI,
-    functionName: "nameExpires" as const,
-    args: [keccak256(toHex(r.labelName))],
+    args: [id],
   }));
 
   const [v2Settled, v1Settled] = await Promise.allSettled([
     client.multicall({ contracts: v2Contracts }),
-    mainnetClient.multicall({ contracts: v1Contracts }),
+    readV1Registrations(mainnetClient, v1Contracts, ids),
   ]);
 
   const buildFallback = (reason: unknown) =>
@@ -980,10 +1303,10 @@ export async function batchVerifyRegistrations(
     v2Settled.status === "fulfilled"
       ? v2Settled.value
       : buildFallback(v2Settled.reason);
-  const v1Results =
+  const v1Results: Array<V1Registration | V1ReadError> =
     v1Settled.status === "fulfilled"
       ? v1Settled.value
-      : buildFallback(v1Settled.reason);
+      : registrations.map(() => ({ error: String(v1Settled.reason) }));
 
   const [v1Now, v2Now] = await Promise.all([
     readChainTimestamp(mainnetClient),
@@ -994,20 +1317,20 @@ export async function batchVerifyRegistrations(
     const v2 = (v2Results as any[])[i];
     const v1 = (v1Results as any[])[i];
 
-    if (v2.status === "failure" || v1.status === "failure") {
+    if (v2.status === "failure" || "error" in v1) {
       return {
         registration: reg,
         v2Status: -1,
         v2LatestOwner: zeroAddress,
-        v1IsClaimable: false,
+        v1Eligibility: null,
         v1Expiry: 0n,
+        v1Registrant: null,
         v2Expiry: 0n,
         v2Reserved: false,
-        error: v2.status === "failure" ? String(v2.error) : String(v1.error),
+        error: v2.status === "failure" ? String(v2.error) : v1.error,
       };
     }
 
-    const expiry = v1.result as bigint;
     const state = v2.result as any;
     const v2Expiry = BigInt(state.expiry ?? 0);
     return {
@@ -1023,8 +1346,9 @@ export async function batchVerifyRegistrations(
         },
         v2Now,
       ),
-      v1IsClaimable: isClaimableOnV1(expiry, v1Now),
-      v1Expiry: expiry,
+      v1Eligibility: v1Eligibility(v1, v1Now, graveyards),
+      v1Expiry: v1.expiry,
+      v1Registrant: v1.registrant,
     };
   });
 }
@@ -1169,6 +1493,7 @@ async function processBatch(
   registrations: ENSRegistration[],
   client: any,
   mainnetClient: any,
+  v1Contracts: V1Contracts,
   registry: any,
   batchRegistrar: any,
   checkpoint: Checkpoint,
@@ -1203,7 +1528,8 @@ async function processBatch(
     mainnetClient,
     config.registryAddress,
     registryAbi,
-    config.v1BaseRegistrarAddress,
+    v1Contracts,
+    config.graveyards,
   );
 
   const baseProcessed = checkpoint.totalProcessed;
@@ -1224,8 +1550,8 @@ async function processBatch(
     // overflows a conversion, a malformed record — would otherwise abort a
     // multi-hour pre-migration partway through. It is recorded and skipped.
     try {
-      if (result.error) {
-        logger.failed(registration.labelName, result.error);
+      if (result.error || result.v1Eligibility === null) {
+        logger.failed(registration.labelName, result.error ?? "no v1 result");
         checkpoint.totalProcessed++;
         recordFailedLine(registration.lineNumber);
         logger.finishedName(registration.labelName, "failed");
@@ -1246,17 +1572,22 @@ async function processBatch(
         alreadyReservedNames.add(registration.labelName);
       }
 
-      if (!result.v1IsClaimable) {
-        const neverRegistered = result.v1Expiry === 0n;
-        const reason = neverRegistered
-          ? "never registered on v1"
-          : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
-        logger.v1NotRegistered(registration.labelName, reason);
+      const eligibility = result.v1Eligibility;
+      if (eligibility !== "claimable") {
+        const reason = V1_INELIGIBILITY_REASONS[eligibility];
+        logger.v1NotRegistered(
+          registration.labelName,
+          eligibility === "graveyard"
+            ? `${reason} (${result.v1Registrant})`
+            : reason,
+        );
         checkpoint.skippedCount++;
-        if (neverRegistered) {
+        if (eligibility === "never-registered") {
           checkpoint.skippedNeverRegisteredCount++;
-        } else {
+        } else if (eligibility === "past-grace") {
           checkpoint.skippedPastGraceCount++;
+        } else {
+          checkpoint.skippedGraveyardCount++;
         }
         checkpoint.totalProcessed++;
         clearFailedLine(registration.lineNumber);
@@ -1404,6 +1735,10 @@ function printFinalSummary(checkpoint: Checkpoint): void {
     yellow(checkpoint.skippedPastGraceCount.toString()),
   );
   logger.config(
+    "  → v1 registrant is a Graveyard",
+    yellow(checkpoint.skippedGraveyardCount.toString()),
+  );
+  logger.config(
     "Already registered on v2",
     yellow(checkpoint.alreadyRegisteredCount.toString()),
   );
@@ -1501,6 +1836,11 @@ export async function main(argv = process.argv): Promise<void> {
       "--v1-base-registrar <address>",
       "V1 BaseRegistrar address for expiry lookups",
       BASE_REGISTRAR_ADDRESS,
+    )
+    .requiredOption(
+      "--graveyards <addresses>",
+      "Comma-separated Graveyard addresses, superseded deployments' included; v1 names any of them holds are not reserved",
+      parseGraveyardAddresses,
     );
 
   program.parse(argv);
@@ -1536,6 +1876,7 @@ export async function main(argv = process.argv): Promise<void> {
     bonusPeriodDays: parseBonusPeriodDays(opts.bonusPeriodDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
+    graveyards: graveyardSet(opts.graveyards as Address[]),
   };
 
   try {
@@ -1560,6 +1901,7 @@ export async function main(argv = process.argv): Promise<void> {
       Number(V1_GRACE_PERIOD_DAYS),
     );
     logger.config("V1 Resolver", config.v1ResolverAddress);
+    logger.config("Graveyards", [...config.graveyards].join(", "));
     logger.config("Limit", config.limit ?? "none");
     logger.config("Dry Run", config.dryRun);
     logger.config("Continue Mode", config.continue ?? false);
