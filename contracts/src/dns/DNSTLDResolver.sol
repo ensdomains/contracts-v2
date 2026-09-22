@@ -12,7 +12,7 @@ import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeRe
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {IVerifiableResolver} from "@ens/contracts/resolvers/profiles/IVerifiableResolver.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
-import {RegistryUtils as RegistryUtilsV1} from "@ens/contracts/universalResolver/RegistryUtils.sol";
+import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.sol";
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
@@ -303,9 +303,11 @@ contract DNSTLDResolver is
     /// @param name The DNS-encoded name to look up.
     /// @return resolver The v1 resolver address, or `address(0)` if none is applicable.
     function _getResolverV1(bytes memory name) internal view returns (address resolver) {
-        (resolver, , ) = RegistryUtilsV1.findResolver(ENS_REGISTRY_V1, name, 0);
+        uint256 offset;
+        (resolver, , offset) = RegistryUtils.findResolver(ENS_REGISTRY_V1, name, 0);
+        resolver = LibResolution.validateResolver(resolver, offset == 0);
         if (resolver == DNS_TLD_RESOLVER_V1 || resolver == address(this)) {
-            resolver = address(0);
+            resolver = address(0); // prevent trivial loops
         }
     }
 
