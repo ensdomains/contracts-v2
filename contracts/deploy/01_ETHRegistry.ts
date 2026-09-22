@@ -1,11 +1,13 @@
 import { execute } from "@rocketh";
 import type { Abi_ILabelStore } from "generated/abis/ILabelStore.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
-import { isAddressEqual, labelhash, zeroAddress } from "viem";
+import { isAddressEqual, zeroAddress } from "viem";
+import { idFromLabel } from "../test/utils/utils.js";
 import {
   MAX_EXPIRY,
   DEPLOYMENT_ROLES,
   ROLES,
+  STATUS,
 } from "../script/deploy-constants.js";
 
 export default execute(
@@ -29,10 +31,10 @@ export default execute(
 
     const currentStatus = await read(rootRegistry, {
       functionName: "getStatus",
-      args: [BigInt(labelhash("eth"))],
+      args: [idFromLabel("eth")],
     });
 
-    if (currentStatus === 0) {
+    if (currentStatus === STATUS.AVAILABLE) {
       console.log("  - Registering in parent");
       await write(rootRegistry, {
         account: deployer,

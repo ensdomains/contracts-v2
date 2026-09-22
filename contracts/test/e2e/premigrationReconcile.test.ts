@@ -1,0 +1,858 @@
+import { describe, expect, it, setDefaultTimeout } from "bun:test";
+setDefaultTimeout(120_000);
+
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  encodeAbiParameters,
+  getAddress,
+  keccak256,
+  stringToHex,
+  toHex,
+  zeroAddress,
+} from "viem";
+
+import { reconcilePreMigration } from "../../script/migrate.js";
+import { main as preMigrationMain } from "../../script/preMigration.js";
+import { V1_INDEX_META_FILE } from "../../script/premigrationIndex.js";
+import { PREMIGRATION_CSV_HEADER } from "../../script/preMigrationUtils.js";
+import { readVerification } from "../../script/migrations/phaseGate.js";
+import { MAX_UINT64 } from "../../script/preMigration.js";
+import {
+  FUSES,
+  GRACE_PERIOD_V2,
+  ROLES,
+} from "../../script/deploy-constants.js";
+import { idFromLabel } from "../utils/utils.js";
+import {
+  buildMainArgs,
+  createCSVFile,
+  registerV1Name,
+  setupBaseRegistrarController,
+} from "../utils/mockPreMigration.js";
+
+const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
+const BONUS_PERIOD_DAYS = 62;
+const BONUS_PERIOD_SECONDS = BigInt(BONUS_PERIOD_DAYS) * 86400n;
+
+function labelhash(label: string): string {
+  return keccak256(toHex(label));
+}
+
+// Stands in for `premigration build-index`, which would otherwise need a live
+// subgraph. The reconciliation only consumes the index files, so writing them
+// directly exercises exactly the same path.
+// The export used in production carries an expiry per row; the shared test helper
+// leaves that column empty, which the reconciliation correctly refuses to read as a
+// claimable count. Rewrites the CSV with the expiries the names were registered with.
+function writeDatedCsv(
+  csvFile: string,
+  labels: string[],
+  entries: Array<{ expiry: bigint }>,
+) {
+  const rows = labels.map(
+    (label, index) => `,,,,,,${label},,${entries[index].expiry.toString()}`,
+  );
+  writeFileSync(csvFile, [PREMIGRATION_CSV_HEADER, ...rows].join("\n"));
+}
+
+function writeIndex(
+  workDir: string,
+  entries: Array<{ id: string; expiry: bigint }>,
+  overrides: {
+    source?: string;
+    complete?: boolean;
+    /** The chain time the build filter was measured against. */
+    filterTime?: bigint;
+  } = {},
+) {
+  writeFileSync(
+    join(workDir, "v1-name-index.ndjson"),
+    entries
+      .map((entry) =>
+        JSON.stringify({ id: entry.id, expiry: entry.expiry.toString() }),
+      )
+      .join("\n") + (entries.length > 0 ? "\n" : ""),
+    "utf-8",
+  );
+  writeFileSync(
+    join(workDir, V1_INDEX_META_FILE),
+    JSON.stringify({
+      source: overrides.source ?? "subgraph",
+      network: "mainnet",
+      block: 1,
+      lastId: entries.at(-1)?.id ?? "",
+      entries: entries.length,
+      complete: overrides.complete ?? true,
+      builtAt: new Date().toISOString(),
+      // The devnet runs at roughly wall-clock time, so a build measured against it
+      // covers what the reconciliation asks for.
+      filterTime: (
+        overrides.filterTime ?? BigInt(Math.floor(Date.now() / 1000))
+      ).toString(),
+    }),
+    "utf-8",
+  );
+}
+
+describe("premigration reconcile", () => {
+  const { env, setupEnv } = process.TEST_GLOBALS!;
+
+  const v1DeploymentsDir = mkdtempSync(join(tmpdir(), "reconcile-v1-"));
+
+  setupEnv({
+    resetOnEach: true,
+    async initialize() {
+      await setupBaseRegistrarController(env);
+      // The fuse scan resolves NameWrapper from deployment artifacts.
+      const dir = join(v1DeploymentsDir, "mainnet");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "NameWrapper.json"),
+        JSON.stringify({
+          address: env.v1.NameWrapper.address,
+          abi: env.v1.NameWrapper.abi,
+        }),
+      );
+    },
+  });
+
+  // Registers `labels` on v1, seeds them onto v2 through the real pre-migration
+  // path, and returns everything the reconciliation needs to run against them.
+  async function seed(labels: string[], bonusPeriodDays = BONUS_PERIOD_DAYS) {
+    const { user } = env.namedAccounts;
+    const workDir = mkdtempSync(join(tmpdir(), "reconcile-"));
+    const csvFile = join(workDir, "registrations.csv");
+
+    // The devnet fixture seeds names of its own onto v2 before any of this runs.
+    // Production scans from the registry's deploy block for the same reason: the
+    // reverse check should only account for entries this migration created.
+    const fromBlock = await env.client.getBlockNumber();
+
+    const v1Expiries = new Map<string, bigint>();
+    for (const label of labels) {
+      v1Expiries.set(
+        label,
+        await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS),
+      );
+    }
+
+    createCSVFile(csvFile, labels);
+    await preMigrationMain(buildMainArgs(env, csvFile, { bonusPeriodDays }));
+
+    const indexEntries = labels.map((label) => ({
+      id: labelhash(label),
+      expiry: v1Expiries.get(label)!,
+    }));
+
+    return { workDir, csvFile, indexEntries, fromBlock };
+  }
+
+  function run(
+    workDir: string,
+    fromBlock: bigint,
+    extra: Record<string, unknown> = {},
+  ): ReturnType<typeof reconcilePreMigration> {
+    return reconcilePreMigration({
+      network: "mainnet",
+      rpcUrl: `http://${env.hostPort}`,
+      workDir,
+      registry: env.v2.ETHRegistry.address,
+      bonusPeriodDays: String(BONUS_PERIOD_DAYS),
+      fromBlock: fromBlock.toString(),
+      // A passing reconciliation records itself for the phase 3 gate, which would
+      // otherwise land in the repository's own deployment tree.
+      deploymentsDir: mkdtempSync(join(tmpdir(), "reconcile-gate-default-")),
+      ...extra,
+    });
+  }
+
+  it("passes when every claimable v1 name is reserved on v2", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+      "gamma",
+    ]);
+    writeIndex(workDir, indexEntries);
+
+    const result = await run(workDir, fromBlock);
+
+    expect(result.claimable).toBe(3);
+    expect(result.reserved).toBe(3);
+    expect(result.missing).toEqual([]);
+    expect(result.expiryMismatched).toEqual([]);
+    expect(result.unexpected).toEqual([]);
+  });
+
+  it("reports a v1 name the CSV never contained — the gap CSV verification cannot see", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha", "beta"]);
+    const { user } = env.namedAccounts;
+
+    // A real v1 name that pre-migration was never told about. It is absent from the
+    // CSV, so a CSV-scoped check passes; the index knows it exists.
+    const missed = "forgotten";
+    const missedExpiry = await registerV1Name(
+      env,
+      missed,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: labelhash(missed), expiry: missedExpiry },
+    ]);
+
+    await expect(run(workDir, fromBlock)).rejects.toThrow(
+      /reconciliation failed/,
+    );
+
+    const result = await run(workDir, fromBlock, { reportOnly: true });
+    expect(result.claimable).toBe(3);
+    expect(result.reserved).toBe(2);
+    expect(result.missing).toEqual([labelhash(missed)]);
+  });
+
+  it("reports an entry on v2 that no v1 name accounts for", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha", "beta"]);
+
+    // Drop one from the index: v2 holds it, but as far as the independent view of
+    // v1 is concerned it was never a name.
+    writeIndex(workDir, indexEntries.slice(0, 1));
+
+    const result = await run(workDir, fromBlock, { reportOnly: true });
+
+    expect(result.unexpected).toHaveLength(1);
+    expect(result.unexpected[0]).toContain("beta");
+    expect(result.unexpected[0]).toContain("not a v1 name");
+  });
+
+  it("reports an expiry that does not match the bonus-adjusted v1 expiry", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+
+    // Claim a different v1 expiry than the one the name was seeded from.
+    writeIndex(workDir, [
+      { id: indexEntries[0].id, expiry: indexEntries[0].expiry + 12345n },
+    ]);
+
+    const result = await run(workDir, fromBlock, { reportOnly: true });
+
+    expect(result.expiryMismatched).toHaveLength(1);
+    expect(result.expiryMismatched[0]).toContain(indexEntries[0].id);
+    expect(result.missing).toEqual([]);
+  });
+
+  it("applies the bonus period when computing the expected v2 expiry", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+
+    // The default bonus differs from the one the names were seeded with, so every
+    // expiry should now be judged wrong.
+    const result = await run(workDir, fromBlock, {
+      bonusPeriodDays: String(BONUS_PERIOD_DAYS + 1),
+      reportOnly: true,
+    });
+
+    expect(result.expiryMismatched).toHaveLength(1);
+    expect(result.expiryMismatched[0]).toContain(
+      (indexEntries[0].expiry + BONUS_PERIOD_SECONDS + 86400n).toString(),
+    );
+  });
+
+  it("refuses a CSV produced by the same indexer as the index", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+    writeFileSync(
+      `${csvFile}.source.json`,
+      JSON.stringify({ source: "subgraph", network: "mainnet" }),
+      "utf-8",
+    );
+
+    await expect(run(workDir, fromBlock, { csvFile })).rejects.toThrow(
+      /refusing to reconcile/,
+    );
+  });
+
+  it("compares live counts across the two sources as a cheap tripwire", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    writeIndex(workDir, indexEntries);
+
+    const result = await run(workDir, fromBlock, { csvFile, reportOnly: true });
+
+    // Both views agree, which is the signal worth having: a disagreement means one
+    // of the two indexers is wrong and it is far cheaper to learn that before the
+    // freeze than after it.
+    expect(result.crossSource).toEqual({ csv: 2, index: 2 });
+  });
+
+  it("fails when the two sources disagree on how many names are live", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    // The counts are only comparable when the CSV carries expiries, so this one does.
+    writeDatedCsv(csvFile, ["alpha", "beta"], indexEntries);
+    // An index holding one of the two names, as a lagging indexer would produce.
+    // Both sources are internally consistent, so nothing but the counts reports that
+    // a name went unexamined.
+    writeIndex(workDir, indexEntries.slice(0, 1));
+
+    await expect(run(workDir, fromBlock, { csvFile })).rejects.toThrow(
+      /disagree on how many names are live/,
+    );
+  });
+
+  it("accepts a disagreement inside an explicit tolerance", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    writeDatedCsv(csvFile, ["alpha", "beta"], indexEntries);
+    writeIndex(workDir, indexEntries.slice(0, 1));
+
+    // `reportOnly` because the short index also leaves the reverse pass with a
+    // complaint of its own; the tolerance is what this test is about.
+    const result = await run(workDir, fromBlock, {
+      csvFile,
+      crossSourceTolerance: "1",
+      reportOnly: true,
+    });
+
+    expect(result.crossSource).toEqual({ csv: 2, index: 1 });
+  });
+
+  it("counts names whose CANNOT_TRANSFER fuse blocks the transfer path", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    writeIndex(workDir, indexEntries);
+
+    // Wrap `beta` with CANNOT_TRANSFER burned. It stays reservable on v2 but its
+    // owner can never hand the token to a migration controller, so it is counted as
+    // unmigratable. Asserting a non-zero figure is the point: reading the wrong
+    // storage key returns empty records and reports zero however many exist.
+    const { user } = env.namedAccounts;
+    await env.v1.BaseRegistrar.write.safeTransferFrom(
+      [
+        user.address,
+        env.v1.NameWrapper.address,
+        idFromLabel("beta"),
+        encodeAbiParameters(
+          [
+            { name: "label", type: "string" },
+            { name: "owner", type: "address" },
+            { name: "fuses", type: "uint16" },
+            { name: "resolver", type: "address" },
+          ],
+          [
+            "beta",
+            user.address,
+            FUSES.CANNOT_UNWRAP | FUSES.CANNOT_TRANSFER,
+            zeroAddress,
+          ],
+        ),
+      ],
+      { account: user },
+    );
+
+    const result = await run(workDir, fromBlock, {
+      csvFile,
+      reportOnly: true,
+      checkFuses: true,
+      v1DeploymentsDir,
+      v1DeploymentNetwork: "mainnet",
+    });
+
+    expect(result.unmigratableCannotTransfer).toBe(1);
+  });
+
+  it("refuses the fuse scan without labels rather than reporting a false zero", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+
+    // NameWrapper is keyed by namehash, which needs the plaintext label. Without a
+    // CSV the scan would read empty records and report zero regardless of reality.
+    await expect(
+      run(workDir, fromBlock, {
+        reportOnly: true,
+        checkFuses: true,
+        v1DeploymentsDir,
+        v1DeploymentNetwork: "mainnet",
+      }),
+    ).rejects.toThrow(/--check-fuses needs --csv-file/);
+  });
+
+  it("reconciles a name whose bonus-adjusted expiry hits the uint64 cap", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+
+    // Pre-migration caps the stored expiry at uint64 max, so reconciliation has to
+    // expect the capped value too — otherwise every such name is a permanent
+    // mismatch and the phase 3 gate can never open.
+    writeIndex(workDir, [{ id: indexEntries[0].id, expiry: MAX_UINT64 - 10n }]);
+
+    const result = await run(workDir, fromBlock, { reportOnly: true });
+    expect(result.expiryMismatched).not.toContain(
+      expect.stringContaining("expected=" + (MAX_UINT64 + 1n).toString()),
+    );
+  });
+
+  it("leaves the fuse count unset unless asked, since it is a per-name read", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+
+    const result = await run(workDir, fromBlock, { reportOnly: true });
+
+    expect(result.unmigratableCannotTransfer).toBeNull();
+  });
+
+  it("records a pass, which is what gates the irreversible v1 freeze", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+
+    const gateDir = mkdtempSync(join(tmpdir(), "reconcile-gate-"));
+    mkdirSync(join(gateDir, "mainnet"), { recursive: true });
+
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).toBeNull();
+
+    await run(workDir, fromBlock, {
+      deploymentsDir: gateDir,
+      deploymentNetwork: "mainnet",
+    });
+
+    // Phase 3 reads this record before freezing v1. Freezing without it strands any
+    // name pre-migration missed, and nothing can pick it up afterwards.
+    const recorded = readVerification(
+      gateDir,
+      "mainnet",
+      "premigration-reconcile",
+    );
+    expect(recorded).not.toBeNull();
+    expect(recorded?.chainId).toBe(1);
+    expect(BigInt(recorded!.blockNumber)).toBeGreaterThan(0n);
+  });
+
+  it("revokes an earlier pass when a later reconciliation fails", async () => {
+    const gateDir = mkdtempSync(join(tmpdir(), "reconcile-gate-revoke-"));
+    mkdirSync(join(gateDir, "mainnet"), { recursive: true });
+
+    // First: a clean reconciliation records a pass.
+    const clean = await seed(["alpha"]);
+    writeIndex(clean.workDir, clean.indexEntries);
+    await run(clean.workDir, clean.fromBlock, {
+      deploymentsDir: gateDir,
+      deploymentNetwork: "mainnet",
+    });
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).not.toBeNull();
+
+    // Then a reconciliation that finds a missing name must revoke it, not merely
+    // decline to renew it — otherwise phase 3 reads the stale success and permits
+    // the irreversible freeze on evidence the latest run contradicts.
+    writeIndex(clean.workDir, [
+      ...clean.indexEntries,
+      { id: labelhash("neverseeded"), expiry: clean.indexEntries[0].expiry },
+    ]);
+    await run(clean.workDir, clean.fromBlock, {
+      deploymentsDir: gateDir,
+      deploymentNetwork: "mainnet",
+      reportOnly: true,
+    });
+
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).toBeNull();
+  });
+
+  it("records nothing when the reconciliation finds problems", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha", "beta"]);
+    // Drop one, so a claimable name is missing from v2.
+    writeIndex(workDir, indexEntries.slice(0, 1));
+
+    const gateDir = mkdtempSync(join(tmpdir(), "reconcile-gate-fail-"));
+    mkdirSync(join(gateDir, "mainnet"), { recursive: true });
+
+    await run(workDir, fromBlock, {
+      deploymentsDir: gateDir,
+      deploymentNetwork: "mainnet",
+      reportOnly: true,
+    });
+
+    // A reconciliation that found discrepancies must not unlock the freeze.
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).toBeNull();
+  });
+
+  it("refuses an incomplete index rather than under-reporting", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries, { complete: false });
+
+    await expect(run(workDir, fromBlock)).rejects.toThrow(/incomplete/);
+  });
+
+  async function advanceChainTo(timestamp: bigint) {
+    await env.client.setNextBlockTimestamp({ timestamp });
+    await env.client.mine({ blocks: 1 });
+  }
+
+  it("counts a reservation inside the v2 grace period as reserved", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+
+    // Past the reservation's expiry but inside the v2 grace period. The name reads
+    // AVAILABLE on v2, yet v1 still holds it in grace and v2 will neither register it
+    // to anyone else nor refuse its owner a renewal, so it is reserved in every sense
+    // that matters to the freeze.
+    await advanceChainTo(
+      indexEntries[0].expiry + BONUS_PERIOD_SECONDS + 86400n,
+    );
+
+    const result = await run(workDir, fromBlock);
+
+    expect(result.claimable).toBe(1);
+    expect(result.reserved).toBe(1);
+    expect(result.reservedInGrace).toBe(1);
+    expect(result.missing).toEqual([]);
+  });
+
+  it("reports a claimable name whose reservation has outlived the v2 grace period", async () => {
+    // A bonus shorter than the gap between the two grace periods lets the v2 grace
+    // close while v1 still holds the name, leaving it open to anyone on v2.
+    const bonusPeriodDays = 20;
+    const { workDir, indexEntries, fromBlock } = await seed(
+      ["alpha"],
+      bonusPeriodDays,
+    );
+    writeIndex(workDir, indexEntries);
+    await advanceChainTo(
+      indexEntries[0].expiry +
+        BigInt(bonusPeriodDays) * 86400n +
+        GRACE_PERIOD_V2 +
+        86400n,
+    );
+
+    const result = await run(workDir, fromBlock, {
+      bonusPeriodDays: String(bonusPeriodDays),
+      reportOnly: true,
+    });
+
+    expect(result.claimable).toBe(1);
+    expect(result.reserved).toBe(0);
+    expect(result.missing).toEqual([`${indexEntries[0].id} has status 0`]);
+  });
+
+  it("records which registry a pass examined, for the phase 3 gate to check", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+    const gateDir = mkdtempSync(join(tmpdir(), "reconcile-gate-registry-"));
+
+    await run(workDir, fromBlock, {
+      deploymentsDir: gateDir,
+      deploymentNetwork: "mainnet",
+    });
+
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile")?.registry,
+    ).toBe(getAddress(env.v2.ETHRegistry.address));
+  });
+
+  it("revokes an earlier pass when a later reconciliation stops early", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    writeIndex(workDir, indexEntries);
+    const gateDir = mkdtempSync(join(tmpdir(), "reconcile-gate-early-"));
+    const gate = { deploymentsDir: gateDir, deploymentNetwork: "mainnet" };
+    await run(workDir, fromBlock, gate);
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).not.toBeNull();
+
+    // The count disagreement throws before any name is read. Stopping there must not
+    // leave the earlier pass standing to authorise the freeze.
+    writeDatedCsv(csvFile, ["alpha", "beta"], indexEntries);
+    writeIndex(workDir, indexEntries.slice(0, 1));
+    await expect(run(workDir, fromBlock, { ...gate, csvFile })).rejects.toThrow(
+      /disagree on how many names are live/,
+    );
+
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).toBeNull();
+  });
+
+  it("records no pass from a report whose sources disagree on the count", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    // A CSV counting a name the index lacks, while v2 holds both: every per-name
+    // pass is clean, and only the count says one source is incomplete.
+    writeDatedCsv(csvFile, ["alpha", "beta"], indexEntries);
+    writeIndex(workDir, indexEntries);
+    writeFileSync(
+      csvFile,
+      `${readFileSync(csvFile, "utf-8").trimEnd()}\n,,,,,,gamma,,${indexEntries[0].expiry}`,
+    );
+    const gateDir = mkdtempSync(join(tmpdir(), "reconcile-gate-drift-"));
+
+    await run(workDir, fromBlock, {
+      csvFile,
+      reportOnly: true,
+      deploymentsDir: gateDir,
+      deploymentNetwork: "mainnet",
+    });
+
+    expect(
+      readVerification(gateDir, "mainnet", "premigration-reconcile"),
+    ).toBeNull();
+  });
+
+  it("lists a name the CSV carries only in [labelhash] form apart from the missing", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user } = env.namedAccounts;
+
+    // A name registered with ENS's placeholder text as its label, as some live
+    // mainnet names were. Pre-migration refuses that shape, so it never reaches v2.
+    const bracketed = `[${"0418".padEnd(64, "0")}]`;
+    const bracketedId = keccak256(stringToHex(bracketed));
+    await env.v1.BaseRegistrar.write.register([
+      BigInt(bracketedId),
+      user.address,
+      BigInt(ONE_YEAR_SECONDS),
+    ]);
+    const bracketedExpiry = await env.v1.BaseRegistrar.read.nameExpires([
+      BigInt(bracketedId),
+    ]);
+    writeFileSync(
+      csvFile,
+      `${readFileSync(csvFile, "utf-8").trimEnd()}\n,,,,,,${bracketed},,`,
+    );
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: bracketedId, expiry: bracketedExpiry },
+    ]);
+
+    const result = await run(workDir, fromBlock, { csvFile });
+
+    expect(result.missing).toEqual([]);
+    expect(result.unreservable).toEqual([
+      { id: bracketedId, label: bracketed },
+    ]);
+  });
+
+  // A seeded fixture work directory: the run state naming what was seeded, and the
+  // corpus it was seeded from, holding each name's declared v2 state.
+  function writeFixtureWorkDir(
+    names: Array<{ label: string; profile: string }>,
+  ) {
+    const dir = mkdtempSync(join(tmpdir(), "reconcile-fixture-"));
+    const corpus = join(dir, "corpus");
+    mkdirSync(corpus);
+    writeFileSync(
+      join(corpus, "weighted-scenarios.jsonl"),
+      names
+        .map(({ label, profile }) =>
+          JSON.stringify({
+            fixture_id: `FX-${label}`,
+            source_scenario_id: `FX-${label}`,
+            replica_index: 1,
+            label,
+            scenario: {
+              execution: { scenario: "live_now" },
+              v2_premigration: { profile },
+            },
+          }),
+        )
+        .join("\n"),
+    );
+    writeFileSync(
+      join(dir, "fixture-run.json"),
+      JSON.stringify({
+        version: 2,
+        fixtureRoot: corpus,
+        names: names.map(({ label }) => ({ fixtureId: `FX-${label}`, label })),
+      }),
+    );
+    return dir;
+  }
+
+  it("lists a fixture name kept off v2 on purpose apart from the missing", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user } = env.namedAccounts;
+
+    // A live v1 name whose scenario needs it absent from v2, so pre-migration never
+    // reserves it. Without the list it is indistinguishable from a name missed.
+    const keptOut = "keptout";
+    const keptOutExpiry = await registerV1Name(
+      env,
+      keptOut,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: labelhash(keptOut), expiry: keptOutExpiry },
+    ]);
+
+    const result = await run(workDir, fromBlock, {
+      fixtureWorkDir: writeFixtureWorkDir([
+        { label: "alpha", profile: "present" },
+        { label: keptOut, profile: "missing" },
+      ]),
+    });
+
+    expect(result.missing).toEqual([]);
+    expect(result.keptUnreserved).toEqual([
+      { id: labelhash(keptOut), label: keptOut, state: "missing" },
+    ]);
+  });
+
+  it("reports a fixture name reserved though its scenario needs it absent", async () => {
+    // Pre-migration seeded beta, yet the fixture list says its scenario needs it
+    // absent from v2: the precondition that scenario tests is gone.
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha", "beta"]);
+    writeIndex(workDir, indexEntries);
+
+    const result = await run(workDir, fromBlock, {
+      reportOnly: true,
+      fixtureWorkDir: writeFixtureWorkDir([
+        { label: "alpha", profile: "present" },
+        { label: "beta", profile: "missing" },
+      ]),
+    });
+
+    expect(result.unexpected).toEqual([
+      `${labelhash("beta")} (beta.eth) is on v2, but its fixture scenario keeps it unreserved`,
+    ]);
+    expect(result.keptUnreserved).toEqual([]);
+  });
+
+  it("still counts a [labelhash]-shaped name as missing without a CSV to show it", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const bracketedId = keccak256(stringToHex(`[${"ab".repeat(32)}]`));
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: bracketedId, expiry: indexEntries[0].expiry },
+    ]);
+
+    const result = await run(workDir, fromBlock, { reportOnly: true });
+
+    expect(result.missing).toEqual([bracketedId]);
+    expect(result.unreservable).toEqual([]);
+  });
+
+  // What migration opening lets happen on v2: the registrar registers names, a
+  // migration claims a reserved one, and owners renew.
+  async function openV2Registrations() {
+    await env.v2.ETHRegistry.write.grantRootRoles([
+      ROLES.REGISTRY.REGISTRAR |
+        ROLES.REGISTRY.REGISTER_RESERVED |
+        ROLES.REGISTRY.RENEW,
+      env.namedAccounts.deployer.address,
+    ]);
+  }
+
+  async function registerOnV2(label: string, expiry = 0n) {
+    await env.v2.ETHRegistry.write.register([
+      label,
+      env.namedAccounts.user.address,
+      zeroAddress,
+      zeroAddress,
+      0n,
+      expiry,
+    ]);
+  }
+
+  it("leaves a name first registered on v2 alone once migration has opened", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+    await openV2Registrations();
+    const now = (await env.client.getBlock()).timestamp;
+    await registerOnV2("brandnew", now + BigInt(ONE_YEAR_SECONDS));
+
+    const open = await run(workDir, fromBlock, {
+      expectedStatus: "reserved-or-registered",
+    });
+    expect(open.unexpected).toEqual([]);
+
+    // Before migration opens nothing may register, so the same entry is a fault.
+    const closed = await run(workDir, fromBlock, { reportOnly: true });
+    expect(closed.unexpected).toHaveLength(1);
+    expect(closed.unexpected[0]).toContain("brandnew");
+  });
+
+  it("accepts a migrated name its owner has since renewed on v2", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+    await openV2Registrations();
+    await registerOnV2("alpha");
+    const { tokenId, expiry } = await env.v2.ETHRegistry.read.getState([
+      idFromLabel("alpha"),
+    ]);
+    await env.v2.ETHRegistry.write.renew([
+      tokenId,
+      expiry + BigInt(ONE_YEAR_SECONDS),
+    ]);
+
+    const result = await run(workDir, fromBlock, {
+      expectedStatus: "reserved-or-registered",
+    });
+
+    expect(result.registered).toBe(1);
+    expect(result.expiryMismatched).toEqual([]);
+  });
+
+  it("reports a v1 name registered on v2 without ever being reserved", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user } = env.namedAccounts;
+    // Live on v1 but missed by pre-migration, then taken on v2 through the registrar
+    // once it opened: the v1 owner has lost the name.
+    const missed = "snatched";
+    const missedExpiry = await registerV1Name(
+      env,
+      missed,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: labelhash(missed), expiry: missedExpiry },
+    ]);
+    await openV2Registrations();
+    await registerOnV2(missed, missedExpiry + BONUS_PERIOD_SECONDS);
+
+    const result = await run(workDir, fromBlock, {
+      expectedStatus: "reserved-or-registered",
+      reportOnly: true,
+    });
+
+    expect(result.unexpected).toEqual([
+      `${labelhash(missed)} is REGISTERED on v2 but was never reserved for its v1 owner`,
+    ]);
+  });
+
+  it("ignores v1 names that have passed grace", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+
+    // A name whose registration lapsed long ago is no longer its owner's to claim,
+    // so it must not be counted against v2.
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: labelhash("ancient"), expiry: 1n },
+    ]);
+
+    const result = await run(workDir, fromBlock, { reportOnly: true });
+
+    expect(result.claimable).toBe(1);
+    expect(result.missing).toEqual([]);
+  });
+});

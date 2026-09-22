@@ -1,7 +1,7 @@
 import { loadDeploymentsFromFiles } from "@rocketh/node";
 import { Command } from "commander";
 import { resolve } from "path";
-import { isProxyArtifact } from "./addressDocs.js";
+import { isProxyArtifact, markdownTable } from "./addressDocs.js";
 
 const currentPath = new URL(import.meta.url).pathname;
 const defaultDeploymentsDir = resolve(currentPath, "../..", "deployments");
@@ -69,10 +69,8 @@ for (const [chain, root] of Object.entries(deploymentRoots)) {
 function formatMarkdownTable(
   contracts: Array<{ name: string; address: string }>,
 ): string {
-  const rows = [
+  return markdownTable([
     ["Name", "Address"],
-    ["---", "---"],
     ...contracts.map(({ name, address }) => [name, address]),
-  ];
-  return rows.map((row) => `| ${row.join(" | ")} |`).join("\n");
+  ]);
 }
