@@ -26,6 +26,7 @@ import {
   ROLES,
 } from "../../script/deploy-constants.js";
 import { idFromLabel } from "../utils/utils.js";
+import { waitForSuccessfulTransactionReceipt } from "../utils/waitForSuccessfulTransactionReceipt.js";
 import {
   buildMainArgs,
   createCSVFile,
@@ -903,17 +904,20 @@ describe("premigration reconcile", () => {
       env.namedAccounts.user.address,
     );
     // What a pre-migration run that did not know the Graveyard wrote: a reservation
-    // at the cap, which ETHRegistrar never offers.
-    await env.client.writeContract({
-      address: env.rocketh.get("BatchRegistrar").address,
-      abi: Artifact_BatchRegistrar.abi,
-      functionName: "batchRegister",
-      args: [
-        zeroAddress,
-        env.v2.ENSV1Resolver.address,
-        [reclaimed],
-        [MAX_UINT64],
-      ],
+    // at the cap, which ETHRegistrar never offers. The reconciliation scans up to the
+    // head it reads, so the reservation has to be mined before it runs.
+    await waitForSuccessfulTransactionReceipt(env.client, {
+      hash: await env.client.writeContract({
+        address: env.rocketh.get("BatchRegistrar").address,
+        abi: Artifact_BatchRegistrar.abi,
+        functionName: "batchRegister",
+        args: [
+          zeroAddress,
+          env.v2.ENSV1Resolver.address,
+          [reclaimed],
+          [MAX_UINT64],
+        ],
+      }),
     });
     writeIndex(workDir, [
       ...indexEntries,
