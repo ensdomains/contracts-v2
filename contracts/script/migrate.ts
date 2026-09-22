@@ -157,7 +157,6 @@ import {
 import { dnsEncodeName } from "../test/utils/utils.js";
 import { resolveRegistrarControlRoute } from "./migrations/registrarControl.js";
 import {
-  BaseRegistrar as BaseRegistrarFragments,
   PermissionedRegistry as PermissionedRegistryFragments,
   RegistrarOwnershipAbi,
 } from "./migrations/abis.js";
@@ -172,9 +171,15 @@ import {
   loadCheckpoint,
   main as preMigrationMain,
   parseCSVLine,
+  assertGraveyards,
   bonusAdjustedExpiry,
+  graveyardSet,
   holdsReservation,
   isClaimableOnV1,
+  parseGraveyardAddresses,
+  readV1Registrants,
+  readV1Registrations,
+  v1Eligibility,
 } from "./preMigration.js";
 import {
   compareCalldata,
@@ -248,7 +253,6 @@ const FORK_UPSTREAM_RETRY_BACKOFF_MS = 2_000;
 /// The reads are issued in batches, and `multicall` infers a result type per
 /// entry: doing that against a whole artifact ABI exceeds the type
 /// instantiation depth and degrades every result to `unknown`.
-const NAME_EXPIRES_ABI = BaseRegistrarFragments.nameExpires;
 const REGISTRY_STATE_ABI = PermissionedRegistryFragments.getState;
 const REGISTRY_RESOLVER_ABI = PermissionedRegistryFragments.getResolver;
 const REGISTRY_RESOURCE_ABI = PermissionedRegistryFragments.getResource;
@@ -568,6 +572,7 @@ export async function runPreMigrationCommand(
     rpcUrl: string;
     mainnetRpcUrl?: string;
     network?: MigrationNetwork;
+    chainId?: string;
     v1DeploymentsDir?: string;
     v1DeploymentNetwork?: string;
     deploymentNetwork?: string;
@@ -582,6 +587,8 @@ export async function runPreMigrationCommand(
     bonusPeriodDays?: string;
     v1Resolver?: Address;
     v1BaseRegistrar?: Address;
+    /// Every Graveyard on the chain; defaults to those the deployments record.
+    graveyards?: readonly Address[];
     workDir?: string;
     dryRun?: boolean;
     metadataLabel?: string;
@@ -617,6 +624,14 @@ export async function runPreMigrationCommand(
   const v1BaseRegistrar =
     opts.v1BaseRegistrar ??
     requireV1Deployment(network, V1_BASE_REGISTRAR_NAME, opts).address;
+  const graveyards =
+    opts.graveyards ??
+    deploymentGraveyards({
+      network,
+      chainId: opts.chainId,
+      deploymentsDir,
+      deploymentNetwork,
+    });
   const envFallbackKey = envPrivateKey(
     "PREMIGRATION_PRIVATE_KEY",
     "BATCH_REGISTRAR_OWNER_KEY",
@@ -658,6 +673,8 @@ export async function runPreMigrationCommand(
       opts.mainnetRpcUrl ?? opts.rpcUrl,
       "--v1-base-registrar",
       v1BaseRegistrar,
+      "--graveyards",
+      graveyards.join(","),
       "--batch-size",
       String(parseNumber(opts.batchSize, 50)),
     ];
@@ -806,6 +823,7 @@ async function reconcileRehearsalPreMigration(opts: {
     workDir: opts.workDir,
     deploymentsDir: opts.deploymentsDir,
     deploymentNetwork: opts.deploymentNetwork,
+    v1BaseRegistrar: opts.v1BaseRegistrar,
     v1DeploymentsDir: opts.v1DeploymentsDir,
     v1DeploymentNetwork: opts.v1DeploymentNetwork,
     renewedIds: opts.renewedIds,
@@ -836,6 +854,7 @@ async function verifyPreMigration(opts: {
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
   v1BaseRegistrar?: Address;
+  graveyards?: readonly Address[];
   limit?: string;
   expectedStatus?: "reserved" | "registered" | "reserved-or-registered";
   bonusPeriodDays?: string;
@@ -864,6 +883,11 @@ async function verifyPreMigration(opts: {
     opts.v1BaseRegistrar ??
     requireV1Deployment(opts.network, V1_BASE_REGISTRAR_NAME, opts).address;
   const expectedStatus = opts.expectedStatus ?? "reserved-or-registered";
+  const graveyards = await resolveGraveyards(v1Client, {
+    ...opts,
+    deploymentsDir,
+    deploymentNetwork,
+  });
   const labels = readLabelsFromCsv(
     opts.csvFile,
     opts.limit ? Number(opts.limit) : undefined,
@@ -877,6 +901,7 @@ async function verifyPreMigration(opts: {
   const errors: string[] = [];
   let eligible = 0;
   let skipped = 0;
+  let skippedGraveyard = 0;
   let invalid = 0;
   let verifiedActive = 0;
   let verifiedExpiredBonus = 0;
@@ -894,15 +919,11 @@ async function verifyPreMigration(opts: {
     });
     if (validBatch.length === 0) continue;
 
-    const expiryResults = await v1Client.multicall({
-      allowFailure: true,
-      contracts: validBatch.map((label) => ({
-        address: baseRegistrar,
-        abi: NAME_EXPIRES_ABI,
-        functionName: "nameExpires",
-        args: [labelId(label)],
-      })),
-    });
+    const registrations = await readV1Registrations(
+      v1Client,
+      baseRegistrar,
+      validBatch.map(labelId),
+    );
     const stateResults = await client.multicall({
       allowFailure: true,
       contracts: validBatch.map(
@@ -919,12 +940,10 @@ async function verifyPreMigration(opts: {
 
     for (let index = 0; index < validBatch.length; index++) {
       const label = validBatch[index];
-      const expiryResult = expiryResults[index];
+      const registration = registrations[index];
       const stateResult = stateResults[index];
-      if (expiryResult.status === "failure") {
-        errors.push(
-          `${label}.eth v1 expiry lookup failed: ${expiryResult.error}`,
-        );
+      if ("error" in registration) {
+        errors.push(`${label}.eth v1 lookup failed: ${registration.error}`);
         continue;
       }
       if (stateResult.status === "failure") {
@@ -934,10 +953,12 @@ async function verifyPreMigration(opts: {
         continue;
       }
       const state = stateResult.result;
-      const expiry = expiryResult.result;
+      const expiry = registration.expiry;
 
-      if (!isClaimableOnV1(expiry, v1Now)) {
+      const eligibility = v1Eligibility(registration, v1Now, graveyards);
+      if (eligibility !== "claimable") {
         skipped++;
+        if (eligibility === "graveyard") skippedGraveyard++;
         continue;
       }
 
@@ -1010,6 +1031,7 @@ async function verifyPreMigration(opts: {
   console.log(`invalid labels: ${invalid}`);
   console.log(`eligible v1 names: ${eligible}`);
   console.log(`skipped ineligible names: ${skipped}`);
+  console.log(`  of them, v1 registrant is a Graveyard: ${skippedGraveyard}`);
   console.log(`verified active names: ${verifiedActive}`);
   console.log(`verified expired-bonus names: ${verifiedExpiredBonus}`);
   console.log(`verified names: ${verifiedActive + verifiedExpiredBonus}`);
@@ -1152,6 +1174,9 @@ function toLabelhashHex(id: bigint): string {
 
 type ReconcileResult = {
   claimable: number;
+  /// Index names live by expiry whose v1 registrant is a Graveyard. They are not
+  /// claimable, so they are not in `claimable` and no reservation is expected.
+  graveyardOwned: number;
   reserved: number;
   /// Of `reserved`, the reservations past their expiry but inside the v2 grace
   /// period, which still belong to their v1 owner.
@@ -1199,6 +1224,9 @@ export async function reconcilePreMigration(opts: {
   expectedStatus?: "reserved" | "reserved-or-registered";
   reportOnly?: boolean;
   fromBlock?: string;
+  v1BaseRegistrar?: Address;
+  // Every Graveyard on the chain; defaults to those the deployments record.
+  graveyards?: readonly Address[];
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
   // Count names whose CANNOT_TRANSFER fuse is burned. One wrapper read per claimable
@@ -1247,6 +1275,14 @@ export async function reconcilePreMigration(opts: {
     deploymentNetwork,
   });
   const registryAddress = registry.address;
+  const v1BaseRegistrar =
+    opts.v1BaseRegistrar ??
+    requireV1Deployment(opts.network, V1_BASE_REGISTRAR_NAME, opts).address;
+  const graveyards = await resolveGraveyards(v1Client, {
+    ...opts,
+    deploymentsDir,
+    deploymentNetwork,
+  });
 
   // Claimability is judged against chain time, not wall-clock time: on a fork pinned
   // to a past block the two disagree, and a wall-clock "now" would mark names
@@ -1260,13 +1296,17 @@ export async function reconcilePreMigration(opts: {
     BigInt(parseNumber(opts.bonusPeriodDays, 62)) * SEC_PER_DAY;
   const expectedStatus = opts.expectedStatus ?? "reserved";
 
-  const claimable: Array<{ id: string; expiry: bigint }> = [];
+  // Names whose expiry leaves them claimable. Which of them a Graveyard holds is chain
+  // state the index does not carry, so it is read below; until then, this is the set
+  // both sources can be compared on.
+  const live: Array<{ id: string; expiry: bigint }> = [];
   for (const [id, expiry] of index.expiries) {
-    if (isClaimableOnV1(expiry, v1Now)) claimable.push({ id, expiry });
+    if (isClaimableOnV1(expiry, v1Now)) live.push({ id, expiry });
   }
 
   const result: ReconcileResult = {
-    claimable: claimable.length,
+    claimable: 0,
+    graveyardOwned: 0,
     reserved: 0,
     reservedInGrace: 0,
     registered: 0,
@@ -1285,21 +1325,23 @@ export async function reconcilePreMigration(opts: {
   // that here than after the freeze.
   let crossSourceProblem: string | undefined;
   if (opts.csvFile && existsSync(opts.csvFile)) {
+    // Both counts go by expiry alone. The CSV cannot say which names a Graveyard
+    // holds, so the Graveyard exclusion is applied after this comparison.
     const csv = countClaimableCsvRows(opts.csvFile, v1Now);
-    result.crossSource = { csv: csv.count, index: claimable.length };
+    result.crossSource = { csv: csv.count, index: live.length };
     console.log(
       csv.filtered
-        ? `cross-source: CSV holds ${csv.count} claimable label(s)${csv.unknownExpiry > 0 ? ` (${csv.unknownExpiry} of them with no expiry recorded, counted as claimable)` : ""}, the index has ${claimable.length} claimable name(s)`
-        : `cross-source: CSV holds ${csv.count} label(s) and records no expiries, so this is every row it carries and not a claimable count; the index has ${claimable.length} claimable name(s)`,
+        ? `cross-source: CSV holds ${csv.count} label(s) claimable by expiry${csv.unknownExpiry > 0 ? ` (${csv.unknownExpiry} of them with no expiry recorded, counted as claimable)` : ""}, the index has ${live.length} name(s) claimable by expiry`
+        : `cross-source: CSV holds ${csv.count} label(s) and records no expiries, so this is every row it carries and not a claimable count; the index has ${live.length} name(s) claimable by expiry`,
     );
     // Only a CSV that records expiries produces a claimable count; without them the
     // number above is every row it carries, which is not the same quantity and
     // cannot be compared.
     if (csv.filtered) {
-      const drift = Math.abs(csv.count - claimable.length);
+      const drift = Math.abs(csv.count - live.length);
       const tolerance = parseNumber(opts.crossSourceTolerance, 0);
       if (drift > tolerance) {
-        crossSourceProblem = `cross-source: the CSV and the index disagree on how many names are live by ${drift} (CSV ${csv.count}, index ${claimable.length}); one of the two is incomplete, and which one decides whether a name is stranded. Re-export or rebuild, or pass --cross-source-tolerance to accept a known difference`;
+        crossSourceProblem = `cross-source: the CSV and the index disagree on how many names are live by ${drift} (CSV ${csv.count}, index ${live.length}); one of the two is incomplete, and which one decides whether a name is stranded. Re-export or rebuild, or pass --cross-source-tolerance to accept a known difference`;
         // Thrown here rather than collected with the per-name problems: a count
         // disagreement says one of the two sources is incomplete, so the passes below
         // would be examining the wrong set of names. It is also the cheapest evidence
@@ -1313,7 +1355,47 @@ export async function reconcilePreMigration(opts: {
   console.log(
     `v1 index: ${index.expiries.size} names @ block ${index.meta.block} (${index.meta.source}${index.meta.scope === "labels" ? ", scoped to the names given rather than every registration" : ""})`,
   );
+
+  // The registrant is read at the head rather than at the index block. A name a
+  // Graveyard took after the index was built either had passed grace by then, and is
+  // not live here, or was migrated, which v2 records.
+  const claimable: Array<{ id: string; expiry: bigint }> = [];
+  const graveyardIds = new Set<string>();
+  for (
+    let start = 0;
+    start < live.length;
+    start += PREMIGRATION_VERIFY_BATCH_SIZE
+  ) {
+    const batch = live.slice(start, start + PREMIGRATION_VERIFY_BATCH_SIZE);
+    const registrants = await readV1Registrants(
+      v1Client,
+      v1BaseRegistrar,
+      batch.map((entry) => BigInt(entry.id)),
+    );
+    for (const [position, entry] of batch.entries()) {
+      const owner = registrants[position];
+      if ("error" in owner) {
+        result.missing.push(`${entry.id} v1 lookup failed: ${owner.error}`);
+        continue;
+      }
+      // Judged on the index's expiry, as the rest of the pass is.
+      const eligibility = v1Eligibility(
+        { expiry: entry.expiry, registrant: owner.registrant },
+        v1Now,
+        graveyards,
+      );
+      if (eligibility === "claimable") claimable.push(entry);
+      else if (eligibility === "graveyard") {
+        graveyardIds.add(toLabelhashHex(canonicalLabelId(entry.id)));
+      }
+    }
+  }
+  result.claimable = claimable.length;
+  result.graveyardOwned = graveyardIds.size;
   console.log(`claimable v1 names: ${claimable.length}`);
+  console.log(
+    `not claimable, v1 registrant is a Graveyard: ${graveyardIds.size} (graveyards: ${[...graveyards].join(", ")})`,
+  );
 
   const bracketLabels =
     opts.csvFile && existsSync(opts.csvFile)
@@ -1478,15 +1560,26 @@ export async function reconcilePreMigration(opts: {
     staleSeeds,
   );
   for (const [labelhash, { label, reserved }] of seeded) {
-    if (claimableIds.has(toLabelhashHex(canonicalLabelId(labelhash)))) continue;
+    const canonicalId = toLabelhashHex(canonicalLabelId(labelhash));
+    if (claimableIds.has(canonicalId)) continue;
     // Registered through the registrar with no reservation behind it: once
     // migration has opened that is someone registering a name v1 no longer holds,
     // not a seed. Before then nothing may register, so it is still reported.
     if (!reserved && migrationOpen) continue;
     const known = index.expiries.get(labelhash);
     if (known !== undefined) {
+      const state = staleStates.get(labelhash);
+      if (graveyardIds.has(canonicalId)) {
+        const problem = describeGraveyardSeed(state, migrationOpen, v2Now);
+        if (problem) {
+          result.unexpected.push(
+            `${labelhash}${label ? ` (${label}.eth)` : ""} ${problem}`,
+          );
+        }
+        continue;
+      }
       const expected = bonusAdjustedExpiry(known, bonusPeriodSeconds);
-      const actual = staleStates.get(labelhash);
+      const actual = state?.expiry;
       if (
         actual === expected ||
         (migrationOpen && actual !== undefined && actual > expected)
@@ -1674,6 +1767,8 @@ export async function reconcilePreMigration(opts: {
       verifiedAt: new Date().toISOString(),
       details: {
         claimable: result.claimable,
+        graveyardOwned: result.graveyardOwned,
+        graveyards: [...graveyards],
         reserved: result.reserved,
         registered: result.registered,
         unreservable: result.unreservable.length,
@@ -1694,14 +1789,42 @@ export async function reconcilePreMigration(opts: {
   return result;
 }
 
-// Current v2 expiry per labelhash, batched. Used by the reverse pass, which has to
+// A seed whose v1 name a Graveyard holds, judged on its v2 state. Pre-migration never
+// writes one, and no v1 owner can claim one, so what matters is whether v2 still
+// keeps the name from being registered:
+//   - REGISTERED is a migrated name, or one registered afresh after the Graveyard took
+//     it. Either is fine once migration has opened, and an anomaly before.
+//   - A reservation that still holds locks the name for nobody: `ETHRegistrar` will
+//     not offer it. With the default bonus period a seed written before a Graveyard
+//     reclaimed the name has always lapsed by then, since reclaiming needs the v1
+//     grace period to be over.
+//   - Anything else is a seed that lapsed. The index expiry says nothing about what it
+//     carried, since the Graveyard's reclaim replaced it.
+function describeGraveyardSeed(
+  state: V2EntryState | undefined,
+  migrationOpen: boolean,
+  v2Now: bigint,
+): string | null {
+  if (state === undefined) return "is on v2 with an unreadable state";
+  if (state.status === STATUS.REGISTERED) {
+    return migrationOpen ? null : "is REGISTERED before migration opened";
+  }
+  if (holdsReservation(state, v2Now)) {
+    return "holds a v2 reservation, but its v1 registrant is a Graveyard, so no v1 owner can claim it and ETHRegistrar will not offer it";
+  }
+  return null;
+}
+
+type V2EntryState = { status: number; expiry: bigint; latestOwner: Address };
+
+// Current v2 state per labelhash, batched. Used by the reverse pass, which has to
 // judge a seed by what it carries rather than by the fact that it exists.
 async function readV2StatesInBatches(
   client: ReturnType<typeof publicClient>,
   registryAddress: Address,
   labelhashes: string[],
-): Promise<Map<string, bigint>> {
-  const expiries = new Map<string, bigint>();
+): Promise<Map<string, V2EntryState>> {
+  const states = new Map<string, V2EntryState>();
   for (
     let start = 0;
     start < labelhashes.length;
@@ -1711,7 +1834,7 @@ async function readV2StatesInBatches(
       start,
       start + PREMIGRATION_VERIFY_BATCH_SIZE,
     );
-    const states = await client.multicall({
+    const outcomes = await client.multicall({
       allowFailure: true,
       contracts: batch.map(
         (labelhash) =>
@@ -1724,12 +1847,13 @@ async function readV2StatesInBatches(
       ),
     });
     for (const [index, labelhash] of batch.entries()) {
-      const state = states[index];
-      if (state.status === "failure") continue;
-      expiries.set(labelhash, state.result.expiry);
+      const outcome = outcomes[index];
+      if (outcome.status === "failure") continue;
+      const { status, expiry, latestOwner } = outcome.result;
+      states.set(labelhash, { status, expiry, latestOwner });
     }
   }
-  return expiries;
+  return states;
 }
 
 type ContractRef = { address: Address; abi: readonly any[] };
@@ -2060,6 +2184,80 @@ function siblingDeploymentNamespaces(opts: {
     .sort();
 }
 
+/// The deployment namespaces on this chain other than the active one: the dated
+/// archives a fresh deploy renamed aside and the runtime sets, named after the network
+/// or after the active namespace. Their contracts are superseded but still on chain,
+/// along with any v1 grant or v1 name they hold.
+function supersededDeploymentNamespaces(opts: {
+  network: MigrationNetwork;
+  chainId?: string;
+  deploymentsDir: string;
+  deploymentNetwork: string;
+}): string[] {
+  const canonicalChainId = NETWORKS[opts.network].chain.id;
+  return siblingDeploymentNamespaces({
+    deploymentsDir: opts.deploymentsDir,
+    networks: [opts.network, opts.deploymentNetwork],
+    chainIds: [parseNumber(opts.chainId, canonicalChainId), canonicalChainId],
+  }).filter((namespace) => namespace !== opts.deploymentNetwork);
+}
+
+/// Every Graveyard deployed on this chain: the active namespace's, and each
+/// superseded namespace's. A superseded Graveyard keeps every v1 name it reclaimed or
+/// was handed while its deployment was live, so the active one alone would leave
+/// those names claimable.
+///
+/// The active namespace has to record one. Without it the set cannot be shown to be
+/// complete, and a name missing from it is reserved for nobody.
+export function deploymentGraveyards(opts: {
+  network: MigrationNetwork;
+  chainId?: string;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
+}): Address[] {
+  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+  const active = maybeLoadV2Deployment(
+    deploymentsDir,
+    deploymentNetwork,
+    "Graveyard",
+  );
+  if (!active) {
+    throw new Error(
+      `no Graveyard artifact under ${join(resolve(deploymentsDir), deploymentNetwork)}: cannot tell which v1 names a Graveyard holds. Pass --graveyards with every Graveyard on this chain.`,
+    );
+  }
+  const addresses = [active.address];
+  for (const namespace of supersededDeploymentNamespaces({
+    ...opts,
+    deploymentsDir,
+    deploymentNetwork,
+  })) {
+    const graveyard = maybeLoadV2Deployment(
+      deploymentsDir,
+      namespace,
+      "Graveyard",
+    );
+    if (graveyard) addresses.push(graveyard.address);
+  }
+  return [...graveyardSet(addresses)];
+}
+
+/// The Graveyard set a pre-migration check applies: the one given, or else every
+/// Graveyard the deployments record, each confirmed on the v1 chain.
+async function resolveGraveyards(
+  v1Client: ReturnType<typeof publicClient>,
+  opts: Parameters<typeof deploymentGraveyards>[0] & {
+    graveyards?: readonly Address[];
+  },
+): Promise<ReadonlySet<Address>> {
+  const graveyards = graveyardSet(
+    opts.graveyards ?? deploymentGraveyards(opts),
+  );
+  await assertGraveyards(v1Client, graveyards);
+  return graveyards;
+}
+
 // Smallest block span worth requesting before a provider's refusal is taken at face
 // value rather than as a demand for a narrower one.
 const LOG_SCAN_MIN_SPAN = 1_000n;
@@ -2253,7 +2451,6 @@ async function auditV1Controllers(
   );
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const canonicalChainId = NETWORKS[opts.network].chain.id;
 
   // Candidates are tracked per v1 surface, since a handoff contract authorized on
   // one reverse registrar has no grant to answer for on the other.
@@ -2322,12 +2519,11 @@ async function auditV1Controllers(
     );
   }
 
-  for (const namespace of siblingDeploymentNamespaces({
+  for (const namespace of supersededDeploymentNamespaces({
+    ...opts,
     deploymentsDir,
-    networks: [opts.network, deploymentNetwork],
-    chainIds: [parseNumber(opts.chainId, canonicalChainId), canonicalChainId],
+    deploymentNetwork,
   })) {
-    if (namespace === deploymentNetwork) continue;
     addNamespaceHandoffControllers(namespace, false);
   }
 
@@ -6378,6 +6574,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         network: opts.network,
         rpcUrl,
         mainnetRpcUrl: rpcUrl,
+        chainId: String(chainId),
         ...v1Deployments,
         deploymentsDir,
         deploymentNetwork,
@@ -6541,6 +6738,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         network: opts.network,
         rpcUrl,
         mainnetRpcUrl: rpcUrl,
+        chainId: String(chainId),
         ...v1Deployments,
         deploymentsDir,
         deploymentNetwork,
@@ -7260,6 +7458,15 @@ function addDeploymentOptions(command: Command): Command {
     );
 }
 
+// The Graveyard set the pre-migration commands apply. See `deploymentGraveyards`.
+function addGraveyardOptions(command: Command): Command {
+  return command.option(
+    "--graveyards <addresses>",
+    "Comma-separated Graveyard addresses whose v1 names are not claimable; defaults to every Graveyard the deployments dir records for this chain",
+    parseGraveyardAddresses,
+  );
+}
+
 function addV1DeploymentOptions(command: Command): Command {
   return command
     .option("--v1-deployments-dir <path>", "Root directory for v1 deployments")
@@ -7340,6 +7547,8 @@ interface PreMigrationRunSummary {
   renewed: number;
   skippedNeverRegistered: number;
   skippedExpiredPastGrace: number;
+  /// Names left unreserved because a Graveyard is their v1 registrant.
+  skippedGraveyard: number;
   invalidLabels: number;
   alreadyOnV2: number;
   /// Reservations already carrying an expiry at least as long as this run would set,
@@ -7362,6 +7571,7 @@ interface PreMigrationMetadata {
     alreadyCurrent: number;
     skippedNeverRegistered: number;
     skippedExpiredPastGrace: number;
+    skippedGraveyard: number;
     invalidLabels: number;
     alreadyOnV2: number;
     failed: number;
@@ -7382,6 +7592,7 @@ function checkpointToRunSummary(
     renewed: checkpoint.renewedCount,
     skippedNeverRegistered: checkpoint.skippedNeverRegisteredCount,
     skippedExpiredPastGrace: checkpoint.skippedPastGraceCount,
+    skippedGraveyard: checkpoint.skippedGraveyardCount,
     invalidLabels: checkpoint.invalidLabelCount,
     alreadyOnV2: checkpoint.alreadyRegisteredCount,
     upToDate: checkpoint.upToDateCount,
@@ -7409,6 +7620,7 @@ function resolveFromRuns(
     alreadyCurrent: latest.upToDate,
     skippedNeverRegistered: latest.skippedNeverRegistered,
     skippedExpiredPastGrace: latest.skippedExpiredPastGrace,
+    skippedGraveyard: latest.skippedGraveyard,
     invalidLabels: latest.invalidLabels,
     alreadyOnV2: latest.alreadyOnV2,
     failed: latest.failed,
@@ -7540,6 +7752,7 @@ type PremigrationRunCliOptions = NetworkCliOptions &
     batchRegistrar?: Address;
     v1Resolver?: Address;
     v1BaseRegistrar?: Address;
+    graveyards?: Address[];
     batchSize?: string;
     limit?: string;
     bonusPeriodDays?: string;
@@ -7555,6 +7768,7 @@ type PremigrationVerifyCliOptions = NetworkCliOptions &
     registry?: Address;
     v1Resolver?: Address;
     v1BaseRegistrar?: Address;
+    graveyards?: Address[];
     limit?: string;
     expectedStatus?: "reserved" | "registered" | "reserved-or-registered";
     bonusPeriodDays?: string;
@@ -7672,7 +7886,7 @@ export async function main(argv = process.argv): Promise<void> {
   const addPremigrationOptions = (command: Command) =>
     addV1DeploymentOptions(
       addDeploymentOptions(
-        addNetworkOptions(command)
+        addGraveyardOptions(addNetworkOptions(command))
           .option("--private-key <key>", "BatchRegistrar owner private key")
           .requiredOption("--csv-file <path>", "Pre-migration CSV")
           .option("--mainnet-rpc-url <url>", "RPC URL for v1 expiry reads")
@@ -7736,7 +7950,7 @@ export async function main(argv = process.argv): Promise<void> {
     addV1DeploymentOptions(
       addDeploymentOptions(
         addNetworkOptions(
-          new Command("verify")
+          addGraveyardOptions(new Command("verify"))
             .description(
               "Verify eligible CSV names were reserved or registered on v2",
             )
@@ -7933,7 +8147,7 @@ export async function main(argv = process.argv): Promise<void> {
     addV1DeploymentOptions(
       addDeploymentOptions(
         addNetworkOptions(
-          new Command("reconcile")
+          addGraveyardOptions(new Command("reconcile"))
             .description(
               "Reconcile the v1 name index against v2 state in both directions",
             )
@@ -7944,6 +8158,7 @@ export async function main(argv = process.argv): Promise<void> {
             )
             .option("--mainnet-rpc-url <url>", "RPC URL for v1 reads")
             .option("--registry <address>", "v2 ETHRegistry address")
+            .option("--v1-base-registrar <address>", "v1 BaseRegistrar address")
             .option(
               "--from-block <number>",
               "Block to scan v2 registry events from; defaults to the registry's deploy block",
@@ -7986,6 +8201,8 @@ export async function main(argv = process.argv): Promise<void> {
           csvFile?: string;
           mainnetRpcUrl?: string;
           registry?: Address;
+          v1BaseRegistrar?: Address;
+          graveyards?: Address[];
           fromBlock?: string;
           expectedStatus?: "reserved" | "reserved-or-registered";
           reportOnly?: boolean;

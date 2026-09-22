@@ -45,6 +45,8 @@ export function buildMainArgs(
     batchSize?: number;
     useEnvVarForPrivateKey?: boolean;
     omitPrivateKey?: boolean;
+    /// Defaults to the devnet's own Graveyard.
+    graveyards?: readonly string[];
   } = {},
 ): string[] {
   const rpcUrl = `http://${env.hostPort}`;
@@ -69,6 +71,8 @@ export function buildMainArgs(
     String(overrides.bonusPeriodDays ?? 0),
     "--v1-base-registrar",
     env.v1.BaseRegistrar.address,
+    "--graveyards",
+    (overrides.graveyards ?? [env.v2.Graveyard.address]).join(","),
   ];
 
   if (overrides.useEnvVarForPrivateKey) {

@@ -13,6 +13,7 @@ import {
   zeroAddress,
 } from "viem";
 
+import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import { reconcilePreMigration } from "../../script/migrate.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import { V1_INDEX_META_FILE } from "../../script/premigrationIndex.js";
@@ -28,6 +29,8 @@ import { idFromLabel } from "../utils/utils.js";
 import {
   buildMainArgs,
   createCSVFile,
+  handToGraveyard,
+  reclaimThroughGraveyard,
   registerV1Name,
   setupBaseRegistrarController,
 } from "../utils/mockPreMigration.js";
@@ -159,6 +162,8 @@ describe("premigration reconcile", () => {
       rpcUrl: `http://${env.hostPort}`,
       workDir,
       registry: env.v2.ETHRegistry.address,
+      v1BaseRegistrar: env.v1.BaseRegistrar.address,
+      graveyards: [env.v2.Graveyard.address],
       bonusPeriodDays: String(BONUS_PERIOD_DAYS),
       fromBlock: fromBlock.toString(),
       // A passing reconciliation records itself for the phase 3 gate, which would
@@ -854,5 +859,95 @@ describe("premigration reconcile", () => {
 
     expect(result.claimable).toBe(1);
     expect(result.missing).toEqual([]);
+  });
+
+  // ─── Graveyard-held names ──────────────────────────────────────────
+
+  it("does not expect a reservation for a name a Graveyard reclaimed", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const reclaimed = "reclaimed";
+    const reclaimedExpiry = await reclaimThroughGraveyard(
+      env,
+      reclaimed,
+      env.namedAccounts.user.address,
+    );
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: labelhash(reclaimed), expiry: reclaimedExpiry },
+    ]);
+
+    const result = await run(workDir, fromBlock);
+
+    expect(result.claimable).toBe(1);
+    expect(result.graveyardOwned).toBe(1);
+    expect(result.missing).toEqual([]);
+    expect(result.unexpected).toEqual([]);
+
+    // Its expiry alone reads as claimable, so a set that leaves this Graveyard out
+    // demands a reservation for it. The migration controller answers the same
+    // `NAME_WRAPPER()` probe, so it stands in for such a set.
+    const blind = await run(workDir, fromBlock, {
+      graveyards: [env.v2.UnlockedMigrationController.address],
+      reportOnly: true,
+    });
+    expect(blind.graveyardOwned).toBe(0);
+    expect(blind.missing).toEqual([labelhash(reclaimed)]);
+  });
+
+  it("reports a reservation still held for a name a Graveyard reclaimed", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const reclaimed = "lockedaway";
+    const reclaimedExpiry = await reclaimThroughGraveyard(
+      env,
+      reclaimed,
+      env.namedAccounts.user.address,
+    );
+    // What a pre-migration run that did not know the Graveyard wrote: a reservation
+    // at the cap, which ETHRegistrar never offers.
+    await env.client.writeContract({
+      address: env.rocketh.get("BatchRegistrar").address,
+      abi: Artifact_BatchRegistrar.abi,
+      functionName: "batchRegister",
+      args: [
+        zeroAddress,
+        env.v2.ENSV1Resolver.address,
+        [reclaimed],
+        [MAX_UINT64],
+      ],
+    });
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: labelhash(reclaimed), expiry: reclaimedExpiry },
+    ]);
+
+    await expect(run(workDir, fromBlock)).rejects.toThrow(
+      /reconciliation failed/,
+    );
+    const result = await run(workDir, fromBlock, { reportOnly: true });
+    expect(result.missing).toEqual([]);
+    expect(result.unexpected).toHaveLength(1);
+    expect(result.unexpected[0]).toContain(labelhash(reclaimed));
+    expect(result.unexpected[0]).toContain("holds a v2 reservation");
+  });
+
+  it("accepts a migrated name once migration has opened, and reports it before", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+    // What a migration leaves: the v1 token with the Graveyard, the name on v2.
+    await handToGraveyard(env, "alpha", env.namedAccounts.user);
+    await openV2Registrations();
+    await registerOnV2("alpha");
+
+    const open = await run(workDir, fromBlock, {
+      expectedStatus: "reserved-or-registered",
+    });
+    expect(open.claimable).toBe(0);
+    expect(open.graveyardOwned).toBe(1);
+    expect(open.unexpected).toEqual([]);
+
+    const closed = await run(workDir, fromBlock, { reportOnly: true });
+    expect(closed.unexpected).toEqual([
+      `${labelhash("alpha")} (alpha.eth) is REGISTERED before migration opened`,
+    ]);
   });
 });

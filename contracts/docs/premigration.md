@@ -5,7 +5,8 @@ registrations into the v2 registry. It reads a CSV export of v1 registrations, v
 on-chain against the v1 `BaseRegistrar`, and reserves or renews it on v2 via the `BatchRegistrar`
 contract. Names are written in a **reserved** state (owner `address(0)`) with the v1 expiry preserved
 (plus a configurable bonus period) and `ENSV1Resolver` set as the fallback resolver; ownership
-transfer happens in a later migration phase.
+transfer happens in a later migration phase. A name whose v1 registrant is a `Graveyard` is never
+reserved — see [Graveyard-held names](#graveyard-held-names).
 
 ## Quick start
 
@@ -18,22 +19,26 @@ export PREMIGRATION_PRIVATE_KEY=0x...   # BatchRegistrar owner key
 # 1. Dry run — parses, verifies, computes expiries, checkpoints; sends no transactions
 bun run script/preMigration.ts \
   --rpc-url <url> --registry <addr> --batch-registrar <addr> \
-  --v1-resolver <addr> --csv-file ./data/v1-registrations.csv --dry-run
+  --v1-resolver <addr> --graveyards <addr,addr,...> \
+  --csv-file ./data/v1-registrations.csv --dry-run
 
 # 2. Execute (drop --dry-run)
 bun run script/preMigration.ts \
   --rpc-url <url> --registry <addr> --batch-registrar <addr> \
-  --v1-resolver <addr> --csv-file ./data/v1-registrations.csv
+  --v1-resolver <addr> --graveyards <addr,addr,...> \
+  --csv-file ./data/v1-registrations.csv
 
 # 3. Resume from the last checkpoint after an interruption (same options as before)
 bun run script/preMigration.ts --continue \
   --rpc-url <url> --registry <addr> --batch-registrar <addr> \
-  --v1-resolver <addr> --csv-file ./data/v1-registrations.csv
+  --v1-resolver <addr> --graveyards <addr,addr,...> \
+  --csv-file ./data/v1-registrations.csv
 ```
 
 In the phased migration this script is driven through the operator CLI
 (`bun run migration -- premigration run` / `resume`, then `verify`) — see
-[migration.md](./migration.md). The reference below documents the underlying script directly.
+[migration.md](./migration.md). The CLI fills in `--graveyards` from the deployment artifacts. The
+reference below documents the underlying script directly.
 
 ## Prerequisites
 
@@ -69,6 +74,7 @@ bun run script/preMigration.ts [options]
 | `--batch-registrar <address>` | `BatchRegistrar` address |
 | `--csv-file <path>` | CSV of v1 registrations |
 | `--v1-resolver <address>` | `ENSV1Resolver` address (set as fallback resolver) |
+| `--graveyards <addresses>` | Comma-separated addresses of every `Graveyard` on the chain, superseded deployments' included. A name any of them holds on v1 is not reserved. |
 
 ### Optional
 
@@ -86,7 +92,8 @@ bun run script/preMigration.ts [options]
 | `--v1-base-registrar <address>` | mainnet `BaseRegistrar` | v1 `BaseRegistrar` for expiry lookups (override for testing). |
 
 > Eligibility is independently gated by v1's hard-coded 90-day grace: a name expired more than 90 days
-> ago is past grace and skipped, regardless of `--bonus-period-days`.
+> ago is past grace and skipped, regardless of `--bonus-period-days`. A name whose v1 registrant is a
+> `Graveyard` is skipped whatever its expiry.
 >
 > A name deep in its v1 grace can compute a v2 expiry that has already passed. The registry accepts it,
 > and the entry reads `Available` at once, but it is still the v1 owner's: v2 keeps a lapsed
@@ -132,17 +139,18 @@ longer than 255 bytes and the bracketed-labelhash form (`[0x…]`) are skipped a
 ## How it works
 
 Names stream from the CSV in batches of `--batch-size`. Each batch is verified with a single multicall
-(two RPC calls regardless of size) reading v2 state (`PermissionedRegistry.getState()`) and v1 expiry
-(`BaseRegistrar.nameExpires()`), then submitted as one `BatchRegistrar.batchRegister()` transaction.
-Per-name action:
+per side (two RPC calls regardless of size) reading v2 state (`PermissionedRegistry.getState()`), and
+v1 expiry and registrant (`BaseRegistrar.nameExpires()` and `ownerOf()`), then submitted as one
+`BatchRegistrar.batchRegister()` transaction. Per-name action, in this order:
 
 | v2 status | v1 status | Action |
 |---|---|---|
+| Registered (2) | Any | **Fail** (already fully owned on v2) |
+| Any | Never registered, or past v1's 90-day grace | **Skip** (v1 owner lost the claim) |
+| Any | Registrant is a `Graveyard` | **Skip** (no v1 owner can claim it) |
 | Available (0) | Registered, or expired but within v1's 90-day grace | **Reserve** with expiry `v1Expiry + bonusPeriodDays` |
 | Reserved (1)† | Computed expiry longer than the stored one | **Renew** (extend expiry) |
 | Reserved (1)† | Computed expiry equal to or shorter than the stored one | **Skip** (up to date) |
-| Registered (2) | Any | **Fail** (already fully owned on v2) |
-| Any | Never registered, or past v1's 90-day grace | **Skip** (v1 owner lost the claim) |
 
 † Including a reservation past its expiry but inside the v2 grace period, which reads `Available (0)`
 yet still belongs to its v1 owner. Treating it as available would re-send it on every sync and count it
@@ -150,6 +158,33 @@ as a fresh reservation each time.
 
 Reserved names are written with owner/registry `address(0)`, resolver = `ENSV1Resolver`, roleBitmap
 `0`, and the computed expiry.
+
+### Graveyard-held names
+
+A `Graveyard` holds v1 tokens that no v1 owner can take back. A migration hands it the token of every
+name it moves to v2, and `Graveyard.clear` takes an expired name out of circulation by registering it to
+the Graveyard with an expiry at the `uint64` ceiling less the grace period. By expiry alone such a name
+reads as live, but a reservation for it belongs to nobody, and `ETHRegistrar` never offers a reserved
+name. So pre-migration neither reserves nor extends a name whose `BaseRegistrar.ownerOf` is a
+Graveyard, and counts it under "v1 registrant is a Graveyard". A migrated name is still **Registered
+(2)** on the registry it was migrated to, and is counted as already registered there, as before.
+
+`--graveyards` must list every Graveyard on the chain, not only the active deployment's. A
+superseded deployment's Graveyard keeps every name it reclaimed or received while it was live: on
+Sepolia, the Graveyard of the archived `sepolia-20260730-r1` set holds the names it reclaimed. The
+operator CLI derives the set the way phase 3 finds superseded controllers — the active namespace's
+`Graveyard` artifact plus that of every other namespace on the same chain — and refuses to run when the
+active namespace has none. Each address must answer the Graveyard's `NAME_WRAPPER()`, so a mistyped
+address or an account fails the run instead of silently leaving that account's names unreserved.
+
+`ownerOf` reverts for a name with no live registration — never registered, expired, or in grace — and
+the script reads that revert as "no registrant". A name in grace therefore stays claimable, as it was
+before. Any other failed read fails the name, which is then retried.
+
+The rule reads the `BaseRegistrar` owner only. A locked wrapped name that was migrated is held by the
+Graveyard as a `NameWrapper` token, so its `BaseRegistrar` owner is the `NameWrapper` and the rule does
+not see it. On a registry deployed after the name was migrated, pre-migration still reserves it, and
+the reservation stays until the v1 expiry lapses.
 
 A reservation is only ever extended, never shortened: `BatchRegistrar` renews when the requested
 expiry is greater than the stored one and does nothing otherwise. Names that would be a no-op are left
@@ -196,8 +231,9 @@ the resume cursor past rows nothing was sent for and drop them from the retry qu
 ## Output
 
 Informational output goes to `preMigration.log` and errors to `preMigration-errors.log`; the console
-mirrors progress with a final summary table (processed / reserved / renewed / skipped / already
-registered / already up to date / invalid / failed / success rate). Individual failures (name reverts,
+mirrors progress with a final summary table (processed / reserved / renewed / skipped — never
+registered, past grace, v1 registrant is a Graveyard / already registered / already up to date /
+invalid / failed / success rate). Individual failures (name reverts,
 RPC timeouts at a 30s per-call limit, checkpoint write errors) are counted and logged without aborting
 the batch, so partial progress is preserved.
 
@@ -243,6 +279,11 @@ bun run migration -- premigration verify --network sepolia --rpc-url http://127.
   --deployments-dir /tmp/fork-deployments --deployment-network sepolia \
   --csv-file ./csv-data/ens-registrations-sepolia.csv
 ```
+
+The Graveyard set comes from `--deployments-dir`. A scratch directory like the one above holds only the
+fork's own `Graveyard`, so names that an archived Sepolia deployment's Graveyard holds would still be
+reserved on the fork. Add `--graveyards` with the fork's Graveyard and each `Graveyard.json` under
+`deployments/sepolia*/` to leave them out, as a live run does.
 
 For the full phased rehearsal instead, see the `fork full` command in
 [migration.md](./migration.md#rehearsals).
