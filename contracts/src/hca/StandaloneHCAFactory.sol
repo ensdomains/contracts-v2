@@ -177,7 +177,7 @@ contract StandaloneHCAFactory is IStandaloneHCAFactory, Ownable {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Internal Functions
+    // Private Functions
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Reproduces the underlying factory's caller-bound CREATE2 address.
