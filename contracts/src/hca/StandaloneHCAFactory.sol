@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
+import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-
-import {LibVerifiableProxy} from "../utils/LibVerifiableProxy.sol";
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
 import {IStandaloneHCAFactory} from "./interfaces/IStandaloneHCAFactory.sol";
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
@@ -128,12 +128,7 @@ contract StandaloneHCAFactory is IStandaloneHCAFactory, Ownable {
         }
 
         uint256 salt = deploymentSalt(owner, hcaImplementation, userSalt);
-        hca = LibVerifiableProxy.computeAddress(
-            address(this),
-            salt,
-            address(VERIFIABLE_FACTORY),
-            PROXY_LOGIC
-        );
+        hca = _predictAddress(salt);
         if (hcaOwners[hca] == owner) {
             return hca;
         }
@@ -179,5 +174,16 @@ contract StandaloneHCAFactory is IStandaloneHCAFactory, Ownable {
         returns (uint256)
     {
         return uint256(keccak256(abi.encode(userSalt, owner, hcaImplementation)));
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Reproduces the underlying factory's caller-bound CREATE2 address.
+    function _predictAddress(uint256 salt) private view returns (address) {
+        bytes32 outerSalt = keccak256(abi.encode(address(this), salt));
+        bytes32 initCodeHash = keccak256(CloneProxyBytecode.creationCode(PROXY_LOGIC, outerSalt));
+        return Create2.computeAddress(outerSalt, initCodeHash, address(VERIFIABLE_FACTORY));
     }
 }
