@@ -2,9 +2,7 @@
 pragma solidity 0.8.27;
 
 import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
-import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
-import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
 import {Grant} from "../../access-control/interfaces/IEACGrantInitializable.sol";
 import {EACBaseRolesLib} from "../../access-control/libraries/EACBaseRolesLib.sol";
@@ -19,6 +17,7 @@ import {IDataSetter} from "../../resolver/interfaces/setters/IDataSetter.sol";
 import {IInterfaceSetter} from "../../resolver/interfaces/setters/IInterfaceSetter.sol";
 import {INameSetter} from "../../resolver/interfaces/setters/INameSetter.sol";
 import {ITextSetter} from "../../resolver/interfaces/setters/ITextSetter.sol";
+import {LibVerifiableProxy} from "../../utils/LibVerifiableProxy.sol";
 
 import {HCAExecutionLib} from "./HCAExecutionLib.sol";
 
@@ -154,31 +153,10 @@ library HCAResolverPolicyLib {
 
         if (
             keccak256(callData) != keccak256(expectedCallData) ||
-            resolverAddress(account, salt, factory, proxyLogic) != resolver
+            LibVerifiableProxy.computeAddress(account, salt, factory, proxyLogic) != resolver
         ) {
             revert PolicyRuleFailed();
         }
-    }
-
-    /// @notice Computes the resolver proxy address for an HCA and user salt.
-    /// @dev Mirrors the factory's caller-bound salt and clone bytecode derivation.
-    /// @param account The HCA that deploys the resolver proxy.
-    /// @param salt The user salt supplied to the factory.
-    /// @param factory The permitted verifiable factory.
-    /// @param proxyLogic The factory's proxy logic.
-    /// @return resolver The counterfactual resolver address.
-    function resolverAddress(address account, uint256 salt, address factory, address proxyLogic)
-        internal
-        pure
-        returns (address resolver)
-    {
-        bytes32 outerSalt = keccak256(abi.encode(account, salt));
-        return
-            Create2.computeAddress(
-                outerSalt,
-                keccak256(CloneProxyBytecode.creationCode(proxyLogic, outerSalt)),
-                factory
-            );
     }
 
     /// @dev Validates nested resolver calls.
