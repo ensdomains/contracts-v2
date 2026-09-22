@@ -219,7 +219,8 @@ transactions afterwards.
 >
 > Reconcile reads each registrant from the v1 chain head, for both index sources. That covers the
 > names live in the index, and every index name seeded on v2 whose index expiry is no longer live:
-> such a name may have been reclaimed after the index was built. The index keeps Graveyard-held names,
+> such a name may have been reclaimed after the index was built, or handed to a Graveyard and since
+> lapsed. Those are judged by the registrant alone, not by their expiry. The index keeps Graveyard-held names,
 > since the reverse pass needs them. In the reverse pass, a v2 entry for a
 > Graveyard-held name passes when it is `REGISTERED` once migration has opened (a migrated name) or
 > has lapsed. It is reported as unexpected when it is `REGISTERED` before migration opens, or when it

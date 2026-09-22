@@ -943,6 +943,29 @@ describe("premigration reconcile", () => {
     expect(result.unexpected[0]).toContain("holds a v2 reservation");
   });
 
+  it("reports a still-held reservation for a name handed to a Graveyard that has since lapsed", async () => {
+    // Handing the token to a Graveyard leaves the v1 expiry as it was, so the name
+    // lapses on schedule while a bonus longer than the v1 grace keeps its reservation.
+    const bonusPeriodDays = 120;
+    const { workDir, indexEntries, fromBlock } = await seed(
+      ["alpha"],
+      bonusPeriodDays,
+    );
+    writeIndex(workDir, indexEntries);
+    await handToGraveyard(env, "alpha", env.namedAccounts.user);
+    await warpTo(env, indexEntries[0].expiry + V1_GRACE_PERIOD_SECONDS + 1n);
+
+    const result = await run(workDir, fromBlock, {
+      bonusPeriodDays: String(bonusPeriodDays),
+      reportOnly: true,
+    });
+
+    expect(result.claimable).toBe(0);
+    expect(result.unexpected).toHaveLength(1);
+    expect(result.unexpected[0]).toContain(labelhash("alpha"));
+    expect(result.unexpected[0]).toContain("holds a v2 reservation");
+  });
+
   it("reconciles a fresh registry without the names earlier migrations left the Graveyard", async () => {
     const { user } = env.namedAccounts;
     const locked = "lockedmig";

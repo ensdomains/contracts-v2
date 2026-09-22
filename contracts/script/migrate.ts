@@ -1556,7 +1556,10 @@ export async function reconcilePreMigration(opts: {
   );
   // A stale seed's index expiry may predate a Graveyard taking the name: a reclaim
   // replaces the expiry and the registrant together. Which of these names a Graveyard
-  // holds now is read from the chain, as it was for the live ones above.
+  // holds now is read from the chain, as it was for the live ones above. They are
+  // judged by the registrant alone: a name handed to a Graveyard keeps its expiry, so
+  // once that lapses an expiry-first rule reads it as past grace, while a bonus period
+  // longer than the v1 grace keeps its reservation blocking the name.
   const liveIds = new Set(live.map((entry) => entry.id));
   const lapsedSeeds = staleSeeds.filter((labelhash) => !liveIds.has(labelhash));
   const lapsedRegistrations = await readV1RegistrationsInBatches(
@@ -1568,7 +1571,7 @@ export async function reconcilePreMigration(opts: {
     const read = lapsedRegistrations.get(labelhash)!;
     if ("error" in read) {
       result.unexpected.push(`${labelhash} v1 lookup failed: ${read.error}`);
-    } else if (v1Eligibility(read, v1Now, graveyards) === "graveyard") {
+    } else if (read.registrant !== null && graveyards.has(read.registrant)) {
       graveyardIds.add(toLabelhashHex(canonicalLabelId(labelhash)));
     }
   }
