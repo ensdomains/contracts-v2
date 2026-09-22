@@ -88,6 +88,9 @@ export const NameWrapper = {
   approve: pick(NAME_WRAPPER, "approve"),
   setResolver: pick(NAME_WRAPPER, "setResolver"),
   setTTL: pick(NAME_WRAPPER, "setTTL"),
+  /// The v1 registry and `.eth` registrar the wrapper is bound to.
+  ens: pick(NAME_WRAPPER, "ens"),
+  registrar: pick(NAME_WRAPPER, "registrar"),
 } as const;
 
 export const EnsRegistry = {
@@ -124,6 +127,7 @@ export const ReverseRegistrar = {
 /// names it has reclaimed.
 export const Graveyard = {
   NAME_WRAPPER: pick(GRAVEYARD, "NAME_WRAPPER"),
+  clear: pick(GRAVEYARD, "clear"),
 } as const;
 
 /// Whatever currently owns the v1 BaseRegistrar — the v1 owner directly, or a

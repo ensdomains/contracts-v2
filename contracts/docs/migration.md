@@ -200,19 +200,27 @@ transactions afterwards.
 > name's v1 token, and `Graveyard.clear` re-registers an expired name to itself with an expiry at the
 > `uint64` ceiling less the grace period, to take it out of circulation. By expiry alone either reads
 > as live, but no v1 owner can claim a reservation for it, and `ETHRegistrar` never offers a reserved
-> name. So `premigration run` does not reserve or extend a name whose `BaseRegistrar.ownerOf` is a
-> Graveyard, `premigration verify` skips it, and `premigration reconcile` does not expect it on v2
-> ("not claimable, v1 registrant is a Graveyard"). The rule is the same in all three
+> name. So `premigration run` does not reserve or extend a name whose v1 registrant is a Graveyard,
+> `premigration verify` skips it, and `premigration reconcile` does not expect it on v2 ("not
+> claimable, v1 registrant is a Graveyard"). The rule is the same in all three. The registrant is
+> the live `BaseRegistrar` token holder, or else the registry's owner of the name's node once the
+> registration is in grace. When that holder is the `NameWrapper`, the registrant is the wrapper
+> token's owner, which is how a locked migration hands a name to the Graveyard
 > ([premigration.md](./premigration.md#graveyard-held-names)).
 >
 > The Graveyard set is every `Graveyard` artifact on this chain: the active namespace's and that of
 > every superseded namespace, found the way phase 3 finds superseded controllers. A superseded
-> Graveyard keeps the names it took, so the active one alone is not enough. The commands refuse to run
-> when the active namespace has no Graveyard artifact, and refuse any address that does not answer the
-> Graveyard's `NAME_WRAPPER()`. `--graveyards <addresses>` replaces the derived set.
+> Graveyard keeps the names it took, so the active one alone is not enough. A Graveyard recorded
+> against another `NameWrapper` belongs to another v1 and is left out. The commands refuse to run
+> when the active namespace has no Graveyard artifact. They also refuse any address that is not a
+> Graveyard of this v1: it must answer `NAME_WRAPPER()`, accept a simulated `clear([])`, and report
+> the same `NameWrapper` as the rest, whose registrar is the `BaseRegistrar` in use.
+> `--graveyards <addresses>` replaces the derived set.
 >
-> Reconcile reads each registrant from the v1 chain head, for both index sources. The index keeps
-> Graveyard-held names, since the reverse pass needs them. In the reverse pass, a v2 entry for a
+> Reconcile reads each registrant from the v1 chain head, for both index sources. That covers the
+> names live in the index, and every index name seeded on v2 whose index expiry is no longer live:
+> such a name may have been reclaimed after the index was built. The index keeps Graveyard-held names,
+> since the reverse pass needs them. In the reverse pass, a v2 entry for a
 > Graveyard-held name passes when it is `REGISTERED` once migration has opened (a migrated name) or
 > has lapsed. It is reported as unexpected when it is `REGISTERED` before migration opens, or when it
 > still holds a reservation, because such a reservation locks the name for nobody. With the default

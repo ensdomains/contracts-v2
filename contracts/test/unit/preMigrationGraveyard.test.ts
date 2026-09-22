@@ -7,18 +7,26 @@ import {
   type Address,
   ContractFunctionRevertedError,
   ContractFunctionZeroDataError,
+  encodeAbiParameters,
+  encodeFunctionData,
   getAddress,
+  type Hex,
+  labelhash,
+  namehash,
+  zeroAddress,
 } from "viem";
 
 import { deploymentGraveyards } from "../../script/migrate.js";
+import { Graveyard } from "../../script/migrations/abis.js";
 import {
-  assertGraveyards,
+  ethNameNode,
   graveyardSet,
   isClaimableOnV1,
   MAX_UINT64,
   parseGraveyardAddresses,
-  readV1Registrants,
   readV1Registrations,
+  resolveV1Contracts,
+  type V1Contracts,
   V1_GRACE_PERIOD_SECONDS,
   v1Eligibility,
 } from "../../script/preMigration.js";
@@ -133,16 +141,44 @@ const REVERT = new ContractFunctionRevertedError({
   functionName: "ownerOf",
 });
 
-// Stands in for a viem client: answers each multicall with the next scripted
-// outcomes, and records the calls so a test can check what was asked.
+const BASE_REGISTRAR = getAddress("0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85");
+const REGISTRY = getAddress("0x00000000000c2e074ec69a0dfb2997ba6c7d2e1e");
+const WRAPPER = getAddress("0xd4416b13d2b3a9abae7acd5d6c2bbdbe25686401");
+const V1: V1Contracts = {
+  baseRegistrar: BASE_REGISTRAR,
+  registry: REGISTRY,
+  nameWrapper: WRAPPER,
+};
+
+const ok = (result: unknown): Outcome => ({ status: "success", result });
+const failed = (error: unknown): Outcome => ({ status: "failure", error });
+
+// The four reads a name takes, in the order the reader asks for them. Unset owners
+// read as the zero address, which is what the registry and the wrapper answer for a
+// node nobody holds.
+function reads({
+  expiry = ok(NOW + 86_400n),
+  ownerOf = ok(HOLDER),
+  nodeOwner = ok(zeroAddress),
+  wrapperOwner = ok(zeroAddress),
+}: {
+  expiry?: Outcome;
+  ownerOf?: Outcome;
+  nodeOwner?: Outcome;
+  wrapperOwner?: Outcome;
+} = {}): Outcome[] {
+  return [expiry, ownerOf, nodeOwner, wrapperOwner];
+}
+
+type Call = { address: Address; functionName: string; args: unknown[] };
+
+// Stands in for a viem client: answers a multicall with the scripted outcomes, and
+// records the calls so a test can check what was asked.
 function multicallClient(outcomes: Outcome[]) {
-  const calls: Array<{ functionName: string; args: unknown[] }[]> = [];
+  const calls: Call[][] = [];
   return {
     calls,
-    async multicall(request: {
-      allowFailure: boolean;
-      contracts: { functionName: string; args: unknown[] }[];
-    }) {
+    async multicall(request: { allowFailure: boolean; contracts: Call[] }) {
       expect(request.allowFailure).toBe(true);
       calls.push(request.contracts);
       return outcomes.slice(0, request.contracts.length);
@@ -150,113 +186,245 @@ function multicallClient(outcomes: Outcome[]) {
   };
 }
 
-const BASE_REGISTRAR = getAddress("0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85");
+async function registrantOf(outcomes: Outcome[]) {
+  const [registration] = await readV1Registrations(
+    multicallClient(outcomes),
+    V1,
+    [BigInt(labelhash("alpha"))],
+  );
+  return registration;
+}
+
+describe("ethNameNode", () => {
+  it("is the namehash of the .eth name, from the labelhash alone", () => {
+    expect(ethNameNode(BigInt(labelhash("alpha")))).toBe(namehash("alpha.eth"));
+  });
+});
 
 describe("readV1Registrations", () => {
-  it("reads each name's expiry and registrant in one multicall", async () => {
-    const client = multicallClient([
-      { status: "success", result: NOW },
-      { status: "success", result: HOLDER.toLowerCase() },
-    ]);
-    const [registration] = await readV1Registrations(client, BASE_REGISTRAR, [
-      7n,
-    ]);
-    expect(registration).toEqual({ expiry: NOW, registrant: HOLDER });
+  it("reads the expiry and the three owners in one multicall", async () => {
+    const client = multicallClient(reads());
+    const id = BigInt(labelhash("alpha"));
+    const [registration] = await readV1Registrations(client, V1, [id]);
+
+    expect(registration).toEqual({ expiry: NOW + 86_400n, registrant: HOLDER });
     expect(client.calls).toHaveLength(1);
-    expect(client.calls[0].map((call) => call.functionName)).toEqual([
-      "nameExpires",
-      "ownerOf",
+    const node = namehash("alpha.eth");
+    expect(
+      client.calls[0].map(({ address, functionName, args }) => [
+        address,
+        functionName,
+        args[0],
+      ]),
+    ).toEqual([
+      [BASE_REGISTRAR, "nameExpires", id],
+      [BASE_REGISTRAR, "ownerOf", id],
+      [REGISTRY, "owner", node],
+      [WRAPPER, "ownerOf", BigInt(node)],
     ]);
   });
 
-  it("reads a reverting ownerOf as no live registrant", async () => {
-    const client = multicallClient([
-      { status: "success", result: NOW - 1n },
-      { status: "failure", error: REVERT },
-    ]);
-    const [registration] = await readV1Registrations(client, BASE_REGISTRAR, [
-      7n,
-    ]);
-    expect(registration).toEqual({ expiry: NOW - 1n, registrant: null });
+  it("keeps a live token holder over the registry's node owner", async () => {
+    // The holder can reclaim the node whenever they like, so the node owner is
+    // not what decides who holds the name.
+    expect(
+      await registrantOf(
+        reads({ ownerOf: ok(HOLDER), nodeOwner: ok(GRAVEYARD) }),
+      ),
+    ).toEqual({ expiry: NOW + 86_400n, registrant: HOLDER });
   });
 
-  it("reports an ownerOf failure that is not a revert", async () => {
+  it("falls back to the registry's node owner once ownerOf reverts", async () => {
+    // A migrated unwrapped name in v1 grace: the token has expired, but the migration
+    // pointed the node at the Graveyard.
+    expect(
+      await registrantOf(
+        reads({
+          expiry: ok(NOW - 1n),
+          ownerOf: failed(REVERT),
+          nodeOwner: ok(GRAVEYARD),
+        }),
+      ),
+    ).toEqual({ expiry: NOW - 1n, registrant: GRAVEYARD });
+  });
+
+  it("follows a wrapped name to the owner the NameWrapper names", async () => {
+    // A locked migration hands the wrapper token to the Graveyard, while the
+    // registrar token stays with the wrapper.
+    expect(
+      await registrantOf(
+        reads({ ownerOf: ok(WRAPPER), wrapperOwner: ok(GRAVEYARD) }),
+      ),
+    ).toEqual({ expiry: NOW + 86_400n, registrant: GRAVEYARD });
+  });
+
+  it("follows the wrapper from the registry's node owner in grace too", async () => {
+    expect(
+      await registrantOf(
+        reads({
+          expiry: ok(NOW - 1n),
+          ownerOf: failed(REVERT),
+          nodeOwner: ok(WRAPPER),
+          wrapperOwner: ok(GRAVEYARD),
+        }),
+      ),
+    ).toEqual({ expiry: NOW - 1n, registrant: GRAVEYARD });
+  });
+
+  it("reads nobody holding the name as no registrant", async () => {
+    expect(
+      await registrantOf(reads({ expiry: ok(0n), ownerOf: failed(REVERT) })),
+    ).toEqual({ expiry: 0n, registrant: null });
+    expect(await registrantOf(reads({ ownerOf: ok(WRAPPER) }))).toEqual({
+      expiry: NOW + 86_400n,
+      registrant: null,
+    });
+  });
+
+  it("reports a failed read that the registrant depends on", async () => {
     // A registrar address with no code answers nothing, which says nothing about
     // who holds the name.
-    const client = multicallClient([
-      { status: "success", result: NOW },
-      {
-        status: "failure",
-        error: new ContractFunctionZeroDataError({ functionName: "ownerOf" }),
-      },
-    ]);
-    const [registration] = await readV1Registrations(client, BASE_REGISTRAR, [
-      7n,
-    ]);
-    expect(registration).toHaveProperty("error");
-    expect((registration as { error: string }).error).toContain("ownerOf");
+    const noData = new ContractFunctionZeroDataError({
+      functionName: "ownerOf",
+    });
+    const errorOf = async (outcomes: Outcome[]) =>
+      ((await registrantOf(outcomes)) as { error: string }).error;
+
+    expect(
+      await errorOf(reads({ expiry: failed(new Error("limit")) })),
+    ).toContain("nameExpires");
+    expect(await errorOf(reads({ ownerOf: failed(noData) }))).toContain(
+      "ownerOf",
+    );
+    expect(
+      await errorOf(
+        reads({ ownerOf: failed(REVERT), nodeOwner: failed(noData) }),
+      ),
+    ).toContain("registry owner");
+    expect(
+      await errorOf(
+        reads({ ownerOf: ok(WRAPPER), wrapperOwner: failed(noData) }),
+      ),
+    ).toContain("NameWrapper ownerOf");
   });
 
-  it("reports a failed expiry read", async () => {
-    const client = multicallClient([
-      { status: "failure", error: new Error("rate limited") },
-      { status: "success", result: HOLDER },
-    ]);
-    const [registration] = await readV1Registrations(client, BASE_REGISTRAR, [
-      7n,
-    ]);
-    expect((registration as { error: string }).error).toContain("nameExpires");
+  it("ignores a failed read that the registrant does not depend on", async () => {
+    const noData = new ContractFunctionZeroDataError({ functionName: "owner" });
+    expect(
+      await registrantOf(
+        reads({ nodeOwner: failed(noData), wrapperOwner: failed(noData) }),
+      ),
+    ).toEqual({ expiry: NOW + 86_400n, registrant: HOLDER });
   });
 
   it("asks nothing for no names", async () => {
     const client = multicallClient([]);
-    expect(await readV1Registrations(client, BASE_REGISTRAR, [])).toEqual([]);
+    expect(await readV1Registrations(client, V1, [])).toEqual([]);
     expect(client.calls).toHaveLength(0);
   });
 });
 
-describe("readV1Registrants", () => {
-  it("reads only ownerOf, with the same reading of a revert", async () => {
-    const client = multicallClient([
-      { status: "success", result: GRAVEYARD },
-      { status: "failure", error: REVERT },
-      { status: "failure", error: new Error("timeout") },
-    ]);
-    const registrants = await readV1Registrants(client, BASE_REGISTRAR, [
-      1n,
-      2n,
-      3n,
-    ]);
-    expect(registrants[0]).toEqual({ registrant: GRAVEYARD });
-    expect(registrants[1]).toEqual({ registrant: null });
-    expect(registrants[2]).toHaveProperty("error");
-    expect(client.calls[0].map((call) => call.functionName)).toEqual([
-      "ownerOf",
-      "ownerOf",
-      "ownerOf",
-    ]);
-  });
-});
+describe("resolveV1Contracts", () => {
+  const CONTROLLER = getAddress("0x00000000000000000000000000000000000000c0");
+  const OTHER_WRAPPER = getAddress(
+    "0x00000000000000000000000000000000000000d0",
+  );
 
-describe("assertGraveyards", () => {
-  function probeClient(graveyards: ReadonlySet<Address>) {
+  // A v1 chain with the Graveyards, a migration controller that shares their
+  // `NAME_WRAPPER()` getter but has no `clear`, and the wrappers they point at.
+  function chainClient({
+    wrapperOf = new Map<Address, Address>([
+      [GRAVEYARD, WRAPPER],
+      [SUPERSEDED, WRAPPER],
+      [CONTROLLER, WRAPPER],
+    ]),
+    clears = new Set<Address>([GRAVEYARD, SUPERSEDED]),
+    registrarOf = new Map<Address, Address>([
+      [WRAPPER, BASE_REGISTRAR],
+      [OTHER_WRAPPER, HOLDER],
+    ]),
+  } = {}) {
     return {
-      async readContract({ address }: { address: Address }) {
-        if (graveyards.has(address)) return HOLDER;
+      async readContract({
+        address,
+        functionName,
+      }: {
+        address: Address;
+        functionName: string;
+      }) {
+        if (functionName === "NAME_WRAPPER" && wrapperOf.has(address)) {
+          return wrapperOf.get(address);
+        }
+        if (functionName === "registrar" && registrarOf.has(address)) {
+          return registrarOf.get(address);
+        }
+        if (functionName === "ens") return REGISTRY;
         throw new Error("returned no data");
+      },
+      async call({ to, data }: { to: Address; data: Hex }) {
+        expect(data).toBe(
+          encodeFunctionData({
+            abi: Graveyard.clear,
+            functionName: "clear",
+            args: [[]],
+          }),
+        );
+        if (!clears.has(to)) throw new Error("execution reverted");
+        return { data: "0x" };
       },
     };
   }
 
-  it("accepts a set whose every address answers as a Graveyard", async () => {
-    await assertGraveyards(probeClient(GRAVEYARDS), GRAVEYARDS);
+  it("returns the v1 contracts the Graveyards are bound to", async () => {
+    expect(
+      await resolveV1Contracts(chainClient(), GRAVEYARDS, BASE_REGISTRAR),
+    ).toEqual(V1);
   });
 
-  it("names each address that does not", async () => {
-    const set = graveyardSet([GRAVEYARD, HOLDER]);
+  it("refuses a migration controller, which answers NAME_WRAPPER() but has no clear", async () => {
     await expect(
-      assertGraveyards(probeClient(graveyardSet([GRAVEYARD])), set),
+      resolveV1Contracts(
+        chainClient(),
+        graveyardSet([GRAVEYARD, CONTROLLER]),
+        BASE_REGISTRAR,
+      ),
+    ).rejects.toThrow(
+      new RegExp(`not a Graveyard on the v1 chain: ${CONTROLLER}`),
+    );
+  });
+
+  it("refuses an account that answers neither", async () => {
+    await expect(
+      resolveV1Contracts(
+        chainClient(),
+        graveyardSet([GRAVEYARD, HOLDER]),
+        BASE_REGISTRAR,
+      ),
     ).rejects.toThrow(new RegExp(`not a Graveyard on the v1 chain: ${HOLDER}`));
+  });
+
+  it("refuses Graveyards bound to different NameWrappers", async () => {
+    const client = chainClient({
+      wrapperOf: new Map([
+        [GRAVEYARD, WRAPPER],
+        [SUPERSEDED, OTHER_WRAPPER],
+      ]),
+    });
+    await expect(
+      resolveV1Contracts(client, GRAVEYARDS, BASE_REGISTRAR),
+    ).rejects.toThrow(/report different NameWrappers/);
+  });
+
+  it("refuses Graveyards whose NameWrapper serves another BaseRegistrar", async () => {
+    const client = chainClient({
+      wrapperOf: new Map([
+        [GRAVEYARD, OTHER_WRAPPER],
+        [SUPERSEDED, OTHER_WRAPPER],
+      ]),
+    });
+    await expect(
+      resolveV1Contracts(client, GRAVEYARDS, BASE_REGISTRAR),
+    ).rejects.toThrow(/belong to another v1/);
   });
 });
 
@@ -271,11 +439,42 @@ describe("deploymentGraveyards", () => {
     rmSync(deploymentsDir, { recursive: true, force: true });
   });
 
-  function writeGraveyard(namespace: string, address: string, chainId = 1) {
+  // The constructor as the Graveyard artifact records it, whose first argument is
+  // the NameWrapper the Graveyard serves.
+  const GRAVEYARD_CONSTRUCTOR = {
+    type: "constructor",
+    inputs: [
+      { name: "nameWrapper", type: "address" },
+      { name: "contractNamer", type: "address" },
+    ],
+  } as const;
+
+  function writeGraveyard(
+    namespace: string,
+    address: string,
+    {
+      chainId = 1,
+      nameWrapper,
+    }: { chainId?: number; nameWrapper?: Address } = {},
+  ) {
     const dir = join(deploymentsDir, namespace);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, ".chain"), JSON.stringify({ chainId }));
-    writeFileSync(join(dir, "Graveyard.json"), JSON.stringify({ address }));
+    writeFileSync(
+      join(dir, "Graveyard.json"),
+      JSON.stringify(
+        nameWrapper
+          ? {
+              address,
+              abi: [GRAVEYARD_CONSTRUCTOR],
+              argsData: encodeAbiParameters(GRAVEYARD_CONSTRUCTOR.inputs, [
+                nameWrapper,
+                HOLDER,
+              ]),
+            }
+          : { address, abi: [] },
+      ),
+    );
   }
 
   it("takes the active Graveyard and every superseded one on this chain", () => {
@@ -286,7 +485,7 @@ describe("deploymentGraveyards", () => {
     writeGraveyard(
       "mainnet-elsewhere",
       "0x00000000000000000000000000000000000000a3",
-      5,
+      { chainId: 5 },
     );
     writeGraveyard("sepolia", "0x00000000000000000000000000000000000000a4");
 
@@ -306,6 +505,32 @@ describe("deploymentGraveyards", () => {
         deploymentNetwork: "staging",
       }),
     ).toEqual([GRAVEYARD, SUPERSEDED]);
+  });
+
+  it("leaves out a superseded Graveyard deployed against another NameWrapper", () => {
+    // A clean-testnet run deploys its own v1 beside the network's real one; its
+    // Graveyard holds none of the real v1's names.
+    writeGraveyard("mainnet", GRAVEYARD, { nameWrapper: WRAPPER });
+    writeGraveyard("mainnet-20260101-r1", SUPERSEDED, { nameWrapper: WRAPPER });
+    writeGraveyard(
+      "mainnet-clean-abc",
+      "0x00000000000000000000000000000000000000a5",
+      { nameWrapper: HOLDER },
+    );
+    // Without recorded arguments the binding is unknown, so the on-chain check
+    // decides.
+    writeGraveyard(
+      "mainnet-20250101-r1",
+      "0x00000000000000000000000000000000000000a6",
+    );
+
+    expect(
+      deploymentGraveyards({ network: "mainnet", deploymentsDir }),
+    ).toEqual([
+      GRAVEYARD,
+      getAddress("0x00000000000000000000000000000000000000a6"),
+      SUPERSEDED,
+    ]);
   });
 
   it("refuses when the active namespace records no Graveyard", () => {

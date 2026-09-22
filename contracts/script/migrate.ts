@@ -171,15 +171,15 @@ import {
   loadCheckpoint,
   main as preMigrationMain,
   parseCSVLine,
-  assertGraveyards,
   bonusAdjustedExpiry,
   graveyardSet,
   holdsReservation,
   isClaimableOnV1,
   parseGraveyardAddresses,
-  readV1Registrants,
   readV1Registrations,
+  resolveV1Contracts,
   v1Eligibility,
+  type V1Contracts,
 } from "./preMigration.js";
 import {
   compareCalldata,
@@ -883,10 +883,11 @@ async function verifyPreMigration(opts: {
     opts.v1BaseRegistrar ??
     requireV1Deployment(opts.network, V1_BASE_REGISTRAR_NAME, opts).address;
   const expectedStatus = opts.expectedStatus ?? "reserved-or-registered";
-  const graveyards = await resolveGraveyards(v1Client, {
+  const { graveyards, v1Contracts } = await resolveGraveyards(v1Client, {
     ...opts,
     deploymentsDir,
     deploymentNetwork,
+    baseRegistrar,
   });
   const labels = readLabelsFromCsv(
     opts.csvFile,
@@ -921,7 +922,7 @@ async function verifyPreMigration(opts: {
 
     const registrations = await readV1Registrations(
       v1Client,
-      baseRegistrar,
+      v1Contracts,
       validBatch.map(labelId),
     );
     const stateResults = await client.multicall({
@@ -1278,10 +1279,11 @@ export async function reconcilePreMigration(opts: {
   const v1BaseRegistrar =
     opts.v1BaseRegistrar ??
     requireV1Deployment(opts.network, V1_BASE_REGISTRAR_NAME, opts).address;
-  const graveyards = await resolveGraveyards(v1Client, {
+  const { graveyards, v1Contracts } = await resolveGraveyards(v1Client, {
     ...opts,
     deploymentsDir,
     deploymentNetwork,
+    baseRegistrar: v1BaseRegistrar,
   });
 
   // Claimability is judged against chain time, not wall-clock time: on a fork pinned
@@ -1361,33 +1363,26 @@ export async function reconcilePreMigration(opts: {
   // not live here, or was migrated, which v2 records.
   const claimable: Array<{ id: string; expiry: bigint }> = [];
   const graveyardIds = new Set<string>();
-  for (
-    let start = 0;
-    start < live.length;
-    start += PREMIGRATION_VERIFY_BATCH_SIZE
-  ) {
-    const batch = live.slice(start, start + PREMIGRATION_VERIFY_BATCH_SIZE);
-    const registrants = await readV1Registrants(
-      v1Client,
-      v1BaseRegistrar,
-      batch.map((entry) => BigInt(entry.id)),
+  const liveRegistrations = await readV1RegistrationsInBatches(
+    v1Client,
+    v1Contracts,
+    live.map((entry) => entry.id),
+  );
+  for (const entry of live) {
+    const read = liveRegistrations.get(entry.id)!;
+    if ("error" in read) {
+      result.missing.push(`${entry.id} v1 lookup failed: ${read.error}`);
+      continue;
+    }
+    // Judged on the index's expiry, as the rest of the pass is.
+    const eligibility = v1Eligibility(
+      { expiry: entry.expiry, registrant: read.registrant },
+      v1Now,
+      graveyards,
     );
-    for (const [position, entry] of batch.entries()) {
-      const owner = registrants[position];
-      if ("error" in owner) {
-        result.missing.push(`${entry.id} v1 lookup failed: ${owner.error}`);
-        continue;
-      }
-      // Judged on the index's expiry, as the rest of the pass is.
-      const eligibility = v1Eligibility(
-        { expiry: entry.expiry, registrant: owner.registrant },
-        v1Now,
-        graveyards,
-      );
-      if (eligibility === "claimable") claimable.push(entry);
-      else if (eligibility === "graveyard") {
-        graveyardIds.add(toLabelhashHex(canonicalLabelId(entry.id)));
-      }
+    if (eligibility === "claimable") claimable.push(entry);
+    else if (eligibility === "graveyard") {
+      graveyardIds.add(toLabelhashHex(canonicalLabelId(entry.id)));
     }
   }
   result.claimable = claimable.length;
@@ -1559,6 +1554,24 @@ export async function reconcilePreMigration(opts: {
     registryAddress,
     staleSeeds,
   );
+  // A stale seed's index expiry may predate a Graveyard taking the name: a reclaim
+  // replaces the expiry and the registrant together. Which of these names a Graveyard
+  // holds now is read from the chain, as it was for the live ones above.
+  const liveIds = new Set(live.map((entry) => entry.id));
+  const lapsedSeeds = staleSeeds.filter((labelhash) => !liveIds.has(labelhash));
+  const lapsedRegistrations = await readV1RegistrationsInBatches(
+    v1Client,
+    v1Contracts,
+    lapsedSeeds,
+  );
+  for (const labelhash of lapsedSeeds) {
+    const read = lapsedRegistrations.get(labelhash)!;
+    if ("error" in read) {
+      result.unexpected.push(`${labelhash} v1 lookup failed: ${read.error}`);
+    } else if (v1Eligibility(read, v1Now, graveyards) === "graveyard") {
+      graveyardIds.add(toLabelhashHex(canonicalLabelId(labelhash)));
+    }
+  }
   for (const [labelhash, { label, reserved }] of seeded) {
     const canonicalId = toLabelhashHex(canonicalLabelId(labelhash));
     if (claimableIds.has(canonicalId)) continue;
@@ -1816,6 +1829,39 @@ function describeGraveyardSeed(
 }
 
 type V2EntryState = { status: number; expiry: bigint; latestOwner: Address };
+
+// Each labelhash's v1 registration, batched.
+async function readV1RegistrationsInBatches(
+  v1Client: ReturnType<typeof publicClient>,
+  v1Contracts: V1Contracts,
+  labelhashes: readonly string[],
+): Promise<
+  Map<string, Awaited<ReturnType<typeof readV1Registrations>>[number]>
+> {
+  const registrations = new Map<
+    string,
+    Awaited<ReturnType<typeof readV1Registrations>>[number]
+  >();
+  for (
+    let start = 0;
+    start < labelhashes.length;
+    start += PREMIGRATION_VERIFY_BATCH_SIZE
+  ) {
+    const batch = labelhashes.slice(
+      start,
+      start + PREMIGRATION_VERIFY_BATCH_SIZE,
+    );
+    const reads = await readV1Registrations(
+      v1Client,
+      v1Contracts,
+      batch.map((labelhash) => BigInt(labelhash)),
+    );
+    for (const [index, labelhash] of batch.entries()) {
+      registrations.set(labelhash, reads[index]);
+    }
+  }
+  return registrations;
+}
 
 // Current v2 state per labelhash, batched. Used by the reverse pass, which has to
 // judge a seed by what it carries rather than by the fact that it exists.
@@ -2202,10 +2248,33 @@ function supersededDeploymentNamespaces(opts: {
   }).filter((namespace) => namespace !== opts.deploymentNetwork);
 }
 
-/// Every Graveyard deployed on this chain: the active namespace's, and each
+/// The `NameWrapper` a Graveyard artifact was deployed against, read from its recorded
+/// constructor arguments, or undefined when the artifact does not record them.
+function graveyardNameWrapper(deployment: JsonDeployment): Address | undefined {
+  const argsData = (deployment as { argsData?: Hex }).argsData;
+  const constructor = deployment.abi?.find(
+    (item) => item.type === "constructor",
+  ) as { inputs: readonly AbiParameter[] } | undefined;
+  if (!argsData || constructor?.inputs[0]?.name !== "nameWrapper") {
+    return undefined;
+  }
+  const [nameWrapper] = decodeAbiParameters(
+    constructor.inputs.slice(0, 1),
+    slice(argsData, 0, 32),
+  );
+  return getAddress(nameWrapper as Address);
+}
+
+/// Every Graveyard deployed against this chain's v1: the active namespace's, and each
 /// superseded namespace's. A superseded Graveyard keeps every v1 name it reclaimed or
 /// was handed while its deployment was live, so the active one alone would leave
 /// those names claimable.
+///
+/// A namespace whose Graveyard was deployed against a different `NameWrapper` than the
+/// active one — a clean-testnet run with its own v1, beside the network's real one —
+/// belongs to another v1 and holds none of this one's names, so it is left out. One
+/// whose artifact does not record its constructor arguments is kept, and the on-chain
+/// check refuses it if it is bound elsewhere.
 ///
 /// The active namespace has to record one. Without it the set cannot be shown to be
 /// complete, and a name missing from it is reserved for nobody.
@@ -2227,6 +2296,7 @@ export function deploymentGraveyards(opts: {
       `no Graveyard artifact under ${join(resolve(deploymentsDir), deploymentNetwork)}: cannot tell which v1 names a Graveyard holds. Pass --graveyards with every Graveyard on this chain.`,
     );
   }
+  const activeWrapper = graveyardNameWrapper(active);
   const addresses = [active.address];
   for (const namespace of supersededDeploymentNamespaces({
     ...opts,
@@ -2238,24 +2308,38 @@ export function deploymentGraveyards(opts: {
       namespace,
       "Graveyard",
     );
-    if (graveyard) addresses.push(graveyard.address);
+    if (!graveyard) continue;
+    const wrapper = graveyardNameWrapper(graveyard);
+    if (activeWrapper && wrapper && wrapper !== activeWrapper) {
+      console.log(
+        `leaving out Graveyard ${graveyard.address} (${namespace}): deployed against NameWrapper ${wrapper}, not ${activeWrapper}`,
+      );
+      continue;
+    }
+    addresses.push(graveyard.address);
   }
   return [...graveyardSet(addresses)];
 }
 
-/// The Graveyard set a pre-migration check applies: the one given, or else every
-/// Graveyard the deployments record, each confirmed on the v1 chain.
+/// The Graveyard set a pre-migration check applies — the one given, or else every
+/// Graveyard the deployments record — confirmed on the v1 chain, with the v1 contracts
+/// it is bound to.
 async function resolveGraveyards(
   v1Client: ReturnType<typeof publicClient>,
   opts: Parameters<typeof deploymentGraveyards>[0] & {
     graveyards?: readonly Address[];
+    baseRegistrar: Address;
   },
-): Promise<ReadonlySet<Address>> {
+): Promise<{ graveyards: ReadonlySet<Address>; v1Contracts: V1Contracts }> {
   const graveyards = graveyardSet(
     opts.graveyards ?? deploymentGraveyards(opts),
   );
-  await assertGraveyards(v1Client, graveyards);
-  return graveyards;
+  const v1Contracts = await resolveV1Contracts(
+    v1Client,
+    graveyards,
+    opts.baseRegistrar,
+  );
+  return { graveyards, v1Contracts };
 }
 
 // Smallest block span worth requesting before a provider's refusal is taken at face

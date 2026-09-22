@@ -10,17 +10,21 @@ import {
 } from "node:fs";
 import {
   BaseError,
+  concat,
   ContractFunctionRevertedError,
   createPublicClient,
   createWalletClient,
+  encodeFunctionData,
   getAddress,
   getContract,
   http,
   keccak256,
+  namehash,
   publicActions,
   toHex,
   zeroAddress,
   type Address,
+  type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { mainnet } from "viem/chains";
@@ -39,7 +43,12 @@ import {
 
 import { GRACE_PERIOD_V2, STATUS } from "./deploy-constants.js";
 import { loadArtifact, resolveChain } from "./scriptUtils.js";
-import { BaseRegistrar, Graveyard } from "./migrations/abis.js";
+import {
+  BaseRegistrar,
+  EnsRegistry,
+  Graveyard,
+  NameWrapper,
+} from "./migrations/abis.js";
 
 const BASE_REGISTRAR_ABI = BaseRegistrar.nameExpires;
 
@@ -188,10 +197,8 @@ export function isClaimableOnV1(expiry: bigint, now: bigint): boolean {
   return expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > now;
 }
 
-/// A v1 `.eth` registration as the `BaseRegistrar` reports it: the expiry, and the
-/// registrant `ownerOf` names. The registrant is null when `ownerOf` reverts, which
-/// it does for every token without a live registration: one never registered,
-/// expired, or in grace.
+/// A v1 `.eth` registration: its expiry, and the account that holds it (see
+/// `readV1Registrations`), or null when nobody does.
 export type V1Registration = { expiry: bigint; registrant: Address | null };
 
 /// Whether a v1 name is within the migration's remit, and why not when it is not.
@@ -275,26 +282,50 @@ export function parseGraveyardAddresses(value: string): Address[] {
   }
 }
 
-/// Refuses a Graveyard set holding an address that is not a Graveyard.
+/// The v1 contracts a registrant is resolved through.
+export type V1Contracts = {
+  baseRegistrar: Address;
+  /// The v1 `ENSRegistry`, which records who owns each name's node.
+  registry: Address;
+  nameWrapper: Address;
+};
+
+/// Checks that every address in the set is a Graveyard of this v1, and returns the
+/// v1 contracts the Graveyards are bound to.
 ///
 /// Pre-migration leaves a name unreserved when a listed address holds it, and the
-/// reconciliation that gates the v1 freeze stops expecting it. A mistyped or wrong
-/// address would therefore strand every name its account holds. Each address has to
-/// answer the Graveyard's `NAME_WRAPPER()`, which an externally owned account, a
-/// Safe, or an empty address does not.
-export async function assertGraveyards(
+/// reconciliation that gates the v1 freeze stops expecting it. A wrong address would
+/// therefore strand every name its account holds. So each address has to answer the
+/// Graveyard's `NAME_WRAPPER()`, which an externally owned account or a Safe does not,
+/// and accept a simulated `clear([])`, a no-op for a Graveyard that the migration
+/// controllers, which also answer `NAME_WRAPPER()`, do not have. Every Graveyard must
+/// report the same `NameWrapper`, and that wrapper's registrar must be
+/// `baseRegistrar`. The wrapper's registry is where a name's node owner is read.
+export async function resolveV1Contracts(
   client: any,
   graveyards: ReadonlySet<Address>,
-): Promise<void> {
+  baseRegistrar: Address,
+): Promise<V1Contracts> {
   const failures: string[] = [];
+  const wrappers = new Map<Address, Address[]>();
+  const clearCall = encodeFunctionData({
+    abi: Graveyard.clear,
+    functionName: "clear",
+    args: [[]],
+  });
   await Promise.all(
     [...graveyards].map(async (address) => {
       try {
-        await client.readContract({
-          address,
-          abi: Graveyard.NAME_WRAPPER,
-          functionName: "NAME_WRAPPER",
-        });
+        const [wrapper] = await Promise.all([
+          client.readContract({
+            address,
+            abi: Graveyard.NAME_WRAPPER,
+            functionName: "NAME_WRAPPER",
+          }) as Promise<Address>,
+          client.call({ to: address, data: clearCall }),
+        ]);
+        const key = getAddress(wrapper);
+        wrappers.set(key, [...(wrappers.get(key) ?? []), address]);
       } catch (error) {
         const message =
           error instanceof BaseError ? error.shortMessage : String(error);
@@ -307,7 +338,41 @@ export async function assertGraveyards(
       `not a Graveyard on the v1 chain: ${failures.sort().join(", ")}. A name held by a listed address is not reserved, so the set must name Graveyards only.`,
     );
   }
+  if (wrappers.size !== 1) {
+    const described = [...wrappers]
+      .map(([wrapper, holders]) => `${wrapper} (${holders.join(", ")})`)
+      .join("; ");
+    throw new Error(
+      `the Graveyards report different NameWrappers: ${described}. A Graveyard of another v1 holds none of this one's names; leave it out of the set.`,
+    );
+  }
+  const [nameWrapper] = wrappers.keys();
+  const [registrar, registry] = await Promise.all([
+    client.readContract({
+      address: nameWrapper,
+      abi: NameWrapper.registrar,
+      functionName: "registrar",
+    }) as Promise<Address>,
+    client.readContract({
+      address: nameWrapper,
+      abi: NameWrapper.ens,
+      functionName: "ens",
+    }) as Promise<Address>,
+  ]);
+  if (getAddress(registrar) !== getAddress(baseRegistrar)) {
+    throw new Error(
+      `the Graveyards' NameWrapper ${nameWrapper} is bound to BaseRegistrar ${registrar}, not ${baseRegistrar}: they belong to another v1`,
+    );
+  }
+  return {
+    baseRegistrar: getAddress(baseRegistrar),
+    registry: getAddress(registry),
+    nameWrapper,
+  };
 }
+
+/// A v1 read that failed, and so says nothing about the name.
+export type V1ReadError = { error: string };
 
 // Whether a failed call reverted, as opposed to failing to reach or decode.
 function isRevert(error: unknown): boolean {
@@ -318,75 +383,110 @@ function isRevert(error: unknown): boolean {
   );
 }
 
-/// A v1 read that failed, and so says nothing about the name.
-export type V1ReadError = { error: string };
-
-/// The registrant an `ownerOf` outcome from a multicall names. A revert means the name
-/// has no live registration, so its registrant is null; any other failure is an error.
-function registrantFromOwnerOf(outcome: {
+type CallOutcome = {
   status: "success" | "failure";
   result?: unknown;
   error?: unknown;
-}): Pick<V1Registration, "registrant"> | V1ReadError {
-  if (outcome.status === "success") {
-    return { registrant: getAddress(outcome.result as Address) };
+};
+
+const ETH_NODE = namehash("eth");
+
+/// The v1 node of the `.eth` 2LD with this labelhash, which the registry and the
+/// `NameWrapper` key the name by.
+export function ethNameNode(labelhash: bigint): Hex {
+  return keccak256(concat([ETH_NODE, toHex(labelhash, { size: 32 })]));
+}
+
+// Follows a name to its registrant through the four reads `readV1Registrations` makes.
+//
+// The token holder is authoritative while the registration is live: they can reclaim
+// the registry node whenever they like. `ownerOf` reverts once the registration has
+// expired, in grace too, and then the registry's node owner is the best record left.
+// The migration controllers and `Graveyard.clear` point it at the Graveyard, so a
+// migrated name still reads as the Graveyard's in grace. A wrapped name's token and
+// node both sit with the `NameWrapper`, so its registrant is whoever the wrapper
+// names: a locked migration hands the wrapper token to the Graveyard.
+function resolveRegistrant(
+  v1: V1Contracts,
+  ownerOf: CallOutcome,
+  nodeOwner: CallOutcome,
+  wrapperOwner: CallOutcome,
+): Pick<V1Registration, "registrant"> | V1ReadError {
+  let holder: Address;
+  if (ownerOf.status === "success") {
+    holder = getAddress(ownerOf.result as Address);
+  } else if (!isRevert(ownerOf.error)) {
+    return { error: `ownerOf: ${String(ownerOf.error)}` };
+  } else if (nodeOwner.status === "success") {
+    holder = getAddress(nodeOwner.result as Address);
+  } else {
+    return { error: `registry owner: ${String(nodeOwner.error)}` };
   }
-  if (isRevert(outcome.error)) return { registrant: null };
-  return { error: `ownerOf: ${String(outcome.error)}` };
+  if (holder === v1.nameWrapper) {
+    if (wrapperOwner.status === "failure") {
+      return { error: `NameWrapper ownerOf: ${String(wrapperOwner.error)}` };
+    }
+    holder = getAddress(wrapperOwner.result as Address);
+  }
+  return { registrant: holder === zeroAddress ? null : holder };
 }
 
-/// Each id's v1 registrant, read in one multicall.
-export async function readV1Registrants(
-  client: any,
-  baseRegistrar: Address,
-  ids: readonly bigint[],
-): Promise<Array<Pick<V1Registration, "registrant"> | V1ReadError>> {
-  if (ids.length === 0) return [];
-  const outcomes = await client.multicall({
-    allowFailure: true,
-    contracts: ids.map((id) => ({
-      address: baseRegistrar,
-      abi: BaseRegistrar.ownerOf,
-      functionName: "ownerOf",
-      args: [id],
-    })),
-  });
-  return outcomes.map(registrantFromOwnerOf);
-}
-
-/// Each id's v1 expiry and registrant, read in one multicall so both describe the
-/// same block.
+/// Each id's v1 expiry and registrant, read in one multicall so they describe the same
+/// state: `nameExpires`, `BaseRegistrar.ownerOf`, the registry's owner of the name's
+/// node, and `NameWrapper.ownerOf` of that node. See `resolveRegistrant` for how the
+/// three owner reads combine into the registrant.
 export async function readV1Registrations(
   client: any,
-  baseRegistrar: Address,
+  v1: V1Contracts,
   ids: readonly bigint[],
 ): Promise<Array<V1Registration | V1ReadError>> {
   if (ids.length === 0) return [];
-  const outcomes = await client.multicall({
+  const outcomes: CallOutcome[] = await client.multicall({
     allowFailure: true,
-    contracts: ids.flatMap((id) => [
-      {
-        address: baseRegistrar,
-        abi: BASE_REGISTRAR_ABI,
-        functionName: "nameExpires",
-        args: [id],
-      },
-      {
-        address: baseRegistrar,
-        abi: BaseRegistrar.ownerOf,
-        functionName: "ownerOf",
-        args: [id],
-      },
-    ]),
+    contracts: ids.flatMap((id) => {
+      const node = ethNameNode(id);
+      return [
+        {
+          address: v1.baseRegistrar,
+          abi: BASE_REGISTRAR_ABI,
+          functionName: "nameExpires",
+          args: [id],
+        },
+        {
+          address: v1.baseRegistrar,
+          abi: BaseRegistrar.ownerOf,
+          functionName: "ownerOf",
+          args: [id],
+        },
+        {
+          address: v1.registry,
+          abi: EnsRegistry.owner,
+          functionName: "owner",
+          args: [node],
+        },
+        {
+          address: v1.nameWrapper,
+          abi: NameWrapper.ownerOf,
+          functionName: "ownerOf",
+          args: [BigInt(node)],
+        },
+      ];
+    }),
   });
   return ids.map((_, index) => {
-    const expiry = outcomes[2 * index];
+    const [expiry, ownerOf, nodeOwner, wrapperOwner] = outcomes.slice(
+      4 * index,
+      4 * index + 4,
+    );
     if (expiry.status === "failure") {
       return { error: `nameExpires: ${String(expiry.error)}` };
     }
-    const owner = registrantFromOwnerOf(outcomes[2 * index + 1]);
+    const owner = resolveRegistrant(v1, ownerOf, nodeOwner, wrapperOwner);
     if ("error" in owner) return owner;
-    return { expiry: BigInt(expiry.result), registrant: owner.registrant };
+    return {
+      expiry: BigInt(expiry.result as bigint),
+      registrant: owner.registrant,
+    };
   });
 }
 
@@ -924,6 +1024,7 @@ interface MigrationClients {
   registry: any;
   batchRegistrar: any;
   registryAbi: any[];
+  v1Contracts: V1Contracts;
 }
 
 async function createMigrationClients(
@@ -962,7 +1063,11 @@ async function createMigrationClients(
   });
 
   await validateBatchRegistrar(client, config.batchRegistrarAddress);
-  await assertGraveyards(mainnetClient, config.graveyards);
+  const v1Contracts = await resolveV1Contracts(
+    mainnetClient,
+    config.graveyards,
+    config.v1BaseRegistrarAddress,
+  );
 
   const batchRegistrarArtifact = loadArtifact("BatchRegistrar");
   const batchRegistrar = getContract({
@@ -977,6 +1082,7 @@ async function createMigrationClients(
     registry,
     batchRegistrar,
     registryAbi: registryArtifact.abi,
+    v1Contracts,
   };
 }
 
@@ -984,8 +1090,14 @@ async function fetchAndReserveInBatches(
   config: PreMigrationConfig,
   checkpoint: Checkpoint,
 ): Promise<void> {
-  const { client, mainnetClient, registry, batchRegistrar, registryAbi } =
-    await createMigrationClients(config);
+  const {
+    client,
+    mainnetClient,
+    registry,
+    batchRegistrar,
+    registryAbi,
+    v1Contracts,
+  } = await createMigrationClients(config);
 
   const block = await client.getBlock();
   const maxGas = BigInt(
@@ -1046,6 +1158,7 @@ async function fetchAndReserveInBatches(
             validBatch,
             client,
             mainnetClient,
+            v1Contracts,
             registry,
             batchRegistrar,
             checkpoint,
@@ -1156,7 +1269,7 @@ export async function batchVerifyRegistrations(
   mainnetClient: any,
   registryAddress: Address,
   registryAbi: any[],
-  v1BaseRegistrarAddress: Address,
+  v1Contracts: V1Contracts,
   graveyards: ReadonlySet<Address>,
 ): Promise<VerificationResult[]> {
   const ids = registrations.map((r) => BigInt(keccak256(toHex(r.labelName))));
@@ -1169,7 +1282,7 @@ export async function batchVerifyRegistrations(
 
   const [v2Settled, v1Settled] = await Promise.allSettled([
     client.multicall({ contracts: v2Contracts }),
-    readV1Registrations(mainnetClient, v1BaseRegistrarAddress, ids),
+    readV1Registrations(mainnetClient, v1Contracts, ids),
   ]);
 
   const buildFallback = (reason: unknown) =>
@@ -1380,6 +1493,7 @@ async function processBatch(
   registrations: ENSRegistration[],
   client: any,
   mainnetClient: any,
+  v1Contracts: V1Contracts,
   registry: any,
   batchRegistrar: any,
   checkpoint: Checkpoint,
@@ -1414,7 +1528,7 @@ async function processBatch(
     mainnetClient,
     config.registryAddress,
     registryAbi,
-    config.v1BaseRegistrarAddress,
+    v1Contracts,
     config.graveyards,
   );
 

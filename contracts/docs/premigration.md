@@ -139,9 +139,10 @@ longer than 255 bytes and the bracketed-labelhash form (`[0x…]`) are skipped a
 ## How it works
 
 Names stream from the CSV in batches of `--batch-size`. Each batch is verified with a single multicall
-per side (two RPC calls regardless of size) reading v2 state (`PermissionedRegistry.getState()`), and
-v1 expiry and registrant (`BaseRegistrar.nameExpires()` and `ownerOf()`), then submitted as one
-`BatchRegistrar.batchRegister()` transaction. Per-name action, in this order:
+per side reading v2 state (`PermissionedRegistry.getState()`) and v1 expiry and registrant
+(`BaseRegistrar.nameExpires()`, plus the owner reads in [Graveyard-held names](#graveyard-held-names)).
+It is then submitted as one `BatchRegistrar.batchRegister()` transaction. Per-name action, in this
+order:
 
 | v2 status | v1 status | Action |
 |---|---|---|
@@ -161,30 +162,50 @@ Reserved names are written with owner/registry `address(0)`, resolver = `ENSV1Re
 
 ### Graveyard-held names
 
-A `Graveyard` holds v1 tokens that no v1 owner can take back. A migration hands it the token of every
-name it moves to v2, and `Graveyard.clear` takes an expired name out of circulation by registering it to
-the Graveyard with an expiry at the `uint64` ceiling less the grace period. By expiry alone such a name
+A `Graveyard` holds v1 names that no v1 owner can take back. A migration hands it every name it moves
+to v2, and `Graveyard.clear` takes an expired name out of circulation by registering it to the
+Graveyard with an expiry at the `uint64` ceiling less the grace period. By expiry alone such a name
 reads as live, but a reservation for it belongs to nobody, and `ETHRegistrar` never offers a reserved
-name. So pre-migration neither reserves nor extends a name whose `BaseRegistrar.ownerOf` is a
-Graveyard, and counts it under "v1 registrant is a Graveyard". A migrated name is still **Registered
-(2)** on the registry it was migrated to, and is counted as already registered there, as before.
+name. So pre-migration neither reserves nor extends a name whose v1 registrant is a Graveyard, and
+counts it under "v1 registrant is a Graveyard". A migrated name is still **Registered (2)** on the
+registry it was migrated to, and is counted as already registered there, as before.
 
-`--graveyards` must list every Graveyard on the chain, not only the active deployment's. A
-superseded deployment's Graveyard keeps every name it reclaimed or received while it was live: on
-Sepolia, the Graveyard of the archived `sepolia-20260730-r1` set holds the names it reclaimed. The
-operator CLI derives the set the way phase 3 finds superseded controllers — the active namespace's
-`Graveyard` artifact plus that of every other namespace on the same chain — and refuses to run when the
-active namespace has none. Each address must answer the Graveyard's `NAME_WRAPPER()`, so a mistyped
-address or an account fails the run instead of silently leaving that account's names unreserved.
+The registrant is read from four calls per name, made in the same multicall as the expiry:
+`BaseRegistrar.ownerOf`, the `ENSRegistry` owner of the name's node, and `NameWrapper.ownerOf` of that
+node. The node is `keccak256(namehash("eth") ‖ labelhash)`, so no plaintext label is needed.
 
-`ownerOf` reverts for a name with no live registration — never registered, expired, or in grace — and
-the script reads that revert as "no registrant". A name in grace therefore stays claimable, as it was
-before. Any other failed read fails the name, which is then retried.
+- While the registration is live, the registrant is the `BaseRegistrar` token holder. It outranks the
+  registry's node owner, since the holder can reclaim the node at any time.
+- `ownerOf` reverts once the registration has expired, in grace too. The registrant is then the
+  registry's node owner. The migration controllers and `Graveyard.clear` point the node at the Graveyard,
+  so a migrated name still reads as the Graveyard's while it is in grace.
+- When the holder found either way is the `NameWrapper`, the registrant is whoever the wrapper names. A
+  locked migration leaves the `BaseRegistrar` token and the node with the `NameWrapper`, and hands the
+  wrapper token to the Graveyard.
 
-The rule reads the `BaseRegistrar` owner only. A locked wrapped name that was migrated is held by the
-Graveyard as a `NameWrapper` token, so its `BaseRegistrar` owner is the `NameWrapper` and the rule does
-not see it. On a registry deployed after the name was migrated, pre-migration still reserves it, and
-the reservation stays until the v1 expiry lapses.
+A name nobody holds has no registrant. A failed read that the registrant depends on fails the name, and
+the name is retried.
+
+`--graveyards` must list every Graveyard on the chain, not only the active deployment's. A superseded
+deployment's Graveyard keeps every name it reclaimed or received while it was live: on Sepolia, the
+Graveyard of the archived `sepolia-20260730-r1` set holds the names it reclaimed. The operator CLI
+derives the set the way phase 3 finds superseded controllers: the active namespace's `Graveyard`
+artifact plus that of every other namespace on the same chain. It leaves out a Graveyard whose artifact
+records a different `NameWrapper` from the active one. That is a Graveyard of another v1, such as a
+clean-testnet run's own, and it holds none of this v1's names. The CLI refuses to run when the active
+namespace has no Graveyard.
+
+Before anything is read, every address in the set must pass a check, so that a wrong address fails the
+run instead of leaving that account's names unreserved:
+
+- The address answers the Graveyard's `NAME_WRAPPER()`. An account or a Safe does not.
+- It accepts a simulated `clear([])`, a no-op for a Graveyard. The migration controllers answer
+  `NAME_WRAPPER()` but have no `clear`, so this is what refuses them.
+- All the Graveyards report the same `NameWrapper`, and that wrapper's `registrar()` is the
+  `BaseRegistrar` in use.
+
+The `NameWrapper` and the registry (`NameWrapper.ens()`) are taken from the chain this way, not from
+options.
 
 A reservation is only ever extended, never shortened: `BatchRegistrar` renews when the requested
 expiry is greater than the stored one and does nothing otherwise. Names that would be a no-op are left
