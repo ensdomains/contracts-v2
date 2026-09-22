@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
+import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
 import {IStandaloneHCAFactory} from "./interfaces/IStandaloneHCAFactory.sol";
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
@@ -20,6 +23,9 @@ contract StandaloneHCAFactory is IStandaloneHCAFactory, Ownable {
 
     /// @notice The underlying factory used for every HCA deployment.
     IVerifiableFactory public immutable override VERIFIABLE_FACTORY;
+
+    /// @dev Shared proxy logic cached for deterministic address prediction.
+    address private immutable PROXY_LOGIC;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
@@ -88,6 +94,7 @@ contract StandaloneHCAFactory is IStandaloneHCAFactory, Ownable {
             revert VerifiableFactoryCannotBeZero();
         }
         VERIFIABLE_FACTORY = verifiableFactory;
+        PROXY_LOGIC = VerifiableFactory(address(verifiableFactory)).proxyLogic();
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -119,17 +126,20 @@ contract StandaloneHCAFactory is IStandaloneHCAFactory, Ownable {
         if (hcaImplementation == address(0)) {
             revert HCAImplementationCannotBeZero();
         }
+
+        uint256 salt = deploymentSalt(owner, hcaImplementation, userSalt);
+        hca = _predictAddress(salt);
+        if (hcaOwners[hca] == owner) {
+            return hca;
+        }
+
         if (!approvedImplementations[hcaImplementation]) {
             revert HCAImplementationNotApproved(hcaImplementation);
         }
 
         bytes memory initData =
             abi.encodeCall(StandaloneSingleOwnerHCA.initializeAccount, (abi.encode(owner)));
-        hca = VERIFIABLE_FACTORY.deployProxy(
-            hcaImplementation,
-            deploymentSalt(owner, hcaImplementation, userSalt),
-            initData
-        );
+        hca = VERIFIABLE_FACTORY.deployProxy(hcaImplementation, salt, initData);
 
         (, address deployedImplementation) = IUUPSProxy(hca).getVerifiableProxyData();
         if (deployedImplementation != hcaImplementation) {
@@ -164,5 +174,16 @@ contract StandaloneHCAFactory is IStandaloneHCAFactory, Ownable {
         returns (uint256)
     {
         return uint256(keccak256(abi.encode(userSalt, owner, hcaImplementation)));
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Reproduces the underlying factory's caller-bound CREATE2 address.
+    function _predictAddress(uint256 salt) private view returns (address) {
+        bytes32 outerSalt = keccak256(abi.encode(address(this), salt));
+        bytes32 initCodeHash = keccak256(CloneProxyBytecode.creationCode(PROXY_LOGIC, outerSalt));
+        return Create2.computeAddress(outerSalt, initCodeHash, address(VERIFIABLE_FACTORY));
     }
 }

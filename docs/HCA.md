@@ -58,6 +58,10 @@ HCA = VerifiableFactory proxy address for (StandaloneHCAFactory, deploymentSalt)
 
 Anyone can call `StandaloneHCAFactory.deploy(owner, implementation, userSalt)` for an implementation approved by factory governance. The caller cannot change the expected owner, implementation, or HCA address. After deployment, the factory verifies the implementation and owner and permanently records the HCA-to-owner binding used by HCA-aware reverse adapters.
 
+Deployment is idempotent: the same arguments return the existing factory-certified HCA without
+reinitializing it or emitting deployment events. This remains true after the initial implementation's
+deployment approval is revoked or the HCA is upgraded; approval is required only for new deployments.
+
 Factory-backed HCAs read `owner()` from this certification instead of writing a duplicate owner
 slot during proxy initialization. The legacy owner slot remains in the account storage layout so an
 upgrade does not move the session nonce or later storage. Direct deployments whose implementation
@@ -90,7 +94,7 @@ Complete these checks before you use an HCA that already has code:
 
 Stop if a check fails. Do not select a different account without user approval.
 
-An address with no code is a predicted address. The first Rhinestone route can deploy it. Refresh the code before submission. Another caller can deploy the expected HCA first. If this occurs, verify it and omit the deployment operation.
+An address with no code is a predicted address. The first Rhinestone route can deploy it. Refresh the code before submission and omit deployment when the verified HCA already exists. If another caller deploys it after this check, the factory returns the existing HCA and the route can continue.
 
 ### Shared deployment
 

@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+import {UUPSProxyLogic} from "@ensdomains/verifiable-factory/UUPSProxyLogic.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
@@ -14,6 +15,7 @@ import {MockExecutorModule, MockValidatorModule} from "../../mocks/MockStandalon
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
+import {IPermissionedAddressSet} from "~src/utils/interfaces/IPermissionedAddressSet.sol";
 
 /// @title Standalone HCA Factory Tests
 /// @notice Exercises governed deployment and immutable HCA owner certification.
@@ -93,6 +95,75 @@ contract StandaloneHCAFactoryTest is Test {
 
         vm.expectRevert(StandaloneSingleOwnerHCA.StandaloneHCAAlreadyInitialized.selector);
         StandaloneSingleOwnerHCA(payable(hca)).initializeAccount(abi.encode(otherOwner));
+    }
+
+    function test_frontRunDeploymentReturnsCertifiedHCAWithoutReinitializing() public {
+        address expected = _expectedAddress(owner, address(implementation), USER_SALT);
+        vm.prank(attacker);
+        address deployed = hcaFactory.deploy(owner, address(implementation), USER_SALT);
+        assertEq(deployed, expected);
+
+        vm.prank(owner);
+        StandaloneSingleOwnerHCA(payable(deployed)).revokeSessions();
+
+        vm.recordLogs();
+        vm.prank(relayer);
+        address reused = hcaFactory.deploy(owner, address(implementation), USER_SALT);
+        assertEq(vm.getRecordedLogs().length, 0);
+
+        assertEq(reused, expected);
+        assertEq(hcaFactory.authorizedOwnerOf(reused), owner);
+        (address actualOwner, uint96 nonce) =
+            StandaloneSingleOwnerHCA(payable(reused)).ownerAndSessionNonce();
+        assertEq(actualOwner, owner);
+        assertEq(nonce, 1);
+        assertEq(verifiableFactory.verifyContract(reused), address(implementation));
+    }
+
+    function test_returnsExistingHCAAfterInitialImplementationApprovalIsRevoked() public {
+        address deployed = hcaFactory.deploy(owner, address(implementation), USER_SALT);
+        hcaFactory.setImplementationApproval(address(implementation), false);
+
+        vm.prank(relayer);
+        assertEq(hcaFactory.deploy(owner, address(implementation), USER_SALT), deployed);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StandaloneHCAFactory.HCAImplementationNotApproved.selector,
+                address(implementation)
+            )
+        );
+        hcaFactory.deploy(owner, address(implementation), USER_SALT + 1);
+    }
+
+    function test_returnsExistingHCAWithoutChangingItsUpgradedImplementation() public {
+        address deployed = hcaFactory.deploy(owner, address(implementation), USER_SALT);
+        IAddressSet predecessorSet = _deployPermissionedAddressSet(address(this));
+        StandaloneSingleOwnerHCA nextImplementation =
+            new StandaloneSingleOwnerHCA(
+                makeAddr("next-entry-point"),
+                address(new MockValidatorModule()),
+                address(new MockExecutorModule()),
+                "",
+                _deployPermissionedAddressSet(address(this)),
+                predecessorSet,
+                hcaFactory
+            );
+        IPermissionedAddressSet(address(implementation.UPGRADE_SET())).approve(
+            address(nextImplementation),
+            true
+        );
+        IPermissionedAddressSet(address(predecessorSet)).approve(address(implementation), true);
+        vm.prank(owner);
+        UUPSProxyLogic(payable(deployed)).upgradeToAndCall(address(nextImplementation), "");
+
+        vm.recordLogs();
+        vm.prank(relayer);
+        address reused = hcaFactory.deploy(owner, address(implementation), USER_SALT);
+        assertEq(vm.getRecordedLogs().length, 0);
+        assertEq(reused, deployed);
+        assertEq(verifiableFactory.verifyContract(reused), address(nextImplementation));
+        assertEq(StandaloneSingleOwnerHCA(payable(reused)).owner(), owner);
     }
 
     function test_allowsMultipleHCAsForOneOwner() public {
