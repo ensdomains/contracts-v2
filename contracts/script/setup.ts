@@ -274,6 +274,17 @@ export async function setupDevnet({
       ],
     });
 
+    if (isFork) {
+      // The well-known test mnemonic accounts carry EIP-7702 delegations on
+      // mainnet, which makes them contracts to ERC1155/ERC721 receiver checks.
+      for (const { address } of accounts) {
+        await client.request({
+          method: "anvil_setCode" as any,
+          params: [address, "0x"],
+        });
+      }
+    }
+
     console.log("Deploying contracts");
     const deploymentName = `devnet-${activeChainId}`;
     const deploymentsDirURL = new URL(
@@ -308,9 +319,10 @@ export async function setupDevnet({
         ...(isFork ? { extra: { v1DeploymentNetwork: "mainnet" } } : {}),
       },
       {
-        accounts: Object.fromEntries(
-          accounts.map((x) => [x.name, x.address]),
-        ) as never,
+        accounts: {
+          ...Object.fromEntries(accounts.map((x) => [x.name, x.address])),
+          ...(isFork ? { v1Owner: ENS_DAO_MULTISIG.toLowerCase() } : {}),
+        } as never,
         chains: {
           [activeChainId]: {
             info: chain,
