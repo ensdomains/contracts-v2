@@ -14,6 +14,7 @@ import {
   SEPOLIA_USDC,
   MAINNET_USDC,
   MAINNET_DAI,
+  ratioFromDecimals,
 } from "../script/deploy-constants.js";
 
 export default execute(
@@ -54,13 +55,14 @@ export default execute(
           read(x, { functionName: "decimals" }),
         ]);
         const decimals = Number(decimalsResult);
+        const [numer, denom] = ratioFromDecimals(decimals);
         return {
           MockERC20: symbol,
           paymentToken: x.address,
           decimals,
           Δ: decimals - PRICE_DECIMALS,
-          numer: 10n ** BigInt(Math.max(decimals - PRICE_DECIMALS, 0)),
-          denom: 10n ** BigInt(Math.max(PRICE_DECIMALS - decimals, 0)),
+          numer,
+          denom,
         };
       }),
     );

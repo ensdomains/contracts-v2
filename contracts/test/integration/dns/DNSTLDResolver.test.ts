@@ -137,7 +137,6 @@ async function fixture() {
       name,
       resolverAddress: myResolver.address,
     });
-
     await myResolver.write.setAddress([
       dnsEncodeName(name),
       COIN_TYPE_ETH,
@@ -242,6 +241,37 @@ describe("DNSTLDResolver", () => {
   }
 
   describe("still registered on V1", () => {
+    it("invalid resolver", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      const kp = { ...basicProfile, name: `sub.${basicProfile.name}` };
+      const subName = dnsEncodeName(kp.name);
+      await expect(
+        F.dnsTLDResolver.read.getResolver([subName]),
+        "before",
+      ).resolves.toStrictEqual([zeroAddress, true]);
+      await F.v1.setupName(basicProfile);
+      await expect(
+        F.dnsTLDResolver.read.getResolver([subName]),
+        "after",
+      ).resolves.toStrictEqual([zeroAddress, true]);
+      await F.v1.publicResolver.write.multicall([
+        makeResolutions(basicProfile).map((x) => x.writeV1),
+      ]);
+      const bundle = bundleCalls(makeResolutions(kp));
+      await expect(F.dnsTLDResolver.read.resolve([subName, bundle.call]))
+        .toBeRevertedWithCustomError("UnreachableName")
+        .withArgs([subName]);
+      await expect(F.v2.universalResolver.read.resolve([subName, bundle.call]))
+        .toBeRevertedWithCustomError("ResolverError")
+        .withArgs([
+          encodeErrorResult({
+            abi: F.dnsTLDResolver.abi,
+            errorName: "UnreachableName",
+            args: [subName],
+          }),
+        ]);
+    });
+
     testProfiles("immediate", (kp) => async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.v1.setupName(kp);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { toFunctionSignature, type AbiFunction } from "viem";
 
-import * as abis from "../../script/abis.js";
+import * as abis from "../../script/migrations/abis.js";
 
 /// The fragments are cut from the compiled artifacts, so they cannot disagree
 /// with the contracts — a renamed function resolves to `never` and fails the
@@ -24,6 +24,7 @@ describe("shared ABI fragments", () => {
       "BaseRegistrar",
       "EnsRegistry",
       "EthRegistrarController",
+      "Graveyard",
       "NameWrapper",
       "PermissionedRegistry",
       "PublicResolver",
