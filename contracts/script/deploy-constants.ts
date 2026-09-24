@@ -95,7 +95,6 @@ const ADMIN = adminify(FLAGS) as typeof FLAGS;
 
 export const ROLES = {
   ...FLAGS,
-  REGULAR: FLAGS.ALL >> 128n,
   ADMIN,
 } as const;
 

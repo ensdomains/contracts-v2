@@ -75,7 +75,6 @@ import {
   http,
   zeroAddress,
   defineChain,
-  encodeFunctionData,
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
@@ -97,12 +96,6 @@ import {
 } from "./deploy-constants.js";
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
 import { bootstrapForkDeployments, ENS_DAO_MULTISIG } from "./forkBootstrap.js";
-import { getContractNames } from "./contractNames.js";
-import {
-  computeOwnedResolverSalt,
-  computeUserRegistrySalt,
-  computeWrapperRegistrySalt,
-} from "./salts.js";
 
 const NAMED_ACCOUNTS = ["deployer", "owner", "user", "user2"] as const;
 
@@ -668,6 +661,8 @@ export async function setupDevnet({
       shutdown,
       createClient,
       computeVerifiableProxyAddress,
+      computeUserRegistrySalt,
+      computeOwnedResolverSalt,
       castUserRegistry,
       castPermissionedResolver,
       deployUserRegistry,
@@ -757,6 +752,36 @@ export async function setupDevnet({
         deployer,
         salt,
       });
+    }
+
+    function computeOwnedResolverSalt(owner: Address, version = 0n) {
+      return BigInt(
+        keccak256(
+          encodeAbiParameters(
+            [
+              { name: "id", type: "bytes32" },
+              { name: "owner", type: "address" },
+              { name: "version", type: "uint256" },
+            ],
+            [keccak256(stringToHex("OwnedResolver")), owner, version],
+          ),
+        ),
+      );
+    }
+
+    function computeUserRegistrySalt(name: string, version = 0n) {
+      return BigInt(
+        keccak256(
+          encodeAbiParameters(
+            [
+              { name: "id", type: "bytes32" },
+              { name: "node", type: "bytes32" },
+              { name: "version", type: "uint256" },
+            ],
+            [keccak256(stringToHex("UserRegistry")), namehash(name), version],
+          ),
+        ),
+      );
     }
 
     async function deployPermissionedResolver({
@@ -866,7 +891,7 @@ export async function setupDevnet({
         currentName = `${labels.pop()}.${currentName}`;
         address = computeVerifiableProxyAddress(
           address,
-          computeWrapperRegistrySalt(currentName),
+          BigInt(namehash(currentName)),
         );
       }
       return address;
@@ -955,8 +980,8 @@ export async function setupDevnet({
     }
 
     async function setupEnsDotEth() {
-      const account = namedAccounts.owner;
-      const { resolver } = account;
+      const { resolver } = namedAccounts.owner;
+
       // temporary registration of "ens.eth" by deployer
       // (normally would be migrated by current ens.eth owner)
       // Deployer has REGISTRAR_ADMIN but not REGISTRAR; grant self REGISTRAR for setup
@@ -967,42 +992,81 @@ export async function setupDevnet({
       // create "ens.eth" (owner gets full roles for devnet setup)
       await v2.ETHRegistry.write.register([
         "ens",
-        account.address,
+        namedAccounts.owner.address,
         zeroAddress,
         resolver.address,
         ROLES.ALL,
         MAX_EXPIRY,
       ]);
-      const writes: Hex[] = [];
-      for (const x of await getContractNames()) {
+
+      await setName("namer", v2.ContractNamer.address);
+
+      await setName("root", v2.RootRegistry.address);
+      await setName("registry", v2.ETHRegistry.address);
+      await setName("impl.registry", v2.UserRegistryImpl.address);
+      await setName("impl.wrapper-registry", v2.WrapperRegistryImpl.address);
+
+      await setName("2to1.resolver", v2.ENSV1Resolver.address);
+      await setName("1to2.resolver", v2.ENSV2Resolver.address);
+      await setName("impl.resolver", v2.PermissionedResolverImpl.address);
+      await setName("universal", v2.UniversalResolver.address);
+      await setName("impl.universal", v2.UniversalResolver.address); // devnet doesn't deploy a proxy
+      await setName("helper", v2.UniversalHelper.address);
+      await setName("public.resolver", v2.PublicResolver.address);
+      await setName("dns.resolver", v2.DNSTLDResolver.address);
+
+      await setName("dnsname", v2.DNSTXTResolver.address); // remap v1 ExtendedDNSResolver
+      await setName("dnstxt", v2.DNSTXTResolver.address); // TODO: could just use "dnsname"?
+      await setName("dnsalias", v2.DNSAliasResolver.address);
+
+      await setName("registrar", v2.ETHRegistrar.address);
+      await setName("renewer", v2.ETHRenewerV1.address);
+      await setName("oracle", v2.StandardRentPriceOracle.address);
+      // await setName("batch.migration", v2.BatchRegistrar.address); // this is only used internally for premigration
+      await setName("addr.reverse", shared.ReverseRegistrarAdapter.address);
+      await setName(
+        "default.reverse",
+        shared.DefaultReverseRegistrarAdapter.address,
+      );
+
+      await setName(
+        "unlocked.migration",
+        v2.UnlockedMigrationController.address,
+      );
+      await setName("locked.migration", v2.LockedMigrationController.address);
+      await setName("graveyard", v2.Graveyard.address);
+      await setName("helper.migration", v2.MigrationHelper.address);
+      await setName("upgradeset.registry", v2.RegistryUpgradeSet.address);
+      await setName("prset.migration", v2.PublicResolverSet.address);
+
+      await setName("batch.gateways", shared.BatchGatewayProvider.address);
+      await setName("dnssec.gateways", shared.DNSSECGatewayProvider.address);
+      await setName("labelstore", v2.LabelStore.address);
+      await setName("verifiable-factory", v2.VerifiableFactory.address);
+
+      async function setName(
+        prefix: string,
+        address: Address,
+        namer = namedAccounts.owner,
+      ) {
+        const name = `${prefix}.ens.eth`;
         try {
-          const { address } = rocketh.get(x.deployment);
-          if (x.claim) {
-            await shared.ReverseRegistrarAdapter.write.claim(
-              [address, resolver.address],
-              { account },
-            );
-          }
-          writes.push(
-            encodeFunctionData({
-              abi: resolver.abi,
-              functionName: "setName",
-              args: [dnsEncodeName(getReverseName(address)), x.name],
-            }),
+          await shared.ReverseRegistrarAdapter.write.claim(
+            [address, resolver.address],
+            { account: namer },
           );
-          writes.push(
-            encodeFunctionData({
-              abi: resolver.abi,
-              functionName: "setAddress",
-              args: [dnsEncodeName(x.name), COIN_TYPE_ETH, address],
-            }),
-          );
+          await resolver.write.setName([
+            dnsEncodeName(getReverseName(address)),
+            name,
+          ]);
         } catch (err) {
-          console.log(`Cannot name: ${x.name}: ${err}`);
+          console.log(`Cannot name: ${name}`);
         }
-      }
-      if (writes.length) {
-        await resolver.write.multicall([writes]);
+        await resolver.write.setAddress([
+          dnsEncodeName(name),
+          COIN_TYPE_ETH,
+          address,
+        ]);
       }
     }
 
