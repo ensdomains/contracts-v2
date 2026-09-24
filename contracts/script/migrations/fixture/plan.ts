@@ -1,9 +1,7 @@
 import {
   encodeFunctionData,
   keccak256,
-  namehash,
   stringToHex,
-  toHex,
   zeroAddress,
   type Address,
   type Hex,
@@ -36,6 +34,7 @@ import {
   PublicResolver,
   ReverseRegistrar,
 } from "../abis.js";
+import { namehash, labelhash, idFromLabel } from "../../../test/utils/utils.js";
 
 /// The v1 surfaces this planner writes through, each as narrow as the calls it
 /// makes. `setAddr` is overloaded, so the two arities stay apart: viem cannot
@@ -105,14 +104,6 @@ export type PlanContext = RefContext & {
 
 const BATCHER: Signer = { kind: "batcher" };
 const actorSigner = (alias: string): Signer => ({ kind: "actor", alias });
-
-export function labelhashOf(label: string): Hex {
-  return keccak256(stringToHex(label));
-}
-
-export function tokenIdOf(label: string): bigint {
-  return BigInt(labelhashOf(label));
-}
 
 /// Calls that move a v1 name to a new holder.
 ///
@@ -426,9 +417,9 @@ export function planSetupSteps(
   const wrapped = isWrapped(form);
   const child = isChild(form);
   const label = scenario.top_level_label;
-  const node = namehash(scenario.name) as Hex;
-  const topNode = namehash(`${label}.eth`) as Hex;
-  const tokenId = tokenIdOf(label);
+  const node = namehash(scenario.name);
+  const topNode = namehash(`${label}.eth`);
+  const tokenId = idFromLabel(label);
   const calls: PlannedCall[] = [];
 
   const registrationOwner = stripActorPrefix(
@@ -729,7 +720,7 @@ export function planSetupSteps(
           data: encodeFunctionData({
             abi: WRAPPER_ABI,
             functionName: "unwrapETH2LD",
-            args: [labelhashOf(label), to, to],
+            args: [labelhash(label), to, to],
           }),
         });
         wrappedNow = false;

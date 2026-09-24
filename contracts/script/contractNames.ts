@@ -19,7 +19,7 @@ import { computeOwnedResolverSalt } from "./salts.js";
 import { ROLES } from "./deploy-constants.js";
 import { computeVerifiableProxyAddress } from "../test/integration/fixtures/deployVerifiableProxy.js";
 import { labelhash, namehash } from "../test/utils/utils.js";
-import { migrationDataComponents } from "./migration.js";
+import { encodeMigrationData } from "../test/utils/migrationData.js";
 
 // the profiles need stored in a resolver
 // in v1, the records were in the PublicResolver
@@ -227,12 +227,12 @@ if (import.meta.main) {
         salt: computeOwnedResolverSalt(owner),
       });
       const label = "ens";
-      const migrationData = encodeAbiParameters(migrationDataComponents, [
+      const migrationData = encodeMigrationData({
         label,
         owner,
-        zeroAddress,
         resolver,
-      ]);
+        subregistry: zeroAddress,
+      });
       return wrapped
         ? {
             to: v1.NameWrapper,

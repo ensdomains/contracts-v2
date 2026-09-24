@@ -12,35 +12,27 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
 import {
   AbiDecodingZeroDataError,
   BaseError,
   ContractFunctionRevertedError,
   ContractFunctionZeroDataError,
-  createPublicClient,
-  createWalletClient,
-  custom,
   decodeAbiParameters,
-  defineChain,
   encodeAbiParameters,
   encodeFunctionData,
   getAddress,
   getContract,
-  http,
   keccak256,
-  namehash,
   parseAbiItem,
-  parseEther,
   slice,
   stringToHex,
   zeroAddress,
-  zeroHash,
   type AbiParameter,
   type AbiEvent,
   type Address,
   type Chain,
   type Hex,
+  toHex,
 } from "viem";
 import {
   english as englishWordlist,
@@ -49,7 +41,6 @@ import {
   mnemonicToAccount,
   privateKeyToAccount,
 } from "viem/accounts";
-import { mainnet, sepolia } from "viem/chains";
 import type { AccountDefinition, AccountType, UserConfig } from "rocketh/types";
 import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
@@ -81,14 +72,13 @@ import {
   keptUnreservedFixtureNames,
   runFixtureSeedStage,
 } from "./migrations/fixture.js";
-import { ACTOR_ALIASES, bufferedGas } from "./migrations/fixture/config.js";
+import { ACTOR_ALIASES } from "./migrations/fixture/config.js";
 import { isLogSpanRefusalMessage } from "./migrations/logSpanRefusal.js";
 import {
   executePreparedOwnerTransactions,
   preparedOwnerTransactionLabel,
   printPreparedCall,
   readPreparedOwnerTransactions,
-  type PreparedOwnerTransaction,
 } from "./migrations/ownerTx.js";
 import {
   assertRejected,
@@ -100,21 +90,16 @@ import {
   readV1Owner,
   registerViaV2Registrar,
   renewViaEthRenewerV1,
-  runV2RegistrarSmoke,
 } from "./migrations/smoke.js";
 import {
   createRpcSnapshot,
-  increaseTime,
-  RPC_RETRY_COUNT,
   requestAny,
   walletClient,
-  withGasBuffer,
   impersonate,
   impersonatedAccountProvider,
   installRpcCompatibility,
   isLocalRpcUrl,
   isTenderlyVirtualRpc,
-  privateKeyRpcProvider,
   privateKeySignerProtocol,
   saveRpcSnapshotFile,
   setBalance,
@@ -124,13 +109,9 @@ import {
   clearAccountDelegations,
 } from "./migrations/rpc.js";
 import {
-  BUNDLED_V1_DEPLOYMENTS_DIR,
-  labelId,
   requireRpcUrl,
   V1_BASE_REGISTRAR_NAME,
-  V1_REGISTRATION_DURATION,
   V2_REGISTRATION_DURATION,
-  waitForCommitmentAge,
   waitForSuccessfulReceipt,
   DEFAULT_DEPLOYMENTS_DIR,
   errorMessageChain,
@@ -154,7 +135,13 @@ import {
   type RpcProvider,
   type V1DeploymentOptions,
 } from "./migrations/plumbing.js";
-import { dnsEncodeName } from "../test/utils/utils.js";
+import {
+  dnsEncodeName,
+  idFromLabel,
+  idWithVersion,
+  labelhash,
+  namehash,
+} from "../test/utils/utils.js";
 import { resolveRegistrarControlRoute } from "./migrations/registrarControl.js";
 import {
   PermissionedRegistry as PermissionedRegistryFragments,
@@ -262,13 +249,6 @@ const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
 
 const MIGRATION_DEPLOY_TAGS = ["migration:phase1:deploy-v2"] as const;
 
-export const migrationDataComponents = [
-  { name: "label", type: "string" },
-  { name: "owner", type: "address" },
-  { name: "subregistry", type: "address" },
-  { name: "resolver", type: "address" },
-] as const;
-
 type PrivateKeyOptions = {
   deployerPrivateKey?: `0x${string}`;
   ownerPrivateKey?: `0x${string}`;
@@ -342,11 +322,8 @@ function readEncodedLabelhashRows(csvFile: string): Map<string, string> {
   for (const line of rows) {
     const label = csvLabelCell(parseCSVLine(line), labelIndex);
     if (!label || !isEncodedLabelhash(label)) continue;
-    for (const id of [
-      keccak256(stringToHex(label)),
-      `0x${label.slice(1, -1)}`,
-    ]) {
-      labels.set(toLabelhashHex(canonicalLabelId(id)), label);
+    for (const id of [labelhash(label), `0x${label.slice(1, -1)}`]) {
+      labels.set(toCanonicalHex(id), label);
     }
   }
   return labels;
@@ -923,7 +900,7 @@ async function verifyPreMigration(opts: {
     const registrations = await readV1Registrations(
       v1Client,
       v1Contracts,
-      validBatch.map(labelId),
+      validBatch.map(idFromLabel),
     );
     const stateResults = await client.multicall({
       allowFailure: true,
@@ -933,7 +910,7 @@ async function verifyPreMigration(opts: {
             address: registry.address,
             abi: REGISTRY_STATE_ABI,
             functionName: "getState",
-            args: [labelId(label)],
+            args: [idFromLabel(label)],
           }) as const,
       ),
     });
@@ -1165,14 +1142,9 @@ async function discoverV2SeededLabelhashes(
 // counter. A raw v1 labelhash is accepted as a lookup id because the registry zeroes
 // those bits internally, but a token id read back out carries them — so comparisons
 // between the two sides must happen on the canonical form, never on a token id.
-function canonicalLabelId(labelhash: string): bigint {
-  return BigInt(labelhash) & ~0xffffffffn;
+function toCanonicalHex(id: string | bigint): string {
+  return toHex(idWithVersion(BigInt(id)), { size: 32 });
 }
-
-function toLabelhashHex(id: bigint): string {
-  return `0x${id.toString(16).padStart(64, "0")}`;
-}
-
 type ReconcileResult = {
   claimable: number;
   /// Index names live by expiry whose v1 registrant is a Graveyard. They are not
@@ -1382,7 +1354,7 @@ export async function reconcilePreMigration(opts: {
     );
     if (eligibility === "claimable") claimable.push(entry);
     else if (eligibility === "graveyard") {
-      graveyardIds.add(toLabelhashHex(canonicalLabelId(entry.id)));
+      graveyardIds.add(toCanonicalHex(entry.id));
     }
   }
   result.claimable = claimable.length;
@@ -1399,10 +1371,7 @@ export async function reconcilePreMigration(opts: {
   const keptOut = new Map<string, { label: string; state: string }>();
   if (opts.fixtureWorkDir) {
     for (const name of keptUnreservedFixtureNames(opts.fixtureWorkDir)) {
-      keptOut.set(
-        toLabelhashHex(canonicalLabelId(keccak256(stringToHex(name.label)))),
-        name,
-      );
+      keptOut.set(toCanonicalHex(idFromLabel(name.label)), name);
     }
   }
 
@@ -1424,7 +1393,7 @@ export async function reconcilePreMigration(opts: {
   const reservedIds = new Set(
     [...seeded]
       .filter(([, entry]) => entry.reserved)
-      .map(([labelhash]) => toLabelhashHex(canonicalLabelId(labelhash))),
+      .map(([labelHash]) => toCanonicalHex(labelHash)),
   );
   // Once migration has opened, owners renew on v2 and anyone registers names v1
   // does not hold, so neither may be read as a fault.
@@ -1462,7 +1431,7 @@ export async function reconcilePreMigration(opts: {
       }
       const { status, expiry: actualExpiry, latestOwner } = state.result;
 
-      const canonicalId = toLabelhashHex(canonicalLabelId(entry.id));
+      const canonicalId = toCanonicalHex(entry.id);
       const fixture = keptOut.get(canonicalId);
       // Nothing on v2 at all: the name was never seeded.
       if (status === STATUS.AVAILABLE && actualExpiry === 0n) {
@@ -1536,7 +1505,7 @@ export async function reconcilePreMigration(opts: {
   // what catches a stray registrar writing into the registry, or a seed run against
   // the wrong data.
   const claimableIds = new Set(
-    claimable.map((entry) => toLabelhashHex(canonicalLabelId(entry.id))),
+    claimable.map((entry) => toCanonicalHex(entry.id)),
   );
   // An entry whose v1 name has passed grace since it was seeded is expected — it was
   // claimable at the time. But "v1 once knew this labelhash" is not enough on its own:
@@ -1545,9 +1514,9 @@ export async function reconcilePreMigration(opts: {
   // legitimate seed carries the bonus-adjusted v1 expiry whether or not the name has
   // since lapsed, so that is what distinguishes the two.
   const staleSeeds = [...seeded.keys()].filter(
-    (labelhash) =>
-      !claimableIds.has(toLabelhashHex(canonicalLabelId(labelhash))) &&
-      index.expiries.has(labelhash),
+    (labelHash) =>
+      !claimableIds.has(toCanonicalHex(labelHash)) &&
+      index.expiries.has(labelHash),
   );
   const staleStates = await readV2StatesInBatches(
     client,
@@ -1561,35 +1530,35 @@ export async function reconcilePreMigration(opts: {
   // once that lapses an expiry-first rule reads it as past grace, while a bonus period
   // longer than the v1 grace keeps its reservation blocking the name.
   const liveIds = new Set(live.map((entry) => entry.id));
-  const lapsedSeeds = staleSeeds.filter((labelhash) => !liveIds.has(labelhash));
+  const lapsedSeeds = staleSeeds.filter((labelHash) => !liveIds.has(labelHash));
   const lapsedRegistrations = await readV1RegistrationsInBatches(
     v1Client,
     v1Contracts,
     lapsedSeeds,
   );
-  for (const labelhash of lapsedSeeds) {
-    const read = lapsedRegistrations.get(labelhash)!;
+  for (const labelHash of lapsedSeeds) {
+    const read = lapsedRegistrations.get(labelHash)!;
     if ("error" in read) {
-      result.unexpected.push(`${labelhash} v1 lookup failed: ${read.error}`);
+      result.unexpected.push(`${labelHash} v1 lookup failed: ${read.error}`);
     } else if (read.registrant !== null && graveyards.has(read.registrant)) {
-      graveyardIds.add(toLabelhashHex(canonicalLabelId(labelhash)));
+      graveyardIds.add(toCanonicalHex(labelHash));
     }
   }
-  for (const [labelhash, { label, reserved }] of seeded) {
-    const canonicalId = toLabelhashHex(canonicalLabelId(labelhash));
+  for (const [labelHash, { label, reserved }] of seeded) {
+    const canonicalId = toCanonicalHex(labelHash);
     if (claimableIds.has(canonicalId)) continue;
     // Registered through the registrar with no reservation behind it: once
     // migration has opened that is someone registering a name v1 no longer holds,
     // not a seed. Before then nothing may register, so it is still reported.
     if (!reserved && migrationOpen) continue;
-    const known = index.expiries.get(labelhash);
+    const known = index.expiries.get(labelHash);
     if (known !== undefined) {
-      const state = staleStates.get(labelhash);
+      const state = staleStates.get(labelHash);
       if (graveyardIds.has(canonicalId)) {
         const problem = describeGraveyardSeed(state, migrationOpen, v2Now);
         if (problem) {
           result.unexpected.push(
-            `${labelhash}${label ? ` (${label}.eth)` : ""} ${problem}`,
+            `${labelHash}${label ? ` (${label}.eth)` : ""} ${problem}`,
           );
         }
         continue;
@@ -1603,12 +1572,12 @@ export async function reconcilePreMigration(opts: {
         continue;
       }
       result.unexpected.push(
-        `${labelhash}${label ? ` (${label}.eth)` : ""} is on v2 with expiry ${actual ?? "unreadable"}, but its v1 name lapsed carrying ${expected}`,
+        `${labelHash}${label ? ` (${label}.eth)` : ""} is on v2 with expiry ${actual ?? "unreadable"}, but its v1 name lapsed carrying ${expected}`,
       );
       continue;
     }
     result.unexpected.push(
-      `${labelhash}${label ? ` (${label}.eth)` : ""} is on v2 but not a v1 name`,
+      `${labelHash}${label ? ` (${label}.eth)` : ""} is on v2 but not a v1 name`,
     );
   }
 
@@ -1631,18 +1600,13 @@ export async function reconcilePreMigration(opts: {
     } else {
       const labelByHash = new Map<string, string>();
       for (const label of readLabelsFromCsv(opts.csvFile)) {
-        labelByHash.set(
-          toLabelhashHex(canonicalLabelId(toLabelhashHex(labelId(label)))),
-          label,
-        );
+        labelByHash.set(toCanonicalHex(idFromLabel(label)), label);
       }
 
       const resolvable: Array<{ id: string; label: string }> = [];
       let unmappable = 0;
       for (const entry of claimable) {
-        const label = labelByHash.get(
-          toLabelhashHex(canonicalLabelId(entry.id)),
-        );
+        const label = labelByHash.get(toCanonicalHex(entry.id));
         if (label === undefined) unmappable++;
         else resolvable.push({ id: entry.id, label });
       }
@@ -1837,7 +1801,7 @@ type V2EntryState = { status: number; expiry: bigint; latestOwner: Address };
 async function readV1RegistrationsInBatches(
   v1Client: ReturnType<typeof publicClient>,
   v1Contracts: V1Contracts,
-  labelhashes: readonly string[],
+  labelHashes: readonly string[],
 ): Promise<
   Map<string, Awaited<ReturnType<typeof readV1Registrations>>[number]>
 > {
@@ -1847,20 +1811,20 @@ async function readV1RegistrationsInBatches(
   >();
   for (
     let start = 0;
-    start < labelhashes.length;
+    start < labelHashes.length;
     start += PREMIGRATION_VERIFY_BATCH_SIZE
   ) {
-    const batch = labelhashes.slice(
+    const batch = labelHashes.slice(
       start,
       start + PREMIGRATION_VERIFY_BATCH_SIZE,
     );
     const reads = await readV1Registrations(
       v1Client,
       v1Contracts,
-      batch.map((labelhash) => BigInt(labelhash)),
+      batch.map((labelHash) => BigInt(labelHash)),
     );
-    for (const [index, labelhash] of batch.entries()) {
-      registrations.set(labelhash, reads[index]);
+    for (const [index, labelHash] of batch.entries()) {
+      registrations.set(labelHash, reads[index]);
     }
   }
   return registrations;
@@ -1871,35 +1835,35 @@ async function readV1RegistrationsInBatches(
 async function readV2StatesInBatches(
   client: ReturnType<typeof publicClient>,
   registryAddress: Address,
-  labelhashes: string[],
+  labelHashes: string[],
 ): Promise<Map<string, V2EntryState>> {
   const states = new Map<string, V2EntryState>();
   for (
     let start = 0;
-    start < labelhashes.length;
+    start < labelHashes.length;
     start += PREMIGRATION_VERIFY_BATCH_SIZE
   ) {
-    const batch = labelhashes.slice(
+    const batch = labelHashes.slice(
       start,
       start + PREMIGRATION_VERIFY_BATCH_SIZE,
     );
     const outcomes = await client.multicall({
       allowFailure: true,
       contracts: batch.map(
-        (labelhash) =>
+        (labelHash) =>
           ({
             address: registryAddress,
             abi: REGISTRY_STATE_ABI,
             functionName: "getState",
-            args: [BigInt(labelhash)],
+            args: [BigInt(labelHash)],
           }) as const,
       ),
     });
-    for (const [index, labelhash] of batch.entries()) {
+    for (const [index, labelHash] of batch.entries()) {
       const outcome = outcomes[index];
       if (outcome.status === "failure") continue;
       const { status, expiry, latestOwner } = outcome.result;
-      states.set(labelhash, { status, expiry, latestOwner });
+      states.set(labelHash, { status, expiry, latestOwner });
     }
   }
   return states;
@@ -3496,7 +3460,7 @@ export async function selectResolvableNames(opts: {
       address: opts.v1BaseRegistrar.address,
       abi: opts.v1BaseRegistrar.abi,
       functionName: "nameExpires",
-      args: [labelId(label)],
+      args: [idFromLabel(label)],
     })) as bigint;
     if (!isClaimableOnV1(expiry, opts.v1Now)) continue;
     const probe = await captureResolutionSnapshot({
@@ -3875,7 +3839,7 @@ export async function verifyV2Roles(opts: {
         address: registry.address,
         abi: Artifact_PermissionedRegistry.abi,
         functionName: "getResource",
-        args: [labelId(entry.label)],
+        args: [idFromLabel(entry.label)],
       })) as bigint;
       labelByResource.set(resource.toString(), entry.label);
       expectations.push({
@@ -6809,7 +6773,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         mockUsdc,
         preFunded: paymentTokenPreFunded,
       });
-      renewedIds.push(keccak256(stringToHex(smokeLabels.reservedOnly)));
+      renewedIds.push(labelhash(smokeLabels.reservedOnly));
       coveredChecks.push(SMOKE_CHECKS.renewal);
     } else if (!postMigration) {
       // Post-migration mode already accounts for this skip: the renewal needs the
