@@ -24,12 +24,6 @@ import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol
 import {LibResolution} from "../universalResolver/libraries/LibResolution.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
-/// @dev DNS resource-record class for the Internet (`IN`), as defined in RFC 1035 section 3.2.4.
-uint16 constant CLASS_INET = 1;
-
-/// @dev DNS resource-record type for TXT records, as defined in RFC 1035 section 3.3.14.
-uint16 constant QTYPE_TXT = 16;
-
 /// @dev The prefix string that identifies an ENS-aware DNS TXT record (`"ENS1 "`).
 ///      Only TXT records beginning with this prefix are considered during resolution.
 bytes constant TXT_PREFIX = "ENS1 ";
@@ -149,7 +143,7 @@ contract DNSTLDResolver is
         revert OffchainLookup(
             address(this),
             ORACLE_GATEWAY_PROVIDER.gateways(),
-            abi.encodeCall(IDNSGateway.resolve, (name, QTYPE_TXT)),
+            abi.encodeCall(IDNSGateway.resolve, (name, RRUtils.DNSTYPE_TXT)),
             this.getDNSSECRecordsCallback.selector, // ==> step 2
             name
         );
@@ -164,9 +158,7 @@ contract DNSTLDResolver is
         view
         returns (bytes[] memory txts)
     {
-        DNSSEC.RRSetWithSignature[] memory rrsets =
-            abi.decode(response, (DNSSEC.RRSetWithSignature[]));
-        (bytes memory data, ) = DNSSEC_ORACLE.verifyRRSet(rrsets);
+        bytes memory data = _dataFromDNSSECResponse(response);
         uint256 i;
         for (
             RRUtils.RRIterator memory iter = RRUtils.iterateRRs(data, 0);
@@ -212,7 +204,7 @@ contract DNSTLDResolver is
         revert OffchainLookup(
             address(this),
             ORACLE_GATEWAY_PROVIDER.gateways(),
-            abi.encodeCall(IDNSGateway.resolve, (name, QTYPE_TXT)),
+            abi.encodeCall(IDNSGateway.resolve, (name, RRUtils.DNSTYPE_TXT)),
             this.getResolverCallback.selector, // ==> step 2
             name
         );
@@ -246,7 +238,7 @@ contract DNSTLDResolver is
         revert OffchainLookup(
             address(this),
             ORACLE_GATEWAY_PROVIDER.gateways(),
-            abi.encodeCall(IDNSGateway.resolve, (name, QTYPE_TXT)),
+            abi.encodeCall(IDNSGateway.resolve, (name, RRUtils.DNSTYPE_TXT)),
             this.resolveOracleCallback.selector, // ==> step 2
             abi.encode(name, data)
         );
@@ -323,9 +315,7 @@ contract DNSTLDResolver is
         view
         returns (address resolver, bytes memory context)
     {
-        DNSSEC.RRSetWithSignature[] memory rrsets =
-            abi.decode(oracleWitness, (DNSSEC.RRSetWithSignature[]));
-        (bytes memory data, ) = DNSSEC_ORACLE.verifyRRSet(rrsets);
+        bytes memory data = _dataFromDNSSECResponse(oracleWitness);
         for (
             RRUtils.RRIterator memory iter = RRUtils.iterateRRs(data, 0);
             !RRUtils.done(iter);
@@ -375,6 +365,15 @@ contract DNSTLDResolver is
         }
     }
 
+    /// @dev Get the verified leaf resource record data.
+    /// @param response The ABI-encoded `DNSSEC.RRSetWithSignature[]` proof from the gateway. 
+    function _dataFromDNSSECResponse(bytes calldata response) internal view returns (bytes memory) {
+        DNSSEC.RRSetWithSignature[] memory rrsets =
+            abi.decode(response, (DNSSEC.RRSetWithSignature[]));
+        RRUtils.SignedSet[] memory sss = DNSSEC_ORACLE.verifyRRSet(rrsets);
+        return sss[sss.length - 1].data;
+    }
+
     /// @dev Returns `true` if `iter` points to a TXT record of class `IN` whose owner name
     ///      matches `name`.
     /// @param iter The current position in the resource-record iteration.
@@ -386,8 +385,8 @@ contract DNSTLDResolver is
         returns (bool)
     {
         return
-            iter.class == CLASS_INET &&
-            iter.dnstype == QTYPE_TXT &&
+            iter.class == RRUtils.CLASS_INET &&
+            iter.dnstype == RRUtils.DNSTYPE_TXT &&
             BytesUtils.equals(iter.data, iter.offset, name, 0, name.length);
     }
 
