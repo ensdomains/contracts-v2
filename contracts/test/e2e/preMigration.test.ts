@@ -11,6 +11,7 @@ import {
   getAddress,
   http,
   namehash,
+  parseGwei,
   publicActions,
   zeroAddress,
 } from "viem";
@@ -26,6 +27,10 @@ import {
   isValidLabel,
   V1_GRACE_PERIOD_SECONDS,
 } from "../../script/preMigration.js";
+import {
+  httpRpcProvider,
+  whileMiningBlocks,
+} from "../../script/migrations/rpc.js";
 import {
   setupBaseRegistrarController,
   registerV1Name,
@@ -366,6 +371,73 @@ describe("PreMigration", () => {
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.AVAILABLE);
+  });
+
+  it("waits to send while the gas price is above the limit, and caps the fee at it", async () => {
+    const label = "gaspaused";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    createCSVFile(csvFilePath, [label]);
+
+    // Every recent block the live price is taken from costs far more than the limit.
+    await env.client.setNextBlockBaseFeePerGas({
+      baseFeePerGas: parseGwei("100"),
+    });
+    await env.client.mine({ blocks: 5 });
+
+    const run = main(buildMainArgs(env, csvFilePath, { maxGasPrice: "10" }));
+    await setTimeout(3000);
+
+    expect(readFileSync("preMigration.log", "utf-8")).toContain(
+      "above the 10 gwei limit; pausing",
+    );
+    expect((await verifyV2State(env, label)).status).toBe(STATUS.AVAILABLE);
+
+    await env.client.setNextBlockBaseFeePerGas({
+      baseFeePerGas: parseGwei("1"),
+    });
+    await env.client.mine({ blocks: 5 });
+    await run;
+
+    expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
+
+    // The transaction was capped at the limit, so it could not have paid more.
+    const batchRegistrar = getAddress(
+      env.rocketh.get("BatchRegistrar").address,
+    );
+    const { transactions } = await env.client.getBlock({
+      includeTransactions: true,
+    });
+    const sent = transactions.find(
+      (tx) => tx.to !== null && getAddress(tx.to) === batchRegistrar,
+    );
+    expect(sent?.maxFeePerGas).toBe(parseGwei("10"));
+    expect(sent!.maxPriorityFeePerGas!).toBeLessThanOrEqual(parseGwei("10"));
+  });
+
+  it("resumes by itself when blocks are mined while it waits, as in a rehearsal", async () => {
+    const label = "gasrehearsal";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    createCSVFile(csvFilePath, [label]);
+
+    await env.client.setNextBlockBaseFeePerGas({
+      baseFeePerGas: parseGwei("100"),
+    });
+    await env.client.mine({ blocks: 5 });
+
+    // Nothing lowers the price by hand: only the empty blocks mined alongside the
+    // run let the base fee fall below the limit.
+    await whileMiningBlocks(httpRpcProvider(`http://${env.hostPort}`), () =>
+      main(buildMainArgs(env, csvFilePath, { maxGasPrice: "10" })),
+    );
+
+    const log = readFileSync("preMigration.log", "utf-8");
+    expect(log).toContain("above the 10 gwei limit; pausing");
+    expect(log).toContain("at or below the 10 gwei limit; resuming");
+    expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
   });
 
   it("limit parameter restricts processing", async () => {

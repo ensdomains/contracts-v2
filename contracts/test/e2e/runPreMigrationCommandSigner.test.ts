@@ -126,6 +126,31 @@ describe("runPreMigrationCommand signer resolution", () => {
   });
 });
 
+describe("runPreMigrationCommand gas price limit", () => {
+  beforeEach(() => {
+    capturedArgs = null;
+    process.env.DEPLOYER_KEY = DEPLOYER_KEY;
+  });
+
+  afterEach(() => {
+    delete process.env.DEPLOYER_KEY;
+  });
+
+  it("passes a limit through to the run", async () => {
+    await runPreMigrationCommand(
+      { ...baseOpts, maxGasPrice: "0.5" },
+      false,
+      captureArgs,
+    );
+    expect(flagValue(capturedArgs!, "--max-gas-price")).toBe("0.5");
+  });
+
+  it("leaves the run's default in place when no limit is given", async () => {
+    await runPreMigrationCommand({ ...baseOpts }, false, captureArgs);
+    expect(capturedArgs).not.toContain("--max-gas-price");
+  });
+});
+
 describe("runPreMigrationCommand Graveyard set", () => {
   let deploymentsDir: string;
 

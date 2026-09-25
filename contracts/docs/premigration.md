@@ -89,6 +89,7 @@ bun run script/preMigration.ts [options]
 | `--dry-run` | `false` | Simulate without sending transactions. |
 | `--continue` | `false` | Resume from the last checkpoint. |
 | `--bonus-period-days <days>` | `62` | Days added to each name's v1 expiry to compute its v2 expiry. `0` preserves v1 expiries exactly. |
+| `--max-gas-price <gwei>` | `0.146` on mainnet, none elsewhere | Wait to send while the gas price is above this many gwei. See [Gas price limit](#gas-price-limit). |
 | `--v1-base-registrar <address>` | mainnet `BaseRegistrar` | v1 `BaseRegistrar` for expiry lookups (override for testing). |
 
 > Eligibility is independently gated by v1's hard-coded 90-day grace: a name expired more than 90 days
@@ -231,7 +232,55 @@ with `--continue` once the cause is fixed.
 **Gas safety.** Before submitting, the script estimates gas; if it exceeds 80% of the block limit the
 batch is split in half and re-estimated (recursively). If a batch reverts at execution, it is
 recursively halved and retried (binary search) until failing names are isolated — preserving partial
-progress. A checkpoint is saved after each batch.
+progress. A transaction that is slow to be mined is waited for, with or without a gas price limit,
+and is not counted as failed: splitting its batch would send the names again while it can still be
+mined. A checkpoint is saved after each batch.
+
+### Gas price limit
+
+A batch is not sent while the gas price is above a limit, and no transaction pays more than the
+limit. The script reads the price again every 12 seconds, and sends as soon as it is at or below the
+limit. A pause has no time limit: it lasts until the price comes back down, however long that takes.
+
+- **Gas price** is a base fee plus a tip. The live price is the higher of the latest and the next
+  block's base fee, plus the median of the last 5 blocks' median tips (the 50th-percentile priority
+  fee that `eth_feeHistory` reports). The median keeps one unusual block from deciding the tip. The
+  tip is what blocks paid, not the tip the RPC suggests, because suggested tips differ between
+  providers by more than the limit itself.
+- **Fee cap:** each transaction is sent with its maximum fee per gas set to the limit and its tip set
+  to that market tip, so it never pays more than the limit. If the base fee rises past the limit
+  after the check but before the send, the send is refused and the script waits again; the batch is
+  not split. If the base fee rises after the send, the transaction waits in the node's pool until the
+  base fee falls back.
+- **Default:** `0.146` gwei on mainnet. This is the median mainnet gas price over the two weeks
+  before the default was set. Other chains have no limit by default, because a mainnet price says
+  nothing about their gas market. `--max-gas-price <gwei>` sets a limit on any chain. The run logs
+  the limit it uses at start-up.
+- **When it applies:** before every `batchRegister` transaction, including the smaller ones sent
+  when a batch is split. A batch with nothing to send does not wait, so a final sync where most
+  names are already up to date reads the chain at full speed.
+- **While paused:** the log says when a pause starts, repeats every 5 minutes with the current
+  price, and says when sends resume. A failed read of the chain does not end a pause: it is logged
+  and tried again, with the wait between tries doubling from 12 seconds up to 5 minutes.
+- **While a transaction waits to be mined:** the log reports it every 5 minutes, and there is no
+  time limit here either. If the node no longer holds the transaction, it was dropped from the pool,
+  and the batch waits for the price and is sent again rather than split: nothing is wrong with its
+  names. Before sending again, the script checks whether an earlier send of the batch was mined
+  instead. If the node refuses the new send for any reason other than a revert, an earlier send is
+  still pending somewhere, so the script goes back to waiting on that one.
+
+A batch that waits is sent with the results of the checks made before the pause. This is safe.
+Nothing but pre-migration writes the v2 registry while it runs. The final sync picks up a v1 renewal
+made during the pause. A name whose v1 grace ends during the pause gets an expiry that is already
+past the v2 grace, so it reads as available.
+
+> A local Anvil chain, forks included, mines a block only when a transaction arrives, so its gas
+> price cannot fall while a run waits, and a paused run never resumes. A mainnet fork reports
+> mainnet's chain id, so it gets the mainnet limit. The operator CLI's rehearsals and the devnet
+> mine an empty block every second while pre-migration runs. The base fee then falls and the tips
+> of recent blocks drop to what those blocks paid, so a rehearsal runs with the real limit and
+> exercises the pause, the resume and the fee cap. When running the script by hand against a
+> mainnet fork, start Anvil with `--block-time 1` for the same effect.
 
 ## Checkpoint & resume
 
@@ -248,6 +297,8 @@ would happen, but sends no transactions. It is the default first step in [Quick 
 A dry run reads an existing checkpoint with `--continue` but never clears or saves one. Saving would move
 the resume cursor past rows nothing was sent for and drop them from the retry queue, so a later real
 `--continue` would skip them for good.
+
+A dry run never waits for the gas price, but it logs the limit a real run would use.
 
 ## Output
 
@@ -300,6 +351,9 @@ bun run migration -- premigration verify --network sepolia --rpc-url http://127.
   --deployments-dir /tmp/fork-deployments --deployment-network sepolia \
   --csv-file ./csv-data/ens-registrations-sepolia.csv
 ```
+
+Sepolia has no gas price limit by default. A mainnet fork does; see
+[Gas price limit](#gas-price-limit) for keeping blocks coming on one.
 
 The Graveyard set comes from `--deployments-dir`. A scratch directory like the one above holds only the
 fork's own `Graveyard`, so names that an archived Sepolia deployment's Graveyard holds would still be

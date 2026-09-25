@@ -530,6 +530,49 @@ export async function increaseTime(
   ]);
 }
 
+/// Runs `work` while mining an empty block every `intervalMs`, and stops mining
+/// when it settles.
+///
+/// A local chain mines only when a transaction arrives, so its gas price cannot fall
+/// while pre-migration waits for it to, and a paused run would never resume. Empty
+/// blocks let the base fee fall and the tips recent blocks record drop to what those
+/// blocks paid, as on a live chain. A rehearsal can then run pre-migration with the
+/// real gas price limit, pause and all. A chain that refuses to mine on request is
+/// left alone.
+export async function whileMiningBlocks<T>(
+  provider: RpcProvider,
+  work: () => Promise<T>,
+  intervalMs = 1000,
+): Promise<T> {
+  const stop = new AbortController();
+  const miner = (async () => {
+    for (;;) {
+      try {
+        await sleep(intervalMs, undefined, { signal: stop.signal });
+      } catch {
+        return;
+      }
+      try {
+        await requestAny(provider, [
+          { method: "anvil_mine", params: [1] },
+          { method: "evm_mine", params: [] },
+        ]);
+      } catch (error) {
+        console.log(
+          `this chain does not mine on request (${errorMessageChain(error)[0]}); no blocks are mined while pre-migration runs`,
+        );
+        return;
+      }
+    }
+  })();
+  try {
+    return await work();
+  } finally {
+    stop.abort();
+    await miner;
+  }
+}
+
 export function withGasBuffer<T extends (...args: never[]) => Promise<unknown>>(
   request: T,
 ): T {
