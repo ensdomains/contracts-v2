@@ -16,6 +16,7 @@ import {
   createPublicClient,
   createWalletClient,
   encodeFunctionData,
+  FeeCapTooLowError,
   formatGwei,
   getAddress,
   getContract,
@@ -25,14 +26,16 @@ import {
   parseGwei,
   publicActions,
   toHex,
+  TransactionNotFoundError,
+  WaitForTransactionReceiptTimeoutError,
   zeroAddress,
   type Address,
   type FeeHistory,
   type Hex,
+  type TransactionReceipt,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { mainnet } from "viem/chains";
-import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
 import {
   blue,
   bold,
@@ -381,13 +384,20 @@ export async function resolveV1Contracts(
 /// A v1 read that failed, and so says nothing about the name.
 export type V1ReadError = { error: string };
 
-// Whether a failed call reverted, as opposed to failing to reach or decode.
-function isRevert(error: unknown): boolean {
+// Whether an error, or anything that caused it, is of the given kind.
+function hasCause(
+  error: unknown,
+  kind: abstract new (...args: any[]) => Error,
+): boolean {
   return (
     error instanceof BaseError &&
-    error.walk((cause) => cause instanceof ContractFunctionRevertedError) !==
-      null
+    error.walk((cause) => cause instanceof kind) !== null
   );
+}
+
+// Whether a failed call reverted, as opposed to failing to reach or decode.
+function isRevert(error: unknown): boolean {
+  return hasCause(error, ContractFunctionRevertedError);
 }
 
 type CallOutcome = {
@@ -1368,15 +1378,16 @@ export const DEFAULT_MAX_GAS_PRICE = parseGwei("0.146");
 // block.
 const GAS_PRICE_POLL_INTERVAL_MS = 12_000;
 
-/// Gas price reads that may fail in a row before the run stops.
-export const GAS_PRICE_MAX_READ_FAILURES = 5;
+/// Reads that may fail in a row, while waiting on the gas price or for a transaction
+/// to be mined, before the run stops.
+export const MAX_READ_FAILURES = 5;
 
-// The live price is a median over a few recent blocks, so one unusual block cannot
-// start or end a pause by itself.
+// The tip is a median over a few recent blocks, so one unusual block cannot decide it.
 const GAS_PRICE_SAMPLE_BLOCKS = 5;
 
-// How often a paused run reports that it is still waiting.
-const GAS_PRICE_WAIT_LOG_INTERVAL_MS = 5 * 60_000;
+// How often a long wait, for the gas price or for a transaction to be mined, is
+// reported.
+const WAIT_REPORT_INTERVAL_MS = 5 * 60_000;
 
 /// Parses `--max-gas-price`, given in gwei, for a command line.
 ///
@@ -1429,21 +1440,37 @@ function median(values: readonly bigint[]): bigint {
     : (sorted[mid - 1] + sorted[mid]) / 2n;
 }
 
-/// The market gas price now: the median gas price of the last few blocks, measured
-/// as `blockGasPrices` does. It reads what blocks paid rather than the tip the RPC
-/// suggests, which differs between providers by more than the limit itself.
-export async function currentGasPrice(client: any): Promise<bigint> {
+/// What a transaction sent now would pay per unit of gas, and the tip within that.
+export interface GasPriceReading {
+  price: bigint;
+  tip: bigint;
+}
+
+/// The gas price a transaction sent now would pay, read from the last few blocks.
+///
+/// The tip is the median of their median tips: what blocks paid, not the tip the RPC
+/// suggests, which differs between providers by more than the limit itself. The base
+/// fee is the higher of the latest block's and the next block's. The next block's is
+/// what the transaction pays when it is mined at once. The latest block's counts too,
+/// because the gas estimate made before sending checks the fee cap against it.
+export async function readGasPrice(client: any): Promise<GasPriceReading> {
   const history: FeeHistory = await client.getFeeHistory({
     blockCount: GAS_PRICE_SAMPLE_BLOCKS,
     blockTag: "latest",
     rewardPercentiles: [50],
   });
-  const prices = blockGasPrices(history);
-  if (prices.length === 0) {
+  const tips = (history.reward ?? []).map((reward) => reward[0]);
+  if (tips.length === 0) {
     throw new Error("the fee history holds no block rewards");
   }
-  return median(prices);
+  const [latest, next] = history.baseFeePerGas.slice(-2);
+  const tip = median(tips);
+  return { price: (latest > next ? latest : next) + tip, tip };
 }
+
+/// Fees a send passes on: a cap at the gas price limit and the market tip, or none,
+/// which leaves them to viem.
+export type GasFees = { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
 
 function formatWait(milliseconds: number): string {
   return milliseconds < 60_000
@@ -1451,8 +1478,35 @@ function formatWait(milliseconds: number): string {
     : `${Math.round(milliseconds / 60_000)} min`;
 }
 
-/// Returns once the market gas price is at or below `maxGasPrice`, and at once when
-/// there is no limit.
+// Counts reads of one kind that failed in a row. A failure is logged and the caller
+// tries again; one failure too many stops the run.
+function readFailures(what: string) {
+  let count = 0;
+  return {
+    reset() {
+      count = 0;
+    },
+    record(error: unknown) {
+      count++;
+      if (count >= MAX_READ_FAILURES) {
+        throw new Error(
+          `could not read ${what} ${count} times in a row: ${error}`,
+        );
+      }
+      logger.warning(
+        `Could not read ${what} (${count} of ${MAX_READ_FAILURES} failures allowed in a row): ${error}`,
+      );
+    },
+  };
+}
+
+/// Waits until the market gas price is at or below `maxGasPrice`, and returns the fees
+/// to send with: a cap at the limit and the market tip, so the transaction never pays
+/// more than the limit per unit of gas. Returns no fees, at once, when there is no
+/// limit.
+///
+/// The returned tip is at or below the cap, as a transaction requires, since the tip
+/// is part of a price found to be within the limit.
 ///
 /// A failed read is logged and tried again at the next poll: a paused run can wait
 /// for hours, and one dropped request should not end it. Reads that keep failing
@@ -1462,45 +1516,37 @@ export async function waitForGasPriceAtOrBelow(
   client: any,
   maxGasPrice: bigint | null,
   pollIntervalMs: number = GAS_PRICE_POLL_INTERVAL_MS,
-): Promise<void> {
-  if (maxGasPrice === null) return;
+): Promise<GasFees> {
+  if (maxGasPrice === null) return {};
   const limit = `${formatGwei(maxGasPrice)} gwei limit`;
-  let failures = 0;
+  const failures = readFailures("the gas price");
   let pausedAt: number | null = null;
   let reportedAt = 0;
   for (;;) {
-    let price: bigint | null = null;
+    let reading: GasPriceReading | null = null;
     try {
-      price = await currentGasPrice(client);
-      failures = 0;
+      reading = await readGasPrice(client);
+      failures.reset();
     } catch (error) {
-      failures++;
-      if (failures >= GAS_PRICE_MAX_READ_FAILURES) {
-        throw new Error(
-          `could not read the gas price ${failures} times in a row: ${error}`,
-        );
-      }
-      logger.warning(
-        `Gas price read failed (${failures} of ${GAS_PRICE_MAX_READ_FAILURES} allowed in a row): ${error}`,
-      );
+      failures.record(error);
     }
-    if (price !== null) {
+    if (reading !== null) {
       const now = Date.now();
-      const current = `${formatGwei(price)} gwei`;
-      if (price <= maxGasPrice) {
+      const current = `${formatGwei(reading.price)} gwei`;
+      if (reading.price <= maxGasPrice) {
         if (pausedAt !== null) {
           logger.info(
             `Gas price ${current} is at or below the ${limit}; resuming after ${formatWait(now - pausedAt)}.`,
           );
         }
-        return;
+        return { maxFeePerGas: maxGasPrice, maxPriorityFeePerGas: reading.tip };
       }
       if (pausedAt === null) {
         pausedAt = reportedAt = now;
         logger.warning(
           `Gas price ${current} is above the ${limit}; pausing until it drops.`,
         );
-      } else if (now - reportedAt >= GAS_PRICE_WAIT_LOG_INTERVAL_MS) {
+      } else if (now - reportedAt >= WAIT_REPORT_INTERVAL_MS) {
         reportedAt = now;
         logger.info(
           `Still paused after ${formatWait(now - pausedAt)}: gas price ${current} is above the ${limit}.`,
@@ -1511,79 +1557,168 @@ export async function waitForGasPriceAtOrBelow(
   }
 }
 
+/// Waits for a sent transaction to be mined, however long that takes, and returns its
+/// receipt.
+///
+/// A transaction capped at the gas price limit is not mined while the base fee is
+/// above the cap. It waits in the node's pool until the base fee falls, which is the
+/// pause the limit asks for. So a transaction mined late is not a failure, and
+/// splitting its batch would send the names again while it can still be mined.
+///
+/// Each report interval, the node is asked whether it still holds the transaction.
+/// When it does not, the transaction was dropped or replaced and the run stops. Its
+/// names were not written, the checkpoint still points before them, and `--continue`
+/// sends them again.
+export async function waitForInclusion(
+  client: any,
+  hash: Hex,
+  retryDelayMs: number = GAS_PRICE_POLL_INTERVAL_MS,
+): Promise<TransactionReceipt> {
+  const failures = readFailures("the transaction receipt");
+  const sentAt = Date.now();
+  for (;;) {
+    try {
+      return await client.waitForTransactionReceipt({
+        hash,
+        checkReplacement: false,
+        timeout: WAIT_REPORT_INTERVAL_MS,
+      });
+    } catch (error) {
+      if (!(error instanceof WaitForTransactionReceiptTimeoutError)) {
+        failures.record(error);
+        await sleep(retryDelayMs);
+        continue;
+      }
+    }
+    try {
+      await client.getTransaction({ hash });
+      failures.reset();
+    } catch (error) {
+      if (error instanceof TransactionNotFoundError) {
+        throw new Error(
+          `transaction ${hash} was dropped or replaced before it was mined, so its names were not written; re-run with --continue`,
+        );
+      }
+      failures.record(error);
+      continue;
+    }
+    logger.info(
+      `Transaction ${hash} is not mined yet after ${formatWait(Date.now() - sentAt)}; still waiting.`,
+    );
+  }
+}
+
 /// What sending a batch needs besides the names and their expiries.
-interface BatchSender {
+export interface BatchSender {
   batchRegistrar: any;
   client: any;
   /// Fallback resolver every reserved name is given.
   resolver: Address;
   /// Most gas a batch may be estimated at before it is split.
   maxGas: bigint;
-  /// Gas price a send waits to be at or below; null when there is no limit.
+  /// Gas price a send waits to be at or below, and caps its fee at; null when there
+  /// is no limit.
   maxGasPrice: bigint | null;
 }
 
-interface BatchSubmitResult {
+export interface BatchSubmitResult {
   succeeded: { label: string; txHash: string }[];
   failed: { label: string; error: string }[];
 }
 
-// The gas price wait sits outside the `try`: a price that cannot be read has to stop
-// the run, not count as a failed send and set off the split below.
-//
-// A batch that waits is sent with what was read before the wait. That stays safe:
-// nothing but pre-migration writes the v2 registry while it runs, a v1 renewal made
-// meanwhile is picked up by the final sync, and a name whose v1 grace ends meanwhile
-// gets an expiry already past the v2 grace, so it reads as available.
-async function submitBatchWithBinaryFallback(
+// Runs `submit` on each half of a batch in turn and combines what it reports.
+async function eachHalf(
+  labels: string[],
+  expires: bigint[],
+  submit: (labels: string[], expires: bigint[]) => Promise<BatchSubmitResult>,
+): Promise<BatchSubmitResult> {
+  const mid = Math.ceil(labels.length / 2);
+  const left = await submit(labels.slice(0, mid), expires.slice(0, mid));
+  const right = await submit(labels.slice(mid), expires.slice(mid));
+  return {
+    succeeded: [...left.succeeded, ...right.succeeded],
+    failed: [...left.failed, ...right.failed],
+  };
+}
+
+// Records a single name that could not be reserved, or sends each half of a failed
+// batch in turn.
+async function splitFailedBatch(
+  sender: BatchSender,
+  labels: string[],
+  expires: bigint[],
+  error: unknown,
+): Promise<BatchSubmitResult> {
+  const errorMsg = error instanceof Error ? error.message : String(error);
+  if (labels.length <= 1) {
+    return {
+      succeeded: [],
+      failed: [{ label: labels[0], error: errorMsg }],
+    };
+  }
+  const mid = Math.ceil(labels.length / 2);
+  logger.warning(
+    `Batch of ${labels.length} failed: ${errorMsg}. Splitting into ${mid} + ${labels.length - mid}...`,
+  );
+  return eachHalf(labels, expires, (half, halfExpires) =>
+    submitBatchWithBinaryFallback(sender, half, halfExpires),
+  );
+}
+
+/// Sends a batch and, when it fails, each half of it in turn, down to single names,
+/// so one name that cannot be reserved does not hold back the rest.
+///
+/// Each send first waits for the gas price to be within the limit, and its fee is
+/// capped at the limit. If the base fee rises past the cap between that check and the
+/// send, the send is refused and the batch waits again instead of being split: nothing
+/// is wrong with its names.
+///
+/// The gas price wait and the wait for the transaction to be mined sit outside the
+/// error handling that splits a batch. A price that cannot be read, or a transaction
+/// that was dropped, stops the run: splitting would send names again while an earlier
+/// transaction for them could still be mined.
+///
+/// A batch that waits is sent with what was read before the wait. That stays safe:
+/// nothing but pre-migration writes the v2 registry while it runs, a v1 renewal made
+/// meanwhile is picked up by the final sync, and a name whose v1 grace ends meanwhile
+/// gets an expiry already past the v2 grace, so it reads as available.
+export async function submitBatchWithBinaryFallback(
   sender: BatchSender,
   labels: string[],
   expires: bigint[],
 ): Promise<BatchSubmitResult> {
-  const { batchRegistrar, client, resolver } = sender;
-  await waitForGasPriceAtOrBelow(client, sender.maxGasPrice);
-  try {
-    const hash = await batchRegistrar.write.batchRegister([
-      zeroAddress,
-      resolver,
+  const { batchRegistrar, client } = sender;
+  let hash: Hex;
+  for (;;) {
+    const fees = await waitForGasPriceAtOrBelow(client, sender.maxGasPrice);
+    try {
+      hash = await batchRegistrar.write.batchRegister(
+        [zeroAddress, sender.resolver, labels, expires],
+        fees,
+      );
+      break;
+    } catch (error) {
+      if (sender.maxGasPrice === null || !hasCause(error, FeeCapTooLowError)) {
+        return splitFailedBatch(sender, labels, expires, error);
+      }
+      logger.warning(
+        `The base fee rose past the ${formatGwei(sender.maxGasPrice)} gwei fee cap before the batch was sent; waiting again.`,
+      );
+    }
+  }
+  const receipt = await waitForInclusion(client, hash);
+  if (receipt.status !== "success") {
+    return splitFailedBatch(
+      sender,
       labels,
       expires,
-    ]);
-    await waitForSuccessfulTransactionReceipt(client, { hash });
-    return {
-      succeeded: labels.map((l) => ({ label: l, txHash: hash })),
-      failed: [],
-    };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    if (labels.length <= 1) {
-      return {
-        succeeded: [],
-        failed: [{ label: labels[0], error: errorMsg }],
-      };
-    }
-
-    const mid = Math.ceil(labels.length / 2);
-    logger.warning(
-      `Batch of ${labels.length} failed: ${errorMsg}. Splitting into ${mid} + ${labels.length - mid}...`,
+      new Error(`transaction ${hash} reverted`),
     );
-
-    const leftResult = await submitBatchWithBinaryFallback(
-      sender,
-      labels.slice(0, mid),
-      expires.slice(0, mid),
-    );
-    const rightResult = await submitBatchWithBinaryFallback(
-      sender,
-      labels.slice(mid),
-      expires.slice(mid),
-    );
-
-    return {
-      succeeded: [...leftResult.succeeded, ...rightResult.succeeded],
-      failed: [...leftResult.failed, ...rightResult.failed],
-    };
   }
+  return {
+    succeeded: labels.map((label) => ({ label, txHash: hash })),
+    failed: [],
+  };
 }
 
 const GAS_LIMIT_SAFETY_FACTOR = 0.8;
@@ -1627,21 +1762,9 @@ async function estimateAndSplitBatch(
   logger.warning(
     `Batch of ${labels.length} estimated at ${estimatedGas} gas (limit: ${maxGas}). Splitting...`,
   );
-  const mid = Math.ceil(labels.length / 2);
-  const leftResult = await estimateAndSplitBatch(
-    sender,
-    labels.slice(0, mid),
-    expires.slice(0, mid),
+  return eachHalf(labels, expires, (half, halfExpires) =>
+    estimateAndSplitBatch(sender, half, halfExpires),
   );
-  const rightResult = await estimateAndSplitBatch(
-    sender,
-    labels.slice(mid),
-    expires.slice(mid),
-  );
-  return {
-    succeeded: [...leftResult.succeeded, ...rightResult.succeeded],
-    failed: [...leftResult.failed, ...rightResult.failed],
-  };
 }
 
 async function processBatch(

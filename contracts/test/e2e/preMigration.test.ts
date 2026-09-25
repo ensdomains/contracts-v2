@@ -369,7 +369,7 @@ describe("PreMigration", () => {
     expect(state.status).toBe(STATUS.AVAILABLE);
   });
 
-  it("waits to send while the gas price is above the limit", async () => {
+  it("waits to send while the gas price is above the limit, and caps the fee at it", async () => {
     const label = "gaspaused";
     const { user } = env.namedAccounts;
 
@@ -397,6 +397,19 @@ describe("PreMigration", () => {
     await run;
 
     expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
+
+    // The transaction was capped at the limit, so it could not have paid more.
+    const batchRegistrar = getAddress(
+      env.rocketh.get("BatchRegistrar").address,
+    );
+    const { transactions } = await env.client.getBlock({
+      includeTransactions: true,
+    });
+    const sent = transactions.find(
+      (tx) => tx.to !== null && getAddress(tx.to) === batchRegistrar,
+    );
+    expect(sent?.maxFeePerGas).toBe(parseGwei("10"));
+    expect(sent!.maxPriorityFeePerGas!).toBeLessThanOrEqual(parseGwei("10"));
   });
 
   it("limit parameter restricts processing", async () => {

@@ -133,8 +133,8 @@ transactions afterwards.
 - **Env / args:** BatchRegistrar owner key (`PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`,
   or `DEPLOYER_KEY`); `--csv-file`, `--work-dir`, `--bonus-period-days` (default 62),
   `--max-gas-price <gwei>` (on mainnet, sends wait while the gas price is above the median mainnet
-  price by default; see [Gas price limit](./premigration.md#gas-price-limit)) or
-  `--no-max-gas-price`.
+  price by default, and never pay more than it; see
+  [Gas price limit](./premigration.md#gas-price-limit)) or `--no-max-gas-price`.
   `build-index` needs `THEGRAPH_API_KEY` for the default subgraph source, or `--source rpc` and an
   RPC URL to read the v1 `BaseRegistrar` directly.
 - **Expected outcome:** every active or in-grace v1 `.eth` 2LD seeded as a **reserved** entry on v2,

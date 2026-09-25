@@ -233,17 +233,26 @@ with `--continue` once the cause is fixed.
 **Gas safety.** Before submitting, the script estimates gas; if it exceeds 80% of the block limit the
 batch is split in half and re-estimated (recursively). If a batch reverts at execution, it is
 recursively halved and retried (binary search) until failing names are isolated — preserving partial
-progress. A checkpoint is saved after each batch.
+progress. A transaction that is slow to be mined is waited for, with or without a gas price limit,
+and is not counted as failed: splitting its batch would send the names again while it can still be
+mined. A checkpoint is saved after each batch.
 
 ### Gas price limit
 
-A batch is not sent while the gas price is above a limit. The script reads the price again every 12
-seconds, and sends as soon as it is at or below the limit.
+A batch is not sent while the gas price is above a limit, and no transaction pays more than the
+limit. The script reads the price again every 12 seconds, and sends as soon as it is at or below the
+limit.
 
-- **Gas price** is a block's base fee plus its median tip (the 50th-percentile priority fee that
-  `eth_feeHistory` reports). The live price is the median over the last 5 blocks, so one unusual
-  block does not start or end a pause. It measures what blocks paid, not the tip the RPC suggests,
-  because suggested tips differ between providers by more than the limit itself.
+- **Gas price** is a base fee plus a tip. The live price is the higher of the latest and the next
+  block's base fee, plus the median of the last 5 blocks' median tips (the 50th-percentile priority
+  fee that `eth_feeHistory` reports). The median keeps one unusual block from deciding the tip. The
+  tip is what blocks paid, not the tip the RPC suggests, because suggested tips differ between
+  providers by more than the limit itself.
+- **Fee cap:** each transaction is sent with its maximum fee per gas set to the limit and its tip set
+  to that market tip, so it never pays more than the limit. If the base fee rises past the limit
+  after the check but before the send, the send is refused and the script waits again; the batch is
+  not split. If the base fee rises after the send, the transaction waits in the node's pool until the
+  base fee falls back.
 - **Default:** `0.146` gwei on mainnet. This is the median mainnet gas price over the two weeks
   before the default was set. Other chains have no limit by default, because a mainnet price says
   nothing about their gas market. `--max-gas-price <gwei>` sets a limit on any chain, and
@@ -255,6 +264,9 @@ seconds, and sends as soon as it is at or below the limit.
   price, and says when sends resume. A failed price read is logged and tried again at the next
   check. After 5 failed reads in a row the run stops. Nothing was sent for the waiting batch, so the
   checkpoint still points before it: resume with `--continue`.
+- **While a transaction waits to be mined:** the log reports it every 5 minutes. If the node no
+  longer holds the transaction, it was dropped or replaced, and the run stops with the checkpoint
+  before its batch; `--continue` sends those names again.
 
 A batch that waits is sent with the results of the checks made before the pause. This is safe.
 Nothing but pre-migration writes the v2 registry while it runs. The final sync picks up a v1 renewal
