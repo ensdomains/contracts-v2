@@ -8,6 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   BaseError,
   concat,
@@ -15,15 +16,18 @@ import {
   createPublicClient,
   createWalletClient,
   encodeFunctionData,
+  formatGwei,
   getAddress,
   getContract,
   http,
   keccak256,
   namehash,
+  parseGwei,
   publicActions,
   toHex,
   zeroAddress,
   type Address,
+  type FeeHistory,
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -136,6 +140,9 @@ export interface PreMigrationConfig {
   v1BaseRegistrarAddress: Address;
   /// Graveyards whose v1 names are not claimable. See `v1Eligibility`.
   graveyards: ReadonlySet<Address>;
+  /// Highest gas price, in wei, at which a batch is sent; see `resolveMaxGasPrice`.
+  /// Left out, the chain's default applies. `false` sends whatever the price.
+  maxGasPrice?: bigint | false;
 }
 
 export interface Checkpoint {
@@ -1021,7 +1028,6 @@ export function parseCSVLine(line: string): string[] {
 interface MigrationClients {
   client: any;
   mainnetClient: any;
-  registry: any;
   batchRegistrar: any;
   registryAbi: any[];
   v1Contracts: V1Contracts;
@@ -1056,11 +1062,6 @@ async function createMigrationClients(
   });
 
   const registryArtifact = loadArtifact("PermissionedRegistry");
-  const registry = getContract({
-    address: config.registryAddress,
-    abi: registryArtifact.abi,
-    client,
-  });
 
   await validateBatchRegistrar(client, config.batchRegistrarAddress);
   const v1Contracts = await resolveV1Contracts(
@@ -1079,7 +1080,6 @@ async function createMigrationClients(
   return {
     client,
     mainnetClient,
-    registry,
     batchRegistrar,
     registryAbi: registryArtifact.abi,
     v1Contracts,
@@ -1090,21 +1090,28 @@ async function fetchAndReserveInBatches(
   config: PreMigrationConfig,
   checkpoint: Checkpoint,
 ): Promise<void> {
-  const {
-    client,
-    mainnetClient,
-    registry,
-    batchRegistrar,
-    registryAbi,
-    v1Contracts,
-  } = await createMigrationClients(config);
+  const { client, mainnetClient, batchRegistrar, registryAbi, v1Contracts } =
+    await createMigrationClients(config);
 
   const block = await client.getBlock();
-  const maxGas = BigInt(
-    Math.floor(Number(block.gasLimit) * GAS_LIMIT_SAFETY_FACTOR),
-  );
+  const sender: BatchSender = {
+    batchRegistrar,
+    client,
+    resolver: config.v1ResolverAddress,
+    maxGas: BigInt(
+      Math.floor(Number(block.gasLimit) * GAS_LIMIT_SAFETY_FACTOR),
+    ),
+    maxGasPrice: resolveMaxGasPrice(config.maxGasPrice, client.chain.id),
+  };
   logger.config("Block Gas Limit", block.gasLimit.toString());
-  logger.config("Max Gas Per Batch", maxGas.toString());
+  logger.config("Max Gas Per Batch", sender.maxGas.toString());
+  logger.config(
+    "Max Gas Price",
+    sender.maxGasPrice === null
+      ? "none"
+      : `${formatGwei(sender.maxGasPrice)} gwei` +
+          (config.maxGasPrice === undefined ? " (mainnet default)" : ""),
+  );
 
   // The retry pass and the main scan differ only in which rows they read. A retried
   // row was already counted and already capped by an earlier run, so only the main
@@ -1159,11 +1166,9 @@ async function fetchAndReserveInBatches(
             client,
             mainnetClient,
             v1Contracts,
-            registry,
-            batchRegistrar,
+            sender,
             checkpoint,
             registryAbi,
-            maxGas,
           );
         }
         // A retried row was counted when it first failed, so settling its outcome
@@ -1353,18 +1358,190 @@ export async function batchVerifyRegistrations(
   });
 }
 
+/// The median mainnet gas price, each block's base fee plus its median priority fee,
+/// over the two weeks before this default was set. Unless a run sets its own limit,
+/// mainnet sends wait while the market price is above it. Measure it again when the
+/// market has moved.
+export const DEFAULT_MAX_GAS_PRICE = parseGwei("0.146");
+
+// How long a paused run waits before reading the gas price again: about one mainnet
+// block.
+const GAS_PRICE_POLL_INTERVAL_MS = 12_000;
+
+/// Gas price reads that may fail in a row before the run stops.
+export const GAS_PRICE_MAX_READ_FAILURES = 5;
+
+// The live price is a median over a few recent blocks, so one unusual block cannot
+// start or end a pause by itself.
+const GAS_PRICE_SAMPLE_BLOCKS = 5;
+
+// How often a paused run reports that it is still waiting.
+const GAS_PRICE_WAIT_LOG_INTERVAL_MS = 5 * 60_000;
+
+/// Parses `--max-gas-price`, given in gwei, for a command line.
+///
+/// Zero is refused: on a chain that charges for gas, the run would never send.
+export function parseMaxGasPrice(value: string): bigint {
+  let wei: bigint;
+  try {
+    wei = parseGwei(value);
+  } catch {
+    throw new InvalidArgumentError(
+      `not an amount in gwei: ${JSON.stringify(value)}`,
+    );
+  }
+  if (wei <= 0n) {
+    throw new InvalidArgumentError(
+      `must be more than 0 gwei, got: ${JSON.stringify(value)}`,
+    );
+  }
+  return wei;
+}
+
+/// The gas price limit a run sends under, or null when it has none.
+///
+/// A limit that was set applies on any chain. Without one, mainnet takes
+/// `DEFAULT_MAX_GAS_PRICE` and other chains have no limit, since a mainnet median
+/// says nothing about another chain's gas market.
+export function resolveMaxGasPrice(
+  option: bigint | false | undefined,
+  chainId: number,
+): bigint | null {
+  if (option === false) return null;
+  if (option !== undefined) return option;
+  return chainId === mainnet.id ? DEFAULT_MAX_GAS_PRICE : null;
+}
+
+/// Each block's gas price in a fee history: its base fee plus the first reward
+/// percentile asked for. A fee history's base fees run one entry past its last block,
+/// to the next block's, which has no reward and is left out.
+export function blockGasPrices(history: FeeHistory): bigint[] {
+  return (history.reward ?? []).map(
+    (reward, i) => history.baseFeePerGas[i] + reward[0],
+  );
+}
+
+function median(values: readonly bigint[]): bigint {
+  const sorted = [...values].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2n;
+}
+
+/// The market gas price now: the median gas price of the last few blocks, measured
+/// as `blockGasPrices` does. It reads what blocks paid rather than the tip the RPC
+/// suggests, which differs between providers by more than the limit itself.
+export async function currentGasPrice(client: any): Promise<bigint> {
+  const history: FeeHistory = await client.getFeeHistory({
+    blockCount: GAS_PRICE_SAMPLE_BLOCKS,
+    blockTag: "latest",
+    rewardPercentiles: [50],
+  });
+  const prices = blockGasPrices(history);
+  if (prices.length === 0) {
+    throw new Error("the fee history holds no block rewards");
+  }
+  return median(prices);
+}
+
+function formatWait(milliseconds: number): string {
+  return milliseconds < 60_000
+    ? `${Math.round(milliseconds / 1000)}s`
+    : `${Math.round(milliseconds / 60_000)} min`;
+}
+
+/// Returns once the market gas price is at or below `maxGasPrice`, and at once when
+/// there is no limit.
+///
+/// A failed read is logged and tried again at the next poll: a paused run can wait
+/// for hours, and one dropped request should not end it. Reads that keep failing
+/// stop the run. Nothing has been sent for the waiting batch, so the checkpoint still
+/// points before it and `--continue` picks it up.
+export async function waitForGasPriceAtOrBelow(
+  client: any,
+  maxGasPrice: bigint | null,
+  pollIntervalMs: number = GAS_PRICE_POLL_INTERVAL_MS,
+): Promise<void> {
+  if (maxGasPrice === null) return;
+  const limit = `${formatGwei(maxGasPrice)} gwei limit`;
+  let failures = 0;
+  let pausedAt: number | null = null;
+  let reportedAt = 0;
+  for (;;) {
+    let price: bigint | null = null;
+    try {
+      price = await currentGasPrice(client);
+      failures = 0;
+    } catch (error) {
+      failures++;
+      if (failures >= GAS_PRICE_MAX_READ_FAILURES) {
+        throw new Error(
+          `could not read the gas price ${failures} times in a row: ${error}`,
+        );
+      }
+      logger.warning(
+        `Gas price read failed (${failures} of ${GAS_PRICE_MAX_READ_FAILURES} allowed in a row): ${error}`,
+      );
+    }
+    if (price !== null) {
+      const now = Date.now();
+      const current = `${formatGwei(price)} gwei`;
+      if (price <= maxGasPrice) {
+        if (pausedAt !== null) {
+          logger.info(
+            `Gas price ${current} is at or below the ${limit}; resuming after ${formatWait(now - pausedAt)}.`,
+          );
+        }
+        return;
+      }
+      if (pausedAt === null) {
+        pausedAt = reportedAt = now;
+        logger.warning(
+          `Gas price ${current} is above the ${limit}; pausing until it drops.`,
+        );
+      } else if (now - reportedAt >= GAS_PRICE_WAIT_LOG_INTERVAL_MS) {
+        reportedAt = now;
+        logger.info(
+          `Still paused after ${formatWait(now - pausedAt)}: gas price ${current} is above the ${limit}.`,
+        );
+      }
+    }
+    await sleep(pollIntervalMs);
+  }
+}
+
+/// What sending a batch needs besides the names and their expiries.
+interface BatchSender {
+  batchRegistrar: any;
+  client: any;
+  /// Fallback resolver every reserved name is given.
+  resolver: Address;
+  /// Most gas a batch may be estimated at before it is split.
+  maxGas: bigint;
+  /// Gas price a send waits to be at or below; null when there is no limit.
+  maxGasPrice: bigint | null;
+}
+
 interface BatchSubmitResult {
   succeeded: { label: string; txHash: string }[];
   failed: { label: string; error: string }[];
 }
 
+// The gas price wait sits outside the `try`: a price that cannot be read has to stop
+// the run, not count as a failed send and set off the split below.
+//
+// A batch that waits is sent with what was read before the wait. That stays safe:
+// nothing but pre-migration writes the v2 registry while it runs, a v1 renewal made
+// meanwhile is picked up by the final sync, and a name whose v1 grace ends meanwhile
+// gets an expiry already past the v2 grace, so it reads as available.
 async function submitBatchWithBinaryFallback(
-  batchRegistrar: any,
-  client: any,
-  resolver: Address,
+  sender: BatchSender,
   labels: string[],
   expires: bigint[],
 ): Promise<BatchSubmitResult> {
+  const { batchRegistrar, client, resolver } = sender;
+  await waitForGasPriceAtOrBelow(client, sender.maxGasPrice);
   try {
     const hash = await batchRegistrar.write.batchRegister([
       zeroAddress,
@@ -1392,16 +1569,12 @@ async function submitBatchWithBinaryFallback(
     );
 
     const leftResult = await submitBatchWithBinaryFallback(
-      batchRegistrar,
-      client,
-      resolver,
+      sender,
       labels.slice(0, mid),
       expires.slice(0, mid),
     );
     const rightResult = await submitBatchWithBinaryFallback(
-      batchRegistrar,
-      client,
-      resolver,
+      sender,
       labels.slice(mid),
       expires.slice(mid),
     );
@@ -1415,77 +1588,60 @@ async function submitBatchWithBinaryFallback(
 
 const GAS_LIMIT_SAFETY_FACTOR = 0.8;
 
+// Only the estimate is guarded: an error from a send has to reach the caller, not be
+// mistaken for a failed estimate and sent again.
 async function estimateAndSplitBatch(
-  batchRegistrar: any,
-  client: any,
-  resolver: Address,
+  sender: BatchSender,
   labels: string[],
   expires: bigint[],
-  maxGas: bigint,
 ): Promise<BatchSubmitResult> {
+  const { maxGas } = sender;
+  let estimatedGas: bigint;
   try {
-    const estimatedGas = await batchRegistrar.estimateGas.batchRegister([
+    estimatedGas = await sender.batchRegistrar.estimateGas.batchRegister([
       zeroAddress,
-      resolver,
+      sender.resolver,
       labels,
       expires,
     ]);
-
-    if (estimatedGas <= maxGas) {
-      return await submitBatchWithBinaryFallback(
-        batchRegistrar,
-        client,
-        resolver,
-        labels,
-        expires,
-      );
-    }
-
-    if (labels.length <= 1) {
-      const msg = `single registration exceeds gas limit (${estimatedGas} > ${maxGas})`;
-      logger.warning(`Label ${labels[0]}: ${msg}`);
-      return {
-        succeeded: [],
-        failed: [{ label: labels[0], error: msg }],
-      };
-    }
-
-    logger.warning(
-      `Batch of ${labels.length} estimated at ${estimatedGas} gas (limit: ${maxGas}). Splitting...`,
-    );
-    const mid = Math.ceil(labels.length / 2);
-    const leftResult = await estimateAndSplitBatch(
-      batchRegistrar,
-      client,
-      resolver,
-      labels.slice(0, mid),
-      expires.slice(0, mid),
-      maxGas,
-    );
-    const rightResult = await estimateAndSplitBatch(
-      batchRegistrar,
-      client,
-      resolver,
-      labels.slice(mid),
-      expires.slice(mid),
-      maxGas,
-    );
-    return {
-      succeeded: [...leftResult.succeeded, ...rightResult.succeeded],
-      failed: [...leftResult.failed, ...rightResult.failed],
-    };
-  } catch (estimateError) {
+  } catch {
     logger.warning(
       `Gas estimation failed for batch of ${labels.length}, using binary-search fallback`,
     );
-    return await submitBatchWithBinaryFallback(
-      batchRegistrar,
-      client,
-      resolver,
-      labels,
-      expires,
-    );
+    return await submitBatchWithBinaryFallback(sender, labels, expires);
   }
+
+  if (estimatedGas <= maxGas) {
+    return await submitBatchWithBinaryFallback(sender, labels, expires);
+  }
+
+  if (labels.length <= 1) {
+    const msg = `single registration exceeds gas limit (${estimatedGas} > ${maxGas})`;
+    logger.warning(`Label ${labels[0]}: ${msg}`);
+    return {
+      succeeded: [],
+      failed: [{ label: labels[0], error: msg }],
+    };
+  }
+
+  logger.warning(
+    `Batch of ${labels.length} estimated at ${estimatedGas} gas (limit: ${maxGas}). Splitting...`,
+  );
+  const mid = Math.ceil(labels.length / 2);
+  const leftResult = await estimateAndSplitBatch(
+    sender,
+    labels.slice(0, mid),
+    expires.slice(0, mid),
+  );
+  const rightResult = await estimateAndSplitBatch(
+    sender,
+    labels.slice(mid),
+    expires.slice(mid),
+  );
+  return {
+    succeeded: [...leftResult.succeeded, ...rightResult.succeeded],
+    failed: [...leftResult.failed, ...rightResult.failed],
+  };
 }
 
 async function processBatch(
@@ -1494,11 +1650,9 @@ async function processBatch(
   client: any,
   mainnetClient: any,
   v1Contracts: V1Contracts,
-  registry: any,
-  batchRegistrar: any,
+  sender: BatchSender,
   checkpoint: Checkpoint,
   registryAbi: any[],
-  maxGas: bigint,
 ): Promise<Checkpoint> {
   const batchLabels: string[] = [];
   const batchExpires: bigint[] = [];
@@ -1629,12 +1783,9 @@ async function processBatch(
     logger.info(`\n → Batch reserving ${batchLabels.length} names...\n`);
 
     const result = await estimateAndSplitBatch(
-      batchRegistrar,
-      client,
-      config.v1ResolverAddress,
+      sender,
       batchLabels,
       batchExpires,
-      maxGas,
     );
 
     for (const { label, txHash } of result.succeeded) {
@@ -1841,6 +1992,15 @@ export async function main(argv = process.argv): Promise<void> {
       "--graveyards <addresses>",
       "Comma-separated Graveyard addresses, superseded deployments' included; v1 names any of them holds are not reserved",
       parseGraveyardAddresses,
+    )
+    .option(
+      "--max-gas-price <gwei>",
+      "Wait to send while the gas price (base fee plus median tip) is above this many gwei (default on mainnet: the median mainnet price; none elsewhere)",
+      parseMaxGasPrice,
+    )
+    .option(
+      "--no-max-gas-price",
+      "Send whatever the gas price, e.g. on a local chain or fork",
     );
 
   program.parse(argv);
@@ -1877,6 +2037,7 @@ export async function main(argv = process.argv): Promise<void> {
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
     graveyards: graveyardSet(opts.graveyards as Address[]),
+    maxGasPrice: opts.maxGasPrice as bigint | false | undefined,
   };
 
   try {

@@ -11,6 +11,7 @@ import {
   getAddress,
   http,
   namehash,
+  parseGwei,
   publicActions,
   zeroAddress,
 } from "viem";
@@ -366,6 +367,36 @@ describe("PreMigration", () => {
 
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.AVAILABLE);
+  });
+
+  it("waits to send while the gas price is above the limit", async () => {
+    const label = "gaspaused";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    createCSVFile(csvFilePath, [label]);
+
+    // Every recent block the live price is taken from costs far more than the limit.
+    await env.client.setNextBlockBaseFeePerGas({
+      baseFeePerGas: parseGwei("100"),
+    });
+    await env.client.mine({ blocks: 5 });
+
+    const run = main(buildMainArgs(env, csvFilePath, { maxGasPrice: "10" }));
+    await setTimeout(3000);
+
+    expect(readFileSync("preMigration.log", "utf-8")).toContain(
+      "above the 10 gwei limit; pausing",
+    );
+    expect((await verifyV2State(env, label)).status).toBe(STATUS.AVAILABLE);
+
+    await env.client.setNextBlockBaseFeePerGas({
+      baseFeePerGas: parseGwei("1"),
+    });
+    await env.client.mine({ blocks: 5 });
+    await run;
+
+    expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
   });
 
   it("limit parameter restricts processing", async () => {

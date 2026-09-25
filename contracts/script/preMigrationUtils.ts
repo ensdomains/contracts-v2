@@ -50,6 +50,9 @@ export function buildMainArgs(
     /// A registry and its BatchRegistrar other than the devnet's own.
     registry?: Address;
     batchRegistrar?: Address;
+    /// Gas price limit in gwei. Left out, the run has none: a devnet mines only when a
+    /// transaction arrives, so its price cannot fall while a run waits.
+    maxGasPrice?: string;
   } = {},
 ): string[] {
   const rpcUrl = `http://${env.hostPort}`;
@@ -95,6 +98,11 @@ export function buildMainArgs(
   }
   if (overrides.batchSize !== undefined) {
     args.push("--batch-size", String(overrides.batchSize));
+  }
+  if (overrides.maxGasPrice !== undefined) {
+    args.push("--max-gas-price", overrides.maxGasPrice);
+  } else {
+    args.push("--no-max-gas-price");
   }
 
   return args;

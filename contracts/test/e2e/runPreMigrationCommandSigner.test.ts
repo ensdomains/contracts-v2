@@ -126,6 +126,43 @@ describe("runPreMigrationCommand signer resolution", () => {
   });
 });
 
+describe("runPreMigrationCommand gas price limit", () => {
+  beforeEach(() => {
+    capturedArgs = null;
+    process.env.DEPLOYER_KEY = DEPLOYER_KEY;
+  });
+
+  afterEach(() => {
+    delete process.env.DEPLOYER_KEY;
+  });
+
+  it("passes a limit through to the run", async () => {
+    await runPreMigrationCommand(
+      { ...baseOpts, maxGasPrice: "0.5" },
+      false,
+      captureArgs,
+    );
+    expect(flagValue(capturedArgs!, "--max-gas-price")).toBe("0.5");
+    expect(capturedArgs).not.toContain("--no-max-gas-price");
+  });
+
+  it("passes on turning the limit off", async () => {
+    await runPreMigrationCommand(
+      { ...baseOpts, maxGasPrice: false },
+      false,
+      captureArgs,
+    );
+    expect(capturedArgs).toContain("--no-max-gas-price");
+    expect(capturedArgs).not.toContain("--max-gas-price");
+  });
+
+  it("leaves the run's default in place when no limit is given", async () => {
+    await runPreMigrationCommand({ ...baseOpts }, false, captureArgs);
+    expect(capturedArgs).not.toContain("--max-gas-price");
+    expect(capturedArgs).not.toContain("--no-max-gas-price");
+  });
+});
+
 describe("runPreMigrationCommand Graveyard set", () => {
   let deploymentsDir: string;
 
@@ -440,6 +477,22 @@ describe("runRehearsalPreMigration", () => {
       FailedNamesError,
     );
     expect(calls).toHaveLength(3);
+  });
+
+  it("runs every pass with no gas price limit, whatever was asked", async () => {
+    const { calls, run } = scriptedRuns([{ failed: [650] }, { failed: [] }]);
+
+    await runRehearsalPreMigration(
+      { ...opts(), maxGasPrice: "0.5" },
+      false,
+      run,
+    );
+
+    expect(calls).toHaveLength(2);
+    for (const args of calls) {
+      expect(args).toContain("--no-max-gas-price");
+      expect(args).not.toContain("--max-gas-price");
+    }
   });
 
   it("does not retry an error other than failed names", async () => {
