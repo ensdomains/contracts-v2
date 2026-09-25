@@ -121,6 +121,7 @@ import {
   waitForRpc,
   withRpcCompatibility,
   httpRpcProvider,
+  whileMiningBlocks,
   clearAccountDelegations,
 } from "./migrations/rpc.js";
 import {
@@ -589,8 +590,8 @@ export async function runPreMigrationCommand(
     v1BaseRegistrar?: Address;
     /// Every Graveyard on the chain; defaults to those the deployments record.
     graveyards?: readonly Address[];
-    /// Gas price limit in gwei, or `false` for none; left out, the script's default applies.
-    maxGasPrice?: string | false;
+    /// Gas price limit in gwei; left out, the script's default applies.
+    maxGasPrice?: string;
     workDir?: string;
     dryRun?: boolean;
     metadataLabel?: string;
@@ -686,8 +687,7 @@ export async function runPreMigrationCommand(
     if (opts.dryRun) args.push("--dry-run");
     if (opts.bonusPeriodDays)
       args.push("--bonus-period-days", opts.bonusPeriodDays);
-    if (opts.maxGasPrice === false) args.push("--no-max-gas-price");
-    else if (opts.maxGasPrice) args.push("--max-gas-price", opts.maxGasPrice);
+    if (opts.maxGasPrice) args.push("--max-gas-price", opts.maxGasPrice);
     if (resume) args.push("--continue");
     await run(args);
 
@@ -725,12 +725,16 @@ const REHEARSAL_PREMIGRATION_ATTEMPTS = 3;
 /// the run. A retry pass carries the row cap forward rather than restarting it, so it
 /// retries the queued names without reading past the rows the first pass was given.
 ///
-/// A rehearsal sends whatever the gas price. A local fork mines only when a transaction
-/// arrives, so its price cannot fall while a run waits, and testnet gas costs nothing.
+/// Pre-migration runs with the gas price limit a live run would have, and the chain
+/// mines an empty block every second meanwhile. A local fork otherwise mines only when
+/// a transaction arrives, so a paused run would never see the price fall.
 export async function runRehearsalPreMigration(
   opts: Parameters<typeof runPreMigrationCommand>[0] & { workDir: string },
   resume: boolean,
-  run: (args: string[]) => Promise<void> = preMigrationMain,
+  run: (args: string[]) => Promise<void> = (args) =>
+    whileMiningBlocks(httpRpcProvider(opts.rpcUrl), () =>
+      preMigrationMain(args),
+    ),
 ) {
   for (let attempt = 1; ; attempt++) {
     const checkpoint =
@@ -743,7 +747,7 @@ export async function runRehearsalPreMigration(
         : opts.limit;
     try {
       await runPreMigrationCommand(
-        { ...opts, limit, maxGasPrice: false },
+        { ...opts, limit },
         resume || attempt > 1,
         run,
       );
@@ -7850,7 +7854,7 @@ type PremigrationRunCliOptions = NetworkCliOptions &
     batchSize?: string;
     limit?: string;
     bonusPeriodDays?: string;
-    maxGasPrice?: string | false;
+    maxGasPrice?: string;
     workDir?: string;
     dryRun?: boolean;
   };
@@ -7998,10 +8002,6 @@ export async function main(argv = process.argv): Promise<void> {
           .option(
             "--max-gas-price <gwei>",
             "Wait to send while the gas price (base fee plus median tip) is above this many gwei (default on mainnet: the median mainnet price; none elsewhere)",
-          )
-          .option(
-            "--no-max-gas-price",
-            "Send whatever the gas price, e.g. on a local chain or fork",
           )
           .option("--work-dir <path>", "Directory for checkpoints and logs")
           .option("--dry-run", "Simulate without transactions", false),

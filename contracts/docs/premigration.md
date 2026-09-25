@@ -90,7 +90,6 @@ bun run script/preMigration.ts [options]
 | `--continue` | `false` | Resume from the last checkpoint. |
 | `--bonus-period-days <days>` | `62` | Days added to each name's v1 expiry to compute its v2 expiry. `0` preserves v1 expiries exactly. |
 | `--max-gas-price <gwei>` | `0.146` on mainnet, none elsewhere | Wait to send while the gas price is above this many gwei. See [Gas price limit](#gas-price-limit). |
-| `--no-max-gas-price` | — | No gas price limit. Use it on a local chain or fork. |
 | `--v1-base-registrar <address>` | mainnet `BaseRegistrar` | v1 `BaseRegistrar` for expiry lookups (override for testing). |
 
 > Eligibility is independently gated by v1's hard-coded 90-day grace: a name expired more than 90 days
@@ -255,8 +254,8 @@ limit.
   base fee falls back.
 - **Default:** `0.146` gwei on mainnet. This is the median mainnet gas price over the two weeks
   before the default was set. Other chains have no limit by default, because a mainnet price says
-  nothing about their gas market. `--max-gas-price <gwei>` sets a limit on any chain, and
-  `--no-max-gas-price` removes it. The run logs the limit it uses at start-up.
+  nothing about their gas market. `--max-gas-price <gwei>` sets a limit on any chain. The run logs
+  the limit it uses at start-up.
 - **When it applies:** before every `batchRegister` transaction, including the smaller ones sent
   when a batch is split. A batch with nothing to send does not wait, so a final sync where most
   names are already up to date reads the chain at full speed.
@@ -274,8 +273,12 @@ made during the pause. A name whose v1 grace ends during the pause gets an expir
 past the v2 grace, so it reads as available.
 
 > A local Anvil chain, forks included, mines a block only when a transaction arrives, so its gas
-> price cannot fall while a run waits. Pass `--no-max-gas-price` there. The operator CLI's
-> rehearsals do this themselves.
+> price cannot fall while a run waits, and a paused run never resumes. A mainnet fork reports
+> mainnet's chain id, so it gets the mainnet limit. The operator CLI's rehearsals and the devnet
+> mine an empty block every second while pre-migration runs. The base fee then falls and the tips
+> of recent blocks drop to what those blocks paid, so a rehearsal runs with the real limit and
+> exercises the pause, the resume and the fee cap. When running the script by hand against a
+> mainnet fork, start Anvil with `--block-time 1` for the same effect.
 
 ## Checkpoint & resume
 
@@ -347,8 +350,8 @@ bun run migration -- premigration verify --network sepolia --rpc-url http://127.
   --csv-file ./csv-data/ens-registrations-sepolia.csv
 ```
 
-Sepolia has no gas price limit by default. On a mainnet fork, add `--no-max-gas-price` (see
-[Gas price limit](#gas-price-limit)).
+Sepolia has no gas price limit by default. A mainnet fork does; see
+[Gas price limit](#gas-price-limit) for keeping blocks coming on one.
 
 The Graveyard set comes from `--deployments-dir`. A scratch directory like the one above holds only the
 fork's own `Graveyard`, so names that an archived Sepolia deployment's Graveyard holds would still be

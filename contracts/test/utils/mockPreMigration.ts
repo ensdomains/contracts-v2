@@ -13,6 +13,7 @@ import {
 import { DEPLOYMENT_ROLES, FUSES } from "../../script/deploy-constants.js";
 import { migrationDataComponents } from "../../script/migrate.js";
 import { V1_GRACE_PERIOD_SECONDS } from "../../script/preMigration.js";
+import { buildMainArgs as buildDevnetMainArgs } from "../../script/preMigrationUtils.js";
 import type { DevnetEnvironment } from "../../script/setup.js";
 import { dnsEncodeName, idFromLabel } from "./utils.js";
 import { waitForSuccessfulTransactionReceipt } from "./waitForSuccessfulTransactionReceipt.js";
@@ -22,9 +23,24 @@ import { waitForSuccessfulTransactionReceipt } from "./waitForSuccessfulTransact
 export {
   DEPLOYER_PRIVATE_KEY,
   createCSVFile,
-  buildMainArgs,
   verifyV2State,
 } from "../../script/preMigrationUtils.js";
+
+// The test devnet reports mainnet's chain id, so a run on it takes the mainnet gas
+// price limit, which the devnet's own gas prices sit far above. The devnet also mines
+// only when a transaction arrives, so a paused run would never resume. Tests that are
+// not about the limit therefore run with one that no devnet block reaches.
+const TEST_MAX_GAS_PRICE = "1000";
+
+/// Pre-migration arguments for the test devnet; see `buildDevnetMainArgs`.
+export function buildMainArgs(
+  ...[env, csvFilePath, overrides = {}]: Parameters<typeof buildDevnetMainArgs>
+): string[] {
+  return buildDevnetMainArgs(env, csvFilePath, {
+    maxGasPrice: TEST_MAX_GAS_PRICE,
+    ...overrides,
+  });
+}
 
 export async function setupBaseRegistrarController(env: DevnetEnvironment) {
   const { deployer, owner } = env.namedAccounts;

@@ -27,6 +27,7 @@ import {
   waitForGasPriceAtOrBelow,
   waitForInclusion,
 } from "../../script/preMigration.js";
+import { whileMiningBlocks } from "../../script/migrations/rpc.js";
 
 // A fee history over blocks with these base fees and median tips. Like a node's, its
 // base fees run one entry past the last block, to the next block's.
@@ -99,10 +100,6 @@ describe("resolveMaxGasPrice", () => {
   it("applies a limit that was set on any chain", () => {
     expect(resolveMaxGasPrice(explicit, mainnet.id)).toBe(explicit);
     expect(resolveMaxGasPrice(explicit, sepolia.id)).toBe(explicit);
-  });
-
-  it("has no limit when turned off", () => {
-    expect(resolveMaxGasPrice(false, mainnet.id)).toBeNull();
   });
 
   it("defaults to the mainnet median on mainnet only", () => {
@@ -355,5 +352,70 @@ describe("submitBatchWithBinaryFallback", () => {
       ["b"],
     ]);
     expect(result.succeeded.map(({ label }) => label)).toEqual(["a", "b"]);
+  });
+});
+
+describe("whileMiningBlocks", () => {
+  // A node that records each mining request, and refuses them all when `refuses`.
+  function localNode(refuses = false) {
+    const node = {
+      mined: [] as string[],
+      async request({ method }: { method: string }) {
+        if (refuses) throw new Error(`${method} is not supported`);
+        node.mined.push(method);
+        return null;
+      },
+    };
+    return node;
+  }
+
+  const pause = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  it("mines empty blocks while the work runs, and returns what it returns", async () => {
+    const node = localNode();
+    const result = await whileMiningBlocks(
+      node,
+      async () => {
+        await pause(60);
+        return "done";
+      },
+      10,
+    );
+    expect(result).toBe("done");
+    expect(node.mined.length).toBeGreaterThan(1);
+    expect(new Set(node.mined)).toEqual(new Set(["anvil_mine"]));
+  });
+
+  it("stops mining once the work settles, even when it fails", async () => {
+    const node = localNode();
+    await expect(
+      whileMiningBlocks(
+        node,
+        async () => {
+          await pause(30);
+          throw new Error("run failed");
+        },
+        10,
+      ),
+    ).rejects.toThrow("run failed");
+    const minedWhileRunning = node.mined.length;
+    await pause(50);
+    expect(node.mined.length).toBe(minedWhileRunning);
+  });
+
+  it("leaves a chain that will not mine on request alone", async () => {
+    const node = localNode(true);
+    expect(
+      await whileMiningBlocks(
+        node,
+        async () => {
+          await pause(40);
+          return "done";
+        },
+        10,
+      ),
+    ).toBe("done");
+    expect(node.mined).toEqual([]);
   });
 });

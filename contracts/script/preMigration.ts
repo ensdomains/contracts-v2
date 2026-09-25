@@ -143,9 +143,9 @@ export interface PreMigrationConfig {
   v1BaseRegistrarAddress: Address;
   /// Graveyards whose v1 names are not claimable. See `v1Eligibility`.
   graveyards: ReadonlySet<Address>;
-  /// Highest gas price, in wei, at which a batch is sent; see `resolveMaxGasPrice`.
-  /// Left out, the chain's default applies. `false` sends whatever the price.
-  maxGasPrice?: bigint | false;
+  /// Highest gas price, in wei, at which a batch is sent. Left out, the chain's
+  /// default applies; see `resolveMaxGasPrice`.
+  maxGasPrice?: bigint;
 }
 
 export interface Checkpoint {
@@ -1415,12 +1415,10 @@ export function parseMaxGasPrice(value: string): bigint {
 /// `DEFAULT_MAX_GAS_PRICE` and other chains have no limit, since a mainnet median
 /// says nothing about another chain's gas market.
 export function resolveMaxGasPrice(
-  option: bigint | false | undefined,
+  option: bigint | undefined,
   chainId: number,
 ): bigint | null {
-  if (option === false) return null;
-  if (option !== undefined) return option;
-  return chainId === mainnet.id ? DEFAULT_MAX_GAS_PRICE : null;
+  return option ?? (chainId === mainnet.id ? DEFAULT_MAX_GAS_PRICE : null);
 }
 
 /// Each block's gas price in a fee history: its base fee plus the first reward
@@ -2120,10 +2118,6 @@ export async function main(argv = process.argv): Promise<void> {
       "--max-gas-price <gwei>",
       "Wait to send while the gas price (base fee plus median tip) is above this many gwei (default on mainnet: the median mainnet price; none elsewhere)",
       parseMaxGasPrice,
-    )
-    .option(
-      "--no-max-gas-price",
-      "Send whatever the gas price, e.g. on a local chain or fork",
     );
 
   program.parse(argv);
@@ -2160,7 +2154,7 @@ export async function main(argv = process.argv): Promise<void> {
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
     graveyards: graveyardSet(opts.graveyards as Address[]),
-    maxGasPrice: opts.maxGasPrice as bigint | false | undefined,
+    maxGasPrice: opts.maxGasPrice as bigint | undefined,
   };
 
   try {
