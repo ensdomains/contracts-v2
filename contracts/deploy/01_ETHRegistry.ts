@@ -1,9 +1,13 @@
-import { artifacts, execute } from "@rocketh";
-import { isAddressEqual, labelhash, zeroAddress } from "viem";
+import { execute } from "@rocketh";
+import type { Abi_ILabelStore } from "generated/abis/ILabelStore.js";
+import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
+import { isAddressEqual, zeroAddress } from "viem";
+import { idFromLabel } from "../test/utils/utils.js";
 import {
   MAX_EXPIRY,
   DEPLOYMENT_ROLES,
   ROLES,
+  STATUS,
 } from "../script/deploy-constants.js";
 
 export default execute(
@@ -15,23 +19,22 @@ export default execute(
     namedAccounts: { deployer, owner },
   }) => {
     const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-
-    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+      get<(typeof Artifact_PermissionedRegistry)["abi"]>("RootRegistry");
+    const labelStore = get<Abi_ILabelStore>("LabelStore");
 
     console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
       account: deployer,
-      artifact: artifacts.PermissionedRegistry,
+      artifact: Artifact_PermissionedRegistry,
       args: [labelStore.address, deployer, DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT],
     });
 
     const currentStatus = await read(rootRegistry, {
       functionName: "getStatus",
-      args: [BigInt(labelhash("eth"))],
+      args: [idFromLabel("eth")],
     });
 
-    if (currentStatus === 0) {
+    if (currentStatus === STATUS.AVAILABLE) {
       console.log("  - Registering in parent");
       await write(rootRegistry, {
         account: deployer,

@@ -3,7 +3,7 @@ setDefaultTimeout(60_000);
 
 import { toHex, type Address } from "viem";
 import { ROLES } from "../../script/deploy-constants.js";
-import { main } from "../../script/prepareMigration.js";
+import { main } from "../../script/migrations/prepareMigration.js";
 import { revertPrePrepareMigrationRoles } from "../utils/mockPrepareMigration.js";
 
 const ROLE_REGISTRAR = ROLES.REGISTRY.REGISTRAR;
@@ -14,7 +14,7 @@ const ROLE_RENEW = ROLES.REGISTRY.RENEW;
 const ROLE_RENEW_ADMIN = ROLES.ADMIN.REGISTRY.RENEW;
 
 describe("PrepareMigration", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
 
   setupEnv({
     resetOnEach: true,

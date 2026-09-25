@@ -1,5 +1,27 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { getAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import {
+  CHECKPOINT_FILE,
+  createFreshCheckpoint,
+  FailedNamesError,
+  type Checkpoint,
+} from "../../script/preMigration.js";
+
+import {
+  runPreMigrationCommand,
+  runRehearsalPreMigration,
+} from "../../script/migrate.js";
 
 // The BatchRegistrar owner that fork/clean-testnet runs impersonate. The env
 // deployer key below does NOT control it.
@@ -12,22 +34,27 @@ const DEPLOYER_KEY =
 const deployerAccount = privateKeyToAccount(DEPLOYER_KEY);
 
 let capturedArgs: string[] | null = null;
+// When set, the mocked pre-migration run writes this checkpoint to its workDir,
+// standing in for the real run so the metadata-persistence path can be exercised.
+let checkpointToWrite: Checkpoint | null = null;
 
-const realPreMigration = await import("../../script/preMigration.js");
+async function captureArgs(args: string[]) {
+  capturedArgs = args;
+  if (checkpointToWrite) {
+    writeFileSync(CHECKPOINT_FILE, JSON.stringify(checkpointToWrite));
+  }
+}
 
-mock.module("../../script/preMigration.js", () => ({
-  ...realPreMigration,
-  main: async (args: string[]) => {
-    capturedArgs = args;
-  },
-}));
-
-const { runPreMigrationCommand } = await import("../../script/migration.js");
+function makeCheckpoint(overrides: Partial<Checkpoint>): Checkpoint {
+  return { ...createFreshCheckpoint(), ...overrides };
+}
 
 function flagValue(args: string[], flag: string): string | undefined {
   const i = args.indexOf(flag);
   return i === -1 ? undefined : args[i + 1];
 }
+
+const GRAVEYARD = "0x0000000000000000000000000000000000000005" as const;
 
 const baseOpts = {
   rpcUrl: "http://127.0.0.1:8545",
@@ -36,6 +63,7 @@ const baseOpts = {
   batchRegistrar: "0x0000000000000000000000000000000000000002" as const,
   v1Resolver: "0x0000000000000000000000000000000000000003" as const,
   v1BaseRegistrar: "0x0000000000000000000000000000000000000004" as const,
+  graveyards: [GRAVEYARD],
   csvFile: "names.csv",
 };
 
@@ -64,6 +92,7 @@ describe("runPreMigrationCommand signer resolution", () => {
     await runPreMigrationCommand(
       { ...baseOpts, account: ownerAccount.address },
       false,
+      captureArgs,
     );
     expect(capturedArgs).not.toBeNull();
     expect(flagValue(capturedArgs!, "--account")).toBe(ownerAccount.address);
@@ -74,13 +103,14 @@ describe("runPreMigrationCommand signer resolution", () => {
     await runPreMigrationCommand(
       { ...baseOpts, account: deployerAccount.address },
       false,
+      captureArgs,
     );
     expect(flagValue(capturedArgs!, "--private-key")).toBe(DEPLOYER_KEY);
     expect(flagValue(capturedArgs!, "--account")).toBe(deployerAccount.address);
   });
 
   it("uses the env fallback when no account is supplied", async () => {
-    await runPreMigrationCommand({ ...baseOpts }, false);
+    await runPreMigrationCommand({ ...baseOpts }, false, captureArgs);
     expect(flagValue(capturedArgs!, "--private-key")).toBe(DEPLOYER_KEY);
     expect(capturedArgs).not.toContain("--account");
   });
@@ -89,8 +119,335 @@ describe("runPreMigrationCommand signer resolution", () => {
     await runPreMigrationCommand(
       { ...baseOpts, privateKey: OWNER_KEY, account: ownerAccount.address },
       false,
+      captureArgs,
     );
     expect(flagValue(capturedArgs!, "--private-key")).toBe(OWNER_KEY);
     expect(flagValue(capturedArgs!, "--account")).toBe(ownerAccount.address);
+  });
+});
+
+describe("runPreMigrationCommand Graveyard set", () => {
+  let deploymentsDir: string;
+
+  beforeEach(() => {
+    capturedArgs = null;
+    process.env.DEPLOYER_KEY = DEPLOYER_KEY;
+    deploymentsDir = mkdtempSync(join(tmpdir(), "premigration-graveyards-"));
+  });
+
+  afterEach(() => {
+    delete process.env.DEPLOYER_KEY;
+    rmSync(deploymentsDir, { recursive: true, force: true });
+  });
+
+  function writeGraveyard(namespace: string, address: string, chainId = 1) {
+    const dir = join(deploymentsDir, namespace);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, ".chain"), JSON.stringify({ chainId }));
+    writeFileSync(join(dir, "Graveyard.json"), JSON.stringify({ address }));
+  }
+
+  const withoutGraveyards = { ...baseOpts, graveyards: undefined };
+
+  it("passes an explicit set through to the run", async () => {
+    await runPreMigrationCommand({ ...baseOpts }, false, captureArgs);
+    expect(flagValue(capturedArgs!, "--graveyards")).toBe(GRAVEYARD);
+  });
+
+  it("defaults to every Graveyard the deployments record for this chain", async () => {
+    const active = "0x00000000000000000000000000000000000000a1";
+    const archived = "0x00000000000000000000000000000000000000a2";
+    writeGraveyard("mainnet", active);
+    writeGraveyard("mainnet-20260101-r1", archived);
+
+    await runPreMigrationCommand(
+      { ...withoutGraveyards, deploymentsDir },
+      false,
+      captureArgs,
+    );
+
+    expect(flagValue(capturedArgs!, "--graveyards")?.split(",")).toEqual([
+      getAddress(active),
+      getAddress(archived),
+    ]);
+  });
+});
+
+describe("runPreMigrationCommand metadata persistence", () => {
+  let deploymentsDir: string;
+  let workDir: string;
+  const deploymentNetwork = "mainnet";
+
+  beforeEach(() => {
+    process.env.DEPLOYER_KEY = DEPLOYER_KEY;
+    deploymentsDir = mkdtempSync(join(tmpdir(), "premigration-meta-deploy-"));
+    workDir = mkdtempSync(join(tmpdir(), "premigration-meta-work-"));
+    // The namespace dir must exist for the sidecar to be written.
+    mkdirSync(join(deploymentsDir, deploymentNetwork), { recursive: true });
+  });
+
+  afterEach(() => {
+    checkpointToWrite = null;
+    delete process.env.DEPLOYER_KEY;
+    rmSync(deploymentsDir, { recursive: true, force: true });
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  const metadataPath = () =>
+    join(deploymentsDir, deploymentNetwork, ".premigration.json");
+
+  const readMetadata = () => JSON.parse(readFileSync(metadataPath(), "utf-8"));
+
+  it("writes a run summary and resolved roll-up, upserting by label", async () => {
+    checkpointToWrite = makeCheckpoint({
+      totalExpected: 9,
+      totalProcessed: 9,
+      successCount: 5,
+      renewedCount: 0,
+      skippedCount: 4,
+      skippedNeverRegisteredCount: 2,
+      skippedPastGraceCount: 1,
+      skippedGraveyardCount: 1,
+      alreadyRegisteredCount: 0,
+      invalidLabelCount: 1,
+      failedLines: [],
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork,
+        workDir,
+        metadataLabel: "initial",
+      },
+      false,
+      captureArgs,
+    );
+
+    let metadata = readMetadata();
+    expect(metadata.chainId).toBe(1);
+    expect(metadata.runs).toHaveLength(1);
+    expect(metadata.runs[0]).toMatchObject({
+      label: "initial",
+      reserved: 5,
+      renewed: 0,
+      skippedNeverRegistered: 2,
+      skippedExpiredPastGrace: 1,
+      skippedGraveyard: 1,
+      invalidLabels: 1,
+      alreadyOnV2: 0,
+      failed: 0,
+    });
+
+    // Resume re-writes the same label's accumulated checkpoint: upsert, not append.
+    checkpointToWrite = makeCheckpoint({
+      totalExpected: 9,
+      totalProcessed: 9,
+      successCount: 6,
+      skippedCount: 3,
+      skippedNeverRegisteredCount: 2,
+      skippedPastGraceCount: 1,
+      invalidLabelCount: 0,
+      timestamp: "2026-01-01T01:00:00.000Z",
+    });
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork,
+        workDir,
+        metadataLabel: "initial",
+      },
+      true,
+      captureArgs,
+    );
+    metadata = readMetadata();
+    expect(metadata.runs).toHaveLength(1);
+    expect(metadata.runs[0].reserved).toBe(6);
+
+    // A second logical run (final-sync) appends and drives the resolved section,
+    // being the most recently finished run.
+    checkpointToWrite = makeCheckpoint({
+      totalExpected: 10,
+      totalProcessed: 10,
+      successCount: 1,
+      renewedCount: 5,
+      skippedCount: 5,
+      skippedNeverRegisteredCount: 2,
+      skippedPastGraceCount: 1,
+      skippedGraveyardCount: 2,
+      alreadyRegisteredCount: 1,
+      // Reservations already long enough to need no submission. By the final sync
+      // these are most of the corpus, and leaving them out of the roll-up made the
+      // published figure describe only what the last run happened to touch.
+      upToDateCount: 4,
+      invalidLabelCount: 1,
+      failedLines: [],
+      timestamp: "2026-01-02T00:00:00.000Z",
+    });
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork,
+        workDir,
+        metadataLabel: "final-sync",
+      },
+      false,
+      captureArgs,
+    );
+    metadata = readMetadata();
+    expect(metadata.runs).toHaveLength(2);
+    expect(metadata.resolved).toMatchObject({
+      finishedAt: "2026-01-02T00:00:00.000Z",
+      totalNames: 10,
+      namesPreMigrated: 10,
+      newReservations: 1,
+      expiryResyncs: 5,
+      alreadyCurrent: 4,
+      skippedNeverRegistered: 2,
+      skippedExpiredPastGrace: 1,
+      skippedGraveyard: 2,
+      invalidLabels: 1,
+      alreadyOnV2: 1,
+      failed: 0,
+    });
+  });
+
+  it("skips the write on dry run and when persistMetadata is false", async () => {
+    checkpointToWrite = makeCheckpoint({
+      successCount: 1,
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork,
+        workDir,
+        metadataLabel: "run",
+        dryRun: true,
+      },
+      false,
+      captureArgs,
+    );
+    expect(existsSync(metadataPath())).toBe(false);
+
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork,
+        workDir,
+        metadataLabel: "run",
+        persistMetadata: false,
+      },
+      false,
+      captureArgs,
+    );
+    expect(existsSync(metadataPath())).toBe(false);
+  });
+
+  it("does not write when the namespace directory is absent", async () => {
+    checkpointToWrite = makeCheckpoint({
+      successCount: 1,
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        deploymentsDir,
+        deploymentNetwork: "does-not-exist",
+        workDir,
+        metadataLabel: "run",
+      },
+      false,
+      captureArgs,
+    );
+    expect(
+      existsSync(join(deploymentsDir, "does-not-exist", ".premigration.json")),
+    ).toBe(false);
+  });
+});
+
+describe("runRehearsalPreMigration", () => {
+  let workDir: string;
+
+  beforeEach(() => {
+    workDir = mkdtempSync(join(tmpdir(), "premigration-rehearsal-"));
+  });
+
+  afterEach(() => {
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  // Stands in for pre-migration: each pass records its arguments and plays out the
+  // next scripted outcome, leaving the checkpoint a real pass would leave behind.
+  function scriptedRuns(outcomes: Array<{ failed: number[] } | Error>) {
+    const calls: string[][] = [];
+    const run = async (args: string[]) => {
+      calls.push(args);
+      const outcome = outcomes[calls.length - 1];
+      if (outcome instanceof Error) throw outcome;
+      writeFileSync(
+        CHECKPOINT_FILE,
+        JSON.stringify(
+          makeCheckpoint({ totalProcessed: 1000, failedLines: outcome.failed }),
+        ),
+      );
+      if (outcome.failed.length > 0) {
+        throw new FailedNamesError(outcome.failed.length);
+      }
+    };
+    return { calls, run };
+  }
+
+  const opts = () => ({
+    ...baseOpts,
+    workDir,
+    limit: "1000",
+    persistMetadata: false,
+  });
+
+  it("retries the names a pass left failed without reading past its row cap", async () => {
+    const { calls, run } = scriptedRuns([
+      { failed: [650, 651] },
+      { failed: [] },
+    ]);
+
+    await runRehearsalPreMigration(opts(), false, run);
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).not.toContain("--continue");
+    expect(flagValue(calls[0], "--limit")).toBe("1000");
+    // The retry resumes the checkpoint, which replays the queued names, and has no
+    // rows of its cap left to read beyond them.
+    expect(calls[1]).toContain("--continue");
+    expect(flagValue(calls[1], "--limit")).toBe("0");
+  });
+
+  it("fails the run when names keep failing", async () => {
+    const { calls, run } = scriptedRuns([
+      { failed: [1] },
+      { failed: [1] },
+      { failed: [1] },
+      { failed: [] },
+    ]);
+
+    await expect(runRehearsalPreMigration(opts(), false, run)).rejects.toThrow(
+      FailedNamesError,
+    );
+    expect(calls).toHaveLength(3);
+  });
+
+  it("does not retry an error other than failed names", async () => {
+    const { calls, run } = scriptedRuns([new Error("rpc unreachable")]);
+
+    await expect(runRehearsalPreMigration(opts(), false, run)).rejects.toThrow(
+      "rpc unreachable",
+    );
+    expect(calls).toHaveLength(1);
   });
 });
