@@ -10,6 +10,7 @@ import {
   type Hex,
   parseGwei,
   TransactionNotFoundError,
+  TransactionReceiptNotFoundError,
   WaitForTransactionReceiptTimeoutError,
   zeroAddress,
 } from "viem";
@@ -19,7 +20,6 @@ import {
   type BatchSender,
   blockGasPrices,
   DEFAULT_MAX_GAS_PRICE,
-  MAX_READ_FAILURES,
   parseMaxGasPrice,
   readGasPrice,
   resolveMaxGasPrice,
@@ -174,108 +174,122 @@ describe("waitForGasPriceAtOrBelow", () => {
     expect(client.count).toBe(3);
   });
 
-  it("keeps waiting through a failed read", async () => {
-    const client = gasPriceReads([new Error("timeout"), ABOVE, LIMIT]);
-    await waitForGasPriceAtOrBelow(client, LIMIT, 0);
-    expect(client.count).toBe(3);
-  });
-
-  it("counts only failures in a row", async () => {
-    const failures = Array.from(
-      { length: MAX_READ_FAILURES - 1 },
-      () => new Error("timeout"),
-    );
-    const client = gasPriceReads([...failures, ABOVE, ...failures, LIMIT]);
-    await waitForGasPriceAtOrBelow(client, LIMIT, 0);
-    expect(client.count).toBe(2 * failures.length + 2);
-  });
-
-  it("stops the run when reads keep failing", async () => {
-    const client = gasPriceReads(
-      Array.from({ length: MAX_READ_FAILURES }, () => new Error("timeout")),
-    );
-    await expect(waitForGasPriceAtOrBelow(client, LIMIT, 0)).rejects.toThrow(
-      `could not read the gas price ${MAX_READ_FAILURES} times in a row`,
-    );
-    expect(client.count).toBe(MAX_READ_FAILURES);
+  it("keeps waiting through any number of failed reads", async () => {
+    const failures = Array.from({ length: 12 }, () => new Error("timeout"));
+    const client = gasPriceReads([...failures, ABOVE, LIMIT]);
+    expect(await waitForGasPriceAtOrBelow(client, LIMIT, 0)).toEqual(capped);
+    expect(client.count).toBe(14);
   });
 });
 
 describe("waitForInclusion", () => {
-  const HASH = "0x01" as Hex;
+  const EARLIER = "0x01" as Hex;
+  const LATEST = "0x02" as Hex;
   const timedOut = () =>
-    new WaitForTransactionReceiptTimeoutError({ hash: HASH });
+    new WaitForTransactionReceiptTimeoutError({ hash: LATEST });
 
-  // A node whose receipt waits play out each outcome in turn, and whose view of the
-  // pending transaction is `known`.
-  function node(outcomes: Array<"mined" | Error>, known = true) {
+  // A node on which each wait for the latest send plays out the next outcome in turn.
+  // `held` is whether it still holds the latest send, and `mined` lists the sends it
+  // has a receipt for.
+  function node(
+    outcomes: Array<"mined" | Error>,
+    { held = true, mined = [] as Hex[] } = {},
+  ) {
     const client = {
       waits: [] as unknown[],
-      async waitForTransactionReceipt(request: unknown) {
+      async waitForTransactionReceipt(request: { hash: Hex }) {
         client.waits.push(request);
         const outcome = outcomes[client.waits.length - 1];
         if (outcome instanceof Error) throw outcome;
-        return { status: "success", transactionHash: HASH };
+        return { status: "success", transactionHash: request.hash };
       },
-      async getTransaction() {
-        if (!known) throw new TransactionNotFoundError({ hash: HASH });
-        return { hash: HASH };
+      async getTransactionReceipt({ hash }: { hash: Hex }) {
+        if (!mined.includes(hash)) {
+          throw new TransactionReceiptNotFoundError({ hash });
+        }
+        return { status: "success", transactionHash: hash };
+      },
+      async getTransaction({ hash }: { hash: Hex }) {
+        if (!held) throw new TransactionNotFoundError({ hash });
+        return { hash };
       },
     };
     return client;
   }
 
   it("returns the receipt of a mined transaction", async () => {
-    const client = node(["mined"]);
-    expect((await waitForInclusion(client, HASH, 0)).status).toBe("success");
+    const receipt = await waitForInclusion(node(["mined"]), [LATEST], 0);
+    expect(receipt?.transactionHash).toBe(LATEST);
   });
 
   it("waits with no time limit and no replacement check of viem's own", async () => {
     const client = node(["mined"]);
-    await waitForInclusion(client, HASH, 0);
+    await waitForInclusion(client, [LATEST], 0);
     expect(client.waits).toEqual([
-      { hash: HASH, checkReplacement: false, timeout: 5 * 60_000 },
+      { hash: LATEST, checkReplacement: false, timeout: 5 * 60_000 },
     ]);
   });
 
-  it("keeps waiting while the node still holds the transaction", async () => {
+  it("keeps waiting while the node still holds the latest send", async () => {
     const client = node([timedOut(), timedOut(), "mined"]);
-    expect((await waitForInclusion(client, HASH, 0)).status).toBe("success");
+    const receipt = await waitForInclusion(client, [LATEST], 0);
+    expect(receipt?.transactionHash).toBe(LATEST);
     expect(client.waits).toHaveLength(3);
   });
 
-  it("stops the run when the transaction was dropped", async () => {
-    const client = node([timedOut()], false);
-    await expect(waitForInclusion(client, HASH, 0)).rejects.toThrow(
-      "dropped or replaced before it was mined",
-    );
+  it("returns nothing when the latest send was dropped", async () => {
+    const client = node([timedOut()], { held: false });
+    expect(await waitForInclusion(client, [EARLIER, LATEST], 0)).toBeNull();
   });
 
-  it("stops the run when reads keep failing", async () => {
-    const client = node(
-      Array.from({ length: MAX_READ_FAILURES }, () => new Error("rpc down")),
-    );
-    await expect(waitForInclusion(client, HASH, 0)).rejects.toThrow(
-      `could not read the transaction receipt ${MAX_READ_FAILURES} times in a row`,
-    );
+  it("returns an earlier send of the batch that was mined instead", async () => {
+    const client = node([timedOut()], { held: false, mined: [EARLIER] });
+    const receipt = await waitForInclusion(client, [EARLIER, LATEST], 0);
+    expect(receipt?.transactionHash).toBe(EARLIER);
+  });
+
+  it("keeps trying through any number of failed reads", async () => {
+    const failures = Array.from({ length: 12 }, () => new Error("rpc down"));
+    const client = node([...failures, "mined"]);
+    const receipt = await waitForInclusion(client, [LATEST], 0);
+    expect(receipt?.transactionHash).toBe(LATEST);
+    expect(client.waits).toHaveLength(13);
   });
 });
 
 describe("submitBatchWithBinaryFallback", () => {
-  // A sender whose sends play out each outcome in turn, and whose transactions are
-  // mined with the status `statusOf` gives them. Every gas price read is at the limit.
+  // A sender whose send attempts play out each outcome in turn (none means the send
+  // goes through), whose first `drops` transactions are dropped from the node's pool,
+  // and whose other transactions are mined with the status `statusOf` gives them.
+  // Every gas price read is at the limit.
   function fakeSender(
     maxGasPrice: bigint | null,
-    sendOutcomes: Error[] = [],
-    statusOf: (labels: string[]) => "success" | "reverted" = () => "success",
+    {
+      sendOutcomes = [] as Array<Error | undefined>,
+      drops = 0,
+      statusOf = (_labels: string[]): "success" | "reverted" => "success",
+    } = {},
   ) {
     const sent: Array<{ labels: string[]; fees: unknown }> = [];
     const statuses = new Map<Hex, "success" | "reverted">();
+    const dropped = new Set<Hex>();
     let attempts = 0;
     const client = {
       ...gasPriceReads(),
       async waitForTransactionReceipt({ hash }: { hash: Hex }) {
+        if (dropped.has(hash)) {
+          throw new WaitForTransactionReceiptTimeoutError({ hash });
+        }
         return { status: statuses.get(hash), transactionHash: hash };
+      },
+      async getTransactionReceipt({ hash }: { hash: Hex }) {
+        if (dropped.has(hash))
+          throw new TransactionReceiptNotFoundError({ hash });
+        return { status: statuses.get(hash), transactionHash: hash };
+      },
+      async getTransaction({ hash }: { hash: Hex }) {
+        if (dropped.has(hash)) throw new TransactionNotFoundError({ hash });
+        return { hash };
       },
     };
     const batchRegistrar = {
@@ -285,6 +299,7 @@ describe("submitBatchWithBinaryFallback", () => {
           if (outcome) throw outcome;
           const labels = args[2] as string[];
           const hash = `0x${sent.length + 1}` as Hex;
+          if (sent.length < drops) dropped.add(hash);
           sent.push({ labels, fees });
           statuses.set(hash, statusOf(labels));
           return hash;
@@ -327,7 +342,9 @@ describe("submitBatchWithBinaryFallback", () => {
     const feeCapTooLow = new BaseError("send failed", {
       cause: new FeeCapTooLowError(),
     });
-    const { sender, sent } = fakeSender(LIMIT, [feeCapTooLow]);
+    const { sender, sent } = fakeSender(LIMIT, {
+      sendOutcomes: [feeCapTooLow],
+    });
     const result = await submitBatchWithBinaryFallback(
       sender,
       ["a", "b"],
@@ -338,9 +355,9 @@ describe("submitBatchWithBinaryFallback", () => {
   });
 
   it("splits a batch whose transaction reverted", async () => {
-    const { sender, sent } = fakeSender(LIMIT, [], (labels) =>
-      labels.length > 1 ? "reverted" : "success",
-    );
+    const { sender, sent } = fakeSender(LIMIT, {
+      statusOf: (labels) => (labels.length > 1 ? "reverted" : "success"),
+    });
     const result = await submitBatchWithBinaryFallback(
       sender,
       ["a", "b"],
@@ -352,6 +369,43 @@ describe("submitBatchWithBinaryFallback", () => {
       ["b"],
     ]);
     expect(result.succeeded.map(({ label }) => label)).toEqual(["a", "b"]);
+  });
+
+  it("sends the whole batch again when its transaction was dropped", async () => {
+    const { sender, sent } = fakeSender(LIMIT, { drops: 1 });
+    const result = await submitBatchWithBinaryFallback(
+      sender,
+      ["a", "b"],
+      [1n, 2n],
+    );
+    expect(sent.map(({ labels }) => labels)).toEqual([
+      ["a", "b"],
+      ["a", "b"],
+    ]);
+    expect(result.succeeded).toEqual([
+      { label: "a", txHash: "0x2" },
+      { label: "b", txHash: "0x2" },
+    ]);
+  });
+
+  it("goes back to waiting, without splitting, when sending again is refused", async () => {
+    const { sender, sent } = fakeSender(LIMIT, {
+      sendOutcomes: [
+        undefined,
+        new Error("replacement transaction underpriced"),
+      ],
+      drops: 1,
+    });
+    const result = await submitBatchWithBinaryFallback(
+      sender,
+      ["a", "b"],
+      [1n, 2n],
+    );
+    expect(sent.map(({ labels }) => labels)).toEqual([
+      ["a", "b"],
+      ["a", "b"],
+    ]);
+    expect(result.failed).toEqual([]);
   });
 });
 

@@ -240,7 +240,7 @@ mined. A checkpoint is saved after each batch.
 
 A batch is not sent while the gas price is above a limit, and no transaction pays more than the
 limit. The script reads the price again every 12 seconds, and sends as soon as it is at or below the
-limit.
+limit. A pause has no time limit: it lasts until the price comes back down, however long that takes.
 
 - **Gas price** is a base fee plus a tip. The live price is the higher of the latest and the next
   block's base fee, plus the median of the last 5 blocks' median tips (the 50th-percentile priority
@@ -260,12 +260,14 @@ limit.
   when a batch is split. A batch with nothing to send does not wait, so a final sync where most
   names are already up to date reads the chain at full speed.
 - **While paused:** the log says when a pause starts, repeats every 5 minutes with the current
-  price, and says when sends resume. A failed price read is logged and tried again at the next
-  check. After 5 failed reads in a row the run stops. Nothing was sent for the waiting batch, so the
-  checkpoint still points before it: resume with `--continue`.
-- **While a transaction waits to be mined:** the log reports it every 5 minutes. If the node no
-  longer holds the transaction, it was dropped or replaced, and the run stops with the checkpoint
-  before its batch; `--continue` sends those names again.
+  price, and says when sends resume. A failed read of the chain does not end a pause: it is logged
+  and tried again, with the wait between tries doubling from 12 seconds up to 5 minutes.
+- **While a transaction waits to be mined:** the log reports it every 5 minutes, and there is no
+  time limit here either. If the node no longer holds the transaction, it was dropped from the pool,
+  and the batch waits for the price and is sent again rather than split: nothing is wrong with its
+  names. Before sending again, the script checks whether an earlier send of the batch was mined
+  instead. If the node refuses the new send for any reason other than a revert, an earlier send is
+  still pending somewhere, so the script goes back to waiting on that one.
 
 A batch that waits is sent with the results of the checks made before the pause. This is safe.
 Nothing but pre-migration writes the v2 registry while it runs. The final sync picks up a v1 renewal
