@@ -1,6 +1,5 @@
 import { describe, it } from "bun:test";
 import {
-  type AbiParameterToPrimitiveType,
   type Account,
   type Address,
   encodeAbiParameters,
@@ -15,7 +14,10 @@ import {
   SEC_PER_YEAR,
   GRACE_PERIOD_V2,
 } from "../../script/deploy-constants.js";
-import { migrationDataComponents } from "../../script/migrate.js";
+import {
+  type MigrationData,
+  encodeMigrationData,
+} from "../utils/migrationData.js";
 import { expect, expectVar } from "../utils/expectVar.js";
 import {
   COIN_TYPE_ETH,
@@ -30,12 +32,6 @@ import {
   type KnownProfile,
   makeResolutions,
 } from "../utils/resolutions.js";
-
-// see: LibMigration.sol
-type MigrationData = AbiParameterToPrimitiveType<{
-  type: "tuple";
-  components: typeof migrationDataComponents;
-}>;
 
 const anotherAddress = "0x8000000000000000000000000000000000000001";
 const defaultProfile = {
@@ -294,20 +290,6 @@ describe("Migration", () => {
   ) {
     const unwrapped = await registerUnwrapped(args);
     return unwrapped.wrap(args.fuses);
-  }
-
-  function encodeMigrationData(v: MigrationData | MigrationData[]): Hex {
-    if (Array.isArray(v)) {
-      return encodeAbiParameters(
-        [{ type: "tuple[]", components: migrationDataComponents }],
-        [v],
-      );
-    } else {
-      return encodeAbiParameters(
-        [{ type: "tuple", components: migrationDataComponents }],
-        [v],
-      );
-    }
   }
 
   describe("helpers", () => {

@@ -15,20 +15,19 @@ import {
   type Address,
   encodeAbiParameters,
   getContract,
-  namehash,
   zeroAddress,
   zeroHash,
 } from "viem";
 import { Artifact_ETHRegistrarController } from "generated/artifacts/ETHRegistrarController.js";
 import { FUSES, ROLES, STATUS } from "../../script/deploy-constants.js";
-import { migrationDataComponents } from "../../script/migrate.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import {
   buildMainArgs,
   createCSVFile,
   verifyV2State,
 } from "../utils/mockPreMigration.js";
-import { idFromLabel } from "../utils/utils.js";
+import { idFromLabel, namehash } from "../utils/utils.js";
+import { encodeMigrationData } from "../utils/migrationData.js";
 
 const ONE_YEAR_SECONDS = 365n * 24n * 60n * 60n;
 const MIN_V2_REGISTRATION_SECONDS = 28n * 24n * 60n * 60n;
@@ -279,17 +278,12 @@ describe("Phased migration rehearsal", () => {
   async function migrateLockedV1Name(label: string, account: Account) {
     const node = namehash(`${label}.eth`);
     const resolver = await env.v1.ENSRegistry.read.resolver([node]);
-    const data = encodeAbiParameters(
-      [{ type: "tuple", components: migrationDataComponents }],
-      [
-        {
-          label,
-          owner: account.address,
-          subregistry: zeroAddress,
-          resolver,
-        },
-      ],
-    );
+    const data = encodeMigrationData({
+      label,
+      owner: account.address,
+      subregistry: zeroAddress,
+      resolver,
+    });
     await env.v1.NameWrapper.write.safeTransferFrom(
       [
         account.address,
@@ -306,23 +300,17 @@ describe("Phased migration rehearsal", () => {
     const resolver = await env.v1.ENSRegistry.read.resolver([
       namehash(`${label}.eth`),
     ]);
-    const data = encodeAbiParameters(
-      [{ type: "tuple", components: migrationDataComponents }],
-      [
-        {
-          label,
-          owner: account.address,
-          subregistry: zeroAddress,
-          resolver,
-        },
-      ],
-    );
     await env.v1.BaseRegistrar.write.safeTransferFrom(
       [
         account.address,
         env.v2.UnlockedMigrationController.address,
         idFromLabel(label),
-        data,
+        encodeMigrationData({
+          label,
+          owner: account.address,
+          subregistry: zeroAddress,
+          resolver,
+        }),
       ],
       { account },
     );

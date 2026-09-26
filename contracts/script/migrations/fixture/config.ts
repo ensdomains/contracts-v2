@@ -4,7 +4,6 @@ import { join, resolve } from "node:path";
 import {
   createPublicClient,
   createWalletClient,
-  defineChain,
   http,
   keccak256,
   parseEther,
@@ -14,7 +13,6 @@ import {
   type Hex,
 } from "viem";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
-import { mainnet, sepolia } from "viem/chains";
 
 import {
   forkChain,

@@ -49,6 +49,11 @@ import {
   Graveyard,
   NameWrapper,
 } from "./migrations/abis.js";
+import {
+  idFromLabel,
+  labelhash,
+  namehashFromParts,
+} from "../test/utils/utils.js";
 
 const BASE_REGISTRAR_ABI = BaseRegistrar.nameExpires;
 
@@ -393,8 +398,8 @@ const ETH_NODE = namehash("eth");
 
 /// The v1 node of the `.eth` 2LD with this labelhash, which the registry and the
 /// `NameWrapper` key the name by.
-export function ethNameNode(labelhash: bigint): Hex {
-  return keccak256(concat([ETH_NODE, toHex(labelhash, { size: 32 })]));
+export function ethNameNode(id: bigint): Hex {
+  return namehashFromParts(ETH_NODE, toHex(id, { size: 32 }));
 }
 
 // Follows a name to its registrant through the four reads `readV1Registrations` makes.
@@ -788,13 +793,11 @@ export async function verifyNameOnV1(
     throw new InvalidLabelNameError(labelName);
   }
 
-  const tokenId = keccak256(toHex(labelName));
-
   const expiry = await client.readContract({
     address: baseRegistrarAddress,
     abi: BASE_REGISTRAR_ABI,
     functionName: "nameExpires",
-    args: [tokenId],
+    args: [labelhash(labelName)],
   });
 
   const currentTimestamp = await readChainTimestamp(client);
@@ -1272,7 +1275,7 @@ export async function batchVerifyRegistrations(
   v1Contracts: V1Contracts,
   graveyards: ReadonlySet<Address>,
 ): Promise<VerificationResult[]> {
-  const ids = registrations.map((r) => BigInt(keccak256(toHex(r.labelName))));
+  const ids = registrations.map((r) => idFromLabel(r.labelName));
   const v2Contracts = ids.map((id) => ({
     address: registryAddress,
     abi: registryAbi,

@@ -9,16 +9,11 @@
 import { resolve } from "node:path";
 import {
   encodeAbiParameters,
-  getAddress,
-  keccak256,
   namehash,
-  stringToHex,
-  toHex,
   zeroAddress,
   zeroHash,
   type Address,
   type Chain,
-  type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -29,7 +24,6 @@ import {
   DEFAULT_DEPLOYMENTS_DIR,
   errorMessageChain,
   forkChain,
-  labelId,
   loadV2Deployment,
   maybeLoadV2Deployment,
   NETWORKS,
@@ -49,16 +43,10 @@ import {
 } from "./plumbing.js";
 import { impersonate, walletClient } from "./rpc.js";
 import { V1_GRACE_PERIOD_SECONDS } from "../preMigration.js";
+import { encodeMigrationData } from "../../test/utils/migrationData.js";
+import { idFromLabel } from "../../test/utils/utils.js";
 
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
-
-/// The tuple the migration controllers decode from a wrapped-name transfer.
-const migrationDataComponents = [
-  { name: "label", type: "string" },
-  { name: "owner", type: "address" },
-  { name: "subregistry", type: "address" },
-  { name: "resolver", type: "address" },
-] as const;
 
 export async function registerViaV1Controller({
   network,
@@ -207,7 +195,7 @@ export async function readV1Owner({
     address: baseRegistrar.address,
     abi: baseRegistrar.abi,
     functionName: "ownerOf",
-    args: [labelId(label)],
+    args: [idFromLabel(label)],
   })) as Address;
 }
 
@@ -270,7 +258,7 @@ export async function assertV2State({
     address: ethRegistry.address,
     abi: ethRegistry.abi,
     functionName: "getState",
-    args: [labelId(label)],
+    args: [idFromLabel(label)],
   })) as { status: number; latestOwner: Address };
   if (Number(state.status) !== status) {
     throw new Error(`unexpected v2 status for ${label}.eth: ${state.status}`);
@@ -341,25 +329,6 @@ async function readV1Resolver(
   })) as Address;
 }
 
-/// The tuple a migration controller decodes from the token transfer.
-function encodeMigrationData(opts: {
-  label: string;
-  owner: Address;
-  resolver: Address;
-}): Hex {
-  return encodeAbiParameters(
-    [{ type: "tuple", components: migrationDataComponents }],
-    [
-      {
-        label: opts.label,
-        owner: opts.owner,
-        subregistry: zeroAddress,
-        resolver: opts.resolver,
-      },
-    ],
-  );
-}
-
 export async function migrateUnwrappedV1Name({
   network,
   rpcUrl,
@@ -399,12 +368,21 @@ export async function migrateUnwrappedV1Name({
     impersonateAccount,
   });
   const resolver = await readV1Resolver(client, registry, label);
-  const data = encodeMigrationData({ label, owner, resolver });
   const hash = await wallet.writeContract({
     address: baseRegistrar.address,
     abi: baseRegistrar.abi,
     functionName: "safeTransferFrom",
-    args: [owner, migrationController.address, labelId(label), data],
+    args: [
+      owner,
+      migrationController.address,
+      idFromLabel(label),
+      encodeMigrationData({
+        label,
+        owner,
+        resolver,
+        subregistry: zeroAddress,
+      }),
+    ],
   });
   await waitForSuccessfulReceipt(client, hash, `v2 commit ${label}.eth`);
 }
@@ -471,7 +449,7 @@ export async function migrateWrappedV1Name({
     args: [
       owner,
       nameWrapper.address,
-      labelId(label),
+      idFromLabel(label),
       encodeAbiParameters(
         [
           { name: "label", type: "string" },
@@ -487,8 +465,12 @@ export async function migrateWrappedV1Name({
 
   // Read only now: the wrap above may have changed what the registry answers with.
   const resolver = await readV1Resolver(client, registry, label);
-  const data = encodeMigrationData({ label, owner, resolver });
-
+  const data = encodeMigrationData({
+    label,
+    owner,
+    resolver,
+    subregistry: zeroAddress,
+  });
   // NameWrapper ids are namehashes, unlike the registrar's labelhash ids.
   hash = await wallet.writeContract({
     address: nameWrapper.address,
@@ -654,7 +636,7 @@ export async function renewViaEthRenewerV1({
   const client = publicClient(rpcUrl, chain);
   const wallet = walletClient({ rpcUrl, chain, privateKey });
   const payer = privateKeyToAccount(privateKey).address;
-  const id = labelId(label);
+  const id = idFromLabel(label);
 
   const readV1Expiry = () =>
     client.readContract({
