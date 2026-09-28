@@ -3,7 +3,6 @@ import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { join, relative } from "node:path";
 import {
-  encodeAbiParameters,
   encodeFunctionData,
   TransactionRequest,
   zeroAddress,

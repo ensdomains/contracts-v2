@@ -125,6 +125,7 @@ export async function setupDevnet({
   extraTime = 0,
   forkUrl,
   forkBlockNumber,
+  skipEnsDotEth,
 }: {
   port?: number;
   chainId?: number;
@@ -135,6 +136,7 @@ export async function setupDevnet({
   extraTime?: number; // extra time to subtract from genesis timestamp
   forkUrl?: string; // when set, anvil forks from this RPC URL
   forkBlockNumber?: bigint; // optional fork block; defaults to latest
+  skipEnsDotEth?: boolean;
 } = {}) {
   const isFork = !!forkUrl;
   // shutdown functions for partial initialization
@@ -645,7 +647,7 @@ export async function setupDevnet({
 
     // on fork, ens.eth already exists on canonical v1 with real subdomains;
     // skip the synthetic register-and-seed step to avoid colliding with state
-    if (!isFork) {
+    if (!isFork && !skipEnsDotEth) {
       await setupEnsDotEth();
       console.log("Setup ens.eth");
     }
