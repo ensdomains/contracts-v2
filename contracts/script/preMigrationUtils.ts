@@ -50,6 +50,8 @@ export function buildMainArgs(
     /// A registry and its BatchRegistrar other than the devnet's own.
     registry?: Address;
     batchRegistrar?: Address;
+    /// Gas price limit in gwei. Left out, the chain's default applies.
+    maxGasPrice?: string;
   } = {},
 ): string[] {
   const rpcUrl = `http://${env.hostPort}`;
@@ -95,6 +97,9 @@ export function buildMainArgs(
   }
   if (overrides.batchSize !== undefined) {
     args.push("--batch-size", String(overrides.batchSize));
+  }
+  if (overrides.maxGasPrice !== undefined) {
+    args.push("--max-gas-price", overrides.maxGasPrice);
   }
 
   return args;
