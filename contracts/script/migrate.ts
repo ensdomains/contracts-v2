@@ -3667,11 +3667,11 @@ const EXPECTED_ROOT_ROLES: Record<
 > = {
   RootRegistry: [
     { deployment: "@deployer", roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT },
-    { deployment: "@owner", roles: ROLES.REGISTRY.CAN_NAME },
+    { deployment: "@owner", roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER },
   ],
   ETHRegistry: [
     { deployment: "@deployer", roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT },
-    { deployment: "@owner", roles: ROLES.REGISTRY.CAN_NAME },
+    { deployment: "@owner", roles: DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER },
     // Phase 1 defers the ETHRegistrar grant and phase 6 makes it, while BatchRegistrar
     // seeds pre-migration reservations until phase 6 strips its roles. What each should
     // hold therefore depends on which side of the handoff the audit runs.
