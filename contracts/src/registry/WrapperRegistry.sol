@@ -7,6 +7,9 @@ import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthoriz
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {
+    IERC1155MetadataURI
+} from "@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
@@ -195,7 +198,12 @@ contract WrapperRegistry is
     }
 
     /// @inheritdoc PermissionedRegistry
-    function uri(uint256 tokenId) public view override returns (string memory) {
+    function uri(uint256 tokenId)
+        public
+        view
+        override(PermissionedRegistry, IERC1155MetadataURI)
+        returns (string memory)
+    {
         return URI_RENDERER.renderURI(this, tokenId);
     }
 

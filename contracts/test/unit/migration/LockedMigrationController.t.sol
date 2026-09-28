@@ -123,6 +123,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "VERIFIABLE_FACTORY"
         );
         assertEq(wrapperRegistryImpl.V1_RESOLVER(), address(ensV1Resolver), "V1_RESOLVER");
+        assertEq(
+            address(wrapperRegistryImpl.URI_RENDERER()),
+            address(sharedRenderer),
+            "URI_RENDERER"
+        );
     }
 
     function test_supportsInterface_controller() external view {
@@ -525,6 +530,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             name,
             "findCanonicalName"
         );
+        assertEq(subregistry.uri(tokenId), sharedRenderer.renderURI(subregistry, tokenId), "uri");
     }
 
     function test_migrateBatch(uint8 count) external {
