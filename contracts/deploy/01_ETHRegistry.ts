@@ -1,12 +1,12 @@
 import { execute } from "@rocketh";
 import type { Abi_ILabelStore } from "generated/abis/ILabelStore.js";
+import type { Abi_IRegistryURIRenderer } from "generated/abis/IRegistryURIRenderer.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
 import { isAddressEqual, zeroAddress } from "viem";
 import { idFromLabel } from "../test/utils/utils.js";
 import {
   MAX_EXPIRY,
   DEPLOYMENT_ROLES,
-  ROLES,
   STATUS,
 } from "../script/deploy-constants.js";
 
@@ -21,6 +21,7 @@ export default execute(
     const rootRegistry =
       get<(typeof Artifact_PermissionedRegistry)["abi"]>("RootRegistry");
     const labelStore = get<Abi_ILabelStore>("LabelStore");
+    const sharedRenderer = get<Abi_IRegistryURIRenderer>("SharedURIRenderer");
 
     console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
@@ -66,15 +67,22 @@ export default execute(
       });
     }
 
-    console.log("  - Granting CAN_NAME to owner");
+    console.log("  - Setting initial URI");
     await write(ethRegistry, {
-      functionName: "grantRootRoles",
-      args: [ROLES.REGISTRY.CAN_NAME, owner],
       account: deployer,
+      functionName: "setURI",
+      args: ["", sharedRenderer.address],
+    });
+
+    console.log("  - Granting roles to manager");
+    await write(ethRegistry, {
+      account: deployer,
+      functionName: "grantRootRoles",
+      args: [DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER, owner],
     });
   },
   {
     tags: ["ETHRegistry", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["RootRegistry", "LabelStore"],
+    dependencies: ["RootRegistry", "LabelStore", "SharedURIRenderer"],
   },
 );
