@@ -52,6 +52,7 @@ contract MigrationHelperTest is MigrationControllerFixture {
             address(ensV1Resolver),
             registryUpgradeSet,
             labelStore,
+            sharedRenderer,
             publicResolverSet,
             address(0), // publicResolver
             address(this) // namer

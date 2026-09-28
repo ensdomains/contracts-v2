@@ -21,7 +21,7 @@ export default execute(
     const rootRegistry =
       get<(typeof Artifact_PermissionedRegistry)["abi"]>("RootRegistry");
     const labelStore = get<Abi_ILabelStore>("LabelStore");
-    const sharedRenderer = get<Abi_IRegistryURIRenderer>("SharedURIRenderer");
+    const uriRenderer = get<Abi_IRegistryURIRenderer>("ENSURIRenderer");
 
     console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
@@ -71,7 +71,7 @@ export default execute(
     await write(ethRegistry, {
       account: deployer,
       functionName: "setURI",
-      args: ["", sharedRenderer.address],
+      args: ["", uriRenderer.address],
     });
 
     console.log("  - Granting roles to manager");
@@ -83,6 +83,6 @@ export default execute(
   },
   {
     tags: ["ETHRegistry", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["RootRegistry", "LabelStore", "SharedURIRenderer"],
+    dependencies: ["RootRegistry", "LabelStore", "ENSURIRenderer"],
   },
 );

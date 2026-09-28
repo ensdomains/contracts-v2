@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.25;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {LibString} from "../utils/LibString.sol";
@@ -9,8 +10,10 @@ import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 
 /// @notice An immutable IRegistryURIRenderer that injects registry address
-/// and token ID into a URI string using fragments.
-/// 
+/// and token ID into a URI string using fragments.  Ownable for contract naming.
+///
+/// The registry address does not include "0x".
+///
 /// Format: "{PREFIX}{registryAsHexAddress}{AFTER_REGISTRY}{tokenIdAsDecimal}{AFTER_TOKEN}"
 ///
 /// eg.       PREFIX = "https://metadata/"
@@ -19,7 +22,7 @@ import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 ///
 /// renderURI(1, 2) => "https://metadata/0x0000000000000000000000000000000000000001/2.json"
 ///
-contract StaticURIRenderer is ERC165, IRegistryURIRenderer {
+contract StaticURIRenderer is Ownable, ERC165, IRegistryURIRenderer {
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
@@ -37,10 +40,18 @@ contract StaticURIRenderer is ERC165, IRegistryURIRenderer {
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @param owner_ Contract owner.
     /// @param prefix URI fragment before registry address.
     /// @param afterRegistry URI fragment between registry address and token.
     /// @param afterToken URI fragment after token.
-    constructor(string memory prefix, string memory afterRegistry, string memory afterToken) {
+    constructor(
+        address owner_,
+        string memory prefix,
+        string memory afterRegistry,
+        string memory afterToken
+    )
+        Ownable(owner_)
+    {
         PREFIX = prefix;
         AFTER_REGISTRY = afterRegistry;
         AFTER_TOKEN = afterToken;

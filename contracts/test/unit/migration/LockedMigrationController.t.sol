@@ -31,6 +31,7 @@ import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
@@ -66,6 +67,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(ensV1Resolver),
             registryUpgradeSet,
             labelStore,
+            sharedRenderer,
             publicResolverSet,
             address(publicResolver),
             address(this) // namer
@@ -1387,6 +1389,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 address(ensV1Resolver),
                 registryUpgradeSet,
                 labelStore,
+                sharedRenderer,
                 publicResolverSet,
                 address(publicResolver),
                 address(this)
@@ -1403,6 +1406,7 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
         address ensV1Resolver,
         IAddressSet upgradeSet,
         ILabelStore labelStore,
+        IRegistryURIRenderer uriRenderer,
         IAddressSet publicResolverSet,
         address publicResolver,
         address namer
@@ -1414,6 +1418,7 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
             ensV1Resolver,
             upgradeSet,
             labelStore,
+            uriRenderer,
             publicResolverSet,
             publicResolver,
             namer

@@ -12,7 +12,7 @@ export default execute(
     namedAccounts: { deployer, owner },
   }) => {
     const labelStore = get<Abi_ILabelStore>("LabelStore");
-    const sharedRenderer = get<Abi_IRegistryURIRenderer>("SharedURIRenderer");
+    const uriRenderer = get<Abi_IRegistryURIRenderer>("ENSURIRenderer");
 
     console.log("Deploying RootRegistry");
     const rootRegistry = await deploy("RootRegistry", {
@@ -25,7 +25,7 @@ export default execute(
     await write(rootRegistry, {
       account: deployer,
       functionName: "setURI",
-      args: ["", sharedRenderer.address],
+      args: ["", uriRenderer.address],
     });
 
     console.log("  - Granting roles to manager");
@@ -37,6 +37,6 @@ export default execute(
   },
   {
     tags: ["RootRegistry", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["LabelStore", "SharedURIRenderer"],
+    dependencies: ["LabelStore", "ENSURIRenderer"],
   },
 );

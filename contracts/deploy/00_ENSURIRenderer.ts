@@ -2,7 +2,7 @@ import { execute } from "@rocketh";
 import { Artifact_StaticURIRenderer } from "generated/artifacts/StaticURIRenderer.js";
 
 export default execute(
-  async ({ deploy, namedAccounts: { deployer }, network }) => {
+  async ({ deploy, namedAccounts: { deployer, owner }, network }) => {
     const prefix = `https://metadata.ens.domains/${network.chain.name.toLowerCase()}/0x`;
     const afterRegistry = "/";
     const afterToken = ".json";
@@ -11,11 +11,11 @@ export default execute(
       `  - Metadata URL: ${prefix}{registry}${afterRegistry}{token}${afterToken}`,
     );
 
-    await deploy("SharedURIRenderer", {
+    await deploy("ENSURIRenderer", {
       account: deployer,
       artifact: Artifact_StaticURIRenderer,
-      args: [prefix, afterRegistry, afterToken],
+      args: [owner, prefix, afterRegistry, afterToken],
     });
   },
-  { tags: ["SharedURIRenderer", "migration:phase1:deploy-v2", "v2"] },
+  { tags: ["ENSURIRenderer", "migration:phase1:deploy-v2", "v2"] },
 );

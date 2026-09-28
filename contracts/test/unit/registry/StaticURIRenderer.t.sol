@@ -11,33 +11,40 @@ import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {LibString} from "~src/utils/LibString.sol";
 
 contract StaticURIRendererTest is Test {
-    StaticURIRenderer render;
+    StaticURIRenderer renderer;
 
     string constant PREFIX = "a";
     string constant AFTER_REGISTRY = "b";
     string constant AFTER_TOKEN = "c";
 
     function setUp() external {
-        render = new StaticURIRenderer(PREFIX, AFTER_REGISTRY, AFTER_TOKEN);
+        renderer = new StaticURIRenderer(address(this), PREFIX, AFTER_REGISTRY, AFTER_TOKEN);
+    }
+
+    function test_constructor() external view {
+        assertEq(renderer.owner(), address(this));
     }
 
     function test_supportsInterface() external view {
         assertTrue(
-            ERC165Checker.supportsInterface(address(render), type(IRegistryURIRenderer).interfaceId),
+            ERC165Checker.supportsInterface(
+                address(renderer),
+                type(IRegistryURIRenderer).interfaceId
+            ),
             "IRegistryURIRenderer"
         );
     }
 
     function test_renderURI() external view {
         assertEq(
-            render.renderURI(IRegistry(address(1)), 2),
+            renderer.renderURI(IRegistry(address(1)), 2),
             "a0000000000000000000000000000000000000001b2c"
         );
     }
 
     function test_renderURI_fuzzParams(IRegistry registry, uint256 tokenId) external view {
         assertEq(
-            render.renderURI(registry, tokenId),
+            renderer.renderURI(registry, tokenId),
             string.concat(
                 PREFIX,
                 LibString.toAddressString(address(registry)),
@@ -56,7 +63,7 @@ contract StaticURIRendererTest is Test {
         external
     {
         assertEq(
-            new StaticURIRenderer(prefix, afterRegistry, afterToken).renderURI(
+            new StaticURIRenderer(address(this), prefix, afterRegistry, afterToken).renderURI(
                 IRegistry(address(1)),
                 2
             ),

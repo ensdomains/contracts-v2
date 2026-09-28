@@ -46,6 +46,9 @@ contract WrapperRegistry is
     /// @notice Gate for approved implementation upgrade targets.
     IAddressSet public immutable UPGRADE_SET;
 
+    /// @notice Shared URI renderer.
+    IRegistryURIRenderer public immutable URI_RENDERER;
+
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
@@ -66,6 +69,7 @@ contract WrapperRegistry is
     /// @param ensV1Resolver The ENSv1 resolver.
     /// @param upgradeSet The upgrade target allowlist.
     /// @param labelStore The shared label database.
+    /// @param uriRenderer The shared URI renderer.
     /// @param publicResolverSet The approved list of `PublicResolver` contracts.
     /// @param publicResolver The replacement `PublicResolver`.
     /// @param namer The implementation namer.
@@ -76,6 +80,7 @@ contract WrapperRegistry is
         address ensV1Resolver,
         IAddressSet upgradeSet,
         ILabelStore labelStore,
+        IRegistryURIRenderer uriRenderer,
         IAddressSet publicResolverSet,
         address publicResolver,
         address namer
@@ -96,6 +101,7 @@ contract WrapperRegistry is
     {
         V1_RESOLVER = ensV1Resolver;
         UPGRADE_SET = upgradeSet;
+        URI_RENDERER = uriRenderer;
         _disableInitializers();
     }
 
@@ -188,17 +194,9 @@ contract WrapperRegistry is
         return _isMigratableChild(label) ? V1_RESOLVER : super.getResolver(label);
     }
 
-    /// @inheritdoc IPermissionedRegistry
-    /// @dev Return parent's renderer.
-    function getURI()
-        public
-        view
-        override(IPermissionedRegistry, PermissionedRegistry)
-        returns (string memory, IRegistryURIRenderer)
-    {
-        (, IRegistryURIRenderer renderer) =
-            IPermissionedRegistry(address(_parentRegistry)).getURI();
-        return ("", renderer);
+    /// @inheritdoc PermissionedRegistry
+    function uri(uint256 tokenId) public view override returns (string memory) {
+        return URI_RENDERER.renderURI(this, tokenId);
     }
 
     /// @inheritdoc IWrapperRegistry
