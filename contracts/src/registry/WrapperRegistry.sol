@@ -18,6 +18,7 @@ import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
+import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {IWrapperRegistry} from "./interfaces/IWrapperRegistry.sol";
 import {IWrapperRegistryInitializable} from "./interfaces/IWrapperRegistryInitializable.sol";
@@ -185,6 +186,19 @@ contract WrapperRegistry is
         returns (address)
     {
         return _isMigratableChild(label) ? V1_RESOLVER : super.getResolver(label);
+    }
+
+    /// @inheritdoc IPermissionedRegistry
+    /// @dev Return parent's renderer.
+    function getURI()
+        public
+        view
+        override(IPermissionedRegistry, PermissionedRegistry)
+        returns (string memory, IRegistryURIRenderer)
+    {
+        (, IRegistryURIRenderer renderer) =
+            IPermissionedRegistry(address(_parentRegistry)).getURI();
+        return ("", renderer);
     }
 
     /// @inheritdoc IWrapperRegistry

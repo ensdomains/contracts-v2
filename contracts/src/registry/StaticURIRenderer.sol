@@ -11,9 +11,11 @@ import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 /// @notice An immutable IRegistryURIRenderer that injects registry address
 /// and token ID into a URI string using fragments.
 /// 
-/// eg.         PREFIX = "https://metadata/"
-///     AFTER_REGISTRY = "/"
-///        AFTER_TOKEN = ".json"
+/// Format: "{PREFIX}{registryAsHexAddress}{AFTER_REGISTRY}{tokenIdAsDecimal}{AFTER_TOKEN}"
+///
+/// eg.       PREFIX = "https://metadata/"
+///   AFTER_REGISTRY = "/"
+///      AFTER_TOKEN = ".json"
 ///
 /// renderURI(1, 2) => "https://metadata/0x0000000000000000000000000000000000000001/2.json"
 ///
