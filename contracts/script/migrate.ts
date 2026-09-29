@@ -83,6 +83,7 @@ import {
 } from "./migrations/fixture.js";
 import { ACTOR_ALIASES, bufferedGas } from "./migrations/fixture/config.js";
 import { isLogSpanRefusal } from "./migrations/logSpanRefusal.js";
+import { QueryRetry } from "./migrations/queryRetry.js";
 import {
   executePreparedOwnerTransactions,
   preparedOwnerTransactionLabel,
@@ -2374,17 +2375,20 @@ type ScannedLog = {
 // `eth_getLogs` by block span or by result count, and a load-balanced endpoint may
 // apply a cap to only some requests, so a refused span is bisected and each half
 // requested in turn. The widest span the provider has accepted is carried across the
-// scan, so the cap is discovered once rather than rediscovered per subrange. The
-// blocks covered are the same either way; a refusal at the smallest span, or any
-// error that is not about the span, raises.
-async function readEventLogs(
-  client: ReturnType<typeof publicClient>,
+// scan, so the cap is discovered once rather than rediscovered per subrange. A
+// load-balanced endpoint also fails some requests at random, so any other error is
+// retried as `QueryRetry` allows, bisecting the span while it is above the smallest.
+// The blocks covered are the same either way; a refusal at the smallest span, or a
+// failure past the retry limit, raises.
+export async function readEventLogs(
+  client: Pick<ReturnType<typeof publicClient>, "getLogs">,
   args: {
     address: Address;
     event: AbiEvent;
     fromBlock?: bigint;
     toBlock: bigint;
   },
+  retry = new QueryRetry(),
 ): Promise<ScannedLog[]> {
   let acceptedSpan: bigint | undefined;
 
@@ -2408,11 +2412,17 @@ async function readEventLogs(
         fromBlock,
         toBlock,
       });
+      retry.served();
       if (acceptedSpan === undefined || span > acceptedSpan)
         acceptedSpan = span;
       return logs as unknown as ScannedLog[];
     } catch (error) {
-      if (!isLogSpanRefusal(error) || span <= LOG_SCAN_MIN_SPAN) throw error;
+      if (isLogSpanRefusal(error)) {
+        if (span <= LOG_SCAN_MIN_SPAN) throw error;
+      } else {
+        await retry.failed(error);
+        if (span <= LOG_SCAN_MIN_SPAN) return readSpan(fromBlock, toBlock);
+      }
       return bisect();
     }
   };

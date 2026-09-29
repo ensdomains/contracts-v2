@@ -33,6 +33,7 @@ import {
   isLogSpanRefusal,
   isLogSpanRefusalMessage,
 } from "./migrations/logSpanRefusal.js";
+import { QueryRetry } from "./migrations/queryRetry.js";
 import { V1_GRACE_PERIOD_SECONDS } from "./preMigration.js";
 
 export const V1_INDEX_FILE = "v1-name-index.ndjson";
@@ -336,6 +337,8 @@ export type BuildV1NameIndexFromRpcOptions = {
   scanRange?: number;
   /** Ids per `nameExpires` batch. */
   batchSize?: number;
+  /** Wait before the first retry of a failed log query; each failure in a row adds as much again. */
+  retryDelayMs?: number;
   resume?: boolean;
   now?: bigint;
   onProgress?: (entries: number, cursor: string) => void;
@@ -429,19 +432,27 @@ export async function buildV1NameIndexFromRpc(
 
   // Phase one: enumerate. Ids are appended as they are found and the scanned-to
   // block recorded beside them, so an interrupted scan resumes at a block boundary
-  // rather than restarting a long walk.
+  // rather than restarting a long walk. A refused range is halved at once; any other
+  // failure is retried as `QueryRetry` allows, halving the range while it spans more
+  // than one block.
+  const retry = new QueryRetry(opts.retryDelayMs);
   const scan = async (from: number, to: number): Promise<void> => {
     let ids: string[];
     try {
       ids = await client.getRegisteredIds(from, to);
     } catch (error) {
-      if (!(error instanceof RangeTooWideError)) throw error;
-      if (from >= to) throw error;
+      if (error instanceof RangeTooWideError) {
+        if (from >= to) throw error;
+      } else {
+        await retry.failed(error);
+        if (from >= to) return scan(from, to);
+      }
       const mid = Math.floor((from + to) / 2);
       await scan(from, mid);
       await scan(mid + 1, to);
       return;
     }
+    retry.served();
     if (ids.length > 0) {
       appendFileSync(
         idsPath(opts.workDir),
@@ -564,8 +575,9 @@ export function createRpcIndexClient(opts: {
       } catch (error) {
         // Providers phrase the refusal differently, and all of them mean the same
         // thing to the caller: ask for less. Anything else is a real failure and
-        // propagates — including a rate limit, which a keyword match would read as a
-        // span refusal and answer by bisecting a range that was never the problem.
+        // propagates as it is, for the builder to retry after a wait — including a
+        // rate limit, which a keyword match would read as a span refusal and answer
+        // by bisecting a range that was never the problem.
         const message = String(
           (error as { details?: string; message?: string })?.details ??
             (error as { message?: string })?.message ??
