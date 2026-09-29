@@ -28,7 +28,7 @@ export default execute(
       args: ["", uriRenderer.address],
     });
 
-    console.log("  - Granting roles to manager");
+    console.log("  - Granting manager roles");
     await write(rootRegistry, {
       account: deployer,
       functionName: "grantRootRoles",

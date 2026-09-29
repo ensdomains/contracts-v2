@@ -51,9 +51,11 @@ export default execute(
       });
     }
 
-    const [currentParent, currentLabel] = await read(ethRegistry, {
-      functionName: "getParent",
-    });
+    const [[currentParent, currentLabel], [currentURI, currentRenderer]] =
+      await Promise.all([
+        read(ethRegistry, { functionName: "getParent" }),
+        read(ethRegistry, { functionName: "getURI" }),
+      ]);
 
     if (
       !isAddressEqual(currentParent, rootRegistry.address) ||
@@ -67,14 +69,16 @@ export default execute(
       });
     }
 
-    console.log("  - Setting initial URI");
-    await write(ethRegistry, {
-      account: deployer,
-      functionName: "setURI",
-      args: ["", uriRenderer.address],
-    });
+    if (!currentURI && currentRenderer === zeroAddress) {
+      console.log("  - Setting initial URI");
+      await write(ethRegistry, {
+        account: deployer,
+        functionName: "setURI",
+        args: ["", uriRenderer.address],
+      });
+    }
 
-    console.log("  - Granting roles to manager");
+    console.log("  - Granting manager roles");
     await write(ethRegistry, {
       account: deployer,
       functionName: "grantRootRoles",
