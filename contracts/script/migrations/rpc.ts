@@ -37,6 +37,29 @@ type WalletAccount =
 /// Retries viem applies to a JSON-RPC call it did reach the node with.
 export const RPC_RETRY_COUNT = 3;
 
+/// How long one request may take, its reply included.
+export const RPC_REPLY_DEADLINE_MS = 120_000;
+
+/// A fetch whose deadline covers the whole reply.
+///
+/// viem's timeout ends once the headers arrive and the body is read after it, so a
+/// provider that stops sending a reply midway holds the read open for good. The
+/// deadline turns that into a failed request, which viem and the readers retry.
+export function fetchWithDeadline(ms: number) {
+  return (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const deadline = AbortSignal.timeout(ms);
+    return fetch(input, {
+      ...init,
+      signal: init?.signal
+        ? AbortSignal.any([init.signal, deadline])
+        : deadline,
+    });
+  };
+}
+
 // A gas estimate is made against the latest block, but the transaction runs in
 // the next one. A call whose cost depends on state the estimate warmed — a price
 // oracle read, a balance that changes from zero — can then need more gas than it

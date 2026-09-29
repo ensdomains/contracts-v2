@@ -331,7 +331,10 @@ bun run premigration:cost -- --rpc-url <mainnet archive RPC> --report ./docs/pre
 ```
 
 The RPC must serve archive state and `eth_getLogs` over the registrar's whole history, from block
-9,380,410. `MAINNET_RPC_URL` is used when `--rpc-url` is not given. The report goes to stdout,
+9,380,410. `MAINNET_RPC_URL` is used when `--rpc-url` is not given. A log or fee history query that
+fails is asked again for half the blocks, after a wait that grows with each failure in a row, and
+the run stops after 8 failures in a row. Each retry is logged with the provider's reason. A request
+that gets no full reply within two minutes counts as failed, even when the reply has started. The report goes to stdout,
 and to the `--report` file when one is given; progress goes to stderr. The latest estimate is in
 [premigration-cost-mainnet.md](./premigration-cost-mainnet.md).
 
@@ -364,7 +367,8 @@ It runs in four steps, all pinned to one block:
 | `--check-sample <count>` | `1000` | Names checked against the chain. |
 | `--batch-size <count>` | `50` | Names per `batchRegister` transaction, as in pre-migration. |
 | `--fee-days <days>` | `14` | Days of blocks the gas price is averaged over. |
-| `--log-span <blocks>` | `50000` | Blocks per `eth_getLogs` call to start with. A refused range is halved, and an accepted one doubles again. |
+| `--log-span <blocks>` | `50000` | Most blocks per `eth_getLogs` call, and the size of the chunks the registrar's history is read in. A refused or failed range is halved, and an accepted one doubles again. |
+| `--log-concurrency <count>` | `4` | Chunks of the registrar's history read at once. Their logs are applied in block order. |
 | `--graveyards <addresses>` | the mainnet deployment's, if any | Graveyards whose names are left out. |
 | `--port <port>` | `8549` | Local port of the Anvil fork. |
 | `--report <path>` | none | Also save the report as a Markdown file. |

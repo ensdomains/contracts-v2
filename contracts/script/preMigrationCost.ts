@@ -26,6 +26,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
+  BaseError,
   createPublicClient,
   createWalletClient,
   decodeAbiParameters,
@@ -60,9 +61,12 @@ import {
   NETWORKS,
   requireV1Deployment,
 } from "./migrations/plumbing.js";
+import { QueryRetry } from "./migrations/queryRetry.js";
 import {
   clearAccountDelegations,
+  fetchWithDeadline,
   impersonate,
+  RPC_REPLY_DEADLINE_MS,
   setBalance,
   waitForRpc,
 } from "./migrations/rpc.js";
@@ -190,6 +194,44 @@ export type RegistrationScan = {
   logs: number;
 };
 
+/// How a paged read retries a failed query.
+export type RetryOptions = {
+  /// The wait before the first retry; each failure in a row adds as much again.
+  retryDelayMs?: number;
+  /// Told of each failed query and the span it is asked again with.
+  onRetry?: (error: unknown, span: bigint) => void;
+};
+
+/// The span of the next query of a paged read, and its run of failed queries.
+type Paging = { span: bigint; retry: QueryRetry };
+
+/// Sends one query of a paged read. A query that is served is returned, and lets the
+/// next span double, up to `maxSpan`.
+///
+/// A query that fails returns nothing, for the caller to ask again with half the
+/// span. A refusal of the span is asked again at once, and one of a single block is
+/// rethrown. Any other failure is asked again as `QueryRetry` allows.
+async function queryPage<T>(
+  paging: Paging,
+  maxSpan: bigint,
+  onRetry: RetryOptions["onRetry"],
+  query: () => Promise<T>,
+): Promise<T | undefined> {
+  let result: T;
+  try {
+    result = await query();
+  } catch (error) {
+    if (!isLogSpanRefusal(error)) await paging.retry.failed(error);
+    else if (paging.span === 1n) throw error;
+    if (paging.span > 1n) paging.span /= 2n;
+    onRetry?.(error, paging.span);
+    return undefined;
+  }
+  paging.retry.served();
+  if (paging.span < maxSpan) paging.span *= 2n;
+  return result;
+}
+
 /// Reads the logs of one block range, oldest first.
 export type LogReader = (
   fromBlock: bigint,
@@ -199,11 +241,16 @@ export type LogReader = (
 /// Walks the registrar's and controllers' logs from `fromBlock` to `toBlock`, oldest
 /// first, so a name's newest event is the last one applied.
 ///
-/// A provider caps a log query by block span, by result count, or both. A refused
-/// range is halved and asked again, and a range that is accepted lets the next one
-/// double, up to `maxSpan`, since the density of registrations varies by years. Any
-/// other error ends the scan: a scan that stepped over a range would count too few
-/// names.
+/// The range is cut into chunks of `span` blocks, and up to `concurrency` chunks are
+/// read at once. A chunk's logs are applied only after those of every chunk before
+/// it, so the result does not depend on which read finishes first.
+///
+/// Within a chunk, a provider caps a log query by block span, by result count, or
+/// both. A refused query is halved and asked again, and a query that is served lets
+/// the next one double, up to the chunk. A query that fails for any other reason is
+/// also halved and asked again, after a wait, up to a set number of failures in a
+/// row; past that the scan ends, since a scan that stepped over a range would count
+/// too few names.
 export async function scanRegistrations(
   read: LogReader,
   opts: {
@@ -211,10 +258,10 @@ export async function scanRegistrations(
     graveyards: ReadonlySet<Address>;
     fromBlock: bigint;
     toBlock: bigint;
-    initialSpan: bigint;
-    maxSpan?: bigint;
+    span: bigint;
+    concurrency?: number;
     onProgress?: (scan: RegistrationScan, scannedTo: bigint) => void;
-  },
+  } & RetryOptions,
 ): Promise<RegistrationScan> {
   const scan: RegistrationScan = {
     expiries: new Map(),
@@ -227,27 +274,47 @@ export async function scanRegistrations(
   const graveyards = new Set(
     [...opts.graveyards].map((address) => address.toLowerCase()),
   );
-  const maxSpan = opts.maxSpan ?? opts.initialSpan * 16n;
-  let span = opts.initialSpan;
-  let from = opts.fromBlock;
-  while (from <= opts.toBlock) {
-    const to =
-      from + span - 1n < opts.toBlock ? from + span - 1n : opts.toBlock;
-    let logs: RawLog[];
-    try {
-      logs = await read(from, to);
-    } catch (error) {
-      if (!isLogSpanRefusal(error) || span === 1n) throw error;
-      span /= 2n;
-      continue;
+  // Reads one chunk as the pages of logs its queries returned, oldest first.
+  const readChunk = async (first: bigint, last: bigint) => {
+    const pages: RawLog[][] = [];
+    const paging: Paging = {
+      span: opts.span,
+      retry: new QueryRetry(opts.retryDelayMs),
+    };
+    let from = first;
+    while (from <= last) {
+      const end = from + paging.span - 1n;
+      const to = end < last ? end : last;
+      const logs = await queryPage(paging, opts.span, opts.onRetry, () =>
+        read(from, to),
+      );
+      if (logs === undefined) continue;
+      pages.push(logs);
+      from = to + 1n;
     }
-    for (const log of logs) applyLog(scan, log, registrar, graveyards);
-    scan.logs += logs.length;
-    opts.onProgress?.(scan, to);
-    from = to + 1n;
-    if (span < maxSpan) span *= 2n;
+    return pages;
+  };
+  const queue: { last: bigint; pages: Promise<RawLog[][]> }[] = [];
+  let next = opts.fromBlock;
+  for (;;) {
+    while (queue.length < (opts.concurrency ?? 1) && next <= opts.toBlock) {
+      const end = next + opts.span - 1n;
+      const last = end < opts.toBlock ? end : opts.toBlock;
+      const pages = readChunk(next, last);
+      // A chunk that fails is reported when its turn comes, not as an unhandled
+      // rejection while an earlier chunk is still being read.
+      pages.catch(() => {});
+      queue.push({ last, pages });
+      next = last + 1n;
+    }
+    const chunk = queue.shift();
+    if (!chunk) return scan;
+    for (const logs of await chunk.pages) {
+      for (const log of logs) applyLog(scan, log, registrar, graveyards);
+      scan.logs += logs.length;
+    }
+    opts.onProgress?.(scan, chunk.last);
   }
-  return scan;
 }
 
 // Reads the few fixed fields of each event directly: a full scan applies millions of
@@ -497,23 +564,35 @@ export async function blockAtOrAfter(
 /// base fee plus its median priority fee, the price pre-migration's gas price limit
 /// is measured in. Paged through `eth_feeHistory` from the newest block back,
 /// following what each page returns, since a provider may serve fewer blocks than
-/// asked.
+/// asked. A page that fails is asked again for half as many blocks, as the log scan
+/// does, and the page grows back after each one served.
 export async function fetchBlockGasPrices(
   client: FeeClient,
-  args: { toBlock: bigint; days: number },
+  args: { toBlock: bigint; days: number } & RetryOptions,
 ): Promise<bigint[]> {
   const end = await client.getBlock({ blockNumber: args.toBlock });
   const since = end.timestamp - BigInt(args.days) * SECONDS_PER_DAY;
   const fromBlock = await blockAtOrAfter(client, since, args.toBlock);
   const pages: bigint[][] = [];
+  const paging: Paging = {
+    span: FEE_HISTORY_PAGE,
+    retry: new QueryRetry(args.retryDelayMs),
+  };
   let newest = args.toBlock;
   while (newest >= fromBlock) {
     const want = newest - fromBlock + 1n;
-    const history = await client.getFeeHistory({
-      blockCount: Number(want < FEE_HISTORY_PAGE ? want : FEE_HISTORY_PAGE),
-      blockNumber: newest,
-      rewardPercentiles: [50],
-    });
+    const history = await queryPage(
+      paging,
+      FEE_HISTORY_PAGE,
+      args.onRetry,
+      () =>
+        client.getFeeHistory({
+          blockCount: Number(want < paging.span ? want : paging.span),
+          blockNumber: newest,
+          rewardPercentiles: [50],
+        }),
+    );
+    if (history === undefined) continue;
     const prices = blockGasPrices(history);
     if (prices.length === 0) {
       throw new Error(`eth_feeHistory returned no blocks up to ${newest}`);
@@ -706,6 +785,7 @@ type Args = {
   batchSize: number;
   feeDays: number;
   logSpan: bigint;
+  logConcurrency: number;
   graveyards?: Address[];
   port: number;
   report?: string;
@@ -764,9 +844,17 @@ function parseArgs(argv: string[]): Args {
     .addOption(
       new Option(
         "--log-span <blocks>",
-        "Blocks per eth_getLogs call to start with; narrowed when the RPC refuses",
+        "Most blocks per eth_getLogs call, and the size of the chunks the registrar's history is read in; narrowed when the RPC refuses",
       )
         .default(50_000)
+        .argParser(positiveInt),
+    )
+    .addOption(
+      new Option(
+        "--log-concurrency <count>",
+        "Chunks of the registrar's history read at once",
+      )
+        .default(4)
         .argParser(positiveInt),
     )
     .option(
@@ -792,6 +880,7 @@ function parseArgs(argv: string[]): Args {
     batchSize: opts.batchSize,
     feeDays: opts.feeDays,
     logSpan: BigInt(opts.logSpan),
+    logConcurrency: opts.logConcurrency,
     graveyards:
       opts.graveyards === undefined
         ? undefined
@@ -816,6 +905,12 @@ function mainnetGraveyards(given: Address[] | undefined): Address[] {
 
 const progress = (message: string) => process.stderr.write(`${message}\n`);
 
+// Logs a failed query of a paged read with the provider's reason.
+const logRetry = (error: unknown, span: bigint) =>
+  progress(
+    `  asking again for ${span} blocks after: ${error instanceof BaseError ? error.details || error.shortMessage : String(error)}`,
+  );
+
 async function main(argv = process.argv): Promise<void> {
   const args = parseArgs(argv);
   // Stdout carries only the report. The deploy code this reuses logs with
@@ -829,7 +924,8 @@ async function main(argv = process.argv): Promise<void> {
     transport: http(args.rpcUrl, {
       retryCount: 5,
       retryDelay: 1_000,
-      timeout: 120_000,
+      timeout: RPC_REPLY_DEADLINE_MS,
+      fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
     }),
   });
   const chainId = await upstream.getChainId();
@@ -893,6 +989,7 @@ async function main(argv = process.argv): Promise<void> {
     const prices = await fetchBlockGasPrices(upstream, {
       toBlock: block,
       days: args.feeDays,
+      onRetry: logRetry,
     });
 
     progress(
@@ -916,8 +1013,10 @@ async function main(argv = process.argv): Promise<void> {
         graveyards,
         fromBlock: REGISTRAR_DEPLOY_BLOCK,
         toBlock: block,
-        initialSpan: args.logSpan,
+        span: args.logSpan,
+        concurrency: args.logConcurrency,
         onProgress: scanProgress(REGISTRAR_DEPLOY_BLOCK, block),
+        onRetry: logRetry,
       },
     );
     const summary = summariseScan(scan, now);

@@ -28,6 +28,7 @@ import {
   summariseFees,
   summariseScan,
 } from "../../script/preMigrationCost.js";
+import { FAILED_QUERY_LIMIT } from "../../script/migrations/queryRetry.js";
 import {
   DEFAULT_MAX_GAS_PRICE,
   V1_GRACE_PERIOD_SECONDS,
@@ -111,7 +112,9 @@ const scanOf = (
     graveyards: new Set([GRAVEYARD]),
     fromBlock: 1n,
     toBlock: 100n,
-    initialSpan: 10n,
+    span: 10n,
+    concurrency: 3,
+    retryDelayMs: 0,
     ...overrides,
   });
 
@@ -123,6 +126,27 @@ class TooManyResults extends Error {
   constructor() {
     super("Invalid parameters were provided to the RPC method.");
   }
+}
+
+// How drpc fails some queries at random: a code of its own, and no cap named.
+class RandomFailure extends Error {
+  code = 19;
+  constructor() {
+    super(
+      "RPC Request failed.\n\nDetails: Temporary internal error. Please retry, trace-id: 0",
+    );
+  }
+}
+
+// Asserts the scan asked for every block from 1 to 100 exactly once. Chunks read at
+// once ask in any order, so the requests are sorted first.
+function expectEachBlockOnce(requests: [bigint, bigint][]) {
+  let next = 1n;
+  for (const [from, to] of [...requests].sort(([a], [b]) => Number(a - b))) {
+    expect(from).toBe(next);
+    next = to + 1n;
+  }
+  expect(next).toBe(101n);
 }
 
 describe("scanRegistrations", () => {
@@ -197,22 +221,63 @@ describe("scanRegistrations", () => {
       if (toBlock - fromBlock + 1n > 8n) throw new TooManyResults();
       return chain.read(fromBlock, toBlock);
     };
-    const scan = await scanOf(read, { initialSpan: 32n, maxSpan: 32n });
+    const scan = await scanOf(read, { span: 32n });
     expect(scan.expiries.get(idOf("alice"))).toBe(100n);
-    // Every block from 1 to 100 exactly once, in order.
-    let next = 1n;
-    for (const [from, to] of chain.requests) {
-      expect(from).toBe(next);
-      next = to + 1n;
-    }
-    expect(next).toBe(101n);
+    expectEachBlockOnce(chain.requests);
   });
 
-  it("stops on an error that is not about the range", async () => {
+  it("asks again for a narrower range after a query fails", async () => {
+    const chain = chainOf([[57n, registered("alice", 100n)]]);
+    let calls = 0;
+    const read = async (fromBlock: bigint, toBlock: bigint) => {
+      // Every other query is answered with a request to send it again.
+      if (calls++ % 2 === 0) throw new RandomFailure();
+      return chain.read(fromBlock, toBlock);
+    };
+    const scan = await scanOf(read, { span: 32n });
+    expect(scan.expiries.get(idOf("alice"))).toBe(100n);
+    expectEachBlockOnce(chain.requests);
+  });
+
+  it("gives up after too many failed queries in a row", async () => {
+    let calls = 0;
     const read = async () => {
+      calls++;
       throw new Error("rate limit exceeded");
     };
-    await expect(scanOf(read)).rejects.toThrow("rate limit exceeded");
+    await expect(scanOf(read, { concurrency: 1 })).rejects.toThrow(
+      "rate limit exceeded",
+    );
+    expect(calls).toBe(FAILED_QUERY_LIMIT + 1);
+  });
+
+  it("applies chunks in block order when a later one is read first", async () => {
+    const chain = chainOf([
+      [5n, registered("alice", 100n)],
+      [25n, renewed("alice", 200n)],
+    ]);
+    // The first chunk is served last.
+    const read = async (fromBlock: bigint, toBlock: bigint) => {
+      if (fromBlock === 1n) await Bun.sleep(20);
+      return chain.read(fromBlock, toBlock);
+    };
+    const scannedTo: bigint[] = [];
+    const scan = await scanOf(read, {
+      onProgress: (_, block) => scannedTo.push(block),
+    });
+    expect(scan.expiries.get(idOf("alice"))).toBe(200n);
+    expect(scannedTo).toEqual([
+      10n,
+      20n,
+      30n,
+      40n,
+      50n,
+      60n,
+      70n,
+      80n,
+      90n,
+      100n,
+    ]);
   });
 });
 
@@ -435,6 +500,40 @@ describe("fee history", () => {
     expect(prices).toHaveLength(Number(head - first + 1n));
     expect(prices[0]).toBe(first * 2n);
     expect(prices[prices.length - 1]).toBe(head * 2n);
+  });
+
+  it("asks again for fewer blocks when a page is refused", async () => {
+    const head = 20_000n;
+    const chain = feeChain(head, 1024n);
+    let calls = 0;
+    // Every other page over half the maximum is refused, as drpc refuses some.
+    const refusing = {
+      ...chain,
+      getFeeHistory: async (args: {
+        blockCount: number;
+        blockNumber: bigint;
+        rewardPercentiles: number[];
+      }) => {
+        if (args.blockCount > 512 && calls++ % 2 === 0) {
+          throw new Error(
+            "RPC Request failed.\n\nDetails: invalid block range",
+          );
+        }
+        return chain.getFeeHistory(args);
+      },
+    };
+    const prices = await fetchBlockGasPrices(refusing, {
+      toBlock: head,
+      days: 1,
+      retryDelayMs: 0,
+    });
+    const first = head - 86_400n / 12n;
+    expect(prices).toEqual(
+      Array.from(
+        { length: Number(head - first + 1n) },
+        (_, i) => (first + BigInt(i)) * 2n,
+      ),
+    );
   });
 
   it("summarises the prices by mean and median", () => {

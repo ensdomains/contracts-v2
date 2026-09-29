@@ -2,9 +2,11 @@
 /// of the query itself.
 ///
 /// A span refusal means "ask for less" and is answered by bisecting the range; every
-/// other error is a real failure and must propagate, because a scan that quietly
-/// narrows past an unrelated fault returns a partial view of the chain and the audits
-/// built on it are explicit that a partial result must never pass for a complete one.
+/// other error is a real failure. A read may ask for the same blocks again after one,
+/// as `queryRetry.ts` describes, but must never step past them, because a scan that
+/// quietly narrows past an unrelated fault returns a partial view of the chain and the
+/// audits built on it are explicit that a partial result must never pass for a
+/// complete one.
 ///
 /// The distinction is drawn on an allowlist of phrasings rather than on keywords.
 /// Matching a bare `limit` or `too many` sweeps in `rate limit exceeded`, and a
