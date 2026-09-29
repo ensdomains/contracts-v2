@@ -6,14 +6,14 @@ export default execute(
   async ({ deploy, get, namedAccounts: { deployer, owner } }) => {
     const uriRenderer = get<Abi_IRegistryURIRenderer>("ENSURIRenderer");
 
-    await deploy("WrapperRegistryURIRenderer", {
+    await deploy("BoxedENSURIRenderer", {
       account: deployer,
       artifact: Artifact_BoxedURIRenderer,
       args: [owner, uriRenderer.address],
     });
   },
   {
-    tags: ["WrapperRegistryURIRenderer", "migration:phase1:deploy-v2", "v2"],
+    tags: ["BoxedENSURIRenderer", "migration:phase1:deploy-v2", "v2"],
     dependencies: ["ENSURIRenderer"],
   },
 );

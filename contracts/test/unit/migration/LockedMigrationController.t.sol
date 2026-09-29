@@ -67,7 +67,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(ensV1Resolver),
             registryUpgradeSet,
             labelStore,
-            sharedRenderer,
+            boxedRenderer,
             publicResolverSet,
             address(publicResolver),
             address(this) // namer
@@ -123,11 +123,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "VERIFIABLE_FACTORY"
         );
         assertEq(wrapperRegistryImpl.V1_RESOLVER(), address(ensV1Resolver), "V1_RESOLVER");
-        assertEq(
-            address(wrapperRegistryImpl.URI_RENDERER()),
-            address(sharedRenderer),
-            "URI_RENDERER"
-        );
+        assertEq(address(wrapperRegistryImpl.URI_RENDERER()), address(boxedRenderer), "URI_RENDERER");
     }
 
     function test_supportsInterface_controller() external view {
@@ -452,6 +448,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_CAN_NAME |
             RegistryRolesLib.ROLE_CAN_NAME_ADMIN
         );
+        vm.expectEmit();
+        emit IRegistryEvents.URIUpdated("", address(boxedRenderer), address(0));
         // emit Initializable.Initialized()
         vm.expectEmit();
         emit IVerifiableFactory.ProxyDeployed(
@@ -530,7 +528,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             name,
             "findCanonicalName"
         );
-        assertEq(subregistry.uri(tokenId), sharedRenderer.renderURI(subregistry, tokenId), "uri");
+        assertEq(subregistry.uri(tokenId), boxedRenderer.renderURI(subregistry, tokenId), "uri");
     }
 
     function test_migrateBatch(uint8 count) external {
@@ -1395,7 +1393,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 address(ensV1Resolver),
                 registryUpgradeSet,
                 labelStore,
-                sharedRenderer,
+                boxedRenderer,
                 publicResolverSet,
                 address(publicResolver),
                 address(this)

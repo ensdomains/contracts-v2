@@ -471,9 +471,9 @@ export async function setupDevnet({
         address: rocketh.get("ENSURIRenderer").address,
         client,
       }),
-      WrapperRegistryURIRenderer: getContract({
+      BoxedENSURIRenderer: getContract({
         abi: Abi_BoxedURIRenderer,
-        address: rocketh.get("WrapperRegistryURIRenderer").address,
+        address: rocketh.get("BoxedENSURIRenderer").address,
         client,
       }),
       // eth registrar
@@ -1020,8 +1020,8 @@ export async function setupDevnet({
       await setName("uri-renderer.registry", v2.ENSURIRenderer.address);
       await setName("impl.wrapper-registry", v2.WrapperRegistryImpl.address);
       await setName(
-        "uri-renderer.wrapper-registry",
-        v2.WrapperRegistryURIRenderer.address,
+        "boxed-uri-renderer.registry",
+        v2.BoxedENSURIRenderer.address,
       );
 
       await setName("2to1.resolver", v2.ENSV1Resolver.address);

@@ -7,9 +7,6 @@ import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthoriz
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {
-    IERC1155MetadataURI
-} from "@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
@@ -49,7 +46,7 @@ contract WrapperRegistry is
     /// @notice Gate for approved implementation upgrade targets.
     IAddressSet public immutable UPGRADE_SET;
 
-    /// @notice Shared URI renderer.
+    /// @notice Fixed URI renderer.
     IRegistryURIRenderer public immutable URI_RENDERER;
 
     ////////////////////////////////////////////////////////////////////////
@@ -72,7 +69,7 @@ contract WrapperRegistry is
     /// @param ensV1Resolver The ENSv1 resolver.
     /// @param upgradeSet The upgrade target allowlist.
     /// @param labelStore The shared label database.
-    /// @param uriRenderer The shared URI renderer.
+    /// @param uriRenderer The fixed URI renderer.
     /// @param publicResolverSet The approved list of `PublicResolver` contracts.
     /// @param publicResolver The replacement `PublicResolver`.
     /// @param namer The implementation namer.
@@ -102,10 +99,10 @@ contract WrapperRegistry is
             publicResolver
         )
     {
+        _disableInitializers();
         V1_RESOLVER = ensV1Resolver;
         UPGRADE_SET = upgradeSet;
         URI_RENDERER = uriRenderer;
-        _disableInitializers();
     }
 
     /// @inheritdoc IERC165
@@ -141,8 +138,10 @@ contract WrapperRegistry is
         _initialRoleBitmap = roleBitmap;
         emit RegistryCreated();
         address virtualOwner = address(_parentRegistry);
-        emit ParentUpdated(parentRegistry, childLabel, virtualOwner);
+        emit ParentUpdated(parentRegistry, childLabel, address(0));
         _grantRoles(ROOT_RESOURCE, roleBitmap, virtualOwner, false);
+        _uriRenderer = URI_RENDERER;
+        emit URIUpdated("", address(URI_RENDERER), address(0));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -195,16 +194,6 @@ contract WrapperRegistry is
         returns (address)
     {
         return _isMigratableChild(label) ? V1_RESOLVER : super.getResolver(label);
-    }
-
-    /// @inheritdoc PermissionedRegistry
-    function uri(uint256 tokenId)
-        public
-        view
-        override(PermissionedRegistry, IERC1155MetadataURI)
-        returns (string memory)
-    {
-        return URI_RENDERER.renderURI(this, tokenId);
     }
 
     /// @inheritdoc IWrapperRegistry

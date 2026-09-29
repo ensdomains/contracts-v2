@@ -322,7 +322,6 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     function uri(uint256 tokenId)
         public
         view
-        virtual
         override(ERC1155Singleton, IERC1155MetadataURI)
         returns (string memory)
     {

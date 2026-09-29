@@ -38,7 +38,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     Graveyard graveyard;
     MockERC721 dummy721;
     MockERC1155 dummy1155;
-    BoxedURIRenderer sharedRenderer;
+    BoxedURIRenderer boxedRenderer;
     PermissionedAddressSet registryUpgradeSet;
     PermissionedAddressSet publicResolverSet;
 
@@ -70,7 +70,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 
         graveyard = new Graveyard(nameWrapper, contractNamer);
 
-        sharedRenderer = new BoxedURIRenderer(address(this), new MockURIRenderer("mock"));
+        boxedRenderer = new BoxedURIRenderer(address(this), new MockURIRenderer("mock"));
 
         registryUpgradeSet = new PermissionedAddressSet(address(this));
         publicResolverSet = new PermissionedAddressSet(address(this));

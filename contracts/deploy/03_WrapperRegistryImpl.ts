@@ -16,9 +16,7 @@ export default execute(
     const verifiableFactory = get<Abi_IVerifiableFactory>("VerifiableFactory");
     const ensV1Resolver = get<Abi_ENSV1Resolver>("ENSV1Resolver");
     const labelStore = get<Abi_ILabelStore>("LabelStore");
-    const uriRenderer = get<Abi_IRegistryURIRenderer>(
-      "WrapperRegistryURIRenderer",
-    );
+    const uriRenderer = get<Abi_IRegistryURIRenderer>("BoxedENSURIRenderer");
     const registryUpgradeSet = get<Abi_IAddressSet>("RegistryUpgradeSet");
     const publicResolverSet = get<Abi_IAddressSet>("PublicResolverSet");
     const publicResolverV2 = get<Abi_PublicResolverV2>("PublicResolverV2");
@@ -49,7 +47,7 @@ export default execute(
       "ENSV1Resolver",
       "RegistryUpgradeSet",
       "LabelStore",
-      "WrapperRegistryURIRenderer",
+      "BoxedENSURIRenderer",
       "PublicResolverSet",
       "PublicResolverV2",
     ],
