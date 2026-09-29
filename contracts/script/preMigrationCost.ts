@@ -64,9 +64,7 @@ import {
 import { QueryRetry } from "./migrations/queryRetry.js";
 import {
   clearAccountDelegations,
-  fetchWithDeadline,
   impersonate,
-  RPC_REPLY_DEADLINE_MS,
   setBalance,
   waitForRpc,
 } from "./migrations/rpc.js";
@@ -89,7 +87,11 @@ import {
   type V1ReadError,
   v1Eligibility,
 } from "./preMigration.js";
-import { loadArtifact } from "./scriptUtils.js";
+import {
+  fetchWithDeadline,
+  loadArtifact,
+  RPC_REPLY_DEADLINE_MS,
+} from "./scriptUtils.js";
 
 ////////////////////////////////////////////////////////////////////////
 // Mainnet v1

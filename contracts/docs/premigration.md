@@ -306,7 +306,8 @@ Informational output goes to `preMigration.log` and errors to `preMigration-erro
 mirrors progress with a final summary table (processed / reserved / renewed / skipped — never
 registered, past grace, v1 registrant is a Graveyard / already registered / already up to date /
 invalid / failed / success rate). Individual failures (name reverts,
-RPC timeouts at a 30s per-call limit, checkpoint write errors) are counted and logged without aborting
+RPC timeouts at a 30s limit for a reply to start and two minutes for all of it, checkpoint write
+errors) are counted and logged without aborting
 the batch, so partial progress is preserved.
 
 **A failed name is retried, not stepped over.** The checkpoint stops before the first failure, so

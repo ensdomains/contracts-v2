@@ -6,6 +6,7 @@ import {
   FAILED_QUERY_LIMIT,
   QueryRetry,
 } from "../../script/migrations/queryRetry.js";
+import { fetchWithDeadline } from "../../script/scriptUtils.js";
 
 // How drpc fails some queries at random: a code of its own, and no cap named.
 const randomFailure = () =>
@@ -107,5 +108,30 @@ describe("readEventLogs", () => {
       ),
     ).rejects.toThrow("Temporary internal error");
     expect(chain.calls()).toBe(FAILED_QUERY_LIMIT + 1);
+  });
+});
+
+describe("fetchWithDeadline", () => {
+  it("fails a reply that stops partway once the deadline passes", async () => {
+    // Sends the headers and the start of a body, then nothing more.
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        new Response(
+          new ReadableStream({
+            start: (stream) =>
+              stream.enqueue(new TextEncoder().encode('{"result":[')),
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    });
+    try {
+      const response = await fetchWithDeadline(200)(
+        `http://localhost:${server.port}`,
+      );
+      await expect(response.json()).rejects.toThrow();
+    } finally {
+      server.stop(true);
+    }
   });
 });

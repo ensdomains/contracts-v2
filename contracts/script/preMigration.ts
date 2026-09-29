@@ -50,7 +50,12 @@ import {
 } from "./logger.js";
 
 import { GRACE_PERIOD_V2, STATUS } from "./deploy-constants.js";
-import { loadArtifact, resolveChain } from "./scriptUtils.js";
+import {
+  fetchWithDeadline,
+  loadArtifact,
+  resolveChain,
+  RPC_REPLY_DEADLINE_MS,
+} from "./scriptUtils.js";
 import {
   BaseRegistrar,
   EnsRegistry,
@@ -1068,7 +1073,11 @@ async function createMigrationClients(
   const client = createWalletClient({
     account,
     chain: v2Chain,
-    transport: http(config.rpcUrl, { retryCount: 0, timeout: RPC_TIMEOUT_MS }),
+    transport: http(config.rpcUrl, {
+      retryCount: 0,
+      timeout: RPC_TIMEOUT_MS,
+      fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
+    }),
   }).extend(publicActions);
 
   const mainnetClient = createPublicClient({
@@ -1076,6 +1085,7 @@ async function createMigrationClients(
     transport: http(config.mainnetRpcUrl, {
       retryCount: 0,
       timeout: RPC_TIMEOUT_MS,
+      fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
     }),
   });
 
