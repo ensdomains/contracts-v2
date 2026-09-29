@@ -82,7 +82,7 @@ import {
   runFixtureSeedStage,
 } from "./migrations/fixture.js";
 import { ACTOR_ALIASES, bufferedGas } from "./migrations/fixture/config.js";
-import { isLogSpanRefusalMessage } from "./migrations/logSpanRefusal.js";
+import { isLogSpanRefusal } from "./migrations/logSpanRefusal.js";
 import {
   executePreparedOwnerTransactions,
   preparedOwnerTransactionLabel,
@@ -2369,10 +2369,6 @@ type ScannedLog = {
   logIndex: number;
   transactionHash: `0x${string}`;
 };
-
-function isLogSpanRefusal(error: unknown): boolean {
-  return isLogSpanRefusalMessage(errorMessageChain(error).join(" "));
-}
 
 // One event's logs over a block range, in ascending block order. Providers cap
 // `eth_getLogs` by block span or by result count, and a load-balanced endpoint may

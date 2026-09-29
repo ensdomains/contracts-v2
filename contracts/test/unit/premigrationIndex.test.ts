@@ -9,6 +9,7 @@ import {
   assertIndependentSource,
   buildV1NameIndex,
   buildV1NameIndexFromRpc,
+  createRpcIndexClient,
   loadV1NameIndex,
   readV1NameIndexMeta,
   RangeTooWideError,
@@ -516,5 +517,44 @@ describe("assertIndexCoversChainTime", () => {
         NOW,
       ),
     ).toThrow(/predates/);
+  });
+});
+
+describe("createRpcIndexClient log refusals", () => {
+  // A node whose `eth_getLogs` fails with `error`.
+  const failingClient = (error: Error) =>
+    createRpcIndexClient({
+      client: {
+        getBlockNumber: async () => 1n,
+        getBlock: async () => ({ timestamp: 0n }),
+        request: async () => {
+          throw error;
+        },
+        multicall: async () => [],
+      },
+      baseRegistrar: "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85",
+    });
+
+  it("asks for less when the refusal is only in the error's data", async () => {
+    // Tenderly's shape: a generic message, and the reason in the data.
+    const error = Object.assign(
+      new Error("RPC Request failed.\n\nDetails: invalid params"),
+      {
+        details: "invalid params",
+        data: "Query returned more than 20000 results. Try with this block range [0x1, 0x2].",
+      },
+    );
+    await expect(
+      failingClient(error).getRegisteredIds(1, 100),
+    ).rejects.toBeInstanceOf(RangeTooWideError);
+  });
+
+  it("passes on a failure that is not about the range", async () => {
+    const error = Object.assign(new Error("RPC Request failed."), {
+      details: "rate limit exceeded",
+    });
+    await expect(failingClient(error).getRegisteredIds(1, 100)).rejects.toBe(
+      error,
+    );
   });
 });

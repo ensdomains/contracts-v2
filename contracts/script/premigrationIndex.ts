@@ -29,7 +29,10 @@ import {
   type ENSRegistrationNetwork,
 } from "./exportTheGraphRegistrations.js";
 import { BaseRegistrar } from "./migrations/abis.js";
-import { isLogSpanRefusalMessage } from "./migrations/logSpanRefusal.js";
+import {
+  isLogSpanRefusal,
+  isLogSpanRefusalMessage,
+} from "./migrations/logSpanRefusal.js";
 import { V1_GRACE_PERIOD_SECONDS } from "./preMigration.js";
 
 export const V1_INDEX_FILE = "v1-name-index.ndjson";
@@ -568,7 +571,7 @@ export function createRpcIndexClient(opts: {
             (error as { message?: string })?.message ??
             error,
         );
-        if (isLogSpanRefusalMessage(message)) {
+        if (isLogSpanRefusalMessage(message) || isLogSpanRefusal(error)) {
           throw new RangeTooWideError(message);
         }
         throw error;
