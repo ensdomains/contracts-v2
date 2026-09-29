@@ -327,12 +327,13 @@ mean and at the median gas price of the last 14 days. Run it from `contracts/` a
 `bun run compile`, with Foundry's `anvil` on the `PATH`:
 
 ```bash
-bun run premigration:cost -- --rpc-url <mainnet archive RPC> --report ./premigration-cost.md
+bun run premigration:cost -- --rpc-url <mainnet archive RPC> --report ./docs/premigration-cost-mainnet.md
 ```
 
 The RPC must serve archive state and `eth_getLogs` over the registrar's whole history, from block
 9,380,410. `MAINNET_RPC_URL` is used when `--rpc-url` is not given. The report goes to stdout,
-and to the `--report` file when one is given; progress goes to stderr.
+and to the `--report` file when one is given; progress goes to stderr. The latest estimate is in
+[premigration-cost-mainnet.md](./premigration-cost-mainnet.md).
 
 It runs in four steps, all pinned to one block:
 
