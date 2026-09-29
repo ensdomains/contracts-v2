@@ -16,7 +16,7 @@ import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 ///
 /// Format: "{PREFIX}{registryAsHexAddress}{AFTER_REGISTRY}{tokenIdAsDecimal}{AFTER_TOKEN}"
 ///
-/// eg.       PREFIX = "https://metadata/"
+/// eg.       PREFIX = "https://metadata/0x"
 ///   AFTER_REGISTRY = "/"
 ///      AFTER_TOKEN = ".json"
 ///
