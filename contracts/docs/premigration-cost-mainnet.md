@@ -1,17 +1,17 @@
 # Cost of the initial pre-migration on mainnet
 
-Estimated at block 26,081,135 (2026-09-29T05:48:59.000Z) by `bun run premigration:cost`.
+Estimated at block 26,083,345 (2026-09-29T13:12:59.000Z) by `bun run premigration:cost`.
 
 | | |
 |---|---|
-| Names to reserve | 925,618 claimable of 3,538,126 ever registered |
-| Labels known | 925,312 of the 925,618 from controller logs; the sample is drawn from these |
+| Names to reserve | 925,155 claimable of 3,538,137 ever registered |
+| Labels known | 924,849 of the 925,155 from controller logs; the sample is drawn from these |
 | Sample reserved | 5,000 names in 100 txs; 0 failed |
-| Gas per name | 67,567 ± 104 (95%), all-in |
-| Projected | 18,513 txs of 50 names, 62,542,074,643 gas |
-| Gas price (14 days) | mean 0.73 gwei, median 0.214 gwei over 100,260 blocks |
-| **Cost** | **45.6857 ETH** at the mean price (13.4093 ETH at the median) |
-| Gas price limit | sends wait while the price is above 0.146 gwei, so the run pays at most 9.1311 ETH |
+| Gas per name | 67,462 ± 94 (95%), all-in |
+| Projected | 18,504 txs of 50 names, 62,413,216,083 gas |
+| Gas price (14 days) | mean 0.752 gwei, median 0.223 gwei over 100,259 blocks |
+| **Cost** | **46.9449 ETH** at the mean price (13.8895 ETH at the median) |
+| Gas price limit | sends wait while the price is above 0.146 gwei, so the run pays at most 9.1123 ETH |
 
 ## Method
 
