@@ -48,7 +48,7 @@ export const ENS_DAO_MULTISIG: Address =
 // hard-coded because `lib/ens-contracts/deployments/mainnet/` does not ship
 // a rocketh artifact for it (the canonical deploy scripts wire it in only
 // for the synthetic devnet); the ABI is recovered from the archive sibling.
-const LEGACY_ETH_REGISTRAR_CONTROLLER_ADDRESS: Address =
+export const LEGACY_ETH_REGISTRAR_CONTROLLER_ADDRESS: Address =
   "0x283Af0B28c62C092C9727F1Ee09c02CA627EB7F5";
 const LEGACY_ETH_REGISTRAR_CONTROLLER_ARCHIVE = join(
   "..",

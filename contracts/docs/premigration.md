@@ -319,6 +319,60 @@ reporting the run as a success would hand back a green result over an incomplete
 Re-run with `--continue` after fixing the cause. The "already registered" and "already up to date"
 counters are not failures — nothing was lost in either case — and do not affect the exit status.
 
+## Cost estimate
+
+`bun run premigration:cost` estimates what the initial pre-migration (phase 2 of the
+[migration](./migration.md)) costs on mainnet: the ETH to reserve every claimable name, at the
+mean and at the median gas price of the last 14 days. Run it from `contracts/` after
+`bun run compile`, with Foundry's `anvil` on the `PATH`:
+
+```bash
+bun run premigration:cost -- --rpc-url <mainnet archive RPC> --report ./premigration-cost.md
+```
+
+The RPC must serve archive state and `eth_getLogs` over the registrar's whole history, from block
+9,380,410. `MAINNET_RPC_URL` is used when `--rpc-url` is not given. The report goes to stdout,
+and to the `--report` file when one is given; progress goes to stderr.
+
+It runs in four steps, all pinned to one block:
+
+1. **Names.** It reads the v1 `BaseRegistrar`'s `NameRegistered` and `NameRenewed` logs. The
+   newest event of each name carries its expiry. A name is counted when pre-migration would
+   reserve it: its expiry plus v1's 90-day grace lies after the block, and its newest registration
+   was not to a Graveyard. The labels come from the `NameRegistered` and `NameRenewed` logs of the
+   three registrar controllers, and a label is kept only when it hashes to the labelhash logged
+   with it. Then a sample of names, half counted and half not, is read from the chain with
+   pre-migration's own reads and eligibility rule. Any disagreement stops the run.
+2. **Gas.** It starts an Anvil fork at the block, and the phase 1 deploy scripts deploy
+   `ETHRegistry`, `BatchRegistrar` and `ENSV1Resolver` on it. An evenly spread sample of the
+   counted names with known labels is then reserved through pre-migration's send path, in batches
+   of its size. Gas per name is the receipt gas divided by the names reserved, so it includes each
+   transaction's base cost and calldata.
+3. **Gas price.** It reads each block's base fee plus its median priority fee over the days before
+   the block. This is the price the [gas price limit](#gas-price-limit) is measured in. The run
+   takes the mean and the median.
+4. **Report.** Gas per name times the names counted, priced at the mean and the median. The report
+   also gives the most the run can pay under the default gas price limit, since no transaction
+   pays more than the limit.
+
+| Option | Default | Description |
+|---|---|---|
+| `--rpc-url <url>` | `MAINNET_RPC_URL` | Mainnet archive RPC. |
+| `--block <number>` | latest | Block to estimate at. |
+| `--sample <count>` | `5000` | Names reserved on the fork to measure gas. |
+| `--check-sample <count>` | `1000` | Names checked against the chain. |
+| `--batch-size <count>` | `50` | Names per `batchRegister` transaction, as in pre-migration. |
+| `--fee-days <days>` | `14` | Days of blocks the gas price is averaged over. |
+| `--log-span <blocks>` | `50000` | Blocks per `eth_getLogs` call to start with. A refused range is halved, and an accepted one doubles again. |
+| `--graveyards <addresses>` | the mainnet deployment's, if any | Graveyards whose names are left out. |
+| `--port <port>` | `8549` | Local port of the Anvil fork. |
+| `--report <path>` | none | Also save the report as a Markdown file. |
+
+> A name whose label no controller logged is counted but cannot be sampled. One example is a name the
+> 2020 registrar migration registered that has not been renewed through a controller since. The
+> count covers these names, because pre-migration must reserve them too. The gas per name comes from
+> the names with known labels.
+
 ## Testing on a Sepolia fork
 
 To rehearse pre-migration against real Sepolia v1 state without a full `fork full` run, deploy the v2

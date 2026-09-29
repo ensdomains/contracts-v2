@@ -66,6 +66,7 @@
     "devnet": "bun run compile && bun ./script/runDevnet.ts",
     "migration": "bun ./script/migrate.ts",
     "migration:fixture": "bun ./script/migrations/fixture.ts",
+    "premigration:cost": "bun ./script/preMigrationCost.ts",
     "docs:addresses": "bun ./script/generateAddressDocs.ts",
     "aakit": "bun ./script/deployAAkit.ts",
     "verify": "bun ./script/verify.ts",

@@ -234,7 +234,7 @@ import {
 
 const DEFAULT_ANVIL_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
-const DEFAULT_ANVIL_DEPLOYER =
+export const DEFAULT_ANVIL_DEPLOYER =
   "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266" as const;
 const DEFAULT_ANVIL_OWNER =
   "0x70997970c51812dc3a010c7d01b50e0d17dc79c8" as const;
@@ -247,8 +247,8 @@ const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 
 /// How many times the rehearsal's Anvil retries a refused upstream read, and the
 /// initial wait between tries. Sized to outlast a provider's rate-limit window.
-const FORK_UPSTREAM_RETRIES = 50;
-const FORK_UPSTREAM_RETRY_BACKOFF_MS = 2_000;
+export const FORK_UPSTREAM_RETRIES = 50;
+export const FORK_UPSTREAM_RETRY_BACKOFF_MS = 2_000;
 
 /// v1 and v2 surfaces the phases read and write, each as narrow as its use.
 /// The reads are issued in batches, and `multicall` infers a result type per

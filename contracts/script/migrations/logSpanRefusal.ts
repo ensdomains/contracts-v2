@@ -36,3 +36,28 @@ export function isLogSpanRefusalMessage(message: string): boolean {
   const normalized = message.toLowerCase();
   return LOG_SPAN_REFUSALS.some((refusal) => normalized.includes(refusal));
 }
+
+/// Whether an error, or anything that caused it, refuses the span.
+///
+/// Some providers give the reason only in the JSON-RPC error's `data`, under a generic
+/// message: Tenderly answers "invalid params" and says in `data` that the query
+/// returned more results than it serves. So the data of each error in the chain is
+/// read along with its message.
+export function isLogSpanRefusal(error: unknown): boolean {
+  const parts: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; current != null && depth < 10; depth++) {
+    if (current instanceof Error) {
+      parts.push(current.message);
+      const data = (current as { data?: unknown }).data;
+      if (typeof data === "string") parts.push(data);
+      current = current.cause;
+    } else {
+      parts.push(
+        typeof current === "string" ? current : JSON.stringify(current),
+      );
+      current = undefined;
+    }
+  }
+  return isLogSpanRefusalMessage(parts.join("\n"));
+}

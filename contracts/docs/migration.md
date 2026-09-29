@@ -140,6 +140,8 @@ transactions afterwards.
 - **Expected outcome:** every active or in-grace v1 `.eth` 2LD seeded as a **reserved** entry on v2,
   with v2 expiry = v1 expiry + bonus period, except names whose v1 registrant is a `Graveyard` (see
   below). `premigration reconcile` confirms it in both directions.
+- **Cost:** `bun run premigration:cost` estimates this phase's ETH cost on mainnet at the mean and
+  median gas price of the last 14 days. See [premigration.md](./premigration.md#cost-estimate).
 
 > **Why reconcile rather than verify.** `premigration verify` reads its list of names from the CSV, so
 > a name the CSV never contained is invisible to it and the check passes. `premigration reconcile`
