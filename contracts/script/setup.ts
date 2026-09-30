@@ -22,6 +22,8 @@ import { Abi_UniversalResolver } from "generated/abis/UniversalResolver.js";
 // v2
 import { Abi_ContractNamer } from "generated/abis/ContractNamer.js";
 import { Abi_LabelStore } from "generated/abis/LabelStore.js";
+import { Abi_StaticURIRenderer } from "generated/abis/StaticURIRenderer.js";
+import { Abi_BoxedURIRenderer } from "generated/abis/BoxedURIRenderer.js";
 import { Abi_VerifiableFactory } from "generated/abis/VerifiableFactory.js";
 import { Abi_PermissionedRegistry } from "generated/abis/PermissionedRegistry.js";
 import { Abi_StandardRentPriceOracle } from "generated/abis/StandardRentPriceOracle.js";
@@ -461,6 +463,17 @@ export async function setupDevnet({
       ETHRegistry: getContract({
         abi: [...Abi_PermissionedRegistry, ...Abi_NameCoderErrors],
         address: rocketh.get("ETHRegistry").address,
+        client,
+      }),
+      // uri renderers
+      ENSURIRenderer: getContract({
+        abi: Abi_StaticURIRenderer,
+        address: rocketh.get("ENSURIRenderer").address,
+        client,
+      }),
+      BoxedENSURIRenderer: getContract({
+        abi: Abi_BoxedURIRenderer,
+        address: rocketh.get("BoxedENSURIRenderer").address,
         client,
       }),
       // eth registrar
@@ -1004,7 +1017,12 @@ export async function setupDevnet({
       await setName("root", v2.RootRegistry.address);
       await setName("registry", v2.ETHRegistry.address);
       await setName("impl.registry", v2.UserRegistryImpl.address);
+      await setName("uri-renderer.registry", v2.ENSURIRenderer.address);
       await setName("impl.wrapper-registry", v2.WrapperRegistryImpl.address);
+      await setName(
+        "boxed-uri-renderer.registry",
+        v2.BoxedENSURIRenderer.address,
+      );
 
       await setName("2to1.resolver", v2.ENSV1Resolver.address);
       await setName("1to2.resolver", v2.ENSV2Resolver.address);

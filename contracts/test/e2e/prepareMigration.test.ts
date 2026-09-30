@@ -2,7 +2,7 @@ import { describe, expect, it, setDefaultTimeout } from "bun:test";
 setDefaultTimeout(60_000);
 
 import { toHex, type Address } from "viem";
-import { ROLES } from "../../script/deploy-constants.js";
+import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
 import { main } from "../../script/migrations/prepareMigration.js";
 import { revertPrePrepareMigrationRoles } from "../utils/mockPrepareMigration.js";
 
@@ -157,7 +157,9 @@ describe("PrepareMigration", () => {
     // "owner" account is funded but has CAN_NAME for root on ETHRegistry
     const { owner } = env.namedAccounts;
     const privateKey = toHex(owner.getHdKey().privateKey!);
-    expect(await readRoles(owner.address)).toBe(ROLES.REGISTRY.CAN_NAME);
+    expect(await readRoles(owner.address)).toBe(
+      DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER,
+    );
 
     await expect(
       main(buildArgs(addrs, { privateKey, execute: true })),
