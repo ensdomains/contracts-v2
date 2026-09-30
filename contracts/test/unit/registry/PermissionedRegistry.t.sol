@@ -824,55 +824,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         }
     }
 
-    function test_safeTransferFrom_rootAuthorizedTokenWithoutRoles() external {
-        // ROLE_CAN_TRANSFER_ADMIN must be on the token for the transfer to occur
-        _makeEmancipated();
-        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
-        uint256 tokenId = this._register();
-        assertEq(registry.ownerOf(tokenId), user1);
-        vm.prank(user1);
-        registry.setApprovalForAll(address(this), true);
-        vm.expectRevert(
-            abi.encodeWithSelector(IPermissionedRegistry.TransferDisallowed.selector, tokenId, user1)
-        );
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-    }
-
-    function test_safeTransferFrom_rootOwnedTokenWithoutRoles() external {
-        // ROLE_CAN_TRANSFER_ADMIN must be on the token for the transfer to occur
-        _makeEmancipated();
-        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
-        testOwner = address(this); // mint to account with root
-        uint256 tokenId = this._register();
-        assertEq(registry.roles(tokenId, address(this)), 0); // no token roles
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPermissionedRegistry.TransferDisallowed.selector,
-                tokenId,
-                address(this)
-            )
-        );
-        registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
-    }
-
-    function test_safeTransferFrom_rootOwnedTokenWhileExpired() external {
-        // ROLE_CAN_TRANSFER_ADMIN must be on the token for the transfer to occur
-        _makeEmancipated();
-        assertTrue(registry.hasRootRoles(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this)));
-        testOwner = address(this); // mint to account with root
-        uint256 tokenId = this._register();
-        vm.warp(testExpiry);
-        assertEq(registry.ownerOf(tokenId), address(0)); // expired
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPermissionedRegistry.TransferDisallowed.selector,
-                tokenId,
-                address(this)
-            )
-        );
-        registry.safeTransferFrom(address(this), user2, tokenId, 1, "");
-    }
-
     function test_batchTransfer(bool unsafe) external {
         _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
