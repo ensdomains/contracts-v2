@@ -31,6 +31,7 @@ import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
@@ -66,6 +67,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(ensV1Resolver),
             registryUpgradeSet,
             labelStore,
+            boxedRenderer,
             publicResolverSet,
             address(publicResolver),
             address(this) // namer
@@ -121,6 +123,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "VERIFIABLE_FACTORY"
         );
         assertEq(wrapperRegistryImpl.V1_RESOLVER(), address(ensV1Resolver), "V1_RESOLVER");
+        assertEq(address(wrapperRegistryImpl.URI_RENDERER()), address(boxedRenderer), "URI_RENDERER");
     }
 
     function test_supportsInterface_controller() external view {
@@ -445,6 +448,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_CAN_NAME |
             RegistryRolesLib.ROLE_CAN_NAME_ADMIN
         );
+        vm.expectEmit();
+        emit IRegistryEvents.URIUpdated("", address(boxedRenderer), address(0));
         // emit Initializable.Initialized()
         vm.expectEmit();
         emit IVerifiableFactory.ProxyDeployed(
@@ -523,6 +528,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             name,
             "findCanonicalName"
         );
+        assertEq(subregistry.uri(tokenId), boxedRenderer.renderURI(subregistry, tokenId), "uri");
     }
 
     function test_migrateBatch(uint8 count) external {
@@ -1387,6 +1393,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 address(ensV1Resolver),
                 registryUpgradeSet,
                 labelStore,
+                boxedRenderer,
                 publicResolverSet,
                 address(publicResolver),
                 address(this)
@@ -1403,6 +1410,7 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
         address ensV1Resolver,
         IAddressSet upgradeSet,
         ILabelStore labelStore,
+        IRegistryURIRenderer uriRenderer,
         IAddressSet publicResolverSet,
         address publicResolver,
         address namer
@@ -1414,6 +1422,7 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
             ensV1Resolver,
             upgradeSet,
             labelStore,
+            uriRenderer,
             publicResolverSet,
             publicResolver,
             namer

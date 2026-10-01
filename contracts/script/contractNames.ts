@@ -53,6 +53,17 @@ export type ContractNameInfo = {
   claim?: (typeof CLAIMS)[number];
 };
 
+export type Deployments = Record<string, Address>;
+
+export type NamingInfo = {
+  label: string;
+  v1Owner: Address;
+  isWrapped: boolean;
+  v2Owner: Address;
+  resolverSaltVersion?: bigint;
+  managers: Address[];
+};
+
 export async function getContractNames(): Promise<ContractNameInfo[]> {
   return JSON.parse(
     await readFile(new URL("../docs/contractNames.json", import.meta.url), {
@@ -94,7 +105,7 @@ async function readChainId(dir: string): Promise<number> {
   }
 }
 
-async function readDeployments(dir: string): Promise<Record<string, Address>> {
+async function readDeployments(dir: string): Promise<Deployments> {
   const suffix = ".json";
   return Object.fromEntries(
     await Promise.all(
@@ -110,29 +121,127 @@ async function readDeployments(dir: string): Promise<Record<string, Address>> {
   );
 }
 
-// function slugForChainId(chainId: number): string | undefined {
-//   switch (chainId) {
-//     case 1: return 'mainnet';
-//     case 11155111: return 'sepolia';
-//   }
-// }
+export function createDeployResolverTx({
+  info,
+  v2,
+}: {
+  info: NamingInfo;
+  v2: Deployments;
+}): TransactionRequest {
+  const managerRoles = ROLES.REGULAR & ~ROLES.RESOLVER.UPGRADE; // ?
+  const initData = encodeFunctionData({
+    abi: Abi_PermissionedResolver,
+    functionName: "initialize",
+    args: [
+      [
+        { account: info.v2Owner, roleBitmap: ROLES.ALL },
+        ...info.managers.map((account) => ({
+          account,
+          roleBitmap: managerRoles,
+        })),
+      ],
+      [],
+    ],
+  });
+  return {
+    to: v2.VerifiableFactory,
+    data: encodeFunctionData({
+      abi: Abi_VerifiableFactory,
+      functionName: "deployProxy",
+      args: [
+        v2.PermissionedResolverImpl,
+        computeOwnedResolverSalt(info.v2Owner, info.resolverSaltVersion),
+        initData,
+      ],
+    }),
+  };
+}
 
-function resolveAccounts(chainId: number): {
-  owner: Address;
-  wrapped: boolean;
-  managers: Address[];
-} {
+export function expectedResolverAddress({
+  info,
+  v2,
+}: {
+  info: NamingInfo;
+  v2: Deployments;
+}): Address {
+  return computeVerifiableProxyAddress({
+    factoryAddress: v2.VerifiableFactory,
+    deployer: info.v2Owner,
+    salt: computeOwnedResolverSalt(info.v2Owner, info.resolverSaltVersion),
+  });
+}
+
+export function createMigrationTx({
+  info,
+  v1,
+  v2,
+}: {
+  info: NamingInfo;
+  v1: Deployments;
+  v2: Deployments;
+}): TransactionRequest {
+  const resolver = expectedResolverAddress({ info, v2 });
+  const migrationData = encodeMigrationData({
+    label: info.label,
+    owner: info.v2Owner,
+    resolver,
+    subregistry: zeroAddress,
+  });
+  return info.isWrapped
+    ? {
+        to: v1.NameWrapper,
+        data: encodeFunctionData({
+          abi: Abi_NameWrapper,
+          functionName: "safeTransferFrom",
+          args: [
+            info.v2Owner,
+            v2.UnlockedMigrationController,
+            BigInt(namehash(`${info.label}.eth`)),
+            1n,
+            migrationData,
+          ],
+        }),
+      }
+    : {
+        to: v1.BaseRegistrarImplementation,
+        data: encodeFunctionData({
+          abi: Abi_BaseRegistrarImplementation,
+          functionName: "safeTransferFrom",
+          args: [
+            info.v2Owner,
+            v2.UnlockedMigrationController,
+            BigInt(labelhash(info.label)),
+            migrationData,
+          ],
+        }),
+      };
+}
+
+export function createPopulateResolverTxs(): TransactionRequest[] {
+  return [];
+}
+
+function resolveAccounts(chainId: number): NamingInfo {
+  const label = "ens";
   switch (chainId) {
     case 1: {
-      const owner = RockethConfig.accounts.owner.mainnet;
-      const ensHot = "0x0904Dac3347eA47d208F3Fd67402D039a3b99859";
-      const ensCold = "0x690F0581eCecCf8389c223170778cD9D029606F2";
-      return { owner, wrapped: false, managers: [ensHot, ensCold] };
+      const v1Owner = RockethConfig.accounts.owner.mainnet;
+      const v2Owner = v1Owner;
+      return {
+        label,
+        v1Owner,
+        v2Owner,
+        isWrapped: false,
+        managers: [
+          "0x690F0581eCecCf8389c223170778cD9D029606F2", // ens cold
+          "0x0904Dac3347eA47d208F3Fd67402D039a3b99859", // ens hot
+        ],
+      };
     }
     case 11155111: {
-      const owner = RockethConfig.accounts.securityCouncil.sepolia;
-      const greg = "0x179A862703a4adfb29896552DF9e307980D19285"; // current ens.eth owner
-      return { owner, wrapped: true, managers: [greg] };
+      const v1Owner = "0x179A862703a4adfb29896552DF9e307980D19285"; // current ens.eth owner
+      const v2Owner = RockethConfig.accounts.securityCouncil.sepolia;
+      return { label, v1Owner, v2Owner, isWrapped: true, managers: [] };
     }
     default:
       throw new Error(`unknown chain: ${chainId}`);
@@ -179,111 +288,35 @@ if (import.meta.main) {
     if (chainId !== (await readChainId(v2Dir))) {
       throw new Error(`chain mismatch: ${v1.chainId} != ${v2.chainId}`);
     }
-    const { owner, wrapped, managers } = resolveAccounts(chainId);
+    const info = resolveAccounts(chainId);
     console.log(`Mode: ${mode}`);
     console.log(`V1 Deployment: ${relative(baseDir, v1Dir)}`);
     console.log(`V2 Deployment: ${relative(baseDir, v2Dir)}`);
-    console.log(`Owner: ${owner}`);
-    console.log(`Managers[${managers.length}]: ${managers.join(" ")}`);
+    console.log(`V1 Owner: ${info.v2Owner} [wrapper=${info.isWrapped}]`);
+    console.log(`V2 Owner: ${info.v2Owner}`);
+    console.log(
+      `Managers[${info.managers.length}]: ${info.managers.join(" ")}`,
+    );
     console.log();
-
-    function deployResolverTx(): TransactionRequest {
-      const initData = encodeFunctionData({
-        abi: Abi_PermissionedResolver,
-        functionName: "initialize",
-        args: [
-          [
-            { account: owner, roleBitmap: ROLES.ALL },
-            ...managers.map((account) => ({
-              account,
-              roleBitmap:
-                ROLES.REGULAR &
-                ~(ROLES.RESOLVER.SET_ADDRESS & ROLES.RESOLVER.UPGRADE),
-            })),
-          ],
-          [],
-        ],
-      });
-      return {
-        to: v2.VerifiableFactory,
-        data: encodeFunctionData({
-          abi: Abi_VerifiableFactory,
-          functionName: "deployProxy",
-          args: [
-            v2.PermissionedResolverImpl,
-            computeOwnedResolverSalt(owner),
-            initData,
-          ],
-        }),
-      };
-    }
-
-    function migrationTx(): TransactionRequest {
-      const resolver = computeVerifiableProxyAddress({
-        factoryAddress: v2.VerifiableFactory,
-        proxyLogic: v2.PermissionedResolverImpl,
-        deployer: owner,
-        salt: computeOwnedResolverSalt(owner),
-      });
-      const label = "ens";
-      const migrationData = encodeMigrationData({
-        label,
-        owner,
-        resolver,
-        subregistry: zeroAddress,
-      });
-      return wrapped
-        ? {
-            to: v1.NameWrapper,
-            data: encodeFunctionData({
-              abi: Abi_NameWrapper,
-              functionName: "safeTransferFrom",
-              args: [
-                owner,
-                v2.UnlockedMigrationController,
-                BigInt(namehash(`${label}.eth`)),
-                1n,
-                migrationData,
-              ],
-            }),
-          }
-        : {
-            to: v1.BaseRegistrarImplementation,
-            data: encodeFunctionData({
-              abi: Abi_BaseRegistrarImplementation,
-              functionName: "safeTransferFrom",
-              args: [
-                owner,
-                v2.UnlockedMigrationController,
-                BigInt(labelhash(label)),
-                migrationData,
-              ],
-            }),
-          };
-    }
-
-    function populateResolverTxs(): TransactionRequest[] {
-      return [];
-    }
 
     switch (mode) {
       case "deploy": {
-        console.log(deployResolverTx());
+        console.log(createDeployResolverTx({ info, v2 }));
         break;
       }
       case "migrate": {
-        console.log(migrationTx());
+        console.log(createMigrationTx({ info, v1, v2 }));
         break;
       }
       case "populate": {
-        console.log(populateResolverTxs());
+        console.log(createPopulateResolverTxs());
         break;
       }
       case "init": {
         console.log([
-          deployResolverTx(),
-          migrationTx(),
-          ...populateResolverTxs(),
+          createDeployResolverTx({ info, v2 }),
+          createMigrationTx({ info, v1, v2 }),
+          ...createPopulateResolverTxs(),
         ]);
         break;
       }
@@ -297,7 +330,10 @@ if (import.meta.main) {
     }
   } else {
     console.table([
-      { mode: "names", description: "Print contract deployments and names" },
+      {
+        mode: "names",
+        description: "Print contract deployments and names",
+      },
       {
         mode: "deploy",
         description: "Transaction data for deploying PermissionedResolver",

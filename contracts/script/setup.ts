@@ -22,6 +22,8 @@ import { Abi_UniversalResolver } from "generated/abis/UniversalResolver.js";
 // v2
 import { Abi_ContractNamer } from "generated/abis/ContractNamer.js";
 import { Abi_LabelStore } from "generated/abis/LabelStore.js";
+import { Abi_StaticURIRenderer } from "generated/abis/StaticURIRenderer.js";
+import { Abi_BoxedURIRenderer } from "generated/abis/BoxedURIRenderer.js";
 import { Abi_VerifiableFactory } from "generated/abis/VerifiableFactory.js";
 import { Abi_PermissionedRegistry } from "generated/abis/PermissionedRegistry.js";
 import { Abi_StandardRentPriceOracle } from "generated/abis/StandardRentPriceOracle.js";
@@ -62,12 +64,9 @@ import {
   createPublicClient,
   createWalletClient,
   decodeAbiParameters,
-  encodeAbiParameters,
   getContract,
   type Hex,
   hexToString,
-  keccak256,
-  namehash,
   publicActions,
   slice,
   stringToHex,
@@ -87,6 +86,7 @@ import {
   COIN_TYPE_ETH,
   dnsEncodeName,
   getReverseName,
+  namehash,
   splitName,
 } from "../test/utils/utils.js";
 import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
@@ -125,7 +125,6 @@ export async function setupDevnet({
   extraTime = 0,
   forkUrl,
   forkBlockNumber,
-  skipEnsDotEth,
 }: {
   port?: number;
   chainId?: number;
@@ -136,7 +135,6 @@ export async function setupDevnet({
   extraTime?: number; // extra time to subtract from genesis timestamp
   forkUrl?: string; // when set, anvil forks from this RPC URL
   forkBlockNumber?: bigint; // optional fork block; defaults to latest
-  skipEnsDotEth?: boolean;
 } = {}) {
   const isFork = !!forkUrl;
   // shutdown functions for partial initialization
@@ -368,45 +366,12 @@ export async function setupDevnet({
     console.log("Deployed contracts");
 
     // note: TypeScript is too slow when the following is generalized
-    const shared = {
+    const v1 = {
       BatchGatewayProvider: getContract({
         abi: Abi_GatewayProvider,
         address: rocketh.get("BatchGatewayProvider").address,
         client,
       }),
-      DNSSECGatewayProvider: getContract({
-        abi: Abi_GatewayProvider,
-        address: rocketh.get("DNSSECGatewayProvider").address,
-        client,
-      }),
-      DefaultReverseRegistrar: getContract({
-        abi: Abi_DefaultReverseRegistrar,
-        address: rocketh.get("DefaultReverseRegistrar").address,
-        client,
-      }),
-      DefaultReverseResolver: getContract({
-        abi: Abi_DefaultReverseResolver,
-        address: rocketh.get("DefaultReverseResolver").address,
-        client,
-      }),
-      ReverseRegistrar: getContract({
-        abi: Abi_ReverseRegistrar,
-        address: rocketh.get("ReverseRegistrar").address,
-        client,
-      }),
-      ReverseRegistrarAdapter: getContract({
-        abi: Abi_ReverseRegistrarAdapter,
-        address: rocketh.get("ReverseRegistrarAdapter").address,
-        client,
-      }),
-      DefaultReverseRegistrarAdapter: getContract({
-        abi: Abi_DefaultReverseRegistrarAdapter,
-        address: rocketh.get("DefaultReverseRegistrarAdapter").address,
-        client,
-      }),
-    };
-
-    const v1 = {
       Root: getContract({
         abi: Abi_Root,
         address: rocketh.get("Root").address,
@@ -443,10 +408,31 @@ export async function setupDevnet({
         address: rocketh.get("UniversalResolver").address,
         client,
       }),
+      // reverse
+      DefaultReverseRegistrar: getContract({
+        abi: Abi_DefaultReverseRegistrar,
+        address: rocketh.get("DefaultReverseRegistrar").address,
+        client,
+      }),
+      DefaultReverseResolver: getContract({
+        abi: Abi_DefaultReverseResolver,
+        address: rocketh.get("DefaultReverseResolver").address,
+        client,
+      }),
+      ReverseRegistrar: getContract({
+        abi: Abi_ReverseRegistrar,
+        address: rocketh.get("ReverseRegistrar").address,
+        client,
+      }),
     };
 
     const Abi_NameCoderErrors = Abi_NameCoder.filter((x) => x.type === "error");
     const v2 = {
+      DNSSECGatewayProvider: getContract({
+        abi: Abi_GatewayProvider,
+        address: rocketh.get("DNSSECGatewayProvider").address,
+        client,
+      }),
       ContractNamer: getContract({
         abi: Abi_ContractNamer,
         address: rocketh.get("ContractNamer").address,
@@ -470,6 +456,17 @@ export async function setupDevnet({
       ETHRegistry: getContract({
         abi: [...Abi_PermissionedRegistry, ...Abi_NameCoderErrors],
         address: rocketh.get("ETHRegistry").address,
+        client,
+      }),
+      // uri renderers
+      ENSURIRenderer: getContract({
+        abi: Abi_StaticURIRenderer,
+        address: rocketh.get("ENSURIRenderer").address,
+        client,
+      }),
+      BoxedENSURIRenderer: getContract({
+        abi: Abi_BoxedURIRenderer,
+        address: rocketh.get("BoxedENSURIRenderer").address,
         client,
       }),
       // eth registrar
@@ -577,6 +574,17 @@ export async function setupDevnet({
         address: rocketh.get("PublicResolverV2").address,
         client,
       }),
+      // reverse
+      ReverseRegistrarAdapter: getContract({
+        abi: Abi_ReverseRegistrarAdapter,
+        address: rocketh.get("ReverseRegistrarAdapter").address,
+        client,
+      }),
+      DefaultReverseRegistrarAdapter: getContract({
+        abi: Abi_DefaultReverseRegistrarAdapter,
+        address: rocketh.get("DefaultReverseRegistrarAdapter").address,
+        client,
+      }),
     };
 
     const erc20 = {
@@ -620,9 +628,7 @@ export async function setupDevnet({
       }),
     };
 
-    const verifiableProxyLogic = await v2.VerifiableFactory.read.proxyLogic();
-
-    [shared, v1, v2, erc20, hca]
+    [v1, v2, erc20, hca]
       .flatMap((x) => Object.values(x))
       .forEach(patchContractWrite);
     console.log("Linked contracts");
@@ -647,7 +653,7 @@ export async function setupDevnet({
 
     // on fork, ens.eth already exists on canonical v1 with real subdomains;
     // skip the synthetic register-and-seed step to avoid colliding with state
-    if (!isFork && !skipEnsDotEth) {
+    if (!isFork) {
       await setupEnsDotEth();
       console.log("Setup ens.eth");
     }
@@ -659,7 +665,6 @@ export async function setupDevnet({
       accounts,
       namedAccounts,
       rocketh,
-      shared,
       v1,
       v2,
       erc20,
@@ -755,7 +760,6 @@ export async function setupDevnet({
     function computeVerifiableProxyAddress(deployer: Address, salt: bigint) {
       return computeVerifiableProxyAddress_({
         factoryAddress: v2.VerifiableFactory.address,
-        proxyLogic: verifiableProxyLogic as Address,
         deployer,
         salt,
       });
@@ -979,17 +983,12 @@ export async function setupDevnet({
       for (const x of await getContractNames()) {
         try {
           const { address } = rocketh.get(x.deployment);
-          if (x.claim) {
-            await shared.ReverseRegistrarAdapter.write.claim(
-              [address, resolver.address],
-              { account },
-            );
-          }
+          const reverseName = getReverseName(address);
           writes.push(
             encodeFunctionData({
               abi: resolver.abi,
               functionName: "setName",
-              args: [dnsEncodeName(getReverseName(address)), x.name],
+              args: [dnsEncodeName(reverseName), x.name],
             }),
           );
           writes.push(
@@ -999,6 +998,19 @@ export async function setupDevnet({
               args: [dnsEncodeName(x.name), COIN_TYPE_ETH, address],
             }),
           );
+          if (x.claim) {
+            await v2.ReverseRegistrarAdapter.write.claim(
+              [address, resolver.address],
+              { account },
+            );
+          } else {
+            const owner = await v1.ENSRegistry.read.owner([
+              namehash(reverseName),
+            ]);
+            if (owner === zeroAddress) {
+              throw new Error("unclaimed V1");
+            }
+          }
         } catch (err) {
           console.log(`Cannot name: ${x.name}: ${err}`);
         }

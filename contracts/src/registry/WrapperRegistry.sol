@@ -18,6 +18,7 @@ import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
+import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
 import {IWrapperRegistry} from "./interfaces/IWrapperRegistry.sol";
 import {IWrapperRegistryInitializable} from "./interfaces/IWrapperRegistryInitializable.sol";
@@ -45,6 +46,9 @@ contract WrapperRegistry is
     /// @notice Gate for approved implementation upgrade targets.
     IAddressSet public immutable UPGRADE_SET;
 
+    /// @notice Fixed URI renderer.
+    IRegistryURIRenderer public immutable URI_RENDERER;
+
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
@@ -65,6 +69,7 @@ contract WrapperRegistry is
     /// @param ensV1Resolver The ENSv1 resolver.
     /// @param upgradeSet The upgrade target allowlist.
     /// @param labelStore The shared label database.
+    /// @param uriRenderer The fixed URI renderer.
     /// @param publicResolverSet The approved list of `PublicResolver` contracts.
     /// @param publicResolver The replacement `PublicResolver`.
     /// @param namer The implementation namer.
@@ -75,6 +80,7 @@ contract WrapperRegistry is
         address ensV1Resolver,
         IAddressSet upgradeSet,
         ILabelStore labelStore,
+        IRegistryURIRenderer uriRenderer,
         IAddressSet publicResolverSet,
         address publicResolver,
         address namer
@@ -93,9 +99,10 @@ contract WrapperRegistry is
             publicResolver
         )
     {
+        _disableInitializers();
         V1_RESOLVER = ensV1Resolver;
         UPGRADE_SET = upgradeSet;
-        _disableInitializers();
+        URI_RENDERER = uriRenderer;
     }
 
     /// @inheritdoc IERC165
@@ -131,8 +138,10 @@ contract WrapperRegistry is
         _initialRoleBitmap = roleBitmap;
         emit RegistryCreated();
         address virtualOwner = address(_parentRegistry);
-        emit ParentUpdated(parentRegistry, childLabel, virtualOwner);
+        emit ParentUpdated(parentRegistry, childLabel, address(0));
         _grantRoles(ROOT_RESOURCE, roleBitmap, virtualOwner, false);
+        _uriRenderer = URI_RENDERER;
+        emit URIUpdated("", address(URI_RENDERER), address(0));
     }
 
     ////////////////////////////////////////////////////////////////////////

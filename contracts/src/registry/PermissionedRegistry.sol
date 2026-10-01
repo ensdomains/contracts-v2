@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.25;
 
+import {
+    IERC1155MetadataURI
+} from "@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
@@ -316,7 +319,12 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc ERC1155Singleton
-    function uri(uint256 tokenId) public view override returns (string memory) {
+    function uri(uint256 tokenId)
+        public
+        view
+        override(ERC1155Singleton, IERC1155MetadataURI)
+        returns (string memory)
+    {
         return
             address(_uriRenderer) != address(0)
                 ? _uriRenderer.renderURI(this, tokenId)

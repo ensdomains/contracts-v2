@@ -121,6 +121,7 @@ import {
   waitForRpc,
   withRpcCompatibility,
   httpRpcProvider,
+  whileMiningBlocks,
   clearAccountDelegations,
 } from "./migrations/rpc.js";
 import {
@@ -589,6 +590,8 @@ export async function runPreMigrationCommand(
     v1BaseRegistrar?: Address;
     /// Every Graveyard on the chain; defaults to those the deployments record.
     graveyards?: readonly Address[];
+    /// Gas price limit in gwei; left out, the script's default applies.
+    maxGasPrice?: string;
     workDir?: string;
     dryRun?: boolean;
     metadataLabel?: string;
@@ -684,6 +687,7 @@ export async function runPreMigrationCommand(
     if (opts.dryRun) args.push("--dry-run");
     if (opts.bonusPeriodDays)
       args.push("--bonus-period-days", opts.bonusPeriodDays);
+    if (opts.maxGasPrice) args.push("--max-gas-price", opts.maxGasPrice);
     if (resume) args.push("--continue");
     await run(args);
 
@@ -720,10 +724,17 @@ const REHEARSAL_PREMIGRATION_ATTEMPTS = 3;
 /// does the same, a bounded number of times, so a name that keeps failing still fails
 /// the run. A retry pass carries the row cap forward rather than restarting it, so it
 /// retries the queued names without reading past the rows the first pass was given.
+///
+/// Pre-migration runs with the gas price limit a live run would have, and the chain
+/// mines an empty block every second meanwhile. A local fork otherwise mines only when
+/// a transaction arrives, so a paused run would never see the price fall.
 export async function runRehearsalPreMigration(
   opts: Parameters<typeof runPreMigrationCommand>[0] & { workDir: string },
   resume: boolean,
-  run: (args: string[]) => Promise<void> = preMigrationMain,
+  run: (args: string[]) => Promise<void> = (args) =>
+    whileMiningBlocks(httpRpcProvider(opts.rpcUrl), () =>
+      preMigrationMain(args),
+    ),
 ) {
   for (let attempt = 1; ; attempt++) {
     const checkpoint =
@@ -3656,11 +3667,11 @@ const EXPECTED_ROOT_ROLES: Record<
 > = {
   RootRegistry: [
     { deployment: "@deployer", roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT },
-    { deployment: "@owner", roles: ROLES.REGISTRY.CAN_NAME },
+    { deployment: "@owner", roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER },
   ],
   ETHRegistry: [
     { deployment: "@deployer", roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT },
-    { deployment: "@owner", roles: ROLES.REGISTRY.CAN_NAME },
+    { deployment: "@owner", roles: DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER },
     // Phase 1 defers the ETHRegistrar grant and phase 6 makes it, while BatchRegistrar
     // seeds pre-migration reservations until phase 6 strips its roles. What each should
     // hold therefore depends on which side of the handoff the audit runs.
@@ -7843,6 +7854,7 @@ type PremigrationRunCliOptions = NetworkCliOptions &
     batchSize?: string;
     limit?: string;
     bonusPeriodDays?: string;
+    maxGasPrice?: string;
     workDir?: string;
     dryRun?: boolean;
   };
@@ -7986,6 +7998,10 @@ export async function main(argv = process.argv): Promise<void> {
           .option(
             "--bonus-period-days <days>",
             "Days added to each name's v1 expiry to compute its v2 expiry",
+          )
+          .option(
+            "--max-gas-price <gwei>",
+            "Wait to send while the gas price (base fee plus median tip) is above this many gwei (default on mainnet: the median mainnet price; none elsewhere)",
           )
           .option("--work-dir <path>", "Directory for checkpoints and logs")
           .option("--dry-run", "Simulate without transactions", false),

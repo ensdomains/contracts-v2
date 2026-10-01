@@ -1,12 +1,31 @@
 [
   {
+    "deployment": "ENSRegistry",
+    "name": "registry.legacy.ens.eth"
+  },
+  {
     "deployment": "Root",
     "name": "root.legacy.ens.eth"
   },
   {
-    "deployment": "UniversalResolver",
-    "name": "universal.legacy.ens.eth",
-    "todo": "change to UniversalResolverV1"
+    "deployment": "BaseRegistrarImplementation",
+    "name": "registrar.legacy.ens.eth"
+  },
+  {
+    "deployment": "NameWrapper",
+    "name": "wrapper.legacy.ens.eth"
+  },
+  {
+    "deployment": "PublicResolver",
+    "name": "resolver.legacy.ens.eth"
+  },
+  {
+    "deployment": "UpgradableUniversalResolverProxy",
+    "name": "universal.ens.eth"
+  },
+  {
+    "deployment": "UniversalResolverV1",
+    "name": "impl.universal.legacy.ens.eth"
   },
   {
     "deployment": "ContractNamer",
@@ -32,6 +51,16 @@
     "deployment": "WrapperRegistryImpl",
     "name": "impl.wrapper-registry.ens.eth",
     "claim": "IContractNamer"
+  },
+  {
+    "deployment": "ENSURIRenderer",
+    "name": "uri-renderer.registry.ens.eth",
+    "claim": "Ownable"
+  },
+  {
+    "deployment": "BoxedENSURIRenderer",
+    "name": "boxed-uri-renderer.registry.ens.eth",
+    "claim": "Ownable"
   },
   {
     "deployment": "ENSV1Resolver",
@@ -60,7 +89,7 @@
   },
   {
     "deployment": "UniversalResolverV2",
-    "name": "universal.ens.eth",
+    "name": "impl.universal.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {

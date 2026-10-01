@@ -131,7 +131,10 @@ transactions afterwards.
   BigQuery for mainnet). See [premigration.md](./premigration.md) for the CSV format, expiry rule,
   checkpointing, and verification.
 - **Env / args:** BatchRegistrar owner key (`PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`,
-  or `DEPLOYER_KEY`); `--csv-file`, `--work-dir`, `--bonus-period-days` (default 62).
+  or `DEPLOYER_KEY`); `--csv-file`, `--work-dir`, `--bonus-period-days` (default 62),
+  `--max-gas-price <gwei>` (on mainnet, sends wait while the gas price is above the median mainnet
+  price by default, and never pay more than it; see
+  [Gas price limit](./premigration.md#gas-price-limit)).
   `build-index` needs `THEGRAPH_API_KEY` for the default subgraph source, or `--source rpc` and an
   RPC URL to read the v1 `BaseRegistrar` directly.
 - **Expected outcome:** every active or in-grace v1 `.eth` 2LD seeded as a **reserved** entry on v2,
@@ -949,7 +952,10 @@ node, so a rehearsal's pass can never unlock a live freeze.
 Every run starts its `<network>-fork` namespace empty, since the previous run's addresses exist only
 on a fork that is gone. The fork waits out a rate-limited upstream rather than failing the read, and a
 pre-migration pass that leaves names failed is retried twice from its checkpoint, as `--continue`
-would, before the failure counts.
+would, before the failure counts. Pre-migration runs with the gas price limit a live run on the
+same chain would have, so a mainnet rehearsal exercises the pause, the resume and the fee cap.
+Meanwhile the rehearsal mines an empty block every second: the fork otherwise mines only when a
+transaction arrives, so a paused run would never see the price fall.
 
 When the target chain has already completed the v1 hand-off, `fork full` detects this from the v1
 registrar-controller state — the run calls it **post-migration mode** — and skips the smoke checks
