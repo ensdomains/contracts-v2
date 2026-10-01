@@ -90,6 +90,7 @@ import {
 import {
   fetchWithDeadline,
   loadArtifact,
+  pollingIntervalFor,
   RPC_REPLY_DEADLINE_MS,
 } from "./scriptUtils.js";
 
@@ -1103,9 +1104,11 @@ function scanProgress(fromBlock: bigint, toBlock: bigint) {
 // Deploys the contracts pre-migration writes to on the fork, with the phase 1 deploy
 // scripts, and returns how to send a batch the way pre-migration does.
 async function deployOnFork(forkUrl: string, deploymentsDir: string) {
+  const pollingInterval = pollingIntervalFor(forkUrl);
   const client = createPublicClient({
     chain: mainnet,
     transport: http(forkUrl),
+    pollingInterval,
   });
   const deployer = getAddress(DEFAULT_ANVIL_DEPLOYER);
   const owner = getAddress(NETWORKS.mainnet.defaultOwner);
@@ -1134,6 +1137,7 @@ async function deployOnFork(forkUrl: string, deploymentsDir: string) {
     account: deployer,
     chain: mainnet,
     transport: http(forkUrl),
+    pollingInterval,
   }).extend(publicActions);
   const sender = {
     batchRegistrar: getContract({

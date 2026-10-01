@@ -21,7 +21,11 @@ import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createWalletClient, getAddress, parseEther } from "viem";
 
-import { fetchWithDeadline, RPC_REPLY_DEADLINE_MS } from "../scriptUtils.js";
+import {
+  fetchWithDeadline,
+  pollingIntervalFor,
+  RPC_REPLY_DEADLINE_MS,
+} from "../scriptUtils.js";
 import { bufferedGas } from "./fixture/config.js";
 import {
   errorMessageChain,
@@ -267,6 +271,7 @@ export function privateKeyRpcProvider({
       retryCount: RPC_RETRY_COUNT,
       fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
     }),
+    pollingInterval: pollingIntervalFor(rpcUrl),
   });
   const fallback = httpRpcProvider(rpcUrl);
   const normalizeTransaction = (transaction: any) => {
@@ -521,6 +526,7 @@ export function walletClient({
         { request: withGasBuffer(base(config).request) },
         { retryCount: 0 },
       )(config),
+    pollingInterval: pollingIntervalFor(rpcUrl),
   });
 }
 

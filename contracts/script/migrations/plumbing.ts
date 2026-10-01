@@ -24,7 +24,11 @@ import { keccak256, stringToHex } from "viem";
 import { mainnet, sepolia } from "viem/chains";
 
 import { SEC_PER_DAY } from "../deploy-constants.js";
-import { fetchWithDeadline, RPC_REPLY_DEADLINE_MS } from "../scriptUtils.js";
+import {
+  fetchWithDeadline,
+  pollingIntervalFor,
+  RPC_REPLY_DEADLINE_MS,
+} from "../scriptUtils.js";
 import { increaseTime } from "./rpc.js";
 
 import { config as rockethConfig } from "../../rocketh/config.js";
@@ -176,6 +180,7 @@ export function publicClient(
           retryCount: RPC_RETRY_COUNT,
           fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
         }),
+    pollingInterval: pollingIntervalFor(rpcUrl),
   });
 }
 
