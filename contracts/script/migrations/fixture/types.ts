@@ -154,6 +154,10 @@ export type FixtureRunName = {
   /// as it is registered, so an interrupted run can tell a finished name from
   /// one whose state is only part-shaped.
   setupComplete: boolean;
+  /// How many of the name's planned setup calls have landed, in plan order. A
+  /// resumed run continues the name from the next one. Absent on a name recorded
+  /// before the count was kept, which cannot be resumed.
+  callsDone?: number;
   /// The call a contract refused while shaping this name, and why. Such a name
   /// is left part-shaped while the rest of its run carries on.
   setupFailure?: string;

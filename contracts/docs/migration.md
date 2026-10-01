@@ -738,13 +738,18 @@ name by its declared v2 state like any other, because it remains a registered v1
 non-zero listing every set-aside name, and `verify-v1` reports them. Anything that is not a contract's
 refusal, such as a dropped connection, still stops the run where it is.
 
-It is resumable per name: a name whose setup finished is skipped, and one registered to anyone but a
-fixture actor aborts the run rather than shaping state against a name we do not control. A name whose
-registration landed but whose setup did not also aborts, naming the name and, for a set-aside one,
-the refusal — its state is part-shaped, and replaying setup over it would write against a name that
-has already moved on. Keep the work directory when that happens: it records the batcher that holds
-the name, and a fresh one deploys another and cannot reach it. Drop the name from the selection, or
-reseed against a fresh chain.
+It is resumable, so re-run the same command after an interruption — a dropped connection, a
+transaction that ran out of gas, a killed process. A name whose setup finished is skipped. A name
+whose registration landed but whose setup did not carries on from the first call that had not landed:
+`fixture-run.json` counts each name's landed calls after every transaction, and replanning yields the
+same calls in the same order. One registered to anyone but a fixture actor, the batcher or a corpus
+counterparty contract aborts the run rather than shaping state against a name we do not control.
+
+Two kinds of part-shaped name still abort, naming the name: one a contract refused (set aside, with
+the refusal), whose state its plan no longer expects, and one recorded by a run from before the count
+was kept, which cannot say where it stopped. Keep the work directory when that happens: it records
+the batcher that holds the name, and a fresh one deploys another and cannot reach it. Drop the name
+from the selection, or reseed against a fresh chain.
 
 > **Recompile first.** The counterparty contracts are deployed from the gitignored
 > `generated/artifacts/`. A tree compiled before they last changed fails at the first deployment with
