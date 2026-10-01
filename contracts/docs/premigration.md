@@ -245,8 +245,8 @@ mined. A checkpoint is saved after each batch.
 ### Gas price limit
 
 A batch is not sent while the gas price is above a limit, and no transaction pays more than the
-limit. The script reads the price again every 12 seconds, and sends as soon as it is at or below the
-limit. A pause has no time limit: it lasts until the price comes back down, however long that takes.
+limit. The script reads the price again every 12 seconds, or every 50 milliseconds when the RPC is
+on the local machine, and sends as soon as it is at or below the limit. A pause has no time limit: it lasts until the price comes back down, however long that takes.
 
 - **Gas price** is a base fee plus a tip. The live price is the higher of the latest and the next
   block's base fee, plus the median of the last 5 blocks' median tips (the 50th-percentile priority

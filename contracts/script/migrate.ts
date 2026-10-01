@@ -2430,8 +2430,9 @@ export async function readEventLogs(
 async function readControllerEventAddresses(
   client: ReturnType<typeof publicClient>,
   args: { address: Address; event: AbiEvent; toBlock: bigint },
+  retryDelayMs?: number,
 ): Promise<Address[]> {
-  const logs = await readEventLogs(client, args);
+  const logs = await readEventLogs(client, args, new QueryRetry(retryDelayMs));
   return logs.map((log) =>
     getAddress((log.args as { controller: Address }).controller),
   );
@@ -2442,11 +2443,16 @@ async function discoverV1ControllerAddresses(
   client: ReturnType<typeof publicClient>,
   address: Address,
   events: readonly AbiEvent[],
+  retryDelayMs?: number,
 ): Promise<Address[]> {
   const toBlock = await client.getBlockNumber();
   const discovered = await Promise.all(
     events.map((event) =>
-      readControllerEventAddresses(client, { address, event, toBlock }),
+      readControllerEventAddresses(
+        client,
+        { address, event, toBlock },
+        retryDelayMs,
+      ),
     ),
   );
   return discovered.flat();
@@ -2516,6 +2522,9 @@ type V1ControllerAuditOptions = {
   deploymentNetwork?: string;
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
+  // Wait before the first retry of a failed controller history query; each failure
+  // in a row adds as much again.
+  retryDelayMs?: number;
 };
 
 // Builds the full picture of the v1 authorizations a migration hands out, across
@@ -2682,6 +2691,7 @@ async function auditV1Controllers(
       opts.client,
       surface.authority.address,
       surface.events,
+      opts.retryDelayMs,
     );
 
     // Addresses the history turned up that no artifact accounts for. Each is

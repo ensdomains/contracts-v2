@@ -38,6 +38,24 @@ export function fetchWithDeadline(ms: number) {
   };
 }
 
+/// How often a client polls a node on this machine, such as for a receipt.
+const LOCAL_POLLING_INTERVAL_MS = 50;
+
+/// Host names that reach a node on this machine.
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]);
+
+/// The polling interval for a client of the node at `rpcUrl`.
+///
+/// A local node mines each transaction as it arrives, so it is polled at a short
+/// interval rather than at viem's default, which suits a public chain's block time
+/// and adds seconds to every wait. Any other node keeps viem's default.
+export function pollingIntervalFor(rpcUrl: string): number | undefined {
+  if (!URL.canParse(rpcUrl)) return undefined;
+  return LOCAL_HOSTNAMES.has(new URL(rpcUrl).hostname)
+    ? LOCAL_POLLING_INTERVAL_MS
+    : undefined;
+}
+
 /// Canonical CREATE2 Multicall3 deployment address, identical across EVM chains.
 const MULTICALL3_ADDRESS =
   "0xcA11bde05977b3631167028862bE2a173976CA11" as const;
@@ -101,7 +119,13 @@ export async function createV2Clients(opts: {
     fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
   });
 
-  const publicClient = createPublicClient({ chain, transport });
+  const pollingInterval = pollingIntervalFor(opts.rpcUrl);
+
+  const publicClient = createPublicClient({
+    chain,
+    transport,
+    pollingInterval,
+  });
 
   if (!opts.privateKey) {
     return { chain, account: null, publicClient, walletClient: null };
@@ -112,6 +136,7 @@ export async function createV2Clients(opts: {
     account,
     chain,
     transport,
+    pollingInterval,
   }).extend(publicActions);
 
   return { chain, account, publicClient, walletClient };

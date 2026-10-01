@@ -8,10 +8,8 @@
 
 import { Command } from "commander";
 import {
-  createWalletClient,
   encodeAbiParameters,
   getAddress,
-  http,
   keccak256,
   namehash,
   stringToHex,
@@ -50,6 +48,7 @@ import {
   runStatePath,
   v1Deployment,
   v2Deployment,
+  walletClient,
   withPriceBuffer,
 } from "./fixture/config.js";
 import { verifySeededV1State } from "./fixture/verifyV1.js";
@@ -195,11 +194,7 @@ async function ownerWallet(opts: CommonOptions, owner: Address) {
   if (key) {
     const account = privateKeyToAccount(key);
     if (sameAddress(account.address, owner)) {
-      return createWalletClient({
-        chain,
-        account,
-        transport: http(opts.rpcUrl),
-      });
+      return walletClient(chain, account, opts.rpcUrl);
     }
     if (!opts.rpcStateControls) {
       throw new Error(
@@ -210,11 +205,7 @@ async function ownerWallet(opts: CommonOptions, owner: Address) {
   if (!opts.rpcStateControls)
     throw new Error(`missing V1 owner key for ${owner}`);
   await impersonateAccount(opts, owner);
-  return createWalletClient({
-    chain,
-    account: owner,
-    transport: http(opts.rpcUrl),
-  });
+  return walletClient(chain, owner, opts.rpcUrl);
 }
 
 /// Ensures the official v1 controller can register.

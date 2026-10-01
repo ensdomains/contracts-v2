@@ -285,6 +285,8 @@ describe("v1 registrar freeze", () => {
       // These tests exercise the freeze itself; the reconciliation gate has its own
       // coverage below.
       skipPreconditions: true,
+      // A history query the test fails on purpose is retried without waiting.
+      retryDelayMs: 0,
       ...overrides,
     } as const;
   }

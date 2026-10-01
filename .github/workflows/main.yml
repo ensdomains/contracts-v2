@@ -23,18 +23,23 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
 
   e2e-tests:
-    name: E2E Tests
+    name: E2E Tests (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       # setup
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
 
+      # Each job runs its share of the test files, dealt out by path.
       - name: Run E2E tests
         run: |
           cd contracts && \
-          bun run test:e2e
+          bun run test:e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
   unit-tests:
     name: Unit Tests

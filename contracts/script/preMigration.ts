@@ -53,6 +53,7 @@ import { GRACE_PERIOD_V2, STATUS } from "./deploy-constants.js";
 import {
   fetchWithDeadline,
   loadArtifact,
+  pollingIntervalFor,
   resolveChain,
   RPC_REPLY_DEADLINE_MS,
 } from "./scriptUtils.js";
@@ -1090,6 +1091,7 @@ async function createMigrationClients(
       timeout: RPC_TIMEOUT_MS,
       fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
     }),
+    pollingInterval: pollingIntervalFor(config.rpcUrl),
   }).extend(publicActions);
 
   const mainnetClient = createPublicClient({
@@ -1099,6 +1101,7 @@ async function createMigrationClients(
       timeout: RPC_TIMEOUT_MS,
       fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
     }),
+    pollingInterval: pollingIntervalFor(config.mainnetRpcUrl),
   });
 
   const registryArtifact = loadArtifact("PermissionedRegistry");
@@ -1142,6 +1145,7 @@ async function fetchAndReserveInBatches(
       Math.floor(Number(block.gasLimit) * GAS_LIMIT_SAFETY_FACTOR),
     ),
     maxGasPrice: resolveMaxGasPrice(config.maxGasPrice, client.chain.id),
+    pollIntervalMs: pollingIntervalFor(config.rpcUrl),
   };
   logger.config("Block Gas Limit", block.gasLimit.toString());
   logger.config("Max Gas Per Batch", sender.maxGas.toString());
@@ -1671,6 +1675,9 @@ export interface BatchSender {
   /// Gas price a send waits to be at or below, and caps its fee at; null when there
   /// is no limit.
   maxGasPrice: bigint | null;
+  /// Wait between reads of the gas price or of a receipt while a send waits, and
+  /// before a failed read is first tried again. About one mainnet block when unset.
+  pollIntervalMs?: number;
 }
 
 export interface BatchSubmitResult {
@@ -1744,7 +1751,11 @@ export async function submitBatchWithBinaryFallback(
   const { batchRegistrar, client } = sender;
   const sent: Hex[] = [];
   for (;;) {
-    const fees = await waitForGasPriceAtOrBelow(client, sender.maxGasPrice);
+    const fees = await waitForGasPriceAtOrBelow(
+      client,
+      sender.maxGasPrice,
+      sender.pollIntervalMs,
+    );
     try {
       sent.push(
         await batchRegistrar.write.batchRegister(
@@ -1766,7 +1777,7 @@ export async function submitBatchWithBinaryFallback(
         `Could not send the batch again (${error instanceof BaseError ? error.shortMessage : String(error)}); waiting on its earlier transaction.`,
       );
     }
-    const receipt = await waitForInclusion(client, sent);
+    const receipt = await waitForInclusion(client, sent, sender.pollIntervalMs);
     if (receipt === null) {
       logger.warning(
         `Transaction ${sent[sent.length - 1]} was dropped before it was mined; the batch will be sent again once the gas price allows.`,
