@@ -9,6 +9,7 @@ import {
   keccak256,
   parseEther,
   stringToHex,
+  type Account,
   type Address,
   type Chain,
   type Hex,
@@ -24,6 +25,7 @@ import {
   NETWORKS,
   requireV1Deployment,
 } from "../plumbing.js";
+import { pollingIntervalFor } from "../../scriptUtils.js";
 import type {
   CommonOptions,
   FixtureActor,
@@ -354,14 +356,28 @@ export function requirePrivateKey(opts: CommonOptions): Hex {
 
 export function clients(opts: CommonOptions) {
   const chain = networkChain(opts.network, opts.rpcUrl, opts.chainId);
-  const client = createPublicClient({ chain, transport: http(opts.rpcUrl) });
+  const client = createPublicClient({
+    chain,
+    transport: http(opts.rpcUrl),
+    pollingInterval: pollingIntervalFor(opts.rpcUrl),
+  });
   const account = privateKeyToAccount(requirePrivateKey(opts));
-  const wallet = createWalletClient({
+  const wallet = walletClient(chain, account, opts.rpcUrl);
+  return { chain, client, wallet, account };
+}
+
+/// A wallet client that sends as `account` through the node at `rpcUrl`.
+export function walletClient(
+  chain: Chain,
+  account: Account | Address,
+  rpcUrl: string,
+) {
+  return createWalletClient({
     chain,
     account,
-    transport: http(opts.rpcUrl),
+    transport: http(rpcUrl),
+    pollingInterval: pollingIntervalFor(rpcUrl),
   });
-  return { chain, client, wallet, account };
 }
 
 /// Margin added over an estimated gas limit for batched writes.
