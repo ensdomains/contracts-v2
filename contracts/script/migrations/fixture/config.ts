@@ -364,22 +364,26 @@ export function clients(opts: CommonOptions) {
   return { chain, client, wallet, account };
 }
 
-/// Margin added over an estimated gas limit for batched writes.
+/// Margin added over an estimated gas limit for every write.
 ///
 /// A batch fans out into many nested calls, and a gas estimator that searches
 /// for the lowest passing limit can settle on one where the outermost frame
 /// keeps just enough for itself but a later inner call runs out. The estimate is
-/// then returned as valid and the transaction reverts out of gas. The margin is
-/// free on a rehearsal chain and harmless on a live one, where unused gas is not
-/// charged.
+/// then returned as valid and the transaction reverts out of gas. A load-balanced
+/// endpoint can also answer the estimate from a node that has not yet seen the
+/// sender's previous transaction, so a call whose cost depends on that state is
+/// under-estimated. The margin is free on a rehearsal chain and harmless on a live
+/// one, where unused gas is not charged.
 const GAS_BUFFER_BPS = 3_000n;
+
+export const withGasBuffer = (estimate: bigint): bigint =>
+  estimate + (estimate * GAS_BUFFER_BPS) / 10_000n;
 
 export async function bufferedGas(
   client: any,
   request: Record<string, unknown>,
 ): Promise<bigint> {
-  const estimate = (await client.estimateContractGas(request)) as bigint;
-  return estimate + (estimate * GAS_BUFFER_BPS) / 10_000n;
+  return withGasBuffer((await client.estimateContractGas(request)) as bigint);
 }
 
 /// Price is quoted before the transaction lands, so a buffer absorbs movement

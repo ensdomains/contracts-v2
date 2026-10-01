@@ -26,6 +26,7 @@ import {
   receipt,
   rpcAny,
   v1Deployment,
+  withGasBuffer,
   withPriceBuffer,
 } from "./config.js";
 import { EthRegistrarController } from "../abis.js";
@@ -333,10 +334,15 @@ async function executeAsActor(
 ): Promise<Hex | undefined> {
   const wallet = await actorWallet(ex, alias);
   try {
-    const hash = await wallet.sendTransaction({
+    const request = {
+      account: wallet.account,
       to: call.target,
       data: call.data,
       value: await resolveCallValue(ex, call),
+    };
+    const hash = await wallet.sendTransaction({
+      ...request,
+      gas: withGasBuffer(await ex.client.estimateGas(request)),
     });
     await receipt(ex.client, hash, `${alias}: ${call.label}`);
     return hash;
