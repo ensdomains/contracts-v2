@@ -603,6 +603,11 @@ Re-running is safe: contracts already verified on a backend are skipped. `--ethe
 through to `rocketh-verify`. A failure is reported by name and exits non-zero only after the rest of
 the set has been attempted, so one failure does not hide the others.
 
+Etherscan answers only a few calls per second per API key, and its "already verified" lookups count
+against the same budget, so requests are spaced 500 ms apart by default. Pass `--min-interval <ms>`
+to change that. A submission Etherscan refuses (a rate limit, say) counts as a failure, so re-run
+the command to retry the contracts it names.
+
 ## ENSv1 test fixture corpus
 
 An optional corpus of ENSv1 names, registered so the migration phases run against realistic v1 state
