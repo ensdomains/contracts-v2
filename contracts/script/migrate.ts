@@ -1245,9 +1245,10 @@ export async function reconcilePreMigration(opts: {
   // How far the CSV's and the index's claimable counts may differ before the
   // reconciliation fails. Defaults to no difference.
   crossSourceTolerance?: string;
-  // A fixture work directory, whose seeded names pre-migration leaves unreserved on
-  // purpose are listed apart rather than counted as missing.
-  fixtureWorkDir?: string;
+  // Fixture work directories, whose seeded names pre-migration leaves unreserved on
+  // purpose are listed apart rather than counted as missing. A chain can carry more
+  // than one seeded cohort, each in its own work directory.
+  fixtureWorkDirs?: string[];
   // Names renewed on v1 after the index was built. The index reads v1 state at a
   // block the renewal is not in, so their v2 expiry is checked for extension rather
   // than for equality with what the index reports.
@@ -1406,8 +1407,8 @@ export async function reconcilePreMigration(opts: {
       ? readEncodedLabelhashRows(opts.csvFile)
       : new Map<string, string>();
   const keptOut = new Map<string, { label: string; state: string }>();
-  if (opts.fixtureWorkDir) {
-    for (const name of keptUnreservedFixtureNames(opts.fixtureWorkDir)) {
+  for (const workDir of opts.fixtureWorkDirs ?? []) {
+    for (const name of keptUnreservedFixtureNames(workDir)) {
       keptOut.set(
         toLabelhashHex(canonicalLabelId(keccak256(stringToHex(name.label)))),
         name,
@@ -8318,7 +8319,8 @@ export async function main(argv = process.argv): Promise<void> {
             )
             .option(
               "--fixture-work-dir <path>",
-              "Work directory of a seeded fixture corpus: names it leaves unreserved on purpose are listed apart rather than counted as missing",
+              "Work directory of a seeded fixture corpus: names it leaves unreserved on purpose are listed apart rather than counted as missing; repeat for each seeded cohort",
+              (value: string, previous: string[] = []) => [...previous, value],
             ),
         ),
       ),
@@ -8337,12 +8339,16 @@ export async function main(argv = process.argv): Promise<void> {
           checkFuses?: boolean;
           bonusPeriodDays?: string;
           crossSourceTolerance?: string;
-          fixtureWorkDir?: string;
+          fixtureWorkDir?: string[];
           deploymentsDir?: string;
           deploymentNetwork?: string;
         },
       ) => {
-        await reconcilePreMigration({ ...withNetworkRpc(opts) });
+        const { fixtureWorkDir, ...rest } = opts;
+        await reconcilePreMigration({
+          ...withNetworkRpc(rest),
+          fixtureWorkDirs: fixtureWorkDir,
+        });
       },
     ),
   );

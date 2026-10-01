@@ -889,7 +889,8 @@ separate checkpoints.
 
 The names left out are still live v1 names. `premigration reconcile` checks every registration on the
 chain, so it would count them as missing and keep the phase 3 gate shut. Pass the fixture work
-directory with `--fixture-work-dir` and reconcile lists them under "kept unreserved by the fixture
+directory with `--fixture-work-dir` (repeat the flag for each seeded cohort, when a chain carries more
+than one) and reconcile lists them under "kept unreserved by the fixture
 corpus" instead. It reads which names were seeded from `fixture-run.json`, and what each one needs
 from the corpus that run used. If a name that must stay absent is reserved on v2, reconcile reports it
 as unexpected, because the case its scenario tests is gone:
