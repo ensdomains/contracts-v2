@@ -1,10 +1,8 @@
 import {
   BaseError,
   ContractFunctionRevertedError,
-  createWalletClient,
   decodeErrorResult,
   ExecutionRevertedError,
-  http,
   isHex,
   type Abi,
   type Address,
@@ -26,6 +24,7 @@ import {
   receipt,
   rpcAny,
   v1Deployment,
+  walletClient,
   withPriceBuffer,
 } from "./config.js";
 import { EthRegistrarController } from "../abis.js";
@@ -319,11 +318,7 @@ export async function actorWallet(ex: Executor, alias: string) {
   // Actors are local HD accounts that sign their own transactions, so they only
   // need a balance — unlocking them at the node would do nothing.
   await fundAccount(ex.opts, actor.account.address);
-  return createWalletClient({
-    chain: ex.chain,
-    account: actor.account,
-    transport: http(ex.opts.rpcUrl),
-  });
+  return walletClient(ex.chain, actor.account, ex.opts.rpcUrl);
 }
 
 async function executeAsActor(

@@ -65,6 +65,7 @@ library RegistryRolesLib {
     /// @dev Root roles that violate token emancipation.
     ///      Does not include `ROLE_RENEW` and `ROLE_RENEW_ADMIN`.
     uint256 internal constant UNEMANCIPATED_ROLE_BITMAP =
+        ROLE_CAN_TRANSFER_ADMIN |
         ROLE_SET_SUBREGISTRY |
         ROLE_SET_SUBREGISTRY_ADMIN |
         ROLE_SET_RESOLVER |

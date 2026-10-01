@@ -21,6 +21,11 @@ import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createWalletClient, getAddress, parseEther } from "viem";
 
+import {
+  fetchWithDeadline,
+  pollingIntervalFor,
+  RPC_REPLY_DEADLINE_MS,
+} from "../scriptUtils.js";
 import { bufferedGas } from "./fixture/config.js";
 import {
   errorMessageChain,
@@ -221,6 +226,7 @@ export function httpRpcProvider(rpcUrl: string): RpcProvider {
       const response = await fetch(rpcUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: AbortSignal.timeout(RPC_REPLY_DEADLINE_MS),
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: ++id,
@@ -261,7 +267,11 @@ export function privateKeyRpcProvider({
   const client = createWalletClient({
     account,
     chain,
-    transport: http(rpcUrl, { retryCount: RPC_RETRY_COUNT }),
+    transport: http(rpcUrl, {
+      retryCount: RPC_RETRY_COUNT,
+      fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
+    }),
+    pollingInterval: pollingIntervalFor(rpcUrl),
   });
   const fallback = httpRpcProvider(rpcUrl);
   const normalizeTransaction = (transaction: any) => {
@@ -502,7 +512,10 @@ export function walletClient({
   }
   const base = provider
     ? custom(provider as any)
-    : http(rpcUrl, { retryCount: RPC_RETRY_COUNT });
+    : http(rpcUrl, {
+        retryCount: RPC_RETRY_COUNT,
+        fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
+      });
   return createWalletClient({
     account: walletAccount,
     chain,
@@ -513,6 +526,7 @@ export function walletClient({
         { request: withGasBuffer(base(config).request) },
         { retryCount: 0 },
       )(config),
+    pollingInterval: pollingIntervalFor(rpcUrl),
   });
 }
 

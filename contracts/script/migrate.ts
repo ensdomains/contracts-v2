@@ -82,7 +82,8 @@ import {
   runFixtureSeedStage,
 } from "./migrations/fixture.js";
 import { ACTOR_ALIASES, bufferedGas } from "./migrations/fixture/config.js";
-import { isLogSpanRefusalMessage } from "./migrations/logSpanRefusal.js";
+import { isLogSpanRefusal } from "./migrations/logSpanRefusal.js";
+import { QueryRetry } from "./migrations/queryRetry.js";
 import {
   executePreparedOwnerTransactions,
   preparedOwnerTransactionLabel,
@@ -234,7 +235,7 @@ import {
 
 const DEFAULT_ANVIL_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
-const DEFAULT_ANVIL_DEPLOYER =
+export const DEFAULT_ANVIL_DEPLOYER =
   "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266" as const;
 const DEFAULT_ANVIL_OWNER =
   "0x70997970c51812dc3a010c7d01b50e0d17dc79c8" as const;
@@ -247,8 +248,8 @@ const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 
 /// How many times the rehearsal's Anvil retries a refused upstream read, and the
 /// initial wait between tries. Sized to outlast a provider's rate-limit window.
-const FORK_UPSTREAM_RETRIES = 50;
-const FORK_UPSTREAM_RETRY_BACKOFF_MS = 2_000;
+export const FORK_UPSTREAM_RETRIES = 50;
+export const FORK_UPSTREAM_RETRY_BACKOFF_MS = 2_000;
 
 /// v1 and v2 surfaces the phases read and write, each as narrow as its use.
 /// The reads are issued in batches, and `multicall` infers a result type per
@@ -2370,25 +2371,24 @@ type ScannedLog = {
   transactionHash: `0x${string}`;
 };
 
-function isLogSpanRefusal(error: unknown): boolean {
-  return isLogSpanRefusalMessage(errorMessageChain(error).join(" "));
-}
-
 // One event's logs over a block range, in ascending block order. Providers cap
 // `eth_getLogs` by block span or by result count, and a load-balanced endpoint may
 // apply a cap to only some requests, so a refused span is bisected and each half
 // requested in turn. The widest span the provider has accepted is carried across the
-// scan, so the cap is discovered once rather than rediscovered per subrange. The
-// blocks covered are the same either way; a refusal at the smallest span, or any
-// error that is not about the span, raises.
-async function readEventLogs(
-  client: ReturnType<typeof publicClient>,
+// scan, so the cap is discovered once rather than rediscovered per subrange. A
+// load-balanced endpoint also fails some requests at random, so any other error is
+// retried as `QueryRetry` allows, bisecting the span while it is above the smallest.
+// The blocks covered are the same either way; a refusal at the smallest span, or a
+// failure past the retry limit, raises.
+export async function readEventLogs(
+  client: Pick<ReturnType<typeof publicClient>, "getLogs">,
   args: {
     address: Address;
     event: AbiEvent;
     fromBlock?: bigint;
     toBlock: bigint;
   },
+  retry = new QueryRetry(),
 ): Promise<ScannedLog[]> {
   let acceptedSpan: bigint | undefined;
 
@@ -2412,11 +2412,17 @@ async function readEventLogs(
         fromBlock,
         toBlock,
       });
+      retry.served();
       if (acceptedSpan === undefined || span > acceptedSpan)
         acceptedSpan = span;
       return logs as unknown as ScannedLog[];
     } catch (error) {
-      if (!isLogSpanRefusal(error) || span <= LOG_SCAN_MIN_SPAN) throw error;
+      if (isLogSpanRefusal(error)) {
+        if (span <= LOG_SCAN_MIN_SPAN) throw error;
+      } else {
+        await retry.failed(error);
+        if (span <= LOG_SCAN_MIN_SPAN) return readSpan(fromBlock, toBlock);
+      }
       return bisect();
     }
   };
@@ -2427,8 +2433,9 @@ async function readEventLogs(
 async function readControllerEventAddresses(
   client: ReturnType<typeof publicClient>,
   args: { address: Address; event: AbiEvent; toBlock: bigint },
+  retryDelayMs?: number,
 ): Promise<Address[]> {
-  const logs = await readEventLogs(client, args);
+  const logs = await readEventLogs(client, args, new QueryRetry(retryDelayMs));
   return logs.map((log) =>
     getAddress((log.args as { controller: Address }).controller),
   );
@@ -2439,11 +2446,16 @@ async function discoverV1ControllerAddresses(
   client: ReturnType<typeof publicClient>,
   address: Address,
   events: readonly AbiEvent[],
+  retryDelayMs?: number,
 ): Promise<Address[]> {
   const toBlock = await client.getBlockNumber();
   const discovered = await Promise.all(
     events.map((event) =>
-      readControllerEventAddresses(client, { address, event, toBlock }),
+      readControllerEventAddresses(
+        client,
+        { address, event, toBlock },
+        retryDelayMs,
+      ),
     ),
   );
   return discovered.flat();
@@ -2513,6 +2525,9 @@ type V1ControllerAuditOptions = {
   deploymentNetwork?: string;
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
+  // Wait before the first retry of a failed controller history query; each failure
+  // in a row adds as much again.
+  retryDelayMs?: number;
 };
 
 // Builds the full picture of the v1 authorizations a migration hands out, across
@@ -2679,6 +2694,7 @@ async function auditV1Controllers(
       opts.client,
       surface.authority.address,
       surface.events,
+      opts.retryDelayMs,
     );
 
     // Addresses the history turned up that no artifact accounts for. Each is

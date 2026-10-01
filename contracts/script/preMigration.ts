@@ -50,7 +50,13 @@ import {
 } from "./logger.js";
 
 import { GRACE_PERIOD_V2, STATUS } from "./deploy-constants.js";
-import { loadArtifact, resolveChain } from "./scriptUtils.js";
+import {
+  fetchWithDeadline,
+  loadArtifact,
+  pollingIntervalFor,
+  resolveChain,
+  RPC_REPLY_DEADLINE_MS,
+} from "./scriptUtils.js";
 import {
   BaseRegistrar,
   EnsRegistry,
@@ -740,6 +746,13 @@ interface V1VerificationResult {
 /// Largest expiry the registry can store, since expiries are `uint64`.
 export const MAX_UINT64 = 2n ** 64n - 1n;
 
+/// Names sent in one `batchRegister` transaction unless a run asks for another size.
+export const DEFAULT_BATCH_SIZE = 50;
+
+/// Days added to a v1 expiry unless a run asks for another bonus. It is v1's grace
+/// period less v2's, so a name's v2 reservation lapses when its v1 grace ends.
+export const DEFAULT_BONUS_PERIOD_DAYS = 62;
+
 /// The v2 expiry a v1 name should end up with: its v1 expiry plus the bonus period,
 /// capped at what the registry can store.
 ///
@@ -787,7 +800,7 @@ async function readChainTimestamp(client: any): Promise<bigint> {
 /// in the run gets its v2 expiry from this, so a typo would seed the whole set
 /// against the wrong bonus.
 function parseBonusPeriodDays(value: string | undefined): number {
-  if (value === undefined || value === "") return 62;
+  if (value === undefined || value === "") return DEFAULT_BONUS_PERIOD_DAYS;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
     throw new Error(
@@ -1061,7 +1074,12 @@ async function createMigrationClients(
   const client = createWalletClient({
     account,
     chain: v2Chain,
-    transport: http(config.rpcUrl, { retryCount: 0, timeout: RPC_TIMEOUT_MS }),
+    transport: http(config.rpcUrl, {
+      retryCount: 0,
+      timeout: RPC_TIMEOUT_MS,
+      fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
+    }),
+    pollingInterval: pollingIntervalFor(config.rpcUrl),
   }).extend(publicActions);
 
   const mainnetClient = createPublicClient({
@@ -1069,7 +1087,9 @@ async function createMigrationClients(
     transport: http(config.mainnetRpcUrl, {
       retryCount: 0,
       timeout: RPC_TIMEOUT_MS,
+      fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
     }),
+    pollingInterval: pollingIntervalFor(config.mainnetRpcUrl),
   });
 
   const registryArtifact = loadArtifact("PermissionedRegistry");
@@ -1113,6 +1133,7 @@ async function fetchAndReserveInBatches(
       Math.floor(Number(block.gasLimit) * GAS_LIMIT_SAFETY_FACTOR),
     ),
     maxGasPrice: resolveMaxGasPrice(config.maxGasPrice, client.chain.id),
+    pollIntervalMs: pollingIntervalFor(config.rpcUrl),
   };
   logger.config("Block Gas Limit", block.gasLimit.toString());
   logger.config("Max Gas Per Batch", sender.maxGas.toString());
@@ -1427,7 +1448,8 @@ export function blockGasPrices(history: FeeHistory): bigint[] {
   );
 }
 
-function median(values: readonly bigint[]): bigint {
+/// The middle value, or the mean of the two middle values when there is an even count.
+export function median(values: readonly bigint[]): bigint {
   const sorted = [...values].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const mid = sorted.length >> 1;
   return sorted.length % 2 === 1
@@ -1641,6 +1663,9 @@ export interface BatchSender {
   /// Gas price a send waits to be at or below, and caps its fee at; null when there
   /// is no limit.
   maxGasPrice: bigint | null;
+  /// Wait between reads of the gas price or of a receipt while a send waits, and
+  /// before a failed read is first tried again. About one mainnet block when unset.
+  pollIntervalMs?: number;
 }
 
 export interface BatchSubmitResult {
@@ -1714,7 +1739,11 @@ export async function submitBatchWithBinaryFallback(
   const { batchRegistrar, client } = sender;
   const sent: Hex[] = [];
   for (;;) {
-    const fees = await waitForGasPriceAtOrBelow(client, sender.maxGasPrice);
+    const fees = await waitForGasPriceAtOrBelow(
+      client,
+      sender.maxGasPrice,
+      sender.pollIntervalMs,
+    );
     try {
       sent.push(
         await batchRegistrar.write.batchRegister(
@@ -1736,7 +1765,7 @@ export async function submitBatchWithBinaryFallback(
         `Could not send the batch again (${error instanceof BaseError ? error.shortMessage : String(error)}); waiting on its earlier transaction.`,
       );
     }
-    const receipt = await waitForInclusion(client, sent);
+    const receipt = await waitForInclusion(client, sent, sender.pollIntervalMs);
     if (receipt === null) {
       logger.warning(
         `Transaction ${sent[sent.length - 1]} was dropped before it was mined; the batch will be sent again once the gas price allows.`,
@@ -2120,7 +2149,7 @@ export async function main(argv = process.argv): Promise<void> {
     .option(
       "--batch-size <number>",
       "Number of names to process per batch",
-      "50",
+      String(DEFAULT_BATCH_SIZE),
     )
     .option(
       "--start-index <number>",
@@ -2140,7 +2169,7 @@ export async function main(argv = process.argv): Promise<void> {
     .option(
       "--bonus-period-days <days>",
       "Days added to each name's v1 expiry to compute its v2 expiry",
-      "62",
+      String(DEFAULT_BONUS_PERIOD_DAYS),
     )
     .requiredOption(
       "--v1-resolver <address>",

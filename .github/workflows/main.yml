@@ -11,6 +11,7 @@ jobs:
   check-types:
     name: Check Types
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # setup
       - uses: actions/checkout@v5
@@ -22,21 +23,28 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
 
   e2e-tests:
-    name: E2E Tests
+    name: E2E Tests (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       # setup
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
 
+      # Each job runs its share of the test files, dealt out by path.
       - name: Run E2E tests
         run: |
           cd contracts && \
-          bun run test:e2e
+          bun run test:e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # setup
       - uses: actions/checkout@v5
@@ -54,6 +62,7 @@ jobs:
   forge-tests:
     name: Forge Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       # setup
       - uses: actions/checkout@v5
@@ -81,6 +90,7 @@ jobs:
   hardhat-tests:
     name: Hardhat Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       # setup
       - uses: actions/checkout@v5
@@ -110,6 +120,7 @@ jobs:
     name: Notify Coverage
     needs: [forge-tests, hardhat-tests]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -126,6 +137,7 @@ jobs:
   lint:
     name: Lint and Format
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # setup
       - uses: actions/checkout@v5
@@ -145,6 +157,7 @@ jobs:
     if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
     needs: [check-types, e2e-tests, forge-tests, hardhat-tests, unit-tests, lint]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
