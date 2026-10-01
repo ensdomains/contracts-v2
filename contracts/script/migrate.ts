@@ -168,6 +168,7 @@ import {
   createFreshCheckpoint,
   FailedNamesError,
   csvLabelCell,
+  csvLabelColumnIndex,
   isEncodedLabelhash,
   isValidLabel,
   loadCheckpoint,
@@ -401,13 +402,6 @@ function countClaimableCsvRows(
   };
 }
 
-function csvLabelColumnIndex(header: string[]): number {
-  const normalized = header.map((field) => field.trim().toLowerCase());
-  const labelNameIndex = normalized.indexOf("labelname");
-  if (labelNameIndex >= 0) return labelNameIndex;
-  return normalized.indexOf("label");
-}
-
 /// A label CSV opened for reading: its rows, its header fields, and where the label
 /// column sits.
 ///
@@ -429,7 +423,9 @@ function openLabelCsv(csvFile: string): {
   const header = parseCSVLine(lines[0]);
   const labelIndex = csvLabelColumnIndex(header);
   if (labelIndex < 0) {
-    throw new Error(`CSV must contain a labelName or label column: ${csvFile}`);
+    throw new Error(
+      `CSV must contain a labelName or label column, or a Dune export's name beside full_name: ${csvFile}`,
+    );
   }
   return { header, rows: lines.slice(1), labelIndex };
 }

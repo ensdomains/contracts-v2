@@ -107,9 +107,11 @@ bun run script/preMigration.ts [options]
 ## CSV input
 
 Parsing is **header-driven**: the first line is the header, the label column is located by name,
-everything else is ignored. Two column names are accepted (case-insensitive, trimmed): **`labelName`**
-(v1 subgraph schema, preferred) or **`label`** (the `exportTheGraphRegistrations.ts` exporter). Both
-work with no flag:
+everything else is ignored. These columns are accepted (case-insensitive, trimmed), in this order of
+preference: **`labelName`** (v1 subgraph schema), **`label`** (the `exportTheGraphRegistrations.ts`
+exporter), and **`name`** when a **`full_name`** column sits beside it (a Dune export, which puts the
+bare label in `name`). A `name` column on its own is not used, because the subgraph schema puts the
+full name there. All work with no flag:
 
 ```csv
 node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate
@@ -121,12 +123,16 @@ name,label,labelhash,registrant,expiryDate,registrationDate
 vitalik.eth,vitalik,0x...,0x...,...,...
 ```
 
+```csv
+name,full_name,labelhash,namehash,expiration_date,release_date,expires_raw,status
+vitalik,vitalik.eth,0x...,0x...,...,...,...,active
+```
+
 Quoted fields and `""`-escaped quotes are handled; a UTF-8 BOM, a single trailing blank line, and CRLF
 endings are tolerated.
 
 **Strict structural parsing.** Any structural problem aborts the run with the CSV path and 1-based
-line number (header = line 1); fix the file and re-run. Aborts on: missing both `labelName` and
-`label` columns; unbalanced quotes (header or row); a data row whose column count differs from the
+line number (header = line 1); fix the file and re-run. Aborts on: no label column (none of the above); unbalanced quotes (header or row); a data row whose column count differs from the
 header; an empty/whitespace-only label cell; a blank line anywhere but a single trailing one; an empty
 file.
 
