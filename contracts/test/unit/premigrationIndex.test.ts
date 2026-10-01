@@ -9,6 +9,7 @@ import {
   assertIndependentSource,
   buildV1NameIndex,
   buildV1NameIndexFromRpc,
+  createRpcIndexClient,
   loadV1NameIndex,
   readV1NameIndexMeta,
   RangeTooWideError,
@@ -254,12 +255,14 @@ type Registration = { id: string; block: number; expiry: bigint };
 
 // A chain holding `registrations`. `maxLogs` mimics a provider that refuses a query
 // returning too many results, so the range-narrowing walk can be exercised.
-// `failAt` makes the scan throw once the given block is reached.
+// `failAt` makes the scan throw once the given block is reached. `flaky` fails every
+// other log query, as a load-balanced provider fails some at random.
 function fakeChain(
   registrations: Registration[],
-  opts: { maxLogs?: number; failAt?: number } = {},
+  opts: { maxLogs?: number; failAt?: number; flaky?: boolean } = {},
 ) {
-  const calls = { logs: 0, expiries: 0 };
+  const calls = { logs: 0, expiries: 0, failed: 0 };
+  let queries = 0;
   const client: RpcIndexClient = {
     async getBlockNumber() {
       return RPC_HEAD;
@@ -267,6 +270,10 @@ function fakeChain(
     async getRegisteredIds(fromBlock, toBlock) {
       if (opts.failAt !== undefined && toBlock >= opts.failAt) {
         throw new Error("simulated rpc failure");
+      }
+      if (opts.flaky && queries++ % 2 === 0) {
+        calls.failed++;
+        throw new Error("Temporary internal error. Please retry");
       }
       calls.logs++;
       const hits = registrations.filter(
@@ -303,6 +310,7 @@ function buildFromRpc(
       batchSize: opts.batchSize ?? 2,
       resume: opts.resume,
       now: NOW,
+      retryDelayMs: 0,
     },
     client,
   );
@@ -387,6 +395,22 @@ describe("premigrationIndex from chain logs", () => {
     expect(meta.entries).toBe(8);
     // Narrowing means more queries than windows, which is the point.
     expect(calls.logs).toBeGreaterThan(2);
+  });
+
+  it("asks again after a log query fails at random", async () => {
+    const dir = workDir();
+    const { client, calls } = fakeChain(
+      Array.from({ length: 8 }, (_, i) =>
+        registered(i + 1, 3_710_000 + i * 20_000),
+      ),
+      { flaky: true },
+    );
+
+    const meta = await buildFromRpc(dir, client);
+
+    expect(calls.failed).toBeGreaterThan(0);
+    expect(meta.complete).toBe(true);
+    expect(meta.entries).toBe(8);
   });
 
   it("drops names released long ago but keeps names inside grace", async () => {
@@ -516,5 +540,44 @@ describe("assertIndexCoversChainTime", () => {
         NOW,
       ),
     ).toThrow(/predates/);
+  });
+});
+
+describe("createRpcIndexClient log refusals", () => {
+  // A node whose `eth_getLogs` fails with `error`.
+  const failingClient = (error: Error) =>
+    createRpcIndexClient({
+      client: {
+        getBlockNumber: async () => 1n,
+        getBlock: async () => ({ timestamp: 0n }),
+        request: async () => {
+          throw error;
+        },
+        multicall: async () => [],
+      },
+      baseRegistrar: "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85",
+    });
+
+  it("asks for less when the refusal is only in the error's data", async () => {
+    // Tenderly's shape: a generic message, and the reason in the data.
+    const error = Object.assign(
+      new Error("RPC Request failed.\n\nDetails: invalid params"),
+      {
+        details: "invalid params",
+        data: "Query returned more than 20000 results. Try with this block range [0x1, 0x2].",
+      },
+    );
+    await expect(
+      failingClient(error).getRegisteredIds(1, 100),
+    ).rejects.toBeInstanceOf(RangeTooWideError);
+  });
+
+  it("passes on a failure that is not about the range", async () => {
+    const error = Object.assign(new Error("RPC Request failed."), {
+      details: "rate limit exceeded",
+    });
+    await expect(failingClient(error).getRegisteredIds(1, 100)).rejects.toBe(
+      error,
+    );
   });
 });

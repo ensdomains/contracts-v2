@@ -50,7 +50,12 @@ import {
 } from "./logger.js";
 
 import { GRACE_PERIOD_V2, STATUS } from "./deploy-constants.js";
-import { loadArtifact, resolveChain } from "./scriptUtils.js";
+import {
+  fetchWithDeadline,
+  loadArtifact,
+  resolveChain,
+  RPC_REPLY_DEADLINE_MS,
+} from "./scriptUtils.js";
 import {
   BaseRegistrar,
   EnsRegistry,
@@ -740,6 +745,13 @@ interface V1VerificationResult {
 /// Largest expiry the registry can store, since expiries are `uint64`.
 export const MAX_UINT64 = 2n ** 64n - 1n;
 
+/// Names sent in one `batchRegister` transaction unless a run asks for another size.
+export const DEFAULT_BATCH_SIZE = 50;
+
+/// Days added to a v1 expiry unless a run asks for another bonus. It is v1's grace
+/// period less v2's, so a name's v2 reservation lapses when its v1 grace ends.
+export const DEFAULT_BONUS_PERIOD_DAYS = 62;
+
 /// The v2 expiry a v1 name should end up with: its v1 expiry plus the bonus period,
 /// capped at what the registry can store.
 ///
@@ -787,7 +799,7 @@ async function readChainTimestamp(client: any): Promise<bigint> {
 /// in the run gets its v2 expiry from this, so a typo would seed the whole set
 /// against the wrong bonus.
 function parseBonusPeriodDays(value: string | undefined): number {
-  if (value === undefined || value === "") return 62;
+  if (value === undefined || value === "") return DEFAULT_BONUS_PERIOD_DAYS;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
     throw new Error(
@@ -1061,7 +1073,11 @@ async function createMigrationClients(
   const client = createWalletClient({
     account,
     chain: v2Chain,
-    transport: http(config.rpcUrl, { retryCount: 0, timeout: RPC_TIMEOUT_MS }),
+    transport: http(config.rpcUrl, {
+      retryCount: 0,
+      timeout: RPC_TIMEOUT_MS,
+      fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
+    }),
   }).extend(publicActions);
 
   const mainnetClient = createPublicClient({
@@ -1069,6 +1085,7 @@ async function createMigrationClients(
     transport: http(config.mainnetRpcUrl, {
       retryCount: 0,
       timeout: RPC_TIMEOUT_MS,
+      fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
     }),
   });
 
@@ -1427,7 +1444,8 @@ export function blockGasPrices(history: FeeHistory): bigint[] {
   );
 }
 
-function median(values: readonly bigint[]): bigint {
+/// The middle value, or the mean of the two middle values when there is an even count.
+export function median(values: readonly bigint[]): bigint {
   const sorted = [...values].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const mid = sorted.length >> 1;
   return sorted.length % 2 === 1
@@ -2120,7 +2138,7 @@ export async function main(argv = process.argv): Promise<void> {
     .option(
       "--batch-size <number>",
       "Number of names to process per batch",
-      "50",
+      String(DEFAULT_BATCH_SIZE),
     )
     .option(
       "--start-index <number>",
@@ -2140,7 +2158,7 @@ export async function main(argv = process.argv): Promise<void> {
     .option(
       "--bonus-period-days <days>",
       "Days added to each name's v1 expiry to compute its v2 expiry",
-      "62",
+      String(DEFAULT_BONUS_PERIOD_DAYS),
     )
     .requiredOption(
       "--v1-resolver <address>",

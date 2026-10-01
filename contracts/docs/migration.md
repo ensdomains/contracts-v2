@@ -140,6 +140,8 @@ transactions afterwards.
 - **Expected outcome:** every active or in-grace v1 `.eth` 2LD seeded as a **reserved** entry on v2,
   with v2 expiry = v1 expiry + bonus period, except names whose v1 registrant is a `Graveyard` (see
   below). `premigration reconcile` confirms it in both directions.
+- **Cost:** `bun run premigration:cost` estimates this phase's ETH cost on mainnet at the mean and
+  median gas price of the last 14 days. See [premigration.md](./premigration.md#cost-estimate).
 
 > **Why reconcile rather than verify.** `premigration verify` reads its list of names from the CSV, so
 > a name the CSV never contained is invisible to it and the check passes. `premigration reconcile`
@@ -185,7 +187,9 @@ transactions afterwards.
 > ```
 >
 > The scan starts at the registrar's recorded deploy block and narrows its range whenever a provider
-> refuses the span, so a rate-limited endpoint slows the walk rather than failing it. Both phases
+> refuses the span. A query that fails for any other reason is asked again for a narrower range
+> after a wait that grows with each failure in a row, and the build stops after 8 failures in a row.
+> So a rate-limited or load-balanced endpoint slows the walk rather than failing it. Both phases
 > checkpoint, so `--resume` continues an interrupted build at a block boundary. A partial index built
 > from one source refuses to resume as the other.
 >

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
-import { isLogSpanRefusalMessage } from "../../script/migrations/logSpanRefusal.js";
+import {
+  isLogSpanRefusal,
+  isLogSpanRefusalMessage,
+} from "../../script/migrations/logSpanRefusal.js";
 
 // The messages real providers answer an over-wide `eth_getLogs` with. Getting one
 // wrong in either direction is costly: a refusal read as fatal aborts an audit the
@@ -41,4 +44,39 @@ describe("log span refusals", () => {
       expect(isLogSpanRefusalMessage(message)).toBe(false);
     });
   }
+});
+
+describe("log span refusal errors", () => {
+  // viem's shape: the provider's error object is the innermost cause, and each
+  // wrapper repeats a generic message.
+  function wrapped(message: string, data?: unknown): Error {
+    const rpc = Object.assign(new Error("RPC Request failed."), {
+      data,
+      cause: { code: -32602, message, data },
+    });
+    return new Error(
+      "Invalid parameters were provided to the RPC method.\n\nDetails: " +
+        message,
+      { cause: rpc },
+    );
+  }
+
+  it("reads a refusal given only in the error's data", () => {
+    const error = wrapped(
+      "invalid params",
+      "Query returned more than 20000 results. Try with this block range [0xb71b00, 0xbaeb8f].",
+    );
+    expect(isLogSpanRefusalMessage((error as Error).message)).toBe(false);
+    expect(isLogSpanRefusal(error)).toBe(true);
+  });
+
+  it("reads a refusal given in a message down the chain", () => {
+    expect(isLogSpanRefusal(wrapped("block range is too large"))).toBe(true);
+  });
+
+  it("leaves a real failure alone", () => {
+    expect(isLogSpanRefusal(wrapped("rate limit exceeded"))).toBe(false);
+    expect(isLogSpanRefusal(new Error("socket hang up"))).toBe(false);
+    expect(isLogSpanRefusal(undefined)).toBe(false);
+  });
 });

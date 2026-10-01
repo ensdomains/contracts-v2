@@ -15,6 +15,29 @@ import { mainnet, sepolia } from "viem/chains";
 
 export const DEFAULT_RPC_TIMEOUT_MS = 30_000;
 
+/// How long one request may take, its reply included.
+export const RPC_REPLY_DEADLINE_MS = 120_000;
+
+/// A fetch whose deadline covers the whole reply.
+///
+/// viem's timeout ends once the headers arrive and the body is read after it, so a
+/// provider that stops sending a reply midway holds the read open for good. The
+/// deadline turns that into a failed request, which viem and the callers retry.
+export function fetchWithDeadline(ms: number) {
+  return (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const deadline = AbortSignal.timeout(ms);
+    return fetch(input, {
+      ...init,
+      signal: init?.signal
+        ? AbortSignal.any([init.signal, deadline])
+        : deadline,
+    });
+  };
+}
+
 /// Canonical CREATE2 Multicall3 deployment address, identical across EVM chains.
 const MULTICALL3_ADDRESS =
   "0xcA11bde05977b3631167028862bE2a173976CA11" as const;
@@ -36,7 +59,11 @@ export async function resolveChain(
   timeoutMs = DEFAULT_RPC_TIMEOUT_MS,
 ): Promise<Chain> {
   const probe = createPublicClient({
-    transport: http(rpcUrl, { retryCount: 0, timeout: timeoutMs }),
+    transport: http(rpcUrl, {
+      retryCount: 0,
+      timeout: timeoutMs,
+      fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
+    }),
   });
   const chainId = await probe.getChainId();
   if (chainId === 1) return mainnet;
@@ -68,7 +95,11 @@ export async function createV2Clients(opts: {
 }): Promise<V2ClientBundle> {
   const timeout = opts.timeoutMs ?? DEFAULT_RPC_TIMEOUT_MS;
   const chain = await resolveChain(opts.rpcUrl, timeout);
-  const transport = http(opts.rpcUrl, { retryCount: 0, timeout });
+  const transport = http(opts.rpcUrl, {
+    retryCount: 0,
+    timeout,
+    fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
+  });
 
   const publicClient = createPublicClient({ chain, transport });
 

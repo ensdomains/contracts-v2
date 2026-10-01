@@ -11,6 +11,7 @@ jobs:
   check-types:
     name: Check Types
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # setup
       - uses: actions/checkout@v5
@@ -24,6 +25,7 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       # setup
       - uses: actions/checkout@v5
@@ -37,6 +39,7 @@ jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # setup
       - uses: actions/checkout@v5
@@ -54,6 +57,7 @@ jobs:
   forge-tests:
     name: Forge Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       # setup
       - uses: actions/checkout@v5
@@ -81,6 +85,7 @@ jobs:
   hardhat-tests:
     name: Hardhat Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       # setup
       - uses: actions/checkout@v5
@@ -110,6 +115,7 @@ jobs:
     name: Notify Coverage
     needs: [forge-tests, hardhat-tests]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -126,6 +132,7 @@ jobs:
   lint:
     name: Lint and Format
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # setup
       - uses: actions/checkout@v5
@@ -145,6 +152,7 @@ jobs:
     if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
     needs: [check-types, e2e-tests, forge-tests, hardhat-tests, unit-tests, lint]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
